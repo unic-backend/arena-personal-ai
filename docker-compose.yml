@@ -1,16 +1,32 @@
 version: '3.8'
 
 services:
-  backend:
-    build:
-      context: .
-      dockerfile: apps/backend/Dockerfile
-    ports:
-      - "8000:8000"
-    environment:
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+  mongodb:
+    image: mongo:latest
+    container_name: arena_mongodb
+    restart: always
     volumes:
-      - ./media:/app/media
-      - ./data:/app/data
+      - ./data/database/mongo:/data/db
 
-  # Les services Redis / VectorDB / Frontend seront ajoutés lors des phases ultérieures
+  librechat:
+    image: ghcr.io/danny-avila/librechat-dev:latest
+    container_name: arena_librechat
+    ports:
+      - "3080:3080"
+    depends_on:
+      - mongodb
+    restart: always
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3080
+      - MONGO_URI=mongodb://mongodb:27017/LibreChat
+      - DOMAIN_CLIENT=http://localhost:3080
+      - DOMAIN_SERVER=http://localhost:3080
+      - NO_INDEX=true
+      - CONFIG_PATH=/app/librechat.yaml
+      - CREDS_KEY=f34fa221d603a11124e85d95e0c5fe9a21b34e56789abcdef123456789abcdef
+      - JWT_SECRET=a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef
+      - JWT_REFRESH_SECRET=b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef
+      - ALLOW_REGISTRATION=true
+    volumes:
+      - ./librechat.yaml:/app/librechat.yaml

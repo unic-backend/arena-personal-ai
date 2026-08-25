@@ -1,20 +1,20 @@
 ﻿import os
 import sys
 import json
+import time
 import logging
 import traceback
 from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Union
 
-# Chargement des variables d'environnement .env
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(dotenv_path=BASE_DIR / ".env")
 
@@ -38,9 +38,8 @@ from agents.publisher.publisher_agent import PublisherAgent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("arena.backend")
 
-app = FastAPI(title="ARENA Personal AI API", version="0.9.3")
+app = FastAPI(title="ARENA Personal AI API", version="1.0.0")
 
-# Configuration CORS sécurisée sous FastAPI
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -58,11 +57,9 @@ DB_PATH = BASE_DIR / "data" / "database" / "memory.db"
 memory = MemoryManager(db_path=str(DB_PATH))
 permissions = PermissionManager()
 
-# Modèles IA locaux avec VRAM optimisée
 fast_provider = OllamaProvider(base_url="http://127.0.0.1:11434", model_name="qwen2.5-coder:14b")
 deep_provider = OllamaProvider(base_url="http://127.0.0.1:11434", model_name="qwen3.5:9b")
 
-# Agents
 orchestrator = OrchestratorAgent(provider=fast_provider, memory=memory)
 trend_agent = TrendAnalyzerAgent(provider=deep_provider, memory=memory)
 video_agent = VideoAnalyzerAgent(provider=deep_provider, memory=memory)
@@ -98,14 +95,103 @@ async def health_check():
         ]
     }
 
+# ==============================================================================
+# ENDPOINTS COMPATIBLES OPENAI (Pour LibreChat, Cursor, OpenWebUI...)
+# ==============================================================================
+@app.get("/v1/models")
+async def list_openai_models():
+    """Liste les modèles compatibles pour LibreChat."""
+    return {
+        "object": "list",
+        "data": [
+            {"id": "arena-core", "object": "model", "owned_by": "arena"},
+            {"id": "arena-coder", "object": "model", "owned_by": "arena"},
+            {"id": "arena-deep-research", "object": "model", "owned_by": "arena"}
+        ]
+    }
+
+@app.post("/v1/chat/completions")
+async def openai_chat_completions(request: Request):
+    """Passerelle compatible OpenAI V1 pour LibreChat."""
+    body = await request.json()
+    messages = body.get("messages", [])
+    stream = body.get("stream", False)
+    
+    last_user_msg = ""
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            last_user_msg = msg.get("content", "")
+            break
+            
+    if not last_user_msg:
+        last_user_msg = "Bonjour"
+
+    chat_req = ChatRequest(prompt=last_user_msg)
+    
+    if stream:
+        async def openai_stream_gen():
+            created_time = int(time.time())
+            session_id = "default"
+            intent = await orchestrator.analyze_intent(last_user_msg)
+
+            if intent in ["DEEP_REASONING", "DEEP_RESEARCH", "TREND_SEARCH", "CODE_EXECUTION", "VIDEO_ANALYSIS"]:
+                res = await dispatch_request(chat_req)
+                content = res.get("response", "")
+                chunk = {
+                    "id": f"chatcmpl-{created_time}",
+                    "object": "chat.completion.chunk",
+                    "created": created_time,
+                    "model": "arena-core",
+                    "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": "stop"}]
+                }
+                yield f"data: {json.dumps(chunk)}\n\n"
+                yield "data: [DONE]\n\n"
+            else:
+                system_prompt = f"Tu es ARENA, l'IA autonome personnelle de {memory.get_fact('owner') or 'Saer'}. Tu t'exécutes actuellement à travers l'interface avancée LibreChat sur sa machine. Réponds directement, poliment et avec assurance."
+                async for token in fast_provider.generate_stream(last_user_msg, system_prompt):
+                    chunk = {
+                        "id": f"chatcmpl-{created_time}",
+                        "object": "chat.completion.chunk",
+                        "created": created_time,
+                        "model": "arena-core",
+                        "choices": [{"index": 0, "delta": {"content": token}, "finish_reason": None}]
+                    }
+                    yield f"data: {json.dumps(chunk)}\n\n"
+                
+                stop_chunk = {
+                    "id": f"chatcmpl-{created_time}",
+                    "object": "chat.completion.chunk",
+                    "created": created_time,
+                    "model": "arena-core",
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+                }
+                yield f"data: {json.dumps(stop_chunk)}\n\n"
+                yield "data: [DONE]\n\n"
+
+        return StreamingResponse(openai_stream_gen(), media_type="text/event-stream")
+    else:
+        res = await dispatch_request(chat_req)
+        return {
+            "id": f"chatcmpl-{int(time.time())}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": "arena-core",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": res.get("response", "")},
+                "finish_reason": "stop"
+            }]
+        }
+
+# ==============================================================================
+# ENDPOINTS MEDIAS & PIPELINES
+# ==============================================================================
 @app.post("/api/upload")
 async def upload_video(file: UploadFile = File(...)):
-    """Upload sécurisé anti-traversée de répertoire."""
     try:
         if not permissions.is_allowed("WRITE_FILES"):
             raise HTTPException(status_code=403, detail="Écriture de fichiers non autorisée.")
 
-        # ASSAINISSEMENT STRICT DU NOM DE FICHIER (Anti-Directory Traversal)
         safe_filename = Path(file.filename).name
         if not safe_filename:
             raise HTTPException(status_code=400, detail="Nom de fichier invalide.")
@@ -128,11 +214,9 @@ async def upload_video(file: UploadFile = File(...)):
 
 @app.post("/api/process-video")
 async def process_video_pipeline(video_path: str = Form(...)):
-    """Pipeline Studio Vidéo 1-Click sécurisé."""
     try:
         p = Path(video_path).resolve()
         
-        # VALIDATION STRICTE DU CHEMIN DE FICHIER (Doit être dans media/)
         try:
             p.relative_to(MEDIA_DIR.resolve())
         except ValueError:
@@ -202,7 +286,6 @@ async def dispatch_request(request: ChatRequest) -> Dict[str, Any]:
 
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
-    """Endpoint classique JSON pour compatibilité totale avec les scripts de test."""
     try:
         if not await fast_provider.is_available():
             return {"status": "error", "model": fast_provider.model_name, "response": "❌ Ollama hors-ligne."}
@@ -221,7 +304,6 @@ async def chat_endpoint(request: ChatRequest):
 
 @app.post("/api/chat/stream")
 async def chat_stream_endpoint(request: ChatRequest):
-    """Endpoint de réponse ultra-rapide en Streaming (Server-Sent Events)."""
     session_id = request.session_id or "default"
     owner_name = memory.get_fact("owner") or "Saer"
     

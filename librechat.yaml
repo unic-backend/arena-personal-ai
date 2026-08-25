@@ -1,0 +1,13 @@
+version: 1.1.5
+cache: true
+
+endpoints:
+  custom:
+    - name: "ARENA Personal AI"
+      apiKey: "arena-local-key"
+      baseURL: "http://host.docker.internal:8000/v1"
+      models:
+        default: ["arena-core", "arena-coder", "arena-deep-research"]
+        fetch: false
+      titleConvo: true
+      modelDisplayLabel: "ARENA AI (Saer)"
