@@ -11,12 +11,15 @@ from tools.coder.repo_engineer_tool import RepoEngineerTool
 logger = logging.getLogger("arena.agent.repo_engineer")
 
 class RepoEngineerAgent(BaseAgent):
-    """Agent d'ingénierie logicielle autonome multi-fichiers (Inspiré d'Odysseus / Devin)."""
+    """Agent d'analyse d'architecture multi-fichiers (lecture seule).
+
+    Il LIT la structure du depot et propose un plan. Il ne modifie aucun fichier.
+    """
 
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None):
         super().__init__(
             name="RepoEngineerAgent",
-            description="Agent d'ingénierie logicielle capable d'analyser, modifier et tester un dépôt multi-fichiers.",
+            description="Agent d'analyse d'architecture de dépôt, en lecture seule.",
             provider=provider,
             memory=memory
         )
@@ -43,5 +46,11 @@ class RepoEngineerAgent(BaseAgent):
             "status": "success",
             "agent": self.name,
             "architecture_plan": analysis.strip(),
-            "response": f"🛠️ **Rapport d'Ingénierie Logicielle Multi-Fichiers (Odysseus Pattern)**\n\n{analysis.strip()}"
+            "response": (
+                "**Rapport d'ingenierie logicielle (RepoEngineerAgent)**\n\n"
+                f"{analysis.strip()}\n\n"
+                "---\n"
+                "*Cet agent analyse et propose. Il ne modifie aucun fichier : "
+                "c'est toi qui decides d'appliquer les changements ou non.*"
+            )
         }
