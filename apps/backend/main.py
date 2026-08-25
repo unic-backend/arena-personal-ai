@@ -188,7 +188,7 @@ async def openai_chat_completions(request: Request):
 
     chat_req = ChatRequest(prompt=last_user_msg)
 
-    if model_requested == "arena-swe-agent" or "corrige le bug" in last_user_msg.lower() or "swe" in last_user_msg.lower():
+    if model_requested == "arena-swe-agent":
         swe_res = await swe_agent.run(last_user_msg)
         content = swe_res.get("response", "")
         if stream:
@@ -213,7 +213,7 @@ async def openai_chat_completions(request: Request):
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}]
             }
 
-    if model_requested == "arena-repo-engineer" or "projet" in last_user_msg.lower() or "dépôt" in last_user_msg.lower():
+    if model_requested == "arena-repo-engineer":
         eng_res = await repo_engineer.run(last_user_msg)
         content = eng_res.get("response", "")
         if stream:
@@ -238,7 +238,7 @@ async def openai_chat_completions(request: Request):
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}]
             }
 
-    if model_requested == "arena-graphrag" or "graphe" in last_user_msg.lower():
+    if model_requested == "arena-graphrag":
         graph_res = graphrag_tool.query_global(last_user_msg)
         content = graph_res.get("response", "")
         if stream:
@@ -263,7 +263,7 @@ async def openai_chat_completions(request: Request):
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}]
             }
 
-    if model_requested == "arena-browser" or "navigue sur" in last_user_msg.lower():
+    if model_requested == "arena-browser":
         browser_res = await browser_agent.run(last_user_msg)
         content = browser_res.get("response", "")
         if stream:
@@ -288,7 +288,7 @@ async def openai_chat_completions(request: Request):
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}]
             }
 
-    if model_requested == "arena-rag-docs" or "document" in last_user_msg.lower() or "pdf" in last_user_msg.lower():
+    if model_requested == "arena-rag-docs":
         rag_answer = lightrag_tool.query(last_user_msg, mode="hybrid")
         if stream:
             async def rag_stream():
