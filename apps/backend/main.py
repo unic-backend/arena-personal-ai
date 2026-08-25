@@ -33,7 +33,7 @@ from agents.publisher.publisher_agent import PublisherAgent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("arena.backend")
 
-app = FastAPI(title="ARENA Personal AI API", version="0.9.0")
+app = FastAPI(title="ARENA Personal AI API", version="0.9.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,7 +51,6 @@ DB_PATH = BASE_DIR / "data" / "database" / "memory.db"
 memory = MemoryManager(db_path=str(DB_PATH))
 permissions = PermissionManager()
 
-# Moteur Rapide (Chat & Code) & Moteur Réflexion Lourde
 fast_provider = OllamaProvider(base_url="http://127.0.0.1:11434", model_name="qwen2.5-coder:14b")
 deep_provider = OllamaProvider(base_url="http://127.0.0.1:11434", model_name="qwen3.5:9b")
 
@@ -85,8 +84,8 @@ async def health_check():
         "ollama_available": ollama_online,
         "models": [fast_provider.model_name, deep_provider.model_name],
         "agents_active": [
-            "Orchestrator", "CoderAgent", "DeepResearcher", "TrendAnalyzer",
-            "VideoAnalyzer", "Editor", "Subtitle", "ClipSelector", "Publisher"
+            "Orchestrator", "ReasoningEngine", "CoderAgent", "DeepResearcher",
+            "TrendAnalyzer", "VideoAnalyzer", "Editor", "Subtitle", "ClipSelector", "Publisher"
         ]
     }
 
@@ -157,8 +156,14 @@ async def chat_stream_endpoint(request: ChatRequest):
     intent = await orchestrator.analyze_intent(request.prompt)
     logger.info(f"Intention détectée pour streaming: {intent}")
 
-    # Tâches lourdes de recherche profonde / tendances
-    if intent == "DEEP_RESEARCH":
+    if intent == "DEEP_REASONING":
+        result = await orchestrator.run(request.prompt, context={"session_id": session_id})
+        async def reasoning_gen():
+            yield f"data: {json.dumps({'token': result['response'], 'intent': intent})}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(reasoning_gen(), media_type="text/event-stream")
+
+    elif intent == "DEEP_RESEARCH":
         result = await researcher_agent.run(request.prompt)
         async def text_gen():
             yield f"data: {json.dumps({'token': result['response'], 'intent': intent})}\n\n"
@@ -180,7 +185,6 @@ async def chat_stream_endpoint(request: ChatRequest):
         return StreamingResponse(code_gen(), media_type="text/event-stream")
 
     else:
-        # Chat rapide quotidien via qwen2.5-coder:14b (Vitesse instantanée)
         history = memory.get_recent_history(session_id=session_id, limit=6)
         memory.add_chat_message(session_id=session_id, role="user", content=request.prompt)
 

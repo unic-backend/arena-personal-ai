@@ -1,10 +1,10 @@
 ﻿import logging
-import re
 from typing import Dict, Any, Optional
 
 from core.agent.base_agent import BaseAgent
 from core.models.base import ModelProvider
 from core.memory.memory_manager import MemoryManager
+from core.reasoning.reasoning_engine import ReasoningEngine
 
 logger = logging.getLogger("arena.agent.orchestrator")
 
@@ -18,10 +18,16 @@ class OrchestratorAgent(BaseAgent):
             provider=provider,
             memory=memory
         )
+        self.reasoning_engine = ReasoningEngine(provider=provider)
 
     async def analyze_intent(self, user_input: str) -> str:
         """Classifie l'intention de façon instantanée (0.001s) sans bloquer le LLM."""
         text = user_input.lower()
+
+        # Raisonnement profond & Maths complexes
+        reasoning_keywords = ["équation", "equation", "résous", "resous", "matrice", "intégrale", "dérivée", "démontre", "démontrer", "calcul complexe", "preuve"]
+        if any(k in text for k in reasoning_keywords):
+            return "DEEP_REASONING"
 
         # Mots-clés Code
         code_keywords = ["code", "python", "script", "fonction", "programme", "calcule", "factorielle", "fibonacci", "algorithme", "bug", "erreur", "écris un"]
@@ -51,6 +57,14 @@ class OrchestratorAgent(BaseAgent):
         
         intent = await self.analyze_intent(user_input)
         
+        if intent == "DEEP_REASONING":
+            reasoning_res = await self.reasoning_engine.solve_complex_task(user_input)
+            return {
+                "intent": intent,
+                "agent": "ReasoningEngine",
+                "response": reasoning_res["final_response"]
+            }
+
         history = self.memory.get_recent_history(session_id=session_id, limit=6) if self.memory else []
         system_prompt = (
             f"Tu es ARENA, l'IA autonome personnelle de {owner_name}.\n"
