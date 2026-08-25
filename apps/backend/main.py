@@ -35,13 +35,14 @@ from agents.researcher.researcher_agent import DeepResearcherAgent
 from agents.clip_selector.clip_selector_agent import ClipSelectorAgent
 from agents.publisher.publisher_agent import PublisherAgent
 from agents.browser.browser_agent import BrowserAgent
+from agents.repo_engineer.repo_engineer_agent import RepoEngineerAgent
 from tools.rag.lightrag_tool import LightRAGTool
 from tools.rag.graphrag_tool import GraphRAGTool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("arena.backend")
 
-app = FastAPI(title="ARENA Personal AI API", version="1.3.0")
+app = FastAPI(title="ARENA Personal AI API", version="1.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -65,6 +66,7 @@ graphrag_tool = GraphRAGTool()
 fast_provider = OllamaProvider(base_url="http://127.0.0.1:11434", model_name="qwen2.5-coder:14b")
 deep_provider = OllamaProvider(base_url="http://127.0.0.1:11434", model_name="qwen3.5:9b")
 
+# Équipe complète de 11 Agents d'Élite
 orchestrator = OrchestratorAgent(provider=fast_provider, memory=memory)
 trend_agent = TrendAnalyzerAgent(provider=deep_provider, memory=memory)
 video_agent = VideoAnalyzerAgent(provider=deep_provider, memory=memory)
@@ -75,6 +77,7 @@ researcher_agent = DeepResearcherAgent(provider=deep_provider, memory=memory)
 clip_selector = ClipSelectorAgent(provider=deep_provider, memory=memory)
 publisher_agent = PublisherAgent(provider=fast_provider, memory=memory)
 browser_agent = BrowserAgent(provider=fast_provider, memory=memory)
+repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory)
 
 memory.set_fact("user_profile", "owner", "Saer", {"role": "Propriétaire et créateur d'ARENA"})
 
@@ -109,9 +112,9 @@ async def health_check():
         "ollama_available": ollama_online,
         "models": [fast_provider.model_name, deep_provider.model_name],
         "agents_active": [
-            "Orchestrator", "ReasoningEngine", "CoderAgent", "DeepResearcher",
-            "TrendAnalyzer", "VideoAnalyzer", "Editor", "Subtitle", "ClipSelector",
-            "Publisher", "BrowserAgent", "LightRAG", "MicrosoftGraphRAG"
+            "Orchestrator", "ReasoningEngine", "CoderAgent", "RepoEngineerAgent",
+            "DeepResearcher", "TrendAnalyzer", "VideoAnalyzer", "Editor",
+            "Subtitle", "ClipSelector", "Publisher", "BrowserAgent", "LightRAG", "MicrosoftGraphRAG"
         ]
     }
 
@@ -125,6 +128,7 @@ async def list_openai_models():
         "data": [
             {"id": "arena-core", "object": "model", "owned_by": "arena"},
             {"id": "arena-coder", "object": "model", "owned_by": "arena"},
+            {"id": "arena-repo-engineer", "object": "model", "owned_by": "arena"},
             {"id": "arena-deep-research", "object": "model", "owned_by": "arena"},
             {"id": "arena-rag-docs", "object": "model", "owned_by": "arena"},
             {"id": "arena-graphrag", "object": "model", "owned_by": "arena"},
@@ -150,7 +154,31 @@ async def openai_chat_completions(request: Request):
 
     chat_req = ChatRequest(prompt=last_user_msg)
 
-    # Modèle Microsoft GraphRAG
+    if model_requested == "arena-repo-engineer" or "projet" in last_user_msg.lower() or "dépôt" in last_user_msg.lower() or "architecture" in last_user_msg.lower():
+        eng_res = await repo_engineer.run(last_user_msg)
+        content = eng_res.get("response", "")
+        if stream:
+            async def eng_stream():
+                created_time = int(time.time())
+                chunk = {
+                    "id": f"chatcmpl-{created_time}",
+                    "object": "chat.completion.chunk",
+                    "created": created_time,
+                    "model": "arena-repo-engineer",
+                    "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": "stop"}]
+                }
+                yield f"data: {json.dumps(chunk)}\n\n"
+                yield "data: [DONE]\n\n"
+            return StreamingResponse(eng_stream(), media_type="text/event-stream")
+        else:
+            return {
+                "id": f"chatcmpl-{int(time.time())}",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": "arena-repo-engineer",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}]
+            }
+
     if model_requested == "arena-graphrag" or "graphe" in last_user_msg.lower() or "graphrag" in last_user_msg.lower():
         graph_res = graphrag_tool.query_global(last_user_msg)
         content = graph_res.get("response", "")

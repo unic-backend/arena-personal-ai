@@ -7,7 +7,7 @@ endpoints:
       apiKey: "arena-local-key"
       baseURL: "http://host.docker.internal:8000/v1"
       models:
-        default: ["arena-core", "arena-coder", "arena-deep-research", "arena-rag-docs", "arena-graphrag", "arena-browser"]
+        default: ["arena-core", "arena-coder", "arena-repo-engineer", "arena-deep-research", "arena-rag-docs", "arena-graphrag", "arena-browser"]
         fetch: false
       titleConvo: true
       modelDisplayLabel: "ARENA AI (Saer)"
