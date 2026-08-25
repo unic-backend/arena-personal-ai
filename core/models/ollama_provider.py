@@ -1,7 +1,8 @@
 ﻿import httpx
+import json
 import re
 import logging
-from typing import Optional
+from typing import Optional, AsyncGenerator
 from core.models.base import ModelProvider
 
 logger = logging.getLogger("arena.ollama")
@@ -20,16 +21,20 @@ class OllamaProvider(ModelProvider):
             return False
 
     async def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        """Génération complète non-streamée (avec keep_alive de 30 minutes)."""
         url = f"{self.base_url}/api/generate"
         payload = {
             "model": self.model_name,
             "prompt": prompt,
-            "stream": False
+            "stream": False,
+            "keep_alive": "30m",  # Garde le modèle chaud dans la VRAM
+            "options": {
+                "num_ctx": 4096   # Contexte optimisé pour la vitesse
+            }
         }
         if system_prompt:
             payload["system"] = system_prompt
 
-        # Timeout étendu à 180s pour laisser le temps au GPU de charger le modèle
         long_timeout = httpx.Timeout(180.0, connect=10.0)
         async with httpx.AsyncClient(timeout=long_timeout) as client:
             res = await client.post(url, json=payload)
@@ -37,6 +42,34 @@ class OllamaProvider(ModelProvider):
             data = res.json()
             raw_response = data.get("response", "")
             
-            # Nettoyage des balises de réflexion de Qwen 3.5
             clean_response = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL).strip()
             return clean_response if clean_response else raw_response.strip()
+
+    async def generate_stream(self, prompt: str, system_prompt: Optional[str] = None) -> AsyncGenerator[str, None]:
+        """Génération en STREAMING jeton par jeton (Vitesse maximale)."""
+        url = f"{self.base_url}/api/generate"
+        payload = {
+            "model": self.model_name,
+            "prompt": prompt,
+            "stream": True,
+            "keep_alive": "30m",
+            "options": {
+                "num_ctx": 4096
+            }
+        }
+        if system_prompt:
+            payload["system"] = system_prompt
+
+        long_timeout = httpx.Timeout(180.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=long_timeout) as client:
+            async with client.stream("POST", url, json=payload) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if line:
+                        try:
+                            chunk = json.loads(line)
+                            token = chunk.get("response", "")
+                            if token:
+                                yield token
+                        except Exception:
+                            pass
