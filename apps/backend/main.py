@@ -1,4 +1,4 @@
-﻿import os
+import os
 import sys
 import json
 import time
@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -96,6 +96,36 @@ def get_arena_system_prompt() -> str:
         f"Ton propriétaire s'appelle {owner_name}. Réponds en français de manière exacte, claire et directe."
     )
 
+# ==============================================================================
+# SECURITE : cle API de la passerelle /v1 + validation des chemins media
+# ==============================================================================
+ARENA_API_KEY = os.getenv("ARENA_API_KEY", "")
+
+def verify_api_key(authorization: Optional[str] = Header(None)):
+    """Bloque tout appel a /v1 qui ne presente pas la bonne cle Bearer."""
+    if not ARENA_API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="ARENA_API_KEY absente du fichier .env : passerelle desactivee par securite."
+        )
+    if authorization != f"Bearer {ARENA_API_KEY}":
+        raise HTTPException(status_code=401, detail="Cle API invalide ou manquante.")
+    return True
+
+
+def validate_media_path(raw_path: str) -> Path:
+    """Garantit qu'un chemin de fichier reste a l'interieur du dossier media/."""
+    p = Path(raw_path).resolve()
+    try:
+        p.relative_to(MEDIA_DIR.resolve())
+    except ValueError:
+        raise HTTPException(
+            status_code=403,
+            detail="Acces refuse : le fichier doit se trouver dans le dossier media/."
+        )
+    return p
+
+
 class ChatRequest(BaseModel):
     prompt: str
     session_id: Optional[str] = "default"
@@ -124,7 +154,7 @@ async def health_check():
 # ==============================================================================
 # ENDPOINTS COMPATIBLES OPENAI (LibreChat / Open WebUI)
 # ==============================================================================
-@app.get("/v1/models")
+@app.get("/v1/models", dependencies=[Depends(verify_api_key)])
 async def list_openai_models():
     return {
         "object": "list",
@@ -140,7 +170,7 @@ async def list_openai_models():
         ]
     }
 
-@app.post("/v1/chat/completions")
+@app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
 async def openai_chat_completions(request: Request):
     body = await request.json()
     messages = body.get("messages", [])
@@ -355,7 +385,10 @@ async def upload_video(file: UploadFile = File(...)):
             buffer.write(await file.read())
             
         return {"status": "success", "filename": safe_filename, "path": str(file_path)}
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Erreur upload: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/process-video")
@@ -400,6 +433,8 @@ async def process_video_pipeline(video_path: str = Form(...)):
             "subtitle_srt": sub_res.get("srt_path") if isinstance(sub_res, dict) else "",
             "ai_summary": analysis_res.get("ai_analysis") if isinstance(analysis_res, dict) else ""
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Erreur pipeline vidéo: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
@@ -418,8 +453,9 @@ async def dispatch_request(request: ChatRequest) -> Dict[str, Any]:
     elif intent == "TREND_SEARCH":
         result = await trend_agent.run(request.prompt, context={"region": request.region})
     elif intent == "VIDEO_ANALYSIS":
-        v_path = request.video_path or str(MEDIA_DIR / "source" / "test_video.mp4")
-        result = await video_agent.run(request.prompt, context={"video_path": v_path})
+        raw_path = request.video_path or str(MEDIA_DIR / "source" / "test_video.mp4")
+        v_path = validate_media_path(raw_path)
+        result = await video_agent.run(request.prompt, context={"video_path": str(v_path)})
     elif "PUBLI" in request.prompt.upper() or "POSTER" in request.prompt.upper():
         result = await publisher_agent.run(request.prompt, context={"video_path": request.video_path})
     else:
