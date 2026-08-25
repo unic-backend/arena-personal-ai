@@ -1,5 +1,5 @@
-# PROCHAINES ÉTAPES
+# PROCHAINES Ã‰TAPES
 
-1. Valider la création des fichiers docs/.
-2. Créer README.md, .gitignore, et .env.example.
-3. Mettre en place l'environnement virtuel Python (venv) et installer les dépendances de base.
+1. Valider la crÃ©ation des fichiers docs/.
+2. CrÃ©er README.md, .gitignore, et .env.example.
+3. Mettre en place l'environnement virtuel Python (venv) et installer les dÃ©pendances de base.

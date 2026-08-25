@@ -9,7 +9,7 @@
                                                        |
                                             [Media / Social / Data]
 
-## ABSTRACTION DU MODÈLE (Local-First)
+## ABSTRACTION DU MODÃˆLE (Local-First)
 ModelProvider
 +-- LocalModel (Ollama - Qwen 3.5 / 2.5)
 +-- OptionalCloudModel (Claude / OpenAI)

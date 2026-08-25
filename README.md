@@ -1,11 +1,11 @@
-# ARENA — IA Personnelle Autonome
+# ARENA â€” IA Personnelle Autonome
 
-Système d'IA personnelle local-first conçu pour l'analyse de tendances, la compréhension de contenus vidéo/audio, la découpe intelligente et la création de médias format vertical.
+SystÃ¨me d'IA personnelle local-first conÃ§u pour l'analyse de tendances, la comprÃ©hension de contenus vidÃ©o/audio, la dÃ©coupe intelligente et la crÃ©ation de mÃ©dias format vertical.
 
 ## Architecture
 - **Chef de Projet & Orchestrateur** : ARENA
 - **Cerveau Local** : Ollama (Qwen 3.5 / Qwen 2.5 Coder)
-- **Réseau / Matériel** : Windows 11 Pro / RTX A2000 12GB VRAM / 32GB RAM
+- **RÃ©seau / MatÃ©riel** : Windows 11 Pro / RTX A2000 12GB VRAM / 32GB RAM
 
-## Démarrage rapide
+## DÃ©marrage rapide
 Consulter docs/START_HERE.md.

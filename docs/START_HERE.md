@@ -1,12 +1,12 @@
-# ARENA IA PERSONNELLE — GUIDE DE DÉMARRAGE
+# ARENA IA PERSONNELLE â€” GUIDE DE DÃ‰MARRAGE
 
-## Rôle d'ARENA
+## RÃ´le d'ARENA
 ARENA est le cerveau principal et l'architecte du projet.
 
 ## Comment reprendre une session ?
 1. Charger les fichiers docs/ (ROADMAP.md, CURRENT_TASK.md, etc.)
-2. Exécuter le diagnostic rapide dans le terminal.
-3. Reprendre à la tâche indiquée dans CURRENT_TASK.md.
+2. ExÃ©cuter le diagnostic rapide dans le terminal.
+3. Reprendre Ã  la tÃ¢che indiquÃ©e dans CURRENT_TASK.md.
 
 ## Statut initial
 - Machine : Win11 / RTX A2000 (12 Go) / 32 Go RAM
