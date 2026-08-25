@@ -30,3 +30,19 @@ services:
       - ALLOW_REGISTRATION=true
     volumes:
       - ./librechat.yaml:/app/librechat.yaml
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: arena_open_webui
+    ports:
+      - "3000:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OPENAI_API_BASE_URL=http://host.docker.internal:8000/v1
+      - OPENAI_API_KEY=arena-local-key
+      - WEBUI_SECRET_KEY=arena_secret_key_12345
+    volumes:
+      - ./data/database/open-webui:/app/backend/data
+    restart: always
