@@ -1,8 +1,10 @@
 # CHANGELOG - ARENA PERSONAL AI
 
-## [1.0.0] - 2026-08-25
-### Ajoute
-- Integration complete de LibreChat (http://localhost:3080).
-- Passerelle API OpenAI V1 (/v1/models et /v1/chat/completions).
-- Multi-agents : Orchestrator, CoderAgent (Qwen 14B), DeepResearcher, TrendAnalyzer, Studio Video 9:16.
-- Securite : OpenSandbox (Docker Isolated Sandbox).
+## [1.6.0] - 2026-08-25
+### Ajouté
+- Integration de SWEAgent (Princeton NLP ACI Pattern).
+- Integration de RepoEngineerAgent (Odysseus / Devin Multi-file Pattern).
+- Integration de Browser-Use & Playwright (Navigation Web Autonome).
+- Integration de Microsoft GraphRAG & LightRAG (Graphes de Connaissances).
+- Integration d'OpenSandbox (Bac a sable Docker isole).
+- Integration des interfaces LibreChat (:3080) et Open WebUI (:3000).
