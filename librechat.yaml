@@ -4,7 +4,7 @@ cache: true
 endpoints:
   custom:
     - name: "ARENA Personal AI"
-      apiKey: "arena-local-key"
+      apiKey: "arena-saer-2026"
       baseURL: "http://host.docker.internal:8000/v1"
       models:
         default: ["arena-core", "arena-coder", "arena-swe-agent", "arena-repo-engineer", "arena-deep-research", "arena-rag-docs", "arena-graphrag", "arena-browser"]

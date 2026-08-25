@@ -24,9 +24,9 @@ services:
       - DOMAIN_SERVER=http://localhost:3080
       - NO_INDEX=true
       - CONFIG_PATH=/app/librechat.yaml
-      - CREDS_KEY=f34fa221d603a11124e85d95e0c5fe9a21b34e56789abcdef123456789abcdef
-      - JWT_SECRET=a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef
-      - JWT_REFRESH_SECRET=b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef
+      - CREDS_KEY=${CREDS_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
       - ALLOW_REGISTRATION=true
     volumes:
       - ./librechat.yaml:/app/librechat.yaml
@@ -41,8 +41,8 @@ services:
     environment:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - OPENAI_API_BASE_URL=http://host.docker.internal:8000/v1
-      - OPENAI_API_KEY=arena-local-key
-      - WEBUI_SECRET_KEY=arena_secret_key_12345
+      - OPENAI_API_KEY=${ARENA_API_KEY}
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
     volumes:
       - ./data/database/open-webui:/app/backend/data
     restart: always
