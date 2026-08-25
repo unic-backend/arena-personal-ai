@@ -1,6 +1,7 @@
-﻿import sqlite3
+import sqlite3
 import json
 import logging
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -19,7 +20,7 @@ class MemoryManager:
         return conn
 
     def _init_db(self):
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             cursor = conn.cursor()
             
             # Short-Term Memory (Conversations)
@@ -60,7 +61,7 @@ class MemoryManager:
             conn.commit()
 
     def add_chat_message(self, session_id: str, role: str, content: str):
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             conn.cursor().execute(
                 "INSERT INTO short_term_memory (session_id, role, content) VALUES (?, ?, ?)",
                 (session_id, role, content)
@@ -68,7 +69,7 @@ class MemoryManager:
             conn.commit()
 
     def get_recent_history(self, session_id: str, limit: int = 10) -> List[Dict[str, str]]:
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT role, content FROM short_term_memory WHERE session_id = ? ORDER BY id DESC LIMIT ?",
@@ -81,7 +82,7 @@ class MemoryManager:
         val_str = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
         meta_str = json.dumps(metadata) if metadata else None
         
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             conn.cursor().execute("""
                 INSERT INTO long_term_memory (category, key, value, metadata, updated_at)
                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -94,7 +95,7 @@ class MemoryManager:
             conn.commit()
 
     def get_fact(self, key: str) -> Optional[Any]:
-        with self._get_connection() as conn:
+        with closing(self._get_connection()) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT value FROM long_term_memory WHERE key = ?", (key,))
             row = cursor.fetchone()
