@@ -34,12 +34,13 @@ from agents.coder.coder_agent import CoderAgent
 from agents.researcher.researcher_agent import DeepResearcherAgent
 from agents.clip_selector.clip_selector_agent import ClipSelectorAgent
 from agents.publisher.publisher_agent import PublisherAgent
+from agents.browser.browser_agent import BrowserAgent
 from tools.rag.lightrag_tool import LightRAGTool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("arena.backend")
 
-app = FastAPI(title="ARENA Personal AI API", version="1.1.0")
+app = FastAPI(title="ARENA Personal AI API", version="1.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -62,6 +63,7 @@ lightrag_tool = LightRAGTool()
 fast_provider = OllamaProvider(base_url="http://127.0.0.1:11434", model_name="qwen2.5-coder:14b")
 deep_provider = OllamaProvider(base_url="http://127.0.0.1:11434", model_name="qwen3.5:9b")
 
+# Équipe complète de 10 Agents
 orchestrator = OrchestratorAgent(provider=fast_provider, memory=memory)
 trend_agent = TrendAnalyzerAgent(provider=deep_provider, memory=memory)
 video_agent = VideoAnalyzerAgent(provider=deep_provider, memory=memory)
@@ -71,6 +73,7 @@ coder_agent = CoderAgent(provider=fast_provider, memory=memory)
 researcher_agent = DeepResearcherAgent(provider=deep_provider, memory=memory)
 clip_selector = ClipSelectorAgent(provider=deep_provider, memory=memory)
 publisher_agent = PublisherAgent(provider=fast_provider, memory=memory)
+browser_agent = BrowserAgent(provider=fast_provider, memory=memory)
 
 memory.set_fact("user_profile", "owner", "Saer", {"role": "Propriétaire et créateur d'ARENA"})
 
@@ -93,13 +96,6 @@ class ChatRequest(BaseModel):
     video_path: Optional[str] = None
     region: Optional[str] = "Sénégal"
 
-class RAGInsertRequest(BaseModel):
-    text: str
-
-class RAGQueryRequest(BaseModel):
-    query: str
-    mode: Optional[str] = "hybrid"
-
 @app.get("/")
 async def serve_frontend():
     return FileResponse(str(BASE_DIR / "apps" / "frontend" / "index.html"))
@@ -113,26 +109,10 @@ async def health_check():
         "models": [fast_provider.model_name, deep_provider.model_name],
         "agents_active": [
             "Orchestrator", "ReasoningEngine", "CoderAgent", "DeepResearcher",
-            "TrendAnalyzer", "VideoAnalyzer", "Editor", "Subtitle", "ClipSelector", "Publisher", "LightRAG"
+            "TrendAnalyzer", "VideoAnalyzer", "Editor", "Subtitle", "ClipSelector",
+            "Publisher", "BrowserAgent", "LightRAG"
         ]
     }
-
-# ==============================================================================
-# ENDPOINTS LIGHTRAG (Recherche Documentaire)
-# ==============================================================================
-@app.post("/api/rag/insert")
-async def rag_insert(req: RAGInsertRequest):
-    """Insère un texte dans la base de connaissances LightRAG."""
-    success = lightrag_tool.insert_text(req.text)
-    if success:
-        return {"status": "success", "message": "Texte indexé dans LightRAG."}
-    raise HTTPException(status_code=500, detail="Échec de l'insertion LightRAG.")
-
-@app.post("/api/rag/query")
-async def rag_query(req: RAGQueryRequest):
-    """Interroge la base documentaire LightRAG."""
-    result = lightrag_tool.query(req.query, mode=req.mode or "hybrid")
-    return {"status": "success", "response": result}
 
 # ==============================================================================
 # ENDPOINTS COMPATIBLES OPENAI (LibreChat / Open WebUI)
@@ -145,7 +125,8 @@ async def list_openai_models():
             {"id": "arena-core", "object": "model", "owned_by": "arena"},
             {"id": "arena-coder", "object": "model", "owned_by": "arena"},
             {"id": "arena-deep-research", "object": "model", "owned_by": "arena"},
-            {"id": "arena-rag-docs", "object": "model", "owned_by": "arena"}
+            {"id": "arena-rag-docs", "object": "model", "owned_by": "arena"},
+            {"id": "arena-browser", "object": "model", "owned_by": "arena"}
         ]
     }
 
@@ -167,7 +148,31 @@ async def openai_chat_completions(request: Request):
 
     chat_req = ChatRequest(prompt=last_user_msg)
     
-    # Si le modèle RAG est demandé ou si la question concerne un document
+    if model_requested == "arena-browser" or "navigue sur" in last_user_msg.lower() or "ouvre le site" in last_user_msg.lower():
+        browser_res = await browser_agent.run(last_user_msg)
+        content = browser_res.get("response", "")
+        if stream:
+            async def browser_stream():
+                created_time = int(time.time())
+                chunk = {
+                    "id": f"chatcmpl-{created_time}",
+                    "object": "chat.completion.chunk",
+                    "created": created_time,
+                    "model": "arena-browser",
+                    "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": "stop"}]
+                }
+                yield f"data: {json.dumps(chunk)}\n\n"
+                yield "data: [DONE]\n\n"
+            return StreamingResponse(browser_stream(), media_type="text/event-stream")
+        else:
+            return {
+                "id": f"chatcmpl-{int(time.time())}",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": "arena-browser",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}]
+            }
+
     if model_requested == "arena-rag-docs" or "document" in last_user_msg.lower() or "pdf" in last_user_msg.lower():
         rag_answer = lightrag_tool.query(last_user_msg, mode="hybrid")
         if stream:
