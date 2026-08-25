@@ -64,8 +64,13 @@ permissions = PermissionManager()
 lightrag_tool = LightRAGTool()
 graphrag_tool = GraphRAGTool()
 
-fast_provider = OllamaProvider(base_url="http://127.0.0.1:11434", model_name="qwen2.5-coder:14b")
-deep_provider = OllamaProvider(base_url="http://127.0.0.1:11434", model_name="qwen3.5:9b")
+# Configuration lue depuis le fichier .env (valeurs de secours si absent)
+OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+MODELE_RAPIDE = os.getenv("CODER_LOCAL_MODEL", "qwen2.5-coder:14b")
+MODELE_PROFOND = os.getenv("DEFAULT_LOCAL_MODEL", "qwen3.5:9b")
+
+fast_provider = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_RAPIDE)
+deep_provider = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_PROFOND)
 
 # Équipe complète de 12 Agents d'Élite
 orchestrator = OrchestratorAgent(provider=fast_provider, memory=memory)
