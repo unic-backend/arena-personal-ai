@@ -1,5 +1,43 @@
 # CHANGELOG - ARENA PERSONAL AI
 
+## [1.7.0] - 2026-08-25
+### Sécurité
+- La passerelle `/v1` exige désormais une clé API (`ARENA_API_KEY` dans `.env`).
+  Sans elle, toute requête est refusée (401).
+- Validation stricte des chemins vidéo : un fichier hors du dossier `media/`
+  est refusé, sur `/api/chat` comme sur `/api/process-video`.
+- Bac à sable Docker opérationnel : le code généré par l'IA s'exécute dans
+  l'image `arena-sandbox`, sans accès au disque ni à Internet.
+- Secrets LibreChat et Open WebUI sortis de `docker-compose.yml` vers `.env`,
+  et intégralement renouvelés.
+- Les erreurs 403 ne sont plus transformées en 500.
+
+### Corrigé
+- LightRAG : chemin d'import corrigé et passage au modèle `nomic-embed-text`.
+- GraphRAG : utilise l'image `arena-graphrag` (qui contient réellement GraphRAG)
+  au lieu d'une image Python vide.
+- SWEAgent : la recherche dans le dépôt utilisait le premier mot de la phrase.
+  Elle cible maintenant le nom de fichier cité ou le mot le plus significatif.
+- Les agents spécialisés se choisissent dans le menu de LibreChat, et non plus
+  par détection de mots courants ("projet", "document"...).
+- Connexions SQLite refermées après chaque usage.
+- L'adresse d'Ollama et les noms de modèles sont lus depuis `.env`.
+- Encodage des accents réparé dans `README.md` et les fichiers `docs/`.
+
+### Maintenance
+- Base MongoDB retirée du suivi Git et purgée de l'historique (`.git` : 822 Mo -> 0).
+- `requirements.txt` régénéré : 17 -> 174 dépendances réelles.
+- Suppression des scripts jetables qui pouvaient écraser le code source.
+- Tests : le faux `test_orchestrator.py` (copie du code source) est remplacé par
+  un vrai test ; `test_sandbox.py` échoue désormais quand la protection est absente.
+
+### Limites connues
+- GraphRAG est prêt mais nécessite l'ajout de documents puis une indexation.
+- `SWEAgent` et `RepoEngineerAgent` analysent et proposent : ils ne modifient
+  aucun fichier.
+- Les deux modèles Ollama (15,6 Go) dépassent les 12 Go de VRAM de la carte :
+  Ollama alterne leur chargement.
+
 ## [1.6.0] - 2026-08-25
 ### Ajouté
 - Integration de SWEAgent (Princeton NLP ACI Pattern).

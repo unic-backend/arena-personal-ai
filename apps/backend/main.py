@@ -43,7 +43,7 @@ from tools.rag.graphrag_tool import GraphRAGTool
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("arena.backend")
 
-app = FastAPI(title="ARENA Personal AI API", version="1.5.0")
+app = FastAPI(title="ARENA Personal AI API", version="1.7.0")
 
 app.add_middleware(
     CORSMiddleware,
