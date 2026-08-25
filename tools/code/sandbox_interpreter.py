@@ -56,7 +56,7 @@ class SandboxInterpreterTool:
                 "--network", "none",
                 "--memory", self.memory_limit,
                 "-v", f"{tmp_file_path}:/app/script.py:ro",
-                "python:3.11-slim",
+                "arena-sandbox",
                 "python", "/app/script.py"
             ]
 
