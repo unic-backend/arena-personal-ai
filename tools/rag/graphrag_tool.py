@@ -43,7 +43,7 @@ class GraphRAGTool:
                 "docker", "run", "--rm",
                 "-v", f"{self.workspace_dir}:/app/workspace",
                 "-e", "GRAPHRAG_OLLAMA_HOST=http://host.docker.internal:11434",
-                "python:3.11-slim",
+                "arena-graphrag",
                 "python", "-m", "graphrag.query",
                 "--root", "/app/workspace",
                 "--method", "global",
