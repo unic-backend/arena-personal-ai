@@ -29,7 +29,7 @@ class LightRAGTool:
 
         try:
             from lightrag import LightRAG, QueryParam
-            from lightrag.llm import ollama_model_complete, ollama_embed
+            from lightrag.llm.ollama import ollama_model_complete, ollama_embed
             from lightrag.utils import EmbeddingFunc
 
             # Configuration 100% locale avec Ollama (qwen2.5-coder:14b / qwen3.5:9b)
@@ -40,11 +40,11 @@ class LightRAGTool:
                 llm_model_max_async=4,
                 llm_model_kwargs={"host": "http://127.0.0.1:11434", "options": {"num_ctx": 4096}},
                 embedding_func=EmbeddingFunc(
-                    embedding_dim=1024,
+                    embedding_dim=768,
                     max_token_size=8192,
                     func=lambda texts: ollama_embed(
                         texts,
-                        embed_model="qwen3.5:9b",
+                        embed_model="nomic-embed-text",
                         host="http://127.0.0.1:11434"
                     )
                 )
