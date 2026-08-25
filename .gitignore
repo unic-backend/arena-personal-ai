@@ -1,0 +1,36 @@
+# Environnement Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Variables d'environnement & Secrets
+.env
+*.env
+!.env.example
+
+# Médias lourds et temporaires
+media/incoming/*
+media/downloads/*
+media/source/*
+media/analysis/*
+media/clips/*
+media/subtitles/*
+media/rendered/*
+media/approved/*
+media/published/*
+media/rejected/*
+media/archive/*
+!media/**/.gitkeep
+
+# Base de données & Cache
+data/database/*.db
+data/cache/*
+data/embeddings/*
+logs/*.log
+
+# Node.js / Frontend
+node_modules/
+.next/
+dist/
+build/

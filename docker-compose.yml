@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    volumes:
+      - ./media:/app/media
+      - ./data:/app/data
+
+  # Les services Redis / VectorDB / Frontend seront ajoutés lors des phases ultérieures
