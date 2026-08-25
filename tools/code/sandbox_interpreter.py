@@ -11,9 +11,9 @@ from tools.code.code_interpreter_tool import CodeInterpreterTool
 logger = logging.getLogger("arena.tools.sandbox_interpreter")
 
 class SandboxInterpreterTool:
-    """Interpréteur de code sécurisé dans un bac à sable Docker étanche."""
+    """Interpréteur de code sécurisé dans un bac à sable Docker étanche ou Fallback Local explicitement averti."""
 
-    def __init__(self, timeout_seconds: int = 15, memory_limit: str = "512m"):
+    def __init__(self, timeout_seconds: int = 20, memory_limit: str = "512m"):
         self.timeout_seconds = timeout_seconds
         self.memory_limit = memory_limit
         self.fallback_tool = CodeInterpreterTool(timeout_seconds=timeout_seconds)
@@ -33,27 +33,24 @@ class SandboxInterpreterTool:
             return False
 
     def execute_python_code(self, code_str: str) -> Dict[str, Any]:
-        """Exécute le code dans un conteneur Docker isolé, ou bascule sur l'interpréteur local si besoin."""
+        """Exécute le code dans un conteneur Docker isolé ou bascule sur l'interpréteur local avec avertissement explicite."""
         clean_code = code_str.replace("```python", "").replace("```", "").strip()
 
-        # Si Docker n'est pas actif, on utilise le fallback sécurisé
+        # Si Docker n'est pas actif -> Avertissement explicite et fallback
         if not self.docker_available:
-            logger.warning("Docker inactif. Bascule sur l'interpréteur local sécurisé...")
-            return self.fallback_tool.execute_python_code(clean_code)
+            logger.warning("⚠️ DOCKER INACTIF: Exécution du code en mode FALLBACK LOCAL (Bac à sable Docker non engagé).")
+            res = self.fallback_tool.execute_python_code(clean_code)
+            res["sandbox_mode"] = "⚠️ LOCAL FALLBACK (Docker inactif)"
+            return res
 
-        # Exécution dans un bac à sable Docker stérile
+        # Exécution dans le Bac à sable Docker
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as tmp_file:
             tmp_file.write(clean_code)
             tmp_file_path = Path(tmp_file.name).resolve()
 
         try:
-            logger.info("Exécution du code dans le Bac à Sable Docker isolée (OpenSandbox Pattern)...")
+            logger.info("🛡️ Exécution sécurisée dans le Bac à Sable Docker isolée (OpenSandbox Pattern)...")
             
-            # Arguments Docker de haute sécurité :
-            # --rm : détruit le conteneur dès la fin
-            # --network none : coupe tout accès à Internet
-            # --memory 512m : limite la RAM pour éviter le crash du PC
-            # -v : monte uniquement le fichier de script temporaire
             cmd = [
                 "docker", "run", "--rm",
                 "--network", "none",
@@ -78,7 +75,7 @@ class SandboxInterpreterTool:
                 "stdout": res.stdout.strip(),
                 "stderr": res.stderr.strip(),
                 "executed_code": clean_code,
-                "sandbox_mode": "Docker Isolated"
+                "sandbox_mode": "🛡️ Docker Isolated Sandbox"
             }
 
         except subprocess.TimeoutExpired:
@@ -88,11 +85,13 @@ class SandboxInterpreterTool:
                 "stdout": "",
                 "stderr": f"❌ Erreur Bac à Sable: Temps d'exécution dépassé ({self.timeout_seconds}s).",
                 "executed_code": clean_code,
-                "sandbox_mode": "Docker Isolated"
+                "sandbox_mode": "🛡️ Docker Isolated Sandbox"
             }
         except Exception as e:
             logger.error(f"Échec Docker Sandbox, bascule fallback : {e}")
-            return self.fallback_tool.execute_python_code(clean_code)
+            res = self.fallback_tool.execute_python_code(clean_code)
+            res["sandbox_mode"] = "⚠️ LOCAL FALLBACK (Erreur Docker)"
+            return res
         finally:
             if tmp_file_path.exists():
                 try:
@@ -102,6 +101,6 @@ class SandboxInterpreterTool:
 
 if __name__ == "__main__":
     sandbox = SandboxInterpreterTool()
-    print("🛡️ Statut Docker Sandbox:", "ACTIF & ÉTANCHÉ" if sandbox.docker_available else "INACTIF (Mode Fallback Local)")
+    print("🛡️ Statut Docker Sandbox:", "ACTIF & ÉTANCHÉ" if sandbox.docker_available else "⚠️ INACTIF (Mode Fallback Local)")
     r = sandbox.execute_python_code("print('Hello depuis OpenSandbox ARENA !')")
     print("Sortie:", r["stdout"])

@@ -1,8 +1,16 @@
-# CHANGELOG
+# CHANGELOG - ARENA PERSONAL AI
 
-## [0.1.0] - 2026-08-24
+## [0.9.3] - 2026-08-25
+### Sécurité & Assainissement (Audit Claude Code)
+- Assainissement strict de `file.filename` à l'upload pour éviter toute traversée de répertoire.
+- Validation stricte des chemins `video_path` restreints au dossier `media/`.
+- Intégration d'OpenSandbox (Bac à Sable Docker Isolé avec Fallback Averti).
+- Rétablissement des routes `/api/chat` et `/api/chat/stream` pour compatibilité totale.
+- Correction de la politique CORS FastAPI et chargement de `.env`.
+- Ajout de `sympy` et `numpy` dans `requirements.txt`.
+
+## [0.9.1] - 2026-08-25
 ### Ajouté
-- Phase 0 complétée.
-- Backend FastAPI avec endpoints /health et /api/chat.
-- Interface Web moderne Dark Mode (Tailwind CSS) avec console de chat interactive.
-- Scripts de diagnostic doctor.py et de démarrage start.ps1.
+- Moteur de Raisonnement Profond (ReasoningEngine Plan & Solve avec SymPy).
+- Intégration du CoderAgent autonome avec Qwen 2.5 Coder 14B.
+- Streaming SSE pour des réponses en 4 secondes.

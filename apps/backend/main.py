@@ -5,6 +5,8 @@ import logging
 import traceback
 from datetime import datetime
 from pathlib import Path
+from dotenv import load_dotenv
+
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -12,7 +14,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
+# Chargement des variables d'environnement .env
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+load_dotenv(dotenv_path=BASE_DIR / ".env")
+
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
@@ -33,17 +38,19 @@ from agents.publisher.publisher_agent import PublisherAgent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("arena.backend")
 
-app = FastAPI(title="ARENA Personal AI API", version="0.9.1")
+app = FastAPI(title="ARENA Personal AI API", version="0.9.3")
 
+# Configuration CORS sécurisée sous FastAPI
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-RENDERED_DIR = BASE_DIR / "media" / "rendered"
+MEDIA_DIR = BASE_DIR / "media"
+RENDERED_DIR = MEDIA_DIR / "rendered"
 RENDERED_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/media/rendered", StaticFiles(directory=str(RENDERED_DIR)), name="rendered")
 
@@ -51,9 +58,11 @@ DB_PATH = BASE_DIR / "data" / "database" / "memory.db"
 memory = MemoryManager(db_path=str(DB_PATH))
 permissions = PermissionManager()
 
+# Modèles IA locaux avec VRAM optimisée
 fast_provider = OllamaProvider(base_url="http://127.0.0.1:11434", model_name="qwen2.5-coder:14b")
 deep_provider = OllamaProvider(base_url="http://127.0.0.1:11434", model_name="qwen3.5:9b")
 
+# Agents
 orchestrator = OrchestratorAgent(provider=fast_provider, memory=memory)
 trend_agent = TrendAnalyzerAgent(provider=deep_provider, memory=memory)
 video_agent = VideoAnalyzerAgent(provider=deep_provider, memory=memory)
@@ -91,26 +100,44 @@ async def health_check():
 
 @app.post("/api/upload")
 async def upload_video(file: UploadFile = File(...)):
+    """Upload sécurisé anti-traversée de répertoire."""
     try:
-        incoming_dir = BASE_DIR / "media" / "incoming"
+        if not permissions.is_allowed("WRITE_FILES"):
+            raise HTTPException(status_code=403, detail="Écriture de fichiers non autorisée.")
+
+        # ASSAINISSEMENT STRICT DU NOM DE FICHIER (Anti-Directory Traversal)
+        safe_filename = Path(file.filename).name
+        if not safe_filename:
+            raise HTTPException(status_code=400, detail="Nom de fichier invalide.")
+
+        incoming_dir = MEDIA_DIR / "incoming"
         incoming_dir.mkdir(parents=True, exist_ok=True)
         
-        file_path = incoming_dir / file.filename
+        file_path = incoming_dir / safe_filename
         with open(file_path, "wb") as buffer:
             buffer.write(await file.read())
             
         return {
             "status": "success",
-            "filename": file.filename,
+            "filename": safe_filename,
             "path": str(file_path)
         }
     except Exception as e:
+        logger.error(f"Erreur upload: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/process-video")
 async def process_video_pipeline(video_path: str = Form(...)):
+    """Pipeline Studio Vidéo 1-Click sécurisé."""
     try:
-        p = Path(video_path)
+        p = Path(video_path).resolve()
+        
+        # VALIDATION STRICTE DU CHEMIN DE FICHIER (Doit être dans media/)
+        try:
+            p.relative_to(MEDIA_DIR.resolve())
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Accès refusé : Le fichier doit se trouver dans le dossier media/.")
+
         if not p.exists():
             return {"status": "error", "message": f"Fichier introuvable: {video_path}"}
 
@@ -148,42 +175,64 @@ async def process_video_pipeline(video_path: str = Form(...)):
         logger.error(f"Erreur pipeline vidéo: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
+async def dispatch_request(request: ChatRequest) -> Dict[str, Any]:
+    session_id = request.session_id or "default"
+    intent = await orchestrator.analyze_intent(request.prompt)
+    logger.info(f"Intention détectée par ARENA: {intent}")
+
+    if intent == "DEEP_REASONING":
+        result = await orchestrator.run(request.prompt, context={"session_id": session_id})
+    elif intent == "DEEP_RESEARCH":
+        result = await researcher_agent.run(request.prompt)
+    elif intent == "CODE_EXECUTION":
+        result = await coder_agent.run(request.prompt)
+    elif intent == "TREND_SEARCH":
+        result = await trend_agent.run(request.prompt, context={"region": request.region})
+    elif intent == "VIDEO_ANALYSIS":
+        v_path = request.video_path or str(MEDIA_DIR / "source" / "test_video.mp4")
+        result = await video_agent.run(request.prompt, context={"video_path": v_path})
+    elif "PUBLI" in request.prompt.upper() or "POSTER" in request.prompt.upper():
+        result = await publisher_agent.run(request.prompt, context={"video_path": request.video_path})
+    else:
+        result = await orchestrator.run(user_input=request.prompt, context={"session_id": session_id})
+
+    memory.add_chat_message(session_id=session_id, role="user", content=request.prompt)
+    memory.add_chat_message(session_id=session_id, role="assistant", content=result["response"])
+    return result
+
+@app.post("/api/chat")
+async def chat_endpoint(request: ChatRequest):
+    """Endpoint classique JSON pour compatibilité totale avec les scripts de test."""
+    try:
+        if not await fast_provider.is_available():
+            return {"status": "error", "model": fast_provider.model_name, "response": "❌ Ollama hors-ligne."}
+        
+        result = await dispatch_request(request)
+        return {
+            "status": "success",
+            "model": fast_provider.model_name,
+            "intent": result.get("intent", "CHAT"),
+            "agent": result.get("agent", "OrchestratorAgent"),
+            "response": result["response"]
+        }
+    except Exception as e:
+        logger.error(f"Erreur endpoint chat: {e}", exc_info=True)
+        return {"status": "error", "model": "error", "response": f"❌ {str(e)}"}
+
 @app.post("/api/chat/stream")
 async def chat_stream_endpoint(request: ChatRequest):
+    """Endpoint de réponse ultra-rapide en Streaming (Server-Sent Events)."""
     session_id = request.session_id or "default"
     owner_name = memory.get_fact("owner") or "Saer"
     
     intent = await orchestrator.analyze_intent(request.prompt)
-    logger.info(f"Intention détectée pour streaming: {intent}")
 
-    if intent == "DEEP_REASONING":
-        result = await orchestrator.run(request.prompt, context={"session_id": session_id})
-        async def reasoning_gen():
-            yield f"data: {json.dumps({'token': result['response'], 'intent': intent})}\n\n"
-            yield "data: [DONE]\n\n"
-        return StreamingResponse(reasoning_gen(), media_type="text/event-stream")
-
-    elif intent == "DEEP_RESEARCH":
-        result = await researcher_agent.run(request.prompt)
+    if intent in ["DEEP_REASONING", "DEEP_RESEARCH", "TREND_SEARCH", "CODE_EXECUTION", "VIDEO_ANALYSIS"]:
+        result = await dispatch_request(request)
         async def text_gen():
             yield f"data: {json.dumps({'token': result['response'], 'intent': intent})}\n\n"
             yield "data: [DONE]\n\n"
         return StreamingResponse(text_gen(), media_type="text/event-stream")
-
-    elif intent == "TREND_SEARCH":
-        result = await trend_agent.run(request.prompt, context={"region": request.region})
-        async def trend_gen():
-            yield f"data: {json.dumps({'token': result['response'], 'intent': intent})}\n\n"
-            yield "data: [DONE]\n\n"
-        return StreamingResponse(trend_gen(), media_type="text/event-stream")
-
-    elif intent == "CODE_EXECUTION":
-        result = await coder_agent.run(request.prompt)
-        async def code_gen():
-            yield f"data: {json.dumps({'token': result['response'], 'intent': intent})}\n\n"
-            yield "data: [DONE]\n\n"
-        return StreamingResponse(code_gen(), media_type="text/event-stream")
-
     else:
         history = memory.get_recent_history(session_id=session_id, limit=6)
         memory.add_chat_message(session_id=session_id, role="user", content=request.prompt)
