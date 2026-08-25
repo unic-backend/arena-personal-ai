@@ -34,11 +34,12 @@ from agents.coder.coder_agent import CoderAgent
 from agents.researcher.researcher_agent import DeepResearcherAgent
 from agents.clip_selector.clip_selector_agent import ClipSelectorAgent
 from agents.publisher.publisher_agent import PublisherAgent
+from tools.rag.lightrag_tool import LightRAGTool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("arena.backend")
 
-app = FastAPI(title="ARENA Personal AI API", version="1.0.0")
+app = FastAPI(title="ARENA Personal AI API", version="1.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -56,6 +57,7 @@ app.mount("/media/rendered", StaticFiles(directory=str(RENDERED_DIR)), name="ren
 DB_PATH = BASE_DIR / "data" / "database" / "memory.db"
 memory = MemoryManager(db_path=str(DB_PATH))
 permissions = PermissionManager()
+lightrag_tool = LightRAGTool()
 
 fast_provider = OllamaProvider(base_url="http://127.0.0.1:11434", model_name="qwen2.5-coder:14b")
 deep_provider = OllamaProvider(base_url="http://127.0.0.1:11434", model_name="qwen3.5:9b")
@@ -72,11 +74,31 @@ publisher_agent = PublisherAgent(provider=fast_provider, memory=memory)
 
 memory.set_fact("user_profile", "owner", "Saer", {"role": "Propriétaire et créateur d'ARENA"})
 
+def get_arena_system_prompt() -> str:
+    owner_name = memory.get_fact("owner") or "Saer"
+    president_fact = memory.get_fact("president") or "Bassirou Diomaye Faye (depuis avril 2024)"
+    pm_fact = memory.get_fact("premier_ministre") or "Ousmane Sonko (depuis avril 2024)"
+    return (
+        f"Tu es ARENA, l'IA autonome personnelle de {owner_name}.\n"
+        f"FAITS OFFICIELS DU SÉNÉGAL :\n"
+        f"- Le Président de la République du Sénégal est : {president_fact}.\n"
+        f"- Le Premier ministre du Sénégal est : {pm_fact}.\n"
+        f"- Année actuelle : 2026.\n"
+        f"Ton propriétaire s'appelle {owner_name}. Réponds en français de manière exacte, claire et directe."
+    )
+
 class ChatRequest(BaseModel):
     prompt: str
     session_id: Optional[str] = "default"
     video_path: Optional[str] = None
     region: Optional[str] = "Sénégal"
+
+class RAGInsertRequest(BaseModel):
+    text: str
+
+class RAGQueryRequest(BaseModel):
+    query: str
+    mode: Optional[str] = "hybrid"
 
 @app.get("/")
 async def serve_frontend():
@@ -91,31 +113,48 @@ async def health_check():
         "models": [fast_provider.model_name, deep_provider.model_name],
         "agents_active": [
             "Orchestrator", "ReasoningEngine", "CoderAgent", "DeepResearcher",
-            "TrendAnalyzer", "VideoAnalyzer", "Editor", "Subtitle", "ClipSelector", "Publisher"
+            "TrendAnalyzer", "VideoAnalyzer", "Editor", "Subtitle", "ClipSelector", "Publisher", "LightRAG"
         ]
     }
 
 # ==============================================================================
-# ENDPOINTS COMPATIBLES OPENAI (Pour LibreChat, Cursor, OpenWebUI...)
+# ENDPOINTS LIGHTRAG (Recherche Documentaire)
+# ==============================================================================
+@app.post("/api/rag/insert")
+async def rag_insert(req: RAGInsertRequest):
+    """Insère un texte dans la base de connaissances LightRAG."""
+    success = lightrag_tool.insert_text(req.text)
+    if success:
+        return {"status": "success", "message": "Texte indexé dans LightRAG."}
+    raise HTTPException(status_code=500, detail="Échec de l'insertion LightRAG.")
+
+@app.post("/api/rag/query")
+async def rag_query(req: RAGQueryRequest):
+    """Interroge la base documentaire LightRAG."""
+    result = lightrag_tool.query(req.query, mode=req.mode or "hybrid")
+    return {"status": "success", "response": result}
+
+# ==============================================================================
+# ENDPOINTS COMPATIBLES OPENAI (LibreChat / Open WebUI)
 # ==============================================================================
 @app.get("/v1/models")
 async def list_openai_models():
-    """Liste les modèles compatibles pour LibreChat."""
     return {
         "object": "list",
         "data": [
             {"id": "arena-core", "object": "model", "owned_by": "arena"},
             {"id": "arena-coder", "object": "model", "owned_by": "arena"},
-            {"id": "arena-deep-research", "object": "model", "owned_by": "arena"}
+            {"id": "arena-deep-research", "object": "model", "owned_by": "arena"},
+            {"id": "arena-rag-docs", "object": "model", "owned_by": "arena"}
         ]
     }
 
 @app.post("/v1/chat/completions")
 async def openai_chat_completions(request: Request):
-    """Passerelle compatible OpenAI V1 pour LibreChat."""
     body = await request.json()
     messages = body.get("messages", [])
     stream = body.get("stream", False)
+    model_requested = body.get("model", "arena-core")
     
     last_user_msg = ""
     for msg in reversed(messages):
@@ -128,11 +167,36 @@ async def openai_chat_completions(request: Request):
 
     chat_req = ChatRequest(prompt=last_user_msg)
     
+    # Si le modèle RAG est demandé ou si la question concerne un document
+    if model_requested == "arena-rag-docs" or "document" in last_user_msg.lower() or "pdf" in last_user_msg.lower():
+        rag_answer = lightrag_tool.query(last_user_msg, mode="hybrid")
+        if stream:
+            async def rag_stream():
+                created_time = int(time.time())
+                chunk = {
+                    "id": f"chatcmpl-{created_time}",
+                    "object": "chat.completion.chunk",
+                    "created": created_time,
+                    "model": "arena-rag-docs",
+                    "choices": [{"index": 0, "delta": {"content": rag_answer}, "finish_reason": "stop"}]
+                }
+                yield f"data: {json.dumps(chunk)}\n\n"
+                yield "data: [DONE]\n\n"
+            return StreamingResponse(rag_stream(), media_type="text/event-stream")
+        else:
+            return {
+                "id": f"chatcmpl-{int(time.time())}",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": "arena-rag-docs",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": rag_answer}, "finish_reason": "stop"}]
+            }
+
+    intent = await orchestrator.analyze_intent(last_user_msg)
+    
     if stream:
         async def openai_stream_gen():
             created_time = int(time.time())
-            session_id = "default"
-            intent = await orchestrator.analyze_intent(last_user_msg)
 
             if intent in ["DEEP_REASONING", "DEEP_RESEARCH", "TREND_SEARCH", "CODE_EXECUTION", "VIDEO_ANALYSIS"]:
                 res = await dispatch_request(chat_req)
@@ -147,7 +211,7 @@ async def openai_chat_completions(request: Request):
                 yield f"data: {json.dumps(chunk)}\n\n"
                 yield "data: [DONE]\n\n"
             else:
-                system_prompt = f"Tu es ARENA, l'IA autonome personnelle de {memory.get_fact('owner') or 'Saer'}. Tu t'exécutes actuellement à travers l'interface avancée LibreChat sur sa machine. Réponds directement, poliment et avec assurance."
+                system_prompt = get_arena_system_prompt()
                 async for token in fast_provider.generate_stream(last_user_msg, system_prompt):
                     chunk = {
                         "id": f"chatcmpl-{created_time}",
@@ -184,18 +248,15 @@ async def openai_chat_completions(request: Request):
         }
 
 # ==============================================================================
-# ENDPOINTS MEDIAS & PIPELINES
+# ENDPOINTS MÉDIAS & PIPELINES
 # ==============================================================================
 @app.post("/api/upload")
 async def upload_video(file: UploadFile = File(...)):
     try:
         if not permissions.is_allowed("WRITE_FILES"):
-            raise HTTPException(status_code=403, detail="Écriture de fichiers non autorisée.")
+            raise HTTPException(status_code=403, detail="Écriture non autorisée.")
 
         safe_filename = Path(file.filename).name
-        if not safe_filename:
-            raise HTTPException(status_code=400, detail="Nom de fichier invalide.")
-
         incoming_dir = MEDIA_DIR / "incoming"
         incoming_dir.mkdir(parents=True, exist_ok=True)
         
@@ -203,24 +264,18 @@ async def upload_video(file: UploadFile = File(...)):
         with open(file_path, "wb") as buffer:
             buffer.write(await file.read())
             
-        return {
-            "status": "success",
-            "filename": safe_filename,
-            "path": str(file_path)
-        }
+        return {"status": "success", "filename": safe_filename, "path": str(file_path)}
     except Exception as e:
-        logger.error(f"Erreur upload: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/process-video")
 async def process_video_pipeline(video_path: str = Form(...)):
     try:
         p = Path(video_path).resolve()
-        
         try:
             p.relative_to(MEDIA_DIR.resolve())
         except ValueError:
-            raise HTTPException(status_code=403, detail="Accès refusé : Le fichier doit se trouver dans le dossier media/.")
+            raise HTTPException(status_code=403, detail="Accès refusé.")
 
         if not p.exists():
             return {"status": "error", "message": f"Fichier introuvable: {video_path}"}
@@ -305,8 +360,6 @@ async def chat_endpoint(request: ChatRequest):
 @app.post("/api/chat/stream")
 async def chat_stream_endpoint(request: ChatRequest):
     session_id = request.session_id or "default"
-    owner_name = memory.get_fact("owner") or "Saer"
-    
     intent = await orchestrator.analyze_intent(request.prompt)
 
     if intent in ["DEEP_REASONING", "DEEP_RESEARCH", "TREND_SEARCH", "CODE_EXECUTION", "VIDEO_ANALYSIS"]:
@@ -319,13 +372,13 @@ async def chat_stream_endpoint(request: ChatRequest):
         history = memory.get_recent_history(session_id=session_id, limit=6)
         memory.add_chat_message(session_id=session_id, role="user", content=request.prompt)
 
-        system_prompt = f"Tu es ARENA, l'IA autonome personnelle de {owner_name}. Ton propriétaire s'appelle {owner_name}. Réponds directement et poliment en français."
+        system_prompt = get_arena_system_prompt()
         
         prompt_lines = []
         for msg in history:
-            role_label = owner_name if msg["role"] == "user" else "ARENA"
+            role_label = memory.get_fact("owner") or "Saer" if msg["role"] == "user" else "ARENA"
             prompt_lines.append(f"{role_label}: {msg['content']}")
-        prompt_lines.append(f"{owner_name}: {request.prompt}")
+        prompt_lines.append(f"{memory.get_fact('owner') or 'Saer'}: {request.prompt}")
         prompt_lines.append("ARENA:")
         full_prompt = "\n".join(prompt_lines)
 
