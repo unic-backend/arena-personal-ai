@@ -91,7 +91,7 @@ Branche `claude/arena-personal-ai-qh66ix`. Chaque entrée correspond à un commi
 donc l'interpolation aurait donné une chaîne vide.
 *Pourquoi* : secret en clair dans un dépôt public (V-01).
 *Vérification* : recherche de la valeur exacte dans l'arbre de travail → aucune
-occurrence ; `docker compose config` → `ARENA_API_KEY: test-key` interpolée.
+occurrence ; `docker compose config` → la variable est bien interpolée dans le service `librechat`.
 *Résultat* : **PARTIEL** — le fichier est propre, l'historique Git ne l'est pas.
 Voir *DISCOVERED PROBLEMS · P-01*.
 
@@ -349,16 +349,67 @@ Second passage, complet : 45 commits conservés, `librechat.yaml` intact,
 
 ---
 
+### 26 août 2026 — T-03 · Scan de secrets en CI
+
+*Fichiers* : `.gitleaks.toml` (nouveau), `.github/workflows/ci.yml`,
+`tests/test_gitleaks_config.py` (nouveau), `README.md`, `docs/CHANGELOG.md`
+*Changement* : un troisième job CI télécharge `gitleaks` 8.28.0 (binaire épinglé,
+pas l'action du marketplace qui exige une licence pour les organisations) et
+lance deux contrôles — les fichiers actuels, puis les commits ajoutés par la
+branche.
+*Pourquoi* : la valeur d'une clé a été réintroduite **trois fois dans la même
+journée**, chaque fois par inadvertance, chaque fois attrapée par un contrôle
+automatique et jamais par une relecture.
+
+**Le constat qui a décidé de la configuration** : les règles standard de
+gitleaks **ne détectent pas** la clé de `librechat.yaml`. Elle est trop courte
+pour leur seuil d'entropie. Autrement dit, `gitleaks` installé tel quel n'aurait
+pas vu la fuite qui a déclenché l'audit.
+*Vérifié* : même fichier piège, règles standard → code de sortie **0**
+(rien détecté) ; règles d'ARENA → code **1**, `arena-librechat-apikey`.
+
+Deux règles propres au projet ont donc été écrites, visant les emplacements où
+ce projet écrit réellement des secrets : `apiKey:` dans un YAML, et les six
+variables sensibles de `docker-compose.yml`.
+
+*Vérifications, toutes exécutées :*
+- fichiers actuels → **0 fuite** ; historique complet → **7 fuites**, soit les
+  6 valeurs connues de P-01 (dont une présente dans deux fichiers)
+- secret ajouté puis retiré dans deux commits de branche : étape 1 → code 0
+  (le fichier est propre), étape 2 → code **1**, la CI échoue. C'est le cas
+  qu'un scan de fichiers seul ne voit pas.
+- 11 tests, dont 3 exécutant réellement `gitleaks`
+- suite complète → **179 passed, 20 deselected** ; `ruff` → 0 erreur
+
+**Un défaut trouvé pendant la mise au point** : les motifs de la liste
+d'exclusion étaient ancrés par `^`. Avec `--source /chemin/absolu`, ils cessent
+silencieusement de s'appliquer et 3 faux positifs apparaissent — la CI aurait pu
+échouer sans raison. Les motifs sont désormais en `(^|/)`, et un test refuse
+tout motif ancré.
+
+**Limite connue, assumée** : ces règles détectent un secret dans sa *forme
+structurée* (`apiKey: "..."`, `CREDS_KEY=...`). Une clé recopiée en pleine
+prose dans un document n'est pas attrapée par gitleaks. C'est
+`tests/test_documentation.py` qui couvre ce cas — les deux sont complémentaires,
+aucun ne suffit seul.
+
+*Résultat* : **TERMINÉ**
+*Décision* : deux contrôles (fichiers + commits de la branche) plutôt qu'un scan
+de l'historique complet. *Coût si c'est faux* : les 7 fuites déjà présentes dans
+l'historique ne font pas échouer la CI — sinon elle serait rouge en permanence
+jusqu'à T-01. Une fois T-01 exécutée, le scan complet pourra être activé.
+
+---
+
 ## IN PROGRESS
 
-**Tâche courante** : T-01 — purge des secrets. Préparée, outillée et vérifiée
-sur copie ; **rien n'a été exécuté sur le dépôt réel**.
+**Tâche courante** : aucune. T-03 est terminée et vérifiée.
 **État exact** : deux actions restent, et elles n'appartiennent qu'au
 propriétaire — changer les cinq clés dans `.env`, et autoriser la réécriture de
 l'historique (irréversible, casse les clones existants).
-**Prochaine action concrète** : étape 1 du runbook — rotation des cinq clés.
-Elle protège **immédiatement**, sans toucher à l'historique, et peut être faite
-seule. Ensuite T-03 (scan de secrets en CI).
+**Prochaine action concrète** : étape 1 de `RUNBOOK_PURGE_SECRETS.md` —
+rotation des cinq clés. Elle protège **immédiatement**, sans toucher à
+l'historique, et n'appartient qu'au propriétaire.
 
 ---
 
@@ -371,7 +422,6 @@ Par priorité. Effort = estimation, à confirmer.
 | # | Tâche | Effort | Critère de validation |
 |---|---|---|---|
 | T-01 | Purger la clé de l'historique Git + rotation | 20 min | `git log -S "<ancienne clé>"` ne renvoie rien |
-| T-03 | Scan de secrets en CI (`gitleaks`) | 30 min | Un faux secret commité fait échouer la CI |
 | T-04 | Limiter le débit sur `/api/chat` et `/v1/chat/completions` | 45 min | 11ᵉ requête en 1 min → 429 |
 | T-05 | Journaliser les échecs d'authentification | 15 min | Une requête sans clé laisse une ligne de log |
 
@@ -566,7 +616,7 @@ Ce qui est certain, et vérifié par le code :
 | Appels au modèle avant le correctif n°9 | 3 | lecture du code : `chat_stream_endpoint` → `dispatch_request` → `orchestrator.run` |
 | Contexte configuré | `num_ctx: 4096` | `core/models/ollama_provider.py` |
 | Maintien en VRAM | `keep_alive: "30m"` | idem |
-| Durée de la suite de tests | 3,7 s pour 156 tests | `pytest -q` |
+| Durée de la suite de tests | 3,6 s pour 179 tests | `pytest -q` |
 | Pic mémoire, envoi de 64 Mo — avant T-02 | 64,0 Mo | `tracemalloc` sur l'ancien chemin |
 | Pic mémoire, envoi de 64 Mo — après T-02 | 2,0 Mo | `tracemalloc` sur `ecrire_par_blocs` |
 
@@ -674,3 +724,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | 2026-08-26 | Claude Code | T-02 terminée (contrôle des envois). P-02 résolu. Valeur de la clé masquée dans ce document. |
 | 2026-08-26 | Claude Code | T-06, T-07, T-08 terminées (documentation alignée). P-08 résolu. Garde-fous documentaires ajoutés. |
 | 2026-08-26 | Claude Code | T-01 préparée et vérifiée sur copie, non exécutée. Trois erreurs des rapports d'audit corrigées (44 commits, 6 secrets, commande destructrice). |
+| 2026-08-26 | Claude Code | T-03 terminée (scan de secrets en CI). Règles propres au projet : les règles standard ne voyaient pas la clé de librechat.yaml. |

@@ -57,3 +57,44 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --dry-run -r requirements.txt
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Toute l'histoire : l'etape 2 compare la branche a master.
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        # Le binaire est telecharge et epingle plutot que d'utiliser l'action du
+        # marketplace, qui demande une licence pour les depots d'organisation.
+        env:
+          GITLEAKS_VERSION: "8.28.0"
+        run: |
+          curl -sSL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: No secret in the current files
+        # Le controle principal : aucun secret dans les fichiers tels qu'ils sont.
+        # C'est celui qui attrape une valeur recopiee dans un test ou un document.
+        run: gitleaks detect --source . --no-git --no-banner --redact --config .gitleaks.toml
+
+      - name: No secret added by this branch
+        # Un secret ajoute puis retire dans un commit de la branche reste dans
+        # l'historique : on compare donc la branche a master.
+        # L'historique anterieur contient des secrets connus (voir P-01 du
+        # worklog) ; il sera scannable en entier une fois T-01 executee.
+        if: github.ref != 'refs/heads/master'
+        run: |
+          git fetch origin master --quiet
+          if git rev-parse --verify --quiet origin/master >/dev/null; then
+            gitleaks detect --source . --no-banner --redact --config .gitleaks.toml \
+              --log-opts="origin/master..HEAD"
+          else
+            echo "Pas de branche master a comparer, etape ignoree."
+          fi

@@ -27,6 +27,18 @@ pytest                 # suite hors ligne
 pytest -m integration  # exige Ollama, Docker, ffmpeg, Chromium selon les tests
 ```
 
+## Scan de secrets
+Aucune clé ne doit entrer dans le dépôt. La CI le vérifie à chaque `push` ; pour
+le contrôler avant de committer :
+
+```bash
+gitleaks detect --source . --no-git --redact --config .gitleaks.toml
+```
+
+Les règles propres au projet sont dans `.gitleaks.toml` : les règles standard de
+gitleaks ne repéraient pas la clé de `librechat.yaml`, trop courte pour leur
+seuil d'entropie.
+
 ## Licence
 Logiciel propriétaire, **tous droits réservés** (voir `LICENSE`). Le code est
 publié à titre de référence uniquement : aucune réutilisation, copie,

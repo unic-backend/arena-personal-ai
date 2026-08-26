@@ -93,6 +93,10 @@
   un fichier de 8 Go occupait 8 Go de RAM. L'écriture se fait par blocs de 1 Mo,
   la mémoire ne dépend plus de la taille du fichier (mesuré : 64 Mo → 2 Mo de pic
   au lieu de 64). Plafond réglable par `ARENA_UPLOAD_MAX_BYTES`.
+- Scan de secrets en CI (`gitleaks`), avec deux règles propres au projet :
+  les règles standard ne détectaient **pas** la clé de `librechat.yaml`, trop
+  courte pour leur seuil d'entropie — c'est-à-dire la fuite qui a déclenché l'audit.
+  Deux contrôles : les fichiers actuels, et les commits ajoutés par la branche.
 
 ## [1.7.0] - 2026-08-25
 ### Sécurité
