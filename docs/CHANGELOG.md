@@ -19,6 +19,16 @@
   **et** dans `DEFAULT_PERMISSIONS` — un `permissions.yaml` introuvable retombait
   sinon sur la valeur permissive. `.env.example` annonçait aussi l'inverse.
 
+### Déploiement
+- `requirements.txt` ne contient plus que les 12 dépendances réellement importées
+  par le code. Le `pip freeze` d'origine est conservé dans `requirements.lock.txt`.
+- `pywin32` retiré des dépendances directes : plus aucun import ne le référence, et
+  il faisait échouer le build Docker Linux. Il garde un marqueur
+  `sys_platform == "win32"` dans le lock.
+- `langchain-openai` épinglé en `1.1.9` : la `1.6.0` du lock exige `openai>=2.45`
+  alors que `browser-use==0.13.8` épingle `openai==2.16.0`. Le couple gelé était
+  déjà impossible à réinstaller.
+
 ## [1.7.0] - 2026-08-25
 ### Sécurité
 - La passerelle `/v1` exige désormais une clé API (`ARENA_API_KEY` dans `.env`).
