@@ -1,4 +1,4 @@
-"""Surface HTTP d'ARENA : ce qui est ouvert, ce qui est fermé.
+"""Surface HTTP d'Usman : ce qui est ouvert, ce qui est fermé.
 
 Ces tests tournent hors ligne : ils mesurent l'authentification et le CORS, pas
 les réponses du modèle. Le test qui a besoin d'Ollama porte le marqueur
@@ -17,7 +17,7 @@ ROUTES_METIER = ["/api/upload", "/api/process-video", "/api/chat", "/api/chat/st
 @pytest.fixture
 def client(monkeypatch) -> TestClient:
     """Client HTTP avec une clé API connue ; les erreurs applicatives deviennent des 500."""
-    monkeypatch.setattr(securite, "ARENA_API_KEY", CLE_DE_TEST)
+    monkeypatch.setattr(securite, "USMAN_API_KEY", CLE_DE_TEST)
     return TestClient(main.app, raise_server_exceptions=False)
 
 
@@ -65,7 +65,7 @@ def test_la_passerelle_v1_exige_la_cle(client, entetes):
 
 def test_sans_cle_configuree_la_passerelle_est_desactivee(monkeypatch, entetes):
     """Une clé vide ne doit pas ouvrir l'accès : elle doit le fermer."""
-    monkeypatch.setattr(securite, "ARENA_API_KEY", "")
+    monkeypatch.setattr(securite, "USMAN_API_KEY", "")
     client_sans_cle = TestClient(main.app, raise_server_exceptions=False)
 
     assert client_sans_cle.get("/v1/models", headers=entetes).status_code == 500
@@ -105,7 +105,7 @@ def test_l_etoile_n_est_jamais_une_origine_autorisee():
 def test_le_chat_repond_reellement(client, entetes, ollama_en_ligne):
     res = client.post(
         "/api/chat",
-        json={"prompt": "Confirme que l'API ARENA est fonctionnelle en une phrase courte."},
+        json={"prompt": "Confirme que l'API Usman est fonctionnelle en une phrase courte."},
         headers=entetes,
     )
 

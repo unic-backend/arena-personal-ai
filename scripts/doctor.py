@@ -4,7 +4,7 @@ import sys
 import urllib.request
 
 print("==========================================")
-print("      ARENA DIAGNOSTIC SYSTEME (DOCTOR)   ")
+print("      Usman DIAGNOSTIC SYSTEME (DOCTOR)   ")
 print("==========================================")
 
 # Python

@@ -8,7 +8,7 @@ from core.models.base import ModelProvider
 from tools.video.crop_tool import CropTool
 from tools.video.ffmpeg_tool import FFmpegTool
 
-logger = logging.getLogger("arena.agent.editor")
+logger = logging.getLogger("usman.agent.editor")
 
 class EditorAgent(BaseAgent):
     """Agent monteur vidéo chargé du recadrage vertical et du découpage."""

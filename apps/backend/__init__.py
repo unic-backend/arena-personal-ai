@@ -1,4 +1,4 @@
-"""Backend d'ARENA.
+"""Backend d'Usman.
 
 Ce fichier prépare le chemin du projet **avant** tout autre import du paquet.
 Python garantit qu'il s'exécute en premier ; l'ordre des imports à l'intérieur

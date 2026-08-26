@@ -6,7 +6,7 @@ from core.models.base import ModelProvider
 
 
 class BaseAgent(ABC):
-    """Classe abstraite dont héritent tous les agents spécialisés d'ARENA."""
+    """Classe abstraite dont héritent tous les agents spécialisés d'Usman."""
 
     def __init__(
         self,

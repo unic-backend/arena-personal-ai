@@ -3,7 +3,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-logger = logging.getLogger("arena.tools.video.ffmpeg")
+logger = logging.getLogger("usman.tools.video.ffmpeg")
 
 class FFmpegTool:
     """Wrapper complet pour le traitement vidéo et audio via FFmpeg."""

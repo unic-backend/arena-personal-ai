@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict
 
-logger = logging.getLogger("arena.tools.code_interpreter")
+logger = logging.getLogger("usman.tools.code_interpreter")
 
 class CodeInterpreterTool:
     """Outil d'exécution de code Python local sécurisé avec capture d'erreurs."""

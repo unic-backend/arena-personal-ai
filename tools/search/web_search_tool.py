@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, List
 
-logger = logging.getLogger("arena.tools.search")
+logger = logging.getLogger("usman.tools.search")
 
 class WebSearchTool:
     """Outil de recherche web autonome local via ddgs."""

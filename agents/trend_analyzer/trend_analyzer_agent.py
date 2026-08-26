@@ -6,7 +6,7 @@ from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from tools.search.web_search_tool import WebSearchTool
 
-logger = logging.getLogger("arena.agent.trend_analyzer")
+logger = logging.getLogger("usman.agent.trend_analyzer")
 
 class TrendAnalyzerAgent(BaseAgent):
     """Agent d'analyse de tendances (Sénégal, Afrique Francophone, International)."""
@@ -37,7 +37,7 @@ class TrendAnalyzerAgent(BaseAgent):
         # Formatage des résultats web pour l'IA
         snippets = "\n".join([f"- {r['title']}: {r['body']}" for r in web_results])
 
-        prompt = f"""Tu es l'agent TrendAnalyzer d'ARENA spécialisé sur les tendances du Sénégal, d'Afrique et de l'International.
+        prompt = f"""Tu es l'agent TrendAnalyzer d'Usman spécialisé sur les tendances du Sénégal, d'Afrique et de l'International.
 Analyse ces résultats web récents et synthétise 3 sujets ou tendances clés pour la création de contenu vidéo court:
 
 Résultats web:

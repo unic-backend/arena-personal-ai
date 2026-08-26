@@ -1,4 +1,4 @@
-"""Instruction système d'ARENA.
+"""Instruction système d'Usman.
 
 Aucun fait daté n'est écrit en dur ici — voir la docstring de
 `get_arena_system_prompt`. Le module est séparé pour que cette règle soit
@@ -22,7 +22,7 @@ def date_du_jour() -> date:
 
 
 def get_arena_system_prompt() -> str:
-    """Compose l'instruction systeme d'ARENA.
+    """Compose l'instruction systeme d'Usman.
 
     Aucun fait date n'est ecrit en dur ici. La version precedente affirmait
     « Annee actuelle : 2026 » et nommait deux responsables politiques : trois
@@ -34,17 +34,17 @@ def get_arena_system_prompt() -> str:
     explicite de ne pas repondre de memoire sur ce qui a pu changer, et les
     faits que le proprietaire a lui-meme enregistres — s'il l'a fait.
     """
-    owner_name = memory.get_fact("owner") or "Saer"
+    owner_name = memory.get_fact("owner") or "Usman"
     aujourd_hui = date_du_jour()
 
     lignes = [
-        f"Tu es ARENA, l'IA autonome personnelle de {owner_name}.",
+        f"Tu es Usman, l'IA autonome personnelle de {owner_name}.",
         f"Date du jour, lue sur la machine : {aujourd_hui.strftime('%d/%m/%Y')}.",
         "",
         "Connaitre la date ne te donne aucune connaissance des evenements recents.",
         "Si la reponse a pu changer depuis ton entrainement — actualite, derniere",
         "version d'un logiciel, prix, resultat, qui occupe un poste — ne reponds pas",
-        "de memoire. Dis que tu n'en es pas sur : ARENA sait aller verifier sur le web.",
+        "de memoire. Dis que tu n'en es pas sur : Usman sait aller verifier sur le web.",
         "N'invente jamais une date, un chiffre ou un nom que tu n'as pas verifie.",
     ]
 

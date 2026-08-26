@@ -25,7 +25,7 @@ def dossier_media(tmp_path, monkeypatch):
 
 @pytest.fixture
 def client(monkeypatch) -> TestClient:
-    monkeypatch.setattr(securite, "ARENA_API_KEY", CLE_DE_TEST)
+    monkeypatch.setattr(securite, "USMAN_API_KEY", CLE_DE_TEST)
     return TestClient(main.app, raise_server_exceptions=False)
 
 

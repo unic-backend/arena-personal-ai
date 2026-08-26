@@ -11,7 +11,7 @@ import pytest
 
 RACINE = Path(__file__).resolve().parent.parent
 DOCS = RACINE / "docs"
-WORKLOG = RACINE / "documents" / "ARENA_ENGINEERING_WORKLOG.md"
+WORKLOG = RACINE / "documents" / "USMAN_ENGINEERING_WORKLOG.md"
 
 # Affirmations retirées le 26/08/2026 parce qu'elles étaient fausses.
 # Si l'une revient cochée, c'est que le piège a été reposé.
@@ -29,7 +29,7 @@ def fichiers_documentation():
 
 
 def test_le_carnet_de_bord_existe():
-    assert WORKLOG.exists(), "documents/ARENA_ENGINEERING_WORKLOG.md est le point d'entrée"
+    assert WORKLOG.exists(), "documents/USMAN_ENGINEERING_WORKLOG.md est le point d'entrée"
 
 
 @pytest.mark.parametrize("affirmation", AFFIRMATIONS_RETIREES)

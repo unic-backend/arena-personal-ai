@@ -6,7 +6,7 @@ from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from tools.code.sandbox_interpreter import SandboxInterpreterTool
 
-logger = logging.getLogger("arena.agent.coder")
+logger = logging.getLogger("usman.agent.coder")
 
 class CoderAgent(BaseAgent):
     """Agent autonome de programmation sécurisé dans le bac à sable OpenSandbox."""

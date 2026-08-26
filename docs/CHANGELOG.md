@@ -1,4 +1,4 @@
-# CHANGELOG - ARENA PERSONAL AI
+# CHANGELOG - Usman PERSONAL AI
 
 ## [Non publié]
 ### Sécurité
@@ -140,11 +140,11 @@
 
 - **Pipeline d'information fraîche.** Une question dont la réponse a pu changer
   (dernière version, actualité, qui occupe un poste, prix, météo) n'est plus
-  répondue de mémoire : ARENA cherche, **lit les pages**, et répond en citant
+  répondue de mémoire : Usman cherche, **lit les pages**, et répond en citant
   ses sources. Nouvelle intention `FRESH_INFO`, nouvel agent `FreshInfoAgent`,
   nouveau modèle `arena-fresh` dans le menu de LibreChat et Open WebUI.
 - Sans résultat de recherche, ou sans page lisible, **le modèle n'est pas appelé** :
-  ARENA le dit plutôt que de répondre de mémoire.
+  Usman le dit plutôt que de répondre de mémoire.
 - `tools/search/source_fetcher.py` : lecture d'une page web, refus des adresses
   internes, plafonds de taille et de durée, état explicite en cas d'échec.
 
@@ -173,7 +173,7 @@
 - Validation stricte des chemins vidéo : un fichier hors du dossier `media/`
   est refusé, sur `/api/chat` comme sur `/api/process-video`.
 - Bac à sable Docker opérationnel : le code généré par l'IA s'exécute dans
-  l'image `arena-sandbox`, sans accès au disque ni à Internet.
+  l'image `usman-sandbox`, sans accès au disque ni à Internet.
 - Secrets LibreChat et Open WebUI sortis de `docker-compose.yml` vers `.env`,
   et intégralement renouvelés.
 - Les erreurs 403 ne sont plus transformées en 500.

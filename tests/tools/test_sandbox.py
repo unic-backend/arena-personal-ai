@@ -68,7 +68,7 @@ def test_un_echec_du_conteneur_ne_bascule_pas_sur_l_hote(monkeypatch, tmp_path):
     assert res["stdout"] == ""
 
 
-# --- Isolation réelle : exige un démon Docker et l'image arena-sandbox ---
+# --- Isolation réelle : exige un démon Docker et l'image usman-sandbox ---
 
 @pytest.fixture
 def bac_docker() -> SandboxInterpreterTool:

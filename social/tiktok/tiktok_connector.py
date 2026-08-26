@@ -3,7 +3,7 @@ from typing import Any, Dict
 
 from social.base.base_connector import SocialConnector
 
-logger = logging.getLogger("arena.social.tiktok")
+logger = logging.getLogger("usman.social.tiktok")
 
 class TikTokConnector(SocialConnector):
     def __init__(self):

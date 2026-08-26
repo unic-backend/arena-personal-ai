@@ -4,7 +4,7 @@ import pytest
 from tools.rag.lightrag_tool import LightRAGTool
 
 DOCUMENT = (
-    "Le projet ARENA est une IA autonome créée par Saer au Sénégal. Elle intègre des "
+    "Le projet Usman est une IA autonome créée par Usman au Sénégal. Elle intègre des "
     "agents spécialisés pour le code, la recherche profonde et le montage vidéo 9:16."
 )
 
@@ -15,6 +15,6 @@ def test_un_document_insere_est_retrouve():
     if not outil.insert_text(DOCUMENT):
         pytest.skip("LightRAG n'a pas pu indexer : dépendance ou modèle d'embeddings absent.")
 
-    reponse = outil.query("Qui a créé le projet ARENA ?", mode="hybrid")
+    reponse = outil.query("Qui a créé le projet Usman ?", mode="hybrid")
 
-    assert "Saer" in reponse
+    assert "Usman" in reponse

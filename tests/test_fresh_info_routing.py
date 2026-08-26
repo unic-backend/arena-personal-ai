@@ -47,7 +47,7 @@ class AgentDouble:
 
 @pytest.fixture
 def client(monkeypatch) -> TestClient:
-    monkeypatch.setattr(securite, "ARENA_API_KEY", CLE)
+    monkeypatch.setattr(securite, "USMAN_API_KEY", CLE)
     monkeypatch.setattr(securite, "REQUETES_MAX", 100)
     monkeypatch.setattr(securite.limiteur, "requetes_max", 100)
 
@@ -156,12 +156,12 @@ def test_une_reponse_sans_source_expose_une_liste_vide(client, monkeypatch, inte
 def test_le_modele_arena_fresh_est_propose_aux_interfaces(client):
     modeles = [m["id"] for m in client.get("/v1/models", headers=ENTETES).json()["data"]]
 
-    assert "arena-fresh" in modeles
+    assert "usman-fresh" in modeles
 
 
 def test_arena_fresh_appelle_l_agent_et_cite_ses_sources(client, agent_double):
     res = client.post("/v1/chat/completions",
-                      json={"model": "arena-fresh",
+                      json={"model": "usman-fresh",
                             "messages": [{"role": "user", "content": "question"}]},
                       headers=ENTETES)
 
@@ -175,7 +175,7 @@ def test_arena_fresh_appelle_l_agent_et_cite_ses_sources(client, agent_double):
 
 def test_arena_fresh_donne_ses_adresses_quand_on_les_reclame(client, agent_double):
     res = client.post("/v1/chat/completions",
-                      json={"model": "arena-fresh",
+                      json={"model": "usman-fresh",
                             "messages": [{"role": "user", "content": "question, avec les sources"}]},
                       headers=ENTETES)
 
@@ -188,7 +188,7 @@ def test_arena_core_aiguille_aussi_vers_l_agent(client, agent_double, intention)
     intention("FRESH_INFO")
 
     res = client.post("/v1/chat/completions",
-                      json={"model": "arena-core",
+                      json={"model": "usman-chat",
                             "messages": [{"role": "user", "content": "question"}]},
                       headers=ENTETES)
 
@@ -209,7 +209,7 @@ def test_la_classification_n_est_pas_refaite_par_la_passerelle(client, agent_dou
     monkeypatch.setattr(routeur_chat.orchestrator, "analyze_intent", _classer)
 
     client.post("/v1/chat/completions",
-                json={"model": "arena-core",
+                json={"model": "usman-chat",
                       "messages": [{"role": "user", "content": "question"}]},
                 headers=ENTETES)
 

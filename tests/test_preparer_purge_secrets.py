@@ -72,7 +72,7 @@ def test_le_motif_compose_isole_les_variables_sensibles():
     contenu = (
         "      - CREDS_KEY=valeur-une\n"
         "      - JWT_SECRET=valeur-deux\n"
-        "      - WEBUI_NAME=ARENA\n"          # pas un secret : ne doit pas sortir
+        "      - WEBUI_NAME=Usman\n"          # pas un secret : ne doit pas sortir
         "      - ARENA_API_KEY=${ARENA_API_KEY}\n"
     )
 
@@ -80,7 +80,7 @@ def test_le_motif_compose_isole_les_variables_sensibles():
 
     assert "valeur-une" in trouves
     assert "valeur-deux" in trouves
-    assert "ARENA" not in trouves
+    assert "Usman" not in trouves
     assert [v for v in trouves if purge.est_un_secret(v)] == ["valeur-une", "valeur-deux"]
 
 
@@ -128,13 +128,13 @@ def test_les_variables_de_docker_compose_sont_retrouvees(tmp_path):
          "services:\n  x:\n    environment:\n"
          "      - CREDS_KEY=valeur-creds-0099\n"
          "      - JWT_SECRET=valeur-jwt-0099\n"
-         "      - WEBUI_NAME=ARENA\n"),
+         "      - WEBUI_NAME=Usman\n"),
     ])
 
     trouves = purge.secrets_de_l_historique(depot)
 
     assert sorted(trouves) == ["valeur-creds-0099", "valeur-jwt-0099"]
-    assert "ARENA" not in trouves
+    assert "Usman" not in trouves
 
 
 def test_une_reference_a_une_variable_n_est_pas_prise_pour_un_secret(tmp_path):

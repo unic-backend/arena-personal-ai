@@ -1,6 +1,6 @@
 """Studio Vidéo 1-clic : de la vidéo brute au format vertical sous-titré.
 
-Écrit par Saer sur sa machine (`saer-video-wip`), repris ici dans la structure
+Écrit par Usman sur sa machine (`saer-video-wip`), repris ici dans la structure
 en modules. La chaîne enchaîne quatre étapes réelles — analyse, transcription,
 recadrage 9:16, incrustation des sous-titres — sur **la vidéo la plus récente**
 trouvée dans `media/incoming/` puis, à défaut, dans `media/source/`.
@@ -21,7 +21,7 @@ from typing import Any, Dict, Optional
 
 from apps.backend.config import MEDIA_DIR, RENDERED_DIR
 
-logger = logging.getLogger("arena.backend.studio")
+logger = logging.getLogger("usman.backend.studio")
 
 EXTENSIONS_VIDEO = (".mp4", ".mov", ".mkv", ".avi")
 
@@ -128,7 +128,7 @@ async def lancer_studio(
         "rendu": str(rendu),
         "etapes": etapes,
         "response": (
-            f"**ARENA Studio** — terminé\n\n"
+            f"**Usman Studio** — terminé\n\n"
             f"Source : `{source.name}`\n"
             f"Rendu : `{rendu.name}`\n"
             f"Emplacement : `{rendu}`\n\n"

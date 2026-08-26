@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-logger = logging.getLogger("arena.tools.browser_use")
+logger = logging.getLogger("usman.tools.browser_use")
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 if str(BASE_DIR) not in sys.path:

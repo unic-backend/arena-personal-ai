@@ -1,4 +1,4 @@
-# Environnement fige d'ARENA (pip freeze) - reproduction a l'identique.
+# Environnement fige d'Usman (pip freeze) - reproduction a l'identique.
 # Les dependances reellement importees par le code sont dans requirements.txt.
 # pywin32 porte un marqueur de plateforme : sans lui, l'installation echoue hors Windows.
 #

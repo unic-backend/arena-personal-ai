@@ -1,4 +1,4 @@
-"""Instruction système d'ARENA : ce qu'elle affirme, et ce qu'elle n'affirme plus.
+"""Instruction système d'Usman : ce qu'elle affirme, et ce qu'elle n'affirme plus.
 
 Elle contenait trois valeurs figées dans le code — l'année, le président et le
 premier ministre du Sénégal. Une valeur figée devient fausse sans que rien ne le
@@ -23,7 +23,7 @@ AFFIRMATIONS_RETIREES = [
 @pytest.fixture
 def sans_fait_enregistre(monkeypatch):
     """Mémoire vide, hormis le propriétaire."""
-    monkeypatch.setattr(prompts.memory, "get_fact", lambda cle: "Saer" if cle == "owner" else None)
+    monkeypatch.setattr(prompts.memory, "get_fact", lambda cle: "Usman" if cle == "owner" else None)
 
 
 @pytest.fixture
@@ -77,7 +77,7 @@ def test_le_modele_est_prevenu_que_la_date_ne_suffit_pas(sans_fait_enregistre):
 
 
 def test_le_proprietaire_est_nomme(sans_fait_enregistre):
-    assert "Saer" in prompts.get_arena_system_prompt()
+    assert "Usman" in prompts.get_arena_system_prompt()
 
 
 # --- Faits enregistrés par le propriétaire -------------------------------------
@@ -90,7 +90,7 @@ def test_un_fait_absent_n_apparait_pas(sans_fait_enregistre):
 
 
 def test_un_fait_enregistre_apparait_avec_sa_reserve(monkeypatch):
-    valeurs = {"owner": "Saer", "president": "Une personne nommee par le proprietaire"}
+    valeurs = {"owner": "Usman", "president": "Une personne nommee par le proprietaire"}
     monkeypatch.setattr(prompts.memory, "get_fact", lambda cle: valeurs.get(cle))
 
     prompt = prompts.get_arena_system_prompt()
@@ -100,7 +100,7 @@ def test_un_fait_enregistre_apparait_avec_sa_reserve(monkeypatch):
 
 
 def test_seuls_les_faits_reellement_enregistres_sont_listes(monkeypatch):
-    valeurs = {"owner": "Saer", "premier_ministre": "Valeur enregistree"}
+    valeurs = {"owner": "Usman", "premier_ministre": "Valeur enregistree"}
     monkeypatch.setattr(prompts.memory, "get_fact", lambda cle: valeurs.get(cle))
 
     prompt = prompts.get_arena_system_prompt()

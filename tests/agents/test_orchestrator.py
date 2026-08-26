@@ -138,12 +138,12 @@ async def test_la_demande_de_l_utilisateur_est_bien_celle_qui_est_classee(provid
 
 
 async def test_la_reponse_reprend_ce_que_le_modele_a_produit(provider_factory, memoire):
-    provider = provider_factory("CHAT", "  Bonjour Saer, tout va bien.  ")
+    provider = provider_factory("CHAT", "  Bonjour Usman, tout va bien.  ")
     agent = OrchestratorAgent(provider=provider, memory=memoire)
 
     res = await agent.run("Bonjour", context={"session_id": "s1"})
 
-    assert res["response"] == "Bonjour Saer, tout va bien."
+    assert res["response"] == "Bonjour Usman, tout va bien."
     assert res["agent"] == "OrchestratorAgent"
     assert res["intent"] == "CHAT"
 
@@ -160,18 +160,18 @@ async def test_une_intention_deja_calculee_n_est_pas_redemandee(provider_factory
 
 
 async def test_l_historique_est_transmis_au_modele(provider_factory, memoire):
-    memoire.set_fact("user_profile", "owner", "Saer")
-    memoire.add_chat_message(session_id="s1", role="user", content="Je m'appelle Saer.")
+    memoire.set_fact("user_profile", "owner", "Usman")
+    memoire.add_chat_message(session_id="s1", role="user", content="Je m'appelle Usman.")
     memoire.add_chat_message(session_id="s1", role="assistant", content="Enchanté.")
-    provider = provider_factory("Tu t'appelles Saer.")
+    provider = provider_factory("Tu t'appelles Usman.")
     agent = OrchestratorAgent(provider=provider, memory=memoire)
 
     await agent.run("Comment je m'appelle ?", context={"session_id": "s1", "intent": "CHAT"})
 
     prompt_envoye = provider.appels[0]["prompt"]
-    assert "Je m'appelle Saer." in prompt_envoye
+    assert "Je m'appelle Usman." in prompt_envoye
     assert "Enchanté." in prompt_envoye
-    assert prompt_envoye.rstrip().endswith("ARENA:")
+    assert prompt_envoye.rstrip().endswith("Usman:")
 
 
 async def test_sans_memoire_l_agent_repond_quand_meme(provider_factory):

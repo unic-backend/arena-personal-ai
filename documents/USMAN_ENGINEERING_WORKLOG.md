@@ -1,6 +1,6 @@
-# ARENA — Engineering Worklog
+# Usman — Engineering Worklog
 
-Document de travail permanent du projet ARENA Personal AI.
+Document de travail permanent du projet Usman Personal AI.
 Il survit aux sessions : toute personne — humaine ou IA — qui reprend le projet
 doit pouvoir comprendre ici ce qui a été fait, ce qui reste, et pourquoi.
 
@@ -152,7 +152,7 @@ pouvait pas aboutir.
 *Vérification* : `pip install --dry-run -r requirements.txt` → OK sur Python
 3.11 (version du Dockerfile) et 3.12 ; `pip download pywin32==312` sur Linux →
 *No matching distribution found* ; `langchain-openai 1.1.9 + openai 2.16.0` →
-`ChatOpenAI` importé et instancié avec les arguments qu'ARENA lui passe.
+`ChatOpenAI` importé et instancié avec les arguments qu'Usman lui passe.
 *Résultat* : **TERMINÉ**
 *Découverte* : l'environnement Windows figé **n'est pas réinstallable** —
 `langchain-openai 1.6.0` y cohabite avec un `openai` qu'il n'accepte pas, et
@@ -243,7 +243,7 @@ suppression du fichier partiel en cas de refus, rejet du fichier vide.
 - suite complète → **148 passed, 17 deselected** ; `ruff check .` → 0 erreur
 *Résultat* : **TERMINÉ**
 *Décision* : la liste d'extensions reste dans le code, le plafond passe par
-l'environnement — l'un est une règle métier (ARENA ne traite que du média),
+l'environnement — l'un est une règle métier (Usman ne traite que du média),
 l'autre dépend du disque de la machine. *Coût si c'est faux* : ajouter un format
 demande une modification de code plutôt qu'un réglage.
 
@@ -300,7 +300,7 @@ vivent dans `.env`, jamais versionné).
 
 1. **Le dépôt a 44 commits, pas 1.** Les quatre rapports affirment « 1 commit »
    et en tirent la conclusion « aucune traçabilité ». C'est faux : l'historique
-   remonte à `3466e2a feat: Commit initial ARENA v0.7.1`. Le clone d'audit était
+   remonte à `3466e2a feat: Commit initial Usman v0.7.1`. Le clone d'audit était
    probablement superficiel (`--depth 1`).
    *Vérifié* : `git fetch --unshallow` puis `git rev-list --count --all` → 44.
 
@@ -366,7 +366,7 @@ gitleaks **ne détectent pas** la clé de `librechat.yaml`. Elle est trop courte
 pour leur seuil d'entropie. Autrement dit, `gitleaks` installé tel quel n'aurait
 pas vu la fuite qui a déclenché l'audit.
 *Vérifié* : même fichier piège, règles standard → code de sortie **0**
-(rien détecté) ; règles d'ARENA → code **1**, `arena-librechat-apikey`.
+(rien détecté) ; règles d'Usman → code **1**, `arena-librechat-apikey`.
 
 Deux règles propres au projet ont donc été écrites, visant les emplacements où
 ce projet écrit réellement des secrets : `apiKey:` dans un YAML, et les six
@@ -458,7 +458,7 @@ recherche, jamais le contenu des pages.
 1. Une page inaccessible **est signalée** (`REFUSED` / `FAILED`), jamais
    remplacée par un texte plausible.
 2. Une **adresse interne est refusée**. Les URL viennent d'un moteur de
-   recherche, donc de l'extérieur : sans ce garde-fou, ARENA pourrait être
+   recherche, donc de l'extérieur : sans ce garde-fou, Usman pourrait être
    amené à lire ses propres services (`127.0.0.1:8000`) et à en restituer le
    contenu dans une réponse.
 3. Taille, durée et longueur de texte **plafonnées**, et la troncature est
@@ -759,7 +759,7 @@ pour deux fonctions.
 *Fichiers* : `tools/documents/reader.py` (nouveau),
 `tests/tools/test_document_reader.py` (nouveau), `requirements.txt`,
 `.github/workflows/ci.yml`
-*Changement* : ARENA sait ouvrir un PDF, un `.docx`, un `.txt`, un `.md` et un
+*Changement* : Usman sait ouvrir un PDF, un `.docx`, un `.txt`, un `.md` et un
 `.csv`, et en extraire le texte avec sa provenance.
 
 **Le constat de départ** : `LightRAGTool.insert_text()` et
@@ -1321,10 +1321,10 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 
 ---
 
-## 2026-08-26 — Réunion de la branche vidéo de Saer et de la branche d'ingénierie
+## 2026-08-26 — Réunion de la branche vidéo de Usman et de la branche d'ingénierie
 
 **Point de départ.** Deux branches nées du même commit `00e8f4f` et jamais
-reliées. Saer a travaillé sur sa machine sans jamais faire `git pull` après la
+reliées. Usman a travaillé sur sa machine sans jamais faire `git pull` après la
 fusion de la demande #1 : il faisait tourner son code d'origine, ce qui explique
 que trois correctifs vérifiés ici n'aient rien changé chez lui. Diagnostic établi
 sur une preuve, pas sur une supposition — `[master c20eb17]` dans sa sortie de
@@ -1374,7 +1374,7 @@ sous-titres (hardsub), transcription mot à mot, analyse Whisper. 2 commits,
   en modules est la règle du dépôt et qu'un `main.py` de 345 lignes est ce qu'on
   venait d'éliminer — **coût si c'est faux** : un fichier de plus à ouvrir pour
   comprendre la chaîne vidéo.
-- *La liste de mots-clés de Saer est reprise, `combien` nu excepté* — parce
+- *La liste de mots-clés de Usman est reprise, `combien` nu excepté* — parce
   qu'elle attrapait « population » et « coupe du monde » que la nôtre manquait —
   **coût si c'est faux** : des questions ordinaires partent inutilement sur le
   web et deviennent lentes.

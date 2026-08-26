@@ -24,9 +24,9 @@ async def test_appel_en_trop_leve_une_erreur_explicite(provider_factory):
 
 
 async def test_les_prompts_envoyes_sont_enregistres(fake_provider):
-    await fake_provider.generate("Bonjour", system_prompt="Tu es ARENA.")
+    await fake_provider.generate("Bonjour", system_prompt="Tu es Usman.")
 
-    assert fake_provider.appels == [{"prompt": "Bonjour", "system_prompt": "Tu es ARENA."}]
+    assert fake_provider.appels == [{"prompt": "Bonjour", "system_prompt": "Tu es Usman."}]
 
 
 async def test_le_streaming_rejoue_la_reponse_entiere(provider_factory):
@@ -51,7 +51,7 @@ async def test_aucun_reseau_n_est_ouvert(fake_provider, monkeypatch):
         raise AssertionError("Le FakeProvider a tenté d'ouvrir une connexion réseau.")
 
     monkeypatch.setattr(socket.socket, "connect", interdit)
-    assert await fake_provider.generate("q") == "Réponse simulée d'ARENA."
+    assert await fake_provider.generate("q") == "Réponse simulée d'Usman."
 
 
 def test_memoire_est_jetable_et_hors_du_depot(memoire, tmp_path):

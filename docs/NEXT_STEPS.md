@@ -3,7 +3,7 @@
 *Mis à jour le 26/08/2026. Les étapes précédentes décrivaient encore la Phase 0
 (« créer README.md ») alors que la Phase 7 était engagée.*
 
-La liste complète et priorisée vit dans `documents/ARENA_ENGINEERING_WORKLOG.md`,
+La liste complète et priorisée vit dans `documents/USMAN_ENGINEERING_WORKLOG.md`,
 section `PENDING`. Voici les trois prochaines.
 
 ## 1. Rotation de la clé API et purge de l'historique Git — **bloqué**

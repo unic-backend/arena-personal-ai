@@ -1,4 +1,4 @@
-"""Empreinte de la surface HTTP d'ARENA.
+"""Empreinte de la surface HTTP d'Usman.
 
 Ce fichier est un **filet de sécurité pour le remaniement** de `main.py` : il fige
 la liste des routes, leurs méthodes, et surtout les dépendances attachées à
@@ -140,7 +140,7 @@ def test_les_objets_partages_ne_sont_crees_qu_une_fois():
 # pas « tout reste dans main » — c'est « rien n'a disparu ».
 PROPRIETAIRE = {
     "config": [
-        "ALLOWED_ORIGINS", "ARENA_API_KEY", "MEDIA_DIR", "RENDERED_DIR",
+        "ALLOWED_ORIGINS", "USMAN_API_KEY", "MEDIA_DIR", "RENDERED_DIR",
         "TAILLE_MAX_ENVOI", "TAILLE_BLOC_ENVOI", "EXTENSIONS_MEDIA_AUTORISEES",
         "REQUETES_MAX", "FENETRE_SECONDES", "AGENTS_SPECIALISES",
         "OLLAMA_URL", "MODELE_RAPIDE", "MODELE_PROFOND", "DB_PATH",
@@ -154,7 +154,7 @@ PROPRIETAIRE = {
     ],
     "security": [
         "verify_api_key", "limiter_debit", "validate_media_path", "client_de",
-        "limiteur", "ARENA_API_KEY", "REQUETES_MAX",
+        "limiteur", "USMAN_API_KEY", "REQUETES_MAX",
     ],
     "prompts": ["get_arena_system_prompt", "date_du_jour", "FAITS_DU_PROPRIETAIRE"],
     "main": ["app"],
@@ -184,7 +184,7 @@ def test_aucun_reglage_n_est_duplique_dans_main():
     from apps.backend import main, security
 
     copies = [
-        nom for nom in ["ARENA_API_KEY", "REQUETES_MAX", "FENETRE_SECONDES", "limiteur"]
+        nom for nom in ["USMAN_API_KEY", "REQUETES_MAX", "FENETRE_SECONDES", "limiteur"]
         if hasattr(main, nom)
     ]
 

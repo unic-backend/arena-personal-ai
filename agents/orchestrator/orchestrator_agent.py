@@ -7,7 +7,7 @@ from core.agent.base_agent import BaseAgent
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 
-logger = logging.getLogger("arena.agent.orchestrator")
+logger = logging.getLogger("usman.agent.orchestrator")
 
 # Liste fermée : toute réponse du modèle hors de cet ensemble est rejetée.
 INTENTIONS = {
@@ -235,7 +235,7 @@ class OrchestratorAgent(BaseAgent):
 
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         session_id = context.get("session_id", "default") if context else "default"
-        owner_name = self.memory.get_fact("owner") if self.memory else "Saer"
+        owner_name = self.memory.get_fact("owner") if self.memory else "Usman"
 
         # La classification coûte un appel au modèle : si l'appelant l'a déjà
         # faite, on la réutilise au lieu de la refaire.
@@ -245,7 +245,7 @@ class OrchestratorAgent(BaseAgent):
 
         # PROMPT MONDIAL SANS BIAIS LOCAL FORCÉ
         system_prompt = (
-            f"Tu es ARENA, une intelligence artificielle internationale de haut niveau, au service de {owner_name}.\n"
+            f"Tu es Usman, une intelligence artificielle internationale de haut niveau, au service de {owner_name}.\n"
             f"Contexte temporel : Nous sommes en 2026.\n"
             f"Règles strictes :\n"
             f"1. Réponds STRICTEMENT et DIRECTEMENT à la question posée sans dériver vers d'autres sujets.\n"
@@ -256,10 +256,10 @@ class OrchestratorAgent(BaseAgent):
 
         prompt_lines = []
         for msg in history:
-            role_label = owner_name if msg["role"] == "user" else "ARENA"
+            role_label = owner_name if msg["role"] == "user" else "Usman"
             prompt_lines.append(f"{role_label}: {msg['content']}")
         prompt_lines.append(f"{owner_name}: {user_input}")
-        prompt_lines.append("ARENA:")
+        prompt_lines.append("Usman:")
 
         reply = await self.provider.generate(prompt="\n".join(prompt_lines), system_prompt=system_prompt)
         return {

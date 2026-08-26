@@ -1,4 +1,4 @@
-"""Objets partagés d'ARENA : mémoire, permissions, modèles et agents.
+"""Objets partagés d'Usman : mémoire, permissions, modèles et agents.
 
 Ils sont créés une seule fois, au démarrage, et réutilisés par toutes les routes.
 Les regrouper ici évite que chaque routeur en fabrique sa propre copie — deux
@@ -27,7 +27,7 @@ from core.permissions.permission_manager import PermissionManager
 from tools.rag.graphrag_tool import GraphRAGTool
 from tools.rag.lightrag_tool import LightRAGTool
 
-logger = logging.getLogger("arena.backend")
+logger = logging.getLogger("usman.backend")
 
 # --- Etat et outils -----------------------------------------------------------
 memory = MemoryManager(db_path=str(DB_PATH))
@@ -55,4 +55,4 @@ fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)
 repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory)
 swe_agent = SWEAgent(provider=fast_provider, memory=memory)
 
-memory.set_fact("user_profile", "owner", "Saer", {"role": "Propriétaire et créateur d'ARENA"})
+memory.set_fact("user_profile", "owner", "Usman", {"role": "Propriétaire et créateur d'Usman"})

@@ -3,15 +3,15 @@ cache: true
 
 endpoints:
   custom:
-    - name: "ARENA Personal AI"
-      apiKey: "${ARENA_API_KEY}"
+    - name: "Usman"
+      apiKey: "${USMAN_API_KEY}"
       baseURL: "http://host.docker.internal:8000/v1"
       models:
         # TROIS entrees, volontairement. Decision du proprietaire, 2026-08-26 :
         # « les utilisateurs ne connaissent pas des modeles, ils ouvrent le
         # premier qui apparait et pensent que c est celui qui fait tout ».
         #
-        # Ce n est pas une liste tronquee : arena-core atteint TOUTES les
+        # Ce n est pas une liste tronquee : usman-chat atteint TOUTES les
         # capacites en lisant la demande — web, documents, video, navigation,
         # correction de bug, depot. Les autres noms restent servis par
         # /v1/models pour un client averti, mais ne sont plus proposes ici.
@@ -19,9 +19,9 @@ endpoints:
         # `tests/test_configuration_clients.py` verifie que rien n est devenu
         # injoignable en raccourcissant ce menu.
         default:
-          - "arena-core"
-          - "arena-coder"
-          - "arena-video"
+          - "usman-chat"
+          - "usman-coder"
+          - "usman-video"
         fetch: false
       titleConvo: true
-      modelDisplayLabel: "ARENA AI (Saer)"
+      modelDisplayLabel: "Usman"

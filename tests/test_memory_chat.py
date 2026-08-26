@@ -1,4 +1,4 @@
-"""Mémoire de conversation : l'historique qu'ARENA relit avant de répondre.
+"""Mémoire de conversation : l'historique qu'Usman relit avant de répondre.
 
 La version qui interrogeait `/api/chat` exigeait Ollama ; elle vit maintenant
 dans `tests/test_api.py`, marquée `integration`. Ce fichier teste la mémoire
@@ -8,13 +8,13 @@ elle-même, hors ligne.
 
 def test_un_echange_est_relu_dans_l_ordre(memoire):
     memoire.add_chat_message(session_id="default", role="user", content="Comment je m'appelle ?")
-    memoire.add_chat_message(session_id="default", role="assistant", content="Tu t'appelles Saer.")
+    memoire.add_chat_message(session_id="default", role="assistant", content="Tu t'appelles Usman.")
 
     historique = memoire.get_recent_history(session_id="default")
 
     assert [(m["role"], m["content"]) for m in historique] == [
         ("user", "Comment je m'appelle ?"),
-        ("assistant", "Tu t'appelles Saer."),
+        ("assistant", "Tu t'appelles Usman."),
     ]
 
 
@@ -38,9 +38,9 @@ def test_une_session_inconnue_ne_renvoie_rien(memoire):
 
 
 def test_un_fait_est_relu_apres_ecriture(memoire):
-    memoire.set_fact("user_profile", "owner", "Saer", {"role": "Propriétaire"})
+    memoire.set_fact("user_profile", "owner", "Usman", {"role": "Propriétaire"})
 
-    assert memoire.get_fact("owner") == "Saer"
+    assert memoire.get_fact("owner") == "Usman"
 
 
 def test_un_fait_inconnu_vaut_None_et_pas_une_valeur_plausible(memoire):

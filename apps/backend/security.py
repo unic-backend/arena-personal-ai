@@ -11,14 +11,14 @@ from typing import Optional
 from fastapi import Header, HTTPException, Request
 
 from apps.backend.config import (
-    ARENA_API_KEY,
     FENETRE_SECONDES,
     MEDIA_DIR,
     REQUETES_MAX,
+    USMAN_API_KEY,
 )
 from apps.backend.rate_limit import LimiteurDebit
 
-logger = logging.getLogger("arena.backend")
+logger = logging.getLogger("usman.backend")
 
 # Compteur partage par toutes les routes limitees.
 limiteur = LimiteurDebit(requetes_max=REQUETES_MAX, fenetre_secondes=FENETRE_SECONDES)
@@ -36,12 +36,12 @@ def verify_api_key(request: Request, authorization: Optional[str] = Header(None)
     La cle presentee n'est jamais ecrite dans les journaux : un journal qui
     contient des secrets est un secret de plus a proteger.
     """
-    if not ARENA_API_KEY:
+    if not USMAN_API_KEY:
         raise HTTPException(
             status_code=500,
-            detail="ARENA_API_KEY absente du fichier .env : passerelle desactivee par securite."
+            detail="USMAN_API_KEY absente du fichier .env : passerelle desactivee par securite."
         )
-    if authorization != f"Bearer {ARENA_API_KEY}":
+    if authorization != f"Bearer {USMAN_API_KEY}":
         motif = "cle absente" if not authorization else "cle invalide"
         logger.warning(
             "Authentification refusee (%s) : %s -> %s",

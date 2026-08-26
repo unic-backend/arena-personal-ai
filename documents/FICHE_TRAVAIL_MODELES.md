@@ -1,6 +1,6 @@
 # Fiche de travail — deux défauts signalés par le propriétaire
 
-**Ouverte le 2026-08-26**, sur deux constats faits par Saer en utilisant ARENA
+**Ouverte le 2026-08-26**, sur deux constats faits par Usman en utilisant Usman
 dans LibreChat. Les deux sont des régressions d'usage, pas des idées
 d'amélioration.
 
@@ -14,7 +14,7 @@ Le sélecteur de LibreChat affiche `arena-core`, `arena-coder`,
 `arena-swe-agent`, `arena-repo-engineer`, `arena-deep-research`, `arena-fresh`,
 `arena-rag-docs`, `arena-graphrag`, `arena-browser`, `arena-studio`.
 
-Saer avait **réduit cette liste à deux entrées** dans son
+Usman avait **réduit cette liste à deux entrées** dans son
 `librechat.yaml`. Sa raison, dans ses mots :
 
 > « les utilisateurs ne connaissent pas des modèles, eux ils ouvrent le premier

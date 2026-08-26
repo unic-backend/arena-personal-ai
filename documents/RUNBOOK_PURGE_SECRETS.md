@@ -111,7 +111,7 @@ python scripts/preparer_purge_secrets.py
 ```
 
 Le script lit l'historique, affiche les secrets trouvés **sous forme masquée**,
-et écrit un fichier `arena-secrets-a-purger.txt` **à côté** du dossier du projet
+et écrit un fichier `usman-secrets-a-purger.txt` **à côté** du dossier du projet
 — délibérément hors du dépôt, pour qu'il ne puisse pas être versionné.
 
 Sortie attendue : `6 secret(s) trouvé(s) dans l'historique`.
@@ -129,7 +129,7 @@ pip install git-filter-repo
 Puis, depuis le dossier du projet :
 
 ```
-git filter-repo --replace-text ../arena-secrets-a-purger.txt --force
+git filter-repo --replace-text ../usman-secrets-a-purger.txt --force
 ```
 
 > **Ne pas utiliser** `git filter-repo --path librechat.yaml --invert-paths`.
@@ -153,7 +153,7 @@ git show HEAD:librechat.yaml
 Attendu : le fichier s'affiche, avec `apiKey: "${ARENA_API_KEY}"`.
 
 **2. Les secrets ont disparu de l'historique.** Pour chaque valeur listée à
-l'étape 3 (le fichier `arena-secrets-a-purger.txt` les contient, une par ligne
+l'étape 3 (le fichier `usman-secrets-a-purger.txt` les contient, une par ligne
 avant la flèche `==>`) :
 
 ```
@@ -205,10 +205,10 @@ refaire un `git clone`.
 Supprimez le fichier qui contient les secrets en clair :
 
 ```
-del ..\arena-secrets-a-purger.txt
+del ..\usman-secrets-a-purger.txt
 ```
 
-*(sous Linux ou macOS : `rm ../arena-secrets-a-purger.txt`)*
+*(sous Linux ou macOS : `rm ../usman-secrets-a-purger.txt`)*
 
 Puis, si vous voulez que GitHub oublie aussi les anciens commits accessibles par
 leur identifiant, ouvrez une demande au support GitHub en citant le dépôt et en
@@ -231,4 +231,4 @@ git clone arena-sauvegarde.git arena-restaure
 ## Trace
 
 Une fois l'opération faite, notez la date et le résultat dans
-`documents/ARENA_ENGINEERING_WORKLOG.md`, entrée **T-01**.
+`documents/USMAN_ENGINEERING_WORKLOG.md`, entrée **T-01**.

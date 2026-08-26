@@ -4,7 +4,7 @@ from pathlib import Path
 
 from tools.video.ffmpeg_tool import FFmpegTool
 
-logger = logging.getLogger("arena.tools.video.crop")
+logger = logging.getLogger("usman.tools.video.crop")
 
 class CropTool:
     """Outil de recadrage et de conversion vers le format vertical 9:16 (1080x1920)."""

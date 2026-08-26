@@ -33,8 +33,8 @@ def test_les_regles_par_defaut_de_gitleaks_sont_conservees(config):
 def test_les_deux_regles_propres_au_projet_existent(config):
     identifiants = {r["id"] for r in config["rules"]}
 
-    assert "arena-librechat-apikey" in identifiants
-    assert "arena-compose-secret" in identifiants
+    assert "usman-librechat-apikey" in identifiants
+    assert "usman-compose-secret" in identifiants
 
 
 def test_chaque_regle_propre_au_projet_est_documentee(config):
@@ -45,7 +45,7 @@ def test_chaque_regle_propre_au_projet_est_documentee(config):
 
 def test_les_variables_sensibles_du_projet_sont_toutes_couvertes(config):
     """Les cinq variables qui ont réellement fui doivent être dans la règle."""
-    regle = next(r for r in config["rules"] if r["id"] == "arena-compose-secret")
+    regle = next(r for r in config["rules"] if r["id"] == "usman-compose-secret")
 
     for variable in [
         "CREDS_KEY", "JWT_SECRET", "JWT_REFRESH_SECRET",

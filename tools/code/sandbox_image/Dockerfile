@@ -1,6 +1,6 @@
-# Image du bac a sable ARENA
+# Image du bac a sable Usman
 # Boite isolee dans laquelle le code genere par l IA est execute,
-# sans acces au disque de Saer ni a Internet.
+# sans acces au disque de Usman ni a Internet.
 
 FROM python:3.11-slim
 

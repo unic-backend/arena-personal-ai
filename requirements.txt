@@ -1,4 +1,4 @@
-# Dependances directes d'ARENA : uniquement ce que le code importe.
+# Dependances directes d'Usman : uniquement ce que le code importe.
 # L'environnement complet et fige se trouve dans requirements.lock.txt.
 #   Installation courante    : pip install -r requirements.txt
 #   Reproduction a l'identique : pip install -r requirements.lock.txt

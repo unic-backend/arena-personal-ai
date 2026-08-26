@@ -5,7 +5,7 @@ from typing import Any, Dict
 from core.models.base import ModelProvider
 from tools.code.sandbox_interpreter import SandboxInterpreterTool
 
-logger = logging.getLogger("arena.core.reasoning")
+logger = logging.getLogger("usman.core.reasoning")
 
 class ReasoningEngine:
     """Moteur de raisonnement structuré Plan & Solve sécurisé dans OpenSandbox."""
@@ -46,7 +46,7 @@ class ReasoningEngine:
 
         # 3. ÉTAPE DE SYNTHÈSE SUBLIME
         synthesis_prompt = (
-            "Tu es ARENA. Présente la solution finale de manière élégante, claire et irréprochable.\n"
+            "Tu es Usman. Présente la solution finale de manière élégante, claire et irréprochable.\n"
             f"Question originale : {user_prompt}\n"
             f"Raisonnement & Plan : {plan_res}\n"
             f"Résultat des calculs exacts dans le Bac à Sable : {execution_output}\n\n"

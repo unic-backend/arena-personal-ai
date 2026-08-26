@@ -1,7 +1,7 @@
 """Le menu est court ; les capacités, elles, restent toutes joignables.
 
 Décision du propriétaire, 2026-08-26 : LibreChat propose trois entrées —
-`arena-core`, `arena-coder` et `arena-video`. Sa raison — *« les utilisateurs ne connaissent
+`usman-chat`, `usman-coder` et `usman-video`. Sa raison — *« les utilisateurs ne connaissent
 pas des modèles, ils ouvrent le premier qui apparaît et pensent que c'est celui
 qui fait tout »*.
 
@@ -27,20 +27,20 @@ RACINE = Path(__file__).resolve().parent.parent
 LIBRECHAT = RACINE / "librechat.yaml"
 COMPOSE = RACINE / "docker-compose.yml"
 
-MENU_ATTENDU = {"arena-core", "arena-coder", "arena-video"}
+MENU_ATTENDU = {"usman-chat", "usman-coder", "usman-video"}
 
 VARIABLES_SECRETES = (
-    "ARENA_API_KEY", "CREDS_KEY", "JWT_SECRET", "JWT_REFRESH_SECRET", "WEBUI_SECRET_KEY",
+    "USMAN_API_KEY", "CREDS_KEY", "JWT_SECRET", "JWT_REFRESH_SECRET", "WEBUI_SECRET_KEY",
 )
 
 # Chaque nom retiré du menu, et l'intention qui doit le remplacer depuis
-# `arena-core`. Le nom de l'objet est celui que l'aiguillage doit appeler.
+# `usman-chat`. Le nom de l'objet est celui que l'aiguillage doit appeler.
 CAPACITES_SANS_ENTREE_DE_MENU = {
-    "arena-swe-agent": ("SWE_FIX", "swe_agent"),
-    "arena-repo-engineer": ("REPO_ENGINEERING", "repo_engineer"),
-    "arena-deep-research": ("DEEP_RESEARCH", "researcher_agent"),
-    "arena-fresh": ("FRESH_INFO", "fresh_agent"),
-    "arena-browser": ("BROWSER", "browser_agent"),
+    "usman-fix": ("SWE_FIX", "swe_agent"),
+    "usman-repo": ("REPO_ENGINEERING", "repo_engineer"),
+    "usman-research": ("DEEP_RESEARCH", "researcher_agent"),
+    "usman-fresh": ("FRESH_INFO", "fresh_agent"),
+    "usman-browser": ("BROWSER", "browser_agent"),
 }
 
 
@@ -55,7 +55,7 @@ class TestMenuCourt:
 
     def test_la_video_est_dans_le_menu(self):
         """Demandée explicitement par le propriétaire le 2026-08-26."""
-        assert "arena-video" in menu_de_librechat()
+        assert "usman-video" in menu_de_librechat()
 
     @pytest.mark.parametrize("modele,attendu", sorted(CAPACITES_SANS_ENTREE_DE_MENU.items()))
     def test_chaque_capacite_retiree_a_une_intention(self, modele, attendu):
@@ -112,7 +112,7 @@ class TestAucunSecretEnClair:
     def test_librechat_lit_sa_cle_dans_l_environnement(self):
         config = yaml.safe_load(LIBRECHAT.read_text(encoding="utf-8"))
         cle = config["endpoints"]["custom"][0]["apiKey"]
-        assert cle == "${ARENA_API_KEY}", f"clé écrite en dur : {cle[:4]}…"
+        assert cle == "${USMAN_API_KEY}", f"clé écrite en dur : {cle[:4]}…"
 
     @pytest.mark.parametrize("variable", VARIABLES_SECRETES)
     def test_compose_ne_fixe_aucune_valeur_en_dur(self, variable):

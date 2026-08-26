@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-logger = logging.getLogger("arena.tools.graphrag")
+logger = logging.getLogger("usman.tools.graphrag")
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 GRAPHRAG_DIR = BASE_DIR / "data" / "rag" / "graphrag_workspace"
@@ -41,7 +41,7 @@ class GraphRAGTool:
                 "docker", "run", "--rm",
                 "-v", f"{self.workspace_dir}:/app/workspace",
                 "-e", "GRAPHRAG_OLLAMA_HOST=http://host.docker.internal:11434",
-                "arena-graphrag",
+                "usman-graphrag",
                 "python", "-m", "graphrag.query",
                 "--root", "/app/workspace",
                 "--method", "global",

@@ -25,7 +25,7 @@ from core.models.base import ModelProvider
 from tools.search.source_fetcher import SourceFetcher
 from tools.search.web_search_tool import WebSearchTool
 
-logger = logging.getLogger("arena.agent.fresh_info")
+logger = logging.getLogger("usman.agent.fresh_info")
 
 # Le modèle tourne avec num_ctx = 4096 jetons. Envoyer cinq pages entières
 # deborderait le contexte et ferait oublier la question elle-meme. Ce budget est
@@ -44,7 +44,7 @@ DELAI_LECTURE_SECONDES = 6.0
 # pas fige la reponse entiere.
 DELAI_RECHERCHE_SECONDES = 6.0
 
-GABARIT_SYNTHESE = """Tu es ARENA. Réponds à la question en t'appuyant UNIQUEMENT sur les sources ci-dessous.
+GABARIT_SYNTHESE = """Tu es Usman. Réponds à la question en t'appuyant UNIQUEMENT sur les sources ci-dessous.
 
 Règles :
 - Cite tes sources avec leur numéro entre crochets, par exemple [1].

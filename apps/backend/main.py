@@ -1,4 +1,4 @@
-"""Point d'entrée de l'API d'ARENA.
+"""Point d'entrée de l'API d'Usman.
 
 Ce fichier n'assemble que : l'application, sa politique d'origines, le dossier
 des rendus, et les trois groupes de routes. Il faisait 652 lignes avant le
@@ -18,9 +18,9 @@ from apps.backend.routers import chat, media, openai_gateway
 from apps.backend.runtime import deep_provider, fast_provider
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("arena.backend")
+logger = logging.getLogger("usman.backend")
 
-app = FastAPI(title="ARENA Personal AI API", version="1.7.0")
+app = FastAPI(title="Usman Personal AI API", version="1.7.0")
 
 app.add_middleware(
     CORSMiddleware,

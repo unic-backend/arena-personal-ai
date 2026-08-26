@@ -6,7 +6,7 @@ from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from tools.search.web_search_tool import WebSearchTool
 
-logger = logging.getLogger("arena.agent.researcher")
+logger = logging.getLogger("usman.agent.researcher")
 
 class DeepResearcherAgent(BaseAgent):
     """Agent de recherche profonde multi-sources (Pattern Kimi / Perplexity)."""
@@ -54,7 +54,7 @@ class DeepResearcherAgent(BaseAgent):
         sources_text = "\n".join([f"[{i+1}] {s['title']} ({s['href']})\n{s['body']}\n" for i, s in enumerate(unique_sources)])
 
         synthesis_prompt = (
-            "Tu es DeepResearcherAgent d'ARENA, un expert en analyse stratégique d'élite.\n"
+            "Tu es DeepResearcherAgent d'Usman, un expert en analyse stratégique d'élite.\n"
             "Rédige un Rapport d'Intelligence de Haut Niveau à partir des données web collectées ci-dessous.\n\n"
             "Structure attendue :\n"
             "1. 📌 **Synthèse Exécutive** (Vue d'ensemble)\n"

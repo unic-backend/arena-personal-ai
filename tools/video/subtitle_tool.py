@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List
 
-logger = logging.getLogger("arena.tools.video.subtitle")
+logger = logging.getLogger("usman.tools.video.subtitle")
 
 class SubtitleTool:
     """Générateur de sous-titres dynamiques CapCut/TikTok avec protection des apostrophes françaises."""

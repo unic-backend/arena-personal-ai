@@ -1,4 +1,4 @@
-"""Permissions d'ARENA : ce qui est autorisé, et surtout ce qui ne l'est pas."""
+"""Permissions d'Usman : ce qui est autorisé, et surtout ce qui ne l'est pas."""
 import pytest
 
 from core.permissions.permission_manager import PermissionManager

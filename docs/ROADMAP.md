@@ -1,9 +1,9 @@
-# ROADMAP DU PROJET — ARENA
+# ROADMAP DU PROJET — Usman
 
 > **Règle de tenue** (posée le 26/08/2026) : une case n'est cochée qu'après une
 > vérification exécutée. Une case cochée à tort est pire qu'une case vide —
 > personne ne revient sur un point déclaré clos.
-> Le détail des vérifications est dans `documents/ARENA_ENGINEERING_WORKLOG.md`.
+> Le détail des vérifications est dans `documents/USMAN_ENGINEERING_WORKLOG.md`.
 
 ## PHASES 0 À 5 — FONDATIONS [TERMINÉ]
 - [x] Diagnostic matériel (RTX A2000 12 Go / Ollama)

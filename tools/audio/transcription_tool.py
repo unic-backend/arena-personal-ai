@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
-logger = logging.getLogger("arena.tools.audio.transcription")
+logger = logging.getLogger("usman.tools.audio.transcription")
 
 class TranscriptionTool:
     """Outil de transcription audio locale avec horodatage mot par mot (Faster-Whisper)."""

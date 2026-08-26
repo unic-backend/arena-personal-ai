@@ -1,18 +1,42 @@
-"""Réglages d'ARENA, lus une seule fois au démarrage.
+"""Réglages d'Usman, lus une seule fois au démarrage.
 
 Tout ce qui vient de l'environnement vit ici, et rien d'autre. Un module de
 configuration qui instancie des objets devient une dépendance de tout le reste :
 celui-ci ne fait que lire.
 """
+import logging
 import os
 
 from dotenv import load_dotenv
 
 # BASE_DIR et la preparation de sys.path viennent du paquet : ils doivent etre
-# en place avant l'import de n'importe quel module d'ARENA.
+# en place avant l'import de n'importe quel module d'Usman.
 from apps.backend import BASE_DIR
 
 load_dotenv(dotenv_path=BASE_DIR / ".env")
+
+
+def reglage(nom: str, defaut: str = "") -> str:
+    """Lit `USMAN_<nom>`, et retombe sur `ARENA_<nom>` si elle seule existe.
+
+    Le projet a ete renomme le 2026-08-26. Un `.env` deja rempli porte encore
+    les anciens noms : les refuser d un coup arreterait le serveur du
+    proprietaire sans qu il ait rien fait de mal. Le repli est **annonce**,
+    jamais silencieux — un repli qu on ne voit pas devient permanent.
+    """
+    valeur = os.getenv(f"USMAN_{nom}")
+    if valeur is not None:
+        return valeur
+
+    ancienne = os.getenv(f"ARENA_{nom}")
+    if ancienne is not None:
+        logging.getLogger("usman.config").warning(
+            f"ARENA_{nom} est lue faute de USMAN_{nom}. Renomme-la dans .env."
+        )
+        return ancienne
+
+    return defaut
+
 
 # --- Emplacements -------------------------------------------------------------
 MEDIA_DIR = BASE_DIR / "media"
@@ -24,27 +48,27 @@ DB_PATH = BASE_DIR / "data" / "database" / "memory.db"
 ORIGINES_PAR_DEFAUT = "http://localhost:3000,http://localhost:3080,http://localhost:8000"
 ALLOWED_ORIGINS = [
     origine.strip()
-    for origine in os.getenv("ARENA_ALLOWED_ORIGINS", ORIGINES_PAR_DEFAUT).split(",")
+    for origine in reglage("ALLOWED_ORIGINS", ORIGINES_PAR_DEFAUT).split(",")
     if origine.strip()
 ]
 
 # --- Authentification ---------------------------------------------------------
 # Absente, la passerelle refuse tout : le defaut est sur.
-ARENA_API_KEY = os.getenv("ARENA_API_KEY", "")
+USMAN_API_KEY = reglage("API_KEY")
 
 # --- Limitation de debit ------------------------------------------------------
 # Un appel au modele occupe la carte graphique plusieurs secondes.
-REQUETES_MAX = int(os.getenv("ARENA_RATE_LIMIT_REQUESTS", "10"))
-FENETRE_SECONDES = float(os.getenv("ARENA_RATE_LIMIT_WINDOW", "60"))
+REQUETES_MAX = int(reglage("RATE_LIMIT_REQUESTS", "10"))
+FENETRE_SECONDES = float(reglage("RATE_LIMIT_WINDOW", "60"))
 
 # --- Envoi de fichiers --------------------------------------------------------
-# Regle metier : ARENA ne traite que de l'audio et de la video.
+# Regle metier : Usman ne traite que de l'audio et de la video.
 EXTENSIONS_MEDIA_AUTORISEES = {
     ".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v",
     ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg",
 }
 # Reglage : depend du disque de la machine.
-TAILLE_MAX_ENVOI = int(os.getenv("ARENA_UPLOAD_MAX_BYTES", str(2 * 1024 * 1024 * 1024)))
+TAILLE_MAX_ENVOI = int(reglage("UPLOAD_MAX_BYTES", str(2 * 1024 * 1024 * 1024)))
 # Le fichier est ecrit par blocs : tout lire d'un coup chargerait la memoire.
 TAILLE_BLOC_ENVOI = 1024 * 1024
 

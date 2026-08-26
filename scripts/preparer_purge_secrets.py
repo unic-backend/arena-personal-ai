@@ -104,7 +104,7 @@ def secrets_de_l_historique(depot: Path = RACINE) -> dict[str, str]:
 
 def principal() -> int:
     if not (RACINE / ".git").exists():
-        print("Erreur : ce script doit tourner dans le dépôt Git d'ARENA.")
+        print("Erreur : ce script doit tourner dans le dépôt Git d'Usman.")
         return 1
 
     if not historique_complet():
@@ -117,7 +117,7 @@ def principal() -> int:
         print("Aucun secret en clair trouvé dans l'historique. Rien à purger.")
         return 0
 
-    destination = RACINE.parent / "arena-secrets-a-purger.txt"
+    destination = RACINE.parent / "usman-secrets-a-purger.txt"
     lignes = [f"{valeur}==>SECRET_PURGE_{i}" for i, valeur in enumerate(sorted(trouves), 1)]
     destination.write_text("\n".join(lignes) + "\n", encoding="utf-8")
 

@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-logger = logging.getLogger("arena.tools.documents")
+logger = logging.getLogger("usman.tools.documents")
 
 # Formats que ce module sait ouvrir. Une extension absente d'ici est refusee
 # explicitement, elle n'est pas ignoree en silence.

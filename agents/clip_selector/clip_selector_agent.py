@@ -9,7 +9,7 @@ from core.models.base import ModelProvider
 from tools.video.crop_tool import CropTool
 from tools.video.ffmpeg_tool import FFmpegTool
 
-logger = logging.getLogger("arena.agent.clip_selector")
+logger = logging.getLogger("usman.agent.clip_selector")
 
 class ClipSelectorAgent(BaseAgent):
     """Agent autonome de détection et découpe des meilleurs moments viraux."""

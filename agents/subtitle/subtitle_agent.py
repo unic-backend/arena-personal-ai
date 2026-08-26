@@ -7,7 +7,7 @@ from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from tools.video.subtitle_tool import SubtitleTool
 
-logger = logging.getLogger("arena.agent.subtitle")
+logger = logging.getLogger("usman.agent.subtitle")
 
 class SubtitleAgent(BaseAgent):
     """Agent chargé de la correction contextuelle et de la génération des sous-titres CapCut/TikTok."""
@@ -69,7 +69,7 @@ class SubtitleAgent(BaseAgent):
         data_to_use = words if words else segments
         if not data_to_use:
             data_to_use = [
-                {"start": 0.0, "end": 2.5, "text": "Bienvenue sur ARENA"},
+                {"start": 0.0, "end": 2.5, "text": "Bienvenue sur Usman"},
                 {"start": 2.5, "end": 5.0, "text": "Sous titres TikTok automatiques"}
             ]
 

@@ -36,7 +36,7 @@ from apps.backend.runtime import (
 from apps.backend.security import limiter_debit, validate_media_path, verify_api_key
 from apps.backend.studio import lancer_studio
 
-logger = logging.getLogger("arena.backend")
+logger = logging.getLogger("usman.backend")
 
 router = APIRouter()
 
@@ -90,7 +90,7 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
     session_id = request.session_id or "default"
     if intent is None:
         intent = await orchestrator.analyze_intent(request.prompt)
-    logger.info(f"Intention détectée par ARENA: {intent}")
+    logger.info(f"Intention détectée par Usman: {intent}")
 
     if intent == "DEEP_REASONING":
         result = await orchestrator.run(request.prompt, context={"session_id": session_id, "intent": intent})
@@ -172,10 +172,10 @@ async def chat_stream_endpoint(request: ChatRequest):
 
         prompt_lines = []
         for msg in history:
-            role_label = memory.get_fact("owner") or "Saer" if msg["role"] == "user" else "ARENA"
+            role_label = memory.get_fact("owner") or "Usman" if msg["role"] == "user" else "Usman"
             prompt_lines.append(f"{role_label}: {msg['content']}")
-        prompt_lines.append(f"{memory.get_fact('owner') or 'Saer'}: {request.prompt}")
-        prompt_lines.append("ARENA:")
+        prompt_lines.append(f"{memory.get_fact('owner') or 'Usman'}: {request.prompt}")
+        prompt_lines.append("Usman:")
         full_prompt = "\n".join(prompt_lines)
 
         async def token_generator():

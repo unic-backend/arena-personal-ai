@@ -191,7 +191,7 @@ class TestChaineComplete:
 
 
 class TestAiguillage:
-    """Le Studio doit être atteignable comme Saer l'utilise : en le demandant."""
+    """Le Studio doit être atteignable comme Usman l'utilise : en le demandant."""
 
     @pytest.mark.parametrize("demande", [
         "studio",
@@ -213,7 +213,7 @@ class TestAiguillage:
 
         from apps.backend.routers import openai_gateway
         modeles = asyncio.run(openai_gateway.list_openai_models())
-        assert "arena-studio" in [m["id"] for m in modeles["data"]]
+        assert "usman-studio" in [m["id"] for m in modeles["data"]]
 
     def test_l_intention_studio_est_une_etiquette_connue(self):
         """Une étiquette absente de la liste fermée serait rejetée en silence."""
@@ -237,7 +237,7 @@ ENTETES = {"Authorization": f"Bearer {CLE}"}
 
 @pytest.fixture
 def client(monkeypatch) -> TestClient:
-    monkeypatch.setattr(securite, "ARENA_API_KEY", CLE)
+    monkeypatch.setattr(securite, "USMAN_API_KEY", CLE)
     monkeypatch.setattr(securite, "REQUETES_MAX", 100)
     monkeypatch.setattr(securite.limiteur, "requetes_max", 100)
 
@@ -267,7 +267,7 @@ class TestChaineHTTP:
         reponse = client.post(
             "/v1/chat/completions",
             headers=ENTETES,
-            json={"model": "arena-studio",
+            json={"model": "usman-studio",
                   "messages": [{"role": "user", "content": "vas-y"}],
                   "stream": False},
         )
@@ -276,7 +276,7 @@ class TestChaineHTTP:
         assert "rendu factice" in reponse.json()["choices"][0]["message"]["content"]
 
     def test_une_demande_ordinaire_de_studio_y_arrive_aussi(self, client, studio_double, monkeypatch):
-        """C'est ainsi que Saer l'utilise : il écrit sa demande, sans choisir de modèle."""
+        """C'est ainsi que Usman l'utilise : il écrit sa demande, sans choisir de modèle."""
         async def _classer(user_input):
             return "STUDIO"
 
@@ -285,7 +285,7 @@ class TestChaineHTTP:
         reponse = client.post(
             "/v1/chat/completions",
             headers=ENTETES,
-            json={"model": "arena-core",
+            json={"model": "usman-chat",
                   "messages": [{"role": "user", "content": "sous-titre ma vidéo"}],
                   "stream": False},
         )
@@ -295,7 +295,7 @@ class TestChaineHTTP:
     def test_le_studio_exige_la_cle_api(self, client, studio_double):
         reponse = client.post(
             "/v1/chat/completions",
-            json={"model": "arena-studio",
+            json={"model": "usman-studio",
                   "messages": [{"role": "user", "content": "vas-y"}]},
         )
         assert reponse.status_code in (401, 403)
@@ -305,21 +305,21 @@ class TestChaineHTTP:
 class TestJamaisDeReponseVide:
     """Une bulle vide dans LibreChat est pire qu'un message d'erreur.
 
-    Observé le 2026-08-26 sur `arena-deep-research` : après trois minutes,
+    Observé le 2026-08-26 sur `usman-research` : après trois minutes,
     une bulle entièrement vide, sans texte ni erreur. Chaque branche de la
     passerelle lit `.get("response", "")`, et `"" is not None` est vrai.
     """
 
     def test_un_texte_normal_passe_intact(self):
         from apps.backend.routers.openai_gateway import garantir_un_texte
-        assert garantir_un_texte("la réponse", "arena-core") == "la réponse"
+        assert garantir_un_texte("la réponse", "usman-chat") == "la réponse"
 
     @pytest.mark.parametrize("vide", ["", "   ", "\n\n", None])
     def test_rien_ne_devient_un_message_explicite(self, vide):
         from apps.backend.routers.openai_gateway import garantir_un_texte
-        texte = garantir_un_texte(vide, "arena-deep-research")
+        texte = garantir_un_texte(vide, "usman-research")
         assert texte.strip(), "une réponse vide est repartie telle quelle"
-        assert "arena-deep-research" in texte
+        assert "usman-research" in texte
         assert "aucune réponse" in texte
 
     def test_un_agent_muet_ne_produit_pas_une_bulle_vide(self, client, monkeypatch):
@@ -332,19 +332,19 @@ class TestJamaisDeReponseVide:
         reponse = client.post(
             "/v1/chat/completions",
             headers=ENTETES,
-            json={"model": "arena-deep-research",
+            json={"model": "usman-research",
                   "messages": [{"role": "user", "content": "une question"}],
                   "stream": False},
         )
         contenu = reponse.json()["choices"][0]["message"]["content"]
         assert contenu.strip(), "LibreChat aurait affiché une bulle vide"
-        assert "arena-deep-research" in contenu
+        assert "usman-research" in contenu
 
 
 class TestNomVideo:
-    """`arena-video` est le nom que voit l'utilisateur ; il doit lancer le Studio."""
+    """`usman-video` est le nom que voit l'utilisateur ; il doit lancer le Studio."""
 
-    @pytest.mark.parametrize("nom", ["arena-video", "arena-studio"])
+    @pytest.mark.parametrize("nom", ["usman-video", "usman-studio"])
     def test_les_deux_noms_lancent_le_studio(self, nom, client, studio_double):
         reponse = client.post(
             "/v1/chat/completions",
@@ -359,4 +359,4 @@ class TestNomVideo:
     def test_arena_video_est_servi_par_l_api(self):
         import asyncio
         modeles = asyncio.run(passerelle.list_openai_models())
-        assert "arena-video" in [m["id"] for m in modeles["data"]]
+        assert "usman-video" in [m["id"] for m in modeles["data"]]
