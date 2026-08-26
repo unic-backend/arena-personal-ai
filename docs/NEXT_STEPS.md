@@ -1,43 +1,31 @@
 # PROCHAINES ÉTAPES
 
-*Mis à jour le 26/08/2026. Les étapes précédentes décrivaient encore la Phase 0
-(« créer README.md ») alors que la Phase 7 était engagée.*
+*Mis à jour le 26/08/2026 (soir) — alignement après fusion Studio + rotation.*
 
-La liste complète et priorisée vit dans `documents/USMAN_ENGINEERING_WORKLOG.md`,
-section `PENDING`. Voici les trois prochaines.
+La liste détaillée vit dans `documents/USMAN_ENGINEERING_WORKLOG.md`.
+Voici l’ordre réel **maintenant**.
 
-## 1. Rotation de la clé API et purge de l'historique Git — **bloqué**
+## 1. Clé API — **rotation faite** ; purge **optionnelle**
 
-C'est le dernier point critique. La clé qui protège la passerelle `/v1` est
-lisible dans l'historique du dépôt public, au premier commit.
+- [x] **Rotation** : nouvelle `USMAN_API_KEY` dans `.env` local (compat
+  `ARENA_API_KEY` encore lue par le code si besoin). L’ancienne clé ne doit
+  plus ouvrir la passerelle en runtime.
+- [ ] **Purge de l’historique Git** : optionnelle. L’historique public peut
+  encore contenir d’anciennes valeurs. Procédure :
+  `documents/RUNBOOK_PURGE_SECRETS.md`.  
+  **Accord explicite du propriétaire requis** (irréversible, force-push).
+- [ ] Supprimer les branches distantes dangereuses si elles existent encore
+  (ex. `saer-video-wip` avec clé en clair) — après validation.
 
-Deux actions, dans cet ordre :
+Sans purge : le runtime est sûr **si** la rotation est effective ; le dépôt
+n’est pas « historiquement clean ».
 
-1. **Générer une nouvelle clé** et la mettre dans `.env`. C'est la seule chose
-   qui neutralise vraiment l'ancienne.
-   ```
-   python -c "import secrets; print(secrets.token_urlsafe(32))"
-   ```
-2. **Purger l'historique** avec `git filter-repo`. Opération irréversible :
-   elle réécrit tous les commits et casse les clones existants.
-   **Nécessite l'accord explicite du propriétaire.**
+## 2. Scan de secrets en CI — **fait**
 
-## 2. Scan de secrets en CI
+`gitleaks` est dans `.github/workflows/ci.yml` (job secrets + config
+`.gitleaks.toml`). Un secret commité doit faire échouer la CI.
 
-Ajouter `gitleaks` au workflow GitHub Actions, pour qu'un secret commité fasse
-échouer la CI au lieu de passer inaperçu.
+## 3. Mesurer avant d’optimiser (Phase 8)
 
-## 3. Mesurer avant d'optimiser
-
-Aucune mesure de performance n'existe à ce jour. Trois commandes à lancer sur la
-machine, une par une, et à recopier dans le worklog :
-
-```
-ollama list
-ollama ps
-nvidia-smi --query-gpu=memory.used,memory.total --format=csv
-```
-
-La première répond à une question ouverte depuis le début : **le modèle
-`qwen3.5:9b` existe-t-il réellement ?** S'il n'existe pas, Ollama répond avec un
-autre modèle sans rien signaler.
+Sur la machine Saer, **une commande à la fois**, recopier les sorties dans le
+worklog :
