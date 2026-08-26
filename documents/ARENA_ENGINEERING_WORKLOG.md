@@ -71,7 +71,7 @@ Client (LibreChat, Open WebUI, tableau de bord)
    aucun document n'est indexé.
 6. **`main.py` mélange configuration, routage et logique métier** (459 lignes,
    8 routes).
-7. **Le dépôt est public** et la clé `arena-saer-2026` reste dans l'historique
+7. **Le dépôt est public** et l'ancienne clé (`arena-saer-****`) reste dans l'historique
    Git au commit `00e8f4f`.
 
 ---
@@ -86,11 +86,11 @@ Branche `claude/arena-personal-ai-qh66ix`. Chaque entrée correspond à un commi
 
 **1. `fb83e98` — La clé API sort du dépôt**
 *Fichiers* : `librechat.yaml`, `docker-compose.yml`, `.env.example`, `README.md`
-*Changement* : `apiKey: "arena-saer-2026"` remplacé par `${ARENA_API_KEY}` ;
+*Changement* : la clé écrite en clair sous `apiKey:` est remplacée par `${ARENA_API_KEY}` ;
 `docker-compose.yml` transmet la variable au conteneur LibreChat — elle manquait,
 donc l'interpolation aurait donné une chaîne vide.
 *Pourquoi* : secret en clair dans un dépôt public (V-01).
-*Vérification* : `grep -rn "arena-saer-2026" . --exclude-dir=.git` → aucune
+*Vérification* : recherche de la valeur exacte dans l'arbre de travail → aucune
 occurrence ; `docker compose config` → `ARENA_API_KEY: test-key` interpolée.
 *Résultat* : **PARTIEL** — le fichier est propre, l'historique Git ne l'est pas.
 Voir *DISCOVERED PROBLEMS · P-01*.
@@ -224,14 +224,39 @@ passe une fois retiré ; `pytest` → 125 passed ; les 40 modules s'importent.
 
 ---
 
+### 26 août 2026 — T-02 · Contrôle des fichiers envoyés
+
+**`/api/upload` filtre le type et la taille, et écrit par blocs**
+*Fichiers* : `apps/backend/main.py`, `tests/test_upload.py` (nouveau),
+`.env.example`, `docs/CHANGELOG.md`
+*Changement* : liste blanche de 12 extensions audio/vidéo (415 sinon), plafond
+réglable par `ARENA_UPLOAD_MAX_BYTES` (413 au-delà), écriture par blocs de 1 Mo,
+suppression du fichier partiel en cas de refus, rejet du fichier vide.
+*Pourquoi* : P-02. La route acceptait n'importe quel fichier et faisait
+`buffer.write(await file.read())` — tout le fichier en mémoire avant le disque.
+*Vérification* :
+- `pytest tests/test_upload.py` → **23 passed**
+- les mêmes 23 tests contre l'**ancien** code → **13 failed, 10 passed** : ils
+  attrapent bien le défaut, ce ne sont pas des tests décoratifs
+- mémoire mesurée sur un envoi de 64 Mo : pic **64,0 Mo** avant, **2,0 Mo** après
+  (32×), et constant quelle que soit la taille du fichier
+- suite complète → **148 passed, 17 deselected** ; `ruff check .` → 0 erreur
+*Résultat* : **TERMINÉ**
+*Décision* : la liste d'extensions reste dans le code, le plafond passe par
+l'environnement — l'un est une règle métier (ARENA ne traite que du média),
+l'autre dépend du disque de la machine. *Coût si c'est faux* : ajouter un format
+demande une modification de code plutôt qu'un réglage.
+
+---
+
 ## IN PROGRESS
 
-**Tâche courante** : audit technique complet du dépôt (§4 du prompt de référence)
-et création de ce worklog.
-**État exact** : audit terminé, worklog créé. Aucune modification de code dans
-cette tâche.
-**Prochaine action concrète** : décider avec le propriétaire de l'ordre des
-tâches `PENDING`, en commençant par P-01 (historique Git).
+**Tâche courante** : aucune. T-02 est terminée et vérifiée.
+**État exact** : la branche `claude/arena-personal-ai-qh66ix` porte 11 commits,
+suite verte (148 tests), lint propre. Rien n'est en cours d'écriture.
+**Prochaine action concrète** : T-01 (rotation de la clé et purge de
+l'historique) — bloquée, elle demande une décision du propriétaire. À défaut,
+T-06/T-07/T-08 (remettre la documentation d'accord avec le code, ~30 min).
 
 ---
 
@@ -243,8 +268,7 @@ Par priorité. Effort = estimation, à confirmer.
 
 | # | Tâche | Effort | Critère de validation |
 |---|---|---|---|
-| T-01 | Purger la clé de l'historique Git + rotation | 20 min | `git log -S "arena-saer-2026"` ne renvoie rien |
-| T-02 | Filtrer les uploads : type + taille, écriture par blocs | 30 min | `.exe` → 415 ; fichier > 2 Go → 413 ; RAM stable |
+| T-01 | Purger la clé de l'historique Git + rotation | 20 min | `git log -S "<ancienne clé>"` ne renvoie rien |
 | T-03 | Scan de secrets en CI (`gitleaks`) | 30 min | Un faux secret commité fait échouer la CI |
 | T-04 | Limiter le débit sur `/api/chat` et `/v1/chat/completions` | 45 min | 11ᵉ requête en 1 min → 429 |
 | T-05 | Journaliser les échecs d'authentification | 15 min | Une requête sans clé laisse une ligne de log |
@@ -292,11 +316,18 @@ Par priorité. Effort = estimation, à confirmer.
 
 ### P-01 · CRITICAL · Le secret est toujours dans l'historique Git
 
+> **Note de rédaction (26/08/2026)** : la première version de ce document citait
+> la valeur exacte de la clé cinq fois. Elle a été masquée en `arena-saer-****`.
+> Un document qui décrit une fuite ne doit pas la reproduire : cela remettrait le
+> secret dans l'historique et rendrait inutilisable tout scan automatique (T-03).
+> L'erreur a été détectée par le contrôle de non-régression, pas par relecture.
+
+
 **Emplacement** : commit `00e8f4f`, `librechat.yaml:7`
 **Cause** : la clé a été versionnée dès le premier commit. Le correctif du
 26 août l'a retirée du fichier, pas de l'historique.
 **Vérifié** : `git show 00e8f4f:librechat.yaml | grep apiKey` →
-`apiKey: "arena-saer-2026"`.
+la ligne `apiKey:` avec la valeur en clair.
 **Impact** : le dépôt est public. La clé est lisible par n'importe qui, et le
 reste après un `git clone`. Elle protège la passerelle `/v1`, donc les 12 agents.
 **Solution proposée** :
@@ -319,9 +350,10 @@ qui bloque le path-traversal mais rien d'autre.
 disque. Un `.exe` ou un `.ps1` est accepté dans `media/incoming/`.
 **Atténuation actuelle** : la route exige désormais la clé API (correctif n°2),
 ce qui la rend inatteignable depuis l'extérieur.
-**Solution proposée** : liste blanche d'extensions, plafond de taille, écriture
-par blocs de 1 Mo. → T-02
-**Statut** : OUVERT
+**Solution appliquée** : liste blanche de 12 extensions, plafond réglable,
+écriture par blocs de 1 Mo, fichier partiel supprimé en cas de refus.
+**Statut** : **RÉSOLU** le 26/08/2026 — voir *COMPLETED · T-02*. Mémoire mesurée
+sur 64 Mo : 64,0 Mo de pic avant, 2,0 Mo après.
 
 ### P-03 · MEDIUM · Le chat ne cherche jamais d'information fraîche
 
@@ -431,7 +463,9 @@ Ce qui est certain, et vérifié par le code :
 | Appels au modèle avant le correctif n°9 | 3 | lecture du code : `chat_stream_endpoint` → `dispatch_request` → `orchestrator.run` |
 | Contexte configuré | `num_ctx: 4096` | `core/models/ollama_provider.py` |
 | Maintien en VRAM | `keep_alive: "30m"` | idem |
-| Durée de la suite de tests | 3,0 s pour 125 tests | `pytest -q` |
+| Durée de la suite de tests | 3,6 s pour 148 tests | `pytest -q` |
+| Pic mémoire, envoi de 64 Mo — avant T-02 | 64,0 Mo | `tracemalloc` sur l'ancien chemin |
+| Pic mémoire, envoi de 64 Mo — après T-02 | 2,0 Mo | `tracemalloc` sur `ecrire_par_blocs` |
 
 ### À mesurer chez le propriétaire (T-09 à T-11)
 
@@ -534,3 +568,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | Date | Auteur | Modification |
 |---|---|---|
 | 2026-08-26 | Claude Code | Création. Audit initial, 9 correctifs consignés, 9 problèmes ouverts, 22 tâches en attente. |
+| 2026-08-26 | Claude Code | T-02 terminée (contrôle des envois). P-02 résolu. Valeur de la clé masquée dans ce document. |

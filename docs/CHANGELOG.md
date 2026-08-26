@@ -88,6 +88,11 @@
   première ligne illisible telle quelle : `import httpx` et `import yaml` étaient
   invisibles à un `grep '^import'`, ce qui a failli les faire oublier dans
   `requirements.txt`. `tests/test_encodage.py` empêche leur retour.
+- `/api/upload` filtre désormais le type et la taille. Il acceptait n'importe quel
+  fichier — un `.exe` comme une vidéo — et lisait tout en mémoire avant d'écrire :
+  un fichier de 8 Go occupait 8 Go de RAM. L'écriture se fait par blocs de 1 Mo,
+  la mémoire ne dépend plus de la taille du fichier (mesuré : 64 Mo → 2 Mo de pic
+  au lieu de 64). Plafond réglable par `ARENA_UPLOAD_MAX_BYTES`.
 
 ## [1.7.0] - 2026-08-25
 ### Sécurité

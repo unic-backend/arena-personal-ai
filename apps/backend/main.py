@@ -62,6 +62,20 @@ app.add_middleware(
 
 MEDIA_DIR = BASE_DIR / "media"
 RENDERED_DIR = MEDIA_DIR / "rendered"
+
+# Extensions acceptees par le studio video. C'est une regle metier, pas un
+# reglage : ARENA ne traite que de l'audio et de la video.
+EXTENSIONS_MEDIA_AUTORISEES = {
+    ".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v",
+    ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg",
+}
+
+# Plafond de taille, reglable : il depend du disque de la machine.
+TAILLE_MAX_ENVOI = int(os.getenv("ARENA_UPLOAD_MAX_BYTES", str(2 * 1024 * 1024 * 1024)))
+
+# Le fichier est ecrit par blocs : `await file.read()` sans argument chargerait
+# tout en memoire avant d'atteindre le disque.
+TAILLE_BLOC_ENVOI = 1024 * 1024
 RENDERED_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/media/rendered", StaticFiles(directory=str(RENDERED_DIR)), name="rendered")
 
@@ -300,21 +314,81 @@ async def openai_chat_completions(request: Request):
 # ==============================================================================
 # ENDPOINTS MÉDIAS & PIPELINES
 # ==============================================================================
+def valider_nom_de_fichier(nom_brut: Optional[str]) -> str:
+    """Verifie le nom d'un fichier envoye et renvoie un nom sur.
+
+    Deux controles distincts : `Path(...).name` neutralise la traversee de
+    repertoire, la liste blanche d'extensions decide de ce qu'ARENA accepte.
+    """
+    if not nom_brut or not nom_brut.strip():
+        raise HTTPException(status_code=400, detail="Nom de fichier manquant.")
+
+    nom_sur = Path(nom_brut).name
+    if not nom_sur or nom_sur in {".", ".."}:
+        raise HTTPException(status_code=400, detail="Nom de fichier invalide.")
+
+    extension = Path(nom_sur).suffix.lower()
+    if extension not in EXTENSIONS_MEDIA_AUTORISEES:
+        autorisees = ", ".join(sorted(EXTENSIONS_MEDIA_AUTORISEES))
+        # Guillemets imbriques interdits dans une f-string avant Python 3.12.
+        libelle = extension or "aucune extension"
+        raise HTTPException(
+            status_code=415,
+            detail=f"Type de fichier non autorise : '{libelle}'. "
+                   f"Formats acceptes : {autorisees}."
+        )
+    return nom_sur
+
+
+async def ecrire_par_blocs(file: UploadFile, destination: Path) -> int:
+    """Ecrit le fichier bloc par bloc et renvoie sa taille.
+
+    Depasser le plafond interrompt l'ecriture et supprime le fichier partiel :
+    un envoi refuse ne doit rien laisser sur le disque.
+    """
+    taille = 0
+    try:
+        with open(destination, "wb") as tampon:
+            while bloc := await file.read(TAILLE_BLOC_ENVOI):
+                taille += len(bloc)
+                if taille > TAILLE_MAX_ENVOI:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Fichier trop volumineux (maximum "
+                               f"{TAILLE_MAX_ENVOI / (1024 ** 3):.1f} Go)."
+                    )
+                tampon.write(bloc)
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+
+    if taille == 0:
+        destination.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="Fichier vide.")
+
+    return taille
+
+
 @app.post("/api/upload", dependencies=[Depends(verify_api_key)])
 async def upload_video(file: UploadFile = File(...)):
     try:
         if not permissions.is_allowed("WRITE_FILES"):
             raise HTTPException(status_code=403, detail="Écriture non autorisée.")
 
-        safe_filename = Path(file.filename).name
+        safe_filename = valider_nom_de_fichier(file.filename)
         incoming_dir = MEDIA_DIR / "incoming"
         incoming_dir.mkdir(parents=True, exist_ok=True)
 
         file_path = incoming_dir / safe_filename
-        with open(file_path, "wb") as buffer:
-            buffer.write(await file.read())
+        taille = await ecrire_par_blocs(file, file_path)
+        logger.info(f"Fichier reçu : {safe_filename} ({taille / (1024 ** 2):.1f} Mo)")
 
-        return {"status": "success", "filename": safe_filename, "path": str(file_path)}
+        return {
+            "status": "success",
+            "filename": safe_filename,
+            "path": str(file_path),
+            "size_bytes": taille,
+        }
     except HTTPException:
         raise
     except Exception as e:
