@@ -13,10 +13,30 @@ from tools.code.sandbox_interpreter import SandboxInterpreterTool
 def main():
     bac = SandboxInterpreterTool()
     isole = bac.docker_available
+    repli_autorise = SandboxInterpreterTool._repli_non_isole_autorise()
 
     print("Test du bac a sable")
-    print("  Mode : %s" % ("DOCKER ISOLE" if isole else "FALLBACK LOCAL (non protege)"))
+    if isole:
+        mode = "DOCKER ISOLE"
+    elif repli_autorise:
+        mode = "FALLBACK LOCAL (non protege, ALLOW_UNSAFE_EXEC actif)"
+    else:
+        mode = "AUCUN (execution refusee)"
+    print("  Mode : %s" % mode)
     print("-" * 62)
+
+    # Sans Docker et sans flag, refuser est le comportement attendu :
+    # verifier le refus, pas l execution.
+    if not isole and not repli_autorise:
+        r = bac.execute_python_code("print('ceci ne doit pas s executer')")
+        if r["success"] or r.get("sandbox_mode") != "REFUSED":
+            print("  ECHEC  Le code a ete execute alors qu aucun bac a sable n existe")
+            sys.exit(1)
+        print("  OK     Execution refusee en l absence de bac a sable")
+        print("-" * 62)
+        print("Le bac a sable n est pas actif : ARENA refuse d executer du code.")
+        print("Demarre Docker Desktop puis relance ce test.")
+        sys.exit(1)
 
     echecs = []
 
@@ -40,10 +60,10 @@ def main():
 
     # 3. et 4. : protections, verifiables uniquement en mode Docker
     if not isole:
-        print("  IGNORE Tests de securite (Docker n est pas demarre)")
+        print("  IGNORE Tests de securite (ALLOW_UNSAFE_EXEC : pas de bac a sable)")
         print("-" * 62)
-        print("ATTENTION : le bac a sable n est PAS actif.")
-        print("Demarre Docker Desktop puis relance ce test.")
+        print("ATTENTION : le code s execute sur la machine, sans isolation.")
+        print("Demarre Docker Desktop et retire ALLOW_UNSAFE_EXEC.")
         sys.exit(1)
 
     r = bac.execute_python_code("import os; print(os.listdir('C:/'))")

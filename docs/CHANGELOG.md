@@ -10,6 +10,11 @@
   méthodes limitées à `GET`/`POST`. Combiné aux endpoints ouverts, `*` laissait
   n'importe quel site appeler les agents depuis le navigateur.
 - L'interface `apps/frontend/index.html` envoie la clé et l'oublie si elle est refusée.
+- Le bac à sable ne dégrade plus : sans Docker, l'exécution de code est
+  **refusée** (`sandbox_mode: REFUSED`) au lieu de basculer sur la machine hôte.
+  Le repli reste possible derrière `ALLOW_UNSAFE_EXEC=true`, explicitement.
+- `CoderAgent` ne relance plus le modèle pour corriger un code refusé : ce
+  n'est pas le code qui a échoué. Il renvoie `status: refused`.
 
 ## [1.7.0] - 2026-08-25
 ### Sécurité

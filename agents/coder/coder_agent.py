@@ -34,7 +34,9 @@ class CoderAgent(BaseAgent):
         res = self.interpreter.execute_python_code(raw_code)
         
         attempts = 0
-        while not res["success"] and attempts < 2:
+        # Un refus du bac à sable n'est pas un bug du code : le corriger ne
+        # changerait rien, on sort de la boucle sans rappeler le modèle.
+        while not res["success"] and not res.get("refused") and attempts < 2:
             attempts += 1
             logger.warning(f"Bug détecté dans le code (Essai {attempts}). Auto-correction en cours...")
             
@@ -76,6 +78,21 @@ class CoderAgent(BaseAgent):
                 "attempts": attempts + 1,
                 "code": code_out,
                 "stdout": stdout_out,
+                "sandbox_mode": mode_used,
+                "response": response_msg
+            }
+        elif res.get("refused"):
+            response_msg = (
+                f"Exécution refusée : aucun bac à sable disponible.\n\n"
+                f"**Code non exécuté :**\n```python\n{code_out}\n```\n\n"
+                f"**Raison :**\n```\n{stderr_out}\n```"
+            )
+            return {
+                "status": "refused",
+                "agent": self.name,
+                "attempts": attempts + 1,
+                "code": code_out,
+                "stderr": stderr_out,
                 "sandbox_mode": mode_used,
                 "response": response_msg
             }
