@@ -754,15 +754,65 @@ pour deux fonctions.
 
 ---
 
+### 26 août 2026 — Indexation documentaire, phase 1/3 · Lecture d'un document
+
+*Fichiers* : `tools/documents/reader.py` (nouveau),
+`tests/tools/test_document_reader.py` (nouveau), `requirements.txt`,
+`.github/workflows/ci.yml`
+*Changement* : ARENA sait ouvrir un PDF, un `.docx`, un `.txt`, un `.md` et un
+`.csv`, et en extraire le texte avec sa provenance.
+
+**Le constat de départ** : `LightRAGTool.insert_text()` et
+`GraphRAGTool.add_document()` n'acceptent que du **texte brut**. Aucun des deux
+ne sait ouvrir un PDF. L'indexation documentaire était donc annoncée comme
+« outils branchés » alors que la première étape — lire le document — n'existait
+pas.
+
+**Deux règles portées par le module :**
+1. Un document illisible est **signalé** : `VIDE` (PDF scanné), `NON_PRIS_EN_CHARGE`
+   (format inconnu), `ECHEC` (absent, corrompu, trop gros). Jamais un texte
+   plausible à la place d'un texte réel.
+2. Chaque passage garde son origine — fichier, et **numéro de page** pour un PDF.
+   Sans elle, une réponse documentaire ne vaut pas mieux qu'une réponse de
+   mémoire.
+
+Le contenu des **tableaux Word** est extrait : un devis y vit souvent, et
+l'ignorer viderait le document de l'essentiel.
+
+*Vérifications, toutes exécutées :*
+- `pytest tests/tools/test_document_reader.py` → **20 passed**. Les fichiers
+  d'essai sont de **vrais** PDF et `.docx` fabriqués dans le test — un lecteur de
+  PDF vérifié sur une chaîne de caractères ne prouve rien. Le PDF est construit à
+  la main (objets, flux, xref), sans dépendance d'écriture.
+- suite complète → **315 passed, 20 deselected** (code de sortie 0, sans tube)
+- `ruff` → 0 ; `gitleaks` → 0 ; chaîne T-12 → 0 ; refus SSRF → 0
+- les commandes exactes de la CI rejouées dans un venv 3.11 neuf → install OK,
+  ruff OK, pytest 315 passed
+
+*Décision* : déclarer `pypdf` et `python-docx` en dépendances directes plutôt que
+d'écrire un lecteur de PDF. *Coût si c'est faux* : deux paquets de plus dans
+`requirements.txt` (12 → 14) ; ils étaient déjà présents en transitif, et écrire
+un extracteur de PDF à la main serait une mauvaise idée.
+
+*Résultat* : **TERMINÉ** — phase 1 sur 3.
+
+**Ce qui reste, et une limite à connaître :** la phase 3 (indexation réelle)
+**ne sera pas vérifiable sur la machine de développement** : LightRAG exige
+Ollama et un modèle d'embeddings, GraphRAG exige Docker. Le refus en leur absence
+sera vérifié ici ; l'indexation elle-même devra l'être chez le propriétaire.
+
+---
+
 ## IN PROGRESS
 
-**Tâche courante** : aucune. T-19 est terminée, ses 3 phases vérifiées.
+**Tâche courante** : indexation documentaire (T-17), 3 phases.
+Phase 1 (lecture d'un document) terminée.
 **État exact** : deux actions restent, et elles n'appartiennent qu'au
 propriétaire — changer les cinq clés dans `.env`, et autoriser la réécriture de
 l'historique (irréversible, casse les clones existants).
-**Prochaine action concrète** : au choix — T-20 (Tailwind en local, ~20 min),
-T-14 (routeur enrichi) ou T-16/T-17 (mémoire et documents). Reste toujours dû
-par le propriétaire : l'étape 1 de `RUNBOOK_PURGE_SECRETS.md`.
+**Prochaine action concrète** : phase 2 — le classeur : un dossier pour les
+documents, et un inventaire de ce qui est indexé, de ce qui a changé. Reste
+toujours dû par le propriétaire : l'étape 1 de `RUNBOOK_PURGE_SECRETS.md`.
 
 ---
 
@@ -798,7 +848,7 @@ désormais protégées par `tests/test_documentation.py`.
 | T-14 | Routeur enrichi : besoin de fraîcheur, de RAG, d'outils, de vérification | 3 h | Le routeur renvoie une décision structurée, testée |
 | T-15 | Passerelle de modèles par capacité (`fast_chat`, `coding`, `reasoning`…) | 3 h | Un agent demande une capacité, pas un nom de modèle |
 | T-16 | Mémoire sémantique et mémoire utilisateur séparées | 4 h | Une information ancienne pertinente est retrouvée par similarité |
-| T-17 | Indexation documentaire réelle (GraphRAG / LightRAG) | 3 h | Un document importé est interrogeable avec sa source |
+| T-17 | Indexation documentaire — **phase 1/3 faite** (lecture d'un document) | 3 h | Un document importé est interrogeable avec sa source |
 | T-18 | Progression visible pendant les opérations longues | 2 h | L'interface affiche « recherche », « lecture », « génération » |
 
 ### Priorité 5 — Dette technique
@@ -970,7 +1020,7 @@ Ce qui est certain, et vérifié par le code :
 | Appels au modèle avant le correctif n°9 | 3 | lecture du code : `chat_stream_endpoint` → `dispatch_request` → `orchestrator.run` |
 | Contexte configuré | `num_ctx: 4096` | `core/models/ollama_provider.py` |
 | Maintien en VRAM | `keep_alive: "30m"` | idem |
-| Durée de la suite de tests | 5,4 s pour 295 tests | `pytest -q` |
+| Durée de la suite de tests | 5,5 s pour 315 tests | `pytest -q` |
 | Pic mémoire, envoi de 64 Mo — avant T-02 | 64,0 Mo | `tracemalloc` sur l'ancien chemin |
 | Pic mémoire, envoi de 64 Mo — après T-02 | 2,0 Mo | `tracemalloc` sur `ecrire_par_blocs` |
 
@@ -1087,3 +1137,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | 2026-08-26 | Claude Code | T-19 phase 1/3 : empreinte de la surface HTTP, config.py, runtime.py. |
 | 2026-08-26 | Claude Code | T-19 phase 2/3 : security.py et prompts.py extraits, tests redirigés vers le module propriétaire. |
 | 2026-08-26 | Claude Code | T-19 terminée : main.py 652 → 61 lignes, 3 routeurs, comportement inchangé. |
+| 2026-08-26 | Claude Code | Indexation documentaire phase 1/3 : lecture PDF/Word/texte avec provenance. |

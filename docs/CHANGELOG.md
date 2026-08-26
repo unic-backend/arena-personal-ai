@@ -104,6 +104,16 @@
   présentée n'est jamais écrite dans les journaux.**
 
 ### Ajouté
+- **Lecture des documents** (`tools/documents/reader.py`) : PDF page par page, Word
+  (paragraphes **et tableaux** — un devis vit souvent dans un tableau), texte, Markdown
+  et CSV. Les deux moteurs documentaires du projet n'acceptaient que du texte brut :
+  aucun ne savait ouvrir un PDF.
+- Chaque morceau de texte garde son origine (fichier, et numéro de page pour un PDF),
+  pour qu'une réponse documentaire puisse citer précisément sa source.
+- Un document illisible est **signalé** (`VIDE`, `NON_PRIS_EN_CHARGE`, `ECHEC`), jamais
+  remplacé par un résumé de mémoire. Un PDF scanné dit qu'il est scanné.
+- `pypdf` et `python-docx` deviennent des dépendances directes.
+
 - **Pipeline d'information fraîche.** Une question dont la réponse a pu changer
   (dernière version, actualité, qui occupe un poste, prix, météo) n'est plus
   répondue de mémoire : ARENA cherche, **lit les pages**, et répond en citant
