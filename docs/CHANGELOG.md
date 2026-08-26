@@ -15,6 +15,9 @@
   Le repli reste possible derrière `ALLOW_UNSAFE_EXEC=true`, explicitement.
 - `CoderAgent` ne relance plus le modèle pour corriger un code refusé : ce
   n'est pas le code qui a échoué. Il renvoie `status: refused`.
+- `EXECUTE_COMMANDS` passe à `false` par défaut, dans `config/permissions.yaml`
+  **et** dans `DEFAULT_PERMISSIONS` — un `permissions.yaml` introuvable retombait
+  sinon sur la valeur permissive. `.env.example` annonçait aussi l'inverse.
 
 ## [1.7.0] - 2026-08-25
 ### Sécurité

@@ -11,7 +11,7 @@ class PermissionManager:
     DEFAULT_PERMISSIONS = {
         "READ_FILES": True,
         "WRITE_FILES": True,
-        "EXECUTE_COMMANDS": True,
+        "EXECUTE_COMMANDS": False,  # BLOQUÉ PAR DÉFAUT (Sécurité)
         "SEARCH_WEB": True,
         "DOWNLOAD_MEDIA": True,
         "PROCESS_MEDIA": True,

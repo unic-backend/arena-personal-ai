@@ -17,7 +17,12 @@ def test_permissions():
     # 2. Vérification de la sécurité (PUBLISH & DELETE bloqués)
     assert pm.is_allowed("PUBLISH") == False
     assert pm.is_allowed("DELETE") == False
-    print("   ✅ Perms Publication/Suppression : SÉCURISÉES (BLOQUÉES)")
+    assert pm.is_allowed("EXECUTE_COMMANDS") == False
+    print("   ✅ Perms Publication/Suppression/Exécution : SÉCURISÉES (BLOQUÉES)")
+
+    # 3. Une permission inconnue est refusée, jamais supposée
+    assert pm.is_allowed("PERMISSION_QUI_N_EXISTE_PAS") == False
+    print("   ✅ Permission inconnue : REFUSÉE")
     
     print("\n🎉 TEST PERMISSIONS RÉUSSI AVEC SUCCÈS !\n")
 
