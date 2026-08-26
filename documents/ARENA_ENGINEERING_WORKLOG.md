@@ -249,14 +249,50 @@ demande une modification de code plutôt qu'un réglage.
 
 ---
 
+### 26 août 2026 — T-06, T-07, T-08 · Documentation alignée sur le code
+
+*Fichiers* : `docs/ROADMAP.md`, `docs/NEXT_STEPS.md`, `docs/CURRENT_TASK.md`,
+`docs/PROGRESS.md`, `docs/DECISIONS.md`, `docs/START_HERE.md`,
+`tests/test_documentation.py` (nouveau), `.dockerignore`
+*Changement* :
+- **T-06** — les trois affirmations fausses de la Phase 7 sont décochées et
+  expliquées. Une Phase 7 bis liste ce qui a réellement été fait, avec le point
+  encore ouvert. Une règle de tenue est posée en tête du fichier : *on ne coche
+  qu'après avoir exécuté la vérification*.
+- **T-07** — `NEXT_STEPS.md` décrivait encore la Phase 0 (« Créer README.md »).
+  Il donne maintenant les trois prochaines étapes réelles.
+- **T-08** — `RAPPORT_TRAVAIL.txt` supprimé de la racine (identique au md5 à la
+  copie dans `docs/`). La ligne devenue redondante est retirée de `.dockerignore`.
+- Hors périmètre nommé mais même défaut : `CURRENT_TASK.md` affirmait « 15
+  défauts, **tous vérifiés par un test** ». Corrigé et daté.
+- `DECISIONS.md` reçoit `DEC-0004` (le bac à sable refuse) et `DEC-0005`
+  (licence propriétaire) — deux décisions prises et jamais consignées ici.
+- `START_HERE.md` pointe vers ce carnet et rappelle de vérifier avant de croire.
+*Pourquoi* : P-08. Une case cochée à tort est pire qu'une case vide — personne
+ne revient sur un point déclaré clos.
+*Vérification* :
+- `tests/test_documentation.py` → **8 passed**. Les garde-fous couvrent : le
+  retour d'une affirmation retirée, le doublon de rapport, un secret écrit en
+  clair dans la documentation, et un chemin de fichier cité mais inexistant.
+- test négatif : en réintroduisant les quatre défauts → **4 failed, 4 passed**,
+  puis 8 passed après retour. Les garde-fous ne sont pas décoratifs.
+- suite complète → **156 passed, 17 deselected** ; `ruff check .` → 0 erreur.
+*Résultat* : **TERMINÉ**
+*Décision* : rendre les affirmations de la documentation **testables** plutôt que
+de se contenter de les corriger. *Coût si c'est faux* : le test ne connaît que
+les quatre affirmations déjà prises en défaut ; il n'empêche pas d'en écrire une
+nouvelle. Il empêche le retour de celles-ci, ce qui est déjà arrivé une fois.
+
+---
+
 ## IN PROGRESS
 
-**Tâche courante** : aucune. T-02 est terminée et vérifiée.
-**État exact** : la branche `claude/arena-personal-ai-qh66ix` porte 11 commits,
-suite verte (148 tests), lint propre. Rien n'est en cours d'écriture.
+**Tâche courante** : aucune. T-06, T-07 et T-08 sont terminées et vérifiées.
+**État exact** : la branche `claude/arena-personal-ai-qh66ix` porte 13 commits,
+suite verte (156 tests), lint propre. Rien n'est en cours d'écriture.
 **Prochaine action concrète** : T-01 (rotation de la clé et purge de
 l'historique) — bloquée, elle demande une décision du propriétaire. À défaut,
-T-06/T-07/T-08 (remettre la documentation d'accord avec le code, ~30 min).
+T-03 (scan de secrets en CI, ~30 min) : il aurait attrapé la rechute du 26/08.
 
 ---
 
@@ -275,11 +311,8 @@ Par priorité. Effort = estimation, à confirmer.
 
 ### Priorité 2 — Alignement documentation ↔ code
 
-| # | Tâche | Effort | Critère de validation |
-|---|---|---|---|
-| T-06 | Corriger les 3 affirmations fausses de `docs/ROADMAP.md` | 15 min | Chaque ligne cochée correspond au code |
-| T-07 | Mettre `docs/NEXT_STEPS.md` à jour (il décrit encore la Phase 0) | 10 min | Contenu cohérent avec l'état réel |
-| T-08 | Supprimer le doublon `RAPPORT_TRAVAIL.txt` (racine + `docs/`) | 5 min | Un seul fichier, fichiers identiques au md5 |
+**Terminé le 26/08/2026** (T-06, T-07, T-08). Les affirmations corrigées sont
+désormais protégées par `tests/test_documentation.py`.
 
 ### Priorité 3 — Performance et matériel
 
@@ -433,8 +466,10 @@ troisième (secrets) reste fausse tant que l'historique n'est pas purgé.
 `docs/NEXT_STEPS.md` décrit encore la Phase 0 (« Créer README.md »).
 **Impact** : c'est le défaut le plus durable des quatre rapports d'audit. Une
 case cochée à tort empêche quiconque de revenir sur le problème.
-**Solution proposée** : T-06, T-07.
-**Statut** : OUVERT
+**Solution appliquée** : affirmations décochées et expliquées, règle de tenue
+posée en tête de `ROADMAP.md`, `NEXT_STEPS.md` réécrit, `CURRENT_TASK.md`
+corrigé, et quatre garde-fous automatiques dans `tests/test_documentation.py`.
+**Statut** : **RÉSOLU** le 26/08/2026 — voir *COMPLETED · T-06, T-07, T-08*.
 
 ### P-09 · LOW · Le frontend dépend d'un CDN
 
@@ -463,7 +498,7 @@ Ce qui est certain, et vérifié par le code :
 | Appels au modèle avant le correctif n°9 | 3 | lecture du code : `chat_stream_endpoint` → `dispatch_request` → `orchestrator.run` |
 | Contexte configuré | `num_ctx: 4096` | `core/models/ollama_provider.py` |
 | Maintien en VRAM | `keep_alive: "30m"` | idem |
-| Durée de la suite de tests | 3,6 s pour 148 tests | `pytest -q` |
+| Durée de la suite de tests | 3,7 s pour 156 tests | `pytest -q` |
 | Pic mémoire, envoi de 64 Mo — avant T-02 | 64,0 Mo | `tracemalloc` sur l'ancien chemin |
 | Pic mémoire, envoi de 64 Mo — après T-02 | 2,0 Mo | `tracemalloc` sur `ecrire_par_blocs` |
 
@@ -569,3 +604,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 |---|---|---|
 | 2026-08-26 | Claude Code | Création. Audit initial, 9 correctifs consignés, 9 problèmes ouverts, 22 tâches en attente. |
 | 2026-08-26 | Claude Code | T-02 terminée (contrôle des envois). P-02 résolu. Valeur de la clé masquée dans ce document. |
+| 2026-08-26 | Claude Code | T-06, T-07, T-08 terminées (documentation alignée). P-08 résolu. Garde-fous documentaires ajoutés. |

@@ -18,7 +18,6 @@ venv
 tests
 docs
 scripts/*.ps1
-RAPPORT_TRAVAIL.txt
 
 # Donnees et medias : montes en volume, jamais copies dans l'image
 data
