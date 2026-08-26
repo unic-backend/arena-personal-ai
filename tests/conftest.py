@@ -89,3 +89,56 @@ def provider_factory():
 def memoire(tmp_path: Path) -> MemoryManager:
     """Mémoire SQLite jetable : une base neuve par test, hors du dépôt."""
     return MemoryManager(db_path=str(tmp_path / "memoire_test.db"))
+
+
+# --- Garde-fous pour les tests marqués `integration` ---------------------------
+# Ces tests exigent un service qui n'existe pas partout. Le marqueur les
+# désélectionne par défaut ; ces fixtures les ignorent proprement quand on les
+# sélectionne explicitement sur une machine qui n'a pas le service.
+
+@pytest.fixture
+def ollama_en_ligne():
+    """Ignore le test si Ollama ne répond pas."""
+    import asyncio
+
+    from core.models.ollama_provider import OllamaProvider
+
+    provider = OllamaProvider()
+    if not asyncio.get_event_loop().run_until_complete(provider.is_available()):
+        pytest.skip("Ollama n'est pas accessible sur cette machine.")
+    return provider
+
+
+@pytest.fixture
+def ffmpeg_disponible():
+    """Ignore le test si ffmpeg est absent, et renvoie l'outil."""
+    from tools.video.ffmpeg_tool import FFmpegTool
+
+    outil = FFmpegTool()
+    if not outil.is_available():
+        pytest.skip("ffmpeg est introuvable sur cette machine.")
+    return outil
+
+
+@pytest.fixture
+def video_de_test(ffmpeg_disponible, tmp_path):
+    """Vidéo synthétique de 5 s, générée hors du dépôt.
+
+    L'ancienne version écrivait dans `media/source/` : un test ne doit pas laisser
+    de fichier dans l'arbre de travail.
+    """
+    import subprocess
+
+    chemin = tmp_path / "video_de_test.mp4"
+    resultat = subprocess.run(
+        [
+            ffmpeg_disponible.get_executable(), "-y",
+            "-f", "lavfi", "-i", "testsrc=duration=5:size=640x360:rate=30",
+            "-f", "lavfi", "-i", "sine=frequency=1000:duration=5",
+            "-c:v", "libx264", "-c:a", "aac", str(chemin),
+        ],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    if resultat.returncode != 0 or not chemin.exists():
+        pytest.skip(f"ffmpeg n'a pas pu encoder la vidéo de test : {resultat.stderr[-200:]!r}")
+    return chemin

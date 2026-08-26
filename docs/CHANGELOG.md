@@ -47,6 +47,13 @@
 - Quatre agents de plus testés hors ligne : `TrendAnalyzer` et `DeepResearcher`
   (recherche web doublée, aucun appel réseau), `RepoEngineer` et `SWEAgent`
   (lecture seule vérifiée : toute écriture disque fait échouer le test).
+- Tout ce qui exige Ollama, Docker, ffmpeg, Whisper, Chromium ou le réseau porte
+  le marqueur `integration` et s'ignore proprement quand le service manque.
+  `pytest` est vert par défaut : **103 passed, 17 deselected**.
+- `tests/test_api.py` couvre désormais l'authentification des quatre routes `/api`,
+  la passerelle `/v1`, une clé vide qui ferme au lieu d'ouvrir, et le CORS.
+  Il exigeait `status == "healthy"`, donc Ollama : il vérifie maintenant l'API.
+- La vidéo de test est générée dans un dossier temporaire, plus dans `media/source/`.
 
 ## [1.7.0] - 2026-08-25
 ### Sécurité

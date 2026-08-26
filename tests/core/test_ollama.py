@@ -1,32 +1,26 @@
-import asyncio
-import sys
-from pathlib import Path
+"""Fournisseur Ollama : exige le service local, donc marqué `integration`."""
+import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from core.models.ollama_provider import OllamaProvider
+@pytest.mark.integration
+async def test_le_service_repond(ollama_en_ligne):
+    assert await ollama_en_ligne.is_available() is True
 
-async def main():
-    print("Connexion a Ollama local...")
-    provider = OllamaProvider(model_name="qwen3.5:9b")
-    
-    available = await provider.is_available()
-    if not available:
-        print("? Erreur : Ollama n'est pas accessible sur http://localhost:11434")
-        return
 
-    print("? Service Ollama en ligne.")
-    print("Test de generation avec qwen3.5:9b...")
-    
-    try:
-        response = await provider.generate(
-            prompt="Dis 'ARENA est operationnel !' en une phrase courte.",
-            system_prompt="Tu es l'assistant de test ARENA."
-        )
-        print(f"\n?? Reponse de l'IA locale :\n{response.strip()}\n")
-        print("? TEST REUSSI !")
-    except Exception as e:
-        print(f"? Erreur lors de la generation : {e}")
+@pytest.mark.integration
+async def test_une_generation_renvoie_du_texte(ollama_en_ligne):
+    reponse = await ollama_en_ligne.generate(
+        prompt="Dis 'ARENA est operationnel' en une phrase courte.",
+        system_prompt="Tu es l'assistant de test ARENA.",
+    )
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    assert reponse.strip() != ""
+    assert "<think>" not in reponse
+
+
+@pytest.mark.integration
+async def test_le_streaming_produit_des_jetons(ollama_en_ligne):
+    jetons = [j async for j in ollama_en_ligne.generate_stream(prompt="Compte jusqu'a trois.")]
+
+    assert len(jetons) > 0
+    assert "".join(jetons).strip() != ""
