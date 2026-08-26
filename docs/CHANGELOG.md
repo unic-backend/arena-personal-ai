@@ -29,6 +29,13 @@
   alors que `browser-use==0.13.8` épingle `openai==2.16.0`. Le couple gelé était
   déjà impossible à réinstaller.
 
+### Tests
+- Socle pytest exécutable hors ligne : `tests/conftest.py` fournit un `FakeProvider`
+  scripté (aucun réseau, réponses données à l'avance, appels enregistrés) et une
+  mémoire SQLite jetable par test. `pyproject.toml` configure pytest, `asyncio_mode`
+  et le marqueur `integration`, désélectionné par défaut.
+- `requirements-dev.txt` ajoute `pytest` et `pytest-asyncio`.
+
 ## [1.7.0] - 2026-08-25
 ### Sécurité
 - La passerelle `/v1` exige désormais une clé API (`ARENA_API_KEY` dans `.env`).

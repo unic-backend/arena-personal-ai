@@ -1,0 +1,10 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Les tests asynchrones n'ont pas besoin de decorateur : pytest-asyncio les prend
+# en charge automatiquement.
+asyncio_mode = "auto"
+markers = [
+    "integration: exige un service externe (Ollama, Docker, reseau, Chromium). Desactive par defaut.",
+]
+# Par defaut on n'execute que ce qui tourne hors ligne.
+addopts = "-m 'not integration'"

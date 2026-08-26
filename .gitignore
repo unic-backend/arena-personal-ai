@@ -3,6 +3,7 @@
 venv/
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # Variables d'environnement & Secrets
 .env
