@@ -1,32 +1,42 @@
 # TÂCHE ACTUELLE
 
-ID : TASK-000042
-TÂCHE : Phase 7 bis — correction après les quatre rapports d'audit du 26/08/2026
-ÉTAT : [ ] EN COURS
+ID : TASK-000044
+TÂCHE : Alignement post-fusion Studio + doc (rotation, tests, purge optionnelle)
+ÉTAT : [x] EN COURS — point 1/4 (CURRENT_TASK)
 
-## Où en est-on
+## Où en est-on (mesuré / rechargé le 26/08/2026 soir)
 
-12 correctifs livrés sur la branche `claude/arena-personal-ai-qh66ix`, chacun
-avec sa vérification. Détail complet : `documents/USMAN_ENGINEERING_WORKLOG.md`.
+Branche de travail : `travail` (push OK, dont fix `test_gitleaks_config.py`).
 
-État mesuré le 26/08/2026 :
-- `pytest` → 148 tests verts, 17 marqués `integration`
-- `ruff check .` → 0 erreur
-- 12 commits, contre 1 au départ
+Livraisons majeures du 26/08/2026 :
+- Phase 7 bis : sécu (auth, CORS, sandbox REFUSED, rate-limit, gitleaks CI)
+- Backend découpé : `main.py` mince + routeurs + `studio.py`
+- Info fraîche (sources + horloge système pour l’actualité)
+- Indexation documentaire (lecture + inventaire + hors Git)
+- Interface hors ligne (Tailwind local)
+- Réunion branche **vidéo Usman** + branche **ingénierie** : Studio 1-clic,
+  hardsub, Whisper — **sans** remettre les secrets en clair
+- Tests (worklog fusion Studio) : montée jusqu’à **424** tests
+- Notre correctif : `check-ignore` skip hors dépôt Git (Sprint A)
 
-## Ce qui reste, et bloque
+## Rotation de clé (propriétaire)
 
-**Un seul point critique** : la clé API est encore lisible dans l'historique Git
-du dépôt public. La rotation et la purge demandent une décision du propriétaire —
-la purge est irréversible.
+- [x] **Rotation** : nouvelle clé dans `.env` local (`USMAN_API_KEY`, compat
+  `ARENA_API_KEY` encore lue par le code). L’ancienne ne doit plus servir en runtime.
+- [ ] **Purge historique Git** : optionnelle. Anciennes valeurs encore possibles
+  dans l’historique public. Voir `documents/RUNBOOK_PURGE_SECRETS.md`.
+  Exécution **uniquement** avec accord explicite du propriétaire (irréversible).
+- [ ] Supprimer la branche distante dangereuse si elle existe encore
+  (`saer-video-wip` ou équivalent avec clé en clair) — après validation.
 
-## Correction d'une entrée précédente
+## Ce qui reste (ordre des 4 points)
 
-TASK-000041 déclarait « 15 défauts identifiés, **tous vérifiés par un test** ».
-La vérification a montré que ce n'était pas le cas : trois livrables de la
-Phase 7 n'étaient pas effectifs, et dix fichiers de tests sur 21 n'étaient même
-pas collectés par pytest.
+1. [x] `docs/CURRENT_TASK.md` (ce fichier)
+2. [ ] `docs/NEXT_STEPS.md`
+3. [ ] `README.md` — standardiser `USMAN_API_KEY`
+4. [ ] Purge / branche dangereuse (guidage) + mesures VRAM si demandé
 
-Ce n'est pas un reproche sur le travail fourni — c'est la raison d'être de la
-règle posée en tête de `ROADMAP.md` : **on ne coche qu'après avoir exécuté la
-vérification.**
+## Règle
+
+On ne coche qu’après vérification exécutée. Les chiffres de tests viennent du
+worklog (`documents/USMAN_ENGINEERING_WORKLOG.md`) et des runs sur clone.
