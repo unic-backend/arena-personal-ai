@@ -1,5 +1,16 @@
 # CHANGELOG - ARENA PERSONAL AI
 
+## [Non publié]
+### Sécurité
+- La clé de la passerelle ne figure plus dans le dépôt : `librechat.yaml` lit
+  `${ARENA_API_KEY}`, que `docker-compose.yml` transmet au conteneur LibreChat.
+- Les endpoints métier `/api/upload`, `/api/process-video`, `/api/chat` et
+  `/api/chat/stream` exigent la même clé Bearer que `/v1`. Ils étaient ouverts.
+- CORS restreint aux interfaces locales (`ARENA_ALLOWED_ORIGINS`) au lieu de `*`,
+  méthodes limitées à `GET`/`POST`. Combiné aux endpoints ouverts, `*` laissait
+  n'importe quel site appeler les agents depuis le navigateur.
+- L'interface `apps/frontend/index.html` envoie la clé et l'oublie si elle est refusée.
+
 ## [1.7.0] - 2026-08-25
 ### Sécurité
 - La passerelle `/v1` exige désormais une clé API (`ARENA_API_KEY` dans `.env`).

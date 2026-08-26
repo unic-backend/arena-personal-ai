@@ -45,12 +45,22 @@ logger = logging.getLogger("arena.backend")
 
 app = FastAPI(title="ARENA Personal AI API", version="1.7.0")
 
+# Origines autorisees : les interfaces locales par defaut, surchargeables via .env
+# (ARENA_ALLOWED_ORIGINS, liste separee par des virgules). Jamais "*" : le
+# navigateur laisserait n'importe quel site appeler les endpoints /api.
+ORIGINES_PAR_DEFAUT = "http://localhost:3000,http://localhost:3080,http://localhost:8000"
+ALLOWED_ORIGINS = [
+    origine.strip()
+    for origine in os.getenv("ARENA_ALLOWED_ORIGINS", ORIGINES_PAR_DEFAUT).split(",")
+    if origine.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 MEDIA_DIR = BASE_DIR / "media"
@@ -102,12 +112,12 @@ def get_arena_system_prompt() -> str:
     )
 
 # ==============================================================================
-# SECURITE : cle API de la passerelle /v1 + validation des chemins media
+# SECURITE : cle API partagee (/v1 et /api) + validation des chemins media
 # ==============================================================================
 ARENA_API_KEY = os.getenv("ARENA_API_KEY", "")
 
 def verify_api_key(authorization: Optional[str] = Header(None)):
-    """Bloque tout appel a /v1 qui ne presente pas la bonne cle Bearer."""
+    """Bloque tout appel a /v1 ou /api qui ne presente pas la bonne cle Bearer."""
     if not ARENA_API_KEY:
         raise HTTPException(
             status_code=500,
@@ -292,7 +302,7 @@ async def openai_chat_completions(request: Request):
 # ==============================================================================
 # ENDPOINTS MÉDIAS & PIPELINES
 # ==============================================================================
-@app.post("/api/upload")
+@app.post("/api/upload", dependencies=[Depends(verify_api_key)])
 async def upload_video(file: UploadFile = File(...)):
     try:
         if not permissions.is_allowed("WRITE_FILES"):
@@ -313,7 +323,7 @@ async def upload_video(file: UploadFile = File(...)):
         logger.error(f"Erreur upload: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/process-video")
+@app.post("/api/process-video", dependencies=[Depends(verify_api_key)])
 async def process_video_pipeline(video_path: str = Form(...)):
     try:
         p = Path(video_path).resolve()
@@ -387,7 +397,7 @@ async def dispatch_request(request: ChatRequest) -> Dict[str, Any]:
     memory.add_chat_message(session_id=session_id, role="assistant", content=result["response"])
     return result
 
-@app.post("/api/chat")
+@app.post("/api/chat", dependencies=[Depends(verify_api_key)])
 async def chat_endpoint(request: ChatRequest):
     try:
         if not await fast_provider.is_available():
@@ -405,7 +415,7 @@ async def chat_endpoint(request: ChatRequest):
         logger.error(f"Erreur endpoint chat: {e}", exc_info=True)
         return {"status": "error", "model": "error", "response": f"❌ {str(e)}"}
 
-@app.post("/api/chat/stream")
+@app.post("/api/chat/stream", dependencies=[Depends(verify_api_key)])
 async def chat_stream_endpoint(request: ChatRequest):
     session_id = request.session_id or "default"
     intent = await orchestrator.analyze_intent(request.prompt)
