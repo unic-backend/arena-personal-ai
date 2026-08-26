@@ -1,10 +1,9 @@
 ﻿import logging
-import re
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
-from core.models.base import ModelProvider
 from core.memory.memory_manager import MemoryManager
+from core.models.base import ModelProvider
 
 logger = logging.getLogger("arena.agent.orchestrator")
 
@@ -56,7 +55,7 @@ class OrchestratorAgent(BaseAgent):
         intent = await self.analyze_intent(user_input)
 
         history = self.memory.get_recent_history(session_id=session_id, limit=6) if self.memory else []
-        
+
         # PROMPT MONDIAL SANS BIAIS LOCAL FORCÉ
         system_prompt = (
             f"Tu es ARENA, une intelligence artificielle internationale de haut niveau, au service de {owner_name}.\n"
@@ -67,14 +66,14 @@ class OrchestratorAgent(BaseAgent):
             f"3. Pour les événements futurs (ex: Coupe du Monde 2026), rappelle poliment que l'événement n'a pas encore eu lieu et donne les faits historiques connus si pertinents.\n"
             f"4. Réponds en français fluide, naturel et professionnel."
         )
-        
+
         prompt_lines = []
         for msg in history:
             role_label = owner_name if msg["role"] == "user" else "ARENA"
             prompt_lines.append(f"{role_label}: {msg['content']}")
         prompt_lines.append(f"{owner_name}: {user_input}")
         prompt_lines.append("ARENA:")
-        
+
         reply = await self.provider.generate(prompt="\n".join(prompt_lines), system_prompt=system_prompt)
         return {
             "intent": intent,

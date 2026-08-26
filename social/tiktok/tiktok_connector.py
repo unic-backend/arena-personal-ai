@@ -1,5 +1,6 @@
 ﻿import logging
-from typing import Dict, Any
+from typing import Any, Dict
+
 from social.base.base_connector import SocialConnector
 
 logger = logging.getLogger("arena.social.tiktok")

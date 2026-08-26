@@ -1,8 +1,7 @@
-import os
-import sys
 import logging
+import os
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Optional
 
 logger = logging.getLogger("arena.tools.swe_aci")
 
@@ -22,7 +21,7 @@ class SWEACITool:
 
             lines = full_path.read_text(encoding="utf-8", errors="ignore").splitlines()
             total_lines = len(lines)
-            
+
             start = max(1, start_line)
             end = min(total_lines, end_line)
 
@@ -70,7 +69,7 @@ class SWEACITool:
                 return f"❌ Fichier introuvable: {file_path}"
 
             lines = full_path.read_text(encoding="utf-8", errors="ignore").splitlines()
-            
+
             # Remplacement des lignes de start_line à end_line
             new_code_lines = new_code.splitlines()
             updated_lines = lines[:start_line - 1] + new_code_lines + lines[end_line:]

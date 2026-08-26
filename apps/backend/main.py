@@ -1,19 +1,17 @@
+import json
+import logging
 import os
 import sys
-import json
 import time
-import logging
-import traceback
-from datetime import datetime
 from pathlib import Path
-from dotenv import load_dotenv
+from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Header, Depends
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, List, Union
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(dotenv_path=BASE_DIR / ".env")
@@ -21,24 +19,23 @@ load_dotenv(dotenv_path=BASE_DIR / ".env")
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from core.models.ollama_provider import OllamaProvider
-from core.memory.memory_manager import MemoryManager
-from core.permissions.permission_manager import PermissionManager
-
+from agents.browser.browser_agent import BrowserAgent
+from agents.clip_selector.clip_selector_agent import ClipSelectorAgent
+from agents.coder.coder_agent import CoderAgent
+from agents.editor.editor_agent import EditorAgent
 from agents.orchestrator.orchestrator_agent import OrchestratorAgent
+from agents.publisher.publisher_agent import PublisherAgent
+from agents.repo_engineer.repo_engineer_agent import RepoEngineerAgent
+from agents.researcher.researcher_agent import DeepResearcherAgent
+from agents.subtitle.subtitle_agent import SubtitleAgent
+from agents.swe_agent.swe_agent import SWEAgent
 from agents.trend_analyzer.trend_analyzer_agent import TrendAnalyzerAgent
 from agents.video_analyzer.video_analyzer_agent import VideoAnalyzerAgent
-from agents.editor.editor_agent import EditorAgent
-from agents.subtitle.subtitle_agent import SubtitleAgent
-from agents.coder.coder_agent import CoderAgent
-from agents.researcher.researcher_agent import DeepResearcherAgent
-from agents.clip_selector.clip_selector_agent import ClipSelectorAgent
-from agents.publisher.publisher_agent import PublisherAgent
-from agents.browser.browser_agent import BrowserAgent
-from agents.repo_engineer.repo_engineer_agent import RepoEngineerAgent
-from agents.swe_agent.swe_agent import SWEAgent
-from tools.rag.lightrag_tool import LightRAGTool
+from core.memory.memory_manager import MemoryManager
+from core.models.ollama_provider import OllamaProvider
+from core.permissions.permission_manager import PermissionManager
 from tools.rag.graphrag_tool import GraphRAGTool
+from tools.rag.lightrag_tool import LightRAGTool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("arena.backend")
@@ -134,10 +131,11 @@ def validate_media_path(raw_path: str) -> Path:
     try:
         p.relative_to(MEDIA_DIR.resolve())
     except ValueError:
+        # `from None` : l'erreur interne de chemin n'a pas a remonter au client.
         raise HTTPException(
             status_code=403,
             detail="Acces refuse : le fichier doit se trouver dans le dossier media/."
-        )
+        ) from None
     return p
 
 
@@ -311,17 +309,17 @@ async def upload_video(file: UploadFile = File(...)):
         safe_filename = Path(file.filename).name
         incoming_dir = MEDIA_DIR / "incoming"
         incoming_dir.mkdir(parents=True, exist_ok=True)
-        
+
         file_path = incoming_dir / safe_filename
         with open(file_path, "wb") as buffer:
             buffer.write(await file.read())
-            
+
         return {"status": "success", "filename": safe_filename, "path": str(file_path)}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Erreur upload: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 @app.post("/api/process-video", dependencies=[Depends(verify_api_key)])
 async def process_video_pipeline(video_path: str = Form(...)):
@@ -330,7 +328,7 @@ async def process_video_pipeline(video_path: str = Form(...)):
         try:
             p.relative_to(MEDIA_DIR.resolve())
         except ValueError:
-            raise HTTPException(status_code=403, detail="Accès refusé.")
+            raise HTTPException(status_code=403, detail="Accès refusé.") from None
 
         if not p.exists():
             return {"status": "error", "message": f"Fichier introuvable: {video_path}"}
@@ -402,7 +400,7 @@ async def chat_endpoint(request: ChatRequest):
     try:
         if not await fast_provider.is_available():
             return {"status": "error", "model": fast_provider.model_name, "response": "❌ Ollama hors-ligne."}
-        
+
         result = await dispatch_request(request)
         return {
             "status": "success",
@@ -431,7 +429,7 @@ async def chat_stream_endpoint(request: ChatRequest):
         memory.add_chat_message(session_id=session_id, role="user", content=request.prompt)
 
         system_prompt = get_arena_system_prompt()
-        
+
         prompt_lines = []
         for msg in history:
             role_label = memory.get_fact("owner") or "Saer" if msg["role"] == "user" else "ARENA"
@@ -445,7 +443,7 @@ async def chat_stream_endpoint(request: ChatRequest):
             async for token in fast_provider.generate_stream(full_prompt, system_prompt):
                 full_reply += token
                 yield f"data: {json.dumps({'token': token, 'intent': intent})}\n\n"
-            
+
             memory.add_chat_message(session_id=session_id, role="assistant", content=full_reply.strip())
             yield "data: [DONE]\n\n"
 

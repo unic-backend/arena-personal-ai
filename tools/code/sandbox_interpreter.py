@@ -1,10 +1,9 @@
+import logging
 import os
-import sys
 import subprocess
 import tempfile
-import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 from tools.code.code_interpreter_tool import CodeInterpreterTool
 
@@ -95,7 +94,7 @@ class SandboxInterpreterTool:
 
         try:
             logger.info("🛡️ Exécution sécurisée dans le Bac à Sable Docker isolée (OpenSandbox Pattern)...")
-            
+
             cmd = [
                 "docker", "run", "--rm",
                 "--network", "none",

@@ -1,9 +1,7 @@
-import os
-import sys
-import subprocess
 import logging
+import subprocess
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger("arena.tools.graphrag")
 
@@ -69,7 +67,7 @@ class GraphRAGTool:
                 return {
                     "status": "info",
                     "engine": "Microsoft GraphRAG",
-                    "response": f"📊 [Microsoft GraphRAG] Espace de connaissances prêt. Ajoutez vos documents dans data/rag/graphrag_workspace/input."
+                    "response": "📊 [Microsoft GraphRAG] Espace de connaissances prêt. Ajoutez vos documents dans data/rag/graphrag_workspace/input."
                 }
 
         except Exception as e:

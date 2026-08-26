@@ -1,9 +1,6 @@
-import os
-import sys
-import asyncio
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Optional
 
 logger = logging.getLogger("arena.tools.rag")
 
@@ -28,8 +25,8 @@ class LightRAGTool:
             return
 
         try:
-            from lightrag import LightRAG, QueryParam
-            from lightrag.llm.ollama import ollama_model_complete, ollama_embed
+            from lightrag import LightRAG
+            from lightrag.llm.ollama import ollama_embed, ollama_model_complete
             from lightrag.utils import EmbeddingFunc
 
             # Configuration 100% locale avec Ollama (qwen2.5-coder:14b / qwen3.5:9b)
@@ -73,7 +70,7 @@ class LightRAGTool:
         try:
             self._init_rag()
             from lightrag import QueryParam
-            
+
             result = self.rag.query(
                 prompt,
                 param=QueryParam(mode=mode)

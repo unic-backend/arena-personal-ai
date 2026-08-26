@@ -1,11 +1,11 @@
-import re
 import logging
+import re
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
-from core.models.base import ModelProvider
 from core.memory.memory_manager import MemoryManager
+from core.models.base import ModelProvider
 from tools.coder.swe_aci_tool import SWEACITool
 
 logger = logging.getLogger("arena.agent.swe")

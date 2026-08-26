@@ -1,9 +1,9 @@
-﻿import sys
+﻿import logging
 import subprocess
+import sys
 import tempfile
-import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 logger = logging.getLogger("arena.tools.code_interpreter")
 
@@ -15,10 +15,10 @@ class CodeInterpreterTool:
 
     def execute_python_code(self, code_str: str) -> Dict[str, Any]:
         """Exécute un bloc de code Python dans un processus isolé et renvoie le résultat."""
-        
+
         # Nettoyage des balises markdown si présentes
         clean_code = code_str.replace("```python", "").replace("```", "").strip()
-        
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as tmp_file:
             tmp_file.write(clean_code)
             tmp_path = tmp_file.name
@@ -32,7 +32,7 @@ class CodeInterpreterTool:
                 text=True,
                 timeout=self.timeout_seconds
             )
-            
+
             output = res.stdout.strip()
             error = res.stderr.strip()
             success = (res.returncode == 0)

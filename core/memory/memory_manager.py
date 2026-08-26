@@ -1,10 +1,9 @@
-import sqlite3
 import json
 import logging
+import sqlite3
 from contextlib import closing
-from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("arena.memory")
 
@@ -22,7 +21,7 @@ class MemoryManager:
     def _init_db(self):
         with closing(self._get_connection()) as conn:
             cursor = conn.cursor()
-            
+
             # Short-Term Memory (Conversations)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS short_term_memory (
@@ -81,7 +80,7 @@ class MemoryManager:
     def set_fact(self, category: str, key: str, value: Any, metadata: Optional[Dict] = None):
         val_str = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
         meta_str = json.dumps(metadata) if metadata else None
-        
+
         with closing(self._get_connection()) as conn:
             conn.cursor().execute("""
                 INSERT INTO long_term_memory (category, key, value, metadata, updated_at)
@@ -111,7 +110,7 @@ if __name__ == "__main__":
     mem.set_fact("user_profile", "owner", "Saer", {"role": "Propriétaire"})
     mem.add_chat_message("default", "user", "Bonjour ARENA")
     mem.add_chat_message("default", "assistant", "Bonjour Saer, mémoire SQLite initialisée.")
-    
+
     print("✅ MemoryManager SQLite initialisé avec succès !")
     print("   Propriétaire enregistré:", mem.get_fact("owner"))
     print("   Historique récupéré:", mem.get_recent_history("default"))

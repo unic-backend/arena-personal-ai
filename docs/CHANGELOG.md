@@ -55,6 +55,14 @@
   Il exigeait `status == "healthy"`, donc Ollama : il vérifie maintenant l'API.
 - La vidéo de test est générée dans un dossier temporaire, plus dans `media/source/`.
 
+### Qualité
+- `ruff` configuré dans `pyproject.toml` (`E4, E7, E9, F, W, I, B`) et le dépôt passe
+  à zéro erreur. 178 corrections automatiques : imports inutiles, imports non triés,
+  espaces en fin de ligne, fichiers sans saut de ligne final.
+- Trois `raise HTTPException` dans une clause `except` chaînent maintenant leur cause
+  (`from e`) ou déclarent explicitement qu'ils la masquent (`from None`).
+- `E501` n'est pas activé : l'imposer reformaterait des prompts entiers.
+
 ## [1.7.0] - 2026-08-25
 ### Sécurité
 - La passerelle `/v1` exige désormais une clé API (`ARENA_API_KEY` dans `.env`).

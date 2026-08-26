@@ -1,9 +1,9 @@
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
-from core.models.base import ModelProvider
 from core.memory.memory_manager import MemoryManager
+from core.models.base import ModelProvider
 from tools.code.sandbox_interpreter import SandboxInterpreterTool
 
 logger = logging.getLogger("arena.agent.coder")
@@ -22,7 +22,7 @@ class CoderAgent(BaseAgent):
 
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         logger.info("CoderAgent au travail dans OpenSandbox...")
-        
+
         prompt = (
             "Tu es CoderAgent, un expert absolu en Python et programmation.\n"
             "Écris un script Python valide et autonome pour résoudre ce problème.\n"
@@ -32,17 +32,17 @@ class CoderAgent(BaseAgent):
 
         raw_code = await self.provider.generate(prompt=prompt)
         res = self.interpreter.execute_python_code(raw_code)
-        
+
         attempts = 0
         # Un refus du bac à sable n'est pas un bug du code : le corriger ne
         # changerait rien, on sort de la boucle sans rappeler le modèle.
         while not res["success"] and not res.get("refused") and attempts < 2:
             attempts += 1
             logger.warning(f"Bug détecté dans le code (Essai {attempts}). Auto-correction en cours...")
-            
+
             executed_code = res.get("executed_code", "")
             stderr_msg = res.get("stderr", "")
-            
+
             fix_prompt = (
                 "Le code Python suivant a produit une erreur lors de l'exécution:\n\n"
                 "[CODE PROPOSÉ]\n"

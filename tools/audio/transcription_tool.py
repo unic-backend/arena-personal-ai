@@ -1,7 +1,7 @@
-﻿import os
-import logging
+﻿import logging
+import os
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Any, Dict
 
 # Masquer l'avertissement de liens symboliques sous Windows
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
@@ -18,7 +18,7 @@ class TranscriptionTool:
     def _load_model(self):
         if self.model is None:
             from faster_whisper import WhisperModel
-            
+
             # Essai CPU sécurisé (rapide, sans dépendance CUDA externe requise)
             try:
                 logger.info(f"Chargement du modèle Whisper ({self.model_size}) sur CPU...")
@@ -35,7 +35,7 @@ class TranscriptionTool:
             raise FileNotFoundError(f"Fichier audio introuvable : {audio_path}")
 
         self._load_model()
-        
+
         segments, info = self.model.transcribe(
             str(audio_file),
             language=language,

@@ -1,7 +1,6 @@
-﻿import os
+﻿import logging
 import shutil
 import subprocess
-import logging
 from pathlib import Path
 
 logger = logging.getLogger("arena.tools.video.ffmpeg")
@@ -16,14 +15,14 @@ class FFmpegTool:
         path = shutil.which("ffmpeg")
         if path:
             return path
-            
+
         user_home = Path.home()
         possible_paths = list(user_home.glob("AppData/Local/Microsoft/WinGet/Packages/**/ffmpeg.exe"))
         possible_paths += list(user_home.glob("AppData/Local/Programs/**/ffmpeg.exe"))
-        
+
         if possible_paths:
             return str(possible_paths[0].resolve())
-            
+
         return "ffmpeg"
 
     def is_available(self) -> bool:
@@ -41,7 +40,7 @@ class FFmpegTool:
         if not self.is_available():
             logger.error("FFmpeg non disponible.")
             return False
-        
+
         cmd = [
             self.ffmpeg_path, "-y",
             "-i", str(video_path),
@@ -52,7 +51,7 @@ class FFmpegTool:
             str(output_audio_path)
         ]
         try:
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
             return True
         except subprocess.CalledProcessError as e:
             logger.error(f"Erreur extraction audio FFmpeg: {e.stderr.decode('utf-8', errors='ignore')}")
@@ -62,7 +61,7 @@ class FFmpegTool:
         """Découpe un extrait vidéo."""
         if not self.is_available():
             return False
-            
+
         cmd = [
             self.ffmpeg_path, "-y",
             "-ss", str(start_sec),

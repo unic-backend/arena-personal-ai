@@ -1,9 +1,9 @@
-import os
-import sys
-import subprocess
 import logging
+import os
+import subprocess
+import sys
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("arena.tools.repo_engineer")
 
@@ -72,7 +72,7 @@ class RepoEngineerTool:
         """Exécute la suite de tests unitaires pour valider les modifications."""
         target = test_path if test_path else "tests/"
         cmd = [sys.executable, "-m", "unittest", "discover", "-s", target]
-        
+
         try:
             res = subprocess.run(
                 cmd,

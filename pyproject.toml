@@ -8,3 +8,32 @@ markers = [
 ]
 # Par defaut on n'execute que ce qui tourne hors ligne.
 addopts = "-m 'not integration'"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+exclude = ["media", "data"]
+
+[tool.ruff.lint]
+# Jeu volontairement resserre : erreurs reelles, imports inutiles, imports non
+# tries, pieges courants. La longueur de ligne (E501) n'est pas selectionnee :
+# la faire respecter reformaterait des prompts entiers, ce qui n'est pas du
+# ressort d'un lint.
+select = ["E4", "E7", "E9", "F", "W", "I", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Ces fichiers inserent la racine du projet dans sys.path avant leurs imports :
+# l'ordre est voulu, pas un oubli.
+"apps/backend/main.py" = ["E402"]
+"tests/conftest.py" = ["E402"]
+"tools/browser/browser_use_tool.py" = ["E402"]
+
+[tool.ruff.lint.flake8-bugbear]
+# `File(...)`, `Form(...)`, `Depends(...)` et `Header(...)` en valeur par defaut
+# sont l'idiome FastAPI, pas l'erreur que B008 cherche a attraper.
+extend-immutable-calls = [
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Depends",
+    "fastapi.Header",
+]
