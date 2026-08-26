@@ -401,9 +401,52 @@ jusqu'à T-01. Une fois T-01 exécutée, le scan complet pourra être activé.
 
 ---
 
+### 26 août 2026 — T-04, T-05 · Limitation de débit et journalisation des refus
+
+*Fichiers* : `apps/backend/rate_limit.py` (nouveau), `apps/backend/main.py`,
+`tests/test_rate_limit.py` (nouveau), `.env.example`, `docs/CHANGELOG.md`
+*Changement* :
+- **T-04** — fenêtre glissante en mémoire, 10 requêtes par minute et par adresse
+  (réglable). Appliquée aux quatre routes qui appellent le modèle :
+  `/v1/chat/completions`, `/api/chat`, `/api/chat/stream`, `/api/process-video`.
+  Réponse 429 avec un en-tête `Retry-After`.
+- **T-05** — chaque refus d'authentification est journalisé avec l'adresse, la
+  route et le motif (clé absente / clé invalide).
+*Pourquoi* : un appel à Ollama occupe la carte graphique plusieurs secondes.
+Sans plafond, une page qui rafraîchit en boucle sature la machine. Et sans
+journal, une tentative répétée d'accès ne laisse aucune trace.
+
+*Vérifications, toutes exécutées :*
+- `pytest tests/test_rate_limit.py` → **20 passed**
+- test négatif, limitation retirée → **3 failed** ; journalisation retirée →
+  **1 failed** ; puis 20 passed après remise en état
+- suite complète → **199 passed, 20 deselected** ; `ruff` → 0 erreur ;
+  `gitleaks` → 0 fuite
+- non-régression : un message de chat coûte toujours **2 appels au modèle**
+
+*Décisions :*
+1. **Écrire le limiteur plutôt qu'ajouter `slowapi`** — une fenêtre glissante
+   tient en 80 lignes et le projet évite une dépendance de plus. *Coût si c'est
+   faux* : le compteur vit en mémoire d'un seul processus ; un déploiement
+   multi-processus le rendrait inexact. C'est écrit dans le module.
+2. **Une requête refusée n'est pas comptabilisée** — sinon un client bloqué se
+   re-pénaliserait à chaque tentative et ne sortirait jamais de la fenêtre.
+   *Coût si c'est faux* : un client insistant n'est pas pénalisé davantage.
+3. **L'authentification passe avant la limitation** — une requête sans clé ne
+   consomme pas le quota du client. *Coût si c'est faux* : une attaque non
+   authentifiée ne peut pas épuiser le quota d'un utilisateur légitime, mais
+   elle n'est pas ralentie non plus. Un test couvre ce choix.
+4. **La clé présentée n'est jamais journalisée.** Un journal qui contient des
+   secrets est un secret de plus à protéger. Un test le vérifie.
+
+*Résultat* : **TERMINÉ**
+
+---
+
 ## IN PROGRESS
 
-**Tâche courante** : aucune. T-03 est terminée et vérifiée.
+**Tâche courante** : aucune. T-04 et T-05 sont terminées et vérifiées.
+**Priorité 1 est close**, à l'exception de T-01 qui dépend du propriétaire.
 **État exact** : deux actions restent, et elles n'appartiennent qu'au
 propriétaire — changer les cinq clés dans `.env`, et autoriser la réécriture de
 l'historique (irréversible, casse les clones existants).
@@ -422,8 +465,6 @@ Par priorité. Effort = estimation, à confirmer.
 | # | Tâche | Effort | Critère de validation |
 |---|---|---|---|
 | T-01 | Purger la clé de l'historique Git + rotation | 20 min | `git log -S "<ancienne clé>"` ne renvoie rien |
-| T-04 | Limiter le débit sur `/api/chat` et `/v1/chat/completions` | 45 min | 11ᵉ requête en 1 min → 429 |
-| T-05 | Journaliser les échecs d'authentification | 15 min | Une requête sans clé laisse une ligne de log |
 
 ### Priorité 2 — Alignement documentation ↔ code
 
@@ -616,7 +657,7 @@ Ce qui est certain, et vérifié par le code :
 | Appels au modèle avant le correctif n°9 | 3 | lecture du code : `chat_stream_endpoint` → `dispatch_request` → `orchestrator.run` |
 | Contexte configuré | `num_ctx: 4096` | `core/models/ollama_provider.py` |
 | Maintien en VRAM | `keep_alive: "30m"` | idem |
-| Durée de la suite de tests | 3,6 s pour 179 tests | `pytest -q` |
+| Durée de la suite de tests | 5,6 s pour 199 tests | `pytest -q` |
 | Pic mémoire, envoi de 64 Mo — avant T-02 | 64,0 Mo | `tracemalloc` sur l'ancien chemin |
 | Pic mémoire, envoi de 64 Mo — après T-02 | 2,0 Mo | `tracemalloc` sur `ecrire_par_blocs` |
 
@@ -725,3 +766,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | 2026-08-26 | Claude Code | T-06, T-07, T-08 terminées (documentation alignée). P-08 résolu. Garde-fous documentaires ajoutés. |
 | 2026-08-26 | Claude Code | T-01 préparée et vérifiée sur copie, non exécutée. Trois erreurs des rapports d'audit corrigées (44 commits, 6 secrets, commande destructrice). |
 | 2026-08-26 | Claude Code | T-03 terminée (scan de secrets en CI). Règles propres au projet : les règles standard ne voyaient pas la clé de librechat.yaml. |
+| 2026-08-26 | Claude Code | T-04 et T-05 terminées (limitation de débit, journalisation des refus). Priorité 1 close hors T-01. |

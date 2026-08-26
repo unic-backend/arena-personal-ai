@@ -31,6 +31,7 @@ from agents.subtitle.subtitle_agent import SubtitleAgent
 from agents.swe_agent.swe_agent import SWEAgent
 from agents.trend_analyzer.trend_analyzer_agent import TrendAnalyzerAgent
 from agents.video_analyzer.video_analyzer_agent import VideoAnalyzerAgent
+from apps.backend.rate_limit import LimiteurDebit
 from core.memory.memory_manager import MemoryManager
 from core.models.ollama_provider import OllamaProvider
 from core.permissions.permission_manager import PermissionManager
@@ -127,16 +128,55 @@ def get_arena_system_prompt() -> str:
 # ==============================================================================
 ARENA_API_KEY = os.getenv("ARENA_API_KEY", "")
 
-def verify_api_key(authorization: Optional[str] = Header(None)):
-    """Bloque tout appel a /v1 ou /api qui ne presente pas la bonne cle Bearer."""
+# Limitation de debit : un appel au modele occupe le GPU plusieurs secondes.
+REQUETES_MAX = int(os.getenv("ARENA_RATE_LIMIT_REQUESTS", "10"))
+FENETRE_SECONDES = float(os.getenv("ARENA_RATE_LIMIT_WINDOW", "60"))
+limiteur = LimiteurDebit(requetes_max=REQUETES_MAX, fenetre_secondes=FENETRE_SECONDES)
+
+
+def client_de(request: Request) -> str:
+    """Identifie l'appelant pour la limitation de debit et les journaux."""
+    return request.client.host if request.client else "inconnu"
+
+
+def verify_api_key(request: Request, authorization: Optional[str] = Header(None)):
+    """Bloque tout appel a /v1 ou /api qui ne presente pas la bonne cle Bearer.
+
+    Un refus est journalise avec l'adresse de l'appelant et la route visee.
+    La cle presentee n'est jamais ecrite dans les journaux : un journal qui
+    contient des secrets est un secret de plus a proteger.
+    """
     if not ARENA_API_KEY:
         raise HTTPException(
             status_code=500,
             detail="ARENA_API_KEY absente du fichier .env : passerelle desactivee par securite."
         )
     if authorization != f"Bearer {ARENA_API_KEY}":
+        motif = "cle absente" if not authorization else "cle invalide"
+        logger.warning(
+            "Authentification refusee (%s) : %s -> %s",
+            motif, client_de(request), request.url.path,
+        )
         raise HTTPException(status_code=401, detail="Cle API invalide ou manquante.")
     return True
+
+
+def limiter_debit(request: Request):
+    """Refuse une requete de trop et indique dans combien de temps reessayer."""
+    client = client_de(request)
+    attente = limiteur.secondes_a_attendre(client)
+    if attente is None:
+        return True
+
+    logger.warning(
+        "Debit depasse : %s -> %s (%s requetes / %ss)",
+        client, request.url.path, REQUETES_MAX, FENETRE_SECONDES,
+    )
+    raise HTTPException(
+        status_code=429,
+        detail=f"Trop de requetes : maximum {REQUETES_MAX} par {FENETRE_SECONDES:.0f} s.",
+        headers={"Retry-After": str(max(1, int(attente) + 1))},
+    )
 
 
 def validate_media_path(raw_path: str) -> Path:
@@ -227,7 +267,7 @@ def _reponse_openai(contenu: str, modele: str, stream: bool):
     }
 
 
-@app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
+@app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
 async def openai_chat_completions(request: Request):
     body = await request.json()
     messages = body.get("messages", [])
@@ -395,7 +435,7 @@ async def upload_video(file: UploadFile = File(...)):
         logger.error(f"Erreur upload: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
 
-@app.post("/api/process-video", dependencies=[Depends(verify_api_key)])
+@app.post("/api/process-video", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
 async def process_video_pipeline(video_path: str = Form(...)):
     try:
         p = Path(video_path).resolve()
@@ -478,7 +518,7 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
     memory.add_chat_message(session_id=session_id, role="assistant", content=result["response"])
     return result
 
-@app.post("/api/chat", dependencies=[Depends(verify_api_key)])
+@app.post("/api/chat", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
 async def chat_endpoint(request: ChatRequest):
     try:
         if not await fast_provider.is_available():
@@ -496,7 +536,7 @@ async def chat_endpoint(request: ChatRequest):
         logger.error(f"Erreur endpoint chat: {e}", exc_info=True)
         return {"status": "error", "model": "error", "response": f"❌ {str(e)}"}
 
-@app.post("/api/chat/stream", dependencies=[Depends(verify_api_key)])
+@app.post("/api/chat/stream", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
 async def chat_stream_endpoint(request: ChatRequest):
     session_id = request.session_id or "default"
     intent = await orchestrator.analyze_intent(request.prompt)

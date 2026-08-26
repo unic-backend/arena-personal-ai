@@ -97,6 +97,11 @@
   les règles standard ne détectaient **pas** la clé de `librechat.yaml`, trop
   courte pour leur seuil d'entropie — c'est-à-dire la fuite qui a déclenché l'audit.
   Deux contrôles : les fichiers actuels, et les commits ajoutés par la branche.
+- Limitation de débit sur les quatre routes qui appellent le modèle : 10 requêtes
+  par minute et par adresse (`ARENA_RATE_LIMIT_REQUESTS` / `_WINDOW`), réponse 429
+  avec `Retry-After`. Fenêtre glissante en mémoire, sans dépendance nouvelle.
+- Les refus d'authentification sont journalisés (adresse, route, motif). **La clé
+  présentée n'est jamais écrite dans les journaux.**
 
 ## [1.7.0] - 2026-08-25
 ### Sécurité
