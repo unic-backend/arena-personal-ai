@@ -1,4 +1,6 @@
+import datetime
 import logging
+import re
 from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
@@ -17,6 +19,32 @@ INTENTIONS = {
     "TREND_SEARCH",
     "VIDEO_ANALYSIS",
 }
+
+# --- Contrôle daté, évalué AVANT le modèle -------------------------------------
+# Le tri d'intention est fait par un modèle. Or un modèle dont les connaissances
+# s'arrêtent avant l'année en cours ne peut pas reconnaître qu'une question porte
+# sur son propre futur : « qui a gagné la coupe du monde 2026 » lui paraît être
+# une conversation ordinaire, et il répond de mémoire. Mesuré le 2026-08-26 sur
+# la machine du propriétaire — la réponse a été « je n'ai pas les informations
+# récentes », alors que le pipeline d'information fraîche existait pour cela.
+#
+# La date du système, elle, ne se trompe pas. Ce contrôle est donc déterministe
+# et passe avant toute question posée au modèle.
+
+ANNEE = re.compile(r"\b(19|20)\d{2}\b")
+
+# Formulations qui portent sur un état ou un résultat courant. Elles ne
+# déclenchent la vérification que si aucune année passée n'est citée : « qui a
+# gagné la coupe du monde 1998 » est un fait acquis, pas une actualité.
+FORMULATIONS_COURANTES = (
+    "qui a gagné", "qui a gagne", "qui a remporté", "qui a remporte",
+    "qui est le", "qui est la", "qui sont les",
+    "vainqueur", "gagnant", "résultat", "resultat", "score",
+    "combien coûte", "combien coute", "prix de", "cours de",
+    "dernière version", "derniere version", "dernier modèle", "dernier modele",
+    "en ce moment", "actuellement", "aujourd'hui", "cette semaine",
+)
+
 
 PROMPT_CLASSIFICATION = """Tu es un classifieur d'intention. Tu ne réponds jamais à la demande.
 Choisis UNE seule étiquette parmi cette liste, et réponds UNIQUEMENT par cette étiquette :
@@ -51,13 +79,46 @@ class OrchestratorAgent(BaseAgent):
             memory=memory
         )
 
+    @staticmethod
+    def exige_verification(user_input: str, aujourd_hui: Optional[datetime.date] = None) -> bool:
+        """Dit si la question porte sur quelque chose que le modèle ne peut pas savoir.
+
+        Deux cas, et un seul suffit :
+
+        1. Une année **égale ou postérieure à l'année en cours** est citée. Aucun
+           modèle déployé ne connaît l'issue de son propre futur.
+        2. La question porte sur un état ou un résultat courant (« qui a gagné »,
+           « dernière version », « prix de ») **et** ne cite aucune année passée.
+
+        La date vient de l'horloge, jamais du modèle. `aujourd_hui` n'existe que
+        pour que les tests fixent une date au lieu de dépendre du jour où ils
+        tournent.
+        """
+        aujourd_hui = aujourd_hui or datetime.date.today()
+        texte = user_input.lower()
+
+        annees = [int(m.group()) for m in ANNEE.finditer(texte)]
+        if any(annee >= aujourd_hui.year for annee in annees):
+            return True
+
+        if annees:  # une année est citée, et elle est passée : le fait est acquis
+            return False
+
+        return any(formulation in texte for formulation in FORMULATIONS_COURANTES)
+
     async def analyze_intent(self, user_input: str) -> str:
         """Détermine vers quel agent envoyer la demande.
 
-        Le modèle rapide tranche (~200 ms). S'il est indisponible ou répond
-        autre chose qu'une étiquette connue, on retombe sur les mots-clés — un
-        repli moins fin, mais annoncé dans les journaux plutôt que silencieux.
+        Le contrôle daté passe en premier : il ne coûte rien et il rattrape ce
+        que le modèle ne peut pas voir. Ensuite seulement le modèle tranche.
+        S'il est indisponible ou répond autre chose qu'une étiquette connue, on
+        retombe sur les mots-clés — un repli moins fin, mais annoncé dans les
+        journaux plutôt que silencieux.
         """
+        if self.exige_verification(user_input):
+            logger.info("Contrôle daté : la question demande une vérification -> FRESH_INFO")
+            return "FRESH_INFO"
+
         intention = await self._classer_par_modele(user_input)
         if intention is not None:
             return intention

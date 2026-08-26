@@ -3,9 +3,12 @@
 Ces tests parcourent la chaîne HTTP complète : routeur → agent → sources
 renvoyées à l'appelant. Le modèle et le web sont doublés ; le reste est réel.
 """
+import datetime
+
 import pytest
 from fastapi.testclient import TestClient
 
+from agents.orchestrator.orchestrator_agent import OrchestratorAgent
 from apps.backend import main
 from apps.backend import security as securite
 from apps.backend.routers import chat as routeur_chat
@@ -189,3 +192,74 @@ def test_la_classification_n_est_pas_refaite_par_la_passerelle(client, agent_dou
                 headers=ENTETES)
 
     assert len(appels) == 1, f"classification faite {len(appels)} fois"
+
+
+class TestControleDate:
+    """Le tri ne peut pas dépendre d'un modèle qui ignore l'année en cours.
+
+    Cas réel, mesuré le 2026-08-26 sur la machine du propriétaire : à
+    « qui a gagné la coupe du monde 2026 », le chat a répondu *« je n'ai pas les
+    informations récentes »* au lieu d'aller chercher. Le modèle classeur avait
+    répondu `CHAT` — une réponse valide, et fausse : il ne peut pas savoir que
+    2026 est postérieur à son entraînement.
+    """
+
+    UN_JOUR_DE_2026 = datetime.date(2026, 8, 26)
+
+    @pytest.mark.parametrize("question", [
+        "qui a gagner la coupe du monde 2026",
+        "quels sont les résultats des élections de 2027",
+        "quel est le prix du baril en 2026",
+    ])
+    def test_une_annee_a_venir_declenche_la_verification(self, question):
+        assert OrchestratorAgent.exige_verification(question, self.UN_JOUR_DE_2026) is True
+
+    @pytest.mark.parametrize("question", [
+        "qui a gagné la coupe du monde 1998",
+        "que s'est-il passé en 1789",
+        "qui est le vainqueur du tour de france 2019",
+    ])
+    def test_une_annee_passee_ne_declenche_rien(self, question):
+        """Un fait daté et acquis n'a rien à aller chercher sur le web."""
+        assert OrchestratorAgent.exige_verification(question, self.UN_JOUR_DE_2026) is False
+
+    @pytest.mark.parametrize("question", [
+        "qui a gagné la coupe du monde",
+        "quelle est la dernière version de python",
+        "qui est le président du sénégal",
+        "combien coûte un billet pour dakar",
+    ])
+    def test_un_etat_courant_sans_annee_declenche_la_verification(self, question):
+        assert OrchestratorAgent.exige_verification(question, self.UN_JOUR_DE_2026) is True
+
+    @pytest.mark.parametrize("question", [
+        "explique-moi la relativité",
+        "traduis bonjour en wolof",
+        "écris une fonction python qui trie une liste",
+    ])
+    def test_une_question_ordinaire_passe_par_le_modele(self, question):
+        """Le contrôle daté ne doit pas rafler tout le trafic."""
+        assert OrchestratorAgent.exige_verification(question, self.UN_JOUR_DE_2026) is False
+
+    def test_la_date_vient_de_l_horloge_et_non_du_modele(self):
+        """La même question bascule selon l'année réelle, sans toucher au modèle."""
+        question = "qui a gagné la coupe du monde 2026"
+        assert OrchestratorAgent.exige_verification(question, datetime.date(2026, 1, 1)) is True
+        assert OrchestratorAgent.exige_verification(question, datetime.date(2030, 1, 1)) is False
+
+
+@pytest.mark.asyncio
+async def test_le_controle_date_court_circuite_le_modele():
+    """`analyze_intent` ne doit même pas interroger le modèle sur ces questions."""
+    appels = []
+
+    class ProviderQuiCompte:
+        async def generate(self, prompt, **kw):
+            appels.append(prompt)
+            return "CHAT"
+
+    orchestrateur = OrchestratorAgent(provider=ProviderQuiCompte())
+    intention = await orchestrateur.analyze_intent("qui a gagné la coupe du monde 2026")
+
+    assert intention == "FRESH_INFO"
+    assert appels == [], "le modèle a été interrogé alors que la date suffisait"
