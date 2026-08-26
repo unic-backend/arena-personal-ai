@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from apps.backend import main
+from apps.backend import security as securite
 from apps.backend.rate_limit import LimiteurDebit
 
 
@@ -131,9 +132,9 @@ ENTETES = {"Authorization": f"Bearer {CLE}"}
 
 @pytest.fixture
 def client(monkeypatch) -> TestClient:
-    monkeypatch.setattr(main, "ARENA_API_KEY", CLE)
-    monkeypatch.setattr(main, "REQUETES_MAX", 3)
-    monkeypatch.setattr(main, "limiteur", LimiteurDebit(3, 60, horloge=HorlogeFactice()))
+    monkeypatch.setattr(securite, "ARENA_API_KEY", CLE)
+    monkeypatch.setattr(securite, "REQUETES_MAX", 3)
+    monkeypatch.setattr(securite, "limiteur", LimiteurDebit(3, 60, horloge=HorlogeFactice()))
     return TestClient(main.app, raise_server_exceptions=False)
 
 

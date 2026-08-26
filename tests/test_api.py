@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from apps.backend import main
+from apps.backend import security as securite
 
 CLE_DE_TEST = "cle-de-test"
 ROUTES_METIER = ["/api/upload", "/api/process-video", "/api/chat", "/api/chat/stream"]
@@ -16,7 +17,7 @@ ROUTES_METIER = ["/api/upload", "/api/process-video", "/api/chat", "/api/chat/st
 @pytest.fixture
 def client(monkeypatch) -> TestClient:
     """Client HTTP avec une clé API connue ; les erreurs applicatives deviennent des 500."""
-    monkeypatch.setattr(main, "ARENA_API_KEY", CLE_DE_TEST)
+    monkeypatch.setattr(securite, "ARENA_API_KEY", CLE_DE_TEST)
     return TestClient(main.app, raise_server_exceptions=False)
 
 
@@ -64,7 +65,7 @@ def test_la_passerelle_v1_exige_la_cle(client, entetes):
 
 def test_sans_cle_configuree_la_passerelle_est_desactivee(monkeypatch, entetes):
     """Une clé vide ne doit pas ouvrir l'accès : elle doit le fermer."""
-    monkeypatch.setattr(main, "ARENA_API_KEY", "")
+    monkeypatch.setattr(securite, "ARENA_API_KEY", "")
     client_sans_cle = TestClient(main.app, raise_server_exceptions=False)
 
     assert client_sans_cle.get("/v1/models", headers=entetes).status_code == 500

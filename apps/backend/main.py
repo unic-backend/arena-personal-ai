@@ -1,11 +1,10 @@
 import json
 import logging
 import time
-from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -14,17 +13,14 @@ from pydantic import BaseModel
 from apps.backend.config import (
     AGENTS_SPECIALISES,
     ALLOWED_ORIGINS,
-    ARENA_API_KEY,
     BASE_DIR,
     EXTENSIONS_MEDIA_AUTORISEES,
-    FENETRE_SECONDES,
     MEDIA_DIR,
     RENDERED_DIR,
-    REQUETES_MAX,
     TAILLE_BLOC_ENVOI,
     TAILLE_MAX_ENVOI,
 )
-from apps.backend.rate_limit import LimiteurDebit
+from apps.backend.prompts import get_arena_system_prompt
 from apps.backend.runtime import (
     browser_agent,
     clip_selector,
@@ -46,6 +42,11 @@ from apps.backend.runtime import (
     trend_agent,
     video_agent,
 )
+from apps.backend.security import (
+    limiter_debit,
+    validate_media_path,
+    verify_api_key,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("arena.backend")
@@ -62,125 +63,6 @@ app.add_middleware(
 
 RENDERED_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/media/rendered", StaticFiles(directory=str(RENDERED_DIR)), name="rendered")
-
-limiteur = LimiteurDebit(requetes_max=REQUETES_MAX, fenetre_secondes=FENETRE_SECONDES)
-
-# Faits que le proprietaire peut enregistrer lui-meme en memoire longue. Rien
-# n'est ecrit en dur : une valeur absente n'apparait tout simplement pas.
-FAITS_DU_PROPRIETAIRE = [
-    ("president", "President de la Republique du Senegal"),
-    ("premier_ministre", "Premier ministre du Senegal"),
-]
-
-
-def date_du_jour() -> date:
-    """Date lue sur la machine. Isolee pour que les tests puissent la fixer."""
-    return date.today()
-
-
-def get_arena_system_prompt() -> str:
-    """Compose l'instruction systeme d'ARENA.
-
-    Aucun fait date n'est ecrit en dur ici. La version precedente affirmait
-    « Annee actuelle : 2026 » et nommait deux responsables politiques : trois
-    valeurs figees dans le code, qui deviennent fausses sans que rien ne le
-    signale. Ecrire une date dans un prompt ne donne pas de connaissance au
-    modele — cela lui donne seulement de quoi paraitre a jour.
-
-    Ce qui remplace : la date reellement lue sur la machine, une consigne
-    explicite de ne pas repondre de memoire sur ce qui a pu changer, et les
-    faits que le proprietaire a lui-meme enregistres — s'il l'a fait.
-    """
-    owner_name = memory.get_fact("owner") or "Saer"
-    aujourd_hui = date_du_jour()
-
-    lignes = [
-        f"Tu es ARENA, l'IA autonome personnelle de {owner_name}.",
-        f"Date du jour, lue sur la machine : {aujourd_hui.strftime('%d/%m/%Y')}.",
-        "",
-        "Connaitre la date ne te donne aucune connaissance des evenements recents.",
-        "Si la reponse a pu changer depuis ton entrainement — actualite, derniere",
-        "version d'un logiciel, prix, resultat, qui occupe un poste — ne reponds pas",
-        "de memoire. Dis que tu n'en es pas sur : ARENA sait aller verifier sur le web.",
-        "N'invente jamais une date, un chiffre ou un nom que tu n'as pas verifie.",
-    ]
-
-    enregistres = [
-        f"- {libelle} : {valeur}"
-        for cle, libelle in FAITS_DU_PROPRIETAIRE
-        if (valeur := memory.get_fact(cle))
-    ]
-    if enregistres:
-        lignes += [
-            "",
-            f"Faits enregistres par {owner_name} en memoire longue "
-            "(ils peuvent avoir change depuis : verifie si la question porte dessus) :",
-            *enregistres,
-        ]
-
-    lignes += ["", "Reponds en francais, de maniere exacte, claire et directe."]
-    return "\n".join(lignes)
-
-# ==============================================================================
-# SECURITE : cle API partagee (/v1 et /api) + validation des chemins media
-# ==============================================================================
-def client_de(request: Request) -> str:
-    """Identifie l'appelant pour la limitation de debit et les journaux."""
-    return request.client.host if request.client else "inconnu"
-
-
-def verify_api_key(request: Request, authorization: Optional[str] = Header(None)):
-    """Bloque tout appel a /v1 ou /api qui ne presente pas la bonne cle Bearer.
-
-    Un refus est journalise avec l'adresse de l'appelant et la route visee.
-    La cle presentee n'est jamais ecrite dans les journaux : un journal qui
-    contient des secrets est un secret de plus a proteger.
-    """
-    if not ARENA_API_KEY:
-        raise HTTPException(
-            status_code=500,
-            detail="ARENA_API_KEY absente du fichier .env : passerelle desactivee par securite."
-        )
-    if authorization != f"Bearer {ARENA_API_KEY}":
-        motif = "cle absente" if not authorization else "cle invalide"
-        logger.warning(
-            "Authentification refusee (%s) : %s -> %s",
-            motif, client_de(request), request.url.path,
-        )
-        raise HTTPException(status_code=401, detail="Cle API invalide ou manquante.")
-    return True
-
-
-def limiter_debit(request: Request):
-    """Refuse une requete de trop et indique dans combien de temps reessayer."""
-    client = client_de(request)
-    attente = limiteur.secondes_a_attendre(client)
-    if attente is None:
-        return True
-
-    logger.warning(
-        "Debit depasse : %s -> %s (%s requetes / %ss)",
-        client, request.url.path, REQUETES_MAX, FENETRE_SECONDES,
-    )
-    raise HTTPException(
-        status_code=429,
-        detail=f"Trop de requetes : maximum {REQUETES_MAX} par {FENETRE_SECONDES:.0f} s.",
-        headers={"Retry-After": str(max(1, int(attente) + 1))},
-    )
-
-
-def validate_media_path(raw_path: str) -> Path:
-    """Garantit qu'un chemin de fichier reste a l'interieur du dossier media/."""
-    p = Path(raw_path).resolve()
-    try:
-        p.relative_to(MEDIA_DIR.resolve())
-    except ValueError:
-        # `from None` : l'erreur interne de chemin n'a pas a remonter au client.
-        raise HTTPException(
-            status_code=403,
-            detail="Acces refuse : le fichier doit se trouver dans le dossier media/."
-        ) from None
-    return p
 
 
 class ChatRequest(BaseModel):

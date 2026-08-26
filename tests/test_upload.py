@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from apps.backend import main
+from apps.backend import security as securite
 
 CLE_DE_TEST = "cle-de-test"
 ENTETES = {"Authorization": f"Bearer {CLE_DE_TEST}"}
@@ -23,7 +24,7 @@ def dossier_media(tmp_path, monkeypatch):
 
 @pytest.fixture
 def client(monkeypatch) -> TestClient:
-    monkeypatch.setattr(main, "ARENA_API_KEY", CLE_DE_TEST)
+    monkeypatch.setattr(securite, "ARENA_API_KEY", CLE_DE_TEST)
     return TestClient(main.app, raise_server_exceptions=False)
 
 

@@ -658,16 +658,56 @@ raisons.
 
 ---
 
+### 26 août 2026 — T-19 phase 2/3 · Sécurité et instruction système extraites
+
+*Fichiers* : `apps/backend/security.py` (nouveau), `apps/backend/prompts.py`
+(nouveau), `apps/backend/main.py`, 5 fichiers de tests
+*Changement* : `main.py` passe de **588 à 470 lignes**. Les trois contrôles qui
+décident si une requête va plus loin — authentification, débit, chemin de
+fichier — vivent maintenant dans un fichier de 83 lignes qu'on lit d'un seul
+coup d'œil. L'instruction système est dans un fichier de 65 lignes, où la règle
+« aucun fait daté écrit en dur » est vérifiable sans être noyée.
+
+**Le piège de cette phase, et ce qui le referme.** Les tests remplaçaient
+`main.ARENA_API_KEY`. Une fois `verify_api_key` déplacée, elle lit la variable de
+`security` : le remplacement dans `main` n'a plus aucun effet — et un test qui
+remplace le mauvais module **passe sans rien vérifier**. Cinq fichiers de tests
+ont été redirigés vers le module propriétaire, et un test neuf
+(`test_aucun_reglage_n_est_duplique_dans_main`) refuse désormais qu'une copie de
+ces réglages réapparaisse dans `main`.
+
+Il a mordu immédiatement : trois de mes scripts de non-régression réglaient
+`main.ARENA_API_KEY` et mesuraient **0 appel au modèle** au lieu de 2 — la requête
+était refusée avant d'atteindre l'agent. Corrigés.
+
+**Le test d'inventaire a changé de forme.** Il affirmait « tout reste accessible
+depuis `main` », ce que le découpage invalide volontairement. Il affirme
+maintenant l'invariant qui compte : chaque nom a un module propriétaire et s'y
+trouve toujours — 58 noms répartis sur 5 modules.
+
+*Vérifications, toutes exécutées :*
+- `pytest tests/test_surface_api.py` → **21 passed**, empreinte des routes et de
+  leurs dépendances inchangée
+- suite complète → **292 passed, 20 deselected** ; `ruff` → 0 ; `gitleaks` → 0
+- chaînes de bout en bout, après correction des scripts : T-12 répond
+  `FRESH_INFO` / `FreshInfoAgent`, 2 appels au modèle, refus SSRF tenu, mémoire
+  d'envoi toujours à 2 Mo pour 64 Mo
+
+*Résultat* : **TERMINÉ** — phase 2 sur 3.
+
+---
+
 ## IN PROGRESS
 
 **Tâche courante** : T-19 — découpage de `main.py`, 3 phases.
-Phase 1 (filet de sécurité, configuration, objets partagés) terminée.
+Phases 1 et 2 terminées ; `main.py` est passé de 652 à 470 lignes.
 **État exact** : deux actions restent, et elles n'appartiennent qu'au
 propriétaire — changer les cinq clés dans `.env`, et autoriser la réécriture de
 l'historique (irréversible, casse les clones existants).
-**Prochaine action concrète** : T-19 phase 2 — extraire la sécurité
-(authentification, débit, chemins) et l'instruction système. Reste toujours dû
-par le propriétaire : l'étape 1 de `RUNBOOK_PURGE_SECRETS.md`.
+**Prochaine action concrète** : T-19 phase 3 — sortir les trois groupes de
+routes (`/v1`, médias, chat) dans `routers/`, et réduire `main.py` à
+l'assemblage. Reste toujours dû par le propriétaire : l'étape 1 de
+`RUNBOOK_PURGE_SECRETS.md`.
 
 ---
 
@@ -710,7 +750,7 @@ désormais protégées par `tests/test_documentation.py`.
 
 | # | Tâche | Effort | Critère de validation |
 |---|---|---|---|
-| T-19 | Découper `main.py` — **phase 1/3 faite** (652 → 588 lignes) | 2 h | Aucun fichier > 250 lignes, mêmes tests verts |
+| T-19 | Découper `main.py` — **phases 1 et 2/3 faites** (652 → 470 lignes) | 2 h | Aucun fichier > 250 lignes, mêmes tests verts |
 | T-20 | Tailwind servi en local (le CDN contredit le local-first) | 20 min | Interface stylée sans connexion réseau |
 | T-21 | Accès SQLite non bloquant depuis les routes `async` | 2 h | Charge concurrente sans blocage mesuré |
 | T-22 | Retirer les emojis des 4 lignes de log concernées | 10 min | Logs exploitables en agrégation |
@@ -874,7 +914,7 @@ Ce qui est certain, et vérifié par le code :
 | Appels au modèle avant le correctif n°9 | 3 | lecture du code : `chat_stream_endpoint` → `dispatch_request` → `orchestrator.run` |
 | Contexte configuré | `num_ctx: 4096` | `core/models/ollama_provider.py` |
 | Maintien en VRAM | `keep_alive: "30m"` | idem |
-| Durée de la suite de tests | 5,3 s pour 289 tests | `pytest -q` |
+| Durée de la suite de tests | 5,1 s pour 292 tests | `pytest -q` |
 | Pic mémoire, envoi de 64 Mo — avant T-02 | 64,0 Mo | `tracemalloc` sur l'ancien chemin |
 | Pic mémoire, envoi de 64 Mo — après T-02 | 2,0 Mo | `tracemalloc` sur `ecrire_par_blocs` |
 
@@ -989,3 +1029,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | 2026-08-26 | Claude Code | T-12 terminée (3 phases). P-03 partiellement résolu. Défaut préexistant corrigé : l'intention annoncée par /api/chat. |
 | 2026-08-26 | Claude Code | T-13 terminée (faits figés retirés du prompt système). P-03 résolu. |
 | 2026-08-26 | Claude Code | T-19 phase 1/3 : empreinte de la surface HTTP, config.py, runtime.py. |
+| 2026-08-26 | Claude Code | T-19 phase 2/3 : security.py et prompts.py extraits, tests redirigés vers le module propriétaire. |

@@ -112,31 +112,59 @@ def test_les_objets_partages_ne_sont_crees_qu_une_fois():
     assert main.fresh_agent is runtime.fresh_agent
 
 
-def test_les_reglages_lus_dans_l_environnement_restent_accessibles():
-    """Le remaniement ne doit pas faire disparaître un réglage."""
-    for nom in [
+# Chaque nom, et le module qui le detient apres le decoupage. L'invariant n'est
+# pas « tout reste dans main » — c'est « rien n'a disparu ».
+PROPRIETAIRE = {
+    "config": [
         "ALLOWED_ORIGINS", "ARENA_API_KEY", "MEDIA_DIR", "RENDERED_DIR",
         "TAILLE_MAX_ENVOI", "TAILLE_BLOC_ENVOI", "EXTENSIONS_MEDIA_AUTORISEES",
         "REQUETES_MAX", "FENETRE_SECONDES", "AGENTS_SPECIALISES",
-    ]:
-        assert hasattr(main, nom), f"{nom} n'est plus accessible depuis apps.backend.main"
-
-
-def test_les_agents_restent_accessibles():
-    for nom in [
+        "OLLAMA_URL", "MODELE_RAPIDE", "MODELE_PROFOND", "DB_PATH",
+    ],
+    "runtime": [
         "orchestrator", "coder_agent", "researcher_agent", "trend_agent",
         "video_agent", "editor_agent", "subtitle_agent", "clip_selector",
         "publisher_agent", "browser_agent", "repo_engineer", "swe_agent",
         "fresh_agent", "fast_provider", "deep_provider", "memory", "permissions",
-    ]:
-        assert hasattr(main, nom), f"{nom} n'est plus accessible depuis apps.backend.main"
-
-
-def test_les_fonctions_partagees_restent_accessibles():
-    for nom in [
+        "lightrag_tool", "graphrag_tool",
+    ],
+    "security": [
         "verify_api_key", "limiter_debit", "validate_media_path", "client_de",
-        "get_arena_system_prompt", "date_du_jour", "dispatch_request",
-        "formater_sources", "valider_nom_de_fichier", "ecrire_par_blocs",
-        "limiteur",
-    ]:
-        assert hasattr(main, nom), f"{nom} n'est plus accessible depuis apps.backend.main"
+        "limiteur", "ARENA_API_KEY", "REQUETES_MAX",
+    ],
+    "prompts": ["get_arena_system_prompt", "date_du_jour", "FAITS_DU_PROPRIETAIRE"],
+    "main": [
+        "app", "dispatch_request", "formater_sources",
+        "valider_nom_de_fichier", "ecrire_par_blocs", "ChatRequest",
+    ],
+}
+
+
+@pytest.mark.parametrize("module_nom", sorted(PROPRIETAIRE))
+def test_chaque_nom_a_un_proprietaire_et_y_est_toujours(module_nom):
+    """Le découpage déplace ; il ne doit rien faire disparaître."""
+    import importlib
+
+    module = importlib.import_module(f"apps.backend.{module_nom}")
+    absents = [nom for nom in PROPRIETAIRE[module_nom] if not hasattr(module, nom)]
+
+    assert absents == [], f"disparus de apps.backend.{module_nom} : {absents}"
+
+
+def test_aucun_reglage_n_est_duplique_dans_main():
+    """Une copie dans `main` serait figée : la remplacer n'aurait aucun effet.
+
+    C'est le piège de ce remaniement — un test qui remplace `main.ARENA_API_KEY`
+    passerait sans rien changer au comportement réel.
+    """
+    from apps.backend import main, security
+
+    copies = [
+        nom for nom in ["ARENA_API_KEY", "REQUETES_MAX", "FENETRE_SECONDES", "limiteur"]
+        if hasattr(main, nom)
+    ]
+
+    assert copies == [], (
+        f"{copies} existe(nt) dans main alors que security en est le proprietaire"
+    )
+    assert security.verify_api_key.__module__ == "apps.backend.security"

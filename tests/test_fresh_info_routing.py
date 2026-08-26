@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from apps.backend import main
+from apps.backend import security as securite
 
 CLE = "cle-de-test"
 ENTETES = {"Authorization": f"Bearer {CLE}"}
@@ -41,9 +42,9 @@ class AgentDouble:
 
 @pytest.fixture
 def client(monkeypatch) -> TestClient:
-    monkeypatch.setattr(main, "ARENA_API_KEY", CLE)
-    monkeypatch.setattr(main, "REQUETES_MAX", 100)
-    monkeypatch.setattr(main.limiteur, "requetes_max", 100)
+    monkeypatch.setattr(securite, "ARENA_API_KEY", CLE)
+    monkeypatch.setattr(securite, "REQUETES_MAX", 100)
+    monkeypatch.setattr(securite.limiteur, "requetes_max", 100)
 
     # `/api/chat` s'arrête avant tout agent si Ollama ne répond pas. C'est le
     # comportement voulu ; ici on veut mesurer l'aiguillage, pas cette garde.
