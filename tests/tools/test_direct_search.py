@@ -1,16 +1,25 @@
-﻿import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+"""Recherche web : sort réellement sur Internet, donc marquée `integration`."""
+import pytest
 
 from tools.search.web_search_tool import WebSearchTool
 
-print("🔍 Recherche Web en direct sur le Sénégal & la Tech...")
-tool = WebSearchTool()
-res = tool.search("actualites Senegal tech innovation", max_results=3)
 
-print(f"✅ Nombre de résultats trouvés : {len(res)}")
-for idx, r in enumerate(res, 1):
-    print(f"\n{idx}. {r['title']}")
-    print(f"   URL: {r['href']}")
-    print(f"   Résumé: {r['body'][:120]}...")
+@pytest.mark.integration
+def test_une_recherche_renvoie_des_resultats_exploitables():
+    resultats = WebSearchTool().search("actualites Senegal tech innovation", max_results=3)
+
+    if not resultats:
+        pytest.skip("Aucun résultat : moteur de recherche inaccessible depuis cette machine.")
+    assert all({"title", "href", "body"} <= set(r) for r in resultats)
+
+
+def test_une_recherche_qui_echoue_renvoie_une_liste_vide_pas_une_exception(monkeypatch):
+    """Hors ligne, l'outil doit rendre la main, pas faire tomber l'agent qui l'appelle."""
+    outil = WebSearchTool()
+    monkeypatch.setattr(
+        "builtins.__import__",
+        lambda nom, *a, **k: (_ for _ in ()).throw(ImportError("ddgs indisponible"))
+        if nom == "ddgs" else __import__(nom, *a, **k),
+    )
+
+    assert outil.search("peu importe") == []

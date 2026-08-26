@@ -1,10 +1,10 @@
-﻿import logging
+import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
-from core.models.base import ModelProvider
 from core.memory.memory_manager import MemoryManager
+from core.models.base import ModelProvider
 from tools.video.crop_tool import CropTool
 from tools.video.ffmpeg_tool import FFmpegTool
 

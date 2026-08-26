@@ -1,17 +1,17 @@
-﻿import yaml
 import logging
 from pathlib import Path
-from typing import Dict, Any
+
+import yaml
 
 logger = logging.getLogger("arena.security.permissions")
 
 class PermissionManager:
     """Gestionnaire central des permissions d'ARENA et de ses agents."""
-    
+
     DEFAULT_PERMISSIONS = {
         "READ_FILES": True,
         "WRITE_FILES": True,
-        "EXECUTE_COMMANDS": True,
+        "EXECUTE_COMMANDS": False,  # BLOQUÉ PAR DÉFAUT (Sécurité)
         "SEARCH_WEB": True,
         "DOWNLOAD_MEDIA": True,
         "PROCESS_MEDIA": True,

@@ -1,74 +1,112 @@
-"""Verifie que le bac a sable protege vraiment la machine.
+"""Bac à sable : ce qu'il fait quand il est là, et ce qu'il refuse quand il ne l'est pas.
 
-    Lancer avec :  .venv/Scripts/python.exe tests/tools/test_sandbox.py
+Les tests d'isolation exigent un démon Docker actif : ils portent le marqueur
+`integration` et sont désélectionnés par défaut. Le refus, lui, se vérifie partout.
 """
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+import pytest
 
 from tools.code.sandbox_interpreter import SandboxInterpreterTool
 
+CODE_TEMOIN = "print('ce code ne devrait pas s executer')"
 
-def main():
+
+@pytest.fixture
+def sans_docker(monkeypatch) -> SandboxInterpreterTool:
+    """Bac à sable dont le démon Docker est indisponible, flag de repli retiré."""
+    monkeypatch.delenv("ALLOW_UNSAFE_EXEC", raising=False)
     bac = SandboxInterpreterTool()
-    isole = bac.docker_available
+    monkeypatch.setattr(bac, "docker_available", False)
+    return bac
 
-    print("Test du bac a sable")
-    print("  Mode : %s" % ("DOCKER ISOLE" if isole else "FALLBACK LOCAL (non protege)"))
-    print("-" * 62)
 
-    echecs = []
+def test_sans_bac_a_sable_l_execution_est_refusee(sans_docker):
+    res = sans_docker.execute_python_code(CODE_TEMOIN)
 
-    # 1. Le code normal doit fonctionner
-    r = bac.execute_python_code("import math; print(round(math.pi, 4))")
-    if r["success"] and "3.1416" in r["stdout"]:
-        print("  OK     Execution d un calcul simple")
-    else:
-        print("  ECHEC  Execution d un calcul simple -> %s" % (r["stderr"][:80]))
-        echecs.append("calcul simple")
+    assert res["success"] is False
+    assert res["refused"] is True
+    assert res["sandbox_mode"] == "REFUSED"
+    assert res["stdout"] == ""
 
-    # 2. Les outils de maths doivent etre disponibles
-    r = bac.execute_python_code(
+
+def test_le_refus_ecrit_reellement_rien_sur_le_disque(sans_docker, tmp_path):
+    temoin = tmp_path / "preuve.txt"
+    res = sans_docker.execute_python_code(f"open({str(temoin)!r}, 'w').write('execute')")
+
+    assert res["sandbox_mode"] == "REFUSED"
+    assert not temoin.exists()
+
+
+@pytest.mark.parametrize("valeur", ["", "false", "0", "non", "peut-etre"])
+def test_une_valeur_non_reconnue_n_autorise_pas_le_repli(sans_docker, monkeypatch, valeur):
+    """Une autorisation ne se devine pas : tout ce qui n'est pas un oui explicite est un non."""
+    monkeypatch.setenv("ALLOW_UNSAFE_EXEC", valeur)
+
+    assert sans_docker.execute_python_code(CODE_TEMOIN)["sandbox_mode"] == "REFUSED"
+
+
+@pytest.mark.parametrize("valeur", ["1", "true", "TRUE", "yes", "oui"])
+def test_le_flag_explicite_reautorise_le_repli(sans_docker, monkeypatch, valeur):
+    monkeypatch.setenv("ALLOW_UNSAFE_EXEC", valeur)
+
+    res = sans_docker.execute_python_code("print('repli assume')")
+
+    assert res["success"] is True
+    assert res["stdout"] == "repli assume"
+    assert "FALLBACK" in res["sandbox_mode"]
+
+
+def test_un_echec_du_conteneur_ne_bascule_pas_sur_l_hote(monkeypatch, tmp_path):
+    """Docker annoncé actif mais injoignable : refus, pas exécution sur la machine."""
+    monkeypatch.delenv("ALLOW_UNSAFE_EXEC", raising=False)
+    bac = SandboxInterpreterTool()
+    monkeypatch.setattr(bac, "docker_available", True)
+    monkeypatch.setenv("PATH", str(tmp_path))  # plus aucun binaire `docker` atteignable
+
+    res = bac.execute_python_code(CODE_TEMOIN)
+
+    assert res["sandbox_mode"] == "REFUSED"
+    assert res["stdout"] == ""
+
+
+# --- Isolation réelle : exige un démon Docker et l'image arena-sandbox ---
+
+@pytest.fixture
+def bac_docker() -> SandboxInterpreterTool:
+    bac = SandboxInterpreterTool()
+    if not bac.docker_available:
+        pytest.skip("Démon Docker inactif : l'isolation ne peut pas être mesurée ici.")
+    return bac
+
+
+@pytest.mark.integration
+def test_docker_execute_un_calcul(bac_docker):
+    res = bac_docker.execute_python_code("import math; print(round(math.pi, 4))")
+
+    assert res["success"] is True
+    assert "3.1416" in res["stdout"]
+
+
+@pytest.mark.integration
+def test_docker_fournit_les_outils_de_calcul(bac_docker):
+    res = bac_docker.execute_python_code(
         "import sympy; x = sympy.Symbol('x'); print(sympy.solve(x**2 - 5*x + 6, x))"
     )
-    if r["success"] and "[2, 3]" in r["stdout"]:
-        print("  OK     Calcul mathematique avec sympy")
-    else:
-        print("  ECHEC  Calcul mathematique avec sympy -> %s" % (r["stderr"][:80]))
-        echecs.append("sympy")
 
-    # 3. et 4. : protections, verifiables uniquement en mode Docker
-    if not isole:
-        print("  IGNORE Tests de securite (Docker n est pas demarre)")
-        print("-" * 62)
-        print("ATTENTION : le bac a sable n est PAS actif.")
-        print("Demarre Docker Desktop puis relance ce test.")
-        sys.exit(1)
+    assert res["success"] is True
+    assert "[2, 3]" in res["stdout"]
 
-    r = bac.execute_python_code("import os; print(os.listdir('C:/'))")
-    if r["success"]:
-        print("  ECHEC  Le code a pu lire le disque de la machine")
-        echecs.append("acces disque")
-    else:
-        print("  OK     Acces au disque bloque")
 
-    r = bac.execute_python_code(
+@pytest.mark.integration
+def test_docker_bloque_l_acces_au_disque_de_la_machine(bac_docker):
+    res = bac_docker.execute_python_code("import os; print(os.listdir('/'))")
+
+    assert res["success"] is False
+
+
+@pytest.mark.integration
+def test_docker_bloque_l_acces_a_internet(bac_docker):
+    res = bac_docker.execute_python_code(
         "import urllib.request; print(urllib.request.urlopen('http://example.com', timeout=5).status)"
     )
-    if r["success"]:
-        print("  ECHEC  Le code a pu sortir sur Internet")
-        echecs.append("acces internet")
-    else:
-        print("  OK     Acces Internet bloque")
 
-    print("-" * 62)
-    if echecs:
-        print("%d ECHEC(S) : %s" % (len(echecs), ", ".join(echecs)))
-        sys.exit(1)
-
-    print("Bac a sable operationnel : la machine est protegee.")
-
-
-if __name__ == "__main__":
-    main()
+    assert res["success"] is False

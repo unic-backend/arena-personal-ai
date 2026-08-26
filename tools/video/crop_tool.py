@@ -1,6 +1,7 @@
-﻿import logging
+import logging
 import subprocess
 from pathlib import Path
+
 from tools.video.ffmpeg_tool import FFmpegTool
 
 logger = logging.getLogger("arena.tools.video.crop")

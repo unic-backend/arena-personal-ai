@@ -1,10 +1,9 @@
 import logging
-from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
-from core.models.base import ModelProvider
 from core.memory.memory_manager import MemoryManager
+from core.models.base import ModelProvider
 from tools.search.web_search_tool import WebSearchTool
 
 logger = logging.getLogger("arena.agent.researcher")
@@ -23,7 +22,7 @@ class DeepResearcherAgent(BaseAgent):
 
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         logger.info(f"DeepResearcherAgent entame une recherche approfondie sur : {user_input}")
-        
+
         # 1. Élaboration du plan de recherche
         plan_prompt = (
             "Tu es un directeur de recherche stratégique.\n"
@@ -31,7 +30,7 @@ class DeepResearcherAgent(BaseAgent):
             "Réponds UNIQUEMENT avec 3 lignes contenant chacune un mot-clé de recherche, sans numérotation ni puce.\n\n"
             f"Sujet de recherche: {user_input}"
         )
-        
+
         plan_res = await self.provider.generate(prompt=plan_prompt)
         queries = [q.strip() for q in plan_res.strip().split("\n") if q.strip()][:3]
         if not queries:

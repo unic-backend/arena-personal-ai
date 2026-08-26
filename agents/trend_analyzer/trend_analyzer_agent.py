@@ -1,9 +1,9 @@
-﻿import logging
-from typing import Dict, Any, Optional
+import logging
+from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
-from core.models.base import ModelProvider
 from core.memory.memory_manager import MemoryManager
+from core.models.base import ModelProvider
 from tools.search.web_search_tool import WebSearchTool
 
 logger = logging.getLogger("arena.agent.trend_analyzer")
@@ -23,10 +23,10 @@ class TrendAnalyzerAgent(BaseAgent):
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         region = context.get("region", "Sénégal & Afrique") if context else "Sénégal & Afrique"
         query = f"Tendances actualités {region} {user_input}"
-        
+
         logger.info(f"Recherche de tendances pour: {query}...")
         web_results = self.search_tool.search(query, max_results=4)
-        
+
         if not web_results:
             return {
                 "status": "warning",

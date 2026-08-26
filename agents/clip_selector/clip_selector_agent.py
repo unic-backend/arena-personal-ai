@@ -1,13 +1,13 @@
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
-from core.models.base import ModelProvider
 from core.memory.memory_manager import MemoryManager
-from tools.video.ffmpeg_tool import FFmpegTool
+from core.models.base import ModelProvider
 from tools.video.crop_tool import CropTool
+from tools.video.ffmpeg_tool import FFmpegTool
 
 logger = logging.getLogger("arena.agent.clip_selector")
 

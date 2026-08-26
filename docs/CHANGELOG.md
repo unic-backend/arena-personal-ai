@@ -1,5 +1,171 @@
 # CHANGELOG - ARENA PERSONAL AI
 
+## [Non publié]
+### Sécurité
+- La clé de la passerelle ne figure plus dans le dépôt : `librechat.yaml` lit
+  `${ARENA_API_KEY}`, que `docker-compose.yml` transmet au conteneur LibreChat.
+- Les endpoints métier `/api/upload`, `/api/process-video`, `/api/chat` et
+  `/api/chat/stream` exigent la même clé Bearer que `/v1`. Ils étaient ouverts.
+- CORS restreint aux interfaces locales (`ARENA_ALLOWED_ORIGINS`) au lieu de `*`,
+  méthodes limitées à `GET`/`POST`. Combiné aux endpoints ouverts, `*` laissait
+  n'importe quel site appeler les agents depuis le navigateur.
+- L'interface `apps/frontend/index.html` envoie la clé et l'oublie si elle est refusée.
+- Le bac à sable ne dégrade plus : sans Docker, l'exécution de code est
+  **refusée** (`sandbox_mode: REFUSED`) au lieu de basculer sur la machine hôte.
+  Le repli reste possible derrière `ALLOW_UNSAFE_EXEC=true`, explicitement.
+- `CoderAgent` ne relance plus le modèle pour corriger un code refusé : ce
+  n'est pas le code qui a échoué. Il renvoie `status: refused`.
+- `EXECUTE_COMMANDS` passe à `false` par défaut, dans `config/permissions.yaml`
+  **et** dans `DEFAULT_PERMISSIONS` — un `permissions.yaml` introuvable retombait
+  sinon sur la valeur permissive. `.env.example` annonçait aussi l'inverse.
+
+### Déploiement
+- `requirements.txt` ne contient plus que les 12 dépendances réellement importées
+  par le code. Le `pip freeze` d'origine est conservé dans `requirements.lock.txt`.
+- `pywin32` retiré des dépendances directes : plus aucun import ne le référence, et
+  il faisait échouer le build Docker Linux. Il garde un marqueur
+  `sys_platform == "win32"` dans le lock.
+- `langchain-openai` épinglé en `1.1.9` : la `1.6.0` du lock exige `openai>=2.45`
+  alors que `browser-use==0.13.8` épingle `openai==2.16.0`. Le couple gelé était
+  déjà impossible à réinstaller.
+
+### Tests
+- Socle pytest exécutable hors ligne : `tests/conftest.py` fournit un `FakeProvider`
+  scripté (aucun réseau, réponses données à l'avance, appels enregistrés) et une
+  mémoire SQLite jetable par test. `pyproject.toml` configure pytest, `asyncio_mode`
+  et le marqueur `integration`, désélectionné par défaut.
+- `requirements-dev.txt` ajoute `pytest` et `pytest-asyncio`.
+- Quatre fichiers convertis en vrais tests pytest (assertions au lieu de `print`) :
+  permissions, mémoire de conversation, interpréteur local et bac à sable.
+  `tests/test_memory_chat.py` n'exécutait plus rien : son appel à `/api/chat`
+  partait à l'import et n'affirmait rien. Il teste maintenant la mémoire elle-même.
+- Les tests d'isolation Docker du bac à sable portent le marqueur `integration`.
+- Trois agents testés hors ligne sur `FakeProvider` : orchestrateur (aiguillage,
+  historique transmis au modèle), `CoderAgent` (refus du bac à sable, boucle
+  d'auto-correction bornée) et `PublisherAgent` (`PUBLISH` bloqué, publication
+  réelle non implémentée).
+- Quatre agents de plus testés hors ligne : `TrendAnalyzer` et `DeepResearcher`
+  (recherche web doublée, aucun appel réseau), `RepoEngineer` et `SWEAgent`
+  (lecture seule vérifiée : toute écriture disque fait échouer le test).
+- Tout ce qui exige Ollama, Docker, ffmpeg, Whisper, Chromium ou le réseau porte
+  le marqueur `integration` et s'ignore proprement quand le service manque.
+  `pytest` est vert par défaut : **103 passed, 17 deselected**.
+- `tests/test_api.py` couvre désormais l'authentification des quatre routes `/api`,
+  la passerelle `/v1`, une clé vide qui ferme au lieu d'ouvrir, et le CORS.
+  Il exigeait `status == "healthy"`, donc Ollama : il vérifie maintenant l'API.
+- La vidéo de test est générée dans un dossier temporaire, plus dans `media/source/`.
+
+### Qualité
+- `ruff` configuré dans `pyproject.toml` (`E4, E7, E9, F, W, I, B`) et le dépôt passe
+  à zéro erreur. 178 corrections automatiques : imports inutiles, imports non triés,
+  espaces en fin de ligne, fichiers sans saut de ligne final.
+- Trois `raise HTTPException` dans une clause `except` chaînent maintenant leur cause
+  (`from e`) ou déclarent explicitement qu'ils la masquent (`from None`).
+- `E501` n'est pas activé : l'imposer reformaterait des prompts entiers.
+
+### Infrastructure
+- `LICENSE` ajouté : logiciel propriétaire, tous droits réservés. Le dépôt public
+  n'avait aucune licence, ce qui laissait le statut juridique implicite.
+- CI GitHub Actions (`.github/workflows/ci.yml`) : un job lint + suite hors ligne
+  sur Python 3.11, un job qui vérifie que `requirements.txt` se résout encore sur
+  3.11 et 3.12.
+- `.dockerignore` ajouté : `.env`, `.git`, tests, docs, `data/` et `media/` ne
+  partent plus dans le contexte de build.
+
+### Comportement
+- L'intention est maintenant classée par le modèle rapide au lieu d'une liste de
+  mots-clés. « Explique-moi le **code** de la route », « **Calcule** mon devis » et
+  « Quelle **erreur** j'ai faite hier ? » partaient vers le `CoderAgent`.
+- Le modèle répond une étiquette d'une liste fermée ; toute autre réponse est
+  rejetée. Modèle injoignable ou réponse hors liste → repli sur les mots-clés,
+  **annoncé dans les journaux**, jamais silencieux.
+- La classification n'est faite qu'une fois par requête : `dispatch_request` et
+  `OrchestratorAgent.run` réutilisent l'étiquette au lieu de la recalculer. Sans
+  ça, un message de chat coûtait trois appels au modèle au lieu d'un.
+
+### Corrigé
+- **L'interface fonctionne désormais sans Internet.** Elle chargeait sa mise en forme
+  depuis `cdn.tailwindcss.com` : hors ligne, elle s'affichait sans style — ce qui
+  contredisait la doctrine local-first (`DEC-0002`). Mesuré dans un vrai navigateur,
+  réseau coupé : l'en-tête faisait **137,875 px au lieu de 64**, le corps n'était plus
+  en `flex`. Le fichier est maintenant servi par le backend sur `/static/`.
+- `apps/frontend/vendor/PROVENANCE.md` déclare l'origine, la version, la date, la
+  taille et l'empreinte SHA-256 du fichier tiers embarqué. Deux tests vérifient que
+  le fichier réellement présent correspond à ce qui est déclaré.
+
+- BOM UTF-8 retiré de **37 fichiers** (l'audit en signalait 3). Il rendait la
+  première ligne illisible telle quelle : `import httpx` et `import yaml` étaient
+  invisibles à un `grep '^import'`, ce qui a failli les faire oublier dans
+  `requirements.txt`. `tests/test_encodage.py` empêche leur retour.
+- `/api/upload` filtre désormais le type et la taille. Il acceptait n'importe quel
+  fichier — un `.exe` comme une vidéo — et lisait tout en mémoire avant d'écrire :
+  un fichier de 8 Go occupait 8 Go de RAM. L'écriture se fait par blocs de 1 Mo,
+  la mémoire ne dépend plus de la taille du fichier (mesuré : 64 Mo → 2 Mo de pic
+  au lieu de 64). Plafond réglable par `ARENA_UPLOAD_MAX_BYTES`.
+- Scan de secrets en CI (`gitleaks`), avec deux règles propres au projet :
+  les règles standard ne détectaient **pas** la clé de `librechat.yaml`, trop
+  courte pour leur seuil d'entropie — c'est-à-dire la fuite qui a déclenché l'audit.
+  Deux contrôles : les fichiers actuels, et les commits ajoutés par la branche.
+- Limitation de débit sur les quatre routes qui appellent le modèle : 10 requêtes
+  par minute et par adresse (`ARENA_RATE_LIMIT_REQUESTS` / `_WINDOW`), réponse 429
+  avec `Retry-After`. Fenêtre glissante en mémoire, sans dépendance nouvelle.
+- Les refus d'authentification sont journalisés (adresse, route, motif). **La clé
+  présentée n'est jamais écrite dans les journaux.**
+
+### Ajouté
+- **Lecture des documents** (`tools/documents/reader.py`) : PDF page par page, Word
+  (paragraphes **et tableaux** — un devis vit souvent dans un tableau), texte, Markdown
+  et CSV. Les deux moteurs documentaires du projet n'acceptaient que du texte brut :
+  aucun ne savait ouvrir un PDF.
+- Chaque morceau de texte garde son origine (fichier, et numéro de page pour un PDF),
+  pour qu'une réponse documentaire puisse citer précisément sa source.
+- Un document illisible est **signalé** (`VIDE`, `NON_PRIS_EN_CHARGE`, `ECHEC`), jamais
+  remplacé par un résumé de mémoire. Un PDF scanné dit qu'il est scanné.
+- `pypdf` et `python-docx` deviennent des dépendances directes.
+- **Inventaire des documents** (`tools/documents/inventory.py`) : ce qui est déjà
+  indexé, ce qui a changé, ce qui a disparu. Un document inchangé n'est pas
+  réindexé — chaque passage indexé occupe la carte graphique.
+- Le suivi porte sur le **contenu** (empreinte SHA-256), pas sur la date : recopier
+  un fichier ne le rend pas modifié.
+- Un document supprimé du dossier est **signalé**, jamais retiré en silence.
+- `data/documents/` et `data/rag/` sont exclus de Git. Le dépôt est public :
+  un devis client qui y entrerait n'en ressortirait pas. Trois tests le vérifient.
+- **Commande d'indexation** : `python scripts/indexer_documents.py`. Elle vérifie
+  qu'Ollama répond et que `nomic-embed-text` est installé **avant** de commencer ;
+  sinon elle refuse, sans rien indexer ni rien noter.
+- La provenance part avec le texte : chaque passage est inséré préfixé de
+  `[Source : devis.pdf, page 2]`, pour que le moteur puisse citer précisément.
+- Un document que le moteur refuse **n'est pas noté comme indexé** : il est repris
+  au passage suivant, au lieu que l'index se croie complet.
+
+- **Pipeline d'information fraîche.** Une question dont la réponse a pu changer
+  (dernière version, actualité, qui occupe un poste, prix, météo) n'est plus
+  répondue de mémoire : ARENA cherche, **lit les pages**, et répond en citant
+  ses sources. Nouvelle intention `FRESH_INFO`, nouvel agent `FreshInfoAgent`,
+  nouveau modèle `arena-fresh` dans le menu de LibreChat et Open WebUI.
+- Sans résultat de recherche, ou sans page lisible, **le modèle n'est pas appelé** :
+  ARENA le dit plutôt que de répondre de mémoire.
+- `tools/search/source_fetcher.py` : lecture d'une page web, refus des adresses
+  internes, plafonds de taille et de durée, état explicite en cas d'échec.
+
+### Corrigé
+- La réponse de `/api/chat` annonçait `intent: "CHAT"` même quand un agent
+  spécialisé avait répondu. L'aiguilleur renseigne désormais l'intention suivie.
+
+### Remanié
+- `apps/backend/main.py` découpé : **652 → 61 lignes**. Il n'assemble plus que
+  l'application, les origines autorisées, le dossier des rendus et trois groupes
+  de routes. Le comportement est inchangé — la table des routes et les dépendances
+  attachées à chacune sont figées par `tests/test_surface_api.py`.
+- Nouveaux modules : `config.py` (réglages), `runtime.py` (objets partagés),
+  `security.py` (authentification, débit, chemins), `prompts.py` (instruction
+  système), et `routers/` (`chat`, `media`, `openai_gateway`).
+- L'instruction système n'affirme plus « Année actuelle : 2026 », ni le nom du
+  président et du premier ministre du Sénégal. Trois valeurs figées dans le code,
+  qui deviennent fausses sans que rien ne le signale. Elle donne à la place la
+  **date réellement lue sur la machine**, la consigne de ne pas répondre de mémoire
+  sur ce qui a pu changer, et les faits que le propriétaire a lui-même enregistrés.
+
 ## [1.7.0] - 2026-08-25
 ### Sécurité
 - La passerelle `/v1` exige désormais une clé API (`ARENA_API_KEY` dans `.env`).

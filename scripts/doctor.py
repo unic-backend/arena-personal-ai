@@ -1,7 +1,7 @@
-﻿import sys
-import subprocess
-import urllib.request
 import json
+import subprocess
+import sys
+import urllib.request
 
 print("==========================================")
 print("      ARENA DIAGNOSTIC SYSTEME (DOCTOR)   ")

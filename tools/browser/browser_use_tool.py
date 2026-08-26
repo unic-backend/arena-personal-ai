@@ -1,8 +1,7 @@
-import sys
-import asyncio
 import logging
+import sys
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger("arena.tools.browser_use")
 
@@ -11,6 +10,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from core.models.ollama_provider import OllamaProvider
+
 
 class BrowserUseTool:
     """Outil de navigation Web autonome basé sur Browser-Use et Playwright."""

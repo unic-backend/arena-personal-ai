@@ -1,9 +1,9 @@
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
-from core.models.base import ModelProvider
 from core.memory.memory_manager import MemoryManager
+from core.models.base import ModelProvider
 from tools.browser.browser_use_tool import BrowserUseTool
 
 logger = logging.getLogger("arena.agent.browser")
@@ -22,7 +22,7 @@ class BrowserAgent(BaseAgent):
 
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         logger.info(f"BrowserAgent au travail sur la tâche : {user_input}")
-        
+
         result = await self.browser_tool.run_task(user_input)
 
         if result["status"] == "success":

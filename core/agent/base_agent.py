@@ -1,11 +1,13 @@
-﻿from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
-from core.models.base import ModelProvider
+from abc import ABC, abstractmethod
+from typing import Any, Dict, Optional
+
 from core.memory.memory_manager import MemoryManager
+from core.models.base import ModelProvider
+
 
 class BaseAgent(ABC):
     """Classe abstraite dont héritent tous les agents spécialisés d'ARENA."""
-    
+
     def __init__(
         self,
         name: str,

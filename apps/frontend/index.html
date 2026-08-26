@@ -1,10 +1,12 @@
-﻿ <!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="fr" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ARENA — IA Personnelle Autonome</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tailwind servi localement : l'interface doit fonctionner sans Internet.
+         Origine et empreinte du fichier : vendor/PROVENANCE.md -->
+    <script src="/static/tailwind.js"></script>
     <style>
         body { background-color: #090d16; color: #f1f5f9; font-family: system-ui, -apple-system, sans-serif; }
         .glass { background: rgba(15, 23, 42, 0.75); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
@@ -169,6 +171,34 @@
         const sendBtn = document.getElementById('send-btn');
         let currentUploadedPath = null;
 
+        // Les endpoints /api exigent la cle ARENA_API_KEY (voir .env).
+        // Elle est demandee une fois puis conservee dans le navigateur.
+        function cleArena() {
+            let cle = localStorage.getItem('arena_api_key');
+            if (!cle) {
+                cle = window.prompt("Cle ARENA_API_KEY (valeur du fichier .env) :");
+                if (!cle) return null;
+                localStorage.setItem('arena_api_key', cle.trim());
+                cle = cle.trim();
+            }
+            return cle;
+        }
+
+        // Ajoute l'en-tete Authorization aux en-tetes fournis.
+        function enTetesArena(enTetes = {}) {
+            const cle = cleArena();
+            return cle ? { ...enTetes, 'Authorization': 'Bearer ' + cle } : enTetes;
+        }
+
+        // Une cle refusee est oubliee, sinon l'utilisateur reste bloque dessus.
+        function verifierAutorisation(reponse) {
+            if (reponse.status === 401 || reponse.status === 403) {
+                localStorage.removeItem('arena_api_key');
+                return false;
+            }
+            return true;
+        }
+
         function switchView(view) {
             const chatView = document.getElementById('view-chat');
             const videoView = document.getElementById('view-video');
@@ -202,7 +232,11 @@
             document.getElementById('video-status-text').innerText = "Upload du fichier vers le serveur local...";
 
             try {
-                const res = await fetch('/api/upload', { method: 'POST', body: formData });
+                const res = await fetch('/api/upload', { method: 'POST', headers: enTetesArena(), body: formData });
+                if (!verifierAutorisation(res)) {
+                    document.getElementById('video-status-text').innerText = "Cle API refusee. Recharge la page pour la resaisir.";
+                    return;
+                }
                 const data = await res.json();
                 if (data.status === 'success') {
                     currentUploadedPath = data.path;
@@ -229,7 +263,12 @@
             formData.append('video_path', currentUploadedPath);
 
             try {
-                const res = await fetch('/api/process-video', { method: 'POST', body: formData });
+                const res = await fetch('/api/process-video', { method: 'POST', headers: enTetesArena(), body: formData });
+                if (!verifierAutorisation(res)) {
+                    document.getElementById('video-spinner').classList.add('hidden');
+                    document.getElementById('video-status-text').innerText = "Cle API refusee. Recharge la page pour la resaisir.";
+                    return;
+                }
                 const data = await res.json();
 
                 document.getElementById('video-spinner').classList.add('hidden');
@@ -308,9 +347,16 @@
             try {
                 const response = await fetch('/api/chat/stream', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: enTetesArena({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify({ prompt: text, session_id: 'default' })
                 });
+
+                if (!verifierAutorisation(response)) {
+                    contentArea.innerHTML = "Cle API refusee. Recharge la page pour la resaisir.";
+                    sendBtn.disabled = false;
+                    sendBtn.classList.remove('opacity-50');
+                    return;
+                }
 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder("utf-8");

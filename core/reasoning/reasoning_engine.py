@@ -1,6 +1,7 @@
 import logging
 import re
-from typing import Dict, Any, Optional
+from typing import Any, Dict
+
 from core.models.base import ModelProvider
 from tools.code.sandbox_interpreter import SandboxInterpreterTool
 
@@ -32,12 +33,12 @@ class ReasoningEngine:
         # 2. ÉTAPE DE CALCUL / EXÉCUTION DANS OPENSANDBOX
         code_match = re.search(r"```python\n?(.*?)```", plan_res, re.DOTALL)
         execution_output = ""
-        
+
         if code_match:
             python_code = code_match.group(1).strip()
             logger.info("Exécution du code de vérification dans le Bac à Sable OpenSandbox...")
             exec_res = self.interpreter.execute_python_code(python_code)
-            
+
             if exec_res["success"]:
                 execution_output = exec_res["stdout"]
             else:

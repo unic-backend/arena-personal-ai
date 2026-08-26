@@ -1,13 +1,12 @@
-﻿import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
-from core.models.base import ModelProvider
 from core.memory.memory_manager import MemoryManager
-from tools.video.ffmpeg_tool import FFmpegTool
+from core.models.base import ModelProvider
 from tools.audio.transcription_tool import TranscriptionTool
+from tools.video.ffmpeg_tool import FFmpegTool
 
 logger = logging.getLogger("arena.agent.video_analyzer")
 
@@ -26,7 +25,7 @@ class VideoAnalyzerAgent(BaseAgent):
 
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         video_path = context.get("video_path") if context else None
-        
+
         if not video_path or not Path(video_path).exists():
             return {
                 "status": "error",

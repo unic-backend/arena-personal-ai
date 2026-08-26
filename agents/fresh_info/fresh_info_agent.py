@@ -1,0 +1,178 @@
+"""Agent d'information fraîche : chercher, lire, répondre en citant.
+
+Écrire « nous sommes en 2026 » dans un prompt ne donne aucune connaissance à un
+modèle : cela lui donne seulement de quoi paraître à jour. Pour répondre à une
+question d'actualité, il faut aller lire, puis citer ce qu'on a lu.
+
+Chaîne : recherche → lecture des pages → budget de contexte → synthèse → sources.
+
+Deux refus explicites, parce qu'une réponse inventée coûte plus cher qu'une
+absence de réponse :
+
+- **aucun résultat de recherche** → le modèle n'est pas appelé ;
+- **aucune page lisible** → le modèle n'est pas appelé non plus, et l'agent dit
+  ce qu'il a essayé de lire et pourquoi cela a échoué.
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Any, Dict, List, Optional
+
+from core.agent.base_agent import BaseAgent
+from core.memory.memory_manager import MemoryManager
+from core.models.base import ModelProvider
+from tools.search.source_fetcher import SourceFetcher
+from tools.search.web_search_tool import WebSearchTool
+
+logger = logging.getLogger("arena.agent.fresh_info")
+
+# Le modèle tourne avec num_ctx = 4096 jetons. Envoyer cinq pages entières
+# deborderait le contexte et ferait oublier la question elle-meme. Ce budget est
+# reparti entre les sources retenues.
+BUDGET_CARACTERES = 8000
+SOURCES_MAX = 3
+RESULTATS_RECHERCHE = 5
+
+GABARIT_SYNTHESE = """Tu es ARENA. Réponds à la question en t'appuyant UNIQUEMENT sur les sources ci-dessous.
+
+Règles :
+- Cite tes sources avec leur numéro entre crochets, par exemple [1].
+- Si les sources ne répondent pas à la question, dis-le clairement au lieu de deviner.
+- Ne complète pas avec tes connaissances propres : elles peuvent être périmées.
+- Réponds en français, de manière directe.
+
+SOURCES :
+{sources}
+
+QUESTION : {question}
+
+RÉPONSE (avec les numéros de source) :"""
+
+
+class FreshInfoAgent(BaseAgent):
+    """Répond aux questions d'actualité en lisant réellement le web."""
+
+    def __init__(
+        self,
+        provider: ModelProvider,
+        memory: Optional[MemoryManager] = None,
+        search_tool: Optional[WebSearchTool] = None,
+        fetcher: Optional[SourceFetcher] = None,
+        sources_max: int = SOURCES_MAX,
+        budget_caracteres: int = BUDGET_CARACTERES,
+    ):
+        super().__init__(
+            name="FreshInfoAgent",
+            description="Agent de reponse aux questions d'actualite, sources a l'appui.",
+            provider=provider,
+            memory=memory,
+        )
+        self.search_tool = search_tool or WebSearchTool()
+        self.fetcher = fetcher or SourceFetcher()
+        self.sources_max = sources_max
+        self.budget_caracteres = budget_caracteres
+
+    async def _lire_les_pages(self, resultats: List[Dict[str, str]]) -> List[Dict[str, Any]]:
+        """Lit en parallèle les pages candidates ; l'attente est réseau, pas GPU."""
+        candidats = [r for r in resultats if r.get("href")][: self.sources_max]
+        if not candidats:
+            return []
+
+        lectures = await asyncio.gather(
+            *(self.fetcher.fetch(r["href"]) for r in candidats),
+            return_exceptions=True,
+        )
+
+        pages = []
+        # strict=True : gather renvoie exactement une entree par candidat.
+        # Une divergence serait un defaut, pas un cas a absorber en silence.
+        for resultat, lecture in zip(candidats, lectures, strict=True):
+            if isinstance(lecture, BaseException):
+                logger.warning(f"Lecture interrompue : {resultat['href']} ({lecture})")
+                pages.append({
+                    "status": "FAILED", "url": resultat["href"],
+                    "reason": type(lecture).__name__, "text": "", "title": None,
+                })
+                continue
+            # Le titre du moteur de recherche depanne quand la page n'en a pas.
+            lecture.setdefault("title", None)
+            lecture["title"] = lecture["title"] or resultat.get("title") or resultat["href"]
+            pages.append(lecture)
+        return pages
+
+    def _repartir_le_budget(self, lues: List[Dict[str, Any]]) -> int:
+        """Nombre de caractères accordé à chaque source retenue."""
+        return max(500, self.budget_caracteres // max(1, len(lues)))
+
+    def _formater_les_sources(self, lues: List[Dict[str, Any]], part: int) -> str:
+        blocs = []
+        for numero, page in enumerate(lues, 1):
+            extrait = page["text"][:part].strip()
+            blocs.append(f"[{numero}] {page['title']}\n    ({page['url']})\n{extrait}")
+        return "\n\n".join(blocs)
+
+    async def run(
+        self, user_input: str, context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        logger.info(f"FreshInfoAgent cherche : {user_input}")
+        resultats = self.search_tool.search(user_input, max_results=RESULTATS_RECHERCHE)
+
+        if not resultats:
+            return {
+                "status": "warning",
+                "agent": self.name,
+                "sources": [],
+                "response": (
+                    "Aucun resultat de recherche pour cette question. "
+                    "Je prefere le dire plutot que repondre de memoire : "
+                    "mes connaissances propres peuvent etre perimees."
+                ),
+            }
+
+        pages = await self._lire_les_pages(resultats)
+        lues = [p for p in pages if p["status"] == "FETCHED" and p["text"].strip()]
+
+        if not lues:
+            details = "\n".join(
+                f"- {p['url']} : {p.get('reason', 'illisible')}" for p in pages
+            )
+            return {
+                "status": "warning",
+                "agent": self.name,
+                "sources": [],
+                "attempted": [p["url"] for p in pages],
+                "response": (
+                    "J'ai trouve des resultats mais je n'ai pu lire aucune page. "
+                    "Sans source lue, je ne reponds pas de memoire.\n\n"
+                    f"Pages tentees :\n{details}"
+                ),
+            }
+
+        part = self._repartir_le_budget(lues)
+        prompt = GABARIT_SYNTHESE.format(
+            sources=self._formater_les_sources(lues, part), question=user_input
+        )
+        reponse = await self.provider.generate(prompt=prompt)
+
+        return {
+            "status": "success",
+            "agent": self.name,
+            "query": user_input,
+            "sources_count": len(lues),
+            "sources": [
+                {
+                    "index": numero,
+                    "title": page["title"],
+                    "url": page["url"],
+                    "characters": min(len(page["text"]), part),
+                    "truncated": page.get("truncated", False) or len(page["text"]) > part,
+                }
+                for numero, page in enumerate(lues, 1)
+            ],
+            "unreadable": [
+                {"url": p["url"], "reason": p.get("reason", "illisible")}
+                for p in pages if p["status"] != "FETCHED"
+            ],
+            "response": reponse.strip(),
+        }

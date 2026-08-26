@@ -1,5 +1,5 @@
-﻿import logging
-from typing import List, Dict, Any
+import logging
+from typing import Dict, List
 
 logger = logging.getLogger("arena.tools.search")
 

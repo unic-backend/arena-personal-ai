@@ -3,6 +3,7 @@
 venv/
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # Variables d'environnement & Secrets
 .env
@@ -27,6 +28,10 @@ media/archive/*
 data/database/*.db
 data/cache/*
 data/embeddings/*
+data/documents/*
+!data/documents/.gitkeep
+data/rag/*
+!data/rag/.gitkeep
 logs/*.log
 
 # Node.js / Frontend

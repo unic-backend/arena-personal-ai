@@ -1,9 +1,10 @@
-﻿from abc import ABC, abstractmethod
-from typing import Dict, Any
+from abc import ABC, abstractmethod
+from typing import Any, Dict
+
 
 class SocialConnector(ABC):
     """Classe de base pour tous les connecteurs de réseaux sociaux (TikTok, YouTube, Insta)."""
-    
+
     def __init__(self, platform_name: str):
         self.platform_name = platform_name
         self.is_authenticated = False

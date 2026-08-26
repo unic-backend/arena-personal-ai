@@ -1,11 +1,9 @@
-import json
 import logging
-from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
-from core.models.base import ModelProvider
 from core.memory.memory_manager import MemoryManager
+from core.models.base import ModelProvider
 from tools.coder.repo_engineer_tool import RepoEngineerTool
 
 logger = logging.getLogger("arena.agent.repo_engineer")

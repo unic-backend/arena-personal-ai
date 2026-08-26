@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: ["master", "claude/**"]
+  pull_request:
+    branches: ["master"]
+
+jobs:
+  lint-and-test:
+    name: Lint and offline test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # Meme version que apps/backend/Dockerfile.
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install test dependencies
+        # Only what the offline suite imports, pinned by requirements.txt used as
+        # a constraints file. Installing the full dependency tree (browser-use,
+        # lightrag, faster-whisper) would take minutes and test nothing more:
+        # every service-dependent test carries the `integration` marker and is
+        # deselected here.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -c requirements.txt fastapi httpx pyyaml python-dotenv pydantic \
+            python-multipart pypdf python-docx
+          pip install ruff
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Pytest
+        run: pytest
+
+  dependencies:
+    name: Declared dependencies still resolve
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Resolve requirements.txt
+        # Resolution only: this is what caught pywin32 pinned without a platform
+        # marker, which made the Linux Docker build impossible.
+        run: |
+          python -m pip install --upgrade pip
+          pip install --dry-run -r requirements.txt
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Toute l'histoire : l'etape 2 compare la branche a master.
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        # Le binaire est telecharge et epingle plutot que d'utiliser l'action du
+        # marketplace, qui demande une licence pour les depots d'organisation.
+        env:
+          GITLEAKS_VERSION: "8.28.0"
+        run: |
+          curl -sSL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: No secret in the current files
+        # Le controle principal : aucun secret dans les fichiers tels qu'ils sont.
+        # C'est celui qui attrape une valeur recopiee dans un test ou un document.
+        run: gitleaks detect --source . --no-git --no-banner --redact --config .gitleaks.toml
+
+      - name: No secret added by this branch
+        # Un secret ajoute puis retire dans un commit de la branche reste dans
+        # l'historique : on compare donc la branche a master.
+        # L'historique anterieur contient des secrets connus (voir P-01 du
+        # worklog) ; il sera scannable en entier une fois T-01 executee.
+        if: github.ref != 'refs/heads/master'
+        run: |
+          git fetch origin master --quiet
+          if git rev-parse --verify --quiet origin/master >/dev/null; then
+            gitleaks detect --source . --no-banner --redact --config .gitleaks.toml \
+              --log-opts="origin/master..HEAD"
+          else
+            echo "Pas de branche master a comparer, etape ignoree."
+          fi

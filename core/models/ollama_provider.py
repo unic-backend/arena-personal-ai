@@ -1,8 +1,10 @@
-﻿import httpx
 import json
-import re
 import logging
-from typing import Optional, AsyncGenerator
+import re
+from typing import AsyncGenerator, Optional
+
+import httpx
+
 from core.models.base import ModelProvider
 
 logger = logging.getLogger("arena.ollama")
@@ -41,7 +43,7 @@ class OllamaProvider(ModelProvider):
             res.raise_for_status()
             data = res.json()
             raw_response = data.get("response", "")
-            
+
             clean_response = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL).strip()
             return clean_response if clean_response else raw_response.strip()
 

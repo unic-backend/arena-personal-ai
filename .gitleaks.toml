@@ -1,0 +1,65 @@
+# Configuration gitleaks pour ARENA.
+#
+# Les regles par defaut de gitleaks ne suffisent pas ici : la cle qui a declenche
+# l'audit du 26/08/2026, `apiKey: "arena-****-****"` dans librechat.yaml, a trop
+# peu d'entropie pour la regle generique. Elle est passee inapercue.
+# Les deux regles ci-dessous visent les emplacements exacts ou ce projet ecrit
+# des secrets.
+
+title = "ARENA — detection de secrets"
+
+# On garde toutes les regles standard, et on ajoute les notres.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "arena-librechat-apikey"
+description = "Cle API ecrite en clair dans un fichier YAML (librechat.yaml)"
+regex = '''(?i)apikey\s*:\s*["']([^"'\s]{8,})["']'''
+secretGroup = 1
+tags = ["arena", "apikey"]
+path = '''\.ya?ml$'''
+
+  [rules.allowlist]
+  # Une reference a une variable d'environnement n'est pas un secret.
+  regexTarget = "match"
+  regexes = ['''\$\{[A-Z_][A-Z0-9_]*\}''']
+
+[[rules]]
+id = "arena-compose-secret"
+description = "Secret ecrit en clair au lieu d'une variable d'environnement"
+# Le jeu de caracteres est volontairement etroit : un vrai secret est fait de
+# lettres, chiffres, tirets et soulignes. `os.getenv("...` ou `<a remplacer>`
+# n'en sont pas, et n'ont pas a declencher une alerte.
+regex = '''(?i)\b(CREDS_KEY|JWT_SECRET|JWT_REFRESH_SECRET|WEBUI_SECRET_KEY|ARENA_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|SECRET_KEY)\s*[=:]\s*["']?([A-Za-z0-9_-]{9,})["']?'''
+secretGroup = 2
+tags = ["arena", "secret"]
+
+  [rules.allowlist]
+  regexTarget = "match"
+  regexes = [
+    '''\$\{[A-Z_][A-Z0-9_]*\}''',
+    # Valeurs de remplacement documentaires, jamais de vrais secrets.
+    '''change_this_to_a_secure_random_key''',
+    '''(?i)(exemple|example|placeholder|votre[_-]?cle|<[^>]+>)''',
+  ]
+
+[allowlist]
+description = "Emplacements ou une valeur de forme secrete est attendue"
+# Les motifs ne sont PAS ancres par `^` : gitleaks compare le chemin tel qu'il
+# lui est donne. Avec `--source .` il est relatif, avec `--source /chemin/absolu`
+# il ne l'est pas, et un motif ancre cesse alors silencieusement de s'appliquer.
+# Mesure le 26/08/2026 : 3 faux positifs apparaissaient dans ce cas.
+paths = [
+  # Artefacts locaux, jamais versionnes.
+  '''__pycache__''',
+  '''(^|/)\.(ruff|pytest)_cache/''',
+  # Fichier d'exemple : il ne contient que des valeurs vides ou explicatives.
+  '''(^|/)\.env\.example$''',
+  # Les tests du preparateur de purge utilisent des valeurs inventees, et le
+  # garde-fou documentaire doit connaitre la forme de ce qu'il cherche.
+  '''(^|/)tests/test_preparer_purge_secrets\.py$''',
+  '''(^|/)tests/test_documentation\.py$''',
+  # Ce fichier decrit les regles : ses exemples ne sont pas des secrets.
+  '''(^|/)\.gitleaks\.toml$''',
+]
