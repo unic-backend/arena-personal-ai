@@ -35,6 +35,11 @@
   mémoire SQLite jetable par test. `pyproject.toml` configure pytest, `asyncio_mode`
   et le marqueur `integration`, désélectionné par défaut.
 - `requirements-dev.txt` ajoute `pytest` et `pytest-asyncio`.
+- Quatre fichiers convertis en vrais tests pytest (assertions au lieu de `print`) :
+  permissions, mémoire de conversation, interpréteur local et bac à sable.
+  `tests/test_memory_chat.py` n'exécutait plus rien : son appel à `/api/chat`
+  partait à l'import et n'affirmait rien. Il teste maintenant la mémoire elle-même.
+- Les tests d'isolation Docker du bac à sable portent le marqueur `integration`.
 
 ## [1.7.0] - 2026-08-25
 ### Sécurité

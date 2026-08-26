@@ -1,16 +1,10 @@
-﻿import sys
-from pathlib import Path
+"""Interpréteur local : exécution réelle d'un script Python dans un sous-processus.
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-
+Ce test ne dépend d'aucun service externe — il lance l'interpréteur de la machine.
+"""
 from tools.code.code_interpreter_tool import CodeInterpreterTool
 
-def test_interpreter():
-    print("🧪 Test du CodeInterpreterTool...")
-    tool = CodeInterpreterTool()
-    
-    # Test 1 : Calcul mathématique & logique
-    code_1 = """
+FIBONACCI = """
 def fibonacci(n):
     a, b = 0, 1
     for _ in range(n):
@@ -19,19 +13,34 @@ def fibonacci(n):
 
 print(f'Fibonacci(10) = {fibonacci(10)}')
 """
-    res1 = tool.execute_python_code(code_1)
-    print(f"   Test 1 (Calcul) : Success={res1['success']} | Output: {res1['stdout']}")
-    assert res1['success'] == True
-    assert "Fibonacci(10) = 55" in res1['stdout']
-    
-    # Test 2 : Capture d'erreur auto
-    code_2 = "print(10 / 0)"
-    res2 = tool.execute_python_code(code_2)
-    print(f"   Test 2 (Détection d'erreur 0) : Success={res2['success']} | Error: {res2['stderr']}")
-    assert res2['success'] == False
-    assert "ZeroDivisionError" in res2['stderr']
-    
-    print("\n✅ CODE INTERPRETER LOCAL VALIDÉ AVEC SUCCÈS !")
 
-if __name__ == "__main__":
-    test_interpreter()
+
+def test_un_code_valide_s_execute_et_renvoie_sa_sortie():
+    res = CodeInterpreterTool().execute_python_code(FIBONACCI)
+
+    assert res["success"] is True
+    assert res["exit_code"] == 0
+    assert "Fibonacci(10) = 55" in res["stdout"]
+
+
+def test_une_erreur_est_remontee_et_pas_avalee():
+    res = CodeInterpreterTool().execute_python_code("print(10 / 0)")
+
+    assert res["success"] is False
+    assert "ZeroDivisionError" in res["stderr"]
+
+
+def test_les_balises_markdown_sont_retirees_avant_execution():
+    res = CodeInterpreterTool().execute_python_code("```python\nprint('bonjour')\n```")
+
+    assert res["success"] is True
+    assert res["stdout"] == "bonjour"
+    assert "```" not in res["executed_code"]
+
+
+def test_un_code_trop_long_est_interrompu():
+    res = CodeInterpreterTool(timeout_seconds=1).execute_python_code("import time; time.sleep(10)")
+
+    assert res["success"] is False
+    assert res["exit_code"] == -1
+    assert "Temps d'exécution dépassé" in res["stderr"]
