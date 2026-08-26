@@ -26,12 +26,28 @@ SURFACE_ATTENDUE = {
 }
 
 
+def _parcourir(objet):
+    """Parcourt les routes, y compris celles montées via `include_router`.
+
+    Selon la version de FastAPI, un routeur inclus est soit aplati dans
+    `app.routes`, soit conservé dans un objet intermédiaire. Ce parcours couvre
+    les deux — sans cela, le test ne verrait plus aucune route métier après le
+    découpage et passerait pour de mauvaises raisons.
+    """
+    for route in getattr(objet, "routes", []):
+        if isinstance(route, APIRoute):
+            yield route
+        else:
+            interne = getattr(route, "original_router", None) or route
+            if interne is not route:
+                yield from _parcourir(interne)
+
+
 def routes_declarees() -> dict:
     trouvees = {}
-    for route in main.app.routes:
-        if isinstance(route, APIRoute):
-            dependances = [d.dependency.__name__ for d in route.dependencies]
-            trouvees[route.path] = (sorted(route.methods - {"HEAD", "OPTIONS"}), dependances)
+    for route in _parcourir(main.app):
+        dependances = [d.dependency.__name__ for d in route.dependencies]
+        trouvees[route.path] = (sorted(route.methods - {"HEAD", "OPTIONS"}), dependances)
     return trouvees
 
 
@@ -67,7 +83,7 @@ def test_toute_route_appelant_le_modele_est_limitee_en_debit():
 
 
 def test_le_dossier_des_rendus_reste_servi():
-    montages = [r.path for r in main.app.routes if r.path.startswith("/media")]
+    montages = [getattr(r, "path", "") for r in main.app.routes]
 
     assert "/media/rendered" in montages
 
@@ -103,13 +119,21 @@ def test_la_configuration_ne_cree_aucun_objet():
 
 
 def test_les_objets_partages_ne_sont_crees_qu_une_fois():
-    """Deux MemoryManager sur la même base, ou deux providers, seraient un défaut."""
-    from apps.backend import main, runtime
+    """Deux MemoryManager sur la même base, ou deux providers, seraient un défaut.
 
-    assert main.memory is runtime.memory
+    Le découpage multiplie les modules qui importent ces objets : c'est
+    exactement là qu'une copie accidentelle apparaîtrait.
+    """
+    from apps.backend import main, runtime
+    from apps.backend.routers import chat, media, openai_gateway
+
     assert main.fast_provider is runtime.fast_provider
-    assert main.orchestrator is runtime.orchestrator
-    assert main.fresh_agent is runtime.fresh_agent
+    assert chat.memory is runtime.memory
+    assert chat.orchestrator is runtime.orchestrator
+    assert chat.fresh_agent is runtime.fresh_agent
+    assert openai_gateway.fresh_agent is runtime.fresh_agent
+    assert media.permissions is runtime.permissions
+    assert chat.video_agent is media.video_agent
 
 
 # Chaque nom, et le module qui le detient apres le decoupage. L'invariant n'est
@@ -133,10 +157,10 @@ PROPRIETAIRE = {
         "limiteur", "ARENA_API_KEY", "REQUETES_MAX",
     ],
     "prompts": ["get_arena_system_prompt", "date_du_jour", "FAITS_DU_PROPRIETAIRE"],
-    "main": [
-        "app", "dispatch_request", "formater_sources",
-        "valider_nom_de_fichier", "ecrire_par_blocs", "ChatRequest",
-    ],
+    "main": ["app"],
+    "routers.chat": ["router", "dispatch_request", "formater_sources", "ChatRequest"],
+    "routers.media": ["router", "valider_nom_de_fichier", "ecrire_par_blocs"],
+    "routers.openai_gateway": ["router"],
 }
 
 

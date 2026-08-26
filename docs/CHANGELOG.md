@@ -117,6 +117,15 @@
 ### Corrigé
 - La réponse de `/api/chat` annonçait `intent: "CHAT"` même quand un agent
   spécialisé avait répondu. L'aiguilleur renseigne désormais l'intention suivie.
+
+### Remanié
+- `apps/backend/main.py` découpé : **652 → 61 lignes**. Il n'assemble plus que
+  l'application, les origines autorisées, le dossier des rendus et trois groupes
+  de routes. Le comportement est inchangé — la table des routes et les dépendances
+  attachées à chacune sont figées par `tests/test_surface_api.py`.
+- Nouveaux modules : `config.py` (réglages), `runtime.py` (objets partagés),
+  `security.py` (authentification, débit, chemins), `prompts.py` (instruction
+  système), et `routers/` (`chat`, `media`, `openai_gateway`).
 - L'instruction système n'affirme plus « Année actuelle : 2026 », ni le nom du
   président et du premier ministre du Sénégal. Trois valeurs figées dans le code,
   qui deviennent fausses sans que rien ne le signale. Elle donne à la place la

@@ -697,17 +697,72 @@ trouve toujours — 58 noms répartis sur 5 modules.
 
 ---
 
+### 26 août 2026 — T-19 phase 3/3 · Routeurs séparés · **T-19 TERMINÉE**
+
+*Fichiers* : `apps/backend/routers/{chat,media,openai_gateway}.py` (nouveaux),
+`apps/backend/main.py`, 5 fichiers de tests
+*Changement* : `main.py` passe de 470 à **61 lignes**. Il n'assemble plus que
+l'application, les origines autorisées, le dossier des rendus, `/` et `/health`,
+puis inclut trois routeurs.
+
+**Résultat du découpage, mesuré :**
+
+| Fichier | Rôle | Lignes |
+|---|---|---|
+| `main.py` | assemblage | **61** |
+| `config.py` | réglages lus dans l'environnement | 61 |
+| `runtime.py` | objets partagés | 58 |
+| `security.py` | authentification, débit, chemins | 83 |
+| `prompts.py` | instruction système | 65 |
+| `routers/chat.py` | conversation et aiguillage | 149 |
+| `routers/media.py` | envoi et chaîne vidéo | 158 |
+| `routers/openai_gateway.py` | passerelle `/v1` | 174 |
+
+Le critère de T-19 (« aucun fichier > 250 lignes ») est tenu : le plus gros
+fichier du projet est `tools/search/source_fetcher.py`, à 220 lignes.
+
+**Un piège du filet de sécurité lui-même.** Cette version de FastAPI ne met pas
+les routes incluses à plat dans `app.routes` : elle conserve un objet
+intermédiaire. Le test de surface ne voyait donc **plus aucune route métier** et
+serait passé à vide sur les contrôles transversaux. Le parcours est désormais
+récursif, et j'ai vérifié à la main qu'il voit bien les 8 routes avec leurs
+dépendances — un test vert après remaniement doit prouver qu'il a regardé.
+
+**Une conséquence assumée du découpage** : `fresh_agent` est importé par deux
+modules (`chat` et `openai_gateway`). En production c'est le même objet — un test
+l'affirme. Dans un test, le remplacer demande de viser les deux. Mon script de
+non-régression ne visait qu'un seul, et la passerelle `/v1` est tombée sur le
+vrai agent : sans moteur de recherche installé, il a répondu *« Aucun résultat…
+je préfère le dire plutôt que répondre de mémoire »*. Le refus a fonctionné
+exactement comme conçu.
+
+*Vérifications, toutes exécutées :*
+- `tests/test_surface_api.py` → **21 passed**, et vérification manuelle : 8 routes
+  vues, `verify_api_key` sur les 6 routes métier, `limiter_debit` sur les 4 qui
+  appellent le modèle
+- suite complète → **295 passed, 20 deselected** ; `ruff` → 0 ; `gitleaks` → 0
+- chaînes de bout en bout : `/api/chat` et `/v1` répondent `FRESH_INFO` /
+  `FreshInfoAgent` avec sources, 2 appels au modèle ; refus SSRF tenu ; envoi de
+  64 Mo toujours à 2 Mo de pic
+
+*Décision* : `formater_sources` et `dispatch_request` restent dans
+`routers/chat.py`, importés par la passerelle. *Coût si c'est faux* : la
+passerelle dépend du routeur de chat ; l'inverse aurait demandé un module de plus
+pour deux fonctions.
+
+*Résultat* : **T-19 TERMINÉE** — 3 phases sur 3, comportement inchangé.
+
+---
+
 ## IN PROGRESS
 
-**Tâche courante** : T-19 — découpage de `main.py`, 3 phases.
-Phases 1 et 2 terminées ; `main.py` est passé de 652 à 470 lignes.
+**Tâche courante** : aucune. T-19 est terminée, ses 3 phases vérifiées.
 **État exact** : deux actions restent, et elles n'appartiennent qu'au
 propriétaire — changer les cinq clés dans `.env`, et autoriser la réécriture de
 l'historique (irréversible, casse les clones existants).
-**Prochaine action concrète** : T-19 phase 3 — sortir les trois groupes de
-routes (`/v1`, médias, chat) dans `routers/`, et réduire `main.py` à
-l'assemblage. Reste toujours dû par le propriétaire : l'étape 1 de
-`RUNBOOK_PURGE_SECRETS.md`.
+**Prochaine action concrète** : au choix — T-20 (Tailwind en local, ~20 min),
+T-14 (routeur enrichi) ou T-16/T-17 (mémoire et documents). Reste toujours dû
+par le propriétaire : l'étape 1 de `RUNBOOK_PURGE_SECRETS.md`.
 
 ---
 
@@ -748,9 +803,10 @@ désormais protégées par `tests/test_documentation.py`.
 
 ### Priorité 5 — Dette technique
 
+**T-19 terminée le 26/08/2026** — voir *COMPLETED*.
+
 | # | Tâche | Effort | Critère de validation |
 |---|---|---|---|
-| T-19 | Découper `main.py` — **phases 1 et 2/3 faites** (652 → 470 lignes) | 2 h | Aucun fichier > 250 lignes, mêmes tests verts |
 | T-20 | Tailwind servi en local (le CDN contredit le local-first) | 20 min | Interface stylée sans connexion réseau |
 | T-21 | Accès SQLite non bloquant depuis les routes `async` | 2 h | Charge concurrente sans blocage mesuré |
 | T-22 | Retirer les emojis des 4 lignes de log concernées | 10 min | Logs exploitables en agrégation |
@@ -788,7 +844,7 @@ l'autorisation de réécrire l'historique (irréversible).
 
 ### P-02 · HIGH · Upload sans contrôle de type ni de taille
 
-**Emplacement** : `apps/backend/main.py`, `upload_video()`
+**Emplacement** : `apps/backend/routers/media.py`, `upload_video()`
 **Cause** : `buffer.write(await file.read())` lit tout le fichier en mémoire ;
 aucune extension n'est filtrée.
 **Vérifié** : lecture du code — le seul contrôle est `Path(file.filename).name`,
@@ -914,7 +970,7 @@ Ce qui est certain, et vérifié par le code :
 | Appels au modèle avant le correctif n°9 | 3 | lecture du code : `chat_stream_endpoint` → `dispatch_request` → `orchestrator.run` |
 | Contexte configuré | `num_ctx: 4096` | `core/models/ollama_provider.py` |
 | Maintien en VRAM | `keep_alive: "30m"` | idem |
-| Durée de la suite de tests | 5,1 s pour 292 tests | `pytest -q` |
+| Durée de la suite de tests | 5,4 s pour 295 tests | `pytest -q` |
 | Pic mémoire, envoi de 64 Mo — avant T-02 | 64,0 Mo | `tracemalloc` sur l'ancien chemin |
 | Pic mémoire, envoi de 64 Mo — après T-02 | 2,0 Mo | `tracemalloc` sur `ecrire_par_blocs` |
 
@@ -1030,3 +1086,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | 2026-08-26 | Claude Code | T-13 terminée (faits figés retirés du prompt système). P-03 résolu. |
 | 2026-08-26 | Claude Code | T-19 phase 1/3 : empreinte de la surface HTTP, config.py, runtime.py. |
 | 2026-08-26 | Claude Code | T-19 phase 2/3 : security.py et prompts.py extraits, tests redirigés vers le module propriétaire. |
+| 2026-08-26 | Claude Code | T-19 terminée : main.py 652 → 61 lignes, 3 routeurs, comportement inchangé. |

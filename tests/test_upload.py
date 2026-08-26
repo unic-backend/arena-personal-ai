@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from apps.backend import main
 from apps.backend import security as securite
+from apps.backend.routers import media
 
 CLE_DE_TEST = "cle-de-test"
 ENTETES = {"Authorization": f"Bearer {CLE_DE_TEST}"}
@@ -18,7 +19,7 @@ ENTETES = {"Authorization": f"Bearer {CLE_DE_TEST}"}
 @pytest.fixture
 def dossier_media(tmp_path, monkeypatch):
     """Redirige `media/` vers un dossier temporaire : les tests n'écrivent pas dans le dépôt."""
-    monkeypatch.setattr(main, "MEDIA_DIR", tmp_path / "media")
+    monkeypatch.setattr(media, "MEDIA_DIR", tmp_path / "media")
     return tmp_path / "media" / "incoming"
 
 
@@ -81,7 +82,7 @@ def test_un_chemin_remontant_est_neutralise(client, dossier_media, tmp_path):
 # --- Taille --------------------------------------------------------------------
 
 def test_un_fichier_trop_gros_est_refuse(client, dossier_media, monkeypatch):
-    monkeypatch.setattr(main, "TAILLE_MAX_ENVOI", 1024)  # 1 Ko
+    monkeypatch.setattr(media, "TAILLE_MAX_ENVOI", 1024)  # 1 Ko
 
     res = envoyer(client, "trop_gros.mp4", contenu=b"x" * 5000)
 
@@ -92,7 +93,7 @@ def test_un_fichier_trop_gros_est_refuse(client, dossier_media, monkeypatch):
 def test_un_fichier_refuse_pour_sa_taille_ne_laisse_rien_sur_le_disque(
     client, dossier_media, monkeypatch
 ):
-    monkeypatch.setattr(main, "TAILLE_MAX_ENVOI", 1024)
+    monkeypatch.setattr(media, "TAILLE_MAX_ENVOI", 1024)
 
     envoyer(client, "trop_gros.mp4", contenu=b"x" * 5000)
 
@@ -100,7 +101,7 @@ def test_un_fichier_refuse_pour_sa_taille_ne_laisse_rien_sur_le_disque(
 
 
 def test_un_fichier_juste_sous_le_plafond_passe(client, dossier_media, monkeypatch):
-    monkeypatch.setattr(main, "TAILLE_MAX_ENVOI", 1024)
+    monkeypatch.setattr(media, "TAILLE_MAX_ENVOI", 1024)
 
     res = envoyer(client, "limite.mp4", contenu=b"x" * 1024)
 
@@ -142,23 +143,23 @@ async def test_le_fichier_est_lu_par_blocs_et_non_d_un_seul_coup(tmp_path):
     espion = FichierEspion(contenu)
     destination = tmp_path / "gros.mp4"
 
-    taille = await main.ecrire_par_blocs(espion, destination)
+    taille = await media.ecrire_par_blocs(espion, destination)
 
     assert taille == len(contenu)
     assert destination.read_bytes() == contenu
     # Une lecture par bloc, plus la lecture vide qui termine la boucle.
-    assert espion.tailles_demandees == [main.TAILLE_BLOC_ENVOI] * 5
+    assert espion.tailles_demandees == [media.TAILLE_BLOC_ENVOI] * 5
     assert -1 not in espion.tailles_demandees, "un read() sans limite charge tout en mémoire"
 
 
 async def test_le_plafond_arrete_la_lecture_sans_lire_tout_le_fichier(tmp_path, monkeypatch):
     """Un fichier de 8 Go ne doit pas être lu en entier avant d'être refusé."""
-    monkeypatch.setattr(main, "TAILLE_MAX_ENVOI", 2 * main.TAILLE_BLOC_ENVOI)
+    monkeypatch.setattr(media, "TAILLE_MAX_ENVOI", 2 * media.TAILLE_BLOC_ENVOI)
     espion = FichierEspion(b"z" * (10 * 1024 * 1024))
     destination = tmp_path / "trop_gros.mp4"
 
-    with pytest.raises(main.HTTPException) as erreur:
-        await main.ecrire_par_blocs(espion, destination)
+    with pytest.raises(media.HTTPException) as erreur:
+        await media.ecrire_par_blocs(espion, destination)
 
     assert erreur.value.status_code == 413
     assert len(espion.tailles_demandees) == 3, "la lecture aurait dû s'arrêter au 3e bloc"
@@ -177,7 +178,7 @@ def test_le_contenu_ecrit_est_identique_a_l_original(client, dossier_media):
 # --- Permissions et authentification ------------------------------------------
 
 def test_sans_permission_d_ecriture_rien_n_est_ecrit(client, dossier_media, monkeypatch):
-    monkeypatch.setattr(main.permissions, "is_allowed", lambda nom: False)
+    monkeypatch.setattr(media.permissions, "is_allowed", lambda nom: False)
 
     res = envoyer(client, "clip.mp4")
 

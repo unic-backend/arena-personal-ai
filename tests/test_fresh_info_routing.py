@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 
 from apps.backend import main
 from apps.backend import security as securite
+from apps.backend.routers import chat as routeur_chat
+from apps.backend.routers import openai_gateway as passerelle
 
 CLE = "cle-de-test"
 ENTETES = {"Authorization": f"Bearer {CLE}"}
@@ -58,7 +60,8 @@ def client(monkeypatch) -> TestClient:
 @pytest.fixture
 def agent_double(monkeypatch) -> AgentDouble:
     double = AgentDouble(REPONSE_SOURCEE)
-    monkeypatch.setattr(main, "fresh_agent", double)
+    monkeypatch.setattr(routeur_chat, "fresh_agent", double)
+    monkeypatch.setattr(passerelle, "fresh_agent", double)
     return double
 
 
@@ -68,21 +71,21 @@ def intention(monkeypatch):
     def _forcer(valeur):
         async def _classer(user_input):
             return valeur
-        monkeypatch.setattr(main.orchestrator, "analyze_intent", _classer)
+        monkeypatch.setattr(routeur_chat.orchestrator, "analyze_intent", _classer)
     return _forcer
 
 
 # --- Mise en forme des sources -------------------------------------------------
 
 def test_les_sources_sont_listees_sous_la_reponse():
-    texte = main.formater_sources(REPONSE_SOURCEE["sources"])
+    texte = routeur_chat.formater_sources(REPONSE_SOURCEE["sources"])
 
     assert "**Sources**" in texte
     assert "[1] Python 3.14 — https://exemple.test/py" in texte
 
 
 def test_sans_source_rien_n_est_ajoute():
-    assert main.formater_sources([]) == ""
+    assert routeur_chat.formater_sources([]) == ""
 
 
 # --- /api/chat -----------------------------------------------------------------
@@ -121,7 +124,7 @@ def test_une_conversation_ordinaire_ne_declenche_pas_de_recherche(
     client, agent_double, intention, monkeypatch
 ):
     intention("CHAT")
-    monkeypatch.setattr(main.orchestrator, "run", _reponse_de_chat)
+    monkeypatch.setattr(routeur_chat.orchestrator, "run", _reponse_de_chat)
 
     client.post("/api/chat", json={"prompt": "Bonjour"}, headers=ENTETES)
 
@@ -130,7 +133,7 @@ def test_une_conversation_ordinaire_ne_declenche_pas_de_recherche(
 
 def test_une_reponse_sans_source_expose_une_liste_vide(client, monkeypatch, intention):
     intention("CHAT")
-    monkeypatch.setattr(main.orchestrator, "run", _reponse_de_chat)
+    monkeypatch.setattr(routeur_chat.orchestrator, "run", _reponse_de_chat)
 
     corps = client.post("/api/chat", json={"prompt": "Bonjour"}, headers=ENTETES).json()
 
@@ -178,7 +181,7 @@ def test_la_classification_n_est_pas_refaite_par_la_passerelle(client, agent_dou
         appels.append(user_input)
         return "FRESH_INFO"
 
-    monkeypatch.setattr(main.orchestrator, "analyze_intent", _classer)
+    monkeypatch.setattr(routeur_chat.orchestrator, "analyze_intent", _classer)
 
     client.post("/v1/chat/completions",
                 json={"model": "arena-core",
