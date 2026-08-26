@@ -899,10 +899,43 @@ lancer `ollama pull nomic-embed-text`, puis
 
 ---
 
+### 26 août 2026 — Interface hors ligne
+
+*Fichiers* : `apps/frontend/index.html`, `apps/frontend/vendor/tailwind.js`
+(nouveau), `apps/frontend/vendor/PROVENANCE.md` (nouveau),
+`apps/backend/main.py`, `tests/test_frontend.py` (nouveau)
+*Changement* : la mise en forme est servie par le backend sur `/static/` au lieu
+d'être chargée depuis `cdn.tailwindcss.com`.
+*Pourquoi* : P-09. Le projet se revendique local-first (`DEC-0002`) et son
+interface ne fonctionnait pas sans connexion.
+
+*Vérifications, toutes exécutées :*
+- **Rendu dans un vrai Chromium, toute requête sortante bloquée.**
+  Avant : `['https://cdn.tailwindcss.com/']` bloquée, en-tête **137,875 px**,
+  corps en `block`, `window.tailwind` absent — l'interface était bien cassée.
+  Après : **aucune** requête sortante, en-tête **64 px** (la classe `h-16`
+  s'applique), corps en `flex column`, `window.tailwind` présent.
+- `pytest tests/test_frontend.py` → **8 passed** hors ligne, **1 passed** avec le
+  navigateur (marqué `integration`)
+- suite complète → **364 passed, 21 deselected** ; `ruff` → 0 ; `gitleaks` → 0
+  (le fichier de 407 Ko ne déclenche aucun faux positif)
+
+*Décision* : embarquer le fichier du CDN plutôt que compiler Tailwind. *Coût si
+c'est faux* : 407 Ko dans le dépôt, et la mise en forme est calculée dans le
+navigateur au chargement plutôt qu'à la compilation. En échange, le projet
+n'acquiert pas de chaîne Node pour un seul fichier. `PROVENANCE.md` déclare
+l'origine, la version, la date, la taille et l'empreinte ; deux tests refusent
+que le fichier présent diverge de ce qui est déclaré — sans quoi la provenance
+ne prouverait rien.
+
+*Résultat* : **TERMINÉ** — P-09 est clos.
+
+---
+
 ## IN PROGRESS
 
-**Tâche courante** : aucune. L'indexation documentaire est terminée, ses
-3 phases vérifiées — hors indexation réelle, impossible sans GPU.
+**Tâche courante** : aucune. L'interface hors ligne est terminée et vérifiée
+dans un vrai navigateur.
 **État exact** : deux actions restent, et elles n'appartiennent qu'au
 propriétaire — changer les cinq clés dans `.env`, et autoriser la réécriture de
 l'historique (irréversible, casse les clones existants).
@@ -1096,8 +1129,11 @@ corrigé, et quatre garde-fous automatiques dans `tests/test_documentation.py`.
 **Vérifié** : lecture du fichier.
 **Impact** : sans connexion, l'interface s'affiche sans mise en forme. Cela
 contredit la doctrine « local-first » revendiquée par le projet.
-**Solution proposée** : T-20.
-**Statut** : OUVERT
+**Solution appliquée** : le fichier est embarqué dans
+`apps/frontend/vendor/` et servi par le backend sur `/static/`, avec sa
+provenance déclarée et vérifiée par test.
+**Statut** : **RÉSOLU** le 26/08/2026. Mesuré dans Chromium, réseau coupé :
+en-tête à 64 px (contre 137,875 px avant), aucune requête sortante.
 
 ---
 
@@ -1116,7 +1152,7 @@ Ce qui est certain, et vérifié par le code :
 | Appels au modèle avant le correctif n°9 | 3 | lecture du code : `chat_stream_endpoint` → `dispatch_request` → `orchestrator.run` |
 | Contexte configuré | `num_ctx: 4096` | `core/models/ollama_provider.py` |
 | Maintien en VRAM | `keep_alive: "30m"` | idem |
-| Durée de la suite de tests | 5,6 s pour 356 tests | `pytest -q` |
+| Durée de la suite de tests | 5,7 s pour 364 tests | `pytest -q` |
 | Pic mémoire, envoi de 64 Mo — avant T-02 | 64,0 Mo | `tracemalloc` sur l'ancien chemin |
 | Pic mémoire, envoi de 64 Mo — après T-02 | 2,0 Mo | `tracemalloc` sur `ecrire_par_blocs` |
 
@@ -1236,3 +1272,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | 2026-08-26 | Claude Code | Indexation documentaire phase 1/3 : lecture PDF/Word/texte avec provenance. |
 | 2026-08-26 | Claude Code | Indexation documentaire phase 2/3 : inventaire, et documents personnels exclus de Git. |
 | 2026-08-26 | Claude Code | Indexation documentaire terminée (3 phases). Indexation réelle à vérifier chez le propriétaire. |
+| 2026-08-26 | Claude Code | Interface hors ligne : Tailwind embarqué, vérifié dans Chromium réseau coupé. P-09 résolu. |

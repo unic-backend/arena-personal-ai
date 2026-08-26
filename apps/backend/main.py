@@ -33,6 +33,14 @@ app.add_middleware(
 RENDERED_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/media/rendered", StaticFiles(directory=str(RENDERED_DIR)), name="rendered")
 
+# Fichiers tiers embarques (Tailwind) : l'interface doit s'afficher sans Internet.
+# Origine et empreinte : apps/frontend/vendor/PROVENANCE.md
+app.mount(
+    "/static",
+    StaticFiles(directory=str(BASE_DIR / "apps" / "frontend" / "vendor")),
+    name="static",
+)
+
 
 @app.get("/")
 async def serve_frontend():

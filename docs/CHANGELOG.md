@@ -84,6 +84,15 @@
   ça, un message de chat coûtait trois appels au modèle au lieu d'un.
 
 ### Corrigé
+- **L'interface fonctionne désormais sans Internet.** Elle chargeait sa mise en forme
+  depuis `cdn.tailwindcss.com` : hors ligne, elle s'affichait sans style — ce qui
+  contredisait la doctrine local-first (`DEC-0002`). Mesuré dans un vrai navigateur,
+  réseau coupé : l'en-tête faisait **137,875 px au lieu de 64**, le corps n'était plus
+  en `flex`. Le fichier est maintenant servi par le backend sur `/static/`.
+- `apps/frontend/vendor/PROVENANCE.md` déclare l'origine, la version, la date, la
+  taille et l'empreinte SHA-256 du fichier tiers embarqué. Deux tests vérifient que
+  le fichier réellement présent correspond à ce qui est déclaré.
+
 - BOM UTF-8 retiré de **37 fichiers** (l'audit en signalait 3). Il rendait la
   première ligne illisible telle quelle : `import httpx` et `import yaml` étaient
   invisibles à un `grep '^import'`, ce qui a failli les faire oublier dans
