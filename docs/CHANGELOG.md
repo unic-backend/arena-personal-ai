@@ -40,6 +40,10 @@
   `tests/test_memory_chat.py` n'exécutait plus rien : son appel à `/api/chat`
   partait à l'import et n'affirmait rien. Il teste maintenant la mémoire elle-même.
 - Les tests d'isolation Docker du bac à sable portent le marqueur `integration`.
+- Trois agents testés hors ligne sur `FakeProvider` : orchestrateur (aiguillage,
+  historique transmis au modèle), `CoderAgent` (refus du bac à sable, boucle
+  d'auto-correction bornée) et `PublisherAgent` (`PUBLISH` bloqué, publication
+  réelle non implémentée).
 
 ## [1.7.0] - 2026-08-25
 ### Sécurité
