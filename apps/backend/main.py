@@ -1,59 +1,56 @@
 import json
 import logging
-import os
-import sys
 import time
 from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-load_dotenv(dotenv_path=BASE_DIR / ".env")
-
-if str(BASE_DIR) not in sys.path:
-    sys.path.insert(0, str(BASE_DIR))
-
-from agents.browser.browser_agent import BrowserAgent
-from agents.clip_selector.clip_selector_agent import ClipSelectorAgent
-from agents.coder.coder_agent import CoderAgent
-from agents.editor.editor_agent import EditorAgent
-from agents.fresh_info.fresh_info_agent import FreshInfoAgent
-from agents.orchestrator.orchestrator_agent import OrchestratorAgent
-from agents.publisher.publisher_agent import PublisherAgent
-from agents.repo_engineer.repo_engineer_agent import RepoEngineerAgent
-from agents.researcher.researcher_agent import DeepResearcherAgent
-from agents.subtitle.subtitle_agent import SubtitleAgent
-from agents.swe_agent.swe_agent import SWEAgent
-from agents.trend_analyzer.trend_analyzer_agent import TrendAnalyzerAgent
-from agents.video_analyzer.video_analyzer_agent import VideoAnalyzerAgent
+from apps.backend.config import (
+    AGENTS_SPECIALISES,
+    ALLOWED_ORIGINS,
+    ARENA_API_KEY,
+    BASE_DIR,
+    EXTENSIONS_MEDIA_AUTORISEES,
+    FENETRE_SECONDES,
+    MEDIA_DIR,
+    RENDERED_DIR,
+    REQUETES_MAX,
+    TAILLE_BLOC_ENVOI,
+    TAILLE_MAX_ENVOI,
+)
 from apps.backend.rate_limit import LimiteurDebit
-from core.memory.memory_manager import MemoryManager
-from core.models.ollama_provider import OllamaProvider
-from core.permissions.permission_manager import PermissionManager
-from tools.rag.graphrag_tool import GraphRAGTool
-from tools.rag.lightrag_tool import LightRAGTool
+from apps.backend.runtime import (
+    browser_agent,
+    clip_selector,
+    coder_agent,
+    deep_provider,
+    editor_agent,
+    fast_provider,
+    fresh_agent,
+    graphrag_tool,
+    lightrag_tool,
+    memory,
+    orchestrator,
+    permissions,
+    publisher_agent,
+    repo_engineer,
+    researcher_agent,
+    subtitle_agent,
+    swe_agent,
+    trend_agent,
+    video_agent,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("arena.backend")
 
 app = FastAPI(title="ARENA Personal AI API", version="1.7.0")
-
-# Origines autorisees : les interfaces locales par defaut, surchargeables via .env
-# (ARENA_ALLOWED_ORIGINS, liste separee par des virgules). Jamais "*" : le
-# navigateur laisserait n'importe quel site appeler les endpoints /api.
-ORIGINES_PAR_DEFAUT = "http://localhost:3000,http://localhost:3080,http://localhost:8000"
-ALLOWED_ORIGINS = [
-    origine.strip()
-    for origine in os.getenv("ARENA_ALLOWED_ORIGINS", ORIGINES_PAR_DEFAUT).split(",")
-    if origine.strip()
-]
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,56 +60,10 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-MEDIA_DIR = BASE_DIR / "media"
-RENDERED_DIR = MEDIA_DIR / "rendered"
-
-# Extensions acceptees par le studio video. C'est une regle metier, pas un
-# reglage : ARENA ne traite que de l'audio et de la video.
-EXTENSIONS_MEDIA_AUTORISEES = {
-    ".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v",
-    ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg",
-}
-
-# Plafond de taille, reglable : il depend du disque de la machine.
-TAILLE_MAX_ENVOI = int(os.getenv("ARENA_UPLOAD_MAX_BYTES", str(2 * 1024 * 1024 * 1024)))
-
-# Le fichier est ecrit par blocs : `await file.read()` sans argument chargerait
-# tout en memoire avant d'atteindre le disque.
-TAILLE_BLOC_ENVOI = 1024 * 1024
 RENDERED_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/media/rendered", StaticFiles(directory=str(RENDERED_DIR)), name="rendered")
 
-DB_PATH = BASE_DIR / "data" / "database" / "memory.db"
-memory = MemoryManager(db_path=str(DB_PATH))
-permissions = PermissionManager()
-lightrag_tool = LightRAGTool()
-graphrag_tool = GraphRAGTool()
-
-# Configuration lue depuis le fichier .env (valeurs de secours si absent)
-OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
-MODELE_RAPIDE = os.getenv("CODER_LOCAL_MODEL", "qwen2.5-coder:14b")
-MODELE_PROFOND = os.getenv("DEFAULT_LOCAL_MODEL", "qwen3.5:9b")
-
-fast_provider = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_RAPIDE)
-deep_provider = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_PROFOND)
-
-# Équipe complète de 12 Agents d'Élite
-orchestrator = OrchestratorAgent(provider=fast_provider, memory=memory)
-trend_agent = TrendAnalyzerAgent(provider=deep_provider, memory=memory)
-video_agent = VideoAnalyzerAgent(provider=deep_provider, memory=memory)
-editor_agent = EditorAgent(provider=deep_provider, memory=memory)
-subtitle_agent = SubtitleAgent(provider=deep_provider, memory=memory)
-coder_agent = CoderAgent(provider=fast_provider, memory=memory)
-researcher_agent = DeepResearcherAgent(provider=deep_provider, memory=memory)
-clip_selector = ClipSelectorAgent(provider=deep_provider, memory=memory)
-publisher_agent = PublisherAgent(provider=fast_provider, memory=memory)
-browser_agent = BrowserAgent(provider=fast_provider, memory=memory)
-# Agent d'information fraiche : il lit le web avant de repondre.
-fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)
-repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory)
-swe_agent = SWEAgent(provider=fast_provider, memory=memory)
-
-memory.set_fact("user_profile", "owner", "Saer", {"role": "Propriétaire et créateur d'ARENA"})
+limiteur = LimiteurDebit(requetes_max=REQUETES_MAX, fenetre_secondes=FENETRE_SECONDES)
 
 # Faits que le proprietaire peut enregistrer lui-meme en memoire longue. Rien
 # n'est ecrit en dur : une valeur absente n'apparait tout simplement pas.
@@ -173,14 +124,6 @@ def get_arena_system_prompt() -> str:
 # ==============================================================================
 # SECURITE : cle API partagee (/v1 et /api) + validation des chemins media
 # ==============================================================================
-ARENA_API_KEY = os.getenv("ARENA_API_KEY", "")
-
-# Limitation de debit : un appel au modele occupe le GPU plusieurs secondes.
-REQUETES_MAX = int(os.getenv("ARENA_RATE_LIMIT_REQUESTS", "10"))
-FENETRE_SECONDES = float(os.getenv("ARENA_RATE_LIMIT_WINDOW", "60"))
-limiteur = LimiteurDebit(requetes_max=REQUETES_MAX, fenetre_secondes=FENETRE_SECONDES)
-
-
 def client_de(request: Request) -> str:
     """Identifie l'appelant pour la limitation de debit et les journaux."""
     return request.client.host if request.client else "inconnu"
@@ -238,13 +181,6 @@ def validate_media_path(raw_path: str) -> Path:
             detail="Acces refuse : le fichier doit se trouver dans le dossier media/."
         ) from None
     return p
-
-
-# Intentions confiees a un agent specialise plutot qu a une reponse conversationnelle.
-AGENTS_SPECIALISES = frozenset({
-    "DEEP_REASONING", "DEEP_RESEARCH", "FRESH_INFO",
-    "TREND_SEARCH", "CODE_EXECUTION", "VIDEO_ANALYSIS",
-})
 
 
 class ChatRequest(BaseModel):

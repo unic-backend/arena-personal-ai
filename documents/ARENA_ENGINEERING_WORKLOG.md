@@ -615,15 +615,59 @@ faits récents ; les trois lignes de consigne qui la suivent existent pour ça.
 
 ---
 
+### 26 août 2026 — T-19 phase 1/3 · Filet de sécurité, configuration, objets partagés
+
+*Fichiers* : `tests/test_surface_api.py` (nouveau), `apps/backend/config.py`
+(nouveau), `apps/backend/runtime.py` (nouveau), `apps/backend/__init__.py`,
+`apps/backend/main.py`
+*Changement* : rien dans le comportement. `main.py` passe de **652 à 588 lignes** ;
+les réglages lus dans l'environnement vont dans `config.py`, les objets créés une
+fois (mémoire, permissions, modèles, 13 agents) dans `runtime.py`.
+
+**Le filet de sécurité d'abord, l'extraction ensuite.** `test_surface_api.py`
+fige la surface HTTP : la liste des routes, leurs méthodes, et **les dépendances
+attachées à chacune** — c'est là que vivent l'authentification et la limitation
+de débit. Deux tests transversaux valent leur place : aucune route `/api` ou
+`/v1` sans `verify_api_key`, aucune route appelant le modèle sans
+`limiter_debit`. Un remaniement qui les casse a changé le comportement, pas
+seulement l'organisation.
+
+**Un défaut introduit puis corrigé dans la même phase.** `runtime.py` importe les
+agents ; sans la racine du dépôt dans `sys.path`, cet import échoue. Cela
+fonctionnait par chance — `apps.backend.config`, qui préparait le chemin, se
+trie avant `apps.backend.runtime` par ordre alphabétique. Une garantie qui tient
+à un nom de fichier n'en est pas une. La préparation du chemin est passée dans
+`apps/backend/__init__.py`, que Python exécute avant tout module du paquet.
+
+*Vérifications, toutes exécutées :*
+- `pytest tests/test_surface_api.py` → **18 passed** (empreinte inchangée)
+- suite complète → **289 passed, 20 deselected** ; `ruff` → 0 ; `gitleaks` → 0
+- import depuis `/tmp`, racine retirée de `sys.path` au départ → OK, 13 routes
+- chaînes de bout en bout inchangées : T-12 répond toujours `FRESH_INFO` /
+  `FreshInfoAgent`, un message de chat coûte toujours 2 appels au modèle
+
+*Décision* : garder les fonctions dans `main.py` pour cette phase, et n'y importer
+que des noms. Les tests remplacent `main.ARENA_API_KEY`, `main.fresh_agent`,
+`main.memory` : tant que les fonctions lisent les variables globales de `main`,
+ces remplacements continuent de fonctionner. *Coût si c'est faux* : la phase
+suivante, qui déplace les fonctions, devra mettre à jour ces tests — et c'est
+tant mieux, un test qui remplace le mauvais module passerait pour de mauvaises
+raisons.
+
+*Résultat* : **TERMINÉ** — phase 1 sur 3.
+
+---
+
 ## IN PROGRESS
 
-**Tâche courante** : aucune. T-13 est terminée et vérifiée.
+**Tâche courante** : T-19 — découpage de `main.py`, 3 phases.
+Phase 1 (filet de sécurité, configuration, objets partagés) terminée.
 **État exact** : deux actions restent, et elles n'appartiennent qu'au
 propriétaire — changer les cinq clés dans `.env`, et autoriser la réécriture de
 l'historique (irréversible, casse les clones existants).
-**Prochaine action concrète** : au choix du propriétaire — T-14 (routeur
-enrichi), T-19/T-20 (dette technique) ou T-16/T-17 (mémoire et documents).
-Reste toujours dû par lui : l'étape 1 de `RUNBOOK_PURGE_SECRETS.md`.
+**Prochaine action concrète** : T-19 phase 2 — extraire la sécurité
+(authentification, débit, chemins) et l'instruction système. Reste toujours dû
+par le propriétaire : l'étape 1 de `RUNBOOK_PURGE_SECRETS.md`.
 
 ---
 
@@ -666,7 +710,7 @@ désormais protégées par `tests/test_documentation.py`.
 
 | # | Tâche | Effort | Critère de validation |
 |---|---|---|---|
-| T-19 | Découper `main.py` en `routers/` | 2 h | Aucun fichier > 250 lignes, mêmes tests verts |
+| T-19 | Découper `main.py` — **phase 1/3 faite** (652 → 588 lignes) | 2 h | Aucun fichier > 250 lignes, mêmes tests verts |
 | T-20 | Tailwind servi en local (le CDN contredit le local-first) | 20 min | Interface stylée sans connexion réseau |
 | T-21 | Accès SQLite non bloquant depuis les routes `async` | 2 h | Charge concurrente sans blocage mesuré |
 | T-22 | Retirer les emojis des 4 lignes de log concernées | 10 min | Logs exploitables en agrégation |
@@ -830,7 +874,7 @@ Ce qui est certain, et vérifié par le code :
 | Appels au modèle avant le correctif n°9 | 3 | lecture du code : `chat_stream_endpoint` → `dispatch_request` → `orchestrator.run` |
 | Contexte configuré | `num_ctx: 4096` | `core/models/ollama_provider.py` |
 | Maintien en VRAM | `keep_alive: "30m"` | idem |
-| Durée de la suite de tests | 5,6 s pour 271 tests | `pytest -q` |
+| Durée de la suite de tests | 5,3 s pour 289 tests | `pytest -q` |
 | Pic mémoire, envoi de 64 Mo — avant T-02 | 64,0 Mo | `tracemalloc` sur l'ancien chemin |
 | Pic mémoire, envoi de 64 Mo — après T-02 | 2,0 Mo | `tracemalloc` sur `ecrire_par_blocs` |
 
@@ -944,3 +988,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | 2026-08-26 | Claude Code | T-12 phase 2/3 : agent d'information fraîche, sources citées, refus sans source. |
 | 2026-08-26 | Claude Code | T-12 terminée (3 phases). P-03 partiellement résolu. Défaut préexistant corrigé : l'intention annoncée par /api/chat. |
 | 2026-08-26 | Claude Code | T-13 terminée (faits figés retirés du prompt système). P-03 résolu. |
+| 2026-08-26 | Claude Code | T-19 phase 1/3 : empreinte de la surface HTTP, config.py, runtime.py. |
