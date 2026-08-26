@@ -37,6 +37,23 @@ INTENTIONS = {
 # La date du système, elle, ne se trompe pas. Ce contrôle est donc déterministe
 # et passe avant toute question posée au modèle.
 
+# Questions sur l utilisateur ou sur Usman lui-meme. La reponse est dans la
+# memoire du systeme, jamais sur Internet.
+#
+# Mesure du 2026-08-26 : « qui suis-je » a ete classee FRESH_INFO par le modele
+# classeur, donc envoyee sur le web. Reponse obtenue : « les sources ne
+# contiennent aucune information qui reponde a la question », apres ~30 s. Le
+# modele n a pas tort de se tromper — il devine ; c est de lui demander de
+# deviner sur ce point qui est l erreur.
+QUESTIONS_PERSONNELLES = (
+    "qui suis-je", "qui suis je", "qui suije",
+    "je suis qui", "c'est qui moi",
+    "qui es-tu", "qui es tu", "tu es qui", "t'es qui",
+    "mon nom", "ton nom", "comment je m'appelle", "comment je m appelle",
+    "comment tu t'appelles", "comment tu t appelles",
+)
+
+
 ANNEE = re.compile(r"\b(19|20)\d{2}\b")
 
 # Formulations qui portent sur un état ou un résultat courant. Elles ne
@@ -127,6 +144,15 @@ class OrchestratorAgent(BaseAgent):
 
         return any(formulation in texte for formulation in FORMULATIONS_COURANTES)
 
+    @staticmethod
+    def question_personnelle(user_input: str) -> bool:
+        """Dit si la question porte sur l utilisateur ou sur Usman lui-meme.
+
+        Elle est evaluee avant tout le reste : ni le web ni le modele classeur
+        n ont leur mot a dire sur l identite du proprietaire.
+        """
+        return any(motif in (user_input or "").lower() for motif in QUESTIONS_PERSONNELLES)
+
     async def analyze_intent(self, user_input: str) -> str:
         """Détermine vers quel agent envoyer la demande.
 
@@ -136,6 +162,10 @@ class OrchestratorAgent(BaseAgent):
         retombe sur les mots-clés — un repli moins fin, mais annoncé dans les
         journaux plutôt que silencieux.
         """
+        if self.question_personnelle(user_input):
+            logger.info("Question personnelle : reponse par la memoire, sans web ni classeur")
+            return "CHAT"
+
         if self.exige_verification(user_input):
             logger.info("Contrôle daté : la question demande une vérification -> FRESH_INFO")
             return "FRESH_INFO"

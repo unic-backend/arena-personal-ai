@@ -315,3 +315,48 @@ class TestFormulationsReprisesDeSaer:
     def test_elargir_la_liste_ne_rafle_pas_tout(self, question):
         """Un « combien » nu resterait une question ordinaire : il n'est pas repris."""
         assert OrchestratorAgent.exige_verification(question, self.AUJOURD_HUI) is False
+
+
+class TestQuestionsPersonnelles:
+    """« qui suis-je » est partie sur Internet. Mesuré le 2026-08-26.
+
+    Le modèle classeur a répondu `FRESH_INFO`, la question a fait le tour du web
+    pendant une trentaine de secondes, et la réponse a été « les sources ne
+    contiennent aucune information qui réponde à la question ». La réponse était
+    dans la mémoire du système depuis le début.
+    """
+
+    @pytest.mark.parametrize("question", [
+        "qui suije",
+        "qui suis-je",
+        "qui es-tu",
+        "quel est mon nom",
+        "comment tu t'appelles",
+    ])
+    def test_ces_questions_ne_partent_jamais_sur_le_web(self, question):
+        assert OrchestratorAgent.question_personnelle(question) is True
+
+    @pytest.mark.parametrize("question", [
+        "qui est le président du sénégal",
+        "qui a gagné la coupe du monde 2026",
+        "quelle est la population du sénégal",
+    ])
+    def test_une_question_sur_quelqu_un_d_autre_n_est_pas_personnelle(self, question):
+        """Le garde-fou doit être étroit : il ne doit pas rafler l'actualité."""
+        assert OrchestratorAgent.question_personnelle(question) is False
+
+    @pytest.mark.asyncio
+    async def test_le_modele_classeur_n_est_meme_pas_interroge(self):
+        """Deux coûts supprimés d'un coup : l'appel de tri, et le tour du web."""
+        appels = []
+
+        class ProviderQuiCompte:
+            async def generate(self, prompt, **kw):
+                appels.append(prompt)
+                return "FRESH_INFO"
+
+        orchestrateur = OrchestratorAgent(provider=ProviderQuiCompte())
+        intention = await orchestrateur.analyze_intent("qui suis-je")
+
+        assert intention == "CHAT"
+        assert appels == [], "le modèle a été interrogé sur l'identité du propriétaire"
