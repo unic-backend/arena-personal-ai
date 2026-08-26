@@ -1318,3 +1318,72 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | 2026-08-26 | Claude Code | Indexation documentaire terminée (3 phases). Indexation réelle à vérifier chez le propriétaire. |
 | 2026-08-26 | Claude Code | Interface hors ligne : Tailwind embarqué, vérifié dans Chromium réseau coupé. P-09 résolu. |
 | 2026-08-26 | Claude Code | CI de la PR #1 : test dependant de la profondeur du clone corrige. |
+
+---
+
+## 2026-08-26 — Réunion de la branche vidéo de Saer et de la branche d'ingénierie
+
+**Point de départ.** Deux branches nées du même commit `00e8f4f` et jamais
+reliées. Saer a travaillé sur sa machine sans jamais faire `git pull` après la
+fusion de la demande #1 : il faisait tourner son code d'origine, ce qui explique
+que trois correctifs vérifiés ici n'aient rien changé chez lui. Diagnostic établi
+sur une preuve, pas sur une supposition — `[master c20eb17]` dans sa sortie de
+`git commit`.
+
+**Ce que sa branche apportait** : Studio Vidéo 1-clic, incrustation des
+sous-titres (hardsub), transcription mot à mot, analyse Whisper. 2 commits,
+6 fichiers, +417/−360.
+
+**Ce que la même branche défaisait, mesuré :**
+
+| | |
+|---|---|
+| `docker-compose.yml` | 4 valeurs de secrets remises en clair, à la place des `${...}` |
+| `librechat.yaml` | une clé API vivante écrite en dur |
+| `main.py` | `/api/chat/stream` et `/api/process-video` supprimées |
+| `system_prompt()` | année et noms de responsables politiques réécrits en dur |
+
+**Règle appliquée** : toutes ses fonctionnalités, aucune de ces régressions.
+
+| Phase | Commit | Résultat |
+|---|---|---|
+| 1 — 4 fichiers vidéo repris tels quels | `c8132c9` | 384 tests |
+| 2 — Studio porté en module (`apps/backend/studio.py`) | `ef650f4` | 403 tests |
+| 3 — configuration : `env_file` gardé, secrets sortis | `c286716` | 413 tests |
+| 4 — chaîne HTTP du Studio | `6659a96` | 416 tests |
+| 5 — validation et reprise de ses mots-clés | *ce commit* | **424 tests** |
+
+**Deux défauts de ce dépôt trouvés au passage, et corrigés :**
+
+- **P-10.** `arena-fresh` était servi par `/v1/models` mais absent de
+  `librechat.yaml`. Avec `fetch: false`, LibreChat n'affiche que cette liste :
+  le modèle était **invisible dans le menu depuis sa création**, alors que la
+  description de la demande #1 affirmait qu'il y avait été ajouté. Corrigé, et
+  `tests/test_configuration_clients.py` tient désormais les deux listes
+  ensemble.
+- **P-11.** Le tri d'intention était confié au modèle seul. Un modèle dont les
+  connaissances s'arrêtent avant l'année en cours **ne peut pas reconnaître
+  qu'une question porte sur son futur** : « qui a gagné la coupe du monde
+  2026 » était classé `CHAT`, puis répondu de mémoire — et faussement.
+  `exige_verification` lit désormais l'horloge du système avant d'interroger le
+  modèle (`c5ceaba`).
+
+**Décisions :**
+
+- *Le Studio vit dans `src`-style, pas dans `main.py`* — parce que la structure
+  en modules est la règle du dépôt et qu'un `main.py` de 345 lignes est ce qu'on
+  venait d'éliminer — **coût si c'est faux** : un fichier de plus à ouvrir pour
+  comprendre la chaîne vidéo.
+- *La liste de mots-clés de Saer est reprise, `combien` nu excepté* — parce
+  qu'elle attrapait « population » et « coupe du monde » que la nôtre manquait —
+  **coût si c'est faux** : des questions ordinaires partent inutilement sur le
+  web et deviennent lentes.
+- *Un test en double d'une garde existante est retiré, pas réparé* — parce que
+  `test_surface_api.py` couvrait déjà les routes — **coût si c'est faux** : si
+  cette garde est un jour affaiblie, plus rien ne rattrape la disparition d'une
+  route.
+
+**Ce qui reste dû au propriétaire** : la purge de l'historique (les 6 valeurs
+fuitées y sont toujours, mais elles sont **mortes** depuis la rotation du
+2026-08-26), et la branche `saer-video-wip` qui porte encore une clé en clair —
+à supprimer une fois cette réunion validée.

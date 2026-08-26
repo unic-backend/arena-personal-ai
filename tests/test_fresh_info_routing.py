@@ -263,3 +263,33 @@ async def test_le_controle_date_court_circuite_le_modele():
 
     assert intention == "FRESH_INFO"
     assert appels == [], "le modèle a été interrogé alors que la date suffisait"
+
+
+class TestFormulationsReprisesDeSaer:
+    """Sa liste de mots-clés web attrapait des cas que la nôtre manquait.
+
+    Mesuré le 2026-08-26 : « quelle est la population de la France » recevait
+    une réponse de mémoire — le modèle a répondu « environ 67 millions », sans
+    rien vérifier. Sa branche `saer-video-wip` classait cette question en WEB.
+    """
+
+    AUJOURD_HUI = datetime.date(2026, 8, 26)
+
+    @pytest.mark.parametrize("question", [
+        "quelle est la population de france",
+        "qui est le meilleur joueur du monde",
+        "qui a gagné la coupe du monde",
+        "donne-moi les dernières nouvelles",
+        "cherche sur le web le prix du ciment",
+    ])
+    def test_ces_questions_partent_verifier(self, question):
+        assert OrchestratorAgent.exige_verification(question, self.AUJOURD_HUI) is True
+
+    @pytest.mark.parametrize("question", [
+        "combien font deux plus deux",
+        "explique-moi comment fonctionne un moteur",
+        "écris une fonction qui trie une liste",
+    ])
+    def test_elargir_la_liste_ne_rafle_pas_tout(self, question):
+        """Un « combien » nu resterait une question ordinaire : il n'est pas repris."""
+        assert OrchestratorAgent.exige_verification(question, self.AUJOURD_HUI) is False

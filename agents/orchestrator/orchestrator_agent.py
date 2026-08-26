@@ -38,12 +38,20 @@ ANNEE = re.compile(r"\b(19|20)\d{2}\b")
 # déclenchent la vérification que si aucune année passée n'est citée : « qui a
 # gagné la coupe du monde 1998 » est un fait acquis, pas une actualité.
 FORMULATIONS_COURANTES = (
+    # Résultats et compétitions
     "qui a gagné", "qui a gagne", "qui a remporté", "qui a remporte",
-    "qui est le", "qui est la", "qui sont les",
     "vainqueur", "gagnant", "résultat", "resultat", "score",
-    "combien coûte", "combien coute", "prix de", "cours de",
-    "dernière version", "derniere version", "dernier modèle", "dernier modele",
+    "coupe du monde", "meilleur joueur", "championnat",
+    # États et responsables du moment
+    "qui est le", "qui est la", "qui sont les",
     "en ce moment", "actuellement", "aujourd'hui", "cette semaine",
+    # Chiffres qui bougent
+    "population", "combien coûte", "combien coute", "prix de", "cours de",
+    # Versions et actualité
+    "dernière version", "derniere version", "dernier modèle", "dernier modele",
+    "actualité", "actualite", "dernières nouvelles", "dernieres nouvelles",
+    # Demande explicite de l'utilisateur : elle prime toujours
+    "cherche sur le web", "cherche sur internet",
 )
 
 
