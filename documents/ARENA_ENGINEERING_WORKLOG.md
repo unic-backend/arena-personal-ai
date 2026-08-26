@@ -714,9 +714,9 @@ puis inclut trois routeurs.
 | `runtime.py` | objets partagés | 58 |
 | `security.py` | authentification, débit, chemins | 83 |
 | `prompts.py` | instruction système | 65 |
-| `routers/chat.py` | conversation et aiguillage | 149 |
-| `routers/media.py` | envoi et chaîne vidéo | 158 |
-| `routers/openai_gateway.py` | passerelle `/v1` | 174 |
+| `apps/backend/routers/chat.py` | conversation et aiguillage | 149 |
+| `apps/backend/routers/media.py` | envoi et chaîne vidéo | 158 |
+| `apps/backend/routers/openai_gateway.py` | passerelle `/v1` | 174 |
 
 Le critère de T-19 (« aucun fichier > 250 lignes ») est tenu : le plus gros
 fichier du projet est `tools/search/source_fetcher.py`, à 220 lignes.
@@ -746,7 +746,7 @@ exactement comme conçu.
   64 Mo toujours à 2 Mo de pic
 
 *Décision* : `formater_sources` et `dispatch_request` restent dans
-`routers/chat.py`, importés par la passerelle. *Coût si c'est faux* : la
+`apps/backend/routers/chat.py`, importés par la passerelle. *Coût si c'est faux* : la
 passerelle dépend du routeur de chat ; l'inverse aurait demandé un module de plus
 pour deux fonctions.
 
