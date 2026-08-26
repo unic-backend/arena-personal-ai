@@ -41,7 +41,20 @@ C'est réversible, et ça arrête l'exposition pendant que vous travaillez.
 Six valeurs ont fuité, correspondant à cinq variables. Générez une valeur
 nouvelle pour **chacune**.
 
-Lancez cette commande **cinq fois**, une par variable :
+**Attention : les cinq clés n'ont pas le même format.** `CREDS_KEY` sert à
+chiffrer les identifiants stockés par LibreChat, qui exige **exactement 64
+caractères hexadécimaux** — la valeur qui a fuité en faisait 64. Une valeur
+d'une autre longueur, ou contenant autre chose que `0-9` et `a-f`, empêche
+LibreChat de démarrer.
+
+Pour `CREDS_KEY`, lancez **une fois** :
+
+```
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Pour les **quatre autres**, lancez cette commande **quatre fois**, une par
+variable :
 
 ```
 python -c "import secrets; print(secrets.token_urlsafe(32))"
@@ -155,7 +168,7 @@ Attendu : **aucune ligne** en sortie.
 pytest
 ```
 
-Attendu : `156 passed`.
+Attendu : `369 passed, 21 deselected` — mesuré le 26/08/2026.
 
 ---
 
