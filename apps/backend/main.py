@@ -175,202 +175,119 @@ async def list_openai_models():
         ]
     }
 
+def _reponse_openai(contenu: str, modele: str, stream: bool):
+    """Emballe une reponse au format attendu par OpenAI (streamee ou non)."""
+    cree = int(time.time())
+
+    if stream:
+        async def generateur():
+            morceau = {
+                "id": f"chatcmpl-{cree}",
+                "object": "chat.completion.chunk",
+                "created": cree,
+                "model": modele,
+                "choices": [{"index": 0, "delta": {"content": contenu}, "finish_reason": "stop"}]
+            }
+            yield f"data: {json.dumps(morceau)}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(generateur(), media_type="text/event-stream")
+
+    return {
+        "id": f"chatcmpl-{cree}",
+        "object": "chat.completion",
+        "created": cree,
+        "model": modele,
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": contenu},
+            "finish_reason": "stop"
+        }]
+    }
+
+
 @app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
 async def openai_chat_completions(request: Request):
     body = await request.json()
     messages = body.get("messages", [])
     stream = body.get("stream", False)
     model_requested = body.get("model", "arena-core")
-    
+
     last_user_msg = ""
     for msg in reversed(messages):
         if msg.get("role") == "user":
             last_user_msg = msg.get("content", "")
             break
-            
     if not last_user_msg:
         last_user_msg = "Bonjour"
 
     chat_req = ChatRequest(prompt=last_user_msg)
 
+    # ---- Agents joignables directement par leur nom dans le menu ----
+    contenu = None
+
     if model_requested == "arena-swe-agent":
-        swe_res = await swe_agent.run(last_user_msg)
-        content = swe_res.get("response", "")
-        if stream:
-            async def swe_stream():
-                created_time = int(time.time())
-                chunk = {
-                    "id": f"chatcmpl-{created_time}",
-                    "object": "chat.completion.chunk",
-                    "created": created_time,
-                    "model": "arena-swe-agent",
-                    "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": "stop"}]
-                }
-                yield f"data: {json.dumps(chunk)}\n\n"
-                yield "data: [DONE]\n\n"
-            return StreamingResponse(swe_stream(), media_type="text/event-stream")
-        else:
-            return {
-                "id": f"chatcmpl-{int(time.time())}",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": "arena-swe-agent",
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}]
-            }
+        contenu = (await swe_agent.run(last_user_msg)).get("response", "")
 
-    if model_requested == "arena-repo-engineer":
-        eng_res = await repo_engineer.run(last_user_msg)
-        content = eng_res.get("response", "")
-        if stream:
-            async def eng_stream():
-                created_time = int(time.time())
-                chunk = {
-                    "id": f"chatcmpl-{created_time}",
-                    "object": "chat.completion.chunk",
-                    "created": created_time,
-                    "model": "arena-repo-engineer",
-                    "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": "stop"}]
-                }
-                yield f"data: {json.dumps(chunk)}\n\n"
-                yield "data: [DONE]\n\n"
-            return StreamingResponse(eng_stream(), media_type="text/event-stream")
-        else:
-            return {
-                "id": f"chatcmpl-{int(time.time())}",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": "arena-repo-engineer",
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}]
-            }
+    elif model_requested == "arena-repo-engineer":
+        contenu = (await repo_engineer.run(last_user_msg)).get("response", "")
 
-    if model_requested == "arena-graphrag":
-        graph_res = graphrag_tool.query_global(last_user_msg)
-        content = graph_res.get("response", "")
-        if stream:
-            async def graph_stream():
-                created_time = int(time.time())
-                chunk = {
-                    "id": f"chatcmpl-{created_time}",
-                    "object": "chat.completion.chunk",
-                    "created": created_time,
-                    "model": "arena-graphrag",
-                    "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": "stop"}]
-                }
-                yield f"data: {json.dumps(chunk)}\n\n"
-                yield "data: [DONE]\n\n"
-            return StreamingResponse(graph_stream(), media_type="text/event-stream")
-        else:
-            return {
-                "id": f"chatcmpl-{int(time.time())}",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": "arena-graphrag",
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}]
-            }
+    elif model_requested == "arena-coder":
+        contenu = (await coder_agent.run(last_user_msg)).get("response", "")
 
-    if model_requested == "arena-browser":
-        browser_res = await browser_agent.run(last_user_msg)
-        content = browser_res.get("response", "")
-        if stream:
-            async def browser_stream():
-                created_time = int(time.time())
-                chunk = {
-                    "id": f"chatcmpl-{created_time}",
-                    "object": "chat.completion.chunk",
-                    "created": created_time,
-                    "model": "arena-browser",
-                    "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": "stop"}]
-                }
-                yield f"data: {json.dumps(chunk)}\n\n"
-                yield "data: [DONE]\n\n"
-            return StreamingResponse(browser_stream(), media_type="text/event-stream")
-        else:
-            return {
-                "id": f"chatcmpl-{int(time.time())}",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": "arena-browser",
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}]
-            }
+    elif model_requested == "arena-deep-research":
+        contenu = (await researcher_agent.run(last_user_msg)).get("response", "")
 
-    if model_requested == "arena-rag-docs":
-        rag_answer = lightrag_tool.query(last_user_msg, mode="hybrid")
-        if stream:
-            async def rag_stream():
-                created_time = int(time.time())
-                chunk = {
-                    "id": f"chatcmpl-{created_time}",
-                    "object": "chat.completion.chunk",
-                    "created": created_time,
-                    "model": "arena-rag-docs",
-                    "choices": [{"index": 0, "delta": {"content": rag_answer}, "finish_reason": "stop"}]
-                }
-                yield f"data: {json.dumps(chunk)}\n\n"
-                yield "data: [DONE]\n\n"
-            return StreamingResponse(rag_stream(), media_type="text/event-stream")
-        else:
-            return {
-                "id": f"chatcmpl-{int(time.time())}",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": "arena-rag-docs",
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": rag_answer}, "finish_reason": "stop"}]
-            }
+    elif model_requested == "arena-browser":
+        contenu = (await browser_agent.run(last_user_msg)).get("response", "")
 
+    elif model_requested == "arena-graphrag":
+        contenu = graphrag_tool.query_global(last_user_msg).get("response", "")
+
+    elif model_requested == "arena-rag-docs":
+        contenu = lightrag_tool.query(last_user_msg, mode="hybrid")
+
+    if contenu is not None:
+        logger.info(f"Modele '{model_requested}' -> agent dedie")
+        return _reponse_openai(contenu, model_requested, stream)
+
+    # ---- arena-core : aiguillage automatique selon la question ----
     intent = await orchestrator.analyze_intent(last_user_msg)
-    
-    if stream:
-        async def openai_stream_gen():
-            created_time = int(time.time())
+    logger.info(f"Modele 'arena-core' -> intention detectee : {intent}")
 
-            if intent in ["DEEP_REASONING", "DEEP_RESEARCH", "TREND_SEARCH", "CODE_EXECUTION", "VIDEO_ANALYSIS"]:
-                res = await dispatch_request(chat_req)
-                content = res.get("response", "")
-                chunk = {
-                    "id": f"chatcmpl-{created_time}",
-                    "object": "chat.completion.chunk",
-                    "created": created_time,
-                    "model": "arena-core",
-                    "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": "stop"}]
-                }
-                yield f"data: {json.dumps(chunk)}\n\n"
-                yield "data: [DONE]\n\n"
-            else:
-                system_prompt = get_arena_system_prompt()
-                async for token in fast_provider.generate_stream(last_user_msg, system_prompt):
-                    chunk = {
-                        "id": f"chatcmpl-{created_time}",
-                        "object": "chat.completion.chunk",
-                        "created": created_time,
-                        "model": "arena-core",
-                        "choices": [{"index": 0, "delta": {"content": token}, "finish_reason": None}]
-                    }
-                    yield f"data: {json.dumps(chunk)}\n\n"
-                
-                stop_chunk = {
-                    "id": f"chatcmpl-{created_time}",
-                    "object": "chat.completion.chunk",
-                    "created": created_time,
-                    "model": "arena-core",
-                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
-                }
-                yield f"data: {json.dumps(stop_chunk)}\n\n"
-                yield "data: [DONE]\n\n"
-
-        return StreamingResponse(openai_stream_gen(), media_type="text/event-stream")
-    else:
+    if intent in ["DEEP_REASONING", "DEEP_RESEARCH", "TREND_SEARCH", "CODE_EXECUTION", "VIDEO_ANALYSIS"]:
         res = await dispatch_request(chat_req)
-        return {
-            "id": f"chatcmpl-{int(time.time())}",
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": "arena-core",
-            "choices": [{
-                "index": 0,
-                "message": {"role": "assistant", "content": res.get("response", "")},
-                "finish_reason": "stop"
-            }]
+        return _reponse_openai(res.get("response", ""), model_requested, stream)
+
+    # ---- Discussion simple : reponse mot par mot ----
+    if not stream:
+        res = await dispatch_request(chat_req)
+        return _reponse_openai(res.get("response", ""), model_requested, stream)
+
+    async def generateur_discussion():
+        cree = int(time.time())
+        system_prompt = get_arena_system_prompt()
+
+        async for jeton in fast_provider.generate_stream(last_user_msg, system_prompt):
+            morceau = {
+                "id": f"chatcmpl-{cree}",
+                "object": "chat.completion.chunk",
+                "created": cree,
+                "model": model_requested,
+                "choices": [{"index": 0, "delta": {"content": jeton}, "finish_reason": None}]
+            }
+            yield f"data: {json.dumps(morceau)}\n\n"
+
+        fin = {
+            "id": f"chatcmpl-{cree}",
+            "object": "chat.completion.chunk",
+            "created": cree,
+            "model": model_requested,
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
         }
+        yield f"data: {json.dumps(fin)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generateur_discussion(), media_type="text/event-stream")
 
 # ==============================================================================
 # ENDPOINTS MÉDIAS & PIPELINES

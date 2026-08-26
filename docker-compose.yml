@@ -43,6 +43,7 @@ services:
       - OPENAI_API_BASE_URL=http://host.docker.internal:8000/v1
       - OPENAI_API_KEY=${ARENA_API_KEY}
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+      - WEBUI_NAME=${WEBUI_NAME}
     volumes:
       - ./data/database/open-webui:/app/backend/data
     restart: always

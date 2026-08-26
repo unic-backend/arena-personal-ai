@@ -43,7 +43,8 @@ class SWEAgent(BaseAgent):
         if not texte:
             return "def"
 
-        # 1) Un nom de fichier cite est toujours la meilleure piste.
+        #
+        #  1) Un nom de fichier cite est toujours la meilleure piste.
         fichiers = MOTIF_FICHIER.findall(texte)
         if fichiers:
             return Path(fichiers[0]).name
