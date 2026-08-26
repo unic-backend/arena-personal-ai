@@ -57,5 +57,5 @@ MODELE_PROFOND = os.getenv("DEFAULT_LOCAL_MODEL", "qwen3.5:9b")
 # Intentions confiees a un agent specialise plutot qu a une reponse conversationnelle.
 AGENTS_SPECIALISES = frozenset({
     "DEEP_REASONING", "DEEP_RESEARCH", "FRESH_INFO",
-    "TREND_SEARCH", "CODE_EXECUTION", "VIDEO_ANALYSIS",
+    "TREND_SEARCH", "CODE_EXECUTION", "VIDEO_ANALYSIS", "STUDIO",
 })

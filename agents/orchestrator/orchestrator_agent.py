@@ -14,6 +14,7 @@ INTENTIONS = {
     "CHAT",
     "CODE_EXECUTION",
     "FRESH_INFO",
+    "STUDIO",
     "DEEP_REASONING",
     "DEEP_RESEARCH",
     "TREND_SEARCH",
@@ -58,6 +59,8 @@ DEEP_REASONING  : résoudre un problème mathématique ou une démonstration.
 DEEP_RESEARCH   : produire une étude, un rapport documenté, une recherche approfondie.
 TREND_SEARCH    : chercher des tendances ou des idées de contenu vidéo.
 VIDEO_ANALYSIS  : analyser, découper ou reformater un fichier vidéo.
+STUDIO          : traiter une vidéo de bout en bout — vertical 9:16 et
+                  sous-titres incrustés, en une seule demande.
 
 Attention : parler DE code, DE maths ou D'une erreur n'est pas demander d'en produire.
 « Explique-moi le code de la route » est CHAT, pas CODE_EXECUTION.
@@ -181,8 +184,18 @@ class OrchestratorAgent(BaseAgent):
         if any(k in text for k in research_keywords):
             return "DEEP_RESEARCH"
 
+        # Studio complet : une seule demande, toute la chaine.
+        # Teste avant VIDEO_ANALYSIS : « sous-titre cette video » est un studio,
+        # pas une analyse — l attente de l utilisateur est un fichier rendu.
+        studio_keywords = [
+            "studio", "transforme la vidéo", "transforme la video",
+            "sous-titre", "sous titre", "9:16", "short tiktok", "reformatte",
+        ]
+        if any(k in text for k in studio_keywords):
+            return "STUDIO"
+
         # Vidéo
-        video_keywords = ["découpe cette vidéo", "reformatte en 9:16", "sous-titre cette vidéo"]
+        video_keywords = ["découpe cette vidéo", "analyse cette vidéo"]
         if any(k in text for k in video_keywords):
             return "VIDEO_ANALYSIS"
 

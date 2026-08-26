@@ -17,16 +17,19 @@ from apps.backend.config import AGENTS_SPECIALISES, MEDIA_DIR
 from apps.backend.prompts import get_arena_system_prompt
 from apps.backend.runtime import (
     coder_agent,
+    editor_agent,
     fast_provider,
     fresh_agent,
     memory,
     orchestrator,
     publisher_agent,
     researcher_agent,
+    subtitle_agent,
     trend_agent,
     video_agent,
 )
 from apps.backend.security import limiter_debit, validate_media_path, verify_api_key
+from apps.backend.studio import lancer_studio
 
 logger = logging.getLogger("arena.backend")
 
@@ -67,6 +70,8 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         result = await orchestrator.run(request.prompt, context={"session_id": session_id, "intent": intent})
     elif intent == "FRESH_INFO":
         result = await fresh_agent.run(request.prompt)
+    elif intent == "STUDIO":
+        result = await lancer_studio(video_agent, editor_agent, subtitle_agent)
     elif intent == "DEEP_RESEARCH":
         result = await researcher_agent.run(request.prompt)
     elif intent == "CODE_EXECUTION":

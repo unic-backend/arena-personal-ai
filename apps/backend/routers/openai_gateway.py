@@ -18,6 +18,7 @@ from apps.backend.routers.chat import ChatRequest, dispatch_request, formater_so
 from apps.backend.runtime import (
     browser_agent,
     coder_agent,
+    editor_agent,
     fast_provider,
     fresh_agent,
     graphrag_tool,
@@ -25,9 +26,12 @@ from apps.backend.runtime import (
     orchestrator,
     repo_engineer,
     researcher_agent,
+    subtitle_agent,
     swe_agent,
+    video_agent,
 )
 from apps.backend.security import limiter_debit, verify_api_key
+from apps.backend.studio import lancer_studio
 
 logger = logging.getLogger("arena.backend")
 
@@ -50,7 +54,8 @@ async def list_openai_models():
             {"id": "arena-fresh", "object": "model", "owned_by": "arena"},
             {"id": "arena-rag-docs", "object": "model", "owned_by": "arena"},
             {"id": "arena-graphrag", "object": "model", "owned_by": "arena"},
-            {"id": "arena-browser", "object": "model", "owned_by": "arena"}
+            {"id": "arena-browser", "object": "model", "owned_by": "arena"},
+            {"id": "arena-studio", "object": "model", "owned_by": "arena"}
         ]
     }
 
@@ -122,6 +127,9 @@ async def openai_chat_completions(request: Request):
 
     elif model_requested == "arena-browser":
         contenu = (await browser_agent.run(last_user_msg)).get("response", "")
+
+    elif model_requested == "arena-studio":
+        contenu = (await lancer_studio(video_agent, editor_agent, subtitle_agent)).get("response", "")
 
     elif model_requested == "arena-graphrag":
         contenu = graphrag_tool.query_global(last_user_msg).get("response", "")
