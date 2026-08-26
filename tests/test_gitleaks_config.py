@@ -80,6 +80,33 @@ def test_la_ci_execute_le_scan():
     assert "--config .gitleaks.toml" in workflow
 
 
+# --- Documents du propriétaire ------------------------------------------------
+
+@pytest.mark.parametrize(
+    "chemin",
+    [
+        "data/documents/devis_2026_041.pdf",
+        "data/documents/2026/facture_118.docx",
+        "data/rag/storage/index.json",
+    ],
+)
+def test_les_documents_du_proprietaire_ne_peuvent_pas_etre_versionnes(chemin):
+    """Le dépôt est public. Un devis client qui y entre n'en ressort pas."""
+    resultat = subprocess.run(
+        ["git", "check-ignore", "-q", chemin],
+        cwd=RACINE, capture_output=True,
+    )
+
+    assert resultat.returncode == 0, f"{chemin} n'est pas ignore par git"
+
+
+def test_le_dossier_des_documents_existe_pour_y_deposer_des_fichiers():
+    dossier = RACINE / "data" / "documents"
+
+    assert dossier.is_dir()
+    assert (dossier / ".gitkeep").exists(), "le dossier doit survivre a un clone"
+
+
 # --- Exécution réelle, si le binaire est installé -----------------------------
 
 @pytest.fixture

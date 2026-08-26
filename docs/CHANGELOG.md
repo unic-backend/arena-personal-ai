@@ -113,6 +113,14 @@
 - Un document illisible est **signalé** (`VIDE`, `NON_PRIS_EN_CHARGE`, `ECHEC`), jamais
   remplacé par un résumé de mémoire. Un PDF scanné dit qu'il est scanné.
 - `pypdf` et `python-docx` deviennent des dépendances directes.
+- **Inventaire des documents** (`tools/documents/inventory.py`) : ce qui est déjà
+  indexé, ce qui a changé, ce qui a disparu. Un document inchangé n'est pas
+  réindexé — chaque passage indexé occupe la carte graphique.
+- Le suivi porte sur le **contenu** (empreinte SHA-256), pas sur la date : recopier
+  un fichier ne le rend pas modifié.
+- Un document supprimé du dossier est **signalé**, jamais retiré en silence.
+- `data/documents/` et `data/rag/` sont exclus de Git. Le dépôt est public :
+  un devis client qui y entrerait n'en ressortirait pas. Trois tests le vérifient.
 
 - **Pipeline d'information fraîche.** Une question dont la réponse a pu changer
   (dernière version, actualité, qui occupe un poste, prix, météo) n'est plus

@@ -27,6 +27,14 @@ pytest                 # suite hors ligne
 pytest -m integration  # exige Ollama, Docker, ffmpeg, Chromium selon les tests
 ```
 
+## Documents
+Dépose tes documents dans `data/documents/` — sous-dossiers acceptés.
+
+Formats lus : `.pdf`, `.docx`, `.txt`, `.md`, `.csv`. Un fichier d'un autre
+format est **ignoré et compté à part**, jamais avalé en silence.
+
+Ce dossier est exclu de Git : tes devis et factures ne partent nulle part.
+
 ## Scan de secrets
 Aucune clé ne doit entrer dans le dépôt. La CI le vérifie à chaque `push` ; pour
 le contrôler avant de committer :

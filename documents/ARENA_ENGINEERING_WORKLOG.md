@@ -803,16 +803,64 @@ sera vérifié ici ; l'indexation elle-même devra l'être chez le propriétaire
 
 ---
 
+### 26 août 2026 — Indexation documentaire, phase 2/3 · Le classeur
+
+*Fichiers* : `tools/documents/inventory.py` (nouveau),
+`tests/tools/test_document_inventory.py` (nouveau), `tests/test_gitleaks_config.py`,
+`.gitignore`, `README.md`
+*Changement* : un dossier `data/documents/` où le propriétaire dépose ses
+fichiers, et un inventaire qui répond à quatre questions : quels documents sont
+nouveaux, lesquels ont changé, lesquels sont inchangés, lesquels ont disparu.
+
+**Pourquoi un inventaire.** Indexer un passage occupe la carte graphique le temps
+d'en calculer le vecteur. Refaire ce travail sur un fichier qui n'a pas bougé,
+c'est occuper le GPU pour rien — sur une RTX A2000 partagée avec le modèle de
+conversation, cela se voit.
+
+**Trois choix qui portent la conception :**
+1. Le suivi porte sur le **contenu** (empreinte SHA-256), pas sur la date de
+   modification. Recopier un fichier change sa date sans changer ce qu'il dit.
+2. Un document **disparu est signalé**, jamais retiré en silence : l'index
+   continuerait sinon à répondre à partir d'un fichier supprimé.
+3. Un inventaire illisible est **reconstruit**, pas fatal. Le pire cas doit être
+   « tout réindexer une fois », jamais « ne plus rien pouvoir indexer ».
+
+**Le point de confidentialité, et il compte.** Le dépôt est public. `.gitignore`
+exclut désormais `data/documents/` et `data/rag/`, et trois tests vérifient qu'un
+devis ou une facture **ne peut pas** être versionné. L'inventaire lui-même ne
+contient aucun contenu de document — seulement nom, empreinte, date, compteurs :
+il est écrit sur le disque, y recopier une facture serait une fuite. Un test
+l'affirme sur un fichier contenant un montant et un RIB.
+
+*Vérifications, toutes exécutées :*
+- `pytest tests/tools/test_document_inventory.py` → **19 passed**
+- classeur réel (2 pages de PDF, un Word avec tableau, un Markdown, un `.jpg` et
+  un `.xlsx`) :
+  - 1er passage → 3 nouveaux, 2 ignorés, tous lus avec leur provenance
+    (`devis_2026_041.pdf, page 2`)
+  - 2e passage → **0 à faire**, 3 inchangés
+  - 3e passage, un devis corrigé et une note supprimée → 1 modifié, 1 disparu,
+    1 inchangé
+  - l'inventaire écrit ne contient ni le montant ni le nom du chantier
+- suite complète → **338 passed, 20 deselected** (code de sortie 0, sans tube) ;
+  `ruff` → 0 ; `gitleaks` → 0 ; chaîne T-12 → 0
+
+*Résultat* : **TERMINÉ** — phase 2 sur 3.
+
+---
+
 ## IN PROGRESS
 
 **Tâche courante** : indexation documentaire (T-17), 3 phases.
-Phase 1 (lecture d'un document) terminée.
+Phases 1 et 2 terminées (lecture, puis inventaire).
 **État exact** : deux actions restent, et elles n'appartiennent qu'au
 propriétaire — changer les cinq clés dans `.env`, et autoriser la réécriture de
 l'historique (irréversible, casse les clones existants).
-**Prochaine action concrète** : phase 2 — le classeur : un dossier pour les
-documents, et un inventaire de ce qui est indexé, de ce qui a changé. Reste
-toujours dû par le propriétaire : l'étape 1 de `RUNBOOK_PURGE_SECRETS.md`.
+**Prochaine action concrète** : phase 3 — brancher lecture et inventaire sur
+LightRAG, avec une commande d'indexation et un refus explicite quand Ollama est
+absent. **Non vérifiable ici** : l'indexation réelle demande Ollama et un modèle
+d'embeddings. Reste dû par le propriétaire : l'étape 1 de
+`RUNBOOK_PURGE_SECRETS.md`.
 
 ---
 
@@ -848,7 +896,7 @@ désormais protégées par `tests/test_documentation.py`.
 | T-14 | Routeur enrichi : besoin de fraîcheur, de RAG, d'outils, de vérification | 3 h | Le routeur renvoie une décision structurée, testée |
 | T-15 | Passerelle de modèles par capacité (`fast_chat`, `coding`, `reasoning`…) | 3 h | Un agent demande une capacité, pas un nom de modèle |
 | T-16 | Mémoire sémantique et mémoire utilisateur séparées | 4 h | Une information ancienne pertinente est retrouvée par similarité |
-| T-17 | Indexation documentaire — **phase 1/3 faite** (lecture d'un document) | 3 h | Un document importé est interrogeable avec sa source |
+| T-17 | Indexation documentaire — **phases 1 et 2/3 faites** | 3 h | Un document importé est interrogeable avec sa source |
 | T-18 | Progression visible pendant les opérations longues | 2 h | L'interface affiche « recherche », « lecture », « génération » |
 
 ### Priorité 5 — Dette technique
@@ -1020,7 +1068,7 @@ Ce qui est certain, et vérifié par le code :
 | Appels au modèle avant le correctif n°9 | 3 | lecture du code : `chat_stream_endpoint` → `dispatch_request` → `orchestrator.run` |
 | Contexte configuré | `num_ctx: 4096` | `core/models/ollama_provider.py` |
 | Maintien en VRAM | `keep_alive: "30m"` | idem |
-| Durée de la suite de tests | 5,5 s pour 315 tests | `pytest -q` |
+| Durée de la suite de tests | 5,3 s pour 338 tests | `pytest -q` |
 | Pic mémoire, envoi de 64 Mo — avant T-02 | 64,0 Mo | `tracemalloc` sur l'ancien chemin |
 | Pic mémoire, envoi de 64 Mo — après T-02 | 2,0 Mo | `tracemalloc` sur `ecrire_par_blocs` |
 
@@ -1138,3 +1186,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | 2026-08-26 | Claude Code | T-19 phase 2/3 : security.py et prompts.py extraits, tests redirigés vers le module propriétaire. |
 | 2026-08-26 | Claude Code | T-19 terminée : main.py 652 → 61 lignes, 3 routeurs, comportement inchangé. |
 | 2026-08-26 | Claude Code | Indexation documentaire phase 1/3 : lecture PDF/Word/texte avec provenance. |
+| 2026-08-26 | Claude Code | Indexation documentaire phase 2/3 : inventaire, et documents personnels exclus de Git. |
