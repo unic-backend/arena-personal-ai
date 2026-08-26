@@ -41,7 +41,20 @@ C'est réversible, et ça arrête l'exposition pendant que vous travaillez.
 Six valeurs ont fuité, correspondant à cinq variables. Générez une valeur
 nouvelle pour **chacune**.
 
-Lancez cette commande **cinq fois**, une par variable :
+**Attention : les cinq clés n'ont pas le même format.** `CREDS_KEY` sert à
+chiffrer les identifiants stockés par LibreChat, qui exige **exactement 64
+caractères hexadécimaux** — la valeur qui a fuité en faisait 64. Une valeur
+d'une autre longueur, ou contenant autre chose que `0-9` et `a-f`, empêche
+LibreChat de démarrer.
+
+Pour `CREDS_KEY`, lancez **une fois** :
+
+```
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Pour les **quatre autres**, lancez cette commande **quatre fois**, une par
+variable :
 
 ```
 python -c "import secrets; print(secrets.token_urlsafe(32))"
@@ -98,7 +111,7 @@ python scripts/preparer_purge_secrets.py
 ```
 
 Le script lit l'historique, affiche les secrets trouvés **sous forme masquée**,
-et écrit un fichier `arena-secrets-a-purger.txt` **à côté** du dossier du projet
+et écrit un fichier `usman-secrets-a-purger.txt` **à côté** du dossier du projet
 — délibérément hors du dépôt, pour qu'il ne puisse pas être versionné.
 
 Sortie attendue : `6 secret(s) trouvé(s) dans l'historique`.
@@ -116,7 +129,7 @@ pip install git-filter-repo
 Puis, depuis le dossier du projet :
 
 ```
-git filter-repo --replace-text ../arena-secrets-a-purger.txt --force
+git filter-repo --replace-text ../usman-secrets-a-purger.txt --force
 ```
 
 > **Ne pas utiliser** `git filter-repo --path librechat.yaml --invert-paths`.
@@ -140,7 +153,7 @@ git show HEAD:librechat.yaml
 Attendu : le fichier s'affiche, avec `apiKey: "${ARENA_API_KEY}"`.
 
 **2. Les secrets ont disparu de l'historique.** Pour chaque valeur listée à
-l'étape 3 (le fichier `arena-secrets-a-purger.txt` les contient, une par ligne
+l'étape 3 (le fichier `usman-secrets-a-purger.txt` les contient, une par ligne
 avant la flèche `==>`) :
 
 ```
@@ -155,7 +168,7 @@ Attendu : **aucune ligne** en sortie.
 pytest
 ```
 
-Attendu : `156 passed`.
+Attendu : `369 passed, 21 deselected` — mesuré le 26/08/2026.
 
 ---
 
@@ -192,10 +205,10 @@ refaire un `git clone`.
 Supprimez le fichier qui contient les secrets en clair :
 
 ```
-del ..\arena-secrets-a-purger.txt
+del ..\usman-secrets-a-purger.txt
 ```
 
-*(sous Linux ou macOS : `rm ../arena-secrets-a-purger.txt`)*
+*(sous Linux ou macOS : `rm ../usman-secrets-a-purger.txt`)*
 
 Puis, si vous voulez que GitHub oublie aussi les anciens commits accessibles par
 leur identifiant, ouvrez une demande au support GitHub en citant le dépôt et en
@@ -218,4 +231,4 @@ git clone arena-sauvegarde.git arena-restaure
 ## Trace
 
 Une fois l'opération faite, notez la date et le résultat dans
-`documents/ARENA_ENGINEERING_WORKLOG.md`, entrée **T-01**.
+`documents/USMAN_ENGINEERING_WORKLOG.md`, entrée **T-01**.

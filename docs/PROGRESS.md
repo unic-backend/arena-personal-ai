@@ -1,4 +1,4 @@
-# AVANCEMENT DU PROJET - ARENA
+# AVANCEMENT DU PROJET - Usman
 
 - 2026-08-24 : Initialisation Phase 0 à Phase 4.
 - 2026-08-25 : Implémentation du CodeInterpreterTool et du CoderAgent (Qwen 2.5 Coder 14B) avec boucle d'auto-correction.
@@ -11,6 +11,6 @@
   au lieu de dégrader, `EXECUTE_COMMANDS: false`, `requirements.txt` portable,
   suite pytest hors ligne (12 → 148 tests), ruff, LICENSE + CI, classification
   d'intention par le modèle, BOM retirés (37 fichiers), contrôle des envois de fichiers.
-- 2026-08-26 : Carnet de bord permanent créé (`documents/ARENA_ENGINEERING_WORKLOG.md`).
+- 2026-08-26 : Carnet de bord permanent créé (`documents/USMAN_ENGINEERING_WORKLOG.md`).
 - 2026-08-26 : Documentation alignée sur le code — trois affirmations fausses corrigées
   dans `ROADMAP.md`, `NEXT_STEPS.md` remis à jour, doublon `RAPPORT_TRAVAIL.txt` supprimé.

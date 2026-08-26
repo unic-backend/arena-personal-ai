@@ -1,4 +1,4 @@
-# Configuration gitleaks pour ARENA.
+# Configuration gitleaks pour Usman.
 #
 # Les regles par defaut de gitleaks ne suffisent pas ici : la cle qui a declenche
 # l'audit du 26/08/2026, `apiKey: "arena-****-****"` dans librechat.yaml, a trop
@@ -6,18 +6,18 @@
 # Les deux regles ci-dessous visent les emplacements exacts ou ce projet ecrit
 # des secrets.
 
-title = "ARENA — detection de secrets"
+title = "Usman — detection de secrets"
 
 # On garde toutes les regles standard, et on ajoute les notres.
 [extend]
 useDefault = true
 
 [[rules]]
-id = "arena-librechat-apikey"
+id = "usman-librechat-apikey"
 description = "Cle API ecrite en clair dans un fichier YAML (librechat.yaml)"
 regex = '''(?i)apikey\s*:\s*["']([^"'\s]{8,})["']'''
 secretGroup = 1
-tags = ["arena", "apikey"]
+tags = ["usman", "apikey"]
 path = '''\.ya?ml$'''
 
   [rules.allowlist]
@@ -26,14 +26,14 @@ path = '''\.ya?ml$'''
   regexes = ['''\$\{[A-Z_][A-Z0-9_]*\}''']
 
 [[rules]]
-id = "arena-compose-secret"
+id = "usman-compose-secret"
 description = "Secret ecrit en clair au lieu d'une variable d'environnement"
 # Le jeu de caracteres est volontairement etroit : un vrai secret est fait de
 # lettres, chiffres, tirets et soulignes. `os.getenv("...` ou `<a remplacer>`
 # n'en sont pas, et n'ont pas a declencher une alerte.
-regex = '''(?i)\b(CREDS_KEY|JWT_SECRET|JWT_REFRESH_SECRET|WEBUI_SECRET_KEY|ARENA_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|SECRET_KEY)\s*[=:]\s*["']?([A-Za-z0-9_-]{9,})["']?'''
+regex = '''(?i)\b(CREDS_KEY|JWT_SECRET|JWT_REFRESH_SECRET|WEBUI_SECRET_KEY|USMAN_API_KEY|ARENA_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|SECRET_KEY)\s*[=:]\s*["']?([A-Za-z0-9_-]{9,})["']?'''
 secretGroup = 2
-tags = ["arena", "secret"]
+tags = ["usman", "secret"]
 
   [rules.allowlist]
   regexTarget = "match"

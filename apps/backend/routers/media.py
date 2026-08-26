@@ -20,7 +20,7 @@ from apps.backend.config import (
 from apps.backend.runtime import clip_selector, editor_agent, permissions, subtitle_agent, video_agent
 from apps.backend.security import limiter_debit, verify_api_key
 
-logger = logging.getLogger("arena.backend")
+logger = logging.getLogger("usman.backend")
 
 router = APIRouter()
 
@@ -32,7 +32,7 @@ def valider_nom_de_fichier(nom_brut: Optional[str]) -> str:
     """Verifie le nom d'un fichier envoye et renvoie un nom sur.
 
     Deux controles distincts : `Path(...).name` neutralise la traversee de
-    repertoire, la liste blanche d'extensions decide de ce qu'ARENA accepte.
+    repertoire, la liste blanche d'extensions decide de ce qu'Usman accepte.
     """
     if not nom_brut or not nom_brut.strip():
         raise HTTPException(status_code=400, detail="Nom de fichier manquant.")

@@ -8,7 +8,7 @@ from core.models.base import ModelProvider
 from tools.audio.transcription_tool import TranscriptionTool
 from tools.video.ffmpeg_tool import FFmpegTool
 
-logger = logging.getLogger("arena.agent.video_analyzer")
+logger = logging.getLogger("usman.agent.video_analyzer")
 
 class VideoAnalyzerAgent(BaseAgent):
     """Agent chargé de transcrire et d'analyser le contenu d'une vidéo."""

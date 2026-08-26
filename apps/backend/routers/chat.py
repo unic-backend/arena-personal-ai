@@ -16,19 +16,27 @@ from pydantic import BaseModel
 from apps.backend.config import AGENTS_SPECIALISES, MEDIA_DIR
 from apps.backend.prompts import get_arena_system_prompt
 from apps.backend.runtime import (
+    browser_agent,
     coder_agent,
+    editor_agent,
     fast_provider,
     fresh_agent,
+    graphrag_tool,
+    lightrag_tool,
     memory,
     orchestrator,
     publisher_agent,
+    repo_engineer,
     researcher_agent,
+    subtitle_agent,
+    swe_agent,
     trend_agent,
     video_agent,
 )
 from apps.backend.security import limiter_debit, validate_media_path, verify_api_key
+from apps.backend.studio import lancer_studio
 
-logger = logging.getLogger("arena.backend")
+logger = logging.getLogger("usman.backend")
 
 router = APIRouter()
 
@@ -40,13 +48,34 @@ class ChatRequest(BaseModel):
     region: Optional[str] = "Sénégal"
 
 
-def formater_sources(sources: List[Dict[str, Any]]) -> str:
-    """Ajoute la liste des sources sous une reponse, pour les canaux en texte seul.
+# Formulations par lesquelles l utilisateur reclame les sources. Decision du
+# proprietaire, 2026-08-26 : la liste des adresses alourdit chaque reponse alors
+# qu il ne la lit presque jamais. Elle n est donc plus affichee par defaut.
+#
+# La reponse continue de porter ses numeros [1], [2] : ils viennent du modele et
+# disent sur quelle source chaque affirmation repose. Ce qui disparait, c est la
+# liste d adresses en bas — jamais la tracabilite elle-meme, qui reste dans le
+# champ `sources` de la reponse de l agent.
+DEMANDES_DE_SOURCES = (
+    "source", "sources", "référence", "reference", "d'où", "d ou", "d'ou",
+    "lien", "liens", "url", "prouve", "preuve", "vérifiable", "verifiable",
+)
 
-    Le format OpenAI n'a pas de champ pour des sources : sans cela, le lecteur ne
-    saurait pas d'ou vient la reponse.
+
+def sources_demandees(question: str) -> bool:
+    """Dit si l utilisateur a reclame les adresses de ses sources."""
+    texte = (question or "").lower()
+    return any(mot in texte for mot in DEMANDES_DE_SOURCES)
+
+
+def formater_sources(sources: List[Dict[str, Any]], question: str = "") -> str:
+    """Rend la liste des sources, uniquement si elle a ete demandee.
+
+    Le format OpenAI n a pas de champ pour des sources : sans cela, le lecteur ne
+    saurait pas d ou vient la reponse. Mais l afficher a chaque fois encombre —
+    d ou le declenchement a la demande.
     """
-    if not sources:
+    if not sources or not sources_demandees(question):
         return ""
     lignes = [f"[{s['index']}] {s['title']} — {s['url']}" for s in sources]
     return "\n\n**Sources**\n" + "\n".join(lignes)
@@ -61,12 +90,24 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
     session_id = request.session_id or "default"
     if intent is None:
         intent = await orchestrator.analyze_intent(request.prompt)
-    logger.info(f"Intention détectée par ARENA: {intent}")
+    logger.info(f"Intention détectée par Usman: {intent}")
 
     if intent == "DEEP_REASONING":
         result = await orchestrator.run(request.prompt, context={"session_id": session_id, "intent": intent})
     elif intent == "FRESH_INFO":
         result = await fresh_agent.run(request.prompt)
+    elif intent == "STUDIO":
+        result = await lancer_studio(video_agent, editor_agent, subtitle_agent)
+    elif intent == "BROWSER":
+        result = await browser_agent.run(request.prompt)
+    elif intent == "SWE_FIX":
+        result = await swe_agent.run(request.prompt)
+    elif intent == "REPO_ENGINEERING":
+        result = await repo_engineer.run(request.prompt)
+    elif intent == "RAG_DOCS":
+        result = {"response": lightrag_tool.query(request.prompt, mode="hybrid"), "agent": "LightRAG"}
+    elif intent == "GRAPHRAG":
+        result = graphrag_tool.query_global(request.prompt)
     elif intent == "DEEP_RESEARCH":
         result = await researcher_agent.run(request.prompt)
     elif intent == "CODE_EXECUTION":
@@ -131,10 +172,10 @@ async def chat_stream_endpoint(request: ChatRequest):
 
         prompt_lines = []
         for msg in history:
-            role_label = memory.get_fact("owner") or "Saer" if msg["role"] == "user" else "ARENA"
+            role_label = memory.get_fact("owner") or "Ousmane" if msg["role"] == "user" else "Usman"
             prompt_lines.append(f"{role_label}: {msg['content']}")
-        prompt_lines.append(f"{memory.get_fact('owner') or 'Saer'}: {request.prompt}")
-        prompt_lines.append("ARENA:")
+        prompt_lines.append(f"{memory.get_fact('owner') or 'Ousmane'}: {request.prompt}")
+        prompt_lines.append("Usman:")
         full_prompt = "\n".join(prompt_lines)
 
         async def token_generator():

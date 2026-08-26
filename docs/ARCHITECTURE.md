@@ -1,7 +1,7 @@
-# ARCHITECTURE TECHNIQUE - ARENA
+# ARCHITECTURE TECHNIQUE - Usman
 
 ## VUE GLOBALE
-[Utilisateur] <--> [ARENA Frontend] <--> [Backend API / Orchestrateur]
+[Utilisateur] <--> [Usman Frontend] <--> [Backend API / Orchestrateur]
                                             |
                                  +----------+----------+
                                  |                     |

@@ -5,7 +5,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-logger = logging.getLogger("arena.memory")
+logger = logging.getLogger("usman.memory")
 
 class MemoryManager:
     def __init__(self, db_path: str = "data/database/memory.db"):
@@ -107,9 +107,9 @@ class MemoryManager:
 
 if __name__ == "__main__":
     mem = MemoryManager()
-    mem.set_fact("user_profile", "owner", "Saer", {"role": "Propriétaire"})
-    mem.add_chat_message("default", "user", "Bonjour ARENA")
-    mem.add_chat_message("default", "assistant", "Bonjour Saer, mémoire SQLite initialisée.")
+    mem.set_fact("user_profile", "owner", "Ousmane", {"role": "Propriétaire"})
+    mem.add_chat_message("default", "user", "Bonjour Usman")
+    mem.add_chat_message("default", "assistant", "Bonjour Usman, mémoire SQLite initialisée.")
 
     print("✅ MemoryManager SQLite initialisé avec succès !")
     print("   Propriétaire enregistré:", mem.get_fact("owner"))

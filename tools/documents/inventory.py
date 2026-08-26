@@ -26,7 +26,7 @@ from typing import Any, Dict, List
 
 from tools.documents.reader import EXTENSIONS_LISIBLES
 
-logger = logging.getLogger("arena.tools.documents")
+logger = logging.getLogger("usman.tools.documents")
 
 # Lu par blocs : une facture scannee peut peser plusieurs dizaines de Mo.
 TAILLE_BLOC = 1024 * 1024

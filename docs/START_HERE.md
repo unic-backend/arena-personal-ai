@@ -1,10 +1,10 @@
-# ARENA IA PERSONNELLE — GUIDE DE DÉMARRAGE
+# Usman IA PERSONNELLE — GUIDE DE DÉMARRAGE
 
-## Rôle d'ARENA
-ARENA est le cerveau principal et l'architecte du projet.
+## Rôle d'Usman
+Usman est le cerveau principal et l'architecte du projet.
 
 ## Comment reprendre une session ?
-1. **Lire `documents/ARENA_ENGINEERING_WORKLOG.md`** — c'est le carnet de bord
+1. **Lire `documents/USMAN_ENGINEERING_WORKLOG.md`** — c'est le carnet de bord
    permanent : ce qui est fait, ce qui reste, les problèmes ouverts, et la
    vérification qui justifie chaque affirmation.
 2. Regarder l'état Git (`git status`, `git log --oneline -10`).

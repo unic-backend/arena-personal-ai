@@ -8,7 +8,7 @@ from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from tools.coder.swe_aci_tool import SWEACITool
 
-logger = logging.getLogger("arena.agent.swe")
+logger = logging.getLogger("usman.agent.swe")
 
 # Mots d'instruction courants : ils ne servent a rien pour chercher dans le code.
 MOTS_VIDES = {

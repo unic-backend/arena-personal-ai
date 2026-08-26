@@ -3,10 +3,10 @@ from pathlib import Path
 
 import yaml
 
-logger = logging.getLogger("arena.security.permissions")
+logger = logging.getLogger("usman.security.permissions")
 
 class PermissionManager:
-    """Gestionnaire central des permissions d'ARENA et de ses agents."""
+    """Gestionnaire central des permissions d'Usman et de ses agents."""
 
     DEFAULT_PERMISSIONS = {
         "READ_FILES": True,

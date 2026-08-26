@@ -11,6 +11,18 @@ def resultat(n: int) -> dict:
     return {"title": f"Titre {n}", "href": f"https://exemple.test/{n}", "body": f"resume {n}"}
 
 
+def resultat_sans_resume(n: int) -> dict:
+    """Un resultat que le moteur rend sans extrait.
+
+    Depuis le 2026-08-26, l'agent se rabat sur les extraits de recherche quand
+    aucune page n'est lisible — un extrait porte un titre et une adresse, c'est
+    une source. Les tests qui veulent prouver le refus *sans aucune source*
+    doivent donc retirer aussi l'extrait, sinon ils mesurent le secours au lieu
+    du refus.
+    """
+    return {"title": f"Titre {n}", "href": f"https://exemple.test/{n}", "body": ""}
+
+
 SANS_VALEUR = object()   # distingue « non precise » de « volontairement vide »
 
 
@@ -36,7 +48,7 @@ class RechercheDoublee:
         self.resultats = resultats
         self.requetes = []
 
-    def search(self, query, max_results=5):
+    def search(self, query, max_results=5, recent=False):
         self.requetes.append((query, max_results))
         return self.resultats[:max_results]
 
@@ -139,7 +151,7 @@ async def test_sans_resultat_de_recherche_le_modele_n_est_pas_appele(agent_facto
 async def test_sans_page_lisible_le_modele_n_est_pas_appele(agent_factory):
     """Une réponse inventée coûte plus cher qu'une absence de réponse."""
     agent = agent_factory(
-        [resultat(1), resultat(2)],
+        [resultat_sans_resume(1), resultat_sans_resume(2)],
         {"https://exemple.test/1": page_ratee(1), "https://exemple.test/2": page_ratee(2, "type non lisible")},
     )
 
@@ -153,7 +165,7 @@ async def test_sans_page_lisible_le_modele_n_est_pas_appele(agent_factory):
 
 
 async def test_une_page_vide_ne_compte_pas_comme_une_source(agent_factory):
-    agent = agent_factory([resultat(1)], {"https://exemple.test/1": page_lue(1, texte="   ")})
+    agent = agent_factory([resultat_sans_resume(1)], {"https://exemple.test/1": page_lue(1, texte="   ")})
 
     res = await agent.run("question")
 

@@ -132,7 +132,7 @@ ENTETES = {"Authorization": f"Bearer {CLE}"}
 
 @pytest.fixture
 def client(monkeypatch) -> TestClient:
-    monkeypatch.setattr(securite, "ARENA_API_KEY", CLE)
+    monkeypatch.setattr(securite, "USMAN_API_KEY", CLE)
     monkeypatch.setattr(securite, "REQUETES_MAX", 3)
     monkeypatch.setattr(securite, "limiteur", LimiteurDebit(3, 60, horloge=HorlogeFactice()))
     return TestClient(main.app, raise_server_exceptions=False)
@@ -151,10 +151,10 @@ def test_la_route_de_chat_refuse_au_dela_du_plafond(client):
 
 def test_la_passerelle_v1_est_limitee_aussi(client):
     for _ in range(3):
-        client.post("/v1/chat/completions", json={"model": "arena-core", "messages": []},
+        client.post("/v1/chat/completions", json={"model": "usman-chat", "messages": []},
                     headers=ENTETES)
 
-    res = client.post("/v1/chat/completions", json={"model": "arena-core", "messages": []},
+    res = client.post("/v1/chat/completions", json={"model": "usman-chat", "messages": []},
                       headers=ENTETES)
 
     assert res.status_code == 429
@@ -177,7 +177,7 @@ def test_l_authentification_passe_avant_la_limitation(client):
 # --- Journalisation des refus d'authentification -------------------------------
 
 def test_un_refus_d_authentification_est_journalise(client, caplog):
-    with caplog.at_level("WARNING", logger="arena.backend"):
+    with caplog.at_level("WARNING", logger="usman.backend"):
         client.post("/api/chat", json={"prompt": "x"}, headers={"Authorization": "Bearer faux"})
 
     messages = [e.getMessage() for e in caplog.records]
@@ -189,7 +189,7 @@ def test_le_journal_ne_contient_jamais_la_cle_presentee(client, caplog):
     """Un journal qui contient des secrets est un secret de plus à protéger."""
     cle_presentee = "valeur" + "-secrete-" + "presentee"
 
-    with caplog.at_level("WARNING", logger="arena.backend"):
+    with caplog.at_level("WARNING", logger="usman.backend"):
         client.post("/api/chat", json={"prompt": "x"},
                     headers={"Authorization": f"Bearer {cle_presentee}"})
 
@@ -202,7 +202,7 @@ def test_un_depassement_de_debit_est_journalise(client, caplog):
     for _ in range(3):
         client.post("/api/chat", json={"prompt": "x"}, headers=ENTETES)
 
-    with caplog.at_level("WARNING", logger="arena.backend"):
+    with caplog.at_level("WARNING", logger="usman.backend"):
         client.post("/api/chat", json={"prompt": "x"}, headers=ENTETES)
 
     assert any("Debit depasse" in e.getMessage() for e in caplog.records)

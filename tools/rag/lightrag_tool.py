@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-logger = logging.getLogger("arena.tools.rag")
+logger = logging.getLogger("usman.tools.rag")
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 RAG_STORAGE_DIR = BASE_DIR / "data" / "rag" / "storage"

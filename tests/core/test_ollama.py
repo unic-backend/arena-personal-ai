@@ -10,8 +10,8 @@ async def test_le_service_repond(ollama_en_ligne):
 @pytest.mark.integration
 async def test_une_generation_renvoie_du_texte(ollama_en_ligne):
     reponse = await ollama_en_ligne.generate(
-        prompt="Dis 'ARENA est operationnel' en une phrase courte.",
-        system_prompt="Tu es l'assistant de test ARENA.",
+        prompt="Dis 'Usman est operationnel' en une phrase courte.",
+        system_prompt="Tu es l'assistant de test Usman.",
     )
 
     assert reponse.strip() != ""

@@ -6,7 +6,7 @@ from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from tools.coder.repo_engineer_tool import RepoEngineerTool
 
-logger = logging.getLogger("arena.agent.repo_engineer")
+logger = logging.getLogger("usman.agent.repo_engineer")
 
 class RepoEngineerAgent(BaseAgent):
     """Agent d'analyse d'architecture multi-fichiers (lecture seule).

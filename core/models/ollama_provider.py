@@ -7,7 +7,7 @@ import httpx
 
 from core.models.base import ModelProvider
 
-logger = logging.getLogger("arena.ollama")
+logger = logging.getLogger("usman.ollama")
 
 class OllamaProvider(ModelProvider):
     def __init__(self, base_url: str = "http://127.0.0.1:11434", model_name: str = "qwen3.5:9b"):

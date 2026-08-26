@@ -27,7 +27,7 @@ from apps.backend.config import BASE_DIR, OLLAMA_URL
 from tools.documents.inventory import Inventaire
 from tools.documents.reader import lire_document
 
-logger = logging.getLogger("arena.tools.documents")
+logger = logging.getLogger("usman.tools.documents")
 
 DOSSIER_DOCUMENTS = BASE_DIR / "data" / "documents"
 FICHIER_INVENTAIRE = BASE_DIR / "data" / "rag" / "inventaire.json"

@@ -6,7 +6,7 @@ from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from tools.browser.browser_use_tool import BrowserUseTool
 
-logger = logging.getLogger("arena.agent.browser")
+logger = logging.getLogger("usman.agent.browser")
 
 class BrowserAgent(BaseAgent):
     """Agent autonome de navigation Web active (Playwright + Browser-Use)."""

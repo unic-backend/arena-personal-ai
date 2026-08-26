@@ -7,7 +7,7 @@ from typing import Any, Dict
 
 from tools.code.code_interpreter_tool import CodeInterpreterTool
 
-logger = logging.getLogger("arena.tools.sandbox_interpreter")
+logger = logging.getLogger("usman.tools.sandbox_interpreter")
 
 # Le repli hors bac a sable execute le code directement sur la machine, sans
 # isolation ni limite memoire. Il n'est permis que derriere ce flag explicite.
@@ -100,7 +100,7 @@ class SandboxInterpreterTool:
                 "--network", "none",
                 "--memory", self.memory_limit,
                 "-v", f"{tmp_file_path}:/app/script.py:ro",
-                "arena-sandbox",
+                "usman-sandbox",
                 "python", "/app/script.py"
             ]
 
@@ -157,6 +157,6 @@ if __name__ == "__main__":
     else:
         etat = "INACTIF (exécution refusée)"
     print("🛡️ Statut Docker Sandbox:", etat)
-    r = sandbox.execute_python_code("print('Hello depuis OpenSandbox ARENA !')")
+    r = sandbox.execute_python_code("print('Hello depuis OpenSandbox Usman !')")
     print("Mode:", r["sandbox_mode"])
     print("Sortie:", r["stdout"] or r["stderr"])

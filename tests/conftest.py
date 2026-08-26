@@ -1,4 +1,4 @@
-"""Socle de tests d'ARENA : doubles et fixtures partagés.
+"""Socle de tests d'Usman : doubles et fixtures partagés.
 
 Objectif : rendre les agents testables **hors ligne**. Rien ici ne doit ouvrir
 une connexion réseau, appeler Ollama, démarrer Docker ni écrire dans le dépôt.
@@ -74,7 +74,7 @@ class FakeProvider(ModelProvider):
 @pytest.fixture
 def fake_provider() -> FakeProvider:
     """Fournisseur scripté avec une réponse unique, suffisant pour la plupart des agents."""
-    return FakeProvider(reponses=["Réponse simulée d'ARENA."])
+    return FakeProvider(reponses=["Réponse simulée d'Usman."])
 
 
 @pytest.fixture

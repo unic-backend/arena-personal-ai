@@ -1,6 +1,6 @@
 """Lecture d'une page web citée comme source.
 
-Le web est une couche de connaissance externe : ARENA va y chercher ce qu'il ne
+Le web est une couche de connaissance externe : Usman va y chercher ce qu'il ne
 sait pas, puis **cite ce qu'il a lu**. Cet outil est l'étape de lecture.
 
 Trois règles qui font la différence avec un simple `requests.get` :
@@ -10,7 +10,7 @@ Trois règles qui font la différence avec un simple `requests.get` :
    plausible à la place d'un texte réel.
 2. **Une adresse interne est refusée.** Les URL viennent d'un moteur de
    recherche, donc de l'extérieur. Sans ce garde-fou, une adresse pointant sur
-   `127.0.0.1` ou sur le réseau local ferait lire à ARENA ses propres services.
+   `127.0.0.1` ou sur le réseau local ferait lire à Usman ses propres services.
 3. **La taille et la durée sont plafonnées.** Une page de 500 Mo ne doit pas
    pouvoir occuper la mémoire ni bloquer la requête.
 """
@@ -26,7 +26,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-logger = logging.getLogger("arena.tools.source_fetcher")
+logger = logging.getLogger("usman.tools.source_fetcher")
 
 # Un texte de source utile tient largement dans cette limite ; au-delà, on tronque.
 TAILLE_MAX_OCTETS = 2 * 1024 * 1024
@@ -37,7 +37,7 @@ SCHEMAS_AUTORISES = {"http", "https"}
 TYPES_LISIBLES = ("text/html", "text/plain", "application/xhtml+xml")
 
 # Un en-tête honnête : le site sait qui le lit et peut refuser.
-AGENT_UTILISATEUR = "ARENA-PersonalAI/1.0 (lecteur de sources, respecte robots.txt)"
+AGENT_UTILISATEUR = "Usman-PersonalAI/1.0 (lecteur de sources, respecte robots.txt)"
 
 # Balises dont le contenu n'est pas du texte lisible.
 BALISES_IGNOREES = {"script", "style", "noscript", "template", "svg", "head"}

@@ -1,19 +1,19 @@
 ================================================================================
-                    ARENA — IA PERSONNELLE AUTONOME (SOCIÉTÉ / PLATAFORME)
+                    Usman — IA PERSONNELLE AUTONOME (SOCIÉTÉ / PLATAFORME)
                     RAPPORT COMPLET D'ARCHITECTURE & D'EXÉCUTION v1.6.0
 ================================================================================
 Date : 25 Août 2026
-Propriétaire & Créateur : Saer
-Projet : ARENA Personal AI / SaaS
-Emplacement : C:\Users\Saer\personal_ai
+Propriétaire & Créateur : Usman
+Projet : Usman Personal AI / SaaS
+Emplacement : C:\Users\Usman\personal_ai
 Version Git : v1.6.0 (Branch master)
 
 --------------------------------------------------------------------------------
 1. RÉSUMÉ EXÉCUTIF & VISION
 --------------------------------------------------------------------------------
-ARENA est un système d'IA autonome local-first de niveau mondial ("Frontier AI"),
-conçu au Sénégal par Saer. Le système fonctionne à 100% sur la machine locale de 
-Saer (NVIDIA RTX A2000 12GB VRAM, 32GB RAM, Windows 11) sans dépendre d'API cloud
+Usman est un système d'IA autonome local-first de niveau mondial ("Frontier AI"),
+conçu au Sénégal par Usman. Le système fonctionne à 100% sur la machine locale de 
+Usman (NVIDIA RTX A2000 12GB VRAM, 32GB RAM, Windows 11) sans dépendre d'API cloud
 payantes externes.
 
 Le projet est conçu pour évoluer de manière transparente d'une IA personnelle 
@@ -73,13 +73,13 @@ privée vers une plateforme publique mondiale (SaaS) multi-utilisateurs.
 2. Open WebUI (http://localhost:3000) :
    - Interface type Doc-Chat & Voix (Analyse de documents PDF, interaction vocale).
 
-3. Studio Web ARENA (http://127.0.0.1:8000) :
+3. Studio Web Usman (http://127.0.0.1:8000) :
    - Dashboard principal, Console Chat & Studio Vidéo 1-Click avec lecteur Web.
 
 --------------------------------------------------------------------------------
 6. MÉMOIRE PERSISTANTE SQLITE & CONTEXTE FACTUEL (data/database/memory.db)
 --------------------------------------------------------------------------------
-- Propriétaire et créateur : Saer
+- Propriétaire et créateur : Usman
 - Faits politiques & temporels verrouillés :
   - Année actuelle : 2026
   - Président de la République du Sénégal : Bassirou Diomaye Faye (depuis avril 2024)
@@ -97,10 +97,10 @@ privée vers une plateforme publique mondiale (SaaS) multi-utilisateurs.
 --------------------------------------------------------------------------------
 8. RAPPEL DES COMMANDES DE DÉMARRAGE
 --------------------------------------------------------------------------------
-Pour lancer la plateforme ARENA :
+Pour lancer la plateforme Usman :
 
 1. Lancer Docker Desktop sur Windows.
-2. Dans VS Code (C:\Users\Saer\personal_ai), ouvrir un terminal et exécuter :
+2. Dans VS Code (C:\Users\Usman\personal_ai), ouvrir un terminal et exécuter :
    python -m uvicorn apps.backend.main:app --host 127.0.0.1 --port 8000
 3. Dans un deuxième terminal :
    docker compose up -d
@@ -110,5 +110,5 @@ Pour lancer la plateforme ARENA :
    - Studio Vidéo : http://127.0.0.1:8000
 
 ================================================================================
-                    FIN DU RAPPORT — ARENA v1.6.0 SÉCURISÉ SOUS GIT
+                    FIN DU RAPPORT — Usman v1.6.0 SÉCURISÉ SOUS GIT
 ================================================================================

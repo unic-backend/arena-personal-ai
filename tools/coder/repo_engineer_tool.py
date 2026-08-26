@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-logger = logging.getLogger("arena.tools.repo_engineer")
+logger = logging.getLogger("usman.tools.repo_engineer")
 
 class RepoEngineerTool:
     """Outil d'inspection, de modification multi-fichiers et de validation de dépôt (Inspiré d'Odysseus / Devin)."""

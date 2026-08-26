@@ -8,7 +8,7 @@ from core.models.base import ModelProvider
 from core.permissions.permission_manager import PermissionManager
 from social.tiktok.tiktok_connector import TikTokConnector
 
-logger = logging.getLogger("arena.agent.publisher")
+logger = logging.getLogger("usman.agent.publisher")
 
 class PublisherAgent(BaseAgent):
     """Agent chargé de publier les vidéos sur les réseaux sociaux."""

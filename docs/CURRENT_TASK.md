@@ -7,7 +7,7 @@ TÂCHE : Phase 7 bis — correction après les quatre rapports d'audit du 26/08/
 ## Où en est-on
 
 12 correctifs livrés sur la branche `claude/arena-personal-ai-qh66ix`, chacun
-avec sa vérification. Détail complet : `documents/ARENA_ENGINEERING_WORKLOG.md`.
+avec sa vérification. Détail complet : `documents/USMAN_ENGINEERING_WORKLOG.md`.
 
 État mesuré le 26/08/2026 :
 - `pytest` → 148 tests verts, 17 marqués `integration`

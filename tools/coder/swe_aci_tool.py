@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-logger = logging.getLogger("arena.tools.swe_aci")
+logger = logging.getLogger("usman.tools.swe_aci")
 
 class SWEACITool:
     """Agent-Computer Interface (ACI) basée sur le papier de recherche SWE-agent (Princeton NLP)."""
