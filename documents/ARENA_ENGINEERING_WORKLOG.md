@@ -17,8 +17,8 @@ Dernière mise à jour : **26 août 2026** — audit initial.
 | | |
 |---|---|
 | **Version courante** | 1.7.0 |
-| **Branche de travail** | `claude/arena-personal-ai-qh66ix` (9 commits, non fusionnée) |
-| **Branche de base** | `master` (1 commit, `00e8f4f`) |
+| **Branche de travail** | `claude/arena-personal-ai-qh66ix` (14 commits d'avance, non fusionnée) |
+| **Branche de base** | `master` (30 commits, tête `00e8f4f`) |
 | **Phase de développement** | Phase 7 bis — correction sécurité et fiabilité |
 | **Suite de tests** | 125 tests hors ligne verts, 17 marqués `integration` |
 | **Lint** | `ruff check .` → 0 erreur |
@@ -285,14 +285,80 @@ nouvelle. Il empêche le retour de celles-ci, ce qui est déjà arrivé une fois
 
 ---
 
+### 26 août 2026 — T-01 · Purge des secrets : **préparée et vérifiée, non exécutée**
+
+*Fichiers* : `scripts/preparer_purge_secrets.py` (nouveau),
+`tests/test_preparer_purge_secrets.py` (nouveau),
+`documents/RUNBOOK_PURGE_SECRETS.md` (nouveau)
+*Changement* : rien dans l'historique du dépôt. La procédure est outillée,
+documentée pas à pas, et prouvée sur des copies jetables.
+*Pourquoi* : P-01. L'opération est irréversible et demande une décision du
+propriétaire ; la rotation des clés ne peut être faite que par lui (les valeurs
+vivent dans `.env`, jamais versionné).
+
+**Trois découvertes qui contredisent les rapports d'audit :**
+
+1. **Le dépôt a 44 commits, pas 1.** Les quatre rapports affirment « 1 commit »
+   et en tirent la conclusion « aucune traçabilité ». C'est faux : l'historique
+   remonte à `3466e2a feat: Commit initial ARENA v0.7.1`. Le clone d'audit était
+   probablement superficiel (`--depth 1`).
+   *Vérifié* : `git fetch --unshallow` puis `git rev-list --count --all` → 44.
+
+2. **Il y a 6 secrets dans l'historique, pas 1.** Les rapports ne citent que la
+   clé de `librechat.yaml`. L'historique contient aussi les valeurs de
+   `CREDS_KEY`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `WEBUI_SECRET_KEY` et une
+   clé LibreChat antérieure, toutes passées par `docker-compose.yml`.
+   *Vérifié* : parcours de tous les blobs de l'historique.
+
+3. **La commande proposée par les rapports détruirait le projet.**
+   `git filter-repo --path librechat.yaml --invert-paths` supprime
+   `librechat.yaml` de **tout** l'historique, version actuelle comprise — sans
+   elle, LibreChat ne démarre plus. Et elle laisse les secrets des autres
+   fichiers.
+   *Vérifié* : exécutée sur une copie → `librechat.yaml : SUPPRIMÉ`, et le
+   secret encore présent dans 2 commits.
+
+**Ce qui a été vérifié sur copie, à la place :**
+`git filter-repo --replace-text <fichier>` →
+- les 44 commits sont conservés,
+- `librechat.yaml`, `docker-compose.yml` et `main.py` sont intacts,
+- les 6 secrets sortent de l'historique (`git log -S` → 0 commit pour chacun),
+- `pytest` → 156 passed sur la copie purgée,
+- `diff -r` entre le dépôt et la copie purgée → aucune différence dans les
+  fichiers suivis.
+
+**Outillage livré** : `scripts/preparer_purge_secrets.py` lit l'historique,
+trouve les valeurs, les affiche **masquées**, et écrit le fichier de
+remplacement **hors du dépôt** pour qu'il ne puisse pas être versionné.
+15 tests le couvrent — dont un qui a trouvé un vrai défaut : un ancien
+`docker-compose.yml` est encodé en latin-1 et faisait planter la lecture.
+
+**Le runbook a été exécuté en entier sur une copie neuve, deux fois.**
+Le premier passage a trouvé un défaut réel : `tests/test_preparer_purge_secrets.py`
+contenait la vraie valeur de la clé, que la purge réécrivait — l'étape 5.3 du
+runbook (`pytest`) échouait alors, et aurait laissé croire que la purge avait
+cassé le projet. Les tests utilisent désormais des valeurs inventées.
+Second passage, complet : 45 commits conservés, `librechat.yaml` intact,
+**0 commit** pour chacun des 6 secrets, `pytest` → 171 passed.
+
+*Résultat* : **PRÉPARÉ — en attente d'autorisation.** Marche à suivre :
+`documents/RUNBOOK_PURGE_SECRETS.md`.
+*Décision* : rédiger le fichier de remplacement hors du dépôt plutôt que dans un
+`.gitignore`. *Coût si c'est faux* : une étape de plus pour l'utilisateur ; en
+échange, aucune erreur de manipulation ne peut committer les secrets.
+
+---
+
 ## IN PROGRESS
 
-**Tâche courante** : aucune. T-06, T-07 et T-08 sont terminées et vérifiées.
-**État exact** : la branche `claude/arena-personal-ai-qh66ix` porte 13 commits,
-suite verte (156 tests), lint propre. Rien n'est en cours d'écriture.
-**Prochaine action concrète** : T-01 (rotation de la clé et purge de
-l'historique) — bloquée, elle demande une décision du propriétaire. À défaut,
-T-03 (scan de secrets en CI, ~30 min) : il aurait attrapé la rechute du 26/08.
+**Tâche courante** : T-01 — purge des secrets. Préparée, outillée et vérifiée
+sur copie ; **rien n'a été exécuté sur le dépôt réel**.
+**État exact** : deux actions restent, et elles n'appartiennent qu'au
+propriétaire — changer les cinq clés dans `.env`, et autoriser la réécriture de
+l'historique (irréversible, casse les clones existants).
+**Prochaine action concrète** : étape 1 du runbook — rotation des cinq clés.
+Elle protège **immédiatement**, sans toucher à l'historique, et peut être faite
+seule. Ensuite T-03 (scan de secrets en CI).
 
 ---
 
@@ -356,21 +422,23 @@ désormais protégées par `tests/test_documentation.py`.
 > L'erreur a été détectée par le contrôle de non-régression, pas par relecture.
 
 
-**Emplacement** : commit `00e8f4f`, `librechat.yaml:7`
-**Cause** : la clé a été versionnée dès le premier commit. Le correctif du
-26 août l'a retirée du fichier, pas de l'historique.
+**Emplacement** : **6 valeurs** réparties dans `librechat.yaml` et
+`docker-compose.yml`, sur 44 commits d'historique.
+**Cause** : les secrets ont été versionnés en clair pendant plusieurs mois. Les
+correctifs successifs les ont retirés des fichiers, jamais de l'historique.
+**Correction d'une affirmation antérieure** : ce document indiquait « `master`
+(1 commit) » et les rapports d'audit aussi. Le dépôt a 44 commits ; le clone
+d'audit était superficiel.
 **Vérifié** : `git show 00e8f4f:librechat.yaml | grep apiKey` →
 la ligne `apiKey:` avec la valeur en clair.
 **Impact** : le dépôt est public. La clé est lisible par n'importe qui, et le
 reste après un `git clone`. Elle protège la passerelle `/v1`, donc les 12 agents.
-**Solution proposée** :
-1. **Générer une nouvelle clé** et la mettre dans `.env` — c'est la seule action
-   qui neutralise vraiment l'ancienne.
-2. Purger l'historique (`git filter-repo`) — opération destructive, réécrit tous
-   les commits, casse les clones existants. **Nécessite l'accord explicite du
-   propriétaire.**
-3. Repasser le dépôt en privé le temps de l'opération.
-**Statut** : **OUVERT** — la rotation dépend du propriétaire, la purge aussi.
+**Solution préparée** : `documents/RUNBOOK_PURGE_SECRETS.md`, sept étapes,
+une commande à la fois. Outillage : `scripts/preparer_purge_secrets.py`.
+La méthode a été vérifiée sur copie (voir *COMPLETED · T-01*).
+**Statut** : **OUVERT — en attente du propriétaire.** Deux actions lui
+appartiennent : la rotation des cinq clés (protège immédiatement) et
+l'autorisation de réécrire l'historique (irréversible).
 
 ### P-02 · HIGH · Upload sans contrôle de type ni de taille
 
@@ -605,3 +673,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | 2026-08-26 | Claude Code | Création. Audit initial, 9 correctifs consignés, 9 problèmes ouverts, 22 tâches en attente. |
 | 2026-08-26 | Claude Code | T-02 terminée (contrôle des envois). P-02 résolu. Valeur de la clé masquée dans ce document. |
 | 2026-08-26 | Claude Code | T-06, T-07, T-08 terminées (documentation alignée). P-08 résolu. Garde-fous documentaires ajoutés. |
+| 2026-08-26 | Claude Code | T-01 préparée et vérifiée sur copie, non exécutée. Trois erreurs des rapports d'audit corrigées (44 commits, 6 secrets, commande destructrice). |
