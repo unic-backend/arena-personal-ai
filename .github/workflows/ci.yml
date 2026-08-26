@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: ["master", "claude/**"]
+  pull_request:
+    branches: ["master"]
+
+jobs:
+  lint-and-test:
+    name: Lint and offline test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # Meme version que apps/backend/Dockerfile.
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install test dependencies
+        # Only what the offline suite imports, pinned by requirements.txt used as
+        # a constraints file. Installing the full dependency tree (browser-use,
+        # lightrag, faster-whisper) would take minutes and test nothing more:
+        # every service-dependent test carries the `integration` marker and is
+        # deselected here.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -c requirements.txt fastapi httpx pyyaml python-dotenv pydantic python-multipart
+          pip install ruff
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Pytest
+        run: pytest
+
+  dependencies:
+    name: Declared dependencies still resolve
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Resolve requirements.txt
+        # Resolution only: this is what caught pywin32 pinned without a platform
+        # marker, which made the Linux Docker build impossible.
+        run: |
+          python -m pip install --upgrade pip
+          pip install --dry-run -r requirements.txt

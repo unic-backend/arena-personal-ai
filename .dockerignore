@@ -1,0 +1,29 @@
+# Secrets et environnement
+.env
+*.env
+!.env.example
+
+# Historique et outillage de developpement
+.git
+.github
+.gitignore
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+.venv
+venv
+
+# Tests et documentation : inutiles dans l'image de production
+tests
+docs
+scripts/*.ps1
+RAPPORT_TRAVAIL.txt
+
+# Donnees et medias : montes en volume, jamais copies dans l'image
+data
+media
+!media/**/.gitkeep
+
+# Environnement fige : l'image installe requirements.txt
+requirements.lock.txt

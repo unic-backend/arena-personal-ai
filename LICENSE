@@ -1,0 +1,28 @@
+Copyright (c) 2026 Saer (unic-backend). All rights reserved.
+Tous droits réservés.
+
+ARENA Personal AI is proprietary software. It is published here for reference
+only. No licence, express or implied, is granted to any person.
+
+Without the prior written permission of the copyright holder, you may not:
+
+  - use this software, in whole or in part, for any purpose;
+  - copy, reproduce, publish or distribute it;
+  - modify it or create derivative works from it;
+  - host, sell, sublicense or otherwise make it available to third parties;
+  - use it to train, fine-tune or evaluate a machine learning model.
+
+Viewing the source code on the hosting platform, and the operations that
+platform performs automatically (such as forking through its own interface),
+do not grant any of the rights listed above.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+Third-party dependencies listed in requirements.txt and requirements.lock.txt
+remain governed by their own licences.
+
+Contact: https://github.com/unic-backend/arena-personal-ai

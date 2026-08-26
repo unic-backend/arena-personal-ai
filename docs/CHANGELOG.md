@@ -63,6 +63,15 @@
   (`from e`) ou déclarent explicitement qu'ils la masquent (`from None`).
 - `E501` n'est pas activé : l'imposer reformaterait des prompts entiers.
 
+### Infrastructure
+- `LICENSE` ajouté : logiciel propriétaire, tous droits réservés. Le dépôt public
+  n'avait aucune licence, ce qui laissait le statut juridique implicite.
+- CI GitHub Actions (`.github/workflows/ci.yml`) : un job lint + suite hors ligne
+  sur Python 3.11, un job qui vérifie que `requirements.txt` se résout encore sur
+  3.11 et 3.12.
+- `.dockerignore` ajouté : `.env`, `.git`, tests, docs, `data/` et `media/` ne
+  partent plus dans le contexte de build.
+
 ## [1.7.0] - 2026-08-25
 ### Sécurité
 - La passerelle `/v1` exige désormais une clé API (`ARENA_API_KEY` dans `.env`).

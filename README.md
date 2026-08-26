@@ -18,3 +18,16 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
 Reporter la valeur dans `ARENA_API_KEY` (fichier `.env`). Elle est lue par le backend (`/v1`), par LibreChat (`librechat.yaml`) et par Open WebUI. Sans elle, la passerelle `/v1` refuse toutes les requêtes.
+
+## Tests et qualité
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+ruff check .
+pytest                 # suite hors ligne
+pytest -m integration  # exige Ollama, Docker, ffmpeg, Chromium selon les tests
+```
+
+## Licence
+Logiciel propriétaire, **tous droits réservés** (voir `LICENSE`). Le code est
+publié à titre de référence uniquement : aucune réutilisation, copie,
+modification ni redistribution n'est autorisée sans accord écrit préalable.
