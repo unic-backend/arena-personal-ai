@@ -11,6 +11,7 @@ logger = logging.getLogger("arena.agent.orchestrator")
 INTENTIONS = {
     "CHAT",
     "CODE_EXECUTION",
+    "FRESH_INFO",
     "DEEP_REASONING",
     "DEEP_RESEARCH",
     "TREND_SEARCH",
@@ -21,6 +22,9 @@ PROMPT_CLASSIFICATION = """Tu es un classifieur d'intention. Tu ne réponds jama
 Choisis UNE seule étiquette parmi cette liste, et réponds UNIQUEMENT par cette étiquette :
 
 CHAT            : conversation, question générale, explication, avis.
+FRESH_INFO      : question dont la réponse a pu changer récemment — actualité,
+                  dernière version d'un logiciel, prix, résultat, qui occupe un poste,
+                  météo, cours, événement en cours. Tout ce qui demande de vérifier.
 CODE_EXECUTION  : écrire ou exécuter du code, un script, un programme.
 DEEP_REASONING  : résoudre un problème mathématique ou une démonstration.
 DEEP_RESEARCH   : produire une étude, un rapport documenté, une recherche approfondie.
@@ -29,6 +33,8 @@ VIDEO_ANALYSIS  : analyser, découper ou reformater un fichier vidéo.
 
 Attention : parler DE code, DE maths ou D'une erreur n'est pas demander d'en produire.
 « Explique-moi le code de la route » est CHAT, pas CODE_EXECUTION.
+Une question sur un fait qui peut avoir change depuis est FRESH_INFO, pas CHAT :
+« Quelle est la derniere version de Python ? » demande de verifier, pas de se souvenir.
 
 Demande : {demande}
 
@@ -82,6 +88,18 @@ class OrchestratorAgent(BaseAgent):
     def _classer_par_mots_cles(self, user_input: str) -> str:
         """Repli hors ligne : aiguillage par mots-clés, instantané mais approximatif."""
         text = user_input.lower()
+
+        # Information fraiche : la reponse a pu changer depuis l'entrainement du modele.
+        fresh_keywords = [
+            "dernière version", "derniere version", "dernier modèle", "dernier modele",
+            "aujourd'hui", "en ce moment", "actuellement", "actualité", "actualite",
+            "cette semaine", "ce mois-ci", "cette année", "cette annee",
+            "prix actuel", "cours de", "météo", "meteo", "qui est le président",
+            "qui est le president", "quoi de neuf", "dernières nouvelles",
+            "dernieres nouvelles", "récemment", "recemment",
+        ]
+        if any(k in text for k in fresh_keywords):
+            return "FRESH_INFO"
 
         # Trend Search UNIQUEMENT si demande explicite de vidéo/tendances
         if "idée de vidéo" in text or "tendance tiktok" in text or "sujet chaud" in text or "stratégie vidéo" in text:

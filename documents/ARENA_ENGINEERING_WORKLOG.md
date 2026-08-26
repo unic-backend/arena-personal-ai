@@ -527,15 +527,58 @@ le routeur : c'est la phase 3.
 
 ---
 
+### 26 août 2026 — T-12 phase 3/3 · Le routeur appelle l'agent · **T-12 TERMINÉE**
+
+*Fichiers* : `agents/orchestrator/orchestrator_agent.py`, `apps/backend/main.py`,
+`tests/test_fresh_info_routing.py` (nouveau), `tests/agents/test_orchestrator.py`
+*Changement* : nouvelle intention `FRESH_INFO` dans la liste fermée du routeur,
+décrite dans le prompt de classification et reconnue par le repli mots-clés.
+`dispatch_request` l'envoie à `FreshInfoAgent`. `/api/chat` renvoie les sources
+dans un champ dédié ; la passerelle `/v1`, qui n'a pas de champ pour cela, les
+liste sous la réponse. Un modèle `arena-fresh` apparaît dans le menu des
+interfaces.
+
+*Vérifications, toutes exécutées :*
+- `pytest tests/test_fresh_info_routing.py` → **11 passed**
+- chaîne complète depuis une requête HTTP, avec un **vrai serveur web** comme
+  source : `POST /api/chat` → intention `FRESH_INFO`, agent `FreshInfoAgent`,
+  réponse citant `[1]`, source `http://127.0.0.1:.../py`. **2 appels au modèle**
+  (1 classification + 1 synthèse), pas un de plus.
+  `POST /v1/chat/completions` avec `arena-fresh` → réponse suivie d'un bloc
+  `**Sources**`.
+- suite complète → **258 passed, 20 deselected** ; `ruff` → 0 ; `gitleaks` → 0
+
+**Un défaut préexistant trouvé par cette vérification** : `/api/chat` annonçait
+`intent: "CHAT"` même quand un agent spécialisé avait répondu — le champ n'était
+jamais renseigné hors conversation. Vrai pour les six intentions, pas seulement
+la nouvelle. Corrigé dans `dispatch_request`, avec un test.
+
+*Décision* : citer les sources **dans le texte** pour la passerelle `/v1`. Le
+format OpenAI n'a pas de champ pour cela, et sans elles le lecteur ne saurait
+pas d'où vient la réponse. *Coût si c'est faux* : la réponse est un peu plus
+longue dans LibreChat ; `/api/chat` garde les sources en données structurées.
+
+*Résultat* : **T-12 TERMINÉE** — 3 phases sur 3.
+
+**Ce que T-12 ne fait pas, et qui reste ouvert :**
+- Le prompt système contient toujours des faits datés écrits en dur
+  (« Année actuelle : 2026 », le président du Sénégal). C'est **T-13**, et une
+  question portant dessus part maintenant sur le web — mais la conversation
+  ordinaire lit encore ces lignes.
+- Aucun classement des sources par fiabilité : les trois premiers résultats du
+  moteur sont lus, dans l'ordre.
+- Aucune vérification croisée des réponses (T-14, T-18).
+
+---
+
 ## IN PROGRESS
 
-**Tâche courante** : T-12 — pipeline d'information fraîche, 3 phases.
-Phases 1 et 2 terminées ; **l'agent n'est pas encore atteignable par le chat**.
+**Tâche courante** : aucune. T-12 est terminée, ses 3 phases vérifiées.
 **État exact** : deux actions restent, et elles n'appartiennent qu'au
 propriétaire — changer les cinq clés dans `.env`, et autoriser la réécriture de
 l'historique (irréversible, casse les clones existants).
-**Prochaine action concrète** : T-12 phase 3 — apprendre au routeur à
-reconnaître une question d'actualité et à appeler cet agent. Reste toujours dû
+**Prochaine action concrète** : T-13 — retirer les faits datés écrits en dur
+dans le prompt système, maintenant que le web est atteignable. Reste toujours dû
 par le propriétaire : l'étape 1 de `RUNBOOK_PURGE_SECRETS.md`.
 
 ---
@@ -565,9 +608,10 @@ désormais protégées par `tests/test_documentation.py`.
 
 ### Priorité 4 — Capacités (roadmap du prompt de référence)
 
+**T-12 terminée le 26/08/2026** — voir *COMPLETED*.
+
 | # | Tâche | Effort | Critère de validation |
 |---|---|---|---|
-| T-12 | Pipeline d'information fraîche — **phases 1 et 2/3 faites** | 4 h | « Quelle est la dernière version de Python ? » répond avec des sources datées |
 | T-13 | Retirer les faits figés du prompt système, les remplacer par la mémoire ou le web | 30 min | Aucun fait daté écrit en dur dans `main.py` |
 | T-14 | Routeur enrichi : besoin de fraîcheur, de RAG, d'outils, de vérification | 3 h | Le routeur renvoie une décision structurée, testée |
 | T-15 | Passerelle de modèles par capacité (`fast_chat`, `coding`, `reasoning`…) | 3 h | Un agent demande une capacité, pas un nom de modèle |
@@ -643,9 +687,11 @@ sur 64 Mo : 64,0 Mo de pic avant, 2,0 Mo après.
 présentée avec la même assurance qu'un fait vérifié. Écrire une date dans un
 prompt ne donne aucune connaissance au modèle — cela lui donne juste de quoi
 paraître à jour.
-**Solution proposée** : pipeline recherche → lecture → extraction → synthèse
-avec sources citées, déclenché par le routeur. → T-12, T-13, T-14
-**Statut** : OUVERT
+**Solution appliquée (moitié)** : le pipeline existe et est branché — recherche
+→ lecture → synthèse avec sources citées, déclenché par l'intention `FRESH_INFO`.
+**Statut** : **PARTIELLEMENT RÉSOLU** le 26/08/2026. Le chat va désormais
+vérifier. Restent ouverts : les faits datés écrits en dur dans le prompt système
+(**T-13**) et le classement des sources par fiabilité (**T-14**).
 
 ### P-04 · MEDIUM · Budget VRAM déclaré supérieur à la carte
 
@@ -741,7 +787,7 @@ Ce qui est certain, et vérifié par le code :
 | Appels au modèle avant le correctif n°9 | 3 | lecture du code : `chat_stream_endpoint` → `dispatch_request` → `orchestrator.run` |
 | Contexte configuré | `num_ctx: 4096` | `core/models/ollama_provider.py` |
 | Maintien en VRAM | `keep_alive: "30m"` | idem |
-| Durée de la suite de tests | 5,6 s pour 238 tests | `pytest -q` |
+| Durée de la suite de tests | 6,8 s pour 258 tests | `pytest -q` |
 | Pic mémoire, envoi de 64 Mo — avant T-02 | 64,0 Mo | `tracemalloc` sur l'ancien chemin |
 | Pic mémoire, envoi de 64 Mo — après T-02 | 2,0 Mo | `tracemalloc` sur `ecrire_par_blocs` |
 
@@ -853,3 +899,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | 2026-08-26 | Claude Code | T-04 et T-05 terminées (limitation de débit, journalisation des refus). Priorité 1 close hors T-01. |
 | 2026-08-26 | Claude Code | T-12 phase 1/3 : lecture d'une source web, avec refus des adresses internes. |
 | 2026-08-26 | Claude Code | T-12 phase 2/3 : agent d'information fraîche, sources citées, refus sans source. |
+| 2026-08-26 | Claude Code | T-12 terminée (3 phases). P-03 partiellement résolu. Défaut préexistant corrigé : l'intention annoncée par /api/chat. |

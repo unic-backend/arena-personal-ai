@@ -90,6 +90,44 @@ def test_le_repli_aiguille_toujours_les_cas_explicites(fake_provider, phrase, at
     assert agent._classer_par_mots_cles(phrase) == attendu
 
 
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "Quelle est la dernière version de Python ?",
+        "Qui est le président du Sénégal actuellement ?",
+        "Quelle est la météo aujourd'hui ?",
+        "Quoi de neuf cette semaine ?",
+        "Quel est le prix actuel du ciment ?",
+    ],
+)
+def test_le_repli_reconnait_une_question_d_actualite(fake_provider, phrase):
+    """Sans modèle, ces tournures doivent tout de même partir vérifier sur le web."""
+    agent = OrchestratorAgent(provider=fake_provider, memory=None)
+
+    assert agent._classer_par_mots_cles(phrase) == "FRESH_INFO"
+
+
+def test_une_question_intemporelle_ne_part_pas_chercher_sur_le_web(fake_provider):
+    agent = OrchestratorAgent(provider=fake_provider, memory=None)
+
+    assert agent._classer_par_mots_cles("Explique-moi ce qu'est une boucle") == "CHAT"
+
+
+def test_l_etiquette_fresh_info_fait_partie_de_la_liste_fermee():
+    assert "FRESH_INFO" in INTENTIONS
+
+
+async def test_le_prompt_de_classification_decrit_fresh_info(provider_factory):
+    provider = provider_factory("CHAT")
+    agent = OrchestratorAgent(provider=provider, memory=None)
+
+    await agent.analyze_intent("peu importe")
+
+    prompt = provider.appels[0]["prompt"]
+    assert "FRESH_INFO" in prompt
+    assert "dernière version" in prompt
+
+
 async def test_la_demande_de_l_utilisateur_est_bien_celle_qui_est_classee(provider_factory):
     provider = provider_factory("CHAT")
     agent = OrchestratorAgent(provider=provider, memory=None)

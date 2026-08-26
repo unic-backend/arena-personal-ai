@@ -103,6 +103,21 @@
 - Les refus d'authentification sont journalisés (adresse, route, motif). **La clé
   présentée n'est jamais écrite dans les journaux.**
 
+### Ajouté
+- **Pipeline d'information fraîche.** Une question dont la réponse a pu changer
+  (dernière version, actualité, qui occupe un poste, prix, météo) n'est plus
+  répondue de mémoire : ARENA cherche, **lit les pages**, et répond en citant
+  ses sources. Nouvelle intention `FRESH_INFO`, nouvel agent `FreshInfoAgent`,
+  nouveau modèle `arena-fresh` dans le menu de LibreChat et Open WebUI.
+- Sans résultat de recherche, ou sans page lisible, **le modèle n'est pas appelé** :
+  ARENA le dit plutôt que de répondre de mémoire.
+- `tools/search/source_fetcher.py` : lecture d'une page web, refus des adresses
+  internes, plafonds de taille et de durée, état explicite en cas d'échec.
+
+### Corrigé
+- La réponse de `/api/chat` annonçait `intent: "CHAT"` même quand un agent
+  spécialisé avait répondu. L'aiguilleur renseigne désormais l'intention suivie.
+
 ## [1.7.0] - 2026-08-25
 ### Sécurité
 - La passerelle `/v1` exige désormais une clé API (`ARENA_API_KEY` dans `.env`).

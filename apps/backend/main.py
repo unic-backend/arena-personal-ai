@@ -4,7 +4,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
@@ -23,6 +23,7 @@ from agents.browser.browser_agent import BrowserAgent
 from agents.clip_selector.clip_selector_agent import ClipSelectorAgent
 from agents.coder.coder_agent import CoderAgent
 from agents.editor.editor_agent import EditorAgent
+from agents.fresh_info.fresh_info_agent import FreshInfoAgent
 from agents.orchestrator.orchestrator_agent import OrchestratorAgent
 from agents.publisher.publisher_agent import PublisherAgent
 from agents.repo_engineer.repo_engineer_agent import RepoEngineerAgent
@@ -105,6 +106,8 @@ researcher_agent = DeepResearcherAgent(provider=deep_provider, memory=memory)
 clip_selector = ClipSelectorAgent(provider=deep_provider, memory=memory)
 publisher_agent = PublisherAgent(provider=fast_provider, memory=memory)
 browser_agent = BrowserAgent(provider=fast_provider, memory=memory)
+# Agent d'information fraiche : il lit le web avant de repondre.
+fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)
 repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory)
 swe_agent = SWEAgent(provider=fast_provider, memory=memory)
 
@@ -193,6 +196,13 @@ def validate_media_path(raw_path: str) -> Path:
     return p
 
 
+# Intentions confiees a un agent specialise plutot qu a une reponse conversationnelle.
+AGENTS_SPECIALISES = frozenset({
+    "DEEP_REASONING", "DEEP_RESEARCH", "FRESH_INFO",
+    "TREND_SEARCH", "CODE_EXECUTION", "VIDEO_ANALYSIS",
+})
+
+
 class ChatRequest(BaseModel):
     prompt: str
     session_id: Optional[str] = "default"
@@ -231,6 +241,7 @@ async def list_openai_models():
             {"id": "arena-swe-agent", "object": "model", "owned_by": "arena"},
             {"id": "arena-repo-engineer", "object": "model", "owned_by": "arena"},
             {"id": "arena-deep-research", "object": "model", "owned_by": "arena"},
+            {"id": "arena-fresh", "object": "model", "owned_by": "arena"},
             {"id": "arena-rag-docs", "object": "model", "owned_by": "arena"},
             {"id": "arena-graphrag", "object": "model", "owned_by": "arena"},
             {"id": "arena-browser", "object": "model", "owned_by": "arena"}
@@ -299,6 +310,10 @@ async def openai_chat_completions(request: Request):
     elif model_requested == "arena-deep-research":
         contenu = (await researcher_agent.run(last_user_msg)).get("response", "")
 
+    elif model_requested == "arena-fresh":
+        res = await fresh_agent.run(last_user_msg)
+        contenu = res.get("response", "") + formater_sources(res.get("sources", []))
+
     elif model_requested == "arena-browser":
         contenu = (await browser_agent.run(last_user_msg)).get("response", "")
 
@@ -316,13 +331,14 @@ async def openai_chat_completions(request: Request):
     intent = await orchestrator.analyze_intent(last_user_msg)
     logger.info(f"Modele 'arena-core' -> intention detectee : {intent}")
 
-    if intent in ["DEEP_REASONING", "DEEP_RESEARCH", "TREND_SEARCH", "CODE_EXECUTION", "VIDEO_ANALYSIS"]:
-        res = await dispatch_request(chat_req)
-        return _reponse_openai(res.get("response", ""), model_requested, stream)
+    if intent in AGENTS_SPECIALISES:
+        res = await dispatch_request(chat_req, intent=intent)
+        contenu = res.get("response", "") + formater_sources(res.get("sources", []))
+        return _reponse_openai(contenu, model_requested, stream)
 
     # ---- Discussion simple : reponse mot par mot ----
     if not stream:
-        res = await dispatch_request(chat_req)
+        res = await dispatch_request(chat_req, intent=intent)
         return _reponse_openai(res.get("response", ""), model_requested, stream)
 
     async def generateur_discussion():
@@ -483,6 +499,18 @@ async def process_video_pipeline(video_path: str = Form(...)):
         logger.error(f"Erreur pipeline vidéo: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
+def formater_sources(sources: List[Dict[str, Any]]) -> str:
+    """Ajoute la liste des sources sous une reponse, pour les canaux en texte seul.
+
+    Le format OpenAI n'a pas de champ pour des sources : sans cela, le lecteur ne
+    saurait pas d'ou vient la reponse.
+    """
+    if not sources:
+        return ""
+    lignes = [f"[{s['index']}] {s['title']} — {s['url']}" for s in sources]
+    return "\n\n**Sources**\n" + "\n".join(lignes)
+
+
 async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -> Dict[str, Any]:
     """Aiguille la demande vers l'agent choisi.
 
@@ -496,6 +524,8 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
 
     if intent == "DEEP_REASONING":
         result = await orchestrator.run(request.prompt, context={"session_id": session_id, "intent": intent})
+    elif intent == "FRESH_INFO":
+        result = await fresh_agent.run(request.prompt)
     elif intent == "DEEP_RESEARCH":
         result = await researcher_agent.run(request.prompt)
     elif intent == "CODE_EXECUTION":
@@ -514,6 +544,10 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
             context={"session_id": session_id, "intent": intent},
         )
 
+    # L'aiguilleur sait quelle branche il a prise ; sans cela, la reponse annoncait
+    # « CHAT » meme quand un agent specialise avait repondu.
+    result["intent"] = intent
+
     memory.add_chat_message(session_id=session_id, role="user", content=request.prompt)
     memory.add_chat_message(session_id=session_id, role="assistant", content=result["response"])
     return result
@@ -530,6 +564,7 @@ async def chat_endpoint(request: ChatRequest):
             "model": fast_provider.model_name,
             "intent": result.get("intent", "CHAT"),
             "agent": result.get("agent", "OrchestratorAgent"),
+            "sources": result.get("sources", []),
             "response": result["response"]
         }
     except Exception as e:
@@ -541,7 +576,7 @@ async def chat_stream_endpoint(request: ChatRequest):
     session_id = request.session_id or "default"
     intent = await orchestrator.analyze_intent(request.prompt)
 
-    if intent in ["DEEP_REASONING", "DEEP_RESEARCH", "TREND_SEARCH", "CODE_EXECUTION", "VIDEO_ANALYSIS"]:
+    if intent in AGENTS_SPECIALISES:
         result = await dispatch_request(request, intent=intent)
         async def text_gen():
             yield f"data: {json.dumps({'token': result['response'], 'intent': intent})}\n\n"
