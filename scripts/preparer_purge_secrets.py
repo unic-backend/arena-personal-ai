@@ -60,29 +60,41 @@ def masquer(valeur: str) -> str:
     return f"{valeur[:4]}…{valeur[-4:]} ({len(valeur)} car.)"
 
 
-def commandes_git(*arguments: str) -> str:
-    """Exécute une commande git et renvoie sa sortie.
+def commandes_git(*arguments: str, depot: Path = RACINE) -> str:
+    """Exécute une commande git dans `depot` et renvoie sa sortie.
 
     Le décodage est tolérant : d'anciennes versions de `docker-compose.yml` sont
     encodées en latin-1, et un décodage UTF-8 strict fait échouer la lecture de
     l'historique. Les valeurs recherchées sont en ASCII, un caractère de
     remplacement ailleurs est sans conséquence.
+
+    `depot` est un paramètre pour que la fonction soit testable sur un dépôt
+    fabriqué pour l'occasion, plutôt que sur celui-ci — dont le contenu change.
     """
     resultat = subprocess.run(
-        ["git", *arguments], cwd=RACINE, capture_output=True, check=False
+        ["git", *arguments], cwd=depot, capture_output=True, check=False
     )
     if resultat.returncode != 0:
         return ""
     return resultat.stdout.decode("utf-8", errors="replace")
 
 
-def secrets_de_l_historique() -> dict[str, str]:
+def historique_complet(depot: Path = RACINE) -> bool:
+    """Faux si le dépôt est un clone superficiel : l'historique y est tronqué.
+
+    Un `git clone --depth 1` — ce que fait `actions/checkout` par défaut — ne
+    montre qu'un commit. Chercher des secrets dedans ne prouve rien.
+    """
+    return not (Path(depot) / ".git" / "shallow").exists()
+
+
+def secrets_de_l_historique(depot: Path = RACINE) -> dict[str, str]:
     """Renvoie {valeur en clair: fichier où elle a été trouvée}."""
     trouves: dict[str, str] = {}
     for fichier, motif in EMPLACEMENTS:
-        commits = commandes_git("log", "--all", "--format=%H", "--", fichier).split()
+        commits = commandes_git("log", "--all", "--format=%H", "--", fichier, depot=depot).split()
         for commit in commits:
-            contenu = commandes_git("show", f"{commit}:{fichier}")
+            contenu = commandes_git("show", f"{commit}:{fichier}", depot=depot)
             for valeur in motif.findall(contenu):
                 valeur = valeur.strip().strip('"').strip("'")
                 if est_un_secret(valeur):
@@ -93,6 +105,11 @@ def secrets_de_l_historique() -> dict[str, str]:
 def principal() -> int:
     if not (RACINE / ".git").exists():
         print("Erreur : ce script doit tourner dans le dépôt Git d'ARENA.")
+        return 1
+
+    if not historique_complet():
+        print("Ce depot est un clone superficiel : l'historique est tronque.")
+        print("Recupere-le en entier avant de purger :  git fetch --unshallow")
         return 1
 
     trouves = secrets_de_l_historique()

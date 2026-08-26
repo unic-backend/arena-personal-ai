@@ -932,10 +932,54 @@ ne prouverait rien.
 
 ---
 
+### 26 août 2026 — CI rouge sur la PR #1 : un test qui affirmait un état temporaire
+
+*Fichiers* : `scripts/preparer_purge_secrets.py`,
+`tests/test_preparer_purge_secrets.py`
+*Symptôme* : `Lint and offline test suite` en échec sur la PR #1 —
+`test_le_script_lit_l_historique_reel_du_depot` :
+`attendu au moins 5 secrets, trouvé 0`.
+
+**Cause racine.** Le test interrogeait l'historique Git de **ce dépôt** et
+exigeait d'y trouver au moins 5 secrets. En intégration continue,
+`actions/checkout` fait un clone d'un seul commit : `git log --all` ne voit rien.
+Reproduit à l'identique en local avec `git clone --depth 1` → 1 failed.
+
+**Le défaut est plus profond qu'un réglage de CI.** Ce test affirmait un état
+**temporaire** du dépôt — « il contient des secrets ». Une fois la purge (T-01)
+faite, il aurait échoué une seconde fois, pour la raison inverse. Augmenter
+`fetch-depth` l'aurait fait passer aujourd'hui et casser demain.
+
+**Correctif.** Le dépôt interrogé devient un paramètre. Cinq tests neufs
+fabriquent de **vrais dépôts Git** (`git init`, commits successifs) et vérifient
+le comportement sur des cas maîtrisés : une clé versionnée puis retirée est
+retrouvée, une référence `${VAR}` ne l'est pas, **un dépôt sans secret ne renvoie
+rien** — l'état attendu après la purge. Le test sur le dépôt réel subsiste mais
+n'affirme plus de compte : seulement qu'il s'exécute et ne renvoie que des
+valeurs de forme secrète.
+
+**Trouvé au passage** : sur un clone superficiel, le script annonçait « aucun
+secret trouvé, rien à purger ». Un mensonge tranquille. Il détecte désormais
+`.git/shallow`, refuse de conclure et indique `git fetch --unshallow`.
+
+*Vérifications, toutes exécutées :*
+- échec reproduit avant correction (`--depth 1` → 1 failed), puis
+  **369 passed** dans le même clone superficiel
+- historique complet → **369 passed**, `ruff` → 0, `gitleaks` → 0
+- le script sur clone superficiel → avertit, code de sortie 1 ; sur historique
+  complet → 6 secrets trouvés, comme avant
+
+*Décision* : rendre le dépôt injectable plutôt qu'augmenter `fetch-depth` en CI.
+*Coût si c'est faux* : le test ne parcourt plus l'historique réel du projet ; en
+échange il reste vrai avant **et** après la purge, et ne dépend plus de la
+profondeur du clone.
+
+---
+
 ## IN PROGRESS
 
-**Tâche courante** : aucune. L'interface hors ligne est terminée et vérifiée
-dans un vrai navigateur.
+**Tâche courante** : PR #1 ouverte sur `master`. CI remise au vert après un
+test qui dépendait de la profondeur du clone.
 **État exact** : deux actions restent, et elles n'appartiennent qu'au
 propriétaire — changer les cinq clés dans `.env`, et autoriser la réécriture de
 l'historique (irréversible, casse les clones existants).
@@ -1273,3 +1317,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | 2026-08-26 | Claude Code | Indexation documentaire phase 2/3 : inventaire, et documents personnels exclus de Git. |
 | 2026-08-26 | Claude Code | Indexation documentaire terminée (3 phases). Indexation réelle à vérifier chez le propriétaire. |
 | 2026-08-26 | Claude Code | Interface hors ligne : Tailwind embarqué, vérifié dans Chromium réseau coupé. P-09 résolu. |
+| 2026-08-26 | Claude Code | CI de la PR #1 : test dependant de la profondeur du clone corrige. |

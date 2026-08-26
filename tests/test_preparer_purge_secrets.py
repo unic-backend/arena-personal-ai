@@ -4,6 +4,7 @@ Un script qui rate un secret laisse la fuite en place ; un script qui prend une
 référence `${VAR}` pour un secret réécrirait l'historique pour rien.
 """
 import importlib.util
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -83,10 +84,100 @@ def test_le_motif_compose_isole_les_variables_sensibles():
     assert [v for v in trouves if purge.est_un_secret(v)] == ["valeur-une", "valeur-deux"]
 
 
-def test_le_script_lit_l_historique_reel_du_depot():
-    """Sur ce dépôt, l'historique contient bien des secrets à purger."""
+# --- Lecture d'un vrai historique Git -----------------------------------------
+#
+# La version precedente de ces tests interrogeait l'historique de CE depot et
+# exigeait d'y trouver au moins 5 secrets. Deux defauts :
+#   - en integration continue, `actions/checkout` ne recupere qu'un seul commit :
+#     la recherche ne trouvait rien et le test echouait ;
+#   - une fois la purge (T-01) faite, il n'y aura plus aucun secret a trouver :
+#     le test aurait echoue une seconde fois, pour la raison inverse.
+# Un test ne doit pas dependre d'un etat temporaire du depot qu'il habite.
+
+
+def depot_git(dossier: Path, commits: list[tuple[str, str]]) -> Path:
+    """Fabrique un vrai dépôt Git, un commit par entrée `(fichier, contenu)`."""
+    subprocess.run(["git", "init", "-q", "-b", "principal", str(dossier)], check=True)
+    for cle, valeur in [("user.email", "test@test"), ("user.name", "test")]:
+        subprocess.run(["git", "-C", str(dossier), "config", cle, valeur], check=True)
+
+    for nom, contenu in commits:
+        (dossier / nom).write_text(contenu, encoding="utf-8")
+        subprocess.run(["git", "-C", str(dossier), "add", nom], check=True)
+        subprocess.run(["git", "-C", str(dossier), "commit", "-q", "-m", f"ajout {nom}"],
+                       check=True)
+    return dossier
+
+
+def test_une_cle_versionnee_puis_retiree_est_retrouvee(tmp_path):
+    """Le cas réel : la valeur ne figure plus dans le fichier, mais reste dans l'historique."""
+    depot = depot_git(tmp_path / "depot", [
+        ("librechat.yaml", 'endpoints:\n  custom:\n    - apiKey: "cle-fuitee-2099"\n'),
+        ("librechat.yaml", 'endpoints:\n  custom:\n    - apiKey: "${ARENA_API_KEY}"\n'),
+    ])
+
+    trouves = purge.secrets_de_l_historique(depot)
+
+    assert list(trouves) == ["cle-fuitee-2099"]
+    assert trouves["cle-fuitee-2099"] == "librechat.yaml"
+
+
+def test_les_variables_de_docker_compose_sont_retrouvees(tmp_path):
+    depot = depot_git(tmp_path / "depot", [
+        ("docker-compose.yml",
+         "services:\n  x:\n    environment:\n"
+         "      - CREDS_KEY=valeur-creds-0099\n"
+         "      - JWT_SECRET=valeur-jwt-0099\n"
+         "      - WEBUI_NAME=ARENA\n"),
+    ])
+
+    trouves = purge.secrets_de_l_historique(depot)
+
+    assert sorted(trouves) == ["valeur-creds-0099", "valeur-jwt-0099"]
+    assert "ARENA" not in trouves
+
+
+def test_une_reference_a_une_variable_n_est_pas_prise_pour_un_secret(tmp_path):
+    depot = depot_git(tmp_path / "depot", [
+        ("docker-compose.yml",
+         "services:\n  x:\n    environment:\n      - CREDS_KEY=${CREDS_KEY}\n"),
+    ])
+
+    assert purge.secrets_de_l_historique(depot) == {}
+
+
+def test_un_depot_sans_secret_ne_renvoie_rien(tmp_path):
+    """Après la purge, c'est l'état attendu — et il ne doit pas faire échouer un test."""
+    depot = depot_git(tmp_path / "depot", [
+        ("librechat.yaml", 'apiKey: "${ARENA_API_KEY}"\n'),
+        ("README.md", "Rien de sensible ici.\n"),
+    ])
+
+    assert purge.secrets_de_l_historique(depot) == {}
+
+
+def test_un_clone_superficiel_est_reconnu(tmp_path):
+    """`actions/checkout` n'en récupère qu'un commit : y chercher ne prouve rien."""
+    complet = depot_git(tmp_path / "complet", [
+        ("librechat.yaml", 'apiKey: "cle-fuitee-2099"\n'),
+        ("librechat.yaml", 'apiKey: "${ARENA_API_KEY}"\n'),
+    ])
+    superficiel = tmp_path / "superficiel"
+    subprocess.run(["git", "clone", "-q", "--depth", "1", "--no-local",
+                    f"file://{complet}", str(superficiel)], check=True)
+
+    assert purge.historique_complet(complet) is True
+    assert purge.historique_complet(superficiel) is False
+
+
+def test_le_script_fonctionne_sur_l_historique_de_ce_depot():
+    """Sur ce dépôt : il doit s'exécuter sans erreur, quel que soit ce qu'il trouve.
+
+    Rien n'est affirmé sur le nombre de secrets — il vaut zéro sur un clone
+    superficiel, et vaudra zéro pour de bon une fois la purge faite.
+    """
     trouves = purge.secrets_de_l_historique()
 
-    assert len(trouves) >= 5, f"attendu au moins 5 secrets, trouvé {len(trouves)}"
+    assert isinstance(trouves, dict)
     assert all(purge.est_un_secret(v) for v in trouves)
     assert not any(v.startswith("${") for v in trouves)
