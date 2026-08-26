@@ -44,6 +44,9 @@
   historique transmis au modèle), `CoderAgent` (refus du bac à sable, boucle
   d'auto-correction bornée) et `PublisherAgent` (`PUBLISH` bloqué, publication
   réelle non implémentée).
+- Quatre agents de plus testés hors ligne : `TrendAnalyzer` et `DeepResearcher`
+  (recherche web doublée, aucun appel réseau), `RepoEngineer` et `SWEAgent`
+  (lecture seule vérifiée : toute écriture disque fait échouer le test).
 
 ## [1.7.0] - 2026-08-25
 ### Sécurité

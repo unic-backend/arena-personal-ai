@@ -1,26 +1,44 @@
-import asyncio
-import sys
-from pathlib import Path
+"""RepoEngineerAgent : analyse d'architecture en lecture seule.
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+Le point qui compte : il lit le dépôt et propose, il n'écrit jamais.
+"""
+import pytest
 
-from core.models.ollama_provider import OllamaProvider
-from core.memory.memory_manager import MemoryManager
 from agents.repo_engineer.repo_engineer_agent import RepoEngineerAgent
 
-async def main():
-    print("🛠️ Test du RepoEngineerAgent (Ingénierie Multi-fichiers Odysseus / Devin)...")
-    provider = OllamaProvider(base_url="http://127.0.0.1:11434", model_name="qwen2.5-coder:14b")
-    memory = MemoryManager()
+ARBRE = ["apps/", "apps/backend/", "core/", "core/agent/", "tools/"]
 
-    agent = RepoEngineerAgent(provider=provider, memory=memory)
 
-    prompt = "Analyse l'architecture du projet ARENA et propose un plan pour ajouter un module de logs d'audit."
-    res = await agent.run(prompt)
+@pytest.fixture
+def agent(provider_factory, monkeypatch):
+    agent = RepoEngineerAgent(provider=provider_factory("Plan : ajouter core/audit/."), memory=None)
+    monkeypatch.setattr(agent.repo_tool, "get_tree", lambda max_depth=3: ARBRE)
+    return agent
 
-    print(f"   Statut : {res['status']}")
-    print(f"\n{res['response']}\n")
-    print("✅ TEST REPO ENGINEER AGENT VALIDÉ AVEC SUCCÈS !")
 
-if __name__ == "__main__":
-    asyncio.run(main())
+async def test_la_structure_lue_est_transmise_au_modele(agent):
+    await agent.run("Ajoute un module de logs d'audit")
+
+    prompt = agent.provider.appels[0]["prompt"]
+    for entree in ARBRE:
+        assert entree in prompt
+
+
+async def test_le_plan_est_renvoye_et_la_reserve_de_lecture_seule_affichee(agent):
+    res = await agent.run("Ajoute un module de logs d'audit")
+
+    assert res["status"] == "success"
+    assert res["architecture_plan"] == "Plan : ajouter core/audit/."
+    assert "ne modifie aucun fichier" in res["response"]
+
+
+async def test_l_agent_n_ecrit_rien_sur_le_disque(agent, monkeypatch):
+    """Lecture seule : toute écriture doit être absente, pas seulement annoncée."""
+    def interdit(*args, **kwargs):
+        raise AssertionError("RepoEngineerAgent a tenté d'écrire un fichier.")
+
+    monkeypatch.setattr(agent.repo_tool, "apply_patch", interdit)
+    monkeypatch.setattr("pathlib.Path.write_text", interdit)
+    monkeypatch.setattr("pathlib.Path.write_bytes", interdit)
+
+    assert (await agent.run("Modifie le fichier main.py"))["status"] == "success"
