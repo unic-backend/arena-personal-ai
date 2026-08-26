@@ -33,7 +33,9 @@ le menu montre tout ce que l'API sert. Or un menu n'est pas un inventaire.
 
 ### Ce qui doit être vrai à la fin
 
-- Le menu ne propose que **`arena-core`** et **`arena-coder`**.
+- Le menu ne propose que **`arena-core`**, **`arena-coder`** et
+  **`arena-video`** — la troisième entrée demandée par le propriétaire le
+  2026-08-26, après avoir constaté que les deux premières fonctionnaient.
 - **Aucune capacité n'est perdue** : tout ce que les huit autres noms
   atteignaient doit être atteignable depuis `arena-core`, sans que l'utilisateur
   ait à choisir quoi que ce soit.
@@ -90,3 +92,14 @@ Pourquoi `arena-deep-research` a mis trois minutes puis n'a rien produit. C'est
 une question distincte, qui demande les journaux du serveur au moment de
 l'appel. **Elle reste ouverte** — la corriger n'est pas la même chose que
 cesser d'afficher du vide.
+
+
+---
+
+## Suivi
+
+| Date | État |
+|---|---|
+| 2026-08-26 | D-01 et D-02 corrigés (`5bc33e9`). Menu ramené à 2 entrées, 5 intentions créées, plus aucune réponse vide. |
+| 2026-08-26 | `arena-video` ajouté à la demande du propriétaire. Menu à 3 entrées. `arena-studio` reste accepté par l'API. |
+| **ouvert** | **Pourquoi `arena-deep-research` met trois minutes et ne renvoie rien.** Demande les journaux du serveur au moment de l'appel. |

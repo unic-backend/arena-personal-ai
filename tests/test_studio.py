@@ -339,3 +339,24 @@ class TestJamaisDeReponseVide:
         contenu = reponse.json()["choices"][0]["message"]["content"]
         assert contenu.strip(), "LibreChat aurait affiché une bulle vide"
         assert "arena-deep-research" in contenu
+
+
+class TestNomVideo:
+    """`arena-video` est le nom que voit l'utilisateur ; il doit lancer le Studio."""
+
+    @pytest.mark.parametrize("nom", ["arena-video", "arena-studio"])
+    def test_les_deux_noms_lancent_le_studio(self, nom, client, studio_double):
+        reponse = client.post(
+            "/v1/chat/completions",
+            headers=ENTETES,
+            json={"model": nom,
+                  "messages": [{"role": "user", "content": "vas-y"}],
+                  "stream": False},
+        )
+        assert reponse.status_code == 200
+        assert studio_double == [True], f"{nom} n'a pas atteint le Studio"
+
+    def test_arena_video_est_servi_par_l_api(self):
+        import asyncio
+        modeles = asyncio.run(passerelle.list_openai_models())
+        assert "arena-video" in [m["id"] for m in modeles["data"]]

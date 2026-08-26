@@ -7,7 +7,7 @@ endpoints:
       apiKey: "${ARENA_API_KEY}"
       baseURL: "http://host.docker.internal:8000/v1"
       models:
-        # DEUX entrees, volontairement. Decision du proprietaire, 2026-08-26 :
+        # TROIS entrees, volontairement. Decision du proprietaire, 2026-08-26 :
         # « les utilisateurs ne connaissent pas des modeles, ils ouvrent le
         # premier qui apparait et pensent que c est celui qui fait tout ».
         #
@@ -21,6 +21,7 @@ endpoints:
         default:
           - "arena-core"
           - "arena-coder"
+          - "arena-video"
         fetch: false
       titleConvo: true
       modelDisplayLabel: "ARENA AI (Saer)"

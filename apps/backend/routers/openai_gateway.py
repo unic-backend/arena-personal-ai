@@ -55,6 +55,7 @@ async def list_openai_models():
             {"id": "arena-rag-docs", "object": "model", "owned_by": "arena"},
             {"id": "arena-graphrag", "object": "model", "owned_by": "arena"},
             {"id": "arena-browser", "object": "model", "owned_by": "arena"},
+            {"id": "arena-video", "object": "model", "owned_by": "arena"},
             {"id": "arena-studio", "object": "model", "owned_by": "arena"}
         ]
     }
@@ -151,7 +152,9 @@ async def openai_chat_completions(request: Request):
     elif model_requested == "arena-browser":
         contenu = (await browser_agent.run(last_user_msg)).get("response", "")
 
-    elif model_requested == "arena-studio":
+    elif model_requested in ("arena-video", "arena-studio"):
+        # « arena-video » est le nom propose dans le menu ; « arena-studio »
+        # reste accepte pour ne casser aucun client deja configure avec lui.
         contenu = (await lancer_studio(video_agent, editor_agent, subtitle_agent)).get("response", "")
 
     elif model_requested == "arena-graphrag":

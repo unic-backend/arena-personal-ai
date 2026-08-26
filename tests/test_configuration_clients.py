@@ -1,7 +1,7 @@
 """Le menu est court ; les capacités, elles, restent toutes joignables.
 
-Décision du propriétaire, 2026-08-26 : LibreChat ne propose plus que
-`arena-core` et `arena-coder`. Sa raison — *« les utilisateurs ne connaissent
+Décision du propriétaire, 2026-08-26 : LibreChat propose trois entrées —
+`arena-core`, `arena-coder` et `arena-video`. Sa raison — *« les utilisateurs ne connaissent
 pas des modèles, ils ouvrent le premier qui apparaît et pensent que c'est celui
 qui fait tout »*.
 
@@ -27,7 +27,7 @@ RACINE = Path(__file__).resolve().parent.parent
 LIBRECHAT = RACINE / "librechat.yaml"
 COMPOSE = RACINE / "docker-compose.yml"
 
-MENU_ATTENDU = {"arena-core", "arena-coder"}
+MENU_ATTENDU = {"arena-core", "arena-coder", "arena-video"}
 
 VARIABLES_SECRETES = (
     "ARENA_API_KEY", "CREDS_KEY", "JWT_SECRET", "JWT_REFRESH_SECRET", "WEBUI_SECRET_KEY",
@@ -41,7 +41,6 @@ CAPACITES_SANS_ENTREE_DE_MENU = {
     "arena-deep-research": ("DEEP_RESEARCH", "researcher_agent"),
     "arena-fresh": ("FRESH_INFO", "fresh_agent"),
     "arena-browser": ("BROWSER", "browser_agent"),
-    "arena-studio": ("STUDIO", "lancer_studio"),
 }
 
 
@@ -51,8 +50,12 @@ def menu_de_librechat() -> set[str]:
 
 
 class TestMenuCourt:
-    def test_le_menu_ne_propose_que_deux_entrees(self):
+    def test_le_menu_propose_exactement_les_entrees_voulues(self):
         assert menu_de_librechat() == MENU_ATTENDU
+
+    def test_la_video_est_dans_le_menu(self):
+        """Demandée explicitement par le propriétaire le 2026-08-26."""
+        assert "arena-video" in menu_de_librechat()
 
     @pytest.mark.parametrize("modele,attendu", sorted(CAPACITES_SANS_ENTREE_DE_MENU.items()))
     def test_chaque_capacite_retiree_a_une_intention(self, modele, attendu):
