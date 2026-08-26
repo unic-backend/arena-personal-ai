@@ -7,21 +7,20 @@ endpoints:
       apiKey: "${ARENA_API_KEY}"
       baseURL: "http://host.docker.internal:8000/v1"
       models:
-        # Cette liste doit rester identique a celle servie par /v1/models :
-        # `fetch: false` veut dire que LibreChat n affiche que ce qui est ecrit
-        # ici. Un modele oublie est un modele invisible, quoi qu en dise l API.
-        # `tests/test_configuration_clients.py` tient les deux cotes ensemble.
+        # DEUX entrees, volontairement. Decision du proprietaire, 2026-08-26 :
+        # « les utilisateurs ne connaissent pas des modeles, ils ouvrent le
+        # premier qui apparait et pensent que c est celui qui fait tout ».
+        #
+        # Ce n est pas une liste tronquee : arena-core atteint TOUTES les
+        # capacites en lisant la demande — web, documents, video, navigation,
+        # correction de bug, depot. Les autres noms restent servis par
+        # /v1/models pour un client averti, mais ne sont plus proposes ici.
+        #
+        # `tests/test_configuration_clients.py` verifie que rien n est devenu
+        # injoignable en raccourcissant ce menu.
         default:
           - "arena-core"
           - "arena-coder"
-          - "arena-swe-agent"
-          - "arena-repo-engineer"
-          - "arena-deep-research"
-          - "arena-fresh"
-          - "arena-rag-docs"
-          - "arena-graphrag"
-          - "arena-browser"
-          - "arena-studio"
         fetch: false
       titleConvo: true
       modelDisplayLabel: "ARENA AI (Saer)"

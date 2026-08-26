@@ -16,15 +16,20 @@ from pydantic import BaseModel
 from apps.backend.config import AGENTS_SPECIALISES, MEDIA_DIR
 from apps.backend.prompts import get_arena_system_prompt
 from apps.backend.runtime import (
+    browser_agent,
     coder_agent,
     editor_agent,
     fast_provider,
     fresh_agent,
+    graphrag_tool,
+    lightrag_tool,
     memory,
     orchestrator,
     publisher_agent,
+    repo_engineer,
     researcher_agent,
     subtitle_agent,
+    swe_agent,
     trend_agent,
     video_agent,
 )
@@ -72,6 +77,16 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         result = await fresh_agent.run(request.prompt)
     elif intent == "STUDIO":
         result = await lancer_studio(video_agent, editor_agent, subtitle_agent)
+    elif intent == "BROWSER":
+        result = await browser_agent.run(request.prompt)
+    elif intent == "SWE_FIX":
+        result = await swe_agent.run(request.prompt)
+    elif intent == "REPO_ENGINEERING":
+        result = await repo_engineer.run(request.prompt)
+    elif intent == "RAG_DOCS":
+        result = {"response": lightrag_tool.query(request.prompt, mode="hybrid"), "agent": "LightRAG"}
+    elif intent == "GRAPHRAG":
+        result = graphrag_tool.query_global(request.prompt)
     elif intent == "DEEP_RESEARCH":
         result = await researcher_agent.run(request.prompt)
     elif intent == "CODE_EXECUTION":

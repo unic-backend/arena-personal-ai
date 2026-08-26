@@ -15,6 +15,11 @@ INTENTIONS = {
     "CODE_EXECUTION",
     "FRESH_INFO",
     "STUDIO",
+    "BROWSER",
+    "SWE_FIX",
+    "REPO_ENGINEERING",
+    "RAG_DOCS",
+    "GRAPHRAG",
     "DEEP_REASONING",
     "DEEP_RESEARCH",
     "TREND_SEARCH",
@@ -69,6 +74,11 @@ TREND_SEARCH    : chercher des tendances ou des idées de contenu vidéo.
 VIDEO_ANALYSIS  : analyser, découper ou reformater un fichier vidéo.
 STUDIO          : traiter une vidéo de bout en bout — vertical 9:16 et
                   sous-titres incrustés, en une seule demande.
+BROWSER         : ouvrir un site, naviguer, remplir un formulaire.
+SWE_FIX         : corriger un bug dans un fichier existant.
+REPO_ENGINEERING: travailler sur plusieurs fichiers d'un dépôt à la fois.
+RAG_DOCS        : répondre à partir des documents de l'utilisateur.
+GRAPHRAG        : question sur les liens entre les documents.
 
 Attention : parler DE code, DE maths ou D'une erreur n'est pas demander d'en produire.
 « Explique-moi le code de la route » est CHAT, pas CODE_EXECUTION.
@@ -191,6 +201,20 @@ class OrchestratorAgent(BaseAgent):
         research_keywords = ["étude complète", "rapport détaillé", "recherche approfondie", "étude de marché", "dossier complet"]
         if any(k in text for k in research_keywords):
             return "DEEP_RESEARCH"
+
+        # Capacites autrefois joignables uniquement en choisissant leur nom
+        # dans le menu. Le menu n en propose plus que deux : elles doivent donc
+        # etre atteignables depuis une phrase ordinaire.
+        if any(k in text for k in ["navigue", "ouvre le site", "va sur http", "navigateur"]):
+            return "BROWSER"
+        if any(k in text for k in ["corrige le bug", "erreur dans le code", "corrige le fichier"]):
+            return "SWE_FIX"
+        if any(k in text for k in ["architecture du projet", "dépôt", "depot", "plusieurs fichiers"]):
+            return "REPO_ENGINEERING"
+        if any(k in text for k in ["dans mes documents", "d'après mon fichier", "mes devis", "mes factures"]):
+            return "RAG_DOCS"
+        if any(k in text for k in ["graphe de connaissance", "liens entre mes documents", "graphrag"]):
+            return "GRAPHRAG"
 
         # Studio complet : une seule demande, toute la chaine.
         # Teste avant VIDEO_ANALYSIS : « sous-titre cette video » est un studio,

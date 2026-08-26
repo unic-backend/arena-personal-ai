@@ -300,3 +300,42 @@ class TestChaineHTTP:
         )
         assert reponse.status_code in (401, 403)
         assert studio_double == [], "le studio a tourné sans authentification"
+
+
+class TestJamaisDeReponseVide:
+    """Une bulle vide dans LibreChat est pire qu'un message d'erreur.
+
+    Observé le 2026-08-26 sur `arena-deep-research` : après trois minutes,
+    une bulle entièrement vide, sans texte ni erreur. Chaque branche de la
+    passerelle lit `.get("response", "")`, et `"" is not None` est vrai.
+    """
+
+    def test_un_texte_normal_passe_intact(self):
+        from apps.backend.routers.openai_gateway import garantir_un_texte
+        assert garantir_un_texte("la réponse", "arena-core") == "la réponse"
+
+    @pytest.mark.parametrize("vide", ["", "   ", "\n\n", None])
+    def test_rien_ne_devient_un_message_explicite(self, vide):
+        from apps.backend.routers.openai_gateway import garantir_un_texte
+        texte = garantir_un_texte(vide, "arena-deep-research")
+        assert texte.strip(), "une réponse vide est repartie telle quelle"
+        assert "arena-deep-research" in texte
+        assert "aucune réponse" in texte
+
+    def test_un_agent_muet_ne_produit_pas_une_bulle_vide(self, client, monkeypatch):
+        """Le cas réel, par la chaîne HTTP : l'agent renvoie un dict sans texte."""
+        async def _agent_muet(*args, **kw):
+            return {"status": "error"}
+
+        monkeypatch.setattr(passerelle.researcher_agent, "run", _agent_muet)
+
+        reponse = client.post(
+            "/v1/chat/completions",
+            headers=ENTETES,
+            json={"model": "arena-deep-research",
+                  "messages": [{"role": "user", "content": "une question"}],
+                  "stream": False},
+        )
+        contenu = reponse.json()["choices"][0]["message"]["content"]
+        assert contenu.strip(), "LibreChat aurait affiché une bulle vide"
+        assert "arena-deep-research" in contenu
