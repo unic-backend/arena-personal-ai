@@ -51,6 +51,8 @@ Règles :
 - Cite tes sources avec leur numéro entre crochets, par exemple [1].
 - Si les sources ne répondent pas à la question, dis-le clairement au lieu de deviner.
 - Ne complète pas avec tes connaissances propres : elles peuvent être périmées.
+- Quand une source porte une date entre parenthèses, dis-la : « selon [2], le 14/08… ».
+- Entre deux sources qui se contredisent, retiens la plus récente et dis pourquoi.
 - Réponds en français, de manière directe.
 
 SOURCES :
@@ -135,6 +137,31 @@ class FreshInfoAgent(BaseAgent):
             pages.append(lecture)
         return pages
 
+    @staticmethod
+    def _sources_de_secours(resultats: List[Dict[str, str]]) -> List[Dict[str, Any]]:
+        """Transforme les extraits du moteur en sources, faute de pages lues.
+
+        Chaque extrait garde son titre, son adresse et sa date quand le moteur
+        en donne une. `extract` marque la source comme un extrait et non une
+        page : le lecteur doit pouvoir faire la difference.
+        """
+        secours = []
+        for resultat in resultats:
+            extrait = (resultat.get("body") or "").strip()
+            if not extrait or not resultat.get("href"):
+                continue
+            date = resultat.get("date")
+            secours.append({
+                "status": "EXTRACT",
+                "url": resultat["href"],
+                "title": resultat.get("title") or resultat["href"],
+                "text": f"({date}) {extrait}" if date else extrait,
+                "truncated": True,
+            })
+        if secours:
+            logger.info(f"Aucune page lisible : {len(secours)} extrait(s) de recherche utilise(s)")
+        return secours
+
     def _repartir_le_budget(self, lues: List[Dict[str, Any]]) -> int:
         """Nombre de caractères accordé à chaque source retenue."""
         return max(500, self.budget_caracteres // max(1, len(lues)))
@@ -204,7 +231,8 @@ class FreshInfoAgent(BaseAgent):
         try:
             resultats = await asyncio.wait_for(
                 asyncio.to_thread(
-                    self.search_tool.search, user_input, max_results=RESULTATS_RECHERCHE
+                    self.search_tool.search, user_input,
+                    max_results=RESULTATS_RECHERCHE, recent=True,
                 ),
                 timeout=DELAI_RECHERCHE_SECONDES,
             )
@@ -228,6 +256,13 @@ class FreshInfoAgent(BaseAgent):
         lues = [p for p in pages if p["status"] == "FETCHED" and p["text"].strip()]
 
         if not lues:
+            # Les sites d actualite refusent souvent les robots : aucune page
+            # lisible ne veut pas dire aucune information. Le moteur rend un
+            # extrait par resultat, avec son titre et son adresse — c est une
+            # source citable, moins complete qu une page, jamais inventee.
+            lues = self._sources_de_secours(resultats)
+
+        if not lues:
             details = "\n".join(
                 f"- {p['url']} : {p.get('reason', 'illisible')}" for p in pages
             )
@@ -237,8 +272,9 @@ class FreshInfoAgent(BaseAgent):
                 "sources": [],
                 "attempted": [p["url"] for p in pages],
                 "response": (
-                    "J'ai trouve des resultats mais je n'ai pu lire aucune page. "
-                    "Sans source lue, je ne reponds pas de memoire.\n\n"
+                    "J'ai trouve des resultats mais je n'ai pu lire aucune page, "
+                    "et le moteur n'a rendu aucun extrait. "
+                    "Sans source, je ne reponds pas de memoire.\n\n"
                     f"Pages tentees :\n{details}"
                 ),
             }

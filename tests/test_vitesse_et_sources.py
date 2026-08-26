@@ -63,7 +63,7 @@ class LecteurLent:
 
 
 class RechercheDouble:
-    def search(self, query, max_results=5):
+    def search(self, query, max_results=5, recent=False):
         return [
             {"href": "https://rapide.test/", "title": "rapide"},
             {"href": "https://lent.test/", "title": "lent"},
@@ -114,7 +114,7 @@ class TestLaRechercheNeFigePlusLeServeur:
         monkeypatch.setattr(module, "DELAI_RECHERCHE_SECONDES", 0.2)
 
         class RechercheMuette:
-            def search(self, query, max_results=5):
+            def search(self, query, max_results=5, recent=False):
                 time.sleep(5)
                 return []
 
@@ -139,7 +139,7 @@ class TestCeQuiEstArriveEstConserve:
             return {"status": "FETCHED", "url": url, "text": "contenu lisible", "title": "T"}
 
     class RechercheTrois:
-        def search(self, query, max_results=5):
+        def search(self, query, max_results=5, recent=False):
             return [
                 {"href": "https://rapide1.test/", "title": "a"},
                 {"href": "https://rapide2.test/", "title": "b"},
