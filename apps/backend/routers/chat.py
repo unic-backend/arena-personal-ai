@@ -48,13 +48,34 @@ class ChatRequest(BaseModel):
     region: Optional[str] = "Sénégal"
 
 
-def formater_sources(sources: List[Dict[str, Any]]) -> str:
-    """Ajoute la liste des sources sous une reponse, pour les canaux en texte seul.
+# Formulations par lesquelles l utilisateur reclame les sources. Decision du
+# proprietaire, 2026-08-26 : la liste des adresses alourdit chaque reponse alors
+# qu il ne la lit presque jamais. Elle n est donc plus affichee par defaut.
+#
+# La reponse continue de porter ses numeros [1], [2] : ils viennent du modele et
+# disent sur quelle source chaque affirmation repose. Ce qui disparait, c est la
+# liste d adresses en bas — jamais la tracabilite elle-meme, qui reste dans le
+# champ `sources` de la reponse de l agent.
+DEMANDES_DE_SOURCES = (
+    "source", "sources", "référence", "reference", "d'où", "d ou", "d'ou",
+    "lien", "liens", "url", "prouve", "preuve", "vérifiable", "verifiable",
+)
 
-    Le format OpenAI n'a pas de champ pour des sources : sans cela, le lecteur ne
-    saurait pas d'ou vient la reponse.
+
+def sources_demandees(question: str) -> bool:
+    """Dit si l utilisateur a reclame les adresses de ses sources."""
+    texte = (question or "").lower()
+    return any(mot in texte for mot in DEMANDES_DE_SOURCES)
+
+
+def formater_sources(sources: List[Dict[str, Any]], question: str = "") -> str:
+    """Rend la liste des sources, uniquement si elle a ete demandee.
+
+    Le format OpenAI n a pas de champ pour des sources : sans cela, le lecteur ne
+    saurait pas d ou vient la reponse. Mais l afficher a chaque fois encombre —
+    d ou le declenchement a la demande.
     """
-    if not sources:
+    if not sources or not sources_demandees(question):
         return ""
     lignes = [f"[{s['index']}] {s['title']} — {s['url']}" for s in sources]
     return "\n\n**Sources**\n" + "\n".join(lignes)

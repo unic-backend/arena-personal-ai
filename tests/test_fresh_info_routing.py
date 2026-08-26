@@ -80,15 +80,22 @@ def intention(monkeypatch):
 
 # --- Mise en forme des sources -------------------------------------------------
 
-def test_les_sources_sont_listees_sous_la_reponse():
-    texte = routeur_chat.formater_sources(REPONSE_SOURCEE["sources"])
+def test_les_sources_sont_listees_quand_on_les_demande():
+    texte = routeur_chat.formater_sources(REPONSE_SOURCEE["sources"], "donne tes sources")
 
     assert "**Sources**" in texte
     assert "[1] Python 3.14 — https://exemple.test/py" in texte
 
 
+def test_sans_demande_la_liste_d_adresses_reste_masquee():
+    """Décision du propriétaire, 2026-08-26 : elle encombre chaque réponse."""
+    texte = routeur_chat.formater_sources(REPONSE_SOURCEE["sources"], "quelle heure est-il")
+
+    assert texte == ""
+
+
 def test_sans_source_rien_n_est_ajoute():
-    assert routeur_chat.formater_sources([]) == ""
+    assert routeur_chat.formater_sources([], "donne tes sources") == ""
 
 
 # --- /api/chat -----------------------------------------------------------------
@@ -159,9 +166,22 @@ def test_arena_fresh_appelle_l_agent_et_cite_ses_sources(client, agent_double):
                       headers=ENTETES)
 
     contenu = res.json()["choices"][0]["message"]["content"]
+    # Les numéros [1] restent : ils disent sur quelle source repose l'affirmation.
     assert "Python 3.14 est la dernière version [1]." in contenu
-    assert "https://exemple.test/py" in contenu
+    # La liste d'adresses, elle, n'apparaît que si on la réclame.
+    assert "https://exemple.test/py" not in contenu
     assert agent_double.demandes == ["question"]
+
+
+def test_arena_fresh_donne_ses_adresses_quand_on_les_reclame(client, agent_double):
+    res = client.post("/v1/chat/completions",
+                      json={"model": "arena-fresh",
+                            "messages": [{"role": "user", "content": "question, avec les sources"}]},
+                      headers=ENTETES)
+
+    contenu = res.json()["choices"][0]["message"]["content"]
+    assert "**Sources**" in contenu
+    assert "https://exemple.test/py" in contenu
 
 
 def test_arena_core_aiguille_aussi_vers_l_agent(client, agent_double, intention):
@@ -172,7 +192,9 @@ def test_arena_core_aiguille_aussi_vers_l_agent(client, agent_double, intention)
                             "messages": [{"role": "user", "content": "question"}]},
                       headers=ENTETES)
 
-    assert "**Sources**" in res.json()["choices"][0]["message"]["content"]
+    contenu = res.json()["choices"][0]["message"]["content"]
+    assert "Python 3.14 est la dernière version [1]." in contenu
+    assert "**Sources**" not in contenu, "la liste d'adresses sort sans avoir été demandée"
     assert agent_double.demandes == ["question"]
 
 

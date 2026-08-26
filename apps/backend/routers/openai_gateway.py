@@ -147,7 +147,7 @@ async def openai_chat_completions(request: Request):
 
     elif model_requested == "arena-fresh":
         res = await fresh_agent.run(last_user_msg)
-        contenu = res.get("response", "") + formater_sources(res.get("sources", []))
+        contenu = res.get("response", "") + formater_sources(res.get("sources", []), last_user_msg)
 
     elif model_requested == "arena-browser":
         contenu = (await browser_agent.run(last_user_msg)).get("response", "")
@@ -173,7 +173,7 @@ async def openai_chat_completions(request: Request):
 
     if intent in AGENTS_SPECIALISES:
         res = await dispatch_request(chat_req, intent=intent)
-        contenu = res.get("response", "") + formater_sources(res.get("sources", []))
+        contenu = res.get("response", "") + formater_sources(res.get("sources", []), last_user_msg)
         return _reponse_openai(garantir_un_texte(contenu, intent), model_requested, stream)
 
     # ---- Discussion simple : reponse mot par mot ----

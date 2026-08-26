@@ -30,9 +30,19 @@ logger = logging.getLogger("arena.agent.fresh_info")
 # Le modèle tourne avec num_ctx = 4096 jetons. Envoyer cinq pages entières
 # deborderait le contexte et ferait oublier la question elle-meme. Ce budget est
 # reparti entre les sources retenues.
-BUDGET_CARACTERES = 8000
+BUDGET_CARACTERES = 4500
 SOURCES_MAX = 3
 RESULTATS_RECHERCHE = 5
+
+# Delai total accorde a la lecture des pages. Elles sont lues en parallele :
+# passe ce delai, on repond avec ce qui est arrive, au lieu d attendre la plus
+# lente. Une page qui met plus de 6 s ne vaut pas l attente quand deux autres
+# ont deja repondu.
+DELAI_LECTURE_SECONDES = 6.0
+
+# Delai accorde a la recherche elle-meme. Sans plafond, un moteur qui ne repond
+# pas fige la reponse entiere.
+DELAI_RECHERCHE_SECONDES = 6.0
 
 GABARIT_SYNTHESE = """Tu es ARENA. Réponds à la question en t'appuyant UNIQUEMENT sur les sources ci-dessous.
 
@@ -61,6 +71,7 @@ class FreshInfoAgent(BaseAgent):
         fetcher: Optional[SourceFetcher] = None,
         sources_max: int = SOURCES_MAX,
         budget_caracteres: int = BUDGET_CARACTERES,
+        delai_lecture: float = DELAI_LECTURE_SECONDES,
     ):
         super().__init__(
             name="FreshInfoAgent",
@@ -72,6 +83,7 @@ class FreshInfoAgent(BaseAgent):
         self.fetcher = fetcher or SourceFetcher()
         self.sources_max = sources_max
         self.budget_caracteres = budget_caracteres
+        self.delai_lecture = delai_lecture
 
     async def _lire_les_pages(self, resultats: List[Dict[str, str]]) -> List[Dict[str, Any]]:
         """Lit en parallèle les pages candidates ; l'attente est réseau, pas GPU."""
@@ -79,10 +91,31 @@ class FreshInfoAgent(BaseAgent):
         if not candidats:
             return []
 
-        lectures = await asyncio.gather(
-            *(self.fetcher.fetch(r["href"]) for r in candidats),
-            return_exceptions=True,
-        )
+        # Une tache par page, et un plafond sur le lot. Au dela du delai, seules
+        # les lectures **non terminees** sont annulees : celles qui sont arrivees
+        # servent. `wait_for` sur un `gather` ne convient pas ici — il annule le
+        # lot entier, donc les pages deja lues avec. Mesure du 2026-08-26 : sur
+        # trois pages dont une lente, cette version-la rendait 0 source au lieu
+        # de 2.
+        taches = [
+            asyncio.ensure_future(self.fetcher.fetch(r["href"])) for r in candidats
+        ]
+        _, en_attente = await asyncio.wait(taches, timeout=self.delai_lecture)
+
+        for tache in en_attente:
+            tache.cancel()
+        if en_attente:
+            logger.warning(
+                f"{len(en_attente)} page(s) abandonnee(s) apres {self.delai_lecture} s : "
+                "la reponse est construite avec celles qui sont arrivees."
+            )
+
+        lectures = []
+        for tache in taches:
+            if tache in en_attente:
+                lectures.append(TimeoutError(f"pas de reponse en {self.delai_lecture} s"))
+            else:
+                lectures.append(tache.exception() or tache.result())
 
         pages = []
         # strict=True : gather renvoie exactement une entree par candidat.
@@ -116,7 +149,18 @@ class FreshInfoAgent(BaseAgent):
         self, user_input: str, context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         logger.info(f"FreshInfoAgent cherche : {user_input}")
-        resultats = self.search_tool.search(user_input, max_results=RESULTATS_RECHERCHE)
+        # `search` est bloquant : lance tel quel, il fige la boucle et donc tout
+        # le serveur. Il part dans un fil d execution, avec un plafond.
+        try:
+            resultats = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.search_tool.search, user_input, max_results=RESULTATS_RECHERCHE
+                ),
+                timeout=DELAI_RECHERCHE_SECONDES,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"Recherche abandonnee apres {DELAI_RECHERCHE_SECONDES} s")
+            resultats = []
 
         if not resultats:
             return {
