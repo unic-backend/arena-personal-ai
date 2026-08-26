@@ -92,6 +92,15 @@ def test_la_ci_execute_le_scan():
 )
 def test_les_documents_du_proprietaire_ne_peuvent_pas_etre_versionnes(chemin):
     """Le dépôt est public. Un devis client qui y entre n'en ressort pas."""
+    # check-ignore n'a de sens que dans un dépôt Git. Un extrait ZIP ou un
+    # dossier copié sans .git ne doit pas faire échouer la suite hors ligne.
+    probe = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        cwd=RACINE, capture_output=True, text=True,
+    )
+    if probe.returncode != 0 or probe.stdout.strip() != "true":
+        pytest.skip("pas un dépôt git (ex. extrait ZIP) — check-ignore inapplicable")
+
     resultat = subprocess.run(
         ["git", "check-ignore", "-q", chemin],
         cwd=RACINE, capture_output=True,
