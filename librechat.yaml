@@ -1,5 +1,10 @@
 version: 1.1.5
-cache: true
+
+# Cache desactive : LibreChat gardait sa configuration en memoire, et un
+# changement de nom ou de liste de modeles ne se voyait pas au redemarrage.
+# Sur une installation locale a un seul utilisateur, relire ce fichier ne
+# coute rien ; ne pas voir ses propres modifications coute une soiree.
+cache: false
 
 endpoints:
   custom:

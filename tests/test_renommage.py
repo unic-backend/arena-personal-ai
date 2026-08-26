@@ -141,3 +141,11 @@ class TestIdentifiantsDeModeles:
         motif = regles["usman-compose-secret"]["regex"]
         assert "USMAN_API_KEY" in motif, "le nouveau nom n'est pas surveille"
         assert "ARENA_API_KEY" in motif, "l'ancien nom cesse d'etre surveille"
+
+
+class TestLaConfigurationEstRelue:
+    def test_librechat_ne_met_pas_sa_configuration_en_cache(self):
+        """Un changement invisible au redémarrage se paie en heures perdues."""
+        import yaml
+        config = yaml.safe_load((RACINE / "librechat.yaml").read_text(encoding="utf-8"))
+        assert config["cache"] is False
