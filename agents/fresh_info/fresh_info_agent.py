@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from core.agent.base_agent import BaseAgent
@@ -138,10 +139,59 @@ class FreshInfoAgent(BaseAgent):
         """Nombre de caractères accordé à chaque source retenue."""
         return max(500, self.budget_caracteres // max(1, len(lues)))
 
-    def _formater_les_sources(self, lues: List[Dict[str, Any]], part: int) -> str:
+    @staticmethod
+    def extraire_pertinent(texte: str, question: str, taille: int) -> str:
+        """Garde les passages qui parlent de la question, pas le debut de la page.
+
+        Mesure du 2026-08-26 : a « qui a gagne la derniere coupe du monde »,
+        Usman a repondu « la derniere Coupe du Monde remportee par l equipe
+        francaise a eu lieu en 2018 » — en citant une page de palmares qui
+        contient la bonne reponse plus bas. L extrait envoye au modele etait
+        les N premiers caracteres, c est-a-dire l introduction.
+
+        Le decoupage est par paragraphe, le classement par nombre de mots de la
+        question presents. **L ordre du document est conserve** : un palmares
+        lu a l envers se comprend mal. A egalite, le passage le plus haut gagne,
+        ce qui redonne le comportement d avant quand rien ne ressort.
+        """
+        if len(texte) <= taille:
+            return texte.strip()
+
+        mots = {
+            mot for mot in re.findall(r"[\wàâäéèêëîïôöùûüç]{4,}", (question or "").lower())
+        }
+        paragraphes = [p.strip() for p in re.split(r"\n\s*\n|\n", texte) if p.strip()]
+        if not mots or not paragraphes:
+            return texte[:taille].strip()
+
+        scores = []
+        for rang, paragraphe in enumerate(paragraphes):
+            bas = paragraphe.lower()
+            score = sum(1 for mot in mots if mot in bas)
+            scores.append((score, -rang, rang, paragraphe))
+
+        # On retient les meilleurs jusqu au budget, puis on les remet dans l ordre.
+        retenus, total = [], 0
+        for score, _, rang, paragraphe in sorted(scores, reverse=True):
+            if score == 0 and retenus:
+                break
+            if total + len(paragraphe) > taille and retenus:
+                continue
+            retenus.append((rang, paragraphe))
+            total += len(paragraphe)
+            if total >= taille:
+                break
+
+        if not retenus:
+            return texte[:taille].strip()
+
+        retenus.sort()
+        return "\n".join(p for _, p in retenus)[:taille].strip()
+
+    def _formater_les_sources(self, lues: List[Dict[str, Any]], part: int, question: str = "") -> str:
         blocs = []
         for numero, page in enumerate(lues, 1):
-            extrait = page["text"][:part].strip()
+            extrait = self.extraire_pertinent(page["text"], question, part)
             blocs.append(f"[{numero}] {page['title']}\n    ({page['url']})\n{extrait}")
         return "\n\n".join(blocs)
 
@@ -195,7 +245,7 @@ class FreshInfoAgent(BaseAgent):
 
         part = self._repartir_le_budget(lues)
         prompt = GABARIT_SYNTHESE.format(
-            sources=self._formater_les_sources(lues, part), question=user_input
+            sources=self._formater_les_sources(lues, part, user_input), question=user_input
         )
         reponse = await self.provider.generate(prompt=prompt)
 

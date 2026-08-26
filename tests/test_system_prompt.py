@@ -107,3 +107,40 @@ def test_seuls_les_faits_reellement_enregistres_sont_listes(monkeypatch):
 
     assert "Premier ministre" in prompt
     assert "President de la Republique" not in prompt
+
+
+class TestDeuxNomsDeuxRoles:
+    """L'assistant s'appelle Usman ; son propriétaire s'appelle Ousmane.
+
+    Mesuré le 2026-08-26 : à « qui suis-je », Usman a répondu *« Je suis Usman,
+    votre IA personnelle »*. Le renommage en masse avait mis « Usman » comme
+    nom par défaut du propriétaire **aussi** : le prompt disait « Tu es Usman,
+    l'IA personnelle de Usman », et le modèle a répondu la seule chose qu'il
+    pouvait comprendre.
+    """
+
+    def test_l_assistant_et_le_proprietaire_n_ont_pas_le_meme_nom(self, monkeypatch):
+        import apps.backend.prompts as prompts
+
+        monkeypatch.setattr(prompts.memory, "get_fact", lambda cle: None)
+        texte = prompts.get_arena_system_prompt()
+
+        assert "Tu es Usman" in texte
+        assert "Ousmane" in texte
+        assert "l'IA autonome personnelle de Usman" not in texte
+
+    def test_le_prompt_dit_explicitement_de_qui_parle_qui_suis_je(self, monkeypatch):
+        import apps.backend.prompts as prompts
+
+        monkeypatch.setattr(prompts.memory, "get_fact", lambda cle: "Ousmane")
+        texte = prompts.get_arena_system_prompt()
+
+        assert "qui suis-je" in texte
+        assert "il parle de Ousmane, pas de toi" in texte
+
+    def test_le_nom_enregistre_en_memoire_l_emporte(self, monkeypatch):
+        import apps.backend.prompts as prompts
+
+        monkeypatch.setattr(prompts.memory, "get_fact",
+                            lambda cle: "Fatou" if cle == "owner" else None)
+        assert "Fatou" in prompts.get_arena_system_prompt()

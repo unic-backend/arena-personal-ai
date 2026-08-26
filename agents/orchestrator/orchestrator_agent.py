@@ -265,7 +265,7 @@ class OrchestratorAgent(BaseAgent):
 
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         session_id = context.get("session_id", "default") if context else "default"
-        owner_name = self.memory.get_fact("owner") if self.memory else "Usman"
+        owner_name = self.memory.get_fact("owner") if self.memory else "Ousmane"
 
         # La classification coûte un appel au modèle : si l'appelant l'a déjà
         # faite, on la réutilise au lieu de la refaire.

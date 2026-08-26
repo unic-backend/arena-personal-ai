@@ -172,9 +172,9 @@ async def chat_stream_endpoint(request: ChatRequest):
 
         prompt_lines = []
         for msg in history:
-            role_label = memory.get_fact("owner") or "Usman" if msg["role"] == "user" else "Usman"
+            role_label = memory.get_fact("owner") or "Ousmane" if msg["role"] == "user" else "Usman"
             prompt_lines.append(f"{role_label}: {msg['content']}")
-        prompt_lines.append(f"{memory.get_fact('owner') or 'Usman'}: {request.prompt}")
+        prompt_lines.append(f"{memory.get_fact('owner') or 'Ousmane'}: {request.prompt}")
         prompt_lines.append("Usman:")
         full_prompt = "\n".join(prompt_lines)
 

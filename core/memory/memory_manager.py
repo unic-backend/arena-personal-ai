@@ -107,7 +107,7 @@ class MemoryManager:
 
 if __name__ == "__main__":
     mem = MemoryManager()
-    mem.set_fact("user_profile", "owner", "Usman", {"role": "Propriétaire"})
+    mem.set_fact("user_profile", "owner", "Ousmane", {"role": "Propriétaire"})
     mem.add_chat_message("default", "user", "Bonjour Usman")
     mem.add_chat_message("default", "assistant", "Bonjour Usman, mémoire SQLite initialisée.")
 

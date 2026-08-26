@@ -55,4 +55,4 @@ fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)
 repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory)
 swe_agent = SWEAgent(provider=fast_provider, memory=memory)
 
-memory.set_fact("user_profile", "owner", "Usman", {"role": "Propriétaire et créateur d'Usman"})
+memory.set_fact("user_profile", "owner", "Ousmane", {"role": "Propriétaire et créateur d'Usman"})
