@@ -72,6 +72,17 @@
 - `.dockerignore` ajouté : `.env`, `.git`, tests, docs, `data/` et `media/` ne
   partent plus dans le contexte de build.
 
+### Comportement
+- L'intention est maintenant classée par le modèle rapide au lieu d'une liste de
+  mots-clés. « Explique-moi le **code** de la route », « **Calcule** mon devis » et
+  « Quelle **erreur** j'ai faite hier ? » partaient vers le `CoderAgent`.
+- Le modèle répond une étiquette d'une liste fermée ; toute autre réponse est
+  rejetée. Modèle injoignable ou réponse hors liste → repli sur les mots-clés,
+  **annoncé dans les journaux**, jamais silencieux.
+- La classification n'est faite qu'une fois par requête : `dispatch_request` et
+  `OrchestratorAgent.run` réutilisent l'étiquette au lieu de la recalculer. Sans
+  ça, un message de chat coûtait trois appels au modèle au lieu d'un.
+
 ## [1.7.0] - 2026-08-25
 ### Sécurité
 - La passerelle `/v1` exige désormais une clé API (`ARENA_API_KEY` dans `.env`).

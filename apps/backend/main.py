@@ -369,13 +369,19 @@ async def process_video_pipeline(video_path: str = Form(...)):
         logger.error(f"Erreur pipeline vidéo: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
-async def dispatch_request(request: ChatRequest) -> Dict[str, Any]:
+async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -> Dict[str, Any]:
+    """Aiguille la demande vers l'agent choisi.
+
+    `intent` permet a l'appelant de transmettre une classification deja faite :
+    elle coute un appel au modele, inutile de la refaire.
+    """
     session_id = request.session_id or "default"
-    intent = await orchestrator.analyze_intent(request.prompt)
+    if intent is None:
+        intent = await orchestrator.analyze_intent(request.prompt)
     logger.info(f"Intention détectée par ARENA: {intent}")
 
     if intent == "DEEP_REASONING":
-        result = await orchestrator.run(request.prompt, context={"session_id": session_id})
+        result = await orchestrator.run(request.prompt, context={"session_id": session_id, "intent": intent})
     elif intent == "DEEP_RESEARCH":
         result = await researcher_agent.run(request.prompt)
     elif intent == "CODE_EXECUTION":
@@ -389,7 +395,10 @@ async def dispatch_request(request: ChatRequest) -> Dict[str, Any]:
     elif "PUBLI" in request.prompt.upper() or "POSTER" in request.prompt.upper():
         result = await publisher_agent.run(request.prompt, context={"video_path": request.video_path})
     else:
-        result = await orchestrator.run(user_input=request.prompt, context={"session_id": session_id})
+        result = await orchestrator.run(
+            user_input=request.prompt,
+            context={"session_id": session_id, "intent": intent},
+        )
 
     memory.add_chat_message(session_id=session_id, role="user", content=request.prompt)
     memory.add_chat_message(session_id=session_id, role="assistant", content=result["response"])
@@ -419,7 +428,7 @@ async def chat_stream_endpoint(request: ChatRequest):
     intent = await orchestrator.analyze_intent(request.prompt)
 
     if intent in ["DEEP_REASONING", "DEEP_RESEARCH", "TREND_SEARCH", "CODE_EXECUTION", "VIDEO_ANALYSIS"]:
-        result = await dispatch_request(request)
+        result = await dispatch_request(request, intent=intent)
         async def text_gen():
             yield f"data: {json.dumps({'token': result['response'], 'intent': intent})}\n\n"
             yield "data: [DONE]\n\n"

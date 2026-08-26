@@ -1,43 +1,106 @@
-"""Orchestrateur : l'aiguillage des demandes, et la réponse qu'il compose.
+"""Orchestrateur : classification de l'intention, repli, et composition de la réponse.
 
-L'aiguillage se fait par mots-clés, sans appel au modèle : il se teste hors ligne.
-La composition de la réponse passe par le fournisseur, ici scripté.
+L'aiguillage passe désormais par le modèle rapide. Le fournisseur est scripté :
+on choisit ce que « le modèle » répond, y compris quand il répond n'importe quoi.
 """
 import pytest
 
-from agents.orchestrator.orchestrator_agent import OrchestratorAgent
+from agents.orchestrator.orchestrator_agent import INTENTIONS, OrchestratorAgent
 
-# (phrase de l'utilisateur, intention attendue)
-CAS_D_AIGUILLAGE = [
-    ("Bonjour, comment vas-tu ?", "CHAT"),
-    ("Ecris un script python pour trier une liste", "CODE_EXECUTION"),
-    ("Resous l equation x au carre moins 5x + 6", "DEEP_REASONING"),
-    ("Donne-moi une idée de vidéo pour TikTok", "TREND_SEARCH"),
-    ("Fais une recherche approfondie sur l IA", "DEEP_RESEARCH"),
-    ("Découpe cette vidéo en short vertical", "VIDEO_ANALYSIS"),
-    # Un mot courant ne doit pas déclencher un agent spécialisé :
-    ("Parle-moi un peu de mon projet", "CHAT"),
+# Les faux positifs relevés par l'audit : le mot est là, la demande ne l'est pas.
+PIEGES_DE_L_AUDIT = [
+    "Explique-moi le code de la route",
+    "Calcule mon devis",
+    "Quelle erreur j'ai faite hier ?",
 ]
 
 
-@pytest.mark.parametrize("phrase, attendu", CAS_D_AIGUILLAGE)
-async def test_l_aiguillage_designe_le_bon_agent(fake_provider, phrase, attendu):
+@pytest.mark.parametrize("etiquette", sorted(INTENTIONS))
+async def test_une_etiquette_connue_est_reprise_telle_quelle(provider_factory, etiquette):
+    agent = OrchestratorAgent(provider=provider_factory(etiquette), memory=None)
+
+    assert await agent.analyze_intent("peu importe") == etiquette
+
+
+@pytest.mark.parametrize(
+    "reponse_du_modele, attendu",
+    [
+        ("code_execution", "CODE_EXECUTION"),           # casse ignorée
+        ("  CHAT  ", "CHAT"),                            # espaces
+        ("Étiquette : DEEP_RESEARCH", "DEEP_RESEARCH"),  # le modèle bavarde
+        ("**TREND_SEARCH**", "TREND_SEARCH"),            # mise en forme markdown
+        ("CHAT.", "CHAT"),                               # ponctuation collée
+    ],
+)
+async def test_une_reponse_bruitee_reste_exploitable(provider_factory, reponse_du_modele, attendu):
+    agent = OrchestratorAgent(provider=provider_factory(reponse_du_modele), memory=None)
+
+    assert await agent.analyze_intent("peu importe") == attendu
+
+
+@pytest.mark.parametrize("phrase", PIEGES_DE_L_AUDIT)
+async def test_les_pieges_de_l_audit_ne_partent_plus_vers_le_coder(provider_factory, phrase):
+    """Avec le modèle, c'est lui qui décide : les mots-clés ne s'imposent plus."""
+    agent = OrchestratorAgent(provider=provider_factory("CHAT"), memory=None)
+
+    assert await agent.analyze_intent(phrase) == "CHAT"
+
+
+@pytest.mark.parametrize("phrase", PIEGES_DE_L_AUDIT)
+def test_le_repli_par_mots_cles_garde_ses_faux_positifs(fake_provider, phrase):
+    """Le repli est moins fin, et ce test le dit au lieu de le cacher.
+
+    Sans modèle, « code », « calcule » et « erreur » renvoient toujours vers le
+    CoderAgent. C'est la limite connue du repli, pas une régression.
+    """
     agent = OrchestratorAgent(provider=fake_provider, memory=None)
 
-    assert await agent.analyze_intent(phrase) == attendu
+    assert agent._classer_par_mots_cles(phrase) == "CODE_EXECUTION"
 
 
-async def test_l_aiguillage_n_appelle_pas_le_modele(fake_provider):
-    """Il est annoncé instantané : un appel au modèle le rendrait faux."""
+async def test_une_reponse_hors_liste_declenche_le_repli(provider_factory):
+    agent = OrchestratorAgent(provider=provider_factory("BONJOUR JE SUIS UN MODELE"), memory=None)
+
+    assert await agent.analyze_intent("Ecris un script python") == "CODE_EXECUTION"
+
+
+async def test_un_modele_injoignable_declenche_le_repli(fake_provider):
+    """Le FakeProvider sans réponse scriptée lève : c'est le modèle qui tombe."""
+    agent = OrchestratorAgent(provider=fake_provider, memory=None)
+    fake_provider._reponses = []
+
+    assert await agent.analyze_intent("Resous l equation x^2 - 5x + 6") == "DEEP_REASONING"
+
+
+@pytest.mark.parametrize(
+    "phrase, attendu",
+    [
+        ("Bonjour, comment vas-tu ?", "CHAT"),
+        ("Ecris un script python pour trier une liste", "CODE_EXECUTION"),
+        ("Resous l equation x au carre moins 5x + 6", "DEEP_REASONING"),
+        ("Donne-moi une idée de vidéo pour TikTok", "TREND_SEARCH"),
+        ("Fais une recherche approfondie sur l IA", "DEEP_RESEARCH"),
+        ("Découpe cette vidéo en short vertical", "VIDEO_ANALYSIS"),
+        ("Parle-moi un peu de mon projet", "CHAT"),
+    ],
+)
+def test_le_repli_aiguille_toujours_les_cas_explicites(fake_provider, phrase, attendu):
     agent = OrchestratorAgent(provider=fake_provider, memory=None)
 
-    await agent.analyze_intent("Ecris un script python")
+    assert agent._classer_par_mots_cles(phrase) == attendu
 
-    assert fake_provider.appels == []
+
+async def test_la_demande_de_l_utilisateur_est_bien_celle_qui_est_classee(provider_factory):
+    provider = provider_factory("CHAT")
+    agent = OrchestratorAgent(provider=provider, memory=None)
+
+    await agent.analyze_intent("Ma demande précise")
+
+    assert "Ma demande précise" in provider.appels[0]["prompt"]
 
 
 async def test_la_reponse_reprend_ce_que_le_modele_a_produit(provider_factory, memoire):
-    provider = provider_factory("  Bonjour Saer, tout va bien.  ")
+    provider = provider_factory("CHAT", "  Bonjour Saer, tout va bien.  ")
     agent = OrchestratorAgent(provider=provider, memory=memoire)
 
     res = await agent.run("Bonjour", context={"session_id": "s1"})
@@ -47,6 +110,17 @@ async def test_la_reponse_reprend_ce_que_le_modele_a_produit(provider_factory, m
     assert res["intent"] == "CHAT"
 
 
+async def test_une_intention_deja_calculee_n_est_pas_redemandee(provider_factory, memoire):
+    """Classer coûte un appel au modèle : le refaire trois fois par message serait absurde."""
+    provider = provider_factory("Réponse.")  # une seule réponse : la génération
+    agent = OrchestratorAgent(provider=provider, memory=memoire)
+
+    res = await agent.run("Bonjour", context={"session_id": "s1", "intent": "CHAT"})
+
+    assert res["intent"] == "CHAT"
+    assert len(provider.appels) == 1
+
+
 async def test_l_historique_est_transmis_au_modele(provider_factory, memoire):
     memoire.set_fact("user_profile", "owner", "Saer")
     memoire.add_chat_message(session_id="s1", role="user", content="Je m'appelle Saer.")
@@ -54,7 +128,7 @@ async def test_l_historique_est_transmis_au_modele(provider_factory, memoire):
     provider = provider_factory("Tu t'appelles Saer.")
     agent = OrchestratorAgent(provider=provider, memory=memoire)
 
-    await agent.run("Comment je m'appelle ?", context={"session_id": "s1"})
+    await agent.run("Comment je m'appelle ?", context={"session_id": "s1", "intent": "CHAT"})
 
     prompt_envoye = provider.appels[0]["prompt"]
     assert "Je m'appelle Saer." in prompt_envoye
@@ -63,9 +137,8 @@ async def test_l_historique_est_transmis_au_modele(provider_factory, memoire):
 
 
 async def test_sans_memoire_l_agent_repond_quand_meme(provider_factory):
-    """La mémoire est optionnelle : son absence ne doit pas faire tomber l'agent."""
     agent = OrchestratorAgent(provider=provider_factory("Réponse sans mémoire."), memory=None)
 
-    res = await agent.run("Bonjour")
+    res = await agent.run("Bonjour", context={"intent": "CHAT"})
 
     assert res["response"] == "Réponse sans mémoire."
