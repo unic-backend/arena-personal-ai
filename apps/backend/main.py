@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import time
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -113,18 +114,61 @@ swe_agent = SWEAgent(provider=fast_provider, memory=memory)
 
 memory.set_fact("user_profile", "owner", "Saer", {"role": "Propriétaire et créateur d'ARENA"})
 
+# Faits que le proprietaire peut enregistrer lui-meme en memoire longue. Rien
+# n'est ecrit en dur : une valeur absente n'apparait tout simplement pas.
+FAITS_DU_PROPRIETAIRE = [
+    ("president", "President de la Republique du Senegal"),
+    ("premier_ministre", "Premier ministre du Senegal"),
+]
+
+
+def date_du_jour() -> date:
+    """Date lue sur la machine. Isolee pour que les tests puissent la fixer."""
+    return date.today()
+
+
 def get_arena_system_prompt() -> str:
+    """Compose l'instruction systeme d'ARENA.
+
+    Aucun fait date n'est ecrit en dur ici. La version precedente affirmait
+    « Annee actuelle : 2026 » et nommait deux responsables politiques : trois
+    valeurs figees dans le code, qui deviennent fausses sans que rien ne le
+    signale. Ecrire une date dans un prompt ne donne pas de connaissance au
+    modele — cela lui donne seulement de quoi paraitre a jour.
+
+    Ce qui remplace : la date reellement lue sur la machine, une consigne
+    explicite de ne pas repondre de memoire sur ce qui a pu changer, et les
+    faits que le proprietaire a lui-meme enregistres — s'il l'a fait.
+    """
     owner_name = memory.get_fact("owner") or "Saer"
-    president_fact = memory.get_fact("president") or "Bassirou Diomaye Faye (depuis avril 2024)"
-    pm_fact = memory.get_fact("premier_ministre") or "Ousmane Sonko (depuis avril 2024)"
-    return (
-        f"Tu es ARENA, l'IA autonome personnelle de {owner_name}.\n"
-        f"FAITS OFFICIELS DU SÉNÉGAL :\n"
-        f"- Le Président de la République du Sénégal est : {president_fact}.\n"
-        f"- Le Premier ministre du Sénégal est : {pm_fact}.\n"
-        f"- Année actuelle : 2026.\n"
-        f"Ton propriétaire s'appelle {owner_name}. Réponds en français de manière exacte, claire et directe."
-    )
+    aujourd_hui = date_du_jour()
+
+    lignes = [
+        f"Tu es ARENA, l'IA autonome personnelle de {owner_name}.",
+        f"Date du jour, lue sur la machine : {aujourd_hui.strftime('%d/%m/%Y')}.",
+        "",
+        "Connaitre la date ne te donne aucune connaissance des evenements recents.",
+        "Si la reponse a pu changer depuis ton entrainement — actualite, derniere",
+        "version d'un logiciel, prix, resultat, qui occupe un poste — ne reponds pas",
+        "de memoire. Dis que tu n'en es pas sur : ARENA sait aller verifier sur le web.",
+        "N'invente jamais une date, un chiffre ou un nom que tu n'as pas verifie.",
+    ]
+
+    enregistres = [
+        f"- {libelle} : {valeur}"
+        for cle, libelle in FAITS_DU_PROPRIETAIRE
+        if (valeur := memory.get_fact(cle))
+    ]
+    if enregistres:
+        lignes += [
+            "",
+            f"Faits enregistres par {owner_name} en memoire longue "
+            "(ils peuvent avoir change depuis : verifie si la question porte dessus) :",
+            *enregistres,
+        ]
+
+    lignes += ["", "Reponds en francais, de maniere exacte, claire et directe."]
+    return "\n".join(lignes)
 
 # ==============================================================================
 # SECURITE : cle API partagee (/v1 et /api) + validation des chemins media

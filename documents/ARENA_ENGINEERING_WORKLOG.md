@@ -571,15 +571,59 @@ longue dans LibreChat ; `/api/chat` garde les sources en données structurées.
 
 ---
 
+### 26 août 2026 — T-13 · Retrait des faits figés du prompt système
+
+*Fichiers* : `apps/backend/main.py`, `tests/test_system_prompt.py` (nouveau)
+*Changement* : `get_arena_system_prompt()` n'écrit plus aucun fait daté en dur.
+Disparaissent : « Année actuelle : 2026 », le président et le premier ministre
+du Sénégal — trois valeurs figées dans le code.
+
+*Ce qui remplace :*
+- la **date réellement lue sur la machine** (`date.today()`, isolée dans
+  `date_du_jour()` pour être testable) ;
+- une consigne explicite : connaître la date ne donne aucune connaissance des
+  événements récents, donc ne pas répondre de mémoire sur ce qui a pu changer ;
+- les faits que le propriétaire a **lui-même enregistrés** en mémoire longue,
+  avec la réserve qu'ils ont pu changer. Un fait absent n'apparaît pas : rien
+  n'est inventé pour combler.
+
+*Pourquoi* : P-03. Une valeur figée devient fausse sans que rien ne le signale,
+et le modèle la répète avec l'assurance d'un fait vérifié. Le retrait n'était
+possible qu'après T-12 : sans le pipeline web, retirer ces lignes aurait laissé
+le modèle deviner. Désormais, la question part vérifier.
+
+*Vérifications, toutes exécutées :*
+- `pytest tests/test_system_prompt.py` → **13 passed**
+- test négatif, ancienne version restaurée → **9 failed, 4 passed**, puis
+  13 passed après retour
+- la date est prouvée **calculée et non écrite** : horloge fixée au 15/03/2030 →
+  le prompt affiche `15/03/2030` et ne contient plus « 2026 »
+- un garde-fou porte aussi sur le **fichier source** : les retirer du prompt sans
+  les retirer du code laisserait le piège en place
+- suite complète → **271 passed, 20 deselected** ; `ruff` → 0 ; `gitleaks` → 0
+- non-régression T-12 : la chaîne complète répond toujours `FRESH_INFO` /
+  `FreshInfoAgent` en 2 appels au modèle
+
+*Décision* : injecter la date réelle plutôt qu'aucune date. Le prompt de
+référence interdit de **régler le problème de fraîcheur** en écrivant une date —
+c'est fait, T-12 s'en charge. La date lue sur la machine est une mesure, pas une
+affirmation, et elle aide le modèle à situer « l'an dernier ». *Coût si c'est
+faux* : le modèle pourrait prendre la date pour une autorisation d'affirmer des
+faits récents ; les trois lignes de consigne qui la suivent existent pour ça.
+
+*Résultat* : **TERMINÉ** — P-03 est clos pour sa partie « faits figés ».
+
+---
+
 ## IN PROGRESS
 
-**Tâche courante** : aucune. T-12 est terminée, ses 3 phases vérifiées.
+**Tâche courante** : aucune. T-13 est terminée et vérifiée.
 **État exact** : deux actions restent, et elles n'appartiennent qu'au
 propriétaire — changer les cinq clés dans `.env`, et autoriser la réécriture de
 l'historique (irréversible, casse les clones existants).
-**Prochaine action concrète** : T-13 — retirer les faits datés écrits en dur
-dans le prompt système, maintenant que le web est atteignable. Reste toujours dû
-par le propriétaire : l'étape 1 de `RUNBOOK_PURGE_SECRETS.md`.
+**Prochaine action concrète** : au choix du propriétaire — T-14 (routeur
+enrichi), T-19/T-20 (dette technique) ou T-16/T-17 (mémoire et documents).
+Reste toujours dû par lui : l'étape 1 de `RUNBOOK_PURGE_SECRETS.md`.
 
 ---
 
@@ -612,7 +656,6 @@ désormais protégées par `tests/test_documentation.py`.
 
 | # | Tâche | Effort | Critère de validation |
 |---|---|---|---|
-| T-13 | Retirer les faits figés du prompt système, les remplacer par la mémoire ou le web | 30 min | Aucun fait daté écrit en dur dans `main.py` |
 | T-14 | Routeur enrichi : besoin de fraîcheur, de RAG, d'outils, de vérification | 3 h | Le routeur renvoie une décision structurée, testée |
 | T-15 | Passerelle de modèles par capacité (`fast_chat`, `coding`, `reasoning`…) | 3 h | Un agent demande une capacité, pas un nom de modèle |
 | T-16 | Mémoire sémantique et mémoire utilisateur séparées | 4 h | Une information ancienne pertinente est retrouvée par similarité |
@@ -689,9 +732,9 @@ prompt ne donne aucune connaissance au modèle — cela lui donne juste de quoi
 paraître à jour.
 **Solution appliquée (moitié)** : le pipeline existe et est branché — recherche
 → lecture → synthèse avec sources citées, déclenché par l'intention `FRESH_INFO`.
-**Statut** : **PARTIELLEMENT RÉSOLU** le 26/08/2026. Le chat va désormais
-vérifier. Restent ouverts : les faits datés écrits en dur dans le prompt système
-(**T-13**) et le classement des sources par fiabilité (**T-14**).
+**Statut** : **RÉSOLU** le 26/08/2026 (T-12 puis T-13). Le chat va vérifier, et
+le prompt système n'affirme plus aucun fait daté. Reste ouvert, hors périmètre de
+ce problème : le classement des sources par fiabilité (**T-14**).
 
 ### P-04 · MEDIUM · Budget VRAM déclaré supérieur à la carte
 
@@ -787,7 +830,7 @@ Ce qui est certain, et vérifié par le code :
 | Appels au modèle avant le correctif n°9 | 3 | lecture du code : `chat_stream_endpoint` → `dispatch_request` → `orchestrator.run` |
 | Contexte configuré | `num_ctx: 4096` | `core/models/ollama_provider.py` |
 | Maintien en VRAM | `keep_alive: "30m"` | idem |
-| Durée de la suite de tests | 6,8 s pour 258 tests | `pytest -q` |
+| Durée de la suite de tests | 5,6 s pour 271 tests | `pytest -q` |
 | Pic mémoire, envoi de 64 Mo — avant T-02 | 64,0 Mo | `tracemalloc` sur l'ancien chemin |
 | Pic mémoire, envoi de 64 Mo — après T-02 | 2,0 Mo | `tracemalloc` sur `ecrire_par_blocs` |
 
@@ -900,3 +943,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | 2026-08-26 | Claude Code | T-12 phase 1/3 : lecture d'une source web, avec refus des adresses internes. |
 | 2026-08-26 | Claude Code | T-12 phase 2/3 : agent d'information fraîche, sources citées, refus sans source. |
 | 2026-08-26 | Claude Code | T-12 terminée (3 phases). P-03 partiellement résolu. Défaut préexistant corrigé : l'intention annoncée par /api/chat. |
+| 2026-08-26 | Claude Code | T-13 terminée (faits figés retirés du prompt système). P-03 résolu. |

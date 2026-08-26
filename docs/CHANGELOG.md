@@ -117,6 +117,11 @@
 ### Corrigé
 - La réponse de `/api/chat` annonçait `intent: "CHAT"` même quand un agent
   spécialisé avait répondu. L'aiguilleur renseigne désormais l'intention suivie.
+- L'instruction système n'affirme plus « Année actuelle : 2026 », ni le nom du
+  président et du premier ministre du Sénégal. Trois valeurs figées dans le code,
+  qui deviennent fausses sans que rien ne le signale. Elle donne à la place la
+  **date réellement lue sur la machine**, la consigne de ne pas répondre de mémoire
+  sur ce qui a pu changer, et les faits que le propriétaire a lui-même enregistrés.
 
 ## [1.7.0] - 2026-08-25
 ### Sécurité
