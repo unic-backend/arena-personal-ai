@@ -83,6 +83,12 @@
   `OrchestratorAgent.run` réutilisent l'étiquette au lieu de la recalculer. Sans
   ça, un message de chat coûtait trois appels au modèle au lieu d'un.
 
+### Corrigé
+- BOM UTF-8 retiré de **37 fichiers** (l'audit en signalait 3). Il rendait la
+  première ligne illisible telle quelle : `import httpx` et `import yaml` étaient
+  invisibles à un `grep '^import'`, ce qui a failli les faire oublier dans
+  `requirements.txt`. `tests/test_encodage.py` empêche leur retour.
+
 ## [1.7.0] - 2026-08-25
 ### Sécurité
 - La passerelle `/v1` exige désormais une clé API (`ARENA_API_KEY` dans `.env`).

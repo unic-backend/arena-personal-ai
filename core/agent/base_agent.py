@@ -1,4 +1,4 @@
-﻿from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
 from core.memory.memory_manager import MemoryManager

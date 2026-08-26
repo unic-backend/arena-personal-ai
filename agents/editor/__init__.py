@@ -1,3 +1,3 @@
-﻿from agents.editor.editor_agent import EditorAgent
+from agents.editor.editor_agent import EditorAgent
 
 __all__ = ['EditorAgent']

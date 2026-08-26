@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 from typing import Any, Dict
 
 from social.base.base_connector import SocialConnector
