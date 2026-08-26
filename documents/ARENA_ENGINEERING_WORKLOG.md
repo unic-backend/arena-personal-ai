@@ -482,16 +482,61 @@ faux* : l'extraction est un peu moins bonne sur les pages très mal formées ;
 
 ---
 
+### 26 août 2026 — T-12 phase 2/3 · Agent d'information fraîche
+
+*Fichiers* : `agents/fresh_info/fresh_info_agent.py` (nouveau),
+`tests/agents/test_fresh_info.py` (nouveau)
+*Changement* : `FreshInfoAgent` enchaîne recherche → lecture des pages →
+répartition d'un budget de contexte → synthèse **avec sources numérotées**.
+Le modèle reçoit le **texte réel des pages**, plus jamais les seuls résumés du
+moteur de recherche.
+
+**Deux refus explicites, et c'est le cœur de la conception :**
+- aucun résultat de recherche → **le modèle n'est pas appelé** ;
+- aucune page lisible → **le modèle n'est pas appelé non plus**, et l'agent
+  rapporte ce qu'il a tenté de lire et pourquoi cela a échoué.
+
+Une réponse inventée coûte plus cher qu'une absence de réponse : sans source,
+l'agent le dit au lieu de répondre de mémoire.
+
+**Contrainte matérielle traitée explicitement** : `num_ctx` vaut 4096 jetons.
+Envoyer trois pages entières ferait déborder le contexte et noierait la question.
+Un budget de 8000 caractères est réparti entre les sources retenues, et la
+troncature est déclarée source par source.
+
+*Vérifications, toutes exécutées :*
+- `pytest tests/agents/test_fresh_info.py` → **15 passed**
+- chaîne complète contre un **vrai serveur HTTP** (recherche doublée, lecture
+  réelle, modèle simulé) : 3 pages proposées → 1 lue, 1 en `code HTTP 404`,
+  1 en `type non lisible : application/pdf`. Le prompt envoyé contient le texte
+  réel de la page, les entités HTML décodées, aucun script, et pèse
+  **612 caractères**.
+- suite complète → **238 passed, 20 deselected** ; `ruff` → 0 ; `gitleaks` → 0.
+
+*Deux défauts trouvés par les tests eux-mêmes* : une aide de test confondait
+« titre absent » et « titre par défaut », et un test comptait le caractère `x`
+comme remplissage alors qu'il apparaît dans `exemple.test` — le budget semblait
+dépassé de 4 caractères.
+
+*Décision* : lire les pages en parallèle (`asyncio.gather`). *Coût si c'est
+faux* : plusieurs requêtes réseau simultanées vers des sites différents ; le GPU
+n'est pas concerné, l'attente est réseau.
+
+*Résultat* : **TERMINÉ** — phase 2 sur 3. L'agent n'est pas encore branché sur
+le routeur : c'est la phase 3.
+
+---
+
 ## IN PROGRESS
 
-**Tâche courante** : T-12 — pipeline d'information fraîche, découpé en 3 phases.
-Phase 1 (lecture d'une source) terminée.
+**Tâche courante** : T-12 — pipeline d'information fraîche, 3 phases.
+Phases 1 et 2 terminées ; **l'agent n'est pas encore atteignable par le chat**.
 **État exact** : deux actions restent, et elles n'appartiennent qu'au
 propriétaire — changer les cinq clés dans `.env`, et autoriser la réécriture de
 l'historique (irréversible, casse les clones existants).
-**Prochaine action concrète** : T-12 phase 2 — un agent qui cherche, lit les
-sources et répond **en les citant**. Reste toujours dû par le propriétaire :
-l'étape 1 de `RUNBOOK_PURGE_SECRETS.md` (rotation des cinq clés).
+**Prochaine action concrète** : T-12 phase 3 — apprendre au routeur à
+reconnaître une question d'actualité et à appeler cet agent. Reste toujours dû
+par le propriétaire : l'étape 1 de `RUNBOOK_PURGE_SECRETS.md`.
 
 ---
 
@@ -522,7 +567,7 @@ désormais protégées par `tests/test_documentation.py`.
 
 | # | Tâche | Effort | Critère de validation |
 |---|---|---|---|
-| T-12 | Pipeline d'information fraîche — **phase 1/3 faite** (lecture d'une source) | 4 h | « Quelle est la dernière version de Python ? » répond avec des sources datées |
+| T-12 | Pipeline d'information fraîche — **phases 1 et 2/3 faites** | 4 h | « Quelle est la dernière version de Python ? » répond avec des sources datées |
 | T-13 | Retirer les faits figés du prompt système, les remplacer par la mémoire ou le web | 30 min | Aucun fait daté écrit en dur dans `main.py` |
 | T-14 | Routeur enrichi : besoin de fraîcheur, de RAG, d'outils, de vérification | 3 h | Le routeur renvoie une décision structurée, testée |
 | T-15 | Passerelle de modèles par capacité (`fast_chat`, `coding`, `reasoning`…) | 3 h | Un agent demande une capacité, pas un nom de modèle |
@@ -696,7 +741,7 @@ Ce qui est certain, et vérifié par le code :
 | Appels au modèle avant le correctif n°9 | 3 | lecture du code : `chat_stream_endpoint` → `dispatch_request` → `orchestrator.run` |
 | Contexte configuré | `num_ctx: 4096` | `core/models/ollama_provider.py` |
 | Maintien en VRAM | `keep_alive: "30m"` | idem |
-| Durée de la suite de tests | 5,8 s pour 223 tests | `pytest -q` |
+| Durée de la suite de tests | 5,6 s pour 238 tests | `pytest -q` |
 | Pic mémoire, envoi de 64 Mo — avant T-02 | 64,0 Mo | `tracemalloc` sur l'ancien chemin |
 | Pic mémoire, envoi de 64 Mo — après T-02 | 2,0 Mo | `tracemalloc` sur `ecrire_par_blocs` |
 
@@ -807,3 +852,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | 2026-08-26 | Claude Code | T-03 terminée (scan de secrets en CI). Règles propres au projet : les règles standard ne voyaient pas la clé de librechat.yaml. |
 | 2026-08-26 | Claude Code | T-04 et T-05 terminées (limitation de débit, journalisation des refus). Priorité 1 close hors T-01. |
 | 2026-08-26 | Claude Code | T-12 phase 1/3 : lecture d'une source web, avec refus des adresses internes. |
+| 2026-08-26 | Claude Code | T-12 phase 2/3 : agent d'information fraîche, sources citées, refus sans source. |
