@@ -121,6 +121,13 @@
 - Un document supprimé du dossier est **signalé**, jamais retiré en silence.
 - `data/documents/` et `data/rag/` sont exclus de Git. Le dépôt est public :
   un devis client qui y entrerait n'en ressortirait pas. Trois tests le vérifient.
+- **Commande d'indexation** : `python scripts/indexer_documents.py`. Elle vérifie
+  qu'Ollama répond et que `nomic-embed-text` est installé **avant** de commencer ;
+  sinon elle refuse, sans rien indexer ni rien noter.
+- La provenance part avec le texte : chaque passage est inséré préfixé de
+  `[Source : devis.pdf, page 2]`, pour que le moteur puisse citer précisément.
+- Un document que le moteur refuse **n'est pas noté comme indexé** : il est repris
+  au passage suivant, au lieu que l'index se croie complet.
 
 - **Pipeline d'information fraîche.** Une question dont la réponse a pu changer
   (dernière version, actualité, qui occupe un poste, prix, météo) n'est plus

@@ -35,6 +35,19 @@ format est **ignoré et compté à part**, jamais avalé en silence.
 
 Ce dossier est exclu de Git : tes devis et factures ne partent nulle part.
 
+Pour les indexer :
+
+```bash
+python scripts/indexer_documents.py
+```
+
+La commande vérifie d'abord qu'Ollama tourne et que le modèle d'embeddings est
+installé (`ollama pull nomic-embed-text`). **S'ils manquent, rien n'est indexé et
+rien n'est noté** — mieux vaut un refus franc qu'un index à moitié fait.
+
+Elle peut être relancée autant de fois que voulu : un document inchangé n'est
+jamais réindexé.
+
 ## Scan de secrets
 Aucune clé ne doit entrer dans le dépôt. La CI le vérifie à chaque `push` ; pour
 le contrôler avant de committer :

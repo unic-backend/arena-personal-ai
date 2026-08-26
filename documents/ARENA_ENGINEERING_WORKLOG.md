@@ -849,18 +849,67 @@ l'affirme sur un fichier contenant un montant et un RIB.
 
 ---
 
+### 26 août 2026 — Indexation documentaire, phase 3/3 · La commande · **TERMINÉE**
+
+*Fichiers* : `tools/documents/indexer.py` (nouveau),
+`scripts/indexer_documents.py` (nouveau),
+`tests/tools/test_document_indexer.py` (nouveau), `README.md`
+*Changement* : la chaîne est branchée — inventaire → lecture → insertion dans
+LightRAG → inventaire mis à jour. Une commande unique :
+`python scripts/indexer_documents.py`.
+
+**Trois règles, une seule idée** : un index qui se croit à jour alors qu'il ne
+l'est pas est pire qu'un index vide.
+1. Le moteur est **vérifié avant de commencer**. Ollama muet ou
+   `nomic-embed-text` absent → refus, rien d'indexé, rien de noté.
+2. Un document n'est noté comme indexé **que s'il l'a vraiment été**. Une
+   insertion refusée le laisse hors de l'inventaire ; il est repris au passage
+   suivant.
+3. La **provenance part avec le texte** : chaque passage est inséré préfixé de
+   `[Source : devis.pdf, page 2]`. Sans cela, tout le travail de lecture page par
+   page serait perdu à l'insertion.
+
+*Vérifications, toutes exécutées :*
+- `pytest tests/tools/test_document_indexer.py` → **18 passed**
+- **la vraie commande, sur cette machine, Ollama réellement absent** :
+  `Indexation refusee. Ollama ne repond pas sur http://127.0.0.1:11434
+  (ConnectError). Demarre-le avec : ollama serve` — code de sortie 1, et
+  **aucun inventaire créé**
+- chaîne complète contre un **faux Ollama** répondant comme le vrai : modèle
+  d'embeddings retiré → message `ollama pull nomic-embed-text` ; puis 2 documents
+  indexés, 1 ignoré, le texte envoyé au moteur portant bien
+  `[Source : devis.pdf, page 1]` et `page 2` ; relance → *rien à faire* ;
+  l'inventaire écrit ne contient ni le montant ni le nom du chantier
+- suite complète → **356 passed, 20 deselected** (code 0, sans tube) ; `ruff` → 0 ;
+  `gitleaks` → 0 ; chaîne T-12 → 0 ; classeur → 0
+
+*Décision* : `indexer_documents` prend le moteur en argument plutôt que de
+l'instancier. *Coût si c'est faux* : la commande doit le construire elle-même ;
+en échange, toute la chaîne est testable sans GPU — 18 tests contre 0 sinon.
+
+*Résultat* : **INDEXATION DOCUMENTAIRE TERMINÉE** — 3 phases sur 3.
+
+**Ce qui n'a pas pu être vérifié ici, et qui reste à faire chez le
+propriétaire** : l'insertion réelle dans LightRAG et la qualité des réponses.
+Cette machine n'a ni GPU, ni Ollama, ni modèle d'embeddings. Tout le code de la
+commande a été exécuté ; seul le moteur documentaire était doublé.
+**À faire côté propriétaire** : déposer des documents dans `data/documents/`,
+lancer `ollama pull nomic-embed-text`, puis
+`python scripts/indexer_documents.py`, et consigner le résultat ici.
+
+---
+
 ## IN PROGRESS
 
-**Tâche courante** : indexation documentaire (T-17), 3 phases.
-Phases 1 et 2 terminées (lecture, puis inventaire).
+**Tâche courante** : aucune. L'indexation documentaire est terminée, ses
+3 phases vérifiées — hors indexation réelle, impossible sans GPU.
 **État exact** : deux actions restent, et elles n'appartiennent qu'au
 propriétaire — changer les cinq clés dans `.env`, et autoriser la réécriture de
 l'historique (irréversible, casse les clones existants).
-**Prochaine action concrète** : phase 3 — brancher lecture et inventaire sur
-LightRAG, avec une commande d'indexation et un refus explicite quand Ollama est
-absent. **Non vérifiable ici** : l'indexation réelle demande Ollama et un modèle
-d'embeddings. Reste dû par le propriétaire : l'étape 1 de
-`RUNBOOK_PURGE_SECRETS.md`.
+**Prochaine action concrète, et elle appartient au propriétaire** : déposer
+des documents dans `data/documents/`, `ollama pull nomic-embed-text`, puis
+`python scripts/indexer_documents.py`. Reste également dû : l'étape 1 de
+`RUNBOOK_PURGE_SECRETS.md` (rotation des cinq clés).
 
 ---
 
@@ -896,7 +945,6 @@ désormais protégées par `tests/test_documentation.py`.
 | T-14 | Routeur enrichi : besoin de fraîcheur, de RAG, d'outils, de vérification | 3 h | Le routeur renvoie une décision structurée, testée |
 | T-15 | Passerelle de modèles par capacité (`fast_chat`, `coding`, `reasoning`…) | 3 h | Un agent demande une capacité, pas un nom de modèle |
 | T-16 | Mémoire sémantique et mémoire utilisateur séparées | 4 h | Une information ancienne pertinente est retrouvée par similarité |
-| T-17 | Indexation documentaire — **phases 1 et 2/3 faites** | 3 h | Un document importé est interrogeable avec sa source |
 | T-18 | Progression visible pendant les opérations longues | 2 h | L'interface affiche « recherche », « lecture », « génération » |
 
 ### Priorité 5 — Dette technique
@@ -1068,7 +1116,7 @@ Ce qui est certain, et vérifié par le code :
 | Appels au modèle avant le correctif n°9 | 3 | lecture du code : `chat_stream_endpoint` → `dispatch_request` → `orchestrator.run` |
 | Contexte configuré | `num_ctx: 4096` | `core/models/ollama_provider.py` |
 | Maintien en VRAM | `keep_alive: "30m"` | idem |
-| Durée de la suite de tests | 5,3 s pour 338 tests | `pytest -q` |
+| Durée de la suite de tests | 5,6 s pour 356 tests | `pytest -q` |
 | Pic mémoire, envoi de 64 Mo — avant T-02 | 64,0 Mo | `tracemalloc` sur l'ancien chemin |
 | Pic mémoire, envoi de 64 Mo — après T-02 | 2,0 Mo | `tracemalloc` sur `ecrire_par_blocs` |
 
@@ -1187,3 +1235,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | 2026-08-26 | Claude Code | T-19 terminée : main.py 652 → 61 lignes, 3 routeurs, comportement inchangé. |
 | 2026-08-26 | Claude Code | Indexation documentaire phase 1/3 : lecture PDF/Word/texte avec provenance. |
 | 2026-08-26 | Claude Code | Indexation documentaire phase 2/3 : inventaire, et documents personnels exclus de Git. |
+| 2026-08-26 | Claude Code | Indexation documentaire terminée (3 phases). Indexation réelle à vérifier chez le propriétaire. |
