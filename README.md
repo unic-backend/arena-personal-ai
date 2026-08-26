@@ -9,3 +9,12 @@ Système d'IA personnelle local-first conçu pour l'analyse de tendances, la com
 
 ## Démarrage rapide
 Consulter docs/START_HERE.md.
+
+## Configuration des secrets
+Aucune clé ne doit figurer dans le dépôt. Copier `.env.example` vers `.env`, puis générer la clé de la passerelle :
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Reporter la valeur dans `ARENA_API_KEY` (fichier `.env`). Elle est lue par le backend (`/v1`), par LibreChat (`librechat.yaml`) et par Open WebUI. Sans elle, la passerelle `/v1` refuse toutes les requêtes.

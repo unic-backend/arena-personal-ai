@@ -24,6 +24,7 @@ services:
       - DOMAIN_SERVER=http://localhost:3080
       - NO_INDEX=true
       - CONFIG_PATH=/app/librechat.yaml
+      - ARENA_API_KEY=${ARENA_API_KEY}
       - CREDS_KEY=${CREDS_KEY}
       - JWT_SECRET=${JWT_SECRET}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
