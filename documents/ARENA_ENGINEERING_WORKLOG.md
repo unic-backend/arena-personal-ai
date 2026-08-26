@@ -443,16 +443,55 @@ journal, une tentative répétée d'accès ne laisse aucune trace.
 
 ---
 
+### 26 août 2026 — T-12 phase 1/3 · Lecture d'une source web
+
+*Fichiers* : `tools/search/source_fetcher.py` (nouveau),
+`tests/tools/test_source_fetcher.py` (nouveau)
+*Changement* : `SourceFetcher` télécharge une page et en extrait le texte
+lisible. C'est l'étape « lire la source » du pipeline d'information fraîche ;
+elle ne dépend d'aucun modèle et se teste seule.
+*Pourquoi* : T-12. Le chat n'a aujourd'hui aucun moyen d'aller vérifier quoi que
+ce soit sur le web ; `WebSearchTool` ne renvoie que des résumés de moteur de
+recherche, jamais le contenu des pages.
+
+**Trois règles portées par l'outil :**
+1. Une page inaccessible **est signalée** (`REFUSED` / `FAILED`), jamais
+   remplacée par un texte plausible.
+2. Une **adresse interne est refusée**. Les URL viennent d'un moteur de
+   recherche, donc de l'extérieur : sans ce garde-fou, ARENA pourrait être
+   amené à lire ses propres services (`127.0.0.1:8000`) et à en restituer le
+   contenu dans une réponse.
+3. Taille, durée et longueur de texte **plafonnées**, et la troncature est
+   déclarée dans le résultat.
+
+*Vérifications, toutes exécutées :*
+- `pytest tests/tools/test_source_fetcher.py` → **24 passed**, sans aucun accès
+  réseau : les réponses HTTP passent par un transport simulé, donc le vrai code
+  de `fetch()` est parcouru de bout en bout.
+- garde-fou éprouvé contre un **vrai serveur local** : le lecteur normal renvoie
+  `REFUSED` et un texte vide ; le même lecteur, garde-fou désactivé, lit bien la
+  page — ce qui prouve que le refus vient du contrôle et non d'un serveur muet.
+- suite complète → **223 passed, 20 deselected** ; `ruff` → 0 ; `gitleaks` → 0.
+
+*Décision* : extraire le texte avec `html.parser` de la bibliothèque standard
+plutôt que d'ajouter `beautifulsoup4` en dépendance directe. *Coût si c'est
+faux* : l'extraction est un peu moins bonne sur les pages très mal formées ;
+`requirements.txt` reste à 12 dépendances.
+
+*Résultat* : **TERMINÉ** — phase 1 sur 3.
+
+---
+
 ## IN PROGRESS
 
-**Tâche courante** : aucune. T-04 et T-05 sont terminées et vérifiées.
-**Priorité 1 est close**, à l'exception de T-01 qui dépend du propriétaire.
+**Tâche courante** : T-12 — pipeline d'information fraîche, découpé en 3 phases.
+Phase 1 (lecture d'une source) terminée.
 **État exact** : deux actions restent, et elles n'appartiennent qu'au
 propriétaire — changer les cinq clés dans `.env`, et autoriser la réécriture de
 l'historique (irréversible, casse les clones existants).
-**Prochaine action concrète** : étape 1 de `RUNBOOK_PURGE_SECRETS.md` —
-rotation des cinq clés. Elle protège **immédiatement**, sans toucher à
-l'historique, et n'appartient qu'au propriétaire.
+**Prochaine action concrète** : T-12 phase 2 — un agent qui cherche, lit les
+sources et répond **en les citant**. Reste toujours dû par le propriétaire :
+l'étape 1 de `RUNBOOK_PURGE_SECRETS.md` (rotation des cinq clés).
 
 ---
 
@@ -483,7 +522,7 @@ désormais protégées par `tests/test_documentation.py`.
 
 | # | Tâche | Effort | Critère de validation |
 |---|---|---|---|
-| T-12 | Pipeline d'information fraîche : recherche → lecture → synthèse → sources citées | 4 h | « Quelle est la dernière version de Python ? » répond avec des sources datées |
+| T-12 | Pipeline d'information fraîche — **phase 1/3 faite** (lecture d'une source) | 4 h | « Quelle est la dernière version de Python ? » répond avec des sources datées |
 | T-13 | Retirer les faits figés du prompt système, les remplacer par la mémoire ou le web | 30 min | Aucun fait daté écrit en dur dans `main.py` |
 | T-14 | Routeur enrichi : besoin de fraîcheur, de RAG, d'outils, de vérification | 3 h | Le routeur renvoie une décision structurée, testée |
 | T-15 | Passerelle de modèles par capacité (`fast_chat`, `coding`, `reasoning`…) | 3 h | Un agent demande une capacité, pas un nom de modèle |
@@ -657,7 +696,7 @@ Ce qui est certain, et vérifié par le code :
 | Appels au modèle avant le correctif n°9 | 3 | lecture du code : `chat_stream_endpoint` → `dispatch_request` → `orchestrator.run` |
 | Contexte configuré | `num_ctx: 4096` | `core/models/ollama_provider.py` |
 | Maintien en VRAM | `keep_alive: "30m"` | idem |
-| Durée de la suite de tests | 5,6 s pour 199 tests | `pytest -q` |
+| Durée de la suite de tests | 5,8 s pour 223 tests | `pytest -q` |
 | Pic mémoire, envoi de 64 Mo — avant T-02 | 64,0 Mo | `tracemalloc` sur l'ancien chemin |
 | Pic mémoire, envoi de 64 Mo — après T-02 | 2,0 Mo | `tracemalloc` sur `ecrire_par_blocs` |
 
@@ -767,3 +806,4 @@ public reste lisible et copiable — seul le passage en privé bloque réellemen
 | 2026-08-26 | Claude Code | T-01 préparée et vérifiée sur copie, non exécutée. Trois erreurs des rapports d'audit corrigées (44 commits, 6 secrets, commande destructrice). |
 | 2026-08-26 | Claude Code | T-03 terminée (scan de secrets en CI). Règles propres au projet : les règles standard ne voyaient pas la clé de librechat.yaml. |
 | 2026-08-26 | Claude Code | T-04 et T-05 terminées (limitation de débit, journalisation des refus). Priorité 1 close hors T-01. |
+| 2026-08-26 | Claude Code | T-12 phase 1/3 : lecture d'une source web, avec refus des adresses internes. |
