@@ -219,3 +219,84 @@ class TestAiguillage:
         """Une étiquette absente de la liste fermée serait rejetée en silence."""
         from agents.orchestrator.orchestrator_agent import INTENTIONS
         assert "STUDIO" in INTENTIONS
+
+
+# ==============================================================================
+# La chaîne HTTP complète : LibreChat -> passerelle -> studio
+# ==============================================================================
+from fastapi.testclient import TestClient  # noqa: E402
+
+from apps.backend import main  # noqa: E402
+from apps.backend import security as securite  # noqa: E402
+from apps.backend.routers import chat as routeur_chat  # noqa: E402
+from apps.backend.routers import openai_gateway as passerelle  # noqa: E402
+
+CLE = "cle-de-test"
+ENTETES = {"Authorization": f"Bearer {CLE}"}
+
+
+@pytest.fixture
+def client(monkeypatch) -> TestClient:
+    monkeypatch.setattr(securite, "ARENA_API_KEY", CLE)
+    monkeypatch.setattr(securite, "REQUETES_MAX", 100)
+    monkeypatch.setattr(securite.limiteur, "requetes_max", 100)
+
+    async def toujours_disponible():
+        return True
+
+    monkeypatch.setattr(main.fast_provider, "is_available", toujours_disponible)
+    return TestClient(main.app, raise_server_exceptions=False)
+
+
+@pytest.fixture
+def studio_double(monkeypatch):
+    """Remplace la chaîne réelle et retient si elle a été appelée."""
+    appels = []
+
+    async def _studio(video_agent, editor_agent, subtitle_agent, **kw):
+        appels.append(True)
+        return {"status": "OK", "agent": "Studio", "response": "rendu factice", "etapes": {}}
+
+    monkeypatch.setattr(routeur_chat, "lancer_studio", _studio)
+    monkeypatch.setattr(passerelle, "lancer_studio", _studio)
+    return appels
+
+
+class TestChaineHTTP:
+    def test_le_modele_arena_studio_atteint_le_studio(self, client, studio_double):
+        reponse = client.post(
+            "/v1/chat/completions",
+            headers=ENTETES,
+            json={"model": "arena-studio",
+                  "messages": [{"role": "user", "content": "vas-y"}],
+                  "stream": False},
+        )
+        assert reponse.status_code == 200
+        assert studio_double == [True], "le studio n'a pas été appelé"
+        assert "rendu factice" in reponse.json()["choices"][0]["message"]["content"]
+
+    def test_une_demande_ordinaire_de_studio_y_arrive_aussi(self, client, studio_double, monkeypatch):
+        """C'est ainsi que Saer l'utilise : il écrit sa demande, sans choisir de modèle."""
+        async def _classer(user_input):
+            return "STUDIO"
+
+        monkeypatch.setattr(routeur_chat.orchestrator, "analyze_intent", _classer)
+
+        reponse = client.post(
+            "/v1/chat/completions",
+            headers=ENTETES,
+            json={"model": "arena-core",
+                  "messages": [{"role": "user", "content": "sous-titre ma vidéo"}],
+                  "stream": False},
+        )
+        assert reponse.status_code == 200
+        assert studio_double == [True]
+
+    def test_le_studio_exige_la_cle_api(self, client, studio_double):
+        reponse = client.post(
+            "/v1/chat/completions",
+            json={"model": "arena-studio",
+                  "messages": [{"role": "user", "content": "vas-y"}]},
+        )
+        assert reponse.status_code in (401, 403)
+        assert studio_double == [], "le studio a tourné sans authentification"
