@@ -1,0 +1,9 @@
+# Fins de ligne : ce que Git a le droit de convertir, et ce qu'il n'a pas le droit.
+#
+# `apps/frontend/vendor/tailwind.js` est un paquet tiers dont PROVENANCE.md
+# declare la taille exacte et l'empreinte. Sur Windows, Git convertissait ses 83
+# sauts de ligne en CRLF a la sortie : 407 279 octets devenaient 407 362, et deux
+# tests echouaient sur toute machine Windows sans que rien soit casse.
+#
+# `-text` veut dire : ne touche pas a ce fichier, quelle que soit la machine.
+apps/frontend/vendor/tailwind.js -text

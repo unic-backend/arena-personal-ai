@@ -229,44 +229,72 @@ def test_un_corps_sans_texte_est_refuse(client, entetes, fournisseur, chat_direc
 
 # --- Les pieces jointes le declarent au lieu de faire semblant ----------------
 
+def _televerser(client, entetes, nom, contenu, mime="text/plain", kind="document"):
+    """Exactement ce qu'envoie son interface : UN fichier sous le nom `file`."""
+    return client.post(
+        "/files", headers=entetes,
+        files={"file": (nom, contenu, mime)},
+        data={"kind": kind},
+    )
+
+
 def test_les_pieces_jointes_sont_lues(client, entetes, depot):
     """Elles repondaient 501 jusqu'au 2026-08-27 : plus maintenant."""
-    res = client.post("/files", headers=entetes, files={
-        "files": ("devis.txt", b"Cloison BA13, 18 parois, 486 m2 developpes.", "text/plain"),
-    })
+    res = _televerser(client, entetes, "devis.txt", b"Cloison BA13, 486 m2 developpes.")
 
     assert res.status_code == 200
-    piece = res.json()["attachments"][0]
-    assert piece["status"] == "LU"
-    assert piece["readable"] is True
-    assert res.json()["read"] == 1
+    assert res.json()["status"] == "LU"
+    assert res.json()["readable"] is True
+
+
+def test_la_reponse_a_la_forme_que_son_interface_attend(client, entetes, depot):
+    """`uploaded.push(result)` attend UN objet, pas une liste. Le champ `id` est
+    celui que la requete suivante renvoie dans `attachments`."""
+    corps = _televerser(client, entetes, "devis.txt", b"Cloison BA13.").json()
+
+    for champ in ("id", "name", "size", "type", "kind", "extractedCharacters"):
+        assert champ in corps, f"champ {champ} absent de la reponse"
+    assert isinstance(corps, dict)
+
+
+def test_le_champ_kind_est_rendu_tel_qu_envoye(client, entetes, depot):
+    corps = _televerser(client, entetes, "devis.txt", b"x", kind="document").json()
+
+    assert corps["kind"] == "document"
+
+
+def test_le_nom_du_champ_est_bien_file_au_singulier(client, entetes, depot):
+    """C'est l'erreur du 2026-08-27 : `files` au pluriel rendait un 422."""
+    res = client.post("/files", headers=entetes,
+                      files={"files": ("devis.txt", b"x", "text/plain")})
+
+    assert res.status_code == 422, "le champ attendu doit rester `file`"
 
 
 def test_un_format_non_lu_dit_lesquels_le_sont(client, entetes, depot):
-    res = client.post("/files", headers=entetes, files={
-        "files": ("photo.exe", b"MZ", "application/octet-stream"),
-    })
+    corps = _televerser(client, entetes, "photo.exe", b"MZ",
+                        mime="application/octet-stream").json()
 
-    piece = res.json()["attachments"][0]
-    assert piece["status"] == "NON_PRIS_EN_CHARGE"
-    assert piece["readable"] is False
-    assert ".pdf" in piece["reason"]
+    assert corps["status"] == "NON_PRIS_EN_CHARGE"
+    assert corps["readable"] is False
+    assert ".pdf" in corps["reason"]
 
 
 def test_un_refus_rend_quand_meme_un_identifiant(client, entetes, depot):
     """L'interface doit pouvoir afficher pourquoi le fichier n'a pas ete pris."""
-    res = client.post("/files", headers=entetes, files={
-        "files": ("photo.exe", b"MZ", "application/octet-stream"),
-    })
+    corps = _televerser(client, entetes, "photo.exe", b"MZ").json()
 
-    assert res.json()["attachments"][0]["id"]
+    assert corps["id"]
+
+
+def test_un_refus_reste_un_200_pas_une_erreur(client, entetes, depot):
+    """Un 4xx ferait planter son interface au lieu d'afficher la raison."""
+    assert _televerser(client, entetes, "photo.exe", b"MZ").status_code == 200
 
 
 def test_le_texte_du_fichier_ne_repart_pas_par_le_reseau(client, entetes, depot):
     """Il ne ferait que des allers-retours inutiles, et il contient ses documents."""
-    res = client.post("/files", headers=entetes, files={
-        "files": ("devis.txt", b"NINEA 013141677 confidentiel", "text/plain"),
-    })
+    res = _televerser(client, entetes, "devis.txt", b"NINEA 013141677 confidentiel")
 
     assert "013141677" not in res.text
 
