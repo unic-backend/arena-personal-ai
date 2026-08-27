@@ -7,13 +7,22 @@ justifies this order is `docs/AUDIT_ARENA_OS.md`; it was measured, not recalled.
 VOLET en cours   : ARENA OS
 Chapitres        : 12
 Phases           : 21
-Phase courante   : 3.1 — en attente de confirmation
+Phase courante   : 3.2 — en attente de confirmation
 Terminées        : 1.1 (2026-08-27) — `core/actions/resultat.py`, sept statuts ;
                    un succès exige une preuve, une action sans effet n'en porte pas.
                    2.1 (2026-08-27) — `core/actions/journal.py`, les neuf champs ;
                    aller-retour SQLite intact, secrets masqués avant écriture.
                    2.2 (2026-08-27) — journal branché sur le chemin réel,
                    `core/actions/timeline.py` et `GET /api/actions`.
+                   3.1 (2026-08-27) — `core/permissions/politique.py` et
+                   `config/permissions_services.yaml` : compte × service ×
+                   action × risque, action inconnue refusée.
+
+**Correction apportée au plan par la spécification.** Ce tableau annonçait
+`delete = DENIED` pour l'e-mail. Le §13 de la spécification du propriétaire dit
+`delete = confirmation required`, et c'est elle qui fait autorité : la valeur
+livrée est `CONFIRMATION`. Une ligne du YAML suffit à la durcir en `DENIED` s'il
+le souhaite.
 ```
 
 ---
@@ -44,7 +53,7 @@ Ch. 12  Site web, SEO, Google Business, réseaux → 1 phase (indivisible)
 | **1.1** | `TikTokConnector` and `PublisherAgent` stop reporting `success` for a simulation. A third state, `NOT_CONFIGURED`, is introduced and returned. §27. | a test asserts no code path returns `status: success` without a verified external effect |
 | **2.1** | `ActionRecord` — id, timestamp, tool, target, parameters, permission level, result, errors, verification status. §12. | round-trip through SQLite, every field preserved |
 | **2.2** | `agent_logs` finally written, and an activity timeline readable. §21. | an action executed end to end appears in the timeline with its verification state |
-| **3.1** | `Permission(account, service, action, risk)` next to the nine booleans, which keep working. §13. | `send` on Gmail = CONFIRMATION, `delete` = DENIED, by default and from config |
+| **3.1** | `Permission(account, service, action, risk)` next to the nine booleans, which keep working. §13. | `send` and `delete` on Gmail = CONFIRMATION, `settings` = DENIED, by default and from config |
 | **3.2** | Every existing call site moves onto the scoped check; the dead `PERM_*` variables are removed or wired. | the two current `is_allowed` sites still refuse what they refused |
 | **4.1** | `Connector` base: auth, capabilities, permissions, health, read ops, write ops, errors, rate limits, audit. §16. | a connector declaring nothing exposes nothing |
 | **4.2** | Lazy connector registry, replacing hard-coded branches. A broken connector degrades alone. | the server starts with a connector that raises on construction |

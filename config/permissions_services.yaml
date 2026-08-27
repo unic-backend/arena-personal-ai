@@ -1,0 +1,84 @@
+# Permissions par compte, service, action et niveau de risque.
+#
+# Ce fichier est modifiable par le proprietaire : c'est la specification qui le
+# demande (« The user must be able to change these policies »). Le code ne
+# contient aucune de ces decisions.
+#
+# Trois decisions possibles :
+#   ALLOWED       l'action part sans rien demander
+#   CONFIRMATION  tout est prepare, l'action attend un « oui »
+#   DENIED        l'action ne part pas, meme demandee
+#
+# Trois niveaux de risque, repris de la specification : LOW, MEDIUM, HIGH.
+# Le risque ne decide rien par lui-meme — il est affiche au moment de demander
+# la confirmation, pour que le proprietaire voie ce qu'il autorise.
+#
+# REGLE QUI NE SE CONFIGURE PAS : une action absente de ce fichier est REFUSEE.
+# Une capacite nouvelle n'est donc jamais autorisee par oubli.
+
+defaut: DENIED
+
+services:
+
+  email:
+    read:        {decision: ALLOWED,      risque: LOW}
+    search:      {decision: ALLOWED,      risque: LOW}
+    classify:    {decision: ALLOWED,      risque: LOW}
+    summarize:   {decision: ALLOWED,      risque: LOW}
+    label:       {decision: ALLOWED,      risque: LOW}
+    archive:     {decision: ALLOWED,      risque: LOW}
+    draft:       {decision: ALLOWED,      risque: LOW}
+    move:        {decision: CONFIRMATION, risque: MEDIUM}
+    unsubscribe: {decision: CONFIRMATION, risque: MEDIUM}
+    mark_read:   {decision: ALLOWED,      risque: LOW}
+    send:        {decision: CONFIRMATION, risque: HIGH}
+    # Suppression definitive. La specification la place en CONFIRMATION ;
+    # la mettre a DENIED ici la rend simplement impossible.
+    delete:      {decision: CONFIRMATION, risque: HIGH}
+    settings:    {decision: DENIED,       risque: HIGH}
+
+  calendar:
+    read:        {decision: ALLOWED,      risque: LOW}
+    free_slots:  {decision: ALLOWED,      risque: LOW}
+    draft:       {decision: ALLOWED,      risque: LOW}
+    create:      {decision: CONFIRMATION, risque: MEDIUM}
+    modify:      {decision: CONFIRMATION, risque: MEDIUM}
+    delete:      {decision: CONFIRMATION, risque: HIGH}
+
+  website:
+    inspect:     {decision: ALLOWED,      risque: LOW}
+    analyze:     {decision: ALLOWED,      risque: LOW}
+    draft:       {decision: ALLOWED,      risque: LOW}
+    publish:     {decision: CONFIRMATION, risque: HIGH}
+    delete:      {decision: CONFIRMATION, risque: HIGH}
+
+  social:
+    read:        {decision: ALLOWED,      risque: LOW}
+    draft:       {decision: ALLOWED,      risque: LOW}
+    schedule:    {decision: CONFIRMATION, risque: MEDIUM}
+    publish:     {decision: CONFIRMATION, risque: HIGH}
+    reply:       {decision: CONFIRMATION, risque: HIGH}
+
+  search_console:
+    read:        {decision: ALLOWED,      risque: LOW}
+    analyze:     {decision: ALLOWED,      risque: LOW}
+    submit:      {decision: CONFIRMATION, risque: MEDIUM}
+
+  business_profile:
+    read:        {decision: ALLOWED,      risque: LOW}
+    draft:       {decision: ALLOWED,      risque: LOW}
+    update:      {decision: CONFIRMATION, risque: HIGH}
+    reply:       {decision: CONFIRMATION, risque: HIGH}
+
+# Regles par compte. Elles l'emportent sur celles du service, dans les deux
+# sens : un compte peut etre plus ouvert ou plus ferme que son service.
+# Le proprietaire ecrit ici, par exemple :
+#
+# comptes:
+#   "unicplaquiste@gmail.com":
+#     email:
+#       send: ALLOWED        # envois automatiques autorises sur ce compte
+#   "perso@gmail.com":
+#     email:
+#       read: DENIED         # ARENA ne lit pas ce compte du tout
+comptes: {}
