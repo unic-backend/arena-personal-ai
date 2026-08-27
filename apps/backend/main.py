@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from apps.backend.config import ALLOWED_ORIGINS, BASE_DIR, OLLAMA_URL, RENDERED_DIR
-from apps.backend.routers import actions, chat, media, openai_gateway
+from apps.backend.routers import actions, chat, media, openai_gateway, pwa_gateway
 from apps.backend.runtime import deep_provider, fast_provider
 from apps.backend.verification_modeles import verifier_modeles
 
@@ -158,6 +158,13 @@ async def serve_frontend_classique():
 async def health_check():
     ollama_online = await fast_provider.is_available()
     return {
+        # `ok`, `name`, `provider` et `model` sont lus par l'interface PWA
+        # (`pingBackend`). Ils s'ajoutent aux champs existants sans en changer
+        # aucun : ce que lisaient les anciens appelants est intact.
+        "ok": ollama_online,
+        "name": "ARENA",
+        "provider": "ollama",
+        "model": fast_provider.model_name,
         "status": "healthy" if ollama_online else "degraded",
         "ollama_available": ollama_online,
         "interface": nom_interface(),
@@ -176,3 +183,4 @@ app.include_router(openai_gateway.router)
 app.include_router(media.router)
 app.include_router(chat.router)
 app.include_router(actions.router)
+app.include_router(pwa_gateway.router)

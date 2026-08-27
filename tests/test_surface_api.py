@@ -25,6 +25,9 @@ SURFACE_ATTENDUE = {
     "/manifest.webmanifest": (["GET"], []),
     "/offline.html": (["GET"], []),
     "/icons/{nom}": (["GET"], []),
+    # Passerelle vers l'interface PWA du proprietaire.
+    "/agent/stream": (["POST"], ["verify_api_key", "limiter_debit"]),
+    "/files": (["POST"], ["verify_api_key"]),
     "/v1/models": (["GET"], ["verify_api_key"]),
     "/v1/chat/completions": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/upload": (["POST"], ["verify_api_key"]),
