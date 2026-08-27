@@ -7,7 +7,7 @@ justifies this order is `docs/AUDIT_ARENA_OS.md`; it was measured, not recalled.
 VOLET en cours   : ARENA OS
 Chapitres        : 12
 Phases           : 21
-Phase courante   : 6.2 — en attente de confirmation
+Phase courante   : 6.3 — en attente de confirmation
 Terminées        : 1.1 (2026-08-27) — `core/actions/resultat.py`, sept statuts ;
                    un succès exige une preuve, une action sans effet n'en porte pas.
                    2.1 (2026-08-27) — `core/actions/journal.py`, les neuf champs ;
@@ -33,6 +33,9 @@ Terminées        : 1.1 (2026-08-27) — `core/actions/resultat.py`, sept statut
                    6.1 (2026-08-27) — `core/memory/personnelle.py` : quatre
                    mémoires, quatre natures, entités et relations, migration
                    qui n'efface rien.
+                   6.2 (2026-08-27) — `core/memory/recuperation.py` : quatre
+                   signaux pondérés, budget dur, fenêtres de temps en français.
+                   Mesuré : 1000 souvenirs, 12,2 ms, 112 caractères sur 600.
 
 **Décision sur les politiques d'automatisation.** Aucun second mécanisme n'a été
 écrit : les règles par compte de `config/permissions_services.yaml` font déjà
