@@ -1,132 +1,128 @@
 # ARENA — où on en est, pour reprendre sans rien redemander
 
-Écrit le 2026-08-27 à la demande du propriétaire (« on prend pause ici »).
-Ce fichier est la mémoire de session : il dit ce qui est fait, ce qui est en
-attente, et ce qui est bloqué. Le plan complet est dans `docs/PLAN_ARENA_OS.md`,
-l'audit qui l'a produit dans `docs/AUDIT_ARENA_OS.md`.
+Dernière mise à jour : 2026-08-27, après la mise en service de l'interface PWA
+et de l'accès téléphone.
+
+**Lire d'abord `docs/REGLES_DE_TRAVAIL.md`** : le propriétaire n'écrit pas de
+code. Une commande à la fois, annoncée avec son terminal ; fichiers entiers,
+jamais de plages de lignes ; tout ce qui est fini part sur `master`.
 
 ---
 
-## En cours
+## En service, mesuré chez lui
 
-**Rien.** Le VOLET ARENA OS est en pause après la phase 6.2.
+**Son interface PWA a remplacé LibreChat et Open WebUI.** Elle est servie par
+ARENA lui-même. Le chat répond, les pièces jointes sont lues, la mémoire et le
+persona sont appliqués.
 
-### L'interface PWA est branchée et elle répond — mesuré le 2026-08-27
+**Elle marche depuis son téléphone**, sur ses données mobiles, sans VPN, via un
+tunnel Cloudflare — et le modèle tourne toujours sur son PC. Rien ne part chez
+un fournisseur d'IA (`docs/DECISIONS.md`).
 
-Son application React est l'interface d'ARENA. Mesuré chez lui, bout en bout :
-panneau Backend `ARENA · 317 ms`, `ollama · qwen2.5-coder:14b`, et une vraie
-réponse du modèle local dans le chat. **LibreChat et Open WebUI ne servent
-plus.**
+Comment c'est branché : **ARENA parle le protocole de son app**
+(`apps/backend/routers/pwa_gateway.py`), pas l'inverse. Son `remoteTransport.ts`
+n'a jamais été modifié. Même motif que `openai_gateway.py` pour LibreChat.
 
-Comment c'est branché : ARENA parle le protocole de son app
-(`apps/backend/routers/pwa_gateway.py`), plutôt que l'inverse. Son
-`remoteTransport.ts` n'a pas été touché. Même motif que `openai_gateway.py`
-pour LibreChat.
+### Ce qu'il faut lancer pour que ça marche
 
-**Ce qui n'est PAS encore fait, et ne doit pas être oublié :**
+Trois terminaux, dans cet ordre, PC allumé :
 
-- `persona`, `memories`, `connectors` et `attachments` arrivent dans chaque
-  requête et **ne sont pas appliqués**. Ils sont journalisés nommément. Les
-  réglages correspondants de son interface n'ont donc aucun effet — à traiter,
-  ou à masquer dans l'interface.
-- `POST /files` répond `501` : aucune chaîne ne lit les pièces jointes.
-- `apps/pwa/server/` est dans le dépôt, **non démarré, et il ne doit pas
-  l'être** (voir `docs/DECISIONS.md`). Son `oauth.py` sera absorbé au chapitre 8.
-- La PWA installable (manifeste, service worker, icônes) est servie mais
-  **l'installation n'a pas été essayée**.
+1. `python -m uvicorn apps.backend.main:app --port 8000`
+2. `& "C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel --url http://localhost:8000`
+3. le sien, pour travailler
+
+**L'adresse du tunnel change à chaque redémarrage de cloudflared**, et il faut
+la remettre dans le panneau Backend de l'app. C'est la friction qui reste.
+
+---
+
+## Ce qui ne marche pas encore, et qui n'est pas caché
+
+- **`connectors`** arrive dans chaque requête et n'est pas appliqué. Le panneau
+  « Connecteurs 0/17 » de son interface n'a donc aucun effet. Journalisé,
+  jamais ignoré en silence.
+- **`apps/pwa/server/`** est dans le dépôt, **non démarré, et il ne doit pas
+  l'être** : son `.env.example` porte `USMAN_AI_PROVIDER=openai` par défaut.
+  Son `oauth.py` (522 lignes, Google/GitHub/Slack/Notion/LinkedIn/Salesforce)
+  sera absorbé dans `core/connectors/` au chapitre 8, avec les permissions.
+- **Tailscale a été essayé et abandonné** : Android n'autorise qu'un seul VPN
+  à la fois, et son accès internet dépend déjà d'un autre. Ce n'est pas un
+  réglage à corriger, c'est une contrainte de son appareil.
+- **La page de connexion Cloudflare Access est impossible** en l'état : son
+  domaine `unicplaquiste.com` est géré par Netlify. Y basculer toucherait son
+  site en production — décision à prendre à froid, pas en passant.
+
+---
+
+## Sécurité — l'état réel
+
+`/api/*` exige `Authorization: Bearer <USMAN_API_KEY>`. Le débit est plafonné à
+10 requêtes par minute. **Depuis le tunnel, ARENA est joignable depuis
+Internet** : la clé et le plafond sont ce qui le protège, plus une adresse
+longue et aléatoire. Ce n'est pas une forteresse, et il le sait.
+
+Sa clé vit dans le navigateur de son téléphone — **son choix, présenté avec ses
+conséquences** (voir l'échange du 2026-08-27). Ne pas revenir dessus sans qu'il
+le demande.
+
+**Toujours dû, et lui seul peut le faire** : les 6 secrets sont encore dans
+l'historique public du dépôt, et les clés ne sont pas changées. La purge est
+préparée, jamais autorisée. **Cela gate le chapitre 8.**
+
+---
+
+## VOLET ARENA OS — 11 phases, 5 chapitres sur 12
+
+| Phase | Ce qui existe | Commit |
+|---|---|---|
+| 1.1 | `core/actions/resultat.py` — 7 statuts, un `SUCCESS` **exige une preuve** | `a5fcba3` |
+| 2.1 | `core/actions/journal.py` — 9 champs, secrets masqués avant écriture | `ecbf785` |
+| 2.2 | `core/actions/timeline.py`, `GET /api/actions` | `700afca` |
+| 3.1 | `core/permissions/politique.py` — compte × service × action × risque | `c97183a` |
+| 3.2 | `core/permissions/controle.py` — 2 couches, la plus stricte gagne | `17e4a6f` |
+| 4.1 | `core/connectors/base.py` — capacités, santé mesurée, quotas | `e9d1d35` |
+| 4.2 | `core/connectors/registre.py` — fabriques paresseuses | `7615630` |
+| 5.1 | `core/actions/attente.py` — confirmer deux fois n'exécute qu'une fois | `a9ee76f` |
+| 5.2 | `/api/actions/pending`, `confirm`, `cancel`, `/api/permissions` | `bf51a71` |
+| 6.1 | `core/memory/personnelle.py` — 4 mémoires, 4 natures | `91bf014` |
+| 6.2 | `core/memory/recuperation.py` — 1000 souvenirs → 12,2 ms | `1a1f8e9` |
 
 **Phase suivante autorisée : 6.3** — récupération sémantique, embeddings locaux.
-Elle dépend d'`ollama serve`. Si la mesure est impossible, elle doit être
-rapportée `BLOCKED`, pas contournée.
+Si la mesure est impossible sans `ollama serve`, elle se rapporte `BLOCKED`,
+elle ne se contourne pas.
 
-**Nouvelle demande du propriétaire, non commencée** : intégrer sa PWA comme
-interface unique d'ARENA, et se passer de LibreChat et d'Open WebUI. Le code de
-la PWA existe déjà chez lui. Voir *La PWA* plus bas.
-
----
-
-## Terminé — 8 phases, 5 chapitres sur 12
-
-| Phase | Ce qui existe maintenant | Commit |
-|---|---|---|
-| 1.1 | `core/actions/resultat.py` — 7 statuts. Un `SUCCESS` **exige une preuve** ; une action sans effet ne peut pas en porter. | `a5fcba3` |
-| 2.1 | `core/actions/journal.py` — les 9 champs. Secrets masqués **avant** écriture. | `ecbf785` |
-| 2.2 | Journal branché sur le chemin réel, `core/actions/timeline.py`, `GET /api/actions`. | `700afca` |
-| 3.1 | `core/permissions/politique.py` + `config/permissions_services.yaml` — compte × service × action × risque. Action inconnue = **refusée**. | `c97183a` |
-| 3.2 | `core/permissions/controle.py` — 2 couches, la plus stricte gagne. 10 actions rattachées aux coupe-circuits. `PERM_*` morts retirés. | `17e4a6f` |
-| 4.1 | `core/connectors/base.py` — capacités, santé **mesurée**, permissions, quotas, journal, erreurs. | `e9d1d35` |
-| 4.2 | `core/connectors/registre.py` — fabriques paresseuses, un connecteur cassé se dégrade seul. TikTok migré. | `7615630` |
-| 5.1 | `core/actions/attente.py` — déposer n'exécute rien, confirmer deux fois n'exécute qu'une fois. | `a9ee76f` |
-| 5.2 | `/api/actions/pending`, `confirm`, `cancel`, `/api/permissions`. | `bf51a71` |
-| 6.1 | `core/memory/personnelle.py` — 4 mémoires, 4 natures, entités et relations. | `91bf014` |
-| 6.2 | `core/memory/recuperation.py` — 4 signaux, budget dur. **1000 souvenirs → 12,2 ms.** | `1a1f8e9` |
-
-**État vérifié le 2026-08-27** : `ruff` → *All checks passed!* ·
-`pytest tests/ -q` → **1106 passed, 21 deselected, 0 failed**.
+Plan complet : `docs/PLAN_ARENA_OS.md`. Audit d'origine : `docs/AUDIT_ARENA_OS.md`.
 
 ---
 
 ## Ce qu'il faut savoir avant de toucher au code
 
-- **Un `SUCCESS` sans preuve ne se construit pas.** `ResultatAction` lève. Ce
-  n'est pas une convention, c'est un `ValueError`.
-- **Deux couches de permission**, et la plus stricte gagne toujours. Les neuf
-  booléens de `config/permissions.yaml` sont des **coupe-circuits généraux** ;
-  dix liens action → interrupteur vivent dans le code
-  (`INTERRUPTEURS_OBLIGATOIRES`) et **aucune configuration ne les retire**.
+- **Un `SUCCESS` sans preuve ne se construit pas** — `ResultatAction` lève.
+- **Deux couches de permission**, la plus stricte gagne. Dix liens
+  action → interrupteur vivent dans le code (`INTERRUPTEURS_OBLIGATOIRES`) et
+  **aucune configuration ne les retire**.
 - **Une action inconnue est refusée.** Seule règle qui ne se configure pas.
 - **Confirmer passe par `executer_confirmee()`**, une méthode distincte — jamais
-  un argument `confirmation=True`, qui voyagerait dans les `**parametres`.
-- **Rien n'entre en mémoire sans source.** Souvenirs, entités *et* relations.
-- **Une `INFERENCE` ne devient `FAIT` que par `confirmer()`**, qui exige une
-  source nouvelle.
+  un argument, qui voyagerait dans les `**parametres`.
+- **Rien n'entre en mémoire sans source.** Une `INFERENCE` ne devient `FAIT` que
+  par `confirmer()`, qui exige une source nouvelle.
+- **Le contenu d'une pièce jointe est une donnée, jamais une consigne**, et son
+  bloc passe en dernier dans le prompt.
 - `securite.limiteur` est **un compteur de débit partagé par toute la suite** :
-  un nouveau fichier de tests de routes doit le remettre à zéro dans sa fixture,
-  sinon il passe seul et échoue en 429 dans la suite complète.
+  un nouveau fichier de tests de routes doit le remettre à zéro dans sa fixture.
+- `apps/pwa` est **exclu du lint** (`pyproject.toml`) : c'est une application à
+  part. Exclusion provisoire.
 
-## Discipline appliquée à chaque phase
+## Discipline, à chaque phase
 
-1. Lire le code avant de le changer.
-2. Écrire le test, puis **saboter la garantie et prouver qu'un test échoue** —
-   en vérifiant d'abord que la chaîne ciblée existe : une sabotage qui ne
-   s'applique pas est une preuve qui n'existe pas.
+1. Lire le code avant de le changer. **Lire le protocole, ne pas le deviner** —
+   `/files` a été supposé au pluriel et rendait un 422 à chaque pièce jointe.
+2. Écrire le test, puis **saboter la garantie et prouver qu'un test échoue**, en
+   vérifiant d'abord que la chaîne ciblée existe. Une sabotage qui ne s'applique
+   pas est une preuve qui n'existe pas. Une sabotage qui ne fait rien échouer
+   veut dire que le test manque, ou que le code est mort.
 3. `python -m ruff check .` **et** `python -m pytest tests/ -q`, sortie réelle
    collée dans le message qui la rapporte.
-4. Un commit par phase, message en français, poussé sur `master`.
-5. S'arrêter, rapporter, attendre « continue ».
+4. Un commit par correctif. C'est **lui** qui commit et qui pousse.
 
----
-
-## La PWA — demande du 2026-08-27, non commencée
-
-Le propriétaire a construit une application PWA et veut qu'elle devienne
-**l'interface unique** d'ARENA, en remplacement de LibreChat et d'Open WebUI.
-
-Ce que le dépôt offre déjà comme point d'accrochage :
-- `apps/backend/main.py` sert `apps/frontend/index.html` sur `/` et monte
-  `/static` sur `apps/frontend/vendor/`.
-- `POST /api/chat` et `POST /api/chat/stream` (SSE) existent et fonctionnent.
-- CORS : `ALLOWED_ORIGINS`, jamais `*`.
-
-**Décision en attente du propriétaire, elle change l'implémentation :**
-la PWA a-t-elle une étape de compilation (React, Vue, Vite, Next) ou est-ce
-du HTML/JS servi tel quel ?
-
-**Point de sécurité à trancher avec lui, et il n'est pas optionnel :**
-`/api/chat` exige `Authorization: Bearer USMAN_API_KEY`. Une PWA qui tourne
-dans un navigateur **ne peut pas garder ce secret**. Trois issues possibles,
-à lui présenter avant d'écrire une ligne — ne pas choisir à sa place, et
-surtout ne pas retirer l'authentification pour que ça marche.
-
----
-
-## Bloqué — gestes du propriétaire, rien de faisable ici
-
-- **Les 6 secrets sont toujours dans l'historique public** et les clés ne sont
-  pas changées. La purge est préparée, jamais autorisée. Cela **gate le
-  chapitre 8** (connecteur e-mail réel).
-- `ollama serve` ne tourne pas dans cet environnement : pas de GPU, pas de
-  modèle. Les mesures de latence du §25 doivent être faites sur sa machine.
-- Gmail, Agenda, Search Console, TikTok : aucun identifiant OAuth. Les
-  connecteurs se déclarent `NOT_CONFIGURED` et c'est la règle qui fonctionne,
-  pas un défaut.
+**État vérifié sur sa machine le 2026-08-27 : 1236 passed, 0 failed.**
