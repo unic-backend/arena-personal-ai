@@ -23,11 +23,13 @@ from agents.trend_analyzer.trend_analyzer_agent import TrendAnalyzerAgent
 from agents.video_analyzer.video_analyzer_agent import VideoAnalyzerAgent
 from apps.backend.config import DB_PATH, MODELE_PROFOND, MODELE_RAPIDE, OLLAMA_URL
 from core.actions.journal import JournalDesActions
+from core.connectors.registre import RegistreConnecteurs
 from core.memory.memory_manager import MemoryManager
 from core.models.ollama_provider import OllamaProvider
 from core.permissions.controle import ControleAcces
 from core.permissions.permission_manager import PermissionManager
 from core.permissions.politique import PolitiqueDePermissions
+from social.tiktok.tiktok_connector import TikTokConnector
 from tools.rag.graphrag_tool import GraphRAGTool
 from tools.rag.lightrag_tool import LightRAGTool
 
@@ -40,6 +42,13 @@ permissions = PermissionManager()
 # aux neuf coupe-circuits ci-dessus. La plus stricte des deux couches gagne.
 politique = PolitiqueDePermissions()
 acces = ControleAcces(permissions=permissions, politique=politique)
+
+# --- Connecteurs --------------------------------------------------------------
+# On declare des fabriques, pas des objets : rien n'est construit tant que
+# personne ne s'en sert, et un connecteur qui echoue a naitre est mis hors
+# service tout seul, sans empecher le serveur de demarrer.
+registre = RegistreConnecteurs()
+registre.declarer("tiktok", lambda: TikTokConnector(acces=acces, journal=journal))
 # Journal des actions a effet externe. Meme fichier que la memoire, table a part.
 journal = JournalDesActions(db_path=str(DB_PATH))
 lightrag_tool = LightRAGTool()
@@ -59,7 +68,7 @@ coder_agent = CoderAgent(provider=fast_provider, memory=memory)
 researcher_agent = DeepResearcherAgent(provider=deep_provider, memory=memory)
 clip_selector = ClipSelectorAgent(provider=deep_provider, memory=memory)
 publisher_agent = PublisherAgent(
-    provider=fast_provider, memory=memory, journal=journal, acces=acces
+    provider=fast_provider, memory=memory, journal=journal, registre=registre
 )
 browser_agent = BrowserAgent(provider=fast_provider, memory=memory)
 # Agent d'information fraiche : il lit le web avant de repondre.

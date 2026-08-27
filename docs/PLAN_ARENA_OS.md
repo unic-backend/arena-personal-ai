@@ -7,7 +7,7 @@ justifies this order is `docs/AUDIT_ARENA_OS.md`; it was measured, not recalled.
 VOLET en cours   : ARENA OS
 Chapitres        : 12
 Phases           : 21
-Phase courante   : 4.2 — en attente de confirmation
+Phase courante   : 5.1 — en attente de confirmation
 Terminées        : 1.1 (2026-08-27) — `core/actions/resultat.py`, sept statuts ;
                    un succès exige une preuve, une action sans effet n'en porte pas.
                    2.1 (2026-08-27) — `core/actions/journal.py`, les neuf champs ;
@@ -22,6 +22,9 @@ Terminées        : 1.1 (2026-08-27) — `core/actions/resultat.py`, sept statut
                    coupe-circuits ; `PERM_*` morts retirés.
                    4.1 (2026-08-27) — `core/connectors/base.py` : capacités,
                    santé mesurée, permissions, quotas, journal, erreurs.
+                   4.2 (2026-08-27) — `core/connectors/registre.py` : fabriques
+                   paresseuses, un connecteur cassé se dégrade seul ; TikTok
+                   migré, ancienne base supprimée.
 
 **Deuxième correction apportée au plan.** Il annonçait que *tous* les appels
 existants passeraient sur le contrôle par portée. `media.py` vérifie

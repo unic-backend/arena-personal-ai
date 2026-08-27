@@ -195,10 +195,11 @@ def test_une_action_inconnue_reste_refusee(controle_ecrit):
 # --- La plateforme branche bien le controle -----------------------------------
 
 def test_la_plateforme_partage_un_seul_controle_d_acces():
+    """Le publieur ne verifie plus lui-meme : c'est le connecteur qui le fait."""
     from apps.backend import runtime
 
-    assert runtime.publisher_agent.acces is runtime.acces
     assert runtime.acces.permissions is runtime.permissions
+    assert runtime.registre.obtenir("tiktok").acces is runtime.acces
 
 
 def test_plus_aucune_variable_perm_dans_le_modele_d_environnement():

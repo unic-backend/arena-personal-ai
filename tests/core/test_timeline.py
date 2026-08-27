@@ -5,11 +5,39 @@ part d'une demande de publication et va jusqu'a la ligne de chronologie, sans
 ecrire une seule fois dans le journal a la main.
 """
 import pytest
+import yaml
 
 from agents.publisher.publisher_agent import PublisherAgent
 from core.actions.journal import ActionEnregistree, EtatVerification, JournalDesActions
 from core.actions.resultat import non_configure, refuse, succes
 from core.actions.timeline import SANS_PREUVE, en_lignes, formater, resume, to_dict
+from core.connectors.registre import RegistreConnecteurs
+from core.permissions.controle import ControleAcces
+from core.permissions.permission_manager import PermissionManager
+from core.permissions.politique import PolitiqueDePermissions
+from social.tiktok.tiktok_connector import TikTokConnector
+
+
+@pytest.fixture
+def registre(tmp_path):
+    """Fabrique un registre contenant TikTok, sous une politique donnee."""
+    compteur = {"n": 0}
+
+    def _fabriquer(decision: str = "CONFIRMATION", publish: bool = False,
+                   journal=None) -> RegistreConnecteurs:
+        compteur["n"] += 1
+        chemin = tmp_path / f"politique-{compteur['n']}.yaml"
+        chemin.write_text(yaml.safe_dump({
+            "services": {"social": {"publish": {"decision": decision, "risque": "HIGH"}}}
+        }), encoding="utf-8")
+        permissions = PermissionManager(config_path=str(tmp_path / "booleens.yaml"))
+        permissions.permissions["PUBLISH"] = publish
+        acces = ControleAcces(permissions=permissions,
+                              politique=PolitiqueDePermissions(chemin=chemin))
+        inventaire = RegistreConnecteurs()
+        inventaire.declarer("tiktok", lambda: TikTokConnector(acces=acces, journal=journal))
+        return inventaire
+    return _fabriquer
 
 
 @pytest.fixture
@@ -36,9 +64,14 @@ def _action(**remplacements) -> ActionEnregistree:
 
 # --- La chaine complete -------------------------------------------------------
 
-async def test_une_action_traverse_toute_la_chaine(provider_factory, journal, video_factice):
+async def test_une_action_traverse_toute_la_chaine(
+    provider_factory, journal, video_factice, registre
+):
     """De la demande a la ligne de chronologie, sans ecriture manuelle."""
-    agent = PublisherAgent(provider=provider_factory("Titre\n#tech"), journal=journal)
+    agent = PublisherAgent(
+        provider=provider_factory("Titre\n#tech"), journal=journal,
+        registre=registre(decision="ALLOWED", publish=False, journal=journal),
+    )
 
     await agent.run("Les tendances tech", context={"video_path": str(video_factice)})
 
@@ -46,38 +79,46 @@ async def test_une_action_traverse_toute_la_chaine(provider_factory, journal, vi
     assert len(lignes) == 1
     assert lignes[0]["service"] == "tiktok"
     assert lignes[0]["action"] == "publish_video"
-    assert lignes[0]["cible"] == "TikTok"
     assert lignes[0]["resultat"] == "DENIED"
     assert lignes[0]["verification"] == "NOT_APPLICABLE"
 
 
 async def test_chaque_chemin_de_l_agent_laisse_une_trace(
-    provider_factory, journal, video_factice
+    provider_factory, journal, video_factice, registre
 ):
-    agent = PublisherAgent(provider=provider_factory(), journal=journal)
+    ferme = PublisherAgent(provider=provider_factory(), journal=journal,
+                           registre=registre("ALLOWED", publish=False, journal=journal))
+    a_confirmer = PublisherAgent(provider=provider_factory(), journal=journal,
+                                 registre=registre("CONFIRMATION", publish=True, journal=journal))
+    ouvert = PublisherAgent(provider=provider_factory(), journal=journal,
+                            registre=registre("ALLOWED", publish=True, journal=journal))
 
-    await agent.run("Sujet", context={"video_path": "/inexistant.mp4"})   # FAILED
-    await agent.run("Sujet", context={"video_path": str(video_factice)})  # DENIED
-    agent.permissions.permissions["PUBLISH"] = True
-    await agent.run("Sujet", context={"video_path": str(video_factice)})  # NEEDS_CONFIRMATION
+    await ferme.run("Sujet", context={"video_path": "/inexistant.mp4"})        # FAILED
+    await ferme.run("Sujet", context={"video_path": str(video_factice)})       # DENIED
+    await a_confirmer.run("Sujet", context={"video_path": str(video_factice)})  # NEEDS_CONFIRMATION
+    await ouvert.run("Sujet", context={"video_path": str(video_factice)})      # NOT_CONFIGURED
 
     resultats = {a.resultat for a in journal.dernieres()}
-    assert resultats == {"FAILED", "DENIED", "NEEDS_CONFIRMATION"}
+    assert resultats == {"FAILED", "DENIED", "NEEDS_CONFIRMATION", "NOT_CONFIGURED"}
 
 
 async def test_le_chemin_de_la_video_journalise_n_est_pas_perdu(
-    provider_factory, journal, video_factice
+    provider_factory, journal, video_factice, registre
 ):
-    agent = PublisherAgent(provider=provider_factory(), journal=journal)
+    agent = PublisherAgent(provider=provider_factory(), journal=journal,
+                           registre=registre("ALLOWED", publish=False, journal=journal))
 
     await agent.run("Sujet", context={"video_path": str(video_factice)})
 
     assert journal.dernieres()[0].parametres["fichier"] == str(video_factice)
 
 
-async def test_sans_journal_l_agent_fonctionne_quand_meme(provider_factory, video_factice):
+async def test_sans_journal_l_agent_fonctionne_quand_meme(
+    provider_factory, video_factice, registre
+):
     """Un journal absent ne doit jamais empecher une action de se derouler."""
-    agent = PublisherAgent(provider=provider_factory(), journal=None)
+    agent = PublisherAgent(provider=provider_factory(), journal=None,
+                           registre=registre("ALLOWED", publish=False))
 
     res = await agent.run("Sujet", context={"video_path": str(video_factice)})
 
@@ -85,10 +126,11 @@ async def test_sans_journal_l_agent_fonctionne_quand_meme(provider_factory, vide
 
 
 async def test_un_journal_en_panne_n_empeche_pas_l_action(
-    provider_factory, journal, video_factice, monkeypatch
+    provider_factory, journal, video_factice, monkeypatch, registre
 ):
     monkeypatch.setattr(journal, "enregistrer", lambda action: False)
-    agent = PublisherAgent(provider=provider_factory(), journal=journal)
+    agent = PublisherAgent(provider=provider_factory(), journal=journal,
+                           registre=registre("ALLOWED", publish=False, journal=journal))
 
     assert (await agent.run("S", context={"video_path": str(video_factice)}))["status"] == "DENIED"
 
@@ -101,6 +143,7 @@ def test_le_publieur_de_la_plateforme_a_un_journal():
 
     assert runtime.publisher_agent.journal is not None
     assert runtime.publisher_agent.journal is runtime.journal
+    assert runtime.publisher_agent.registre is runtime.registre
 
 
 # --- Le rendu -----------------------------------------------------------------

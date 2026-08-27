@@ -1,46 +1,36 @@
-"""Agent de publication : il prepare le post, et il dit la verite sur l'envoi.
+"""Agent de publication : il prepare le post, le connecteur dit ce qui est parti.
 
-Le brouillon est un vrai travail et il est fait dans tous les cas — c'est le
-« prepare tout, demande avant d'envoyer » de la specification. Ce qui a change
-le 2026-08-27, c'est le statut rendu : l'agent renvoyait `success` quand la
-permission etait bloquee **et** quand le connecteur ne faisait que simuler. Trois
-situations differentes portaient le meme mot.
+Cet agent portait, en plus de son travail, une copie du controle de permission
+et de la journalisation. Depuis que `core/connectors/base.py` les garantit pour
+tout connecteur, les garder ici les dedoublerait — deux endroits ou verifier la
+meme chose, donc un endroit ou l'oublier.
 
-Elles en ont maintenant trois :
+Il lui reste ce qui est vraiment le sien :
 
-- permission `PUBLISH` bloquee  -> `DENIED`, brouillon fourni
-- connecteur non branche        -> `NOT_CONFIGURED`, brouillon fourni
-- publication reelle            -> n'existe pas encore, `NOT_IMPLEMENTED`
+1. verifier qu'il y a une video ;
+2. faire rediger le post — c'est le « prepare tout, demande avant d'envoyer » ;
+3. transmettre au connecteur et rendre sa reponse, quelle qu'elle soit.
 
-Aucun de ces trois chemins n'emet de requete. Le jour ou l'un le fera, il devra
-rendre une preuve, sans quoi `ResultatAction` refusera de se construire.
+Le brouillon est produit **dans tous les cas**, meme quand la publication est
+refusee : preparer sans envoyer est le travail utile.
 """
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from core.actions.journal import ActionEnregistree, JournalDesActions
-from core.actions.resultat import ResultatAction, a_confirmer, echec, refuse
+from core.actions.resultat import ResultatAction, echec
 from core.agent.base_agent import BaseAgent
+from core.connectors.registre import RegistreConnecteurs
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
-from core.permissions.controle import ControleAcces
-from social.tiktok.tiktok_connector import TikTokConnector
 
 logger = logging.getLogger("usman.agent.publisher")
 
-# Adresse de l'action dans la politique de permissions. Ecrite une fois, pour
-# que le controle et le journal ne puissent pas designer deux choses.
-SERVICE = "social"
-# Deux noms, et ils ne sont pas interchangeables : `ACTION_POLITIQUE` est
-# l'action telle que la politique la declare (`social.publish`) ; `ACTION` est
-# ce qui est journalise, plus precis parce qu'un jour on publiera aussi autre
-# chose qu'une video. Les confondre ferait chercher une regle « publish_video »
-# qui n'existe pas — et la regle « action inconnue = refusee » repondrait DENIED
-# avec l'origine « defaut », ce qui est vrai et incomprehensible.
-ACTION_POLITIQUE = "publish"
-ACTION = "publish_video"
-CIBLE = "TikTok"
+# Le connecteur et la capacite vises. L'agent ne connait plus ni le service ni
+# l'action de la politique : c'est le connecteur qui les declare.
+CONNECTEUR = "tiktok"
+CAPACITE = "publish_video"
 
 GABARIT_BROUILLON = (
     "Redige un titre accrocheur, une courte description et 5 hashtags pour "
@@ -56,7 +46,7 @@ class PublisherAgent(BaseAgent):
         provider: ModelProvider,
         memory: Optional[MemoryManager] = None,
         journal: Optional[JournalDesActions] = None,
-        acces: Optional[ControleAcces] = None,
+        registre: Optional[RegistreConnecteurs] = None,
     ):
         super().__init__(
             name="PublisherAgent",
@@ -64,14 +54,9 @@ class PublisherAgent(BaseAgent):
             provider=provider,
             memory=memory
         )
-        self.acces = acces or ControleAcces()
-        # Conserve pour les appelants qui interrogeaient directement les neuf
-        # booleens : c'est le meme objet, pas une copie.
-        self.permissions = self.acces.permissions
-        self.tiktok = TikTokConnector()
-        # Injecte plutot que fabrique ici : un test doit pouvoir observer ce qui
-        # est journalise, et un agent qui se cree son propre journal ne le permet
-        # pas. `runtime.py` fournit celui de la plateforme.
+        # Injectes plutot que fabriques : un test doit pouvoir observer ce qui
+        # est journalise et fournir son propre connecteur.
+        self.registre = registre or RegistreConnecteurs()
         self.journal = journal
 
     async def _brouillon(self, sujet: str) -> str:
@@ -83,22 +68,8 @@ class PublisherAgent(BaseAgent):
             logger.warning("Brouillon impossible : %s", erreur)
             return "(brouillon indisponible : le modele n'a pas repondu)"
 
-    def _journaliser(self, resultat: ResultatAction, video_path: Optional[str]) -> None:
-        """Ecrit l'action au journal. Un journal absent ou en panne n'arrete rien."""
-        if self.journal is None:
-            return
-        self.journal.enregistrer(ActionEnregistree.depuis_resultat(
-            resultat,
-            outil="tiktok",
-            parametres={"fichier": str(video_path or "")},
-            niveau_permission="PUBLISH",
-        ))
-
-    def _sortie(
-        self, resultat: ResultatAction, brouillon: str = "", video_path: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """Met le resultat a la forme attendue par l'aiguilleur, et le journalise."""
-        self._journaliser(resultat, video_path)
+    def _sortie(self, resultat: ResultatAction, brouillon: str = "") -> Dict[str, Any]:
+        """Met le resultat a la forme attendue par l'aiguilleur, brouillon compris."""
         corps = resultat.to_dict()
         corps["agent"] = self.name
         if brouillon:
@@ -111,43 +82,26 @@ class PublisherAgent(BaseAgent):
         compte = context.get("compte") if context else None
 
         # Sans fichier, rien a preparer : on s'arrete avant d'appeler le modele.
+        # Ce chemin n'atteint pas le connecteur, donc c'est ici qu'il se journalise.
         if not video_path or not Path(video_path).exists():
-            return self._sortie(echec(
-                action=ACTION,
-                cible=CIBLE,
+            manquant = echec(
+                action=CAPACITE, cible=CONNECTEUR,
                 message="Aucune video trouvee pour la publication.",
                 fichier=str(video_path or ""),
-            ), video_path=video_path)
+            )
+            if self.journal is not None:
+                self.journal.enregistrer(ActionEnregistree.depuis_resultat(
+                    manquant, outil=CONNECTEUR,
+                    parametres={"fichier": str(video_path or "")},
+                ))
+            return self._sortie(manquant)
 
         brouillon = await self._brouillon(user_input)
 
-        autorisation = self.acces.verifier(SERVICE, ACTION_POLITIQUE, compte=compte)
-
-        if autorisation.refuse:
-            logger.warning("Publication refusee (%s).", autorisation.origine)
-            return self._sortie(
-                refuse(action=ACTION, cible=CIBLE, permission=autorisation.origine),
-                brouillon,
-                video_path=video_path,
-            )
-
-        if autorisation.demande_confirmation:
-            # Tout est pret ; il manque le « oui ». Le mecanisme de confirmation
-            # lui-meme est le chapitre 5 : d'ici la, l'agent dit ou il en est au
-            # lieu de publier sans accord ou de faire comme s'il avait refuse.
-            return self._sortie(
-                a_confirmer(
-                    action=ACTION, cible=CIBLE,
-                    message=f"Pret a publier sur {CIBLE}. Risque {autorisation.risque.value}. "
-                            f"Rien n'est parti : dis-moi si je publie.",
-                    risque=autorisation.risque.value,
-                ),
-                brouillon,
-                video_path=video_path,
-            )
-
-        # Autorise sans rien demander : c'est le connecteur qui decide, et
-        # aujourd'hui il n'est pas branche. Il le declare lui-meme.
-        return self._sortie(
-            self.tiktok.publish_video(video_path, "", brouillon, []), brouillon, video_path
+        # Le connecteur verifie la permission, mesure sa sante, applique son
+        # quota et journalise. L'agent ne refait aucun de ces gestes.
+        resultat = self.registre.executer(
+            CONNECTEUR, CAPACITE, compte=compte,
+            fichier=str(video_path), legende=brouillon,
         )
+        return self._sortie(resultat, brouillon)
