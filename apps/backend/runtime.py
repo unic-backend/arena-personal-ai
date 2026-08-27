@@ -22,6 +22,7 @@ from agents.swe_agent.swe_agent import SWEAgent
 from agents.trend_analyzer.trend_analyzer_agent import TrendAnalyzerAgent
 from agents.video_analyzer.video_analyzer_agent import VideoAnalyzerAgent
 from apps.backend.config import DB_PATH, MODELE_PROFOND, MODELE_RAPIDE, OLLAMA_URL
+from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
 from core.connectors.registre import RegistreConnecteurs
@@ -63,6 +64,9 @@ journal = JournalDesActions(db_path=str(DB_PATH))
 # Memoire personnelle (souvenirs, entites, relations). Construite en phase 6.1
 # et jusqu'ici lue par personne : c'est le defaut d'`agent_logs` qui recommencait.
 memoire_personnelle = MemoirePersonnelle(db_path=str(DB_PATH))
+# Pieces jointes : le fichier est lu puis efface, seul son texte reste en
+# memoire le temps d'une conversation.
+pieces_jointes = DepotPiecesJointes()
 lightrag_tool = LightRAGTool()
 graphrag_tool = GraphRAGTool()
 
