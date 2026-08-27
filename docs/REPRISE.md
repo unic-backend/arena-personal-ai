@@ -71,7 +71,7 @@ préparée, jamais autorisée. **Cela gate le chapitre 8.**
 
 ---
 
-## VOLET ARENA OS — 12 phases, 5 chapitres sur 12
+## VOLET ARENA OS — 13 phases, 6 chapitres sur 12
 
 | Phase | Ce qui existe | Commit |
 |---|---|---|
@@ -87,10 +87,11 @@ préparée, jamais autorisée. **Cela gate le chapitre 8.**
 | 6.1 | `core/memory/personnelle.py` — 4 mémoires, 4 natures | `91bf014` |
 | 6.2 | `core/memory/recuperation.py` — 1000 souvenirs → 12,2 ms | `1a1f8e9` |
 | 6.3 | `core/memory/semantique.py` - 5e signal, embeddings locaux `bge-m3`, seuil mesure 0,45 | 2026-08-27 |
+| 6.4 | `core/memory/consolidation.py` - regroupement sans suppression, resume par nature | 2026-08-27 |
 
-**Phase suivante autorisée : 6.4** - consolidation et résumés ; FACT,
-PREFERENCE, INFERENCE et TEMPORARY restent distincts. Une inférence ne devient
-jamais un fait.
+**Phase suivante autorisée : 7.1** - formaliser les quatre voies existantes
+(instantanée, légère, profonde, recherche) et leurs budgets. Une question
+simple ne doit jamais atteindre le raisonnement profond.
 
 **Prérequis mesuré le 2026-08-27** : la récupération sémantique exige
 ollama pull bge-m3. Sans lui, elle rapporte LEXICAL - SERVEUR_ABSENT et ne
@@ -131,4 +132,4 @@ Plan complet : `docs/PLAN_ARENA_OS.md`. Audit d'origine : `docs/AUDIT_ARENA_OS.m
    collée dans le message qui la rapporte.
 4. Un commit par correctif. C'est **lui** qui commit et qui pousse.
 
-**État vérifié sur sa machine le 2026-08-27 : 1245 passed, 0 failed.**
+**État vérifié sur sa machine le 2026-08-27 : 1256 passed, 0 failed.**
