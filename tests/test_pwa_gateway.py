@@ -240,11 +240,11 @@ def test_les_champs_non_appliques_sont_journalises(client, entetes, fournisseur,
     fournisseur()
 
     with caplog.at_level("INFO", logger="usman.backend.pwa"):
-        demander(client, entetes, memories=["m1"], connectors=["gmail"])
+        demander(client, entetes, connectors=["gmail"], attachments=["a1"])
 
     assert any("non appliques" in ligne.message for ligne in caplog.records)
     journal = " ".join(ligne.message for ligne in caplog.records)
-    assert "memories" in journal and "connectors" in journal
+    assert "connectors" in journal and "attachments" in journal
 
 
 def test_le_persona_ne_figure_plus_parmi_les_champs_ignores():
@@ -360,3 +360,149 @@ def test_les_anciens_champs_de_health_sont_intacts(client):
 
     for champ in ("status", "ollama_available", "models", "agents_active", "interface"):
         assert champ in corps
+
+
+# --- La memoire est appliquee, et les deux origines ne se confondent pas ------
+
+@pytest.fixture
+def memoire_arena(tmp_path, monkeypatch):
+    """Une memoire ARENA isolee : la base du depot ne doit pas influencer le test."""
+    from core.memory.personnelle import MemoirePersonnelle
+
+    memoire = MemoirePersonnelle(db_path=str(tmp_path / "memoire.db"))
+    monkeypatch.setattr(pwa_gateway, "memoire_personnelle", memoire)
+    return memoire
+
+
+def _notes(*contenus):
+    return [{"id": str(i), "category": "entreprise", "content": c}
+            for i, c in enumerate(contenus)]
+
+
+def test_les_notes_de_l_interface_atteignent_le_prompt(client, entetes, fournisseur,
+                                                       chat_direct, memoire_arena):
+    faux = fournisseur()
+
+    demander(client, entetes, memories=_notes("UniC Plaquiste, NINEA 013141677"))
+
+    assert "013141677" in faux.systemes[0]
+
+
+def test_les_souvenirs_d_arena_atteignent_le_prompt(client, entetes, fournisseur,
+                                                    chat_direct, memoire_arena):
+    from core.memory.personnelle import Nature, TypeSouvenir
+
+    memoire_arena.retenir("Le tarif de pose est 5000 FCFA le m2 developpe.",
+                          TypeSouvenir.SEMANTIQUE, Nature.FAIT,
+                          source="devis UC-2026-0804-FG2")
+    faux = fournisseur()
+
+    demander(client, entetes, text="quel est le tarif de pose ?")
+
+    assert "5000 FCFA" in faux.systemes[0]
+
+
+def test_un_souvenir_d_arena_arrive_avec_sa_source(client, entetes, fournisseur,
+                                                   chat_direct, memoire_arena):
+    from core.memory.personnelle import Nature, TypeSouvenir
+
+    memoire_arena.retenir("Le tarif de pose est 5000 FCFA le m2 developpe.",
+                          TypeSouvenir.SEMANTIQUE, Nature.FAIT,
+                          source="devis UC-2026-0804-FG2")
+    faux = fournisseur()
+
+    demander(client, entetes, text="quel est le tarif de pose ?")
+
+    assert "UC-2026-0804-FG2" in faux.systemes[0]
+
+
+def test_une_supposition_reste_marquee_jusque_dans_le_prompt(client, entetes, fournisseur,
+                                                             chat_direct, memoire_arena):
+    """Le modele ne doit pas lire une deduction d'ARENA comme un fait."""
+    from core.memory.personnelle import Nature, TypeSouvenir
+    from core.memory.recuperation import MARQUE_SUPPOSITION
+
+    memoire_arena.retenir("Il prefere les montants de 70 mm.",
+                          TypeSouvenir.SEMANTIQUE, Nature.INFERENCE, source="deduit")
+    faux = fournisseur()
+
+    demander(client, entetes, text="quels montants prefere-t-il ?")
+
+    assert MARQUE_SUPPOSITION in faux.systemes[0]
+
+
+def test_les_deux_memoires_ne_se_confondent_pas(client, entetes, fournisseur,
+                                                chat_direct, memoire_arena):
+    """Melanger les deux ferait passer une note tapee vite pour un fait sourcé."""
+    from core.memory.personnelle import Nature, TypeSouvenir
+
+    memoire_arena.retenir("Le tarif de pose est 5000 FCFA le m2 developpe.",
+                          TypeSouvenir.SEMANTIQUE, Nature.FAIT, source="devis FG2")
+    faux = fournisseur()
+
+    demander(client, entetes, text="tarif de pose",
+             memories=_notes("Toujours signer les devis."))
+
+    systeme = faux.systemes[0]
+
+    # Deux titres distincts, et deux sections distinctes. Une version qui se
+    # contentait de « les deux titres sont presents » passait encore quand les
+    # deux constantes valaient la meme chaine — mesure le 2026-08-27 en les
+    # fusionnant sans qu'aucun test n'echoue.
+    assert pwa_gateway.TITRE_MEMOIRE_ARENA != pwa_gateway.TITRE_NOTES_INTERFACE
+    assert systeme.count(pwa_gateway.TITRE_MEMOIRE_ARENA) == 1
+    assert systeme.count(pwa_gateway.TITRE_NOTES_INTERFACE) == 1
+    assert "devis FG2" in systeme          # le fait sourcé d'ARENA
+    assert "Toujours signer" in systeme    # la note tapee par le proprietaire
+
+
+def test_sans_souvenir_pertinent_rien_n_est_ajoute(client, entetes, fournisseur,
+                                                   chat_direct, memoire_arena):
+    from core.memory.personnelle import Nature, TypeSouvenir
+
+    memoire_arena.retenir("18 parois pour Fast Group.", TypeSouvenir.EPISODIQUE,
+                          Nature.FAIT, source="devis FG2")
+    faux = fournisseur()
+
+    demander(client, entetes, text="comment va la meteo a Dakar ?")
+
+    assert pwa_gateway.TITRE_MEMOIRE_ARENA not in faux.systemes[0]
+
+
+def test_une_memoire_illisible_ne_bloque_pas_la_reponse(client, entetes, fournisseur,
+                                                        chat_direct, monkeypatch):
+    """Repondre sans souvenir vaut mieux que ne pas repondre."""
+    def _casse(*args, **kwargs):
+        raise RuntimeError("base verrouillee")
+    monkeypatch.setattr(pwa_gateway, "recuperer", _casse)
+    fournisseur()
+
+    charges = trames(demander(client, entetes, text="tarif").text)
+
+    assert charges[-1]["type"] == "done"
+
+
+@pytest.mark.parametrize("memoires", [None, [], "pas une liste", [{}], [{"content": "  "}]])
+def test_des_notes_vides_ou_mal_formees_n_encombrent_pas(memoires):
+    assert pwa_gateway.notes_interface(memoires) == ""
+
+
+def test_le_nombre_de_notes_reprises_est_plafonne():
+    """Elles viennent du navigateur : sans plafond, le prompt suit."""
+    beaucoup = _notes(*[f"note {i}" for i in range(100)])
+
+    lignes = [ligne for ligne in pwa_gateway.notes_interface(beaucoup).splitlines()
+              if ligne.startswith("- ")]
+
+    assert len(lignes) == pwa_gateway.NOTES_INTERFACE_MAX
+
+
+def test_la_memoire_ne_figure_plus_parmi_les_champs_ignores():
+    assert "memories" not in pwa_gateway.CHAMPS_NON_APPLIQUES
+
+
+def test_la_plateforme_a_bien_une_memoire_personnelle_branchee():
+    """Elle etait construite en phase 6.1 et lue par personne."""
+    from apps.backend import runtime
+
+    assert runtime.memoire_personnelle is not None

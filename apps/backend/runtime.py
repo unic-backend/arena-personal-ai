@@ -26,6 +26,7 @@ from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
 from core.connectors.registre import RegistreConnecteurs
 from core.memory.memory_manager import MemoryManager
+from core.memory.personnelle import MemoirePersonnelle
 from core.models.ollama_provider import OllamaProvider
 from core.permissions.controle import ControleAcces
 from core.permissions.permission_manager import PermissionManager
@@ -59,6 +60,9 @@ registre.declarer(
 )
 # Journal des actions a effet externe. Meme fichier que la memoire, table a part.
 journal = JournalDesActions(db_path=str(DB_PATH))
+# Memoire personnelle (souvenirs, entites, relations). Construite en phase 6.1
+# et jusqu'ici lue par personne : c'est le defaut d'`agent_logs` qui recommencait.
+memoire_personnelle = MemoirePersonnelle(db_path=str(DB_PATH))
 lightrag_tool = LightRAGTool()
 graphrag_tool = GraphRAGTool()
 
