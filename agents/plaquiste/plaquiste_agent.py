@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from agents.plaquiste.archives import extraits_pour, formater
 from core.agent.base_agent import BaseAgent
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
@@ -150,12 +151,22 @@ class PlaquisteAgent(BaseAgent):
                 ),
             }
 
-        reponse = await self.provider.generate(
-            prompt=user_input, system_prompt=composer_instruction(self.metier)
-        )
+        instruction = composer_instruction(self.metier)
+
+        # Les archives donnent les formulations que la grille de prix n a pas :
+        # la facon dont le proprietaire annonce un geste commercial, explique la
+        # surface developpee, liste ce qui n est pas inclus. Absentes, on
+        # continue avec la grille seule — ce n est pas une erreur.
+        extraits = extraits_pour(user_input)
+        archives = formater(extraits)
+        if archives:
+            instruction = f"{instruction}\n\n{archives}"
+
+        reponse = await self.provider.generate(prompt=user_input, system_prompt=instruction)
         return {
             "status": "success",
             "agent": self.name,
             "articles_connus": len(_grille(self.metier)),
+            "extraits_archives": [e.source for e in extraits],
             "response": (reponse or "").strip(),
         }

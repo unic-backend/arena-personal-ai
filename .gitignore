@@ -10,7 +10,7 @@ __pycache__/
 *.env
 !.env.example
 
-# Médias lourds et temporaires
+# MÃ©dias lourds et temporaires
 media/incoming/*
 media/downloads/*
 media/source/*
@@ -24,7 +24,7 @@ media/rejected/*
 media/archive/*
 !media/**/.gitkeep
 
-# Base de données & Cache
+# Base de donnÃ©es & Cache
 data/database/*.db
 data/cache/*
 data/embeddings/*
@@ -42,3 +42,8 @@ build/
 
 data/database/mongo/*
 data/database/open-webui/*
+
+# Documents clients d UniC Plaquiste : noms, montants, chantiers.
+# Ils restent sur la machine du proprietaire.
+documents/unic_plaquiste/*
+!documents/unic_plaquiste/LISEZ_MOI.md
