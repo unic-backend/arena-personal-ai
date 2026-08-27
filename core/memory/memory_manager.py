@@ -45,18 +45,13 @@ class MemoryManager:
                 )
             """)
 
-            # Agent Logs
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS agent_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    task_id TEXT NOT NULL,
-                    agent_name TEXT NOT NULL,
-                    action TEXT NOT NULL,
-                    result TEXT,
-                    status TEXT NOT NULL,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
+            # La table `agent_logs` etait creee ici depuis le premier jour et n'a
+            # jamais recu une ligne : rien dans le code ne l'ecrivait. Ses cinq
+            # colonnes ne pouvaient de toute facon porter ni les parametres, ni
+            # le niveau de permission, ni les erreurs, ni l'etat de verification
+            # que la specification demande. Le journal des actions vit desormais
+            # dans `core/actions/journal.py`, table `journal_actions`.
+            # Sur une base existante, l'ancienne table subsiste, vide.
             conn.commit()
 
     def add_chat_message(self, session_id: str, role: str, content: str):
