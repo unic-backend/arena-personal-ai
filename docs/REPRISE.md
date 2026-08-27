@@ -11,6 +11,30 @@ l'audit qui l'a produit dans `docs/AUDIT_ARENA_OS.md`.
 
 **Rien.** Le VOLET ARENA OS est en pause après la phase 6.2.
 
+### L'interface PWA est branchée et elle répond — mesuré le 2026-08-27
+
+Son application React est l'interface d'ARENA. Mesuré chez lui, bout en bout :
+panneau Backend `ARENA · 317 ms`, `ollama · qwen2.5-coder:14b`, et une vraie
+réponse du modèle local dans le chat. **LibreChat et Open WebUI ne servent
+plus.**
+
+Comment c'est branché : ARENA parle le protocole de son app
+(`apps/backend/routers/pwa_gateway.py`), plutôt que l'inverse. Son
+`remoteTransport.ts` n'a pas été touché. Même motif que `openai_gateway.py`
+pour LibreChat.
+
+**Ce qui n'est PAS encore fait, et ne doit pas être oublié :**
+
+- `persona`, `memories`, `connectors` et `attachments` arrivent dans chaque
+  requête et **ne sont pas appliqués**. Ils sont journalisés nommément. Les
+  réglages correspondants de son interface n'ont donc aucun effet — à traiter,
+  ou à masquer dans l'interface.
+- `POST /files` répond `501` : aucune chaîne ne lit les pièces jointes.
+- `apps/pwa/server/` est dans le dépôt, **non démarré, et il ne doit pas
+  l'être** (voir `docs/DECISIONS.md`). Son `oauth.py` sera absorbé au chapitre 8.
+- La PWA installable (manifeste, service worker, icônes) est servie mais
+  **l'installation n'a pas été essayée**.
+
 **Phase suivante autorisée : 6.3** — récupération sémantique, embeddings locaux.
 Elle dépend d'`ollama serve`. Si la mesure est impossible, elle doit être
 rapportée `BLOCKED`, pas contournée.
