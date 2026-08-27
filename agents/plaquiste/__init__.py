@@ -1,0 +1,1 @@
+"""Agent metier UniC Plaquiste."""

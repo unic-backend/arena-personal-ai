@@ -27,6 +27,7 @@ endpoints:
           - "usman-chat"
           - "usman-coder"
           - "usman-video"
+          - "usman-plaquiste"
         fetch: false
       titleConvo: true
       modelDisplayLabel: "Usman"

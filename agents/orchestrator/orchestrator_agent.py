@@ -15,6 +15,7 @@ INTENTIONS = {
     "CODE_EXECUTION",
     "FRESH_INFO",
     "STUDIO",
+    "PLAQUISTE",
     "BROWSER",
     "SWE_FIX",
     "REPO_ENGINEERING",
@@ -89,6 +90,8 @@ DEEP_REASONING  : résoudre un problème mathématique ou une démonstration.
 DEEP_RESEARCH   : produire une étude, un rapport documenté, une recherche approfondie.
 TREND_SEARCH    : chercher des tendances ou des idées de contenu vidéo.
 VIDEO_ANALYSIS  : analyser, découper ou reformater un fichier vidéo.
+PLAQUISTE       : metier du proprietaire — devis, facture, mail client,
+                  argumentaire, planning de chantier, BA13, cloison, plafond.
 STUDIO          : traiter une vidéo de bout en bout — vertical 9:16 et
                   sous-titres incrustés, en une seule demande.
 BROWSER         : ouvrir un site, naviguer, remplir un formulaire.
@@ -231,6 +234,15 @@ class OrchestratorAgent(BaseAgent):
         research_keywords = ["étude complète", "rapport détaillé", "recherche approfondie", "étude de marché", "dossier complet"]
         if any(k in text for k in research_keywords):
             return "DEEP_RESEARCH"
+
+        # Metier du proprietaire. Teste tot : « devis » et « chantier » sont
+        # sans ambiguite chez lui, et ces demandes ne doivent jamais partir sur
+        # le web ni chez un agent generaliste.
+        if any(k in text for k in [
+            "devis", "facture", "chantier", "ba13", "ba 13", "placo",
+            "cloison", "faux plafond", "plaquiste", "client", "metre carre", "m2",
+        ]):
+            return "PLAQUISTE"
 
         # Capacites autrefois joignables uniquement en choisissant leur nom
         # dans le menu. Le menu n en propose plus que deux : elles doivent donc

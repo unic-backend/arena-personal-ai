@@ -13,6 +13,7 @@ from agents.coder.coder_agent import CoderAgent
 from agents.editor.editor_agent import EditorAgent
 from agents.fresh_info.fresh_info_agent import FreshInfoAgent
 from agents.orchestrator.orchestrator_agent import OrchestratorAgent
+from agents.plaquiste.plaquiste_agent import PlaquisteAgent
 from agents.publisher.publisher_agent import PublisherAgent
 from agents.repo_engineer.repo_engineer_agent import RepoEngineerAgent
 from agents.researcher.researcher_agent import DeepResearcherAgent
@@ -54,5 +55,7 @@ browser_agent = BrowserAgent(provider=fast_provider, memory=memory)
 fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)
 repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory)
 swe_agent = SWEAgent(provider=fast_provider, memory=memory)
+# Metier UniC Plaquiste : redaction soignee, donc le modele profond.
+plaquiste_agent = PlaquisteAgent(provider=deep_provider, memory=memory)
 
 memory.set_fact("user_profile", "owner", "Ousmane", {"role": "Propriétaire et créateur d'Usman"})

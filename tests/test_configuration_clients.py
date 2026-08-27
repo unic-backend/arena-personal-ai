@@ -1,7 +1,8 @@
 """Le menu est court ; les capacités, elles, restent toutes joignables.
 
-Décision du propriétaire, 2026-08-26 : LibreChat propose trois entrées —
-`usman-chat`, `usman-coder` et `usman-video`. Sa raison — *« les utilisateurs ne connaissent
+Décision du propriétaire, 2026-08-26 puis 2026-08-27 : LibreChat propose
+quatre entrées — `usman-chat`, `usman-coder`, `usman-video` et
+`usman-plaquiste`. Sa raison — *« les utilisateurs ne connaissent
 pas des modèles, ils ouvrent le premier qui apparaît et pensent que c'est celui
 qui fait tout »*.
 
@@ -27,7 +28,9 @@ RACINE = Path(__file__).resolve().parent.parent
 LIBRECHAT = RACINE / "librechat.yaml"
 COMPOSE = RACINE / "docker-compose.yml"
 
-MENU_ATTENDU = {"usman-chat", "usman-coder", "usman-video"}
+# Quatrieme entree ajoutee le 2026-08-27 a la demande du proprietaire :
+# son metier. Le menu reste court par decision, pas par oubli.
+MENU_ATTENDU = {"usman-chat", "usman-coder", "usman-video", "usman-plaquiste"}
 
 VARIABLES_SECRETES = (
     "USMAN_API_KEY", "CREDS_KEY", "JWT_SECRET", "JWT_REFRESH_SECRET", "WEBUI_SECRET_KEY",

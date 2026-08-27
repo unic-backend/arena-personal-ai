@@ -103,7 +103,7 @@ class TestIdentifiantsDeModeles:
         import yaml
         config = yaml.safe_load((RACINE / "librechat.yaml").read_text(encoding="utf-8"))
         assert set(config["endpoints"]["custom"][0]["models"]["default"]) == {
-            "usman-chat", "usman-coder", "usman-video",
+            "usman-chat", "usman-coder", "usman-video", "usman-plaquiste",
         }
 
     def test_l_api_ne_sert_plus_aucun_nom_arena(self):

@@ -24,6 +24,7 @@ from apps.backend.runtime import (
     graphrag_tool,
     lightrag_tool,
     orchestrator,
+    plaquiste_agent,
     repo_engineer,
     researcher_agent,
     subtitle_agent,
@@ -75,6 +76,7 @@ async def list_openai_models():
             {"id": "usman-graph", "object": "model", "owned_by": "arena"},
             {"id": "usman-browser", "object": "model", "owned_by": "arena"},
             {"id": "usman-video", "object": "model", "owned_by": "arena"},
+            {"id": "usman-plaquiste", "object": "model", "owned_by": "arena"},
             {"id": "usman-studio", "object": "model", "owned_by": "arena"}
         ]
     }
@@ -167,6 +169,9 @@ async def openai_chat_completions(request: Request):
     elif model_requested == "usman-fresh":
         res = await fresh_agent.run(last_user_msg)
         contenu = res.get("response", "") + formater_sources(res.get("sources", []), last_user_msg)
+
+    elif model_requested == "usman-plaquiste":
+        contenu = (await plaquiste_agent.run(last_user_msg)).get("response", "")
 
     elif model_requested == "usman-browser":
         contenu = (await browser_agent.run(last_user_msg)).get("response", "")

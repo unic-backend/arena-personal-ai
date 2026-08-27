@@ -25,6 +25,7 @@ from apps.backend.runtime import (
     lightrag_tool,
     memory,
     orchestrator,
+    plaquiste_agent,
     publisher_agent,
     repo_engineer,
     researcher_agent,
@@ -98,6 +99,8 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         result = await fresh_agent.run(request.prompt)
     elif intent == "STUDIO":
         result = await lancer_studio(video_agent, editor_agent, subtitle_agent)
+    elif intent == "PLAQUISTE":
+        result = await plaquiste_agent.run(request.prompt)
     elif intent == "BROWSER":
         result = await browser_agent.run(request.prompt)
     elif intent == "SWE_FIX":
