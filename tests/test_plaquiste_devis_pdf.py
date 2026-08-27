@@ -148,3 +148,35 @@ class TestCharte:
         from agents.plaquiste.devis_pdf import _couleurs
 
         assert _couleurs({})[cle] == _couleurs(METIER)[cle]
+
+
+class TestSignature:
+    """Sa signature, extraite de son bon de commande signé du 24/08/2026."""
+
+    def test_par_defaut_le_devis_n_est_pas_signe(self, tmp_path):
+        """Signer un document qu'on n'a pas relu est une mauvaise habitude."""
+        sortie = tmp_path / "devis.pdf"
+        construire(_devis(), METIER, sortie)
+        texte = PdfReader(str(sortie)).pages[0].extract_text()
+
+        assert "Signature : ___" in texte
+
+    def test_un_devis_signe_porte_l_image_et_le_nom_du_gerant(self, tmp_path):
+        from PIL import Image
+
+        signature = tmp_path / "signature.png"
+        Image.new("RGB", (300, 120), "white").save(signature)
+
+        sortie = tmp_path / "devis_signe.pdf"
+        construire(_devis(signe=True), METIER, sortie, signature=signature)
+        texte = PdfReader(str(sortie)).pages[0].extract_text()
+
+        assert "Uthman" in texte, "le nom du gerant n'accompagne pas la signature"
+        assert len(PdfReader(str(sortie)).pages[0].images) >= 1
+
+    def test_signe_sans_fichier_de_signature_ne_casse_pas_le_devis(self, tmp_path):
+        """Sur une autre machine, le fichier peut manquer."""
+        sortie = tmp_path / "devis.pdf"
+        construire(_devis(signe=True), METIER, sortie, signature=tmp_path / "absent.png")
+
+        assert sortie.exists()

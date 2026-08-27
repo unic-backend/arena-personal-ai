@@ -21,6 +21,7 @@ entreprise:
   telephone: "+221 77 708 50 92"
   adresse: "Dakar, Senegal — Disponible aussi a l'international"
   site: "www.unicplaquiste.com"
+  email: "unicplaquiste@gmail.com"
   ninea: "013141677"
   rccm: "SN.DKR.2026.A.22010"
   devise: "FCFA"
@@ -73,6 +74,12 @@ prix_materiaux:
   "Peinture en eau Gylatex (coloris)": 11500
   "Enduit coloris": 10000
   "Laine de verre (paquet)": 30000
+  # Ajoutes le 2026-08-27 depuis le devis 18 parois UC-2026-0804-FG2.
+  "Seau enduit": 11000
+  "Seau Katex": 25000
+  "Paquet papier enduit": 10000
+  "Ciment platre (5 kg)": 250
+  "Bache / Basse (5 m)": 1500
 
 # Portes fabriquees sur mesure. Source : devis UC-2026-0714-FGP.
 prix_portes:
@@ -87,8 +94,23 @@ main_oeuvre:
     poncage et peinture.
 
 # Ce qui n'est jamais compris, sauf mention contraire explicite du proprietaire.
+# Metiers qui ne sont pas les siens. Ils ne sont jamais chiffres : l assistant
+# le dit et renvoie vers un corps de metier. Source : bon de commande
+# UC-2026-0820-FG, « Exclusions : travaux d electricite, de plomberie et de
+# climatisation ».
+metiers_hors_perimetre:
+  - "electricite"
+  - "electrique"
+  - "luminaire"
+  - "bandeau led"
+  - "plomberie"
+  - "plombier"
+  - "climatisation"
+  - "climatiseur"
+
 exclusions_habituelles:
-  - "Travaux d'electricite, luminaires et bandeaux LED."
+  - "Travaux d'electricite, de plomberie et de climatisation."
+  - "Luminaires et bandeaux LED."
   - "Tout accessoire ou finition non liste dans les tableaux."
 
 # Formulations qui reviennent dans ses documents. Ton de la maison.

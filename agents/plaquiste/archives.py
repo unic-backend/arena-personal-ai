@@ -9,6 +9,13 @@ Ce module lit ses documents et rend les passages qui parlent de la demande. Il
 ne resume pas, ne reformule pas, n'invente pas : il **cite**, avec le nom du
 fichier et le numero de page.
 
+**Ils ne sont consultes que si on les demande.** Premiere version : ils etaient
+injectes a chaque reponse. Resultat rapporte par le proprietaire le 2026-08-27 —
+« je ne peux pas a chaque fois que je parle avec l'IA qu'il me dise des parois
+ou Fast Group ». Une archive est une reference de style, pas le contexte du
+chantier en cours. Un nouveau client n'a rien a voir avec l'ancien, et lui
+rappeler l'ancien est au mieux inutile, au pire une fuite.
+
 Aucune dependance nouvelle, aucun modele : `tools/documents/reader.py` sait
 deja lire un PDF page par page, et la selection se fait sur les mots. Le jour
 ou une recherche semantique existera, elle remplacera `_pertinence` sans
@@ -43,6 +50,27 @@ MOTS_VIDES = {
 }
 
 ACCENTS = str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc")
+
+# Formulations par lesquelles le proprietaire reclame une reference a ses
+# documents passes. Hors de celles-ci, les archives restent fermees.
+DEMANDES_D_EXEMPLE = (
+    "comme le devis", "comme la facture", "comme la lettre", "comme pour",
+    "meme style", "meme format", "meme modele", "reprends le style",
+    "reprends la formulation", "exemple", "modele", "template", "precedent",
+    "precedente", "habituel", "habituelle", "comme d'habitude", "archives",
+    "ancien devis", "mes devis", "mes factures",
+)
+
+
+def exemple_demande(demande: str) -> bool:
+    """Dit si l'utilisateur reclame une reference a ses documents passes.
+
+    Le defaut est **non**. Les archives portent le nom d'un client et les
+    details d'un chantier : les ressortir sans qu'on les demande melange deux
+    affaires qui n'ont rien a voir.
+    """
+    texte = (demande or "").lower().translate(ACCENTS)
+    return any(motif.translate(ACCENTS) in texte for motif in DEMANDES_D_EXEMPLE)
 
 
 def _mots(texte: str) -> set:

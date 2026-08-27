@@ -15,6 +15,7 @@ un chiffre invente.
 """
 import logging
 from dataclasses import dataclass, field
+from datetime import date as _date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -73,18 +74,43 @@ class Ligne:
 
 @dataclass
 class Devis:
-    """Tout ce qu'il faut pour rendre un document. Rien de calcule ici."""
+    """Tout ce qu'il faut pour rendre un document. Rien de calcule ici.
+
+    `date` et `numero` valent le jour reel s'ils ne sont pas donnes. C'est la
+    correction du 2026-08-27 : ces deux champs etaient des chaines libres, donc
+    un modele pouvait y ecrire n'importe quelle date. Un devis mal date est un
+    devis juridiquement fragile.
+    """
 
     client: str
     lieu: str
-    numero: str
-    date: str
     objet: str
+    numero: str = ""
+    date: str = ""
     lignes: List[Ligne] = field(default_factory=list)
     type_document: str = "DEVIS"
     validite_jours: int = 15
     main_oeuvre_m2: Optional[float] = None
     exclusions: List[str] = field(default_factory=list)
+    suffixe_client: str = "XXX"
+    # Un devis signe d'avance est un devis qu'on peut envoyer tel quel. Il
+    # reste faux par defaut : signer automatiquement un document qu'on n'a
+    # pas relu est une mauvaise habitude a prendre.
+    signe: bool = False
+
+    def __post_init__(self) -> None:
+        """Comble la date et le numero avec le jour reel, jamais avec autre chose."""
+        from agents.plaquiste.plaquiste_agent import (
+            date_du_jour,
+            date_en_toutes_lettres,
+            numero_du_jour,
+        )
+
+        jour: _date = date_du_jour()
+        if not self.date:
+            self.date = date_en_toutes_lettres(jour)
+        if not self.numero:
+            self.numero = numero_du_jour(jour, self.suffixe_client)
 
 
 def _format_montant(valeur: Optional[int]) -> str:
@@ -137,7 +163,8 @@ def chiffrer(devis: Devis, metier: Dict[str, Any]) -> Dict[str, Any]:
 # --- Rendu --------------------------------------------------------------------
 
 def construire(devis: Devis, metier: Dict[str, Any], sortie: Path,
-               logo: Optional[Path] = None) -> Dict[str, Any]:
+               logo: Optional[Path] = None,
+               signature: Optional[Path] = None) -> Dict[str, Any]:
     """Ecrit le PDF et rend le chiffrage. Le fichier existe, ou la fonction leve."""
     c = _couleurs(metier)
     e = metier.get("entreprise", {})
@@ -293,12 +320,20 @@ def construire(devis: Devis, metier: Dict[str, Any], sortie: Path,
             Spacer(1, 10),
         ]
 
+    # La signature du gerant, si elle existe et si le document est signe.
+    signature_gerant: Any = Paragraph("Signature : ______________________", st["txt"])
+    if devis.signe and signature and Path(signature).exists():
+        signature_gerant = RLImage(str(signature), width=42 * mm, height=17 * mm)
+    elif devis.signe:
+        logger.warning("Document marque signe mais aucune signature trouvee : ligne vide.")
+
     signatures = Table([
         [Paragraph(e.get("nom", "UniC Plaquiste"), st["txt"]),
          Paragraph(f"Client ({devis.client})", st["txt"])],
-        [Paragraph("Signature : ______________________", st["txt"]),
+        [signature_gerant,
          Paragraph("Signature : ______________________", st["txt"])],
-        [Paragraph("Date : ____________", st["txt"]),
+        [Paragraph(f"{e.get('gerant', '')} — Gerant" if devis.signe else "Date : ____________",
+                   st["txt"]),
          Paragraph("Date : ____________", st["txt"])],
     ], colWidths=[90 * mm, 90 * mm])
     signatures.setStyle(TableStyle([("TOPPADDING", (0, 0), (-1, -1), 6),

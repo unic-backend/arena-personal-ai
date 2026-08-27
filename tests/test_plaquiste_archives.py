@@ -144,7 +144,10 @@ class TestLAgentUtiliseVraimentLesArchives:
                 return "ok"
 
         agent = PlaquisteAgent(provider=Double(), metier=charger_metier())
-        res = await agent.run("parle du geste commercial")
+        # Depuis le 2026-08-27 les archives ne s'ouvrent que si on les reclame :
+        # la demande doit donc en etre une. La garantie testee est inchangee —
+        # quand elles s'ouvrent, elles atteignent bien le modele.
+        res = await agent.run("reprends le style de mes devis pour le geste commercial")
 
         assert "geste commercial" in Double.systeme, "les archives n'atteignent pas le modele"
         assert res["extraits_archives"], "aucune provenance rapportee"
@@ -161,7 +164,7 @@ class TestLAgentUtiliseVraimentLesArchives:
                 return "ok"
 
         agent = PlaquisteAgent(provider=Double(), metier=charger_metier())
-        res = await agent.run("fais un devis")
+        res = await agent.run("reprends le style de mes devis")
 
         assert res["status"] == "success"
         assert res["extraits_archives"] == []

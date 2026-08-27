@@ -9,12 +9,13 @@ d'ecrire un chiffre plausible dans un document qui part chez un client.
 Un devis faux coute plus cher qu'un devis en retard.
 """
 import logging
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
 
-from agents.plaquiste.archives import extraits_pour, formater
+from agents.plaquiste.archives import exemple_demande, extraits_pour, formater
 from agents.plaquiste.controle_prix import avertissement, verifier_prix
 from core.agent.base_agent import BaseAgent
 from core.memory.memory_manager import MemoryManager
@@ -23,6 +24,24 @@ from core.models.base import ModelProvider
 logger = logging.getLogger("usman.agent.plaquiste")
 
 FICHIER_METIER = Path(__file__).resolve().parents[2] / "config" / "unic_plaquiste.yaml"
+
+MOIS = ("janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet",
+        "aout", "septembre", "octobre", "novembre", "decembre")
+
+
+def date_du_jour() -> date:
+    """Date lue sur la machine. Isolee pour que les tests la fixent."""
+    return date.today()
+
+
+def date_en_toutes_lettres(jour: date) -> str:
+    """« 27 aout 2026 », la forme utilisee dans ses documents."""
+    return f"{jour.day} {MOIS[jour.month - 1]} {jour.year}"
+
+
+def numero_du_jour(jour: date, suffixe: str = "XXX") -> str:
+    """Numerotation maison : UC-AAAA-MMJJ-CLI."""
+    return f"UC-{jour.year}-{jour.month:02d}{jour.day:02d}-{suffixe}"
 
 
 def charger_metier(chemin: Path = FICHIER_METIER) -> Dict[str, Any]:
@@ -43,6 +62,21 @@ def _grille(metier: Dict[str, Any]) -> Dict[str, int]:
     grille = dict(metier.get("prix_materiaux") or {})
     grille.update(metier.get("prix_portes") or {})
     return grille
+
+
+def metiers_evoques(demande: str, metier: Dict[str, Any]) -> List[str]:
+    """Rend les metiers cites qui ne sont pas les siens.
+
+    Electricite, plomberie, climatisation : le proprietaire ne les fait pas, et
+    ses documents les excluent depuis toujours. L'assistant ne les chiffre donc
+    jamais de lui-meme — mais il ne fait pas semblant de ne pas comprendre : il
+    dit que ce n'est pas son corps de metier.
+
+    « Dormant, reveille seulement si demande » : la capacite n'est pas retiree,
+    elle attend. La liste vit dans le fichier metier, pas ici.
+    """
+    texte = (demande or "").lower()
+    return [mot for mot in (metier.get("metiers_hors_perimetre") or []) if mot in texte]
 
 
 def articles_sans_prix(demande: str, metier: Dict[str, Any]) -> List[str]:
@@ -76,9 +110,21 @@ def composer_instruction(metier: Dict[str, Any]) -> str:
     mo = metier.get("main_oeuvre", {})
     engagements = metier.get("engagements", {})
 
+    jour = date_du_jour()
     lignes = [
         f"Tu es l'assistant metier de {e.get('nom', 'UniC Plaquiste')}, "
         f"{e.get('specialite', '')}.",
+        "",
+        f"DATE DU JOUR, lue sur la machine : {date_en_toutes_lettres(jour)}.",
+        f"Tout document que tu rediges porte cette date, et le numero "
+        f"{numero_du_jour(jour)} ou le suffixe du client remplace XXX.",
+        "Tu n'ecris jamais une autre date : un devis mal date est un devis "
+        "juridiquement fragile.",
+        "",
+        "LE CLIENT EST CELUI QU'ON TE DONNE.",
+        "Tu n'inventes ni nom, ni adresse, ni chantier, et tu ne reprends jamais "
+        "ceux d'une affaire passee. S'il te manque le nom du client ou le lieu "
+        "du chantier, tu les demandes en une ligne au lieu de les supposer.",
         f"Gerant : {e.get('gerant', '')}. {e.get('adresse', '')}.",
         f"Telephone {e.get('telephone', '')} — {e.get('site', '')}.",
         f"NINEA {e.get('ninea', '')} | RCCM {e.get('rccm', '')}.",
@@ -109,6 +155,18 @@ def composer_instruction(metier: Dict[str, Any]) -> str:
         "NE SONT JAMAIS INCLUS, sauf demande explicite :",
     ]
     lignes += [f"- {x}" for x in metier.get("exclusions_habituelles", [])]
+
+    hors = metier.get("metiers_hors_perimetre") or []
+    if hors:
+        lignes += [
+            "",
+            "CE QUI N'EST PAS SON METIER : " + ", ".join(hors) + ".",
+            "Tu ne chiffres jamais ces postes de toi-meme et tu ne les ajoutes",
+            "dans aucun tableau. Si le client en parle, tu dis en une ligne que",
+            "ce n'est pas le corps de metier d'UniC Plaquiste et tu poursuis sur",
+            "le placo. Tu ne les traites que si le gerant te le demande",
+            "explicitement.",
+        ]
 
     lignes += [
         "",
@@ -154,11 +212,10 @@ class PlaquisteAgent(BaseAgent):
 
         instruction = composer_instruction(self.metier)
 
-        # Les archives donnent les formulations que la grille de prix n a pas :
-        # la facon dont le proprietaire annonce un geste commercial, explique la
-        # surface developpee, liste ce qui n est pas inclus. Absentes, on
-        # continue avec la grille seule — ce n est pas une erreur.
-        extraits = extraits_pour(user_input)
+        # Les archives ne s'ouvrent que si on les demande. Injectees a chaque
+        # reponse, elles ramenaient le nom d'un ancien client et les details d'un
+        # ancien chantier dans des affaires qui n'avaient rien a voir.
+        extraits = extraits_pour(user_input) if exemple_demande(user_input) else []
         archives = formater(extraits)
         if archives:
             instruction = f"{instruction}\n\n{archives}"
@@ -169,6 +226,9 @@ class PlaquisteAgent(BaseAgent):
         # verifie qu il ne l a pas fait : une consigne n est pas une garantie, et
         # le document part chez un client.
         anomalies = verifier_prix(reponse, self.metier)
+        hors_metier = metiers_evoques(user_input, self.metier)
+        if hors_metier:
+            logger.info("Hors perimetre evoque : %s", ", ".join(hors_metier))
 
         return {
             "status": "success",
@@ -176,5 +236,6 @@ class PlaquisteAgent(BaseAgent):
             "articles_connus": len(_grille(self.metier)),
             "extraits_archives": [e.source for e in extraits],
             "prix_alteres": [str(a) for a in anomalies],
+            "hors_perimetre": hors_metier,
             "response": reponse + avertissement(anomalies),
         }
