@@ -87,6 +87,52 @@ prix_portes:
   "Planche en bois (4m50 x 35 cm)": 22050
   "Quincaillerie (serrure + paumelle + verrou)": 14000
 
+# =============================================================================
+# RATIOS MATERIAUX — deduits, pas inventes
+# =============================================================================
+# Source : devis UC-2026-0804-FG2 du 04/08/2026, le seul auto-suffisant.
+# 18 parois de 5,40 m x 2,50 m, fermees double face :
+#   une face  = 13,50 m2   |   18 parois = 243 m2   |   developpe = 486 m2
+#
+# Chaque ratio est la quantite reellement commandee divisee par 486 m2.
+# Ce ne sont donc pas des ratios de manuel : ce sont les siens, chutes et
+# habitudes de chantier comprises.
+#
+# LIMITE CONNUE : ils viennent d'UN chantier, en montants de 70 mm avec laine
+# de verre. Un chantier en 48 mm sans isolation consommera autrement. Le
+# proprietaire corrige ici, et le calcul suit.
+ratios_materiaux:
+  source: "devis UC-2026-0804-FG2 — 18 parois de 5,40 x 2,50 m, 486 m2 developpes"
+
+  # Le chantier de reference, tel qu'il a ete commande. Les ratios ne sont pas
+  # ecrits ici : Python divise ces quantites par la surface ci-dessous. Ecrire
+  # un ratio arrondi a la main donnait 11 seaux la ou il en a achete 10.
+  reference_m2_developpe: 486.0
+  reference_parois: 18
+  paroi_reference_m2_developpe: 27.0
+
+  # Ce qui suit la surface : plaques, ossature, finition.
+  # Quantites reellement commandees pour 486 m2 developpes.
+  suivent_la_surface:
+    "Plaque standard BA13": 234              # 1 pour 2,1 m2
+    "Montant 7 cm (70 mm)": 288              # 1 pour 1,7 m2
+    "Rails 7 cm (70 mm)": 54                 # 1 pour 9 m2
+    "Seau enduit": 10                        # 1 pour 48,6 m2
+    "Seau Katex": 4                          # 1 pour 121,5 m2
+    "Paquet papier enduit": 1                # 1 pour 486 m2
+
+  # Ce qui ne suit PAS la surface. Sur le chantier source, ces six articles
+  # etaient commandes a 18 exemplaires pour 18 parois : un par paroi, pas un
+  # ratio au metre carre. Les ecrire en /m2 donnerait un chiffre faux des que
+  # les parois changent de taille — c'est pourquoi ils sont separes.
+  par_paroi:
+    "Laine de verre (paquet)": 1
+    "Paquet vis (25 mm ou 35 mm)": 1
+    "Sac enduit": 1
+    "Bande a joints": 1
+    "Bande armee": 1
+    "Paquet chevilles a frapper": 1
+
 main_oeuvre:
   tarif_m2: 5000
   libelle: >-
