@@ -7,20 +7,37 @@ découpage — configuration, sécurité, prompts et logique métier mélangés.
     uvicorn apps.backend.main:app --host 127.0.0.1 --port 8000
 """
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from apps.backend.config import ALLOWED_ORIGINS, BASE_DIR, RENDERED_DIR
+from apps.backend.config import ALLOWED_ORIGINS, BASE_DIR, OLLAMA_URL, RENDERED_DIR
 from apps.backend.routers import chat, media, openai_gateway
 from apps.backend.runtime import deep_provider, fast_provider
+from apps.backend.verification_modeles import verifier_modeles
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("usman.backend")
 
-app = FastAPI(title="Usman Personal AI API", version="1.7.0")
+@asynccontextmanager
+async def au_demarrage(_: FastAPI):
+    """Dit au demarrage si les modeles declares sont installes.
+
+    Le controle ne bloque jamais : il journalise. Un serveur qui refuse de
+    demarrer parce qu'un modele manque est moins utile qu'un serveur qui
+    demarre en disant lequel manque.
+
+    `lifespan` plutot que `on_event` : ce dernier est deprecie par FastAPI et
+    laissait un avertissement a chaque execution de la suite.
+    """
+    await verifier_modeles([fast_provider.model_name, deep_provider.model_name], OLLAMA_URL)
+    yield
+
+
+app = FastAPI(title="Usman Personal AI API", version="1.7.0", lifespan=au_demarrage)
 
 app.add_middleware(
     CORSMiddleware,
