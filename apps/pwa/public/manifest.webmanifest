@@ -1,0 +1,45 @@
+{
+  "id": "/",
+  "name": "Usman - Personal AI",
+  "short_name": "Usman",
+  "description": "A private, observable personal AI workbench with live tools, documents, voice and video.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0a0a0b",
+  "theme_color": "#0a0a0b",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/usman.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/usman-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/usman-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New conversation",
+      "short_name": "New chat",
+      "description": "Start a new conversation with Usman",
+      "url": "/?action=new",
+      "icons": [{ "src": "/icons/usman.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}
