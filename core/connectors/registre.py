@@ -141,18 +141,33 @@ class RegistreConnecteurs:
 
     # --- Aiguillage -----------------------------------------------------------
 
+    def _absent(self, nom: str, capacite: str) -> ResultatAction:
+        motif = f"hors service : {self._casses[nom]}" if nom in self._casses else "non declare"
+        return non_implemente(
+            action=capacite, cible=nom,
+            message=f"Connecteur « {nom} » {motif}. Rien n'a ete tente.",
+        )
+
     def executer(
         self, nom: str, capacite: str, compte: Optional[str] = None, **parametres: Any
     ) -> ResultatAction:
         """Route vers le connecteur. Un nom inconnu est une reponse, pas une exception."""
         connecteur = self.obtenir(nom)
         if connecteur is None:
-            motif = (
-                f"hors service : {self._casses[nom]}" if nom in self._casses
-                else "non declare"
-            )
-            return non_implemente(
-                action=capacite, cible=nom,
-                message=f"Connecteur « {nom} » {motif}. Rien n'a ete tente.",
-            )
+            return self._absent(nom, capacite)
         return connecteur.executer(capacite, compte=compte, **parametres)
+
+    def executer_confirmee(
+        self, nom: str, capacite: str, compte: Optional[str] = None, **parametres: Any
+    ) -> ResultatAction:
+        """Route une action confirmee. Reserve a `FileDAttente.confirmer()`.
+
+        Sans ce chemin, confirmer relancerait le controle de permission, verrait
+        de nouveau CONFIRMATION, et deposerait une **deuxieme** action en
+        attente : rien ne partirait jamais. Mesure faite le 2026-08-27 avant
+        correction.
+        """
+        connecteur = self.obtenir(nom)
+        if connecteur is None:
+            return self._absent(nom, capacite)
+        return connecteur.executer_confirmee(capacite, compte=compte, **parametres)

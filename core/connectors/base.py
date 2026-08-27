@@ -40,6 +40,7 @@ from enum import Enum
 from typing import Any, Dict, Optional
 
 from apps.backend.rate_limit import LimiteurDebit
+from core.actions.attente import FileDAttente
 from core.actions.journal import ActionEnregistree, JournalDesActions
 from core.actions.resultat import (
     ResultatAction,
@@ -145,9 +146,14 @@ class Connecteur(ABC):
         self,
         acces: Optional[ControleAcces] = None,
         journal: Optional[JournalDesActions] = None,
+        file_attente: Optional[FileDAttente] = None,
     ) -> None:
         self.acces = acces or ControleAcces()
         self.journal = journal
+        # Sans file d'attente, une action a confirmer est annoncee mais rien ne
+        # la retient : le proprietaire lit « pret a envoyer » et n'a rien a quoi
+        # repondre. Avec, elle recoit un identifiant qu'il peut confirmer.
+        self.file_attente = file_attente
         self._limiteurs: Dict[str, LimiteurDebit] = {}
 
     # --- Ce qu'une sous-classe doit fournir -----------------------------------
@@ -217,10 +223,48 @@ class Connecteur(ABC):
             parametres=parametres, niveau_permission=niveau,
         ))
 
+    def resultat_attendu(self, capacite: Capacite, **parametres: Any) -> str:
+        """Ce qui aura change si l'action part. Affiche avant la confirmation.
+
+        La base rend la description declaree ; une sous-classe precise quand elle
+        peut (« un e-mail part vers client@exemple.sn »). Elle ne promet jamais
+        un resultat qu'elle ne peut pas connaitre.
+        """
+        return capacite.description
+
+    def _mettre_en_attente(
+        self, capacite: Capacite, cible: str, compte: Optional[str],
+        risque: str, parametres: Dict[str, Any],
+    ) -> ResultatAction:
+        """Depose l'action et rend son identifiant, ou le dit si c'est impossible."""
+        message = (f"Pret : {capacite.description}. Risque {risque}. Rien n'est parti.")
+
+        if self.file_attente is None:
+            return a_confirmer(action=capacite.nom, cible=cible, message=message, risque=risque)
+
+        try:
+            en_attente = self.file_attente.deposer(
+                action=capacite.description, cible=cible, risque=risque,
+                resultat_attendu=self.resultat_attendu(capacite, **parametres),
+                connecteur=self.nom or self.service, capacite=capacite.nom,
+                compte=compte, parametres=parametres,
+            )
+        except ValueError as erreur:
+            # Un parametre secret : on refuse la mise en attente plutot que de
+            # l'ecrire sur le disque. L'action n'est pas partie non plus.
+            logger.error("Mise en attente refusee (%s.%s) : %s", self.nom, capacite.nom, erreur)
+            return echec(capacite.nom, cible, f"Mise en attente refusee : {erreur}")
+
+        return a_confirmer(
+            action=capacite.nom, cible=cible,
+            message=f"{message} Confirme avec l'identifiant {en_attente.identifiant}.",
+            risque=risque, en_attente=en_attente.identifiant,
+        )
+
     def executer(
         self, nom_capacite: str, compte: Optional[str] = None, **parametres: Any
     ) -> ResultatAction:
-        """Point d'entree unique. Controle, execute, journalise.
+        """Point d'entree normal. Controle, met en attente si besoin, journalise.
 
         Args:
             nom_capacite: le nom declare dans `capacites()`.
@@ -231,6 +275,28 @@ class Connecteur(ABC):
             Un `ResultatAction`. Jamais None, jamais une exception : une panne
             devient un `FAILED` qui porte son erreur.
         """
+        return self._conduire(nom_capacite, compte, parametres, deja_confirmee=False)
+
+    def executer_confirmee(
+        self, nom_capacite: str, compte: Optional[str] = None, **parametres: Any
+    ) -> ResultatAction:
+        """Execute une action **que le proprietaire a confirmee**.
+
+        Reserve a `FileDAttente.confirmer()`. C'est une methode distincte, et non
+        un argument `confirmation=True`, pour une raison precise : un argument
+        voyagerait dans les `**parametres` d'un appelant quelconque et
+        contournerait la confirmation. Une methode, non.
+
+        Ce qu'elle change : une decision `CONFIRMATION` est consideree comme
+        satisfaite. Ce qu'elle ne change pas : un `DENIED` refuse toujours. Une
+        confirmation repond a une demande d'accord, elle ne leve pas un refus.
+        """
+        return self._conduire(nom_capacite, compte, parametres, deja_confirmee=True)
+
+    def _conduire(
+        self, nom_capacite: str, compte: Optional[str],
+        parametres: Dict[str, Any], deja_confirmee: bool,
+    ) -> ResultatAction:
         capacite = self.capacites().get(nom_capacite)
         cible = compte or self.nom or self.service
 
@@ -262,13 +328,9 @@ class Connecteur(ABC):
             self._journaliser(resultat, parametres, niveau)
             return resultat
 
-        if autorisation.demande_confirmation:
-            resultat = a_confirmer(
-                action=capacite.nom, cible=cible,
-                message=f"Pret : {capacite.description}. Risque "
-                        f"{autorisation.risque.value}. Rien n'est parti.",
-                risque=autorisation.risque.value,
-            )
+        if autorisation.demande_confirmation and not deja_confirmee:
+            resultat = self._mettre_en_attente(capacite, cible, compte,
+                                               autorisation.risque.value, parametres)
             self._journaliser(resultat, parametres, niveau)
             return resultat
 

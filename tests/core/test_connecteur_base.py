@@ -380,3 +380,138 @@ def test_une_capacite_distingue_son_nom_et_son_action():
 def test_une_capacite_dit_si_elle_ecrit_dehors():
     assert Capacite("lire", "read", "…").ecriture is False
     assert Capacite("envoyer", "send", "…", ecriture=True).ecriture is True
+
+
+# --- Le lien avec la file d'attente -------------------------------------------
+
+@pytest.fixture
+def file_attente(tmp_path):
+    from core.actions.attente import FileDAttente
+    return FileDAttente(db_path=str(tmp_path / "attente.db"))
+
+
+def test_une_action_a_confirmer_est_reellement_deposee(acces, file_attente):
+    connecteur = ConnecteurEspion(acces=acces(), file_attente=file_attente)
+
+    resultat = connecteur.executer("envoyer", destinataire="client@exemple.sn")
+
+    assert resultat.statut is Statut.A_CONFIRMER
+    assert len(file_attente.en_attente()) == 1
+    assert connecteur.executions == []
+
+
+def test_le_resultat_porte_l_identifiant_a_confirmer(acces, file_attente):
+    """Sans identifiant, le proprietaire lit « pret » et n'a rien a quoi repondre."""
+    resultat = ConnecteurEspion(acces=acces(), file_attente=file_attente).executer("envoyer")
+
+    identifiant = resultat.detail["en_attente"]
+    assert file_attente.lire(identifiant) is not None
+    assert identifiant in resultat.message
+
+
+def test_l_action_deposee_porte_les_quatre_champs_a_afficher(acces, file_attente):
+    ConnecteurEspion(acces=acces(), file_attente=file_attente).executer(
+        "envoyer", compte="boite@exemple.sn", destinataire="client@exemple.sn"
+    )
+
+    en_attente = file_attente.en_attente()[0]
+
+    assert en_attente.action == "Envoie un message."
+    assert en_attente.cible == "boite@exemple.sn"
+    assert en_attente.risque == "HIGH"
+    assert en_attente.resultat_attendu
+
+
+def test_confirmer_execute_reellement_la_capacite(acces, tmp_path):
+    """Le test qui a trouve le defaut du 2026-08-27.
+
+    Il flechissait auparavant la politique en ALLOWED avant de confirmer — ce
+    qui masquait le probleme au lieu de le montrer : confirmer repassait par le
+    controle, voyait de nouveau CONFIRMATION, et deposait une DEUXIEME action en
+    attente. Rien ne partait jamais. La politique reste maintenant sur
+    CONFIRMATION du debut a la fin, comme dans la vraie vie.
+    """
+    from core.actions.attente import FileDAttente
+    from core.connectors.registre import RegistreConnecteurs
+
+    registre = RegistreConnecteurs()
+    file_attente = FileDAttente(db_path=str(tmp_path / "a.db"),
+                                executeur=registre.executer_confirmee)
+    espion = ConnecteurEspion(acces=acces(), file_attente=file_attente)
+    registre.declarer("espion", lambda: espion)
+
+    prepare = registre.executer("espion", "envoyer", destinataire="client@exemple.sn")
+    assert espion.executions == []
+
+    resultat = file_attente.confirmer(prepare.detail["en_attente"])
+
+    assert resultat.statut is Statut.SUCCES
+    assert [nom for nom, _ in espion.executions] == ["envoyer"]
+    assert file_attente.en_attente() == [], "confirmer ne doit pas redeposer une attente"
+
+
+def test_une_confirmation_ne_leve_jamais_un_refus(acces, tmp_path):
+    """Une confirmation repond a une demande d'accord ; elle ne force pas un DENIED."""
+    from core.actions.attente import FileDAttente
+    from core.connectors.registre import RegistreConnecteurs
+
+    registre = RegistreConnecteurs()
+    file_attente = FileDAttente(db_path=str(tmp_path / "a.db"),
+                                executeur=registre.executer_confirmee)
+    espion = ConnecteurEspion(acces=acces(), file_attente=file_attente)
+    registre.declarer("espion", lambda: espion)
+
+    resultat = registre.executer_confirmee("espion", "supprimer", identifiant="42")
+
+    assert resultat.statut is Statut.REFUSE
+    assert espion.executions == []
+
+
+def test_confirmation_ne_peut_pas_etre_passee_en_parametre(acces, tmp_path):
+    """Un argument `confirmation=True` voyagerait dans les **parametres d'un
+    appelant quelconque. C'est une methode distincte, donc ce n'est pas possible."""
+    from core.actions.attente import FileDAttente
+
+    file_attente = FileDAttente(db_path=str(tmp_path / "a.db"))
+    connecteur = ConnecteurEspion(acces=acces(), file_attente=file_attente)
+
+    resultat = connecteur.executer("envoyer", confirmation=True, deja_confirmee=True)
+
+    assert resultat.statut is Statut.A_CONFIRMER
+    assert connecteur.executions == []
+
+
+def test_sans_file_d_attente_l_action_est_annoncee_mais_pas_retenue(acces):
+    """Comportement d'avant la phase 5.1, conserve : annoncer vaut mieux que partir."""
+    resultat = ConnecteurEspion(acces=acces(), file_attente=None).executer("envoyer")
+
+    assert resultat.statut is Statut.A_CONFIRMER
+    assert "en_attente" not in resultat.detail
+
+
+def test_un_parametre_secret_fait_echouer_la_mise_en_attente(acces, file_attente):
+    """Ni ecrit sur le disque, ni envoye : les deux seraient des fautes."""
+    connecteur = ConnecteurEspion(acces=acces(), file_attente=file_attente)
+
+    resultat = connecteur.executer("envoyer", access_token="ya29.SECRET")
+
+    assert resultat.statut is Statut.ECHEC
+    assert "nom de secret" in resultat.message
+    assert file_attente.en_attente() == []
+    assert connecteur.executions == []
+
+
+def test_une_action_refusee_n_est_jamais_deposee(acces, file_attente):
+    ConnecteurEspion(acces=acces(), file_attente=file_attente).executer("supprimer")
+
+    assert file_attente.en_attente() == []
+
+
+def test_une_action_autorisee_n_est_pas_deposee(acces, file_attente):
+    """Ce qui peut partir part : on n'ajoute pas une confirmation non demandee."""
+    connecteur = ConnecteurEspion(acces=acces(), file_attente=file_attente)
+
+    connecteur.executer("lire")
+
+    assert file_attente.en_attente() == []
+    assert connecteur.executions != []

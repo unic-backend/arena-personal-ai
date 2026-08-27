@@ -22,6 +22,7 @@ from agents.swe_agent.swe_agent import SWEAgent
 from agents.trend_analyzer.trend_analyzer_agent import TrendAnalyzerAgent
 from agents.video_analyzer.video_analyzer_agent import VideoAnalyzerAgent
 from apps.backend.config import DB_PATH, MODELE_PROFOND, MODELE_RAPIDE, OLLAMA_URL
+from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
 from core.connectors.registre import RegistreConnecteurs
 from core.memory.memory_manager import MemoryManager
@@ -48,7 +49,14 @@ acces = ControleAcces(permissions=permissions, politique=politique)
 # personne ne s'en sert, et un connecteur qui echoue a naitre est mis hors
 # service tout seul, sans empecher le serveur de demarrer.
 registre = RegistreConnecteurs()
-registre.declarer("tiktok", lambda: TikTokConnector(acces=acces, journal=journal))
+# La file d'attente execute par le registre, et le registre construit des
+# connecteurs qui deposent dans la file. Le lien se fait par une fonction plutot
+# que par un import croise : `attente.py` n'a jamais entendu parler du registre.
+file_attente = FileDAttente(db_path=str(DB_PATH), executeur=registre.executer_confirmee)
+registre.declarer(
+    "tiktok",
+    lambda: TikTokConnector(acces=acces, journal=journal, file_attente=file_attente),
+)
 # Journal des actions a effet externe. Meme fichier que la memoire, table a part.
 journal = JournalDesActions(db_path=str(DB_PATH))
 lightrag_tool = LightRAGTool()
