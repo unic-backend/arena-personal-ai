@@ -25,6 +25,7 @@ langchain-openai==1.1.9   # ChatOpenAI utilise par browser-use ; 1.6.0 exige ope
 lightrag-hku==1.5.6       # tools/rag/lightrag_tool.py
 pypdf==6.14.2             # tools/documents/reader.py — lecture des PDF
 python-docx==1.2.0        # tools/documents/reader.py — lecture des .docx
+reportlab==5.0.1          # agents/plaquiste/devis_pdf.py — devis a la charte UniC
 
 # Non liste ici, et volontairement :
 # - ffmpeg : binaire systeme, pas un paquet pip (voir Dockerfile)
