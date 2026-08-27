@@ -9,8 +9,9 @@ découpage — configuration, sécurité, prompts et logique métier mélangés.
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from apps.backend.config import ALLOWED_ORIGINS, BASE_DIR, OLLAMA_URL, RENDERED_DIR
 from apps.backend.routers import actions, chat, media, openai_gateway, pwa_gateway
 from apps.backend.runtime import deep_provider, fast_provider
+from apps.backend.security import cle_presentee_valide
 from apps.backend.verification_modeles import verifier_modeles
 
 logging.basicConfig(level=logging.INFO)
@@ -155,13 +157,37 @@ async def serve_frontend_classique():
 
 
 @app.get("/health")
-async def health_check():
+async def health_check(authorization: Optional[str] = Header(None)):
+    """Etat du serveur, et **si la cle presentee ouvre vraiment quelque chose**.
+
+    `ok` ne dit pas « le serveur est en vie » : il dit « tu peux obtenir une
+    reponse maintenant ». Il faut donc les deux — le modele disponible ET une
+    cle valable. Sans cela le panneau de l'interface passait au vert avec une
+    mauvaise cle, et chaque message repondait 401.
+
+    Les champs publics restent publics : cette route n'exige pas de cle, elle
+    se contente de dire ce que la cle presentee vaut.
+    """
     ollama_online = await fast_provider.is_available()
+    authentifie = cle_presentee_valide(authorization)
+
+    if not authentifie:
+        raison = (
+            "Aucune cle presentee." if not authorization
+            else "La cle presentee n'est pas la bonne."
+        )
+    elif not ollama_online:
+        raison = "Ollama est hors-ligne : demarre-le avec `ollama serve`."
+    else:
+        raison = ""
+
     return {
         # `ok`, `name`, `provider` et `model` sont lus par l'interface PWA
         # (`pingBackend`). Ils s'ajoutent aux champs existants sans en changer
         # aucun : ce que lisaient les anciens appelants est intact.
-        "ok": ollama_online,
+        "ok": ollama_online and authentifie,
+        "authenticated": authentifie,
+        "error": raison,
         "name": "ARENA",
         "provider": "ollama",
         "model": fast_provider.model_name,

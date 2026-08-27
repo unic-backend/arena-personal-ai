@@ -420,10 +420,82 @@ def test_health_porte_les_champs_que_l_interface_lit(client):
     assert corps["provider"] == "ollama"
 
 
-def test_ok_suit_la_disponibilite_reelle_d_ollama(client):
+def test_ok_veut_dire_tu_peux_obtenir_une_reponse_maintenant(client, entetes):
+    """Pas « le serveur est en vie » : il faut le modele ET une cle valable."""
+    corps = client.get("/health", headers=entetes).json()
+
+    assert corps["ok"] is (corps["ollama_available"] and corps["authenticated"])
+
+
+def test_ollama_en_ligne_et_mauvaise_cle_reste_rouge(client, monkeypatch):
+    """LE cas que le proprietaire a vecu, et que les autres tests ne voyaient pas.
+
+    Ici sur cette machine Ollama est absent, donc `ok` valait deja False pour
+    la mauvaise raison : sabotage le 2026-08-27 en remettant `ok = ollama_online`
+    seul, aucun test n'echouait. Il faut le modele EN LIGNE pour que la
+    difference se voie.
+    """
+    async def _present():
+        return True
+    monkeypatch.setattr(main.fast_provider, "is_available", _present)
+
+    corps = client.get("/health", headers={"Authorization": "Bearer faux"}).json()
+
+    assert corps["ollama_available"] is True
+    assert corps["ok"] is False, "vert alors que la cle est fausse"
+    assert corps["authenticated"] is False
+
+
+def test_une_mauvaise_cle_rend_le_panneau_rouge(client):
+    """Le defaut du 2026-08-27 : « BACKEND · ARENA · 544MS » en vert, et chaque
+    message refuse en 401. Le test de connexion doit voir ce que l'envoi voit."""
+    corps = client.get("/health", headers={"Authorization": "Bearer faux"}).json()
+
+    assert corps["ok"] is False
+    assert corps["authenticated"] is False
+    assert "pas la bonne" in corps["error"]
+
+
+def test_sans_cle_le_panneau_est_rouge_et_dit_pourquoi(client):
     corps = client.get("/health").json()
 
-    assert corps["ok"] is corps["ollama_available"]
+    assert corps["ok"] is False
+    assert "Aucune cle" in corps["error"]
+
+
+def test_une_bonne_cle_authentifie(client, entetes):
+    assert client.get("/health", headers=entetes).json()["authenticated"] is True
+
+
+def test_health_reste_joignable_sans_cle(client):
+    """Il doit pouvoir l'ouvrir dans un navigateur pour verifier son serveur."""
+    res = client.get("/health")
+
+    assert res.status_code == 200
+    assert res.json()["ollama_available"] in (True, False)
+
+
+def test_une_cle_valable_mais_ollama_hors_ligne_le_dit(client, entetes, monkeypatch):
+    """Deux pannes differentes ne doivent pas porter le meme message."""
+    async def _absent():
+        return False
+    monkeypatch.setattr(main.fast_provider, "is_available", _absent)
+
+    corps = client.get("/health", headers=entetes).json()
+
+    assert corps["authenticated"] is True
+    assert "ollama serve" in corps["error"]
+
+
+def test_sans_probleme_il_n_y_a_pas_de_raison(client, entetes, monkeypatch):
+    async def _present():
+        return True
+    monkeypatch.setattr(main.fast_provider, "is_available", _present)
+
+    corps = client.get("/health", headers=entetes).json()
+
+    assert corps["ok"] is True
+    assert corps["error"] == ""
 
 
 def test_les_anciens_champs_de_health_sont_intacts(client):

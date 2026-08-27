@@ -29,6 +29,18 @@ def client_de(request: Request) -> str:
     return request.client.host if request.client else "inconnu"
 
 
+def cle_presentee_valide(authorization: Optional[str]) -> bool:
+    """Dit si l'en-tete presente la bonne cle. **Ne leve jamais.**
+
+    Existe pour que `/health` puisse *dire* si la cle est bonne sans refuser la
+    requete. Le panneau de l'interface passait au vert avec une mauvaise cle,
+    parce que la seule facon de verifier levait une erreur — donc `/health` ne
+    verifiait rien. Mesure le 2026-08-27 : « BACKEND · ARENA · 544MS » en vert,
+    et chaque message refuse en 401.
+    """
+    return bool(USMAN_API_KEY) and authorization == f"Bearer {USMAN_API_KEY}"
+
+
 def verify_api_key(request: Request, authorization: Optional[str] = Header(None)):
     """Bloque tout appel a /v1 ou /api qui ne presente pas la bonne cle Bearer.
 
@@ -41,7 +53,7 @@ def verify_api_key(request: Request, authorization: Optional[str] = Header(None)
             status_code=500,
             detail="USMAN_API_KEY absente du fichier .env : passerelle desactivee par securite."
         )
-    if authorization != f"Bearer {USMAN_API_KEY}":
+    if not cle_presentee_valide(authorization):
         motif = "cle absente" if not authorization else "cle invalide"
         logger.warning(
             "Authentification refusee (%s) : %s -> %s",
