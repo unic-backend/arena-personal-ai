@@ -12,7 +12,14 @@ addopts = "-m 'not integration'"
 [tool.ruff]
 line-length = 120
 target-version = "py311"
-exclude = ["media", "data"]
+# `apps/pwa` est une application a part : TypeScript compile par Vite, plus un
+# serveur Python qui lui est propre (`apps/pwa/server/`, avec son propre
+# requirements.txt). Le lint d'ARENA ne le regarde pas — non parce que le code y
+# echapperait, mais parce que le reformater serait un remaniement non demande.
+# **Cette exclusion est provisoire** : le jour ou ce serveur est absorbe dans
+# ARENA, il entre sous `core/` et il est linté comme le reste ; le jour ou il est
+# ecarte, l'exclusion part avec lui.
+exclude = ["media", "data", "apps/pwa"]
 
 [tool.ruff.lint]
 # Jeu volontairement resserre : erreurs reelles, imports inutiles, imports non

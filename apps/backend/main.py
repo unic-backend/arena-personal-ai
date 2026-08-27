@@ -10,7 +10,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -95,6 +95,53 @@ def nom_interface() -> str:
 async def serve_frontend():
     """L'interface d'ARENA. La PWA compilee, ou l'ancienne a defaut."""
     return FileResponse(str(interface_servie()))
+
+
+# Fichiers que Vite copie de `public/` vers `dist/` sans les inliner.
+# `viteSingleFile` ne touche qu'au JavaScript et au CSS ; ceux-ci restent des
+# fichiers a part, et une PWA ne s'installe pas sans eux.
+#
+# **`sw.js` doit etre servi depuis la racine** : la portee d'un service worker
+# est celle du chemin d'ou il vient. Servi depuis `/static/sw.js`, il ne
+# controlerait que `/static/` — c'est-a-dire rien d'utile.
+FICHIERS_PWA = ("sw.js", "manifest.webmanifest", "offline.html")
+
+
+def _fichier_pwa(nom: str) -> FileResponse:
+    """Rend un fichier de `dist/`, ou 404 si la PWA n'est pas compilee."""
+    chemin = INTERFACE_PWA.parent / nom
+    if not chemin.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail=f"{nom} absent : la PWA n'est pas compilee (npm run build dans apps/pwa).",
+        )
+    return FileResponse(str(chemin))
+
+
+@app.get("/sw.js")
+@app.get("/manifest.webmanifest")
+@app.get("/offline.html")
+async def servir_fichier_pwa(request: Request):
+    """Sert le service worker, le manifeste et la page hors ligne."""
+    return _fichier_pwa(request.url.path.lstrip("/"))
+
+
+@app.get("/icons/{nom}")
+async def servir_icone_pwa(nom: str):
+    """Sert une icone de la PWA, sans jamais sortir du dossier des icones.
+
+    Le nom vient de l'URL : sans cette verification, `../../.env` serait un nom
+    d'icone valide.
+    """
+    dossier = (INTERFACE_PWA.parent / "icons").resolve()
+    chemin = (dossier / nom).resolve()
+    try:
+        chemin.relative_to(dossier)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Acces refuse.") from None
+    if not chemin.is_file():
+        raise HTTPException(status_code=404, detail=f"Icone {nom} introuvable.")
+    return FileResponse(str(chemin))
 
 
 @app.get("/ui/classique")

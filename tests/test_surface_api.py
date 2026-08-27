@@ -19,6 +19,12 @@ SURFACE_ATTENDUE = {
     "/health": (["GET"], []),
     # L'ancienne interface reste joignable pendant que la PWA prend le relais.
     "/ui/classique": (["GET"], []),
+    # Fichiers de la PWA que Vite ne peut pas inliner. `sw.js` doit venir de la
+    # racine, sinon la portee du service worker ne couvre rien.
+    "/sw.js": (["GET"], []),
+    "/manifest.webmanifest": (["GET"], []),
+    "/offline.html": (["GET"], []),
+    "/icons/{nom}": (["GET"], []),
     "/v1/models": (["GET"], ["verify_api_key"]),
     "/v1/chat/completions": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/upload": (["POST"], ["verify_api_key"]),
