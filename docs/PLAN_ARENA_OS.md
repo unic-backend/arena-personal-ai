@@ -7,8 +7,9 @@ justifies this order is `docs/AUDIT_ARENA_OS.md`; it was measured, not recalled.
 VOLET en cours   : ARENA OS
 Chapitres        : 12
 Phases           : 21
-Phase courante   : 1.1 — en attente de confirmation
-Terminées        : aucune
+Phase courante   : 2.1 — en attente de confirmation
+Terminées        : 1.1 (2026-08-27) — `core/actions/resultat.py`, sept statuts ;
+                   un succès exige une preuve, une action sans effet n'en porte pas.
 ```
 
 ---

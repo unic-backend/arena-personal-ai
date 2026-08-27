@@ -1,7 +1,25 @@
+"""Agent de publication : il prepare le post, et il dit la verite sur l'envoi.
+
+Le brouillon est un vrai travail et il est fait dans tous les cas — c'est le
+« prepare tout, demande avant d'envoyer » de la specification. Ce qui a change
+le 2026-08-27, c'est le statut rendu : l'agent renvoyait `success` quand la
+permission etait bloquee **et** quand le connecteur ne faisait que simuler. Trois
+situations differentes portaient le meme mot.
+
+Elles en ont maintenant trois :
+
+- permission `PUBLISH` bloquee  -> `DENIED`, brouillon fourni
+- connecteur non branche        -> `NOT_CONFIGURED`, brouillon fourni
+- publication reelle            -> n'existe pas encore, `NOT_IMPLEMENTED`
+
+Aucun de ces trois chemins n'emet de requete. Le jour ou l'un le fera, il devra
+rendre une preuve, sans quoi `ResultatAction` refusera de se construire.
+"""
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from core.actions.resultat import ResultatAction, echec, refuse
 from core.agent.base_agent import BaseAgent
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
@@ -10,8 +28,14 @@ from social.tiktok.tiktok_connector import TikTokConnector
 
 logger = logging.getLogger("usman.agent.publisher")
 
+GABARIT_BROUILLON = (
+    "Redige un titre accrocheur, une courte description et 5 hashtags pour "
+    "publier cette video sur TikTok. Le sujet est : {sujet}"
+)
+
+
 class PublisherAgent(BaseAgent):
-    """Agent chargé de publier les vidéos sur les réseaux sociaux."""
+    """Prepare la publication d'une video et rend l'etat reel de l'envoi."""
 
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None):
         super().__init__(
@@ -23,28 +47,45 @@ class PublisherAgent(BaseAgent):
         self.permissions = PermissionManager()
         self.tiktok = TikTokConnector()
 
+    async def _brouillon(self, sujet: str) -> str:
+        """Fait rediger le post. Sans modele disponible, on le dit au lieu d'inventer."""
+        try:
+            texte = await self.provider.generate(prompt=GABARIT_BROUILLON.format(sujet=sujet))
+            return texte.strip()
+        except Exception as erreur:
+            logger.warning("Brouillon impossible : %s", erreur)
+            return "(brouillon indisponible : le modele n'a pas repondu)"
+
+    def _sortie(self, resultat: ResultatAction, brouillon: str = "") -> Dict[str, Any]:
+        """Met le resultat a la forme attendue par l'aiguilleur, brouillon compris."""
+        corps = resultat.to_dict()
+        corps["agent"] = self.name
+        if brouillon:
+            corps["brouillon"] = brouillon
+            corps["response"] = f"{resultat.message}\n\nBrouillon du post :\n{brouillon}"
+        return corps
+
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         video_path = context.get("video_path") if context else None
 
+        # Sans fichier, rien a preparer : on s'arrete avant d'appeler le modele.
         if not video_path or not Path(video_path).exists():
-            return {"status": "error", "agent": self.name, "response": "❌ Aucune vidéo trouvée pour la publication."}
+            return self._sortie(echec(
+                action="publish_video",
+                cible="TikTok",
+                message="Aucune video trouvee pour la publication.",
+                fichier=str(video_path or ""),
+            ))
 
-        # VÉRIFICATION DE SÉCURITÉ (Règle 34)
+        brouillon = await self._brouillon(user_input)
+
         if not self.permissions.is_allowed("PUBLISH"):
-            logger.warning("Publication bloquée par les permissions de sécurité.")
+            logger.warning("Publication bloquee par les permissions de securite.")
+            return self._sortie(
+                refuse(action="publish_video", cible="TikTok", permission="PUBLISH"),
+                brouillon,
+            )
 
-            # Si bloqué, on fait une simulation via l'IA pour générer le post
-            prompt = f"Rédige un titre accrocheur, une courte description et 5 hashtags pour publier cette vidéo sur TikTok. Le sujet est : {user_input}"
-            post_content = await self.provider.generate(prompt=prompt)
-
-            self.tiktok.authenticate()
-            sim_result = self.tiktok.publish_video(video_path, "Titre généré", "Description générée", ["#Simulation"])
-
-            return {
-                "status": "success",
-                "agent": self.name,
-                "response": f"🔒 MODE SÉCURITÉ ACTIF (Publication réelle bloquée).\n\n[SIMULATION TIKTOK] : {sim_result['message']}\n\n📝 Brouillon du post généré par l'IA :\n{post_content.strip()}"
-            }
-
-        # Code futur pour publication réelle...
-        return {"status": "error", "response": "Publication réelle non implémentée."}
+        # Permission accordee : c'est le connecteur qui decide, et aujourd'hui il
+        # n'est pas branche. Il le declare lui-meme plutot que de le supposer ici.
+        return self._sortie(self.tiktok.publish_video(video_path, "", brouillon, []), brouillon)
