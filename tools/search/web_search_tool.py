@@ -30,7 +30,7 @@ Trois corrections en decoulent :
 """
 import logging
 import re
-from typing import Any, Callable, Dict, List, Optional
+from typing import Dict, List
 from urllib.parse import urlparse
 
 logger = logging.getLogger("usman.tools.search")
