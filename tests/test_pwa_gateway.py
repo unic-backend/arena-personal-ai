@@ -14,6 +14,11 @@ from fastapi.testclient import TestClient
 from apps.backend import main
 from apps.backend import security as securite
 from apps.backend.routers import pwa_gateway
+from apps.backend.routers.pwa_gateway import (
+    PERSONA_MAX_CARACTERES,
+    instructions_persona,
+    prompt_systeme,
+)
 
 CLE_DE_TEST = "cle-de-test"
 
@@ -28,12 +33,14 @@ class FauxFournisseur:
         self._disponible = disponible
         self._leve = leve
         self.prompts = []
+        self.systemes = []
 
     async def is_available(self):
         return self._disponible
 
     async def generate_stream(self, prompt, system_prompt=None):
         self.prompts.append(prompt)
+        self.systemes.append(system_prompt)
         if self._leve:
             raise ConnectionError("le modele a coupe")
         for morceau in self._morceaux:
@@ -233,11 +240,92 @@ def test_les_champs_non_appliques_sont_journalises(client, entetes, fournisseur,
     fournisseur()
 
     with caplog.at_level("INFO", logger="usman.backend.pwa"):
-        demander(client, entetes, persona={"tone": "direct"}, memories=["m1"])
+        demander(client, entetes, memories=["m1"], connectors=["gmail"])
 
     assert any("non appliques" in ligne.message for ligne in caplog.records)
     journal = " ".join(ligne.message for ligne in caplog.records)
-    assert "persona" in journal and "memories" in journal
+    assert "memories" in journal and "connectors" in journal
+
+
+def test_le_persona_ne_figure_plus_parmi_les_champs_ignores():
+    """Il est applique depuis le 2026-08-27 : le dire encore serait faux."""
+    assert "persona" not in pwa_gateway.CHAMPS_NON_APPLIQUES
+
+
+# --- Le persona est applique --------------------------------------------------
+
+def test_le_persona_atteint_le_prompt_systeme(client, entetes, fournisseur, chat_direct):
+    faux = fournisseur()
+
+    demander(client, entetes, persona={
+        "instructions": "User Name: Ousmane\nTone: Be extremely concise.",
+    })
+
+    assert "Ousmane" in faux.systemes[0]
+    assert "concise" in faux.systemes[0]
+
+
+def test_le_persona_complete_les_regles_d_arena_sans_les_remplacer(
+    client, entetes, fournisseur, chat_direct
+):
+    """Un reglage de ton ne doit pas pouvoir effacer ce que la plateforme
+    s'interdit."""
+    faux = fournisseur()
+
+    demander(client, entetes, persona={"instructions": "Tone: concise."})
+
+    assert prompt_systeme(None) in faux.systemes[0]
+
+
+def test_sans_persona_le_prompt_systeme_est_inchange(client, entetes, fournisseur, chat_direct):
+    faux = fournisseur()
+
+    demander(client, entetes)
+
+    assert faux.systemes[0] == prompt_systeme(None)
+
+
+@pytest.mark.parametrize("persona", [None, {}, {"instructions": ""}, {"instructions": "   "}])
+def test_un_persona_vide_n_encombre_pas_le_prompt(persona):
+    """Un titre suivi du vide alourdirait chaque requete pour rien."""
+    assert prompt_systeme(persona) == prompt_systeme(None)
+
+
+def test_un_persona_trop_long_est_tronque():
+    """Il vient du navigateur : sans plafond, un texte colle par megarde
+    pousserait la conversation hors de la fenetre du modele."""
+    enorme = "a" * (PERSONA_MAX_CARACTERES * 3)
+
+    retenu = instructions_persona({"instructions": enorme})
+
+    assert len(retenu) == PERSONA_MAX_CARACTERES
+
+
+def test_les_preferences_sont_annoncees_comme_des_preferences():
+    """Le modele doit savoir que ce bloc est un gout, pas une regle."""
+    complet = prompt_systeme({"instructions": "Tone: concise."})
+
+    assert pwa_gateway.TITRE_PERSONA in complet
+
+
+def test_le_persona_n_est_pas_applique_a_un_agent_specialise(
+    client, entetes, fournisseur, monkeypatch, caplog
+):
+    """Un ton « concis » ne doit pas raccourcir un devis ni une recherche sourcee."""
+    fournisseur()
+
+    async def _plaquiste(_demande):
+        return "PLAQUISTE"
+    monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _plaquiste)
+
+    async def _resultat(_requete, intent=None):
+        return {"response": "Devis chiffre.", "sources": []}
+    monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+    with caplog.at_level("INFO", logger="usman.backend.pwa"):
+        demander(client, entetes, persona={"instructions": "Tone: concise."})
+
+    assert any("Persona non applique" in ligne.message for ligne in caplog.records)
 
 
 def test_une_requete_sans_ces_champs_ne_journalise_rien(client, entetes, fournisseur,

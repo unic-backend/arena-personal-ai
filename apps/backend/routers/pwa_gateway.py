@@ -21,11 +21,18 @@ Le protocole, releve dans son code (`src/lib/activity/`) :
   jusqu'a trois fois. Un flux qui s'arrete en silence devient trois reponses.
 
 **Ce qui n'est pas applique, et n'est pas fait semblant d'etre applique :**
-`persona`, `memories`, `connectors` et `attachments` arrivent dans la requete et
-ne sont pas encore utilises. Ils sont journalises, jamais ignores en silence :
-une interface qui offre un reglage sans effet est pire qu'une interface qui ne
-l'offre pas. `POST /files` le declare franchement plutot que d'accepter un
-fichier qui n'irait nulle part.
+`memories`, `connectors` et `attachments` arrivent dans la requete et ne sont pas
+encore utilises. Ils sont journalises, jamais ignores en silence : une interface
+qui offre un reglage sans effet est pire qu'une interface qui ne l'offre pas.
+`POST /files` le declare franchement plutot que d'accepter un fichier qui
+n'irait nulle part.
+
+`persona`, lui, **est applique** depuis le 2026-08-27 : ses instructions
+s'ajoutent au prompt systeme d'ARENA. Elles s'y **ajoutent** et ne le remplacent
+pas — le reglage de ton du proprietaire ne doit pas pouvoir effacer les regles
+de la plateforme. Elles ne s'appliquent qu'a la conversation : un agent
+specialise (devis, recherche, code) a ses propres consignes, et un ton
+« concis » ne doit pas raccourcir un devis.
 """
 import json
 import logging
@@ -47,7 +54,14 @@ router = APIRouter()
 
 # Champs que l'interface envoie et qu'ARENA ne sait pas encore honorer. Ecrits
 # ici pour que le journal les nomme un par un, plutot qu'un vague « ignore ».
-CHAMPS_NON_APPLIQUES = ("persona", "memories", "connectors", "attachments")
+CHAMPS_NON_APPLIQUES = ("memories", "connectors", "attachments")
+
+# Longueur maximale des instructions de persona ajoutees au prompt systeme.
+# Elles viennent du navigateur : sans plafond, un reglage colle par megarde
+# pousserait la conversation hors de la fenetre du modele.
+PERSONA_MAX_CARACTERES = 2000
+
+TITRE_PERSONA = "Preferences du proprietaire (elles completent les regles ci-dessus, sans les remplacer) :"
 
 
 class DemandeAgent(BaseModel):
@@ -98,6 +112,44 @@ def _signaler_non_applique(demande: DemandeAgent) -> None:
         )
 
 
+def instructions_persona(persona: Optional[Dict[str, Any]]) -> str:
+    """Les preferences du proprietaire, prêtes a etre ajoutees au prompt systeme.
+
+    Son interface les compose deja (`buildPersonaPrompt`) et les envoie dans
+    `persona.instructions`. On ne les recompose pas ici : deux endroits qui
+    fabriquent le meme texte finissent par le fabriquer differemment.
+
+    Rend une chaine vide s'il n'y a rien a dire — un titre suivi du vide
+    encombrerait chaque requete pour rien.
+    """
+    if not persona:
+        return ""
+    brut = str(persona.get("instructions") or "").strip()
+    if not brut:
+        return ""
+    if len(brut) > PERSONA_MAX_CARACTERES:
+        logger.warning(
+            "Persona tronque : %s caracteres recus, %s conserves.",
+            len(brut), PERSONA_MAX_CARACTERES,
+        )
+        brut = brut[:PERSONA_MAX_CARACTERES]
+    return brut
+
+
+def prompt_systeme(persona: Optional[Dict[str, Any]]) -> str:
+    """Le prompt systeme d'ARENA, complete par les preferences du proprietaire.
+
+    L'ordre n'est pas indifferent : les regles d'ARENA d'abord, les preferences
+    ensuite, annoncees comme des preferences. Un reglage de ton ne doit pas
+    pouvoir effacer ce que la plateforme s'interdit.
+    """
+    base = get_arena_system_prompt()
+    preferences = instructions_persona(persona)
+    if not preferences:
+        return base
+    return f"{base}\n\n{TITRE_PERSONA}\n{preferences}"
+
+
 def _prompt_conversation(demande: DemandeAgent, proprietaire: str) -> str:
     """Reconstruit le fil a partir de l'historique envoye par l'interface.
 
@@ -138,6 +190,13 @@ async def flux_agent(demande: DemandeAgent):
             # Un agent specialise rend une reponse complete, pas un flux. On la
             # rend d'un bloc plutot que de la decouper en faux jetons.
             if intention in AGENTS_SPECIALISES:
+                # Un agent specialise a ses propres consignes. Un ton « concis »
+                # ne doit pas raccourcir un devis ni une recherche sourcee.
+                if instructions_persona(demande.persona):
+                    logger.info(
+                        "Persona non applique : la demande part vers l'agent %s, "
+                        "qui a ses propres consignes.", intention,
+                    )
                 resultat = await dispatch_request(
                     ChatRequest(prompt=demande.text, session_id=session), intent=intention
                 )
@@ -153,7 +212,8 @@ async def flux_agent(demande: DemandeAgent):
             memory.add_chat_message(session_id=session, role="user", content=demande.text)
             complet = ""
             async for morceau in fast_provider.generate_stream(
-                _prompt_conversation(demande, proprietaire), get_arena_system_prompt()
+                _prompt_conversation(demande, proprietaire),
+                prompt_systeme(demande.persona),
             ):
                 complet += morceau
                 yield jeton(morceau)
