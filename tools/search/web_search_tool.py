@@ -27,9 +27,20 @@ Trois corrections en decoulent :
    au lieu de la preciser.
 3. **une page d'accueil ne vaut pas un article.** `https://seneweb.com/` n'a pas
    de date et n'a pas de sujet ; elle passe apres tout ce qui est date.
+
+Mesure du 2026-08-27, meme machine. La passe 1 a leve
+`operation timed out` — un alea reseau, pas une absence de resultat — et la
+recherche est passee a la suite. Les cinq resultats rendus dataient du 10 au
+19 aout : la seule passe qui voit ce qui a moins d'une heure avait ete perdue
+pour un incident passager. D'ou la quatrieme correction :
+
+4. **un timeout reseau se reessaie une fois.** Un moteur qui ne repond pas
+   n'est pas un moteur qui n'a rien trouve. Un seul reessai, et un delai global
+   pour qu'une reponse ne depende jamais d'un moteur muet.
 """
 import logging
 import re
+import time
 from typing import Dict, List
 from urllib.parse import urlparse
 
@@ -41,6 +52,22 @@ REGION_PAR_DEFAUT = "fr-fr"
 # vide. Ce message-la ne signale aucune panne : ni reseau coupe, ni moteur en
 # erreur, seulement une requete trop etroite.
 ABSENCE_DE_RESULTAT = "no results found"
+
+# Signatures d'une panne **passagere** : le moteur n'a pas repondu a temps, ou
+# la connexion a lache. Un reessai a un sens. Toute autre erreur — parametre
+# refuse, categorie inconnue, quota epuise — se reproduira a l'identique, et
+# reessayer ne ferait que doubler l'attente.
+PANNES_PASSAGERES = (
+    "timed out", "timeout", "connection", "connexion",
+    "temporarily", "temporary", "reset by peer", "broken pipe",
+    "network", "unreachable", "502", "503", "504",
+)
+
+# Delai global d'une recherche complete, toutes passes confondues. Il est
+# verifie **avant** chaque passe : la derniere engagee peut donc le depasser du
+# temps d'un appel moteur. Ce n'est pas une garantie a la seconde, c'est une
+# borne qui empeche une reponse d'attendre indefiniment un moteur muet.
+DELAI_TOTAL_SECONDES = 25.0
 
 # Mots qui decrivent le *genre* de la demande, pas son sujet. Un moteur
 # d'actualites indexe deja des actualites : les lui redemander ne fait que
@@ -61,40 +88,101 @@ def _sans_accent(mot: str) -> str:
     return mot.lower().translate(ACCENTS)
 
 
+def est_panne_passagere(erreur: BaseException) -> bool:
+    """Dit si l'erreur vaut un reessai.
+
+    Le type ne suffit pas : `ddgs` enveloppe les erreurs de son client HTTP dans
+    sa propre exception, et le motif reel n'est lisible que dans le message.
+    Les deux sont donc regardes — le type quand il est explicite, le texte
+    sinon.
+
+    Rien ici ne traite le cas « aucun resultat » : `_executer` le rend avant
+    d'arriver jusqu'ici. Un garde-fou de plus a ete ecrit puis retire — le
+    saboter ne faisait echouer aucun test, ce qui est la definition d'une ligne
+    qui ne protege rien.
+    """
+    if isinstance(erreur, (TimeoutError, ConnectionError)):
+        return True
+    return any(signature in str(erreur).lower() for signature in PANNES_PASSAGERES)
+
+
 class WebSearchTool:
     """Outil de recherche web autonome local via ddgs."""
 
-    def __init__(self, region: str = REGION_PAR_DEFAUT):
+    def __init__(
+        self,
+        region: str = REGION_PAR_DEFAUT,
+        delai_total: float = DELAI_TOTAL_SECONDES,
+        pause_avant_reessai: float = 0.0,
+    ):
         self.region = region
+        self.delai_total = delai_total
+        # Aucune pause par defaut : le timeout qui vient d'echouer a deja pris
+        # son temps. Le reglage existe pour un moteur qui limite le debit, pas
+        # pour ralentir le cas normal — et il est a zero dans les tests.
+        self.pause_avant_reessai = pause_avant_reessai
 
     # --- Acces au moteur ------------------------------------------------------
 
-    def _executer(self, categorie: str, query: str, max_results: int, timelimit=None) -> List[Dict[str, str]]:
-        """Lance une recherche d'une categorie donnee. Rend [] plutot que lever."""
-        try:
-            from ddgs import DDGS
+    def _interroger(self, categorie: str, query: str, max_results: int, timelimit=None):
+        """Appelle le moteur, sans rien rattraper. Isole pour etre reessayable.
 
-            with DDGS() as ddgs:
-                methode = getattr(ddgs, categorie)
-                bruts = list(methode(
-                    query,
-                    region=self.region,
-                    max_results=max_results,
-                    **({"timelimit": timelimit} if timelimit else {}),
-                ))
-        except Exception as erreur:
-            # Distinguer « rien trouve » de « le moteur est tombe » : le premier
-            # est une information sur la requete, le second sur le systeme. Les
-            # confondre a fait passer une requete trop etroite pour une panne.
-            if ABSENCE_DE_RESULTAT in str(erreur).lower():
-                logger.info(
-                    "Aucun resultat en %s%s pour %r : on elargit.",
-                    categorie,
-                    f" ({timelimit})" if timelimit else "",
-                    query[:60],
-                )
-            else:
+        Tout ce qui peut echouer est ici, et rien d'autre : `_executer` decide
+        quoi faire de l'echec, cette methode se contente de le laisser passer.
+        """
+        from ddgs import DDGS
+
+        with DDGS() as ddgs:
+            methode = getattr(ddgs, categorie)
+            return list(methode(
+                query,
+                region=self.region,
+                max_results=max_results,
+                **({"timelimit": timelimit} if timelimit else {}),
+            ))
+
+    def _executer(self, categorie: str, query: str, max_results: int, timelimit=None) -> List[Dict[str, str]]:
+        """Lance une recherche d'une categorie donnee. Rend [] plutot que lever.
+
+        Trois issues possibles a un echec, et une seule donne lieu a un reessai :
+
+        - **aucun resultat** : ce n'est pas une panne, c'est une reponse. On
+          rend [] et l'appelant elargit ;
+        - **panne passagere** (timeout, connexion perdue) : **un** reessai, puis
+          on abandonne. Jamais de boucle ;
+        - **toute autre erreur** : on abandonne tout de suite, comme avant. La
+          reessayer ne ferait que doubler l'attente pour le meme echec.
+        """
+        bruts = None
+        for tentative in (1, 2):
+            try:
+                bruts = self._interroger(categorie, query, max_results, timelimit)
+                break
+            except Exception as erreur:
+                # Distinguer « rien trouve » de « le moteur est tombe » : le premier
+                # est une information sur la requete, le second sur le systeme. Les
+                # confondre a fait passer une requete trop etroite pour une panne.
+                if ABSENCE_DE_RESULTAT in str(erreur).lower():
+                    logger.info(
+                        "Aucun resultat en %s%s pour %r : on elargit.",
+                        categorie,
+                        f" ({timelimit})" if timelimit else "",
+                        query[:60],
+                    )
+                    return []
+
+                if tentative == 1 and est_panne_passagere(erreur):
+                    logger.warning(
+                        "Recherche %s interrompue (%s) : un reessai.", categorie, erreur
+                    )
+                    if self.pause_avant_reessai:
+                        time.sleep(self.pause_avant_reessai)
+                    continue
+
                 logger.warning(f"Recherche {categorie} impossible : {erreur}")
+                return []
+
+        if bruts is None:
             return []
 
         resultats = []
@@ -158,9 +246,15 @@ class WebSearchTool:
 
         Les resultats dates passent devant les autres, et les pages d'accueil
         passent en dernier : elles n'ont ni date ni sujet.
+
+        Chaque passe peut etre reessayee une fois sur panne reseau, et le
+        tout est borne par `delai_total`, verifie avant chaque passe.
         """
         resultats: List[Dict[str, str]] = []
         vus = set()
+        # Echeance locale, jamais stockee sur l'instance : deux recherches
+        # simultanees ne doivent pas se voler leur budget.
+        echeance = time.monotonic() + self.delai_total
 
         def ajouter(nouveaux):
             for r in nouveaux:
@@ -169,6 +263,19 @@ class WebSearchTool:
                     resultats.append(r)
 
         def il_en_manque() -> bool:
+            """Reste-t-il des resultats a chercher, et du temps pour le faire ?
+
+            La premiere passe part toujours : au demarrage, le delai global est
+            forcement intact. Les suivantes ne s'engagent que si le budget n'est
+            pas epuise — un moteur muet ne peut donc pas retarder la reponse
+            passe cette borne.
+            """
+            if time.monotonic() >= echeance:
+                logger.warning(
+                    "Delai global de %.0f s atteint : recherche arretee avec %d resultat(s).",
+                    self.delai_total, len(resultats),
+                )
+                return False
             return len(resultats) < max_results
 
         if recent:

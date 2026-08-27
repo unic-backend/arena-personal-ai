@@ -194,3 +194,138 @@ def test_toute_doublure_de_recherche_suit_la_vraie_signature():
                 ecarts.append(f"{fichier.name} : il manque {sorted(manquants)}")
 
     assert ecarts == [], "doublures désynchronisées :\n" + "\n".join(ecarts)
+
+
+# ==============================================================================
+# Résistance aux timeouts réseau
+# ==============================================================================
+class MoteurQuiLeve:
+    """Moteur brut : lève ce qu'on lui donne, puis rend ce qu'on lui donne.
+
+    Il remplace `_interroger`, pas `_executer` : le réessai vit sous `_executer`,
+    et un double placé au-dessus ne le verrait jamais.
+    """
+
+    def __init__(self, erreurs, resultats=None):
+        self.erreurs = list(erreurs)
+        self.resultats = resultats if resultats is not None else []
+        self.appels = 0
+
+    def __call__(self, categorie, query, max_results, timelimit=None):
+        self.appels += 1
+        if self.erreurs:
+            raise self.erreurs.pop(0)
+        return self.resultats
+
+
+def _brut(href="https://a.test", date="2026-08-27"):
+    return {"title": "T", "href": href, "body": "extrait", "date": date}
+
+
+class TestReessaiSurTimeout:
+    """Mesuré le 2026-08-27 : la passe du jour perdue sur `operation timed out`."""
+
+    def test_un_timeout_declenche_un_reessai_et_la_passe_reussit(self):
+        moteur = MoteurQuiLeve(
+            [Exception("error sending request for url (https://duckduckgo.com/?q=x) > operation timed out")],
+            [_brut()],
+        )
+        outil = WebSearchTool()
+        outil._interroger = moteur
+
+        resultats = outil._executer("news", "senegal", 5, timelimit="d")
+
+        assert moteur.appels == 2, "le timeout n'a pas été réessayé"
+        assert len(resultats) == 1
+        assert resultats[0]["date"] == "2026-08-27"
+
+    def test_un_seul_reessai_jamais_deux(self):
+        """Pas de boucle : deux échecs, on abandonne."""
+        moteur = MoteurQuiLeve([TimeoutError("timed out"), TimeoutError("timed out")])
+        outil = WebSearchTool()
+        outil._interroger = moteur
+
+        assert outil._executer("news", "q", 5, timelimit="d") == []
+        assert moteur.appels == 2
+
+    def test_une_absence_de_resultat_n_est_pas_reessayee(self):
+        """`No results found` est une réponse, pas une panne."""
+        moteur = MoteurQuiLeve([Exception("DDGSException: No results found.")])
+        outil = WebSearchTool()
+        outil._interroger = moteur
+
+        assert outil._executer("news", "q", 5, timelimit="d") == []
+        assert moteur.appels == 1, "une recherche vide a été réessayée"
+
+    def test_une_erreur_definitive_n_est_pas_reessayee(self):
+        """Un paramètre refusé se reproduira à l'identique."""
+        moteur = MoteurQuiLeve([ValueError("unknown category 'videos'")])
+        outil = WebSearchTool()
+        outil._interroger = moteur
+
+        assert outil._executer("videos", "q", 5) == []
+        assert moteur.appels == 1
+
+    @pytest.mark.parametrize("erreur", [
+        TimeoutError("timed out"),
+        ConnectionError("connection reset by peer"),
+        Exception("operation timed out"),
+        Exception("HTTP 503 Service Unavailable"),
+        Exception("network is unreachable"),
+    ])
+    def test_ces_pannes_valent_un_reessai(self, erreur):
+        from tools.search.web_search_tool import est_panne_passagere
+        assert est_panne_passagere(erreur) is True
+
+    @pytest.mark.parametrize("erreur", [
+        Exception("No results found."),
+        ValueError("unknown category"),
+        Exception("invalid region code"),
+    ])
+    def test_ces_erreurs_ne_valent_pas_un_reessai(self, erreur):
+        from tools.search.web_search_tool import est_panne_passagere
+        assert est_panne_passagere(erreur) is False
+
+    def test_un_timeout_sur_la_premiere_passe_ne_perd_plus_le_jour(self):
+        """Le cas complet : la passe 1 échoue, le réessai la sauve.
+
+        Sans réessai, la recherche se rabattait sur `text` et rendait des pages
+        du 10 au 19 août pour une question du jour.
+        """
+        moteur = MoteurQuiLeve([TimeoutError("operation timed out")], [_brut(date="2026-08-27")])
+        outil = WebSearchTool()
+        outil._interroger = moteur
+
+        resultats = outil.search("senegal", max_results=5, recent=True)
+
+        assert resultats, "la recherche rend zéro alors que le réessai réussit"
+        assert resultats[0]["date"] == "2026-08-27"
+        assert resultats[0]["source"] == "news", "on est retombé sur une passe moins fraîche"
+
+
+class TestDelaiGlobal:
+    def test_une_recherche_normale_n_est_pas_amputee(self):
+        moteur = MoteurQuiLeve([], [_brut()])
+        outil = WebSearchTool(delai_total=30.0)
+        outil._interroger = moteur
+
+        assert outil.search("q", max_results=1, recent=True)
+
+    def test_le_delai_epuise_arrete_les_passes_suivantes(self):
+        """Un moteur muet ne peut pas retarder la réponse indéfiniment."""
+        moteur = MoteurQuiLeve([], [])
+        outil = WebSearchTool(delai_total=0.0)
+        outil._interroger = moteur
+
+        outil.search("q", max_results=5, recent=True)
+
+        assert moteur.appels == 1, "des passes ont été lancées après l'échéance"
+
+    def test_le_delai_est_local_a_chaque_recherche(self):
+        """Deux recherches successives ne se volent pas leur budget."""
+        moteur = MoteurQuiLeve([], [_brut()])
+        outil = WebSearchTool(delai_total=30.0)
+        outil._interroger = moteur
+
+        assert outil.search("q1", max_results=1, recent=True)
+        assert outil.search("q2", max_results=1, recent=True)
