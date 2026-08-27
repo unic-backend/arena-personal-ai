@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from agents.plaquiste.archives import extraits_pour, formater
+from agents.plaquiste.controle_prix import avertissement, verifier_prix
 from core.agent.base_agent import BaseAgent
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
@@ -162,11 +163,18 @@ class PlaquisteAgent(BaseAgent):
         if archives:
             instruction = f"{instruction}\n\n{archives}"
 
-        reponse = await self.provider.generate(prompt=user_input, system_prompt=instruction)
+        reponse = ((await self.provider.generate(prompt=user_input, system_prompt=instruction)) or "").strip()
+
+        # L instruction dit au modele de ne pas alterer un prix. Ce controle-ci
+        # verifie qu il ne l a pas fait : une consigne n est pas une garantie, et
+        # le document part chez un client.
+        anomalies = verifier_prix(reponse, self.metier)
+
         return {
             "status": "success",
             "agent": self.name,
             "articles_connus": len(_grille(self.metier)),
             "extraits_archives": [e.source for e in extraits],
-            "response": (reponse or "").strip(),
+            "prix_alteres": [str(a) for a in anomalies],
+            "response": reponse + avertissement(anomalies),
         }
