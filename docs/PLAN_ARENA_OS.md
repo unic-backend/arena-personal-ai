@@ -7,7 +7,7 @@ justifies this order is `docs/AUDIT_ARENA_OS.md`; it was measured, not recalled.
 VOLET en cours   : ARENA OS
 Chapitres        : 12
 Phases           : 21
-Phase courante   : 3.2 — en attente de confirmation
+Phase courante   : 4.1 — en attente de confirmation
 Terminées        : 1.1 (2026-08-27) — `core/actions/resultat.py`, sept statuts ;
                    un succès exige une preuve, une action sans effet n'en porte pas.
                    2.1 (2026-08-27) — `core/actions/journal.py`, les neuf champs ;
@@ -17,6 +17,16 @@ Terminées        : 1.1 (2026-08-27) — `core/actions/resultat.py`, sept statut
                    3.1 (2026-08-27) — `core/permissions/politique.py` et
                    `config/permissions_services.yaml` : compte × service ×
                    action × risque, action inconnue refusée.
+                   3.2 (2026-08-27) — `core/permissions/controle.py` : deux
+                   couches, la plus stricte gagne ; 10 actions rattachées aux
+                   coupe-circuits ; `PERM_*` morts retirés.
+
+**Deuxième correction apportée au plan.** Il annonçait que *tous* les appels
+existants passeraient sur le contrôle par portée. `media.py` vérifie
+`WRITE_FILES` pour un envoi de fichier local : ce n'est ni un compte ni un
+service externe, et lui inventer un service pour respecter la lettre du plan
+aurait produit une adresse fausse. Il reste gouverné par son booléen, qui est
+exactement le bon outil pour une capacité locale.
 
 **Correction apportée au plan par la spécification.** Ce tableau annonçait
 `delete = DENIED` pour l'e-mail. Le §13 de la spécification du propriétaire dit
@@ -54,7 +64,7 @@ Ch. 12  Site web, SEO, Google Business, réseaux → 1 phase (indivisible)
 | **2.1** | `ActionRecord` — id, timestamp, tool, target, parameters, permission level, result, errors, verification status. §12. | round-trip through SQLite, every field preserved |
 | **2.2** | `agent_logs` finally written, and an activity timeline readable. §21. | an action executed end to end appears in the timeline with its verification state |
 | **3.1** | `Permission(account, service, action, risk)` next to the nine booleans, which keep working. §13. | `send` and `delete` on Gmail = CONFIRMATION, `settings` = DENIED, by default and from config |
-| **3.2** | Every existing call site moves onto the scoped check; the dead `PERM_*` variables are removed or wired. | the two current `is_allowed` sites still refuse what they refused |
+| **3.2** | `ControleAcces` combines the two layers, the publisher moves onto it, the dead `PERM_*` variables are removed. `media.py`'s `WRITE_FILES` stays a global switch — see below. | with the shipped config, publishing is still refused |
 | **4.1** | `Connector` base: auth, capabilities, permissions, health, read ops, write ops, errors, rate limits, audit. §16. | a connector declaring nothing exposes nothing |
 | **4.2** | Lazy connector registry, replacing hard-coded branches. A broken connector degrades alone. | the server starts with a connector that raises on construction |
 | **5.1** | `PendingAction` — action, target, risk, expected result — held, shown, then executed or dropped. §18. | an unconfirmed action never executes |

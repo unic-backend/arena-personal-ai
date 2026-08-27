@@ -180,7 +180,13 @@ class PolitiqueDePermissions:
 
     # --- Interrogation --------------------------------------------------------
 
-    def _regle_du_service(self, service: str, action: str) -> Optional[Dict[str, Any]]:
+    def regle(self, service: str, action: str) -> Optional[Dict[str, Any]]:
+        """La regle declaree pour une action, telle qu'elle est ecrite, ou None.
+
+        Publique parce que `ControleAcces` a besoin d'y lire le coupe-circuit
+        associe. Passer par l'attribut prive marcherait aussi, et se casserait
+        au premier remaniement.
+        """
         regle = (self._services.get(service) or {}).get(action)
         return regle if isinstance(regle, dict) else None
 
@@ -210,7 +216,7 @@ class PolitiqueDePermissions:
             Une `Autorisation`. Jamais `None` : une action inconnue est refusee,
             pas ignoree.
         """
-        regle = self._regle_du_service(service, action)
+        regle = self.regle(service, action)
         risque = _lire_risque(regle.get("risque"), f"{service}.{action}") if regle else RISQUE_INCONNU
 
         decision_compte = self._decision_du_compte(compte, service, action)

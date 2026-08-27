@@ -52,17 +52,17 @@ async def test_une_action_traverse_toute_la_chaine(provider_factory, journal, vi
 
 
 async def test_chaque_chemin_de_l_agent_laisse_une_trace(
-    provider_factory, journal, video_factice, monkeypatch
+    provider_factory, journal, video_factice
 ):
     agent = PublisherAgent(provider=provider_factory(), journal=journal)
 
     await agent.run("Sujet", context={"video_path": "/inexistant.mp4"})   # FAILED
     await agent.run("Sujet", context={"video_path": str(video_factice)})  # DENIED
-    monkeypatch.setattr(agent.permissions, "is_allowed", lambda nom: True)
-    await agent.run("Sujet", context={"video_path": str(video_factice)})  # NOT_CONFIGURED
+    agent.permissions.permissions["PUBLISH"] = True
+    await agent.run("Sujet", context={"video_path": str(video_factice)})  # NEEDS_CONFIRMATION
 
     resultats = {a.resultat for a in journal.dernieres()}
-    assert resultats == {"FAILED", "DENIED", "NOT_CONFIGURED"}
+    assert resultats == {"FAILED", "DENIED", "NEEDS_CONFIRMATION"}
 
 
 async def test_le_chemin_de_la_video_journalise_n_est_pas_perdu(

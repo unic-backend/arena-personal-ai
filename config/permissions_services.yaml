@@ -15,6 +15,12 @@
 #
 # REGLE QUI NE SE CONFIGURE PAS : une action absente de ce fichier est REFUSEE.
 # Une capacite nouvelle n'est donc jamais autorisee par oubli.
+#
+# `interrupteur` relie une action a l'un des neuf booleens historiques de
+# config/permissions.yaml. Ce booleen est un COUPE-CIRCUIT GENERAL : quand il
+# est a false, l'action est refusee quoi que dise ce fichier. C'est ce qui
+# empeche une modification ici de rallumer ce que le proprietaire a eteint
+# globalement. Le plus strict des deux gagne, toujours.
 
 defaut: DENIED
 
@@ -31,10 +37,10 @@ services:
     move:        {decision: CONFIRMATION, risque: MEDIUM}
     unsubscribe: {decision: CONFIRMATION, risque: MEDIUM}
     mark_read:   {decision: ALLOWED,      risque: LOW}
-    send:        {decision: CONFIRMATION, risque: HIGH}
+    send:        {decision: CONFIRMATION, risque: HIGH, interrupteur: SEND_MESSAGES}
     # Suppression definitive. La specification la place en CONFIRMATION ;
     # la mettre a DENIED ici la rend simplement impossible.
-    delete:      {decision: CONFIRMATION, risque: HIGH}
+    delete:      {decision: CONFIRMATION, risque: HIGH, interrupteur: DELETE}
     settings:    {decision: DENIED,       risque: HIGH}
 
   calendar:
@@ -43,21 +49,21 @@ services:
     draft:       {decision: ALLOWED,      risque: LOW}
     create:      {decision: CONFIRMATION, risque: MEDIUM}
     modify:      {decision: CONFIRMATION, risque: MEDIUM}
-    delete:      {decision: CONFIRMATION, risque: HIGH}
+    delete:      {decision: CONFIRMATION, risque: HIGH, interrupteur: DELETE}
 
   website:
     inspect:     {decision: ALLOWED,      risque: LOW}
     analyze:     {decision: ALLOWED,      risque: LOW}
     draft:       {decision: ALLOWED,      risque: LOW}
-    publish:     {decision: CONFIRMATION, risque: HIGH}
-    delete:      {decision: CONFIRMATION, risque: HIGH}
+    publish:     {decision: CONFIRMATION, risque: HIGH, interrupteur: PUBLISH}
+    delete:      {decision: CONFIRMATION, risque: HIGH, interrupteur: DELETE}
 
   social:
     read:        {decision: ALLOWED,      risque: LOW}
     draft:       {decision: ALLOWED,      risque: LOW}
-    schedule:    {decision: CONFIRMATION, risque: MEDIUM}
-    publish:     {decision: CONFIRMATION, risque: HIGH}
-    reply:       {decision: CONFIRMATION, risque: HIGH}
+    schedule:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: PUBLISH}
+    publish:     {decision: CONFIRMATION, risque: HIGH,   interrupteur: PUBLISH}
+    reply:       {decision: CONFIRMATION, risque: HIGH,   interrupteur: SEND_MESSAGES}
 
   search_console:
     read:        {decision: ALLOWED,      risque: LOW}
@@ -67,8 +73,8 @@ services:
   business_profile:
     read:        {decision: ALLOWED,      risque: LOW}
     draft:       {decision: ALLOWED,      risque: LOW}
-    update:      {decision: CONFIRMATION, risque: HIGH}
-    reply:       {decision: CONFIRMATION, risque: HIGH}
+    update:      {decision: CONFIRMATION, risque: HIGH, interrupteur: PUBLISH}
+    reply:       {decision: CONFIRMATION, risque: HIGH, interrupteur: SEND_MESSAGES}
 
 # Regles par compte. Elles l'emportent sur celles du service, dans les deux
 # sens : un compte peut etre plus ouvert ou plus ferme que son service.

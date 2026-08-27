@@ -25,7 +25,9 @@ from apps.backend.config import DB_PATH, MODELE_PROFOND, MODELE_RAPIDE, OLLAMA_U
 from core.actions.journal import JournalDesActions
 from core.memory.memory_manager import MemoryManager
 from core.models.ollama_provider import OllamaProvider
+from core.permissions.controle import ControleAcces
 from core.permissions.permission_manager import PermissionManager
+from core.permissions.politique import PolitiqueDePermissions
 from tools.rag.graphrag_tool import GraphRAGTool
 from tools.rag.lightrag_tool import LightRAGTool
 
@@ -34,6 +36,10 @@ logger = logging.getLogger("usman.backend")
 # --- Etat et outils -----------------------------------------------------------
 memory = MemoryManager(db_path=str(DB_PATH))
 permissions = PermissionManager()
+# Politique fine (compte x service x action x risque) et controle qui la combine
+# aux neuf coupe-circuits ci-dessus. La plus stricte des deux couches gagne.
+politique = PolitiqueDePermissions()
+acces = ControleAcces(permissions=permissions, politique=politique)
 # Journal des actions a effet externe. Meme fichier que la memoire, table a part.
 journal = JournalDesActions(db_path=str(DB_PATH))
 lightrag_tool = LightRAGTool()
@@ -52,7 +58,9 @@ subtitle_agent = SubtitleAgent(provider=deep_provider, memory=memory)
 coder_agent = CoderAgent(provider=fast_provider, memory=memory)
 researcher_agent = DeepResearcherAgent(provider=deep_provider, memory=memory)
 clip_selector = ClipSelectorAgent(provider=deep_provider, memory=memory)
-publisher_agent = PublisherAgent(provider=fast_provider, memory=memory, journal=journal)
+publisher_agent = PublisherAgent(
+    provider=fast_provider, memory=memory, journal=journal, acces=acces
+)
 browser_agent = BrowserAgent(provider=fast_provider, memory=memory)
 # Agent d'information fraiche : il lit le web avant de repondre.
 fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)

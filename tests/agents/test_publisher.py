@@ -11,10 +11,30 @@ Aucun test ici n'emet de requete : le connecteur TikTok n'en emet pas non plus.
 import inspect
 
 import pytest
+import yaml
 
 from agents.publisher.publisher_agent import PublisherAgent
 from core.actions.resultat import ResultatAction, Statut
+from core.permissions.controle import ControleAcces
+from core.permissions.politique import PolitiqueDePermissions
 from social.tiktok.tiktok_connector import TikTokConnector
+
+
+@pytest.fixture
+def acces_ouvert(tmp_path):
+    """Un controle d'acces ou la publication est franchement autorisee.
+
+    Il faut lever les DEUX couches : le coupe-circuit general `PUBLISH` et la
+    regle `social.publish`. C'est exactement ce que le controle garantit — une
+    seule des deux ne suffit pas.
+    """
+    chemin = tmp_path / "politique.yaml"
+    chemin.write_text(yaml.safe_dump({
+        "services": {"social": {"publish": {"decision": "ALLOWED", "risque": "HIGH"}}}
+    }), encoding="utf-8")
+    acces = ControleAcces(politique=PolitiqueDePermissions(chemin=chemin))
+    acces.permissions.permissions["PUBLISH"] = True
+    return acces
 
 
 @pytest.fixture
@@ -71,11 +91,10 @@ async def test_un_refus_rend_quand_meme_le_brouillon(provider_factory, video_fac
 
 # --- Permission accordee : le connecteur n'est pas branche, et il le dit ------
 
-async def test_permission_accordee_le_connecteur_se_declare_non_configure(
-    provider_factory, video_factice, monkeypatch
+async def test_publication_autorisee_le_connecteur_se_declare_non_configure(
+    provider_factory, video_factice, acces_ouvert
 ):
-    agent = PublisherAgent(provider=provider_factory())
-    monkeypatch.setattr(agent.permissions, "is_allowed", lambda nom: True)
+    agent = PublisherAgent(provider=provider_factory(), acces=acces_ouvert)
 
     res = await agent.run("Sujet", context={"video_path": str(video_factice)})
 
@@ -84,20 +103,42 @@ async def test_permission_accordee_le_connecteur_se_declare_non_configure(
     assert "video.publish" in res["response"]
 
 
+async def test_le_coupe_circuit_seul_leve_ne_suffit_pas(provider_factory, video_factice):
+    """`PUBLISH: true` rouvre le circuit ; la politique demande encore un accord."""
+    agent = PublisherAgent(provider=provider_factory("Titre\n#tech"))
+    agent.permissions.permissions["PUBLISH"] = True
+
+    res = await agent.run("Sujet", context={"video_path": str(video_factice)})
+
+    assert res["status"] == Statut.A_CONFIRMER.value
+    assert res["a_eu_lieu"] is False
+    assert "Rien n'est parti" in res["response"]
+    assert "HIGH" in res["response"]
+
+
+async def test_la_politique_seule_ouverte_ne_suffit_pas(
+    provider_factory, video_factice, acces_ouvert
+):
+    """La regle dit ALLOWED, mais le coupe-circuit general est eteint."""
+    acces_ouvert.permissions.permissions["PUBLISH"] = False
+    agent = PublisherAgent(provider=provider_factory(), acces=acces_ouvert)
+
+    res = await agent.run("Sujet", context={"video_path": str(video_factice)})
+
+    assert res["status"] == Statut.REFUSE.value
+    assert "PUBLISH" in res["response"]
+
+
 async def test_aucun_chemin_de_l_agent_ne_declare_une_publication(
-    provider_factory, video_factice, monkeypatch
+    provider_factory, video_factice, acces_ouvert
 ):
     """Le test qui compte : quel que soit le chemin, rien n'a eu lieu."""
-    agent = PublisherAgent(provider=provider_factory())
-    chemins = [
-        {"video_path": "/inexistant.mp4"},
-        {"video_path": str(video_factice)},
-    ]
-    for contexte in chemins:
-        assert (await agent.run("Sujet", context=contexte))["a_eu_lieu"] is False
-
-    monkeypatch.setattr(agent.permissions, "is_allowed", lambda nom: True)
-    assert (await agent.run("Sujet", context={"video_path": str(video_factice)}))["a_eu_lieu"] is False
+    for agent in (
+        PublisherAgent(provider=provider_factory()),
+        PublisherAgent(provider=provider_factory(), acces=acces_ouvert),
+    ):
+        for contexte in ({"video_path": "/inexistant.mp4"}, {"video_path": str(video_factice)}):
+            assert (await agent.run("Sujet", context=contexte))["a_eu_lieu"] is False
 
 
 # --- Le connecteur lui-meme ---------------------------------------------------

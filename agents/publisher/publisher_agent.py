@@ -20,14 +20,27 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from core.actions.journal import ActionEnregistree, JournalDesActions
-from core.actions.resultat import ResultatAction, echec, refuse
+from core.actions.resultat import ResultatAction, a_confirmer, echec, refuse
 from core.agent.base_agent import BaseAgent
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
-from core.permissions.permission_manager import PermissionManager
+from core.permissions.controle import ControleAcces
 from social.tiktok.tiktok_connector import TikTokConnector
 
 logger = logging.getLogger("usman.agent.publisher")
+
+# Adresse de l'action dans la politique de permissions. Ecrite une fois, pour
+# que le controle et le journal ne puissent pas designer deux choses.
+SERVICE = "social"
+# Deux noms, et ils ne sont pas interchangeables : `ACTION_POLITIQUE` est
+# l'action telle que la politique la declare (`social.publish`) ; `ACTION` est
+# ce qui est journalise, plus precis parce qu'un jour on publiera aussi autre
+# chose qu'une video. Les confondre ferait chercher une regle « publish_video »
+# qui n'existe pas — et la regle « action inconnue = refusee » repondrait DENIED
+# avec l'origine « defaut », ce qui est vrai et incomprehensible.
+ACTION_POLITIQUE = "publish"
+ACTION = "publish_video"
+CIBLE = "TikTok"
 
 GABARIT_BROUILLON = (
     "Redige un titre accrocheur, une courte description et 5 hashtags pour "
@@ -43,6 +56,7 @@ class PublisherAgent(BaseAgent):
         provider: ModelProvider,
         memory: Optional[MemoryManager] = None,
         journal: Optional[JournalDesActions] = None,
+        acces: Optional[ControleAcces] = None,
     ):
         super().__init__(
             name="PublisherAgent",
@@ -50,7 +64,10 @@ class PublisherAgent(BaseAgent):
             provider=provider,
             memory=memory
         )
-        self.permissions = PermissionManager()
+        self.acces = acces or ControleAcces()
+        # Conserve pour les appelants qui interrogeaient directement les neuf
+        # booleens : c'est le meme objet, pas une copie.
+        self.permissions = self.acces.permissions
         self.tiktok = TikTokConnector()
         # Injecte plutot que fabrique ici : un test doit pouvoir observer ce qui
         # est journalise, et un agent qui se cree son propre journal ne le permet
@@ -91,28 +108,46 @@ class PublisherAgent(BaseAgent):
 
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         video_path = context.get("video_path") if context else None
+        compte = context.get("compte") if context else None
 
         # Sans fichier, rien a preparer : on s'arrete avant d'appeler le modele.
         if not video_path or not Path(video_path).exists():
             return self._sortie(echec(
-                action="publish_video",
-                cible="TikTok",
+                action=ACTION,
+                cible=CIBLE,
                 message="Aucune video trouvee pour la publication.",
                 fichier=str(video_path or ""),
             ), video_path=video_path)
 
         brouillon = await self._brouillon(user_input)
 
-        if not self.permissions.is_allowed("PUBLISH"):
-            logger.warning("Publication bloquee par les permissions de securite.")
+        autorisation = self.acces.verifier(SERVICE, ACTION_POLITIQUE, compte=compte)
+
+        if autorisation.refuse:
+            logger.warning("Publication refusee (%s).", autorisation.origine)
             return self._sortie(
-                refuse(action="publish_video", cible="TikTok", permission="PUBLISH"),
+                refuse(action=ACTION, cible=CIBLE, permission=autorisation.origine),
                 brouillon,
                 video_path=video_path,
             )
 
-        # Permission accordee : c'est le connecteur qui decide, et aujourd'hui il
-        # n'est pas branche. Il le declare lui-meme plutot que de le supposer ici.
+        if autorisation.demande_confirmation:
+            # Tout est pret ; il manque le « oui ». Le mecanisme de confirmation
+            # lui-meme est le chapitre 5 : d'ici la, l'agent dit ou il en est au
+            # lieu de publier sans accord ou de faire comme s'il avait refuse.
+            return self._sortie(
+                a_confirmer(
+                    action=ACTION, cible=CIBLE,
+                    message=f"Pret a publier sur {CIBLE}. Risque {autorisation.risque.value}. "
+                            f"Rien n'est parti : dis-moi si je publie.",
+                    risque=autorisation.risque.value,
+                ),
+                brouillon,
+                video_path=video_path,
+            )
+
+        # Autorise sans rien demander : c'est le connecteur qui decide, et
+        # aujourd'hui il n'est pas branche. Il le declare lui-meme.
         return self._sortie(
             self.tiktok.publish_video(video_path, "", brouillon, []), brouillon, video_path
         )
