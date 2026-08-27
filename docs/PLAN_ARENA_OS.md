@@ -7,7 +7,7 @@ justifies this order is `docs/AUDIT_ARENA_OS.md`; it was measured, not recalled.
 VOLET en cours   : ARENA OS
 Chapitres        : 12
 Phases           : 21
-Phase courante   : 5.2 — en attente de confirmation
+Phase courante   : 6.1 — en attente de confirmation
 Terminées        : 1.1 (2026-08-27) — `core/actions/resultat.py`, sept statuts ;
                    un succès exige une preuve, une action sans effet n'en porte pas.
                    2.1 (2026-08-27) — `core/actions/journal.py`, les neuf champs ;
@@ -28,6 +28,16 @@ Terminées        : 1.1 (2026-08-27) — `core/actions/resultat.py`, sept statut
                    5.1 (2026-08-27) — `core/actions/attente.py` : déposer
                    n'exécute rien, confirmer deux fois n'exécute qu'une fois,
                    une confirmation périmée ne part pas, aucun secret en attente.
+                   5.2 (2026-08-27) — `/api/actions/pending`, `confirm`,
+                   `cancel`, `/api/permissions`. **Chapitre 5 terminé.**
+
+**Décision sur les politiques d'automatisation.** Aucun second mécanisme n'a été
+écrit : les règles par compte de `config/permissions_services.yaml` font déjà
+exactement ce que le §4 demande — `email.send: ALLOWED` sur un compte précis
+signifie « ARENA envoie depuis celui-là sans demander ». Coût si c'est faux :
+l'automatisation reste au grain du couple compte × action et ne sait pas dire
+« seulement vers ce destinataire ». Le jour où ce grain manque, une couche
+s'ajoute au-dessus sans défaire celle-ci.
 
 **Deuxième correction apportée au plan.** Il annonçait que *tous* les appels
 existants passeraient sur le contrôle par portée. `media.py` vérifie

@@ -76,8 +76,22 @@ services:
     update:      {decision: CONFIRMATION, risque: HIGH, interrupteur: PUBLISH}
     reply:       {decision: CONFIRMATION, risque: HIGH, interrupteur: SEND_MESSAGES}
 
-# Regles par compte. Elles l'emportent sur celles du service, dans les deux
-# sens : un compte peut etre plus ouvert ou plus ferme que son service.
+# Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
+#
+# La specification demande de pouvoir pre-autoriser des flux de travail
+# recurrents et fiables. C'est ce que fait une regle de compte : mettre
+# `email.send: ALLOWED` sur un compte precis, c'est declarer qu'ARENA envoie
+# depuis celui-la sans demander. Tout ce qui n'est pas ecrit ici continue de
+# passer par la confirmation.
+#
+# Aucun second mecanisme n'a ete invente pour cela : celui-ci fait deja
+# exactement ce qui est demande, et deux endroits pour dire la meme chose sont
+# un endroit pour se contredire.
+#
+# Elles l'emportent sur les regles du service, dans les deux sens : un compte
+# peut etre plus ouvert ou plus ferme que son service. Ce qu'elles ne peuvent
+# PAS faire : passer outre un coupe-circuit general eteint.
+#
 # Le proprietaire ecrit ici, par exemple :
 #
 # comptes:

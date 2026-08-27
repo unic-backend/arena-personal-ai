@@ -25,6 +25,11 @@ SURFACE_ATTENDUE = {
     "/api/chat/stream": (["POST"], ["verify_api_key", "limiter_debit"]),
     # Chronologie des actions, lecture seule (VOLET ARENA OS, phase 2.2).
     "/api/actions": (["GET"], ["verify_api_key", "limiter_debit"]),
+    # File d'attente et confirmation humaine (phase 5.2).
+    "/api/actions/pending": (["GET"], ["verify_api_key", "limiter_debit"]),
+    "/api/actions/{identifiant}/confirm": (["POST"], ["verify_api_key", "limiter_debit"]),
+    "/api/actions/{identifiant}/cancel": (["POST"], ["verify_api_key", "limiter_debit"]),
+    "/api/permissions": (["GET"], ["verify_api_key", "limiter_debit"]),
 }
 
 
