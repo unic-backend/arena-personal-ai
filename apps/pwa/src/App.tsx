@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Command, Menu, PanelLeftClose, PanelRight, Share2, SquarePen } from 'lucide-react';
+import { Menu, PanelLeftClose } from 'lucide-react';
 import { useChat } from './lib/store/chatStore';
 import { useI18n } from './lib/i18n';
 import { useBackend } from './lib/store/backendStore';
@@ -14,17 +14,17 @@ import { ConnectorsModal } from './components/chat/ConnectorsModal';
 import { PersonaModal } from './components/chat/PersonaModal';
 import { MemoryModal } from './components/chat/MemoryModal';
 import { ExportModal } from './components/chat/ExportModal';
+import { SettingsModal } from './components/chat/SettingsModal';
 import { CommandPalette } from './components/chat/CommandPalette';
 import { GlobalDropZone } from './components/chat/GlobalDropZone';
 import { NetworkStatus } from './components/chat/NetworkStatus';
 import { cn } from './utils/cn';
 
 export default function App() {
-  const { conversations, activeId, isRunning, send, cancel, newChat, rerunCommand, toggleLog } = useChat();
+  const { conversations, activeId, isRunning, send, cancel, rerunCommand, toggleLog } = useChat();
   const { t, locale } = useI18n();
   const { togglePalette } = useCommandPalette();
   const [mobileNav, setMobileNav] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -33,7 +33,7 @@ export default function App() {
       : 'Usman — Personal AI Workbench';
   }, [locale]);
 
-  /* Revalidate a persisted remote backend instead of trusting stale state. */
+  /* Revalide un backend distant mémorisé au lieu de croire un état périmé. */
   useEffect(() => {
     const backend = useBackend.getState();
     if (backend.enabled && backend.status === 'local') void backend.test();
@@ -46,7 +46,7 @@ export default function App() {
   const messages = conv?.messages ?? [];
   const hasMessages = messages.length > 0;
 
-  /* smart auto-scroll: follow the stream unless the user scrolled up */
+  /* Défilement automatique : suit le flux sauf si l'utilisateur est remonté. */
   useEffect(() => {
     const el = scrollRef.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
@@ -58,7 +58,7 @@ export default function App() {
     pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   };
 
-  /* shortcuts: ⌘K/⌘/ open Command Palette · ⌘J event log · Escape closes mobile nav */
+  /* Raccourcis : ⌘K palette · ⌘J journal · Échap ferme le menu mobile. */
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && mobileNav) {
@@ -80,12 +80,11 @@ export default function App() {
 
   return (
     <div className="grain flex h-full overflow-hidden bg-ink-950">
-      {/* Skip to Main Content Link for Keyboard & Screen Reader Users */}
       <a href="#main-content" className="skip-link">
         {t('a11y.skipToContent')}
       </a>
 
-      {/* desktop sidebar */}
+      {/* barre latérale — ordinateur */}
       <AnimatePresence>
         {desktopNav && (
           <motion.aside
@@ -100,7 +99,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* mobile sidebar */}
+      {/* barre latérale — mobile */}
       <AnimatePresence>
         {mobileNav && (
           <>
@@ -120,13 +119,12 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* main column */}
+      {/* colonne principale */}
       <main id="main-content" tabIndex={-1} className="relative flex min-w-0 flex-1 flex-col outline-none">
-        {/* ambience — tracks the accent color live */}
         <div className="ambient-glow pointer-events-none absolute inset-x-0 top-0 h-64" aria-hidden="true" />
 
-        {/* header */}
-        <header role="banner" className="relative z-10 flex items-center gap-2 border-b border-white/6 px-3 py-2.5 sm:px-4">
+        {/* en-tête */}
+        <header role="banner" className="relative z-10 flex items-center gap-2 px-3 py-2.5 sm:px-4">
           <button
             type="button"
             onClick={() => setMobileNav(true)}
@@ -149,63 +147,23 @@ export default function App() {
 
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
             {!desktopNav && <span className="hidden lg:block"><Logo size={20} /></span>}
-            <div className="min-w-0">
-              <div className="truncate text-[13px] font-medium text-zinc-200">
-                {conv?.title && hasMessages ? conv.title : t('header.newConversation')}
-              </div>
+            <div className="min-w-0 truncate text-[13px] text-zinc-400">
+              {conv?.title && hasMessages ? conv.title : ''}
             </div>
-            <span
-              className={cn(
-                'hidden shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider sm:inline-flex',
-                isRunning
-                  ? 'border-accent-500/30 bg-accent-500/10 text-accent-300'
-                  : 'border-white/8 bg-white/[0.03] text-zinc-500',
-              )}
-            >
-              <span className={cn('inline-block h-1 w-1 rounded-full', isRunning ? 'animate-pulse-dot bg-accent-400' : 'bg-emerald-400')} />
-              {isRunning ? t('header.working') : t('header.idle')}
-            </span>
+            {/* Le badge n'apparaît que pendant le travail : rien à annoncer au repos. */}
+            {isRunning && (
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-accent-500/30 bg-accent-500/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent-300">
+                <span className="inline-block h-1 w-1 animate-pulse-dot rounded-full bg-accent-400" />
+                {t('header.working')}
+              </span>
+            )}
           </div>
 
-          <button
-            type="button"
-            onClick={togglePalette}
-            className="flex items-center gap-1.5 rounded-lg border border-white/8 bg-white/[0.03] px-2 py-1 text-[11px] text-zinc-400 transition hover:border-white/15 hover:text-zinc-200"
-            title={t('cmd.title')}
-          >
-            <Command size={12} className="text-accent-400" />
-            <span className="hidden sm:inline font-mono text-[9.5px]">⌘K</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setExportOpen(true)}
-            className="rounded-lg p-2 text-zinc-500 transition hover:bg-white/5 hover:text-zinc-200"
-            title={t('export.title')}
-            aria-label={t('export.title')}
-          >
-            <Share2 size={15} />
-          </button>
-
-          <button
-            onClick={() => newChat()}
-            className="rounded-lg p-2 text-zinc-500 transition hover:bg-white/5 hover:text-zinc-200"
-            title={t('cmd.newChat')}
-          >
-            <SquarePen size={15} />
-          </button>
-          <button
-            onClick={toggleLog}
-            className="rounded-lg p-2 text-zinc-500 transition hover:bg-white/5 hover:text-zinc-200"
-            title={t('header.eventStream')}
-          >
-            <PanelRight size={15} />
-          </button>
         </header>
         <NetworkStatus />
 
         {/* conversation */}
-        <div ref={scrollRef} onScroll={onScroll} className="relative z-0 flex-1 overflow-y-auto scroll-slim">
+        <div ref={scrollRef} onScroll={onScroll} className="scroll-slim relative z-0 flex-1 overflow-y-auto">
           {hasMessages ? (
             <div className="mx-auto w-full max-w-3xl space-y-7 px-4 py-6 sm:px-6 sm:py-8">
               {messages.map((m) => (
@@ -223,7 +181,7 @@ export default function App() {
           )}
         </div>
 
-        {/* composer */}
+        {/* zone de saisie */}
         <div className="safe-b relative z-10 px-3 pt-1 sm:px-6">
           <div className="mx-auto w-full max-w-3xl">
             <Composer running={isRunning} onSend={(t) => send(t)} onStop={cancel} />
@@ -235,7 +193,8 @@ export default function App() {
       <ConnectorsModal />
       <PersonaModal />
       <MemoryModal />
-      <ExportModal isOpen={exportOpen} onClose={() => setExportOpen(false)} />
+      <ExportModal />
+      <SettingsModal />
       <CommandPalette />
       <GlobalDropZone />
     </div>

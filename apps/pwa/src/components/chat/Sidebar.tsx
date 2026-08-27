@@ -1,40 +1,27 @@
+/* ─────────────────────────────────────────────────────────────
+   Barre latérale — l'essentiel, rien de plus.
+   Nouvelle conversation, capacités, recherche, historique, et
+   Réglages tout en bas. Pas de suppression globale : une erreur
+   de clic ne doit jamais pouvoir tout effacer.
+   ───────────────────────────────────────────────────────────── */
+
 import { useMemo, useRef, useState } from 'react';
 import {
-  Brain,
   Check,
-  Command,
-  Globe,
   MessageSquare,
-  Monitor,
-  Moon,
   Pencil,
   Pin,
   PinOff,
-  Plug,
   Plus,
-  RotateCcw,
   Search,
-  Share2,
-  Sun,
-  TerminalSquare,
+  Settings,
   Trash2,
-  UserCheck,
   X,
 } from 'lucide-react';
-import { useCommandPalette } from '../../lib/commands/commandStore';
-import { TOOL_REGISTRY } from '../../lib/agent/tools';
-import { CONNECTOR_CATALOG } from '../../lib/connectors/catalog';
-import { ToolExecutionCard } from '../activity/ToolExecutionCard';
-import { BackendPanel } from './BackendPanel';
-import { TypographyPanel } from './TypographyPanel';
-import { PWAInstall } from './PWAInstall';
-import { useConnectors } from '../../lib/store/connectorStore';
-import { usePersona } from '../../lib/store/personaStore';
-import { useMemory } from '../../lib/memory/memoryStore';
-import { useExport } from '../../lib/store/exportStore';
 import { Conversation, useChat } from '../../lib/store/chatStore';
-import { useI18n, Lang } from '../../lib/i18n';
-import { useTheme, ACCENTS } from '../../lib/theme';
+import { CAPACITES, useCapacite } from '../../lib/capacites';
+import { useI18n } from '../../lib/i18n';
+import { useSettings } from './SettingsModal';
 import { cn } from '../../utils/cn';
 
 export function Logo({ size = 26 }: { size?: number }) {
@@ -47,200 +34,7 @@ export function Logo({ size = 26 }: { size?: number }) {
   );
 }
 
-function ThemeSwatches() {
-  const { accent, setAccent, colorMode, setColorMode } = useTheme();
-  const { t, locale } = useI18n();
-
-  return (
-    <div className="space-y-1.5 rounded-lg border border-white/8 p-2">
-      {/* Accent Colors */}
-      <div className="flex items-center justify-between gap-1">
-        <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-500">
-          {t('theme.label')}
-        </span>
-        <div className="flex items-center gap-1.5">
-          {ACCENTS.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              onClick={() => setAccent(a.id)}
-              title={locale === 'fr' ? a.labelFr : a.label}
-              className={cn(
-                'h-3.5 w-3.5 rounded-full transition active:scale-90',
-                accent.id === a.id
-                  ? 'scale-125 ring-2 ring-white/80 ring-offset-1 ring-offset-ink-900'
-                  : 'opacity-65 hover:scale-115 hover:opacity-100',
-              )}
-              style={{ background: `linear-gradient(135deg, ${a.c400}, ${a.c600})` }}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Color Mode: Dark / Light / System */}
-      <div className="flex items-center justify-between gap-2 border-t border-white/6 pt-1.5">
-        <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-500">
-          {t('theme.mode')}
-        </span>
-        <div className="flex items-center gap-0.5 rounded-md border border-white/6 bg-white/[0.02] p-0.5">
-          <button
-            type="button"
-            onClick={() => setColorMode('dark')}
-            title={t('theme.dark')}
-            className={cn(
-              'flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono transition',
-              colorMode === 'dark' ? 'bg-white/10 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300',
-            )}
-          >
-            <Moon size={9} />
-            <span className="hidden sm:inline">{t('theme.dark')}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setColorMode('light')}
-            title={t('theme.light')}
-            className={cn(
-              'flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono transition',
-              colorMode === 'light' ? 'bg-accent-500/20 text-accent-300' : 'text-zinc-500 hover:text-zinc-300',
-            )}
-          >
-            <Sun size={9} />
-            <span className="hidden sm:inline">{t('theme.light')}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setColorMode('system')}
-            title={t('theme.system')}
-            className={cn(
-              'flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono transition',
-              colorMode === 'system' ? 'bg-white/10 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300',
-            )}
-          >
-            <Monitor size={9} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function LangToggle() {
-  const { locale, setLocale, t } = useI18n();
-  const opt = (l: Lang, label: string) => (
-    <button
-      key={l}
-      onClick={() => setLocale(l)}
-      className={cn(
-        'flex-1 rounded-md px-2 py-1 font-mono text-[10px] transition',
-        locale === l ? 'lang-active bg-accent-500/20 text-accent-300' : 'text-zinc-500 hover:text-zinc-300',
-      )}
-    >
-      {label}
-    </button>
-  );
-  return (
-    <div className="flex items-center gap-2 rounded-lg border border-white/8 px-2 py-1">
-      <Globe size={11} className="shrink-0 text-zinc-500" />
-      <span className="sr-only">{t('sidebar.lang')}</span>
-      <div className="flex flex-1 gap-0.5">
-        {opt('en', 'EN')}
-        {opt('fr', 'FR')}
-      </div>
-    </div>
-  );
-}
-
-function ConnectorsButton({ onPick }: { onPick?: () => void }) {
-  const { t } = useI18n();
-  const { setModalOpen, connectors } = useConnectors();
-  const n = Object.values(connectors).filter((s) => s.status === 'connected').length;
-  return (
-    <button
-      onClick={() => {
-        setModalOpen(true);
-        onPick?.();
-      }}
-      className="flex w-full items-center gap-2 rounded-xl border border-white/8 px-3 py-2 text-[12px] text-zinc-400 transition hover:border-white/15 hover:text-zinc-200 active:scale-[0.99]"
-    >
-      <Plug size={13} className={n > 0 ? 'text-accent-400' : 'text-zinc-500'} />
-      {t('conn.open')}
-      <span
-        className={cn(
-          'ml-auto rounded-full px-1.5 py-0.5 font-mono text-[9px]',
-          n > 0 ? 'bg-accent-500/15 text-accent-300' : 'bg-white/5 text-zinc-600',
-        )}
-      >
-        {n}/{CONNECTOR_CATALOG.length}
-      </span>
-    </button>
-  );
-}
-
-function PersonaButton({ onPick }: { onPick?: () => void }) {
-  const { t } = useI18n();
-  const { setModalOpen, userName, userRole, customInstructions } = usePersona();
-  const hasCustom = Boolean(userName.trim() || userRole.trim() || customInstructions.trim());
-
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        setModalOpen(true);
-        onPick?.();
-      }}
-      className={cn(
-        'flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition active:scale-[0.99]',
-        hasCustom
-          ? 'border-accent-500/30 bg-accent-500/[0.04] text-zinc-200 hover:border-accent-500/50'
-          : 'border-white/8 bg-white/[0.02] text-zinc-400 hover:border-white/15 hover:text-zinc-200',
-      )}
-    >
-      <UserCheck size={13} className={hasCustom ? 'text-accent-400' : 'text-zinc-500'} />
-      <span className="flex-1 truncate font-mono text-[9px] uppercase tracking-[0.14em]">
-        {t('sidebar.persona')}
-      </span>
-      {userName.trim() ? (
-        <span className="truncate font-mono text-[9px] text-accent-300">
-          {userName.trim().slice(0, 12)}
-        </span>
-      ) : hasCustom ? (
-        <span className="h-1.5 w-1.5 rounded-full bg-accent-400" />
-      ) : null}
-    </button>
-  );
-}
-
-function MemoryButton({ onPick }: { onPick?: () => void }) {
-  const { t } = useI18n();
-  const { setModalOpen, memories } = useMemory();
-  const activeCount = memories.filter((m) => m.enabled).length;
-
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        setModalOpen(true);
-        onPick?.();
-      }}
-      className={cn(
-        'flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition active:scale-[0.99]',
-        activeCount > 0
-          ? 'border-accent-500/30 bg-accent-500/[0.04] text-zinc-200 hover:border-accent-500/50'
-          : 'border-white/8 bg-white/[0.02] text-zinc-400 hover:border-white/15 hover:text-zinc-200',
-      )}
-    >
-      <Brain size={13} className={activeCount > 0 ? 'text-accent-400' : 'text-zinc-500'} />
-      <span className="flex-1 truncate font-mono text-[9px] uppercase tracking-[0.14em]">
-        {t('sidebar.memory')}
-      </span>
-      <span className="rounded-full bg-white/5 px-1.5 py-0.2 font-mono text-[8.5px] text-zinc-400">
-        {activeCount}
-      </span>
-    </button>
-  );
-}
-
-/* ── Date Grouping Helper ── */
+/* ── Regroupement par date ── */
 interface GroupedConversations {
   pinned: Conversation[];
   today: Conversation[];
@@ -296,21 +90,18 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
     deleteConversation,
     renameConversation,
     togglePinConversation,
-    clearAllConversations,
     newChat,
-    resetWorkspace,
-    toggleLog,
-    logOpen,
   } = useChat();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const { openSettings } = useSettings();
+  const { active: capaciteActive, choisir, effacer } = useCapacite();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
-  const [confirmClear, setConfirmClear] = useState(false);
   const editInputRef = useRef<HTMLInputElement>(null);
 
-  // Filter conversations by title or message contents
+  /* Recherche sur le titre et sur le contenu des messages. */
   const filteredConversations = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return conversations;
@@ -366,7 +157,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             type="button"
             onClick={() => handleSaveRename(c.id)}
             className="grid h-6 w-6 shrink-0 place-items-center rounded text-emerald-400 hover:bg-emerald-400/20"
-            title="Save"
+            title={locale === 'fr' ? 'Enregistrer' : 'Save'}
           >
             <Check size={12} />
           </button>
@@ -374,7 +165,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             type="button"
             onClick={handleCancelRename}
             className="grid h-6 w-6 shrink-0 place-items-center rounded text-zinc-400 hover:bg-white/10 hover:text-zinc-200"
-            title="Cancel"
+            title={t('msg.cancel')}
           >
             <X size={12} />
           </button>
@@ -390,27 +181,23 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
           isActive ? 'bg-white/[0.08] text-zinc-100' : 'text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200',
         )}
         onClick={() => {
+          effacer();
           selectConversation(c.id);
           onClose?.();
         }}
       >
         <MessageSquare
           size={12}
-          className={cn('shrink-0', c.pinned ? 'text-accent-400' : isActive ? 'text-accent-400' : 'text-zinc-600')}
+          className={cn('shrink-0', c.pinned || isActive ? 'text-accent-400' : 'text-zinc-600')}
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1">
             <span className="truncate text-[12px]">{c.title || t('sidebar.untitled')}</span>
             {c.pinned && <Pin size={9} className="shrink-0 text-accent-400" />}
           </div>
-          {c.messages.length > 0 && (
-            <div className="mt-0.5 truncate font-mono text-[9px] text-zinc-600">
-              {c.messages.length} {t('sidebar.msgs')}
-            </div>
-          )}
         </div>
 
-        {/* Hover / mobile action buttons */}
+        {/* Actions : visibles au survol sur ordinateur, toujours sur mobile. */}
         <div className="flex shrink-0 items-center gap-0.5 opacity-80 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
           <button
             type="button"
@@ -457,10 +244,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
     if (!list.length) return null;
     return (
       <div key={title} className="space-y-0.5">
-        <div className="flex items-center justify-between px-1.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-600">
-          <span>{title}</span>
-          <span className="text-[8.5px] opacity-75">{list.length}</span>
-        </div>
+        <div className="px-1.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-600">{title}</div>
         {list.map(renderConversationItem)}
       </div>
     );
@@ -468,12 +252,11 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
 
   return (
     <div className="flex h-full w-full flex-col bg-ink-900">
-      {/* brand */}
+      {/* marque */}
       <div className="flex items-center gap-2.5 px-4 pb-3 pt-4">
         <Logo />
         <div className="min-w-0 flex-1">
           <div className="font-serif text-[17px] leading-none text-zinc-100">Usman</div>
-          <div className="mt-1 font-mono text-[8.5px] uppercase tracking-[0.22em] text-zinc-600">{t('brand.sub')}</div>
         </div>
         {onClose && (
           <button
@@ -485,9 +268,10 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
         )}
       </div>
 
-      <div className="space-y-1.5 px-3">
+      <div className="px-3">
         <button
           onClick={() => {
+            effacer();
             newChat();
             onClose?.();
           }}
@@ -496,27 +280,39 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
           <Plus size={14} className="text-accent-400" />
           {t('sidebar.new')}
         </button>
-        <div className="flex gap-1.5">
-          <div className="flex-1">
-            <ConnectorsButton onPick={onClose} />
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              useCommandPalette.getState().openPalette();
-              onClose?.();
-            }}
-            className="flex items-center justify-center gap-1 rounded-xl border border-white/8 bg-white/[0.02] px-2.5 text-zinc-400 transition hover:border-white/15 hover:text-zinc-200"
-            title={`${t('cmd.title')} (⌘K)`}
-          >
-            <Command size={13} className="text-accent-400" />
-          </button>
-        </div>
       </div>
 
-      {/* search input */}
+      {/* capacités — chacune propose des phrases de départ, rien de plus */}
+      <div className="mt-2 space-y-0.5 px-3">
+        {CAPACITES.map((cap) => {
+          const Icone = cap.icone;
+          const choisie = capaciteActive === cap.id;
+          return (
+            <button
+              key={cap.id}
+              type="button"
+              onClick={() => {
+                choisir(cap.id);
+                newChat();
+                onClose?.();
+              }}
+              className={cn(
+                'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] transition active:scale-[0.99]',
+                choisie
+                  ? 'bg-accent-500/10 text-accent-200'
+                  : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200',
+              )}
+            >
+              <Icone size={14} className={choisie ? 'text-accent-400' : 'text-zinc-500'} />
+              {locale === 'fr' ? cap.nomFr : cap.nomEn}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* recherche */}
       {conversations.length > 0 && (
-        <div className="mt-3 px-3">
+        <div className="mt-3 border-t border-white/6 px-3 pt-3">
           <div className="relative flex items-center">
             <Search size={12} className="pointer-events-none absolute left-2.5 text-zinc-500" />
             <input
@@ -540,8 +336,8 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
         </div>
       )}
 
-      {/* conversations history */}
-      <div className="mt-2.5 flex-1 overflow-y-auto px-3 scroll-slim">
+      {/* historique */}
+      <div className="scroll-slim mt-2.5 flex-1 overflow-y-auto px-3">
         {conversations.length === 0 ? (
           <p className="px-1 py-3 text-[11px] leading-relaxed text-zinc-600">{t('sidebar.empty')}</p>
         ) : filteredConversations.length === 0 ? (
@@ -563,109 +359,23 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             {renderGroup(t('sidebar.last7Days'), groups.last7Days)}
             {renderGroup(t('sidebar.last30Days'), groups.last30Days)}
             {renderGroup(t('sidebar.older'), groups.older)}
-
-            {/* Clear all history option */}
-            {!searchQuery && conversations.length > 2 && (
-              <div className="pt-2">
-                {confirmClear ? (
-                  <div className="rounded-lg border border-red-400/20 bg-red-400/[0.06] p-2 text-center">
-                    <p className="text-[10px] text-red-200">{t('sidebar.clearAllConfirm')}</p>
-                    <div className="mt-2 flex justify-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setConfirmClear(false)}
-                        className="rounded px-2 py-1 text-[9.5px] text-zinc-400 hover:text-zinc-200"
-                      >
-                        {t('msg.cancel')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          clearAllConversations();
-                          setConfirmClear(false);
-                        }}
-                        className="rounded bg-red-400/20 px-2 py-1 text-[9.5px] font-medium text-red-300 hover:bg-red-400/30"
-                      >
-                        {t('sidebar.delete')}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmClear(true)}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 font-mono text-[9.5px] text-zinc-600 transition hover:text-red-400/80"
-                  >
-                    <Trash2 size={10} />
-                    {t('sidebar.clearAll')}
-                  </button>
-                )}
-              </div>
-            )}
           </div>
         )}
       </div>
 
-      {/* runtime panel — rendered from the backend tool registry */}
-      <div className="border-t border-white/6 px-3 pb-3 pt-3">
-        <div className="mb-2 flex items-center justify-between px-1">
-          <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-zinc-600">
-            {t('sidebar.runtime')} · {TOOL_REGISTRY.filter((x) => x.status === 'online').length}/{TOOL_REGISTRY.length}{' '}
-            {t('sidebar.toolsOnline')}
-          </span>
-          <span
-            className="inline-block h-1.5 w-1.5 animate-pulse-dot rounded-full bg-emerald-400"
-            title={t('sidebar.backend')}
-          />
-        </div>
-        <div className="max-h-56 space-y-1.5 overflow-y-auto scroll-slim">
-          {TOOL_REGISTRY.map((tool, i) => (
-            <ToolExecutionCard key={tool.id} tool={tool} index={i} />
-          ))}
-        </div>
-        <div className="mt-2.5 grid grid-cols-3 gap-1.5">
-          <button
-            onClick={resetWorkspace}
-            className="flex items-center justify-center gap-1 rounded-lg border border-white/8 px-1.5 py-1.5 text-[10px] text-zinc-400 transition hover:border-white/15 hover:text-zinc-200"
-            title={t('sidebar.resetTitle')}
-          >
-            <RotateCcw size={11} />
-            <span className="truncate">{t('sidebar.reset')}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              useExport.getState().openExport();
-              onClose?.();
-            }}
-            className="flex items-center justify-center gap-1 rounded-lg border border-white/8 px-1.5 py-1.5 text-[10px] text-zinc-400 transition hover:border-white/15 hover:text-zinc-200"
-            title={t('export.title')}
-          >
-            <Share2 size={11} className="text-accent-400" />
-            <span className="truncate">{t('export.shareHeader')}</span>
-          </button>
-          <button
-            onClick={toggleLog}
-            className={cn(
-              'flex items-center justify-center gap-1 rounded-lg border px-1.5 py-1.5 text-[10px] transition',
-              logOpen
-                ? 'border-accent-500/40 bg-accent-500/10 text-accent-300'
-                : 'border-white/8 text-zinc-400 hover:border-white/15 hover:text-zinc-200',
-            )}
-          >
-            <TerminalSquare size={11} />
-            <span className="truncate">{t('sidebar.eventLog')}</span>
-          </button>
-        </div>
-        <div className="mt-1.5 space-y-1.5">
-          <PWAInstall />
-          <PersonaButton onPick={onClose} />
-          <MemoryButton onPick={onClose} />
-          <BackendPanel />
-          <TypographyPanel />
-          <ThemeSwatches />
-          <LangToggle />
-        </div>
+      {/* réglages — dernière ligne, comme sur Gemini */}
+      <div className="border-t border-white/6 px-3 py-2.5">
+        <button
+          type="button"
+          onClick={() => {
+            openSettings();
+            onClose?.();
+          }}
+          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-[12.5px] text-zinc-400 transition hover:bg-white/[0.05] hover:text-zinc-100 active:scale-[0.99]"
+        >
+          <Settings size={15} className="text-zinc-500" />
+          {locale === 'fr' ? 'Réglages' : 'Settings'}
+        </button>
       </div>
     </div>
   );
