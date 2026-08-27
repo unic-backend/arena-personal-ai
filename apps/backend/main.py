@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from apps.backend.config import ALLOWED_ORIGINS, BASE_DIR, OLLAMA_URL, RENDERED_DIR
-from apps.backend.routers import chat, media, openai_gateway
+from apps.backend.routers import actions, chat, media, openai_gateway
 from apps.backend.runtime import deep_provider, fast_provider
 from apps.backend.verification_modeles import verifier_modeles
 
@@ -84,3 +84,4 @@ async def health_check():
 app.include_router(openai_gateway.router)
 app.include_router(media.router)
 app.include_router(chat.router)
+app.include_router(actions.router)

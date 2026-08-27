@@ -22,6 +22,7 @@ from agents.swe_agent.swe_agent import SWEAgent
 from agents.trend_analyzer.trend_analyzer_agent import TrendAnalyzerAgent
 from agents.video_analyzer.video_analyzer_agent import VideoAnalyzerAgent
 from apps.backend.config import DB_PATH, MODELE_PROFOND, MODELE_RAPIDE, OLLAMA_URL
+from core.actions.journal import JournalDesActions
 from core.memory.memory_manager import MemoryManager
 from core.models.ollama_provider import OllamaProvider
 from core.permissions.permission_manager import PermissionManager
@@ -33,6 +34,8 @@ logger = logging.getLogger("usman.backend")
 # --- Etat et outils -----------------------------------------------------------
 memory = MemoryManager(db_path=str(DB_PATH))
 permissions = PermissionManager()
+# Journal des actions a effet externe. Meme fichier que la memoire, table a part.
+journal = JournalDesActions(db_path=str(DB_PATH))
 lightrag_tool = LightRAGTool()
 graphrag_tool = GraphRAGTool()
 
@@ -49,7 +52,7 @@ subtitle_agent = SubtitleAgent(provider=deep_provider, memory=memory)
 coder_agent = CoderAgent(provider=fast_provider, memory=memory)
 researcher_agent = DeepResearcherAgent(provider=deep_provider, memory=memory)
 clip_selector = ClipSelectorAgent(provider=deep_provider, memory=memory)
-publisher_agent = PublisherAgent(provider=fast_provider, memory=memory)
+publisher_agent = PublisherAgent(provider=fast_provider, memory=memory, journal=journal)
 browser_agent = BrowserAgent(provider=fast_provider, memory=memory)
 # Agent d'information fraiche : il lit le web avant de repondre.
 fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)

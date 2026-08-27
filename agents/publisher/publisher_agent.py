@@ -19,6 +19,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from core.actions.journal import ActionEnregistree, JournalDesActions
 from core.actions.resultat import ResultatAction, echec, refuse
 from core.agent.base_agent import BaseAgent
 from core.memory.memory_manager import MemoryManager
@@ -37,7 +38,12 @@ GABARIT_BROUILLON = (
 class PublisherAgent(BaseAgent):
     """Prepare la publication d'une video et rend l'etat reel de l'envoi."""
 
-    def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None):
+    def __init__(
+        self,
+        provider: ModelProvider,
+        memory: Optional[MemoryManager] = None,
+        journal: Optional[JournalDesActions] = None,
+    ):
         super().__init__(
             name="PublisherAgent",
             description="Agent de publication multi-plateformes.",
@@ -46,6 +52,10 @@ class PublisherAgent(BaseAgent):
         )
         self.permissions = PermissionManager()
         self.tiktok = TikTokConnector()
+        # Injecte plutot que fabrique ici : un test doit pouvoir observer ce qui
+        # est journalise, et un agent qui se cree son propre journal ne le permet
+        # pas. `runtime.py` fournit celui de la plateforme.
+        self.journal = journal
 
     async def _brouillon(self, sujet: str) -> str:
         """Fait rediger le post. Sans modele disponible, on le dit au lieu d'inventer."""
@@ -56,8 +66,22 @@ class PublisherAgent(BaseAgent):
             logger.warning("Brouillon impossible : %s", erreur)
             return "(brouillon indisponible : le modele n'a pas repondu)"
 
-    def _sortie(self, resultat: ResultatAction, brouillon: str = "") -> Dict[str, Any]:
-        """Met le resultat a la forme attendue par l'aiguilleur, brouillon compris."""
+    def _journaliser(self, resultat: ResultatAction, video_path: Optional[str]) -> None:
+        """Ecrit l'action au journal. Un journal absent ou en panne n'arrete rien."""
+        if self.journal is None:
+            return
+        self.journal.enregistrer(ActionEnregistree.depuis_resultat(
+            resultat,
+            outil="tiktok",
+            parametres={"fichier": str(video_path or "")},
+            niveau_permission="PUBLISH",
+        ))
+
+    def _sortie(
+        self, resultat: ResultatAction, brouillon: str = "", video_path: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Met le resultat a la forme attendue par l'aiguilleur, et le journalise."""
+        self._journaliser(resultat, video_path)
         corps = resultat.to_dict()
         corps["agent"] = self.name
         if brouillon:
@@ -75,7 +99,7 @@ class PublisherAgent(BaseAgent):
                 cible="TikTok",
                 message="Aucune video trouvee pour la publication.",
                 fichier=str(video_path or ""),
-            ))
+            ), video_path=video_path)
 
         brouillon = await self._brouillon(user_input)
 
@@ -84,8 +108,11 @@ class PublisherAgent(BaseAgent):
             return self._sortie(
                 refuse(action="publish_video", cible="TikTok", permission="PUBLISH"),
                 brouillon,
+                video_path=video_path,
             )
 
         # Permission accordee : c'est le connecteur qui decide, et aujourd'hui il
         # n'est pas branche. Il le declare lui-meme plutot que de le supposer ici.
-        return self._sortie(self.tiktok.publish_video(video_path, "", brouillon, []), brouillon)
+        return self._sortie(
+            self.tiktok.publish_video(video_path, "", brouillon, []), brouillon, video_path
+        )
