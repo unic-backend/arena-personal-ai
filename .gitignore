@@ -47,3 +47,6 @@ data/database/open-webui/*
 # Ils restent sur la machine du proprietaire.
 documents/unic_plaquiste/*
 !documents/unic_plaquiste/LISEZ_MOI.md
+
+# Le zip de la PWA : on versionne le code source, jamais l archive.
+*.zip

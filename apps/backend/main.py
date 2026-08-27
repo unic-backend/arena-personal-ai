@@ -8,6 +8,7 @@ découpage — configuration, sécurité, prompts et logique métier mélangés.
 """
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -59,9 +60,51 @@ app.mount(
 )
 
 
+# --- Interface ----------------------------------------------------------------
+# Deux interfaces existent, et l'une remplace l'autre sans l'effacer.
+#
+# `apps/pwa/` est l'application React du proprietaire. Compilee par Vite avec
+# `vite-plugin-singlefile`, elle tient dans **un seul fichier** ou tout est
+# inline : aucun asset a monter, aucun chemin a faire correspondre.
+#
+# Mais `dist/` est ignore par Git — un depot fraichement clone ne la contient
+# pas. Servir un chemin qui n'existe pas rendrait une page blanche sans dire
+# pourquoi. Le serveur regarde donc si elle est compilee, et le dit dans
+# `/health` : « pwa » ou « classique ». Une interface manquante est un etat, pas
+# une panne silencieuse.
+
+INTERFACE_PWA = BASE_DIR / "apps" / "pwa" / "dist" / "index.html"
+INTERFACE_CLASSIQUE = BASE_DIR / "apps" / "frontend" / "index.html"
+
+
+def interface_servie() -> Path:
+    """Le fichier reellement rendu sur `/`.
+
+    La PWA gagne des qu'elle est compilee. Sinon l'ancienne interface repond,
+    pour qu'`ARENA` reste utilisable pendant que la nouvelle est en travaux.
+    """
+    return INTERFACE_PWA if INTERFACE_PWA.exists() else INTERFACE_CLASSIQUE
+
+
+def nom_interface() -> str:
+    """« pwa » ou « classique », pour que /health le dise sans deviner."""
+    return "pwa" if INTERFACE_PWA.exists() else "classique"
+
+
 @app.get("/")
 async def serve_frontend():
-    return FileResponse(str(BASE_DIR / "apps" / "frontend" / "index.html"))
+    """L'interface d'ARENA. La PWA compilee, ou l'ancienne a defaut."""
+    return FileResponse(str(interface_servie()))
+
+
+@app.get("/ui/classique")
+async def serve_frontend_classique():
+    """L'ancienne interface, toujours joignable.
+
+    Elle n'est pas supprimee : tant que la PWA n'a pas fait ses preuves, retirer
+    ce qui marche pour installer ce qui est neuf n'est pas un progres.
+    """
+    return FileResponse(str(INTERFACE_CLASSIQUE))
 
 
 @app.get("/health")
@@ -70,6 +113,7 @@ async def health_check():
     return {
         "status": "healthy" if ollama_online else "degraded",
         "ollama_available": ollama_online,
+        "interface": nom_interface(),
         "models": [fast_provider.model_name, deep_provider.model_name],
         "agents_active": [
             "Orchestrator", "ReasoningEngine", "CoderAgent", "RepoEngineerAgent",

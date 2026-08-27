@@ -17,6 +17,8 @@ from apps.backend import main
 SURFACE_ATTENDUE = {
     "/": (["GET"], []),
     "/health": (["GET"], []),
+    # L'ancienne interface reste joignable pendant que la PWA prend le relais.
+    "/ui/classique": (["GET"], []),
     "/v1/models": (["GET"], ["verify_api_key"]),
     "/v1/chat/completions": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/upload": (["POST"], ["verify_api_key"]),
