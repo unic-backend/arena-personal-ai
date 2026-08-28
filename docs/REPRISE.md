@@ -90,9 +90,21 @@ préparée, jamais autorisée. **Cela gate le chapitre 8.**
 | 6.4 | `core/memory/consolidation.py` - regroupement sans suppression, resume par nature | 2026-08-27 |
 | 7.1 | `core/execution/voies.py` - 4 voies, budgets croissants, CHAT jamais profond | 2026-08-28 |
 
-**Phase suivante autorisée : 7.2** - mesures : premier jeton, question simple,
-normale, complexe, récupération, recherche, outil. Les chiffres se mesurent sur
-sa machine, sinon ils restent UNKNOWN.
+**Phase 7.2 EN COURS, interrompue le 2026-08-28.**
+
+Ce qui est deja chez lui : core/execution/mesures.py (le harnais de mesure,
+il importe et la suite passe).
+
+Ce qui RESTE a coller, dans cet ordre :
+1. scripts/mesurer_performances.py - les 7 scenes de la specification
+   (premier jeton, simple, normale, complexe, recuperation, recherche, outil) ;
+2. tests/core/test_mesures_execution.py - 14 tests ;
+3. lancer python scripts/mesurer_performances.py et coller le tableau,
+   puis pytest, ruff, commit et push.
+
+Etat verifie chez lui a la coupure : 1272 passed. Chez l assistant, avec les
+14 tests du harnais : 1286 passed. Sabotage fait : une scene qui echoue et
+qui renverrait 0.0 seconde fait tomber le test de garde.
 
 **Prérequis mesuré le 2026-08-27** : la récupération sémantique exige
 ollama pull bge-m3. Sans lui, elle rapporte LEXICAL - SERVEUR_ABSENT et ne
