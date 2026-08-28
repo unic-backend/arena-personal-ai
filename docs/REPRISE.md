@@ -142,9 +142,15 @@ Ce que le prompt gagne, que le titre en prose ne donnait pas : une origine par
 bloc (deux fichiers se distinguent), des balises qui ne traversent plus, et un
 releve qui accompagne le texte au lieu d etre efface.
 
-Reste a brancher, dans cet ordre suggere : les resultats de recherche web et
-les reponses de GalsenAPI (memes enveloppes, niveau EXTERNAL), puis
-semantique.py, consolidation.py et voies.py.
+Deuxieme branchement le 2026-08-28 : les pages web lues par FreshInfoAgent
+entrent au niveau EXTERNAL dans _formater_les_sources(). C est le chemin le
+plus expose : le texte vient de pages que personne ne controle. La
+numerotation [1] reste hors de l enveloppe, sinon les citations que le gabarit
+demande cesseraient de fonctionner.
+
+Reste a brancher : les reponses de GalsenAPI le jour ou elles entreront dans
+un prompt (elles n y entrent pas encore), puis semantique.py, consolidation.py
+et voies.py.
 
 **Ce qui a ete ecarte de GalSen-IA, volontairement :**
 - src/services/senegal/ : 45 departements, alors que GalsenAPI en mesure 46.
@@ -215,6 +221,6 @@ Plan complet : `docs/PLAN_ARENA_OS.md`. Audit d'origine : `docs/AUDIT_ARENA_OS.m
    collée dans le message qui la rapporte.
 4. Un commit par correctif. C'est **lui** qui commit et qui pousse.
 
-**État vérifié le 2026-08-28 : 1319 passed, 0 failed** — sur la machine cloud de
+**État vérifié le 2026-08-28 : 1320 passed, 0 failed** — sur la machine cloud de
 l'assistant. Dernier état mesuré sur la machine du propriétaire : 1272 passed,
 le 2026-08-28, avant les 14 tests du harnais de mesure.
