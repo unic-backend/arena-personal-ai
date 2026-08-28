@@ -31,7 +31,7 @@ from doctor import (  # noqa: E402 — le chemin est posé juste au-dessus
     verifier_docker,
     verifier_environnement_virtuel,
     verifier_ffmpeg,
-    verifier_gmail,
+    verifier_google,
     verifier_modele,
     verifier_ollama,
     verifier_python,
@@ -160,24 +160,56 @@ def test_docker_absent_dit_qu_arena_refuse_plutot_que_de_degrader():
     assert "REFUSE" in verification.detail
 
 
-def test_gmail_incomplet_nomme_les_variables_manquantes():
-    verification = verifier_gmail({
-        "GMAIL_CLIENT_ID": "present", "GMAIL_CLIENT_SECRET": "",
-        "GMAIL_REFRESH_TOKEN": ""})
+def test_google_incomplet_nomme_les_variables_manquantes():
+    verification = verifier_google("Courrier", "ARENA ne lit rien",
+                                   "gmail.readonly", ["GOOGLE_CLIENT_SECRET"])
 
     assert verification.etat == NON_CONFIGURE
-    assert "GMAIL_CLIENT_SECRET" in verification.detail
-    assert "GMAIL_CLIENT_ID" not in verification.detail
+    assert "GOOGLE_CLIENT_SECRET" in verification.detail
+    assert "GOOGLE_CLIENT_ID" not in verification.detail
 
 
-def test_gmail_complet_n_affiche_aucune_valeur():
-    verification = verifier_gmail({
-        "GMAIL_CLIENT_ID": "id-secret", "GMAIL_CLIENT_SECRET": "mot-de-passe",
-        "GMAIL_REFRESH_TOKEN": "jeton-secret"})
+def test_google_complet_n_affiche_aucune_valeur(monkeypatch):
+    """Les valeurs ne traversent meme pas la fonction : seuls les NOMS y entrent."""
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "id-secret")
+    verification = verifier_google("Agenda", "rien", "calendar.readonly", [])
 
     assert verification.etat == OK
     assert "id-secret" not in verification.rendre()
-    assert "jeton-secret" not in verification.rendre()
+
+
+def test_des_dependances_absentes_rendent_google_indeterminable():
+    """On ne dit pas « non configure » de ce qu'on n'a pas pu regarder."""
+    verification = verifier_google("Courrier", "rien", "gmail.readonly", None)
+
+    assert verification.etat == EN_PANNE
+    assert "indeterminable" in verification.detail
+
+
+def test_les_noms_des_variables_viennent_du_code_des_connecteurs(monkeypatch):
+    """La ligne qui a deja derive une fois : le diagnostic reclamait GMAIL_*
+    quand le projet attendait GOOGLE_*. Les deux listes ne doivent plus etre
+    ecrites a deux endroits."""
+    from doctor import variables_google_absentes
+
+    for suffixe in ("CLIENT_ID", "CLIENT_SECRET", "REFRESH_TOKEN"):
+        monkeypatch.delenv(f"GOOGLE_{suffixe}", raising=False)
+        monkeypatch.delenv(f"GMAIL_{suffixe}", raising=False)
+
+    from core.connectors.google_oauth import manquantes
+
+    assert variables_google_absentes() == manquantes()
+    assert variables_google_absentes() == [
+        "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"]
+
+
+def test_l_agenda_est_diagnostique_lui_aussi():
+    from doctor import diagnostiquer
+
+    noms = [v.nom for v in diagnostiquer().verifications]
+
+    assert "Agenda (Calendar)" in noms
+    assert "Courrier (Gmail)" in noms
 
 
 def test_les_connaissances_metier_reelles_sont_lues():

@@ -36,7 +36,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, List, Optional
 
 RACINE = Path(__file__).resolve().parent.parent
 
@@ -256,19 +256,44 @@ def verifier_wangp(lecteur: Optional[Callable[[str], Any]] = None) -> Verificati
     return Verification("WanGP (generation video)", OK, f"repond sur {url}")
 
 
-def verifier_gmail(variables: Optional[Dict[str, str]] = None) -> Verification:
-    """Les trois valeurs OAuth. Presence seulement — aucune n'est affichee."""
-    lues = variables if variables is not None else {
-        nom: os.getenv(nom, "") for nom in
-        ("GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN")}
-    manquantes = [nom for nom, valeur in lues.items() if not (valeur or "").strip()]
-    if manquantes:
+def variables_google_absentes() -> Optional[List[str]]:
+    """Les noms des variables OAuth manquantes, ou `None` si on n'a pas pu regarder.
+
+    La liste vient de `core/connectors/google_oauth.py` — **le meme code que
+    celui des connecteurs**. La recopier ici l'aurait fait deriver le jour ou
+    les noms changent, et le diagnostic aurait annonce une variable qui n'existe
+    plus. C'est exactement ce qui est arrive le 28/08 : ce fichier reclamait
+    encore `GMAIL_CLIENT_ID` quand le projet attendait `GOOGLE_CLIENT_ID`.
+
+    `None` quand l'import echoue : la ligne « Dependances » le dit deja, et
+    inventer une reponse ici la contredirait.
+    """
+    try:
+        sys.path.insert(0, str(RACINE))
+        from core.connectors.google_oauth import manquantes
+    except Exception:  # noqa: BLE001 — dependances absentes : la question ne se tranche pas
+        return None
+    return manquantes()
+
+
+def verifier_google(nom: str, capacite: str, portees: str,
+                    absentes: Optional[List[str]]) -> Verification:
+    """Une capacite Google. Presence des identifiants seulement — aucune valeur.
+
+    Le courrier et l'agenda partagent le meme identifiant : ils partagent donc
+    le meme diagnostic, et se distinguent par la portee a accorder.
+    """
+    if absentes is None:
+        return Verification(nom, EN_PANNE,
+                            "indeterminable : les dependances ne s'importent pas",
+                            "pip install -r requirements.txt")
+    if absentes:
         return Verification(
-            "Courrier (Gmail)", NON_CONFIGURE,
-            f"{', '.join(manquantes)} absente(s) : ARENA ne lit pas ton courrier",
-            "console.cloud.google.com : API Gmail, identifiant OAuth « application "
-            "de bureau », puis les coller dans .env")
-    return Verification("Courrier (Gmail)", OK, "les trois valeurs sont presentes")
+            nom, NON_CONFIGURE,
+            f"{', '.join(absentes)} absente(s) : {capacite}",
+            f"console.cloud.google.com : identifiant OAuth « application de "
+            f"bureau », portees {portees}, puis les coller dans .env")
+    return Verification(nom, OK, f"identifiants presents (portees {portees})")
 
 
 # --- Les donnees du proprietaire ---------------------------------------------------
@@ -344,6 +369,8 @@ class Rapport:
 def diagnostiquer() -> Rapport:
     """Fait toutes les mesures. Ollama n'est interroge qu'une fois."""
     installes = modeles_ollama()
+    # Un seul identifiant Google pour deux services : une seule lecture.
+    absentes_google = variables_google_absentes()
     rapide = os.getenv("CODER_LOCAL_MODEL", "qwen2.5-coder:14b")
     profond = os.getenv("DEFAULT_LOCAL_MODEL", "qwen3.5:9b")
     embeddings = os.getenv("EMBEDDINGS_LOCAL_MODEL", "nomic-embed-text")
@@ -361,7 +388,10 @@ def diagnostiquer() -> Rapport:
         verifier_ffmpeg(),
         verifier_docker(),
         verifier_wangp(),
-        verifier_gmail(),
+        verifier_google("Courrier (Gmail)", "ARENA ne lit pas ton courrier",
+                        "gmail.readonly / gmail.send", absentes_google),
+        verifier_google("Agenda (Calendar)", "ARENA ne voit pas tes creneaux",
+                        "calendar.readonly / calendar.events", absentes_google),
         verifier_connaissances_metier(),
         verifier_documents(),
     ])
