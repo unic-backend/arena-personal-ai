@@ -7,24 +7,24 @@ réglage (`docs/DECISIONS.md`, DEC-0002).
 
 ---
 
-## ⚠️ Il y a une mission en cours. C'est ta première tâche.
+## ✅ La mission « réveiller ce qui dort » est terminée. Attends sa prochaine tâche.
 
-**`docs/CURRENT_TASK.md` — réveiller ce qui dort.** Neuf modules réels étaient
-écrits, testés, et **aucune phrase du propriétaire ne les faisait tourner**.
-Huit sont branchés (la vidéo à l'agent vidéo, les documents au chemin
-documentaire, le sens et la consolidation à la mémoire du chat, les voies et
-leurs mesures à l'exécution) ; **un seul dort encore**, et son sort est une
-question pour le propriétaire. La mission est de les brancher, un par
-un, chacun sur le bon agent.
-
-N'ouvre pas une nouvelle phase du plan, n'intègre rien de nouveau : il donnera
-la suite lui-même quand les neuf seront vivants.
+**`docs/CURRENT_TASK.md`** — neuf modules réels étaient écrits, testés, et
+**aucune phrase du propriétaire ne les faisait tourner**. Les neuf tournent
+maintenant, chacun sur le bon agent : la vidéo à l'agent vidéo, les documents
+au chemin documentaire, le sens et la consolidation à la mémoire du chat, les
+voies et leurs mesures à l'exécution, le raisonnement au moteur qui calcule
+vraiment.
 
 ```
 python scripts/orphelins.py
+→ 104 modules, 77 atteints. Aucun module réel endormi.
 ```
 
-C'est la mesure qui dit où en est la mission. Elle ne se raconte pas.
+C'est la mesure, et elle ne se raconte pas. **N'ouvre pas une nouvelle phase du
+plan et n'intègre rien de nouveau** : il donne la suite lui-même. Deux questions
+attendent sa réponse — la rotation des clés, et le sort de `apps/pwa/server/`
+(`docs/CURRENT_TASK.md`).
 
 ---
 
@@ -110,7 +110,8 @@ l'interface ne peut pas être regardée. Toute mesure qui en dépend se rapporte
 | `tools/` | recherche, documents, vidéo, code |
 | `docs/PLAN_ARENA_OS.md` | le plan des 21 phases |
 
-**Ce qui existe mais n'est branché nulle part** : un seul module, et c'est une
-question plus qu'un chantier —
-listés et ordonnés dans `docs/CURRENT_TASK.md`. Mesuré, pas estimé —
-`python scripts/orphelins.py`. C'est la mission en cours.
+**Ce qui n'est branché nulle part** : plus aucun module réel. Il reste 23
+`__init__.py` vides (des marqueurs de paquet) et les 4 fichiers de
+`apps/pwa/server/`, dont le sort est une **question au propriétaire**, pas une
+tâche — `docs/CURRENT_TASK.md`. Mesuré, pas estimé :
+`python scripts/orphelins.py`.

@@ -38,6 +38,7 @@ from core.models.ollama_provider import OllamaProvider
 from core.permissions.controle import ControleAcces
 from core.permissions.permission_manager import PermissionManager
 from core.permissions.politique import PolitiqueDePermissions
+from core.reasoning.reasoning_engine import ReasoningEngine
 from social.tiktok.tiktok_connector import TikTokConnector
 from tools.rag.graphrag_tool import GraphRAGTool
 from tools.rag.lightrag_tool import LightRAGTool
@@ -136,6 +137,11 @@ browser_agent = BrowserAgent(provider=fast_provider, memory=memory)
 fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)
 repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory)
 swe_agent = SWEAgent(provider=fast_provider, memory=memory)
+# Raisonnement profond : plan, calcul reellement execute en bac a sable, puis
+# synthese. Le modele profond, parce que c'est la voie PROFONDE qui l'emprunte.
+# `/health` annoncait « ReasoningEngine » parmi les agents actifs alors qu'aucun
+# chemin de reponse ne l'atteignait : l'annonce est desormais vraie.
+reasoning_engine = ReasoningEngine(provider=deep_provider)
 # Metier UniC Plaquiste : redaction soignee, donc le modele profond.
 plaquiste_agent = PlaquisteAgent(provider=deep_provider, memory=memory, registre=registre)
 

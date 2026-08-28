@@ -274,15 +274,48 @@ classement est conserve.
 
 Mesure apres la phase A : 104 modules, 74 atteints, 30 orphelins.
 
-Restent orphelins, par ordre de valeur :
-- core.execution.voies / mesures — declarent les budgets, rien ne les consulte.
-- core.reasoning.reasoning_engine — orphelin d avant ce travail.
+## Le cout d une reponse, et le raisonnement — phases B et E, 2026-08-28
 
-La commande qui refait cette mesure vit dans scripts/orphelins.py.
+**B.1 — les voies.** `core/execution/voies` declarait quatre regimes et leurs
+budgets ; personne ne les consultait. L orchestrateur consulte desormais
+`voie_pour(intention)` juste apres le classement, et la voie voyage avec la
+reponse. Effet reel : ce que la memoire a le droit d ajouter au prompt vient du
+budget de la voie, plus d une constante unique de 1200 caracteres identique
+pour les quatorze intentions. Une intention inconnue prend la voie la moins
+chere qui puisse repondre. `objectif_secondes` reste une cible : rien n est
+chronometre la.
 
-**Mission en cours, avant toute nouvelle phase : `docs/CURRENT_TASK.md`** —
-reveiller les trois modules qui ne tournent encore pour personne. L ordre reprend
-par la phase B, le cout d une reponse.
+**B.2 — les mesures.** `core/execution/mesures` chronometre maintenant chaque
+tour sur la passerelle, et le confronte a la cible de sa voie. Un agent
+specialise passe par `chronometrer` ; un tour conversationnel est mesure du
+depart au dernier jeton. Un tour interrompu n entre PAS avec les secondes
+ecoulees — elles mesureraient l echec, pas la reponse : il entre INDISPONIBLE
+avec sa raison. Nouvelle route `GET /api/observability` (cle + limitation de
+debit) : elle rend le tableau, y compris les voies que personne n a encore
+empruntees, marquees UNKNOWN, et une mediane qui vaut null quand rien n a ete
+mesure. Le rapport garde les 200 derniers tours.
+
+**E — le moteur de raisonnement.** La question de la phase E est tranchee dans
+le sens du branchement, pas de la suppression — aucune suppression n a ete
+decidee, elle se demande au proprietaire. Ce qu il fait de mieux que l existant :
+DEEP_REASONING recevait une passe du modele rapide et un chiffre sorti de sa
+tete ; il recoit maintenant un plan, un calcul REELLEMENT execute en bac a
+sable, et une redaction faite a partir du resultat obtenu. Quand le bac a sable
+refuse (Docker inactif), la reponse porte l avertissement : le prompt de
+synthese recevait deja la phrase d erreur, mais une consigne n est pas une
+garantie. `/health` annoncait « ReasoningEngine » parmi les agents actifs alors
+qu aucun chemin ne l atteignait : l annonce est enfin vraie.
+
+## Mission « reveiller ce qui dort » — TERMINEE le 2026-08-28
+
+Mesure finale : 104 modules, 77 atteints, 27 orphelins — dont 23 `__init__.py`
+vides et les 4 fichiers de `apps/pwa/server/`. **Aucun module reel endormi.**
+`python scripts/orphelins.py` ne nomme plus rien.
+
+Le detail des neuf modules et de leurs preuves est dans `docs/CURRENT_TASK.md`.
+**Ne pas ouvrir une nouvelle phase du plan de soi-meme** : le proprietaire donne
+la suite. Deux questions attendent sa reponse — la rotation des cles, et le sort
+de `apps/pwa/server/`.
 
 **Phase suivante autorisee ensuite : 11.1** - appels d offres senegalais. Le chapitre 8
 reste bloque par la purge des secrets.

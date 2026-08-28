@@ -1,7 +1,7 @@
-# MISSION EN COURS — réveiller ce qui dort
+# MISSION TERMINÉE — réveiller ce qui dort
 
-*Ouverte le 28/08/2026 par le propriétaire. Mesures de ce fichier prises le
-28/08/2026 sur `master` (commit `1d8a850`).*
+*Ouverte et close le 28/08/2026. Mesures de ce fichier prises sur la branche de
+la dernière phase, avec `python scripts/orphelins.py`.*
 
 > « regarde toutes les fonctionnalités qui sont intégrées dans le projet, si
 > elles existent et exécutent et font de réel travail. Tout doit fonctionner,
@@ -9,9 +9,13 @@
 > vidéo, celles pour le code, celles pour le chat, celles pour les documents
 > UniC Plaquiste. »
 
-**C'est la première tâche.** Avant toute nouvelle phase du plan, avant toute
-nouvelle intégration. Le propriétaire donnera la suite quand celle-ci sera
-terminée.
+**Cette mission est terminée — le 28/08/2026.** Les neuf modules réels tournent
+tous depuis un chemin de réponse réel. Le compteur d'orphelins ne contient plus
+un seul module à réveiller. Rien de nouveau n'a été intégré : la mission n'a
+fait que rendre vivant ce qui existait déjà.
+
+**Le propriétaire donne la suite lui-même.** Deux questions ci-dessous attendent
+sa réponse, et elles ne se tranchent pas sans lui.
 
 ---
 
@@ -44,88 +48,73 @@ terminée.
 
 ```
 python scripts/orphelins.py
-→ Modules totaux : 104  |  atteints : 76  |  orphelins : 28
+→ Modules totaux : 104  |  atteints : 77  |  orphelins : 27
 ```
 
-**Les 28 ne sont pas 28 chantiers.** La liste complète contient 22 fichiers
-`__init__.py` vides (des marqueurs de paquet, rien à réveiller) et 4 fichiers
-`apps/pwa/server/*` qui sont un **second serveur**, question ouverte plus bas.
+**Les 27 restants ne sont pas des chantiers, et il n'y en a plus aucun à
+réveiller.** La liste complète, décomposée :
 
-**Il reste 1 module réel**, et ce n'est pas un chantier : c'est une question. Ils sont écrits, documentés, et **ils ont déjà
-tous leurs tests**. Ce qui manque n'est pas du code : c'est le câblage.
+| Ce que c'est | Combien | Pourquoi ça reste |
+|---|---|---|
+| `__init__.py` vides | 23 | marqueurs de paquet : il n'y a rien dedans à brancher |
+| `apps/pwa/server/*` | 4 | un **second serveur FastAPI**, question ouverte au propriétaire |
+| **modules réels endormis** | **0** | c'était la mission |
 
-| # | Module | Ce qu'il doit servir | Où le brancher |
-|---|---|---|---|
-| 1 | `core/reasoning/reasoning_engine.py` | orphelin d'avant ce travail — **63 lignes, sans docstring** | à décider : brancher, ou proposer la suppression |
+```
+python scripts/orphelins.py  →  aucune ligne
+```
 
 ---
 
-## L'ordre, et pourquoi cet ordre
+## Ce qui a été fait, dans l'ordre où il a été fait
 
-**Une phase = un module = une pull request.** Jamais deux dans le même tour.
-L'ordre suit ce que le propriétaire ressent, pas ce qui est facile.
+**Une phase = un module (ou une paire) = une pull request.** L'ordre a suivi ce
+que le propriétaire ressent, pas ce qui était facile.
 
-### Phase A — la mémoire du chat
+### Le métier — PR #12 et #13
 
-C'est celle qu'il sent **à chaque conversation**.
+- `calcul_materiaux` : 234 plaques, 288 montants, 54 rails redonnés à
+  l'identique du devis `UC-2026-0804-FG2`.
+- `devis_pdf` : un vrai PDF de 3720 octets écrit sur le disque, son chemin est
+  la preuve.
 
-- A.1 — `semantique` branché le 28/08/2026 comme cinquième signal de la
-  récupération, dans `souvenirs_pertinents` de la passerelle PWA. L'index des
-  vecteurs vit dans le câblage et **dure** : un index recréé à chaque question
-  repaierait la vectorisation de toute la mémoire à chaque tour. Sans Ollama, la
-  récupération reste `MODE_LEXICAL` et le journal dit pourquoi — comportement
-  attendu sur la machine cloud, pas un échec. **Le seuil `0.45` n'a pas été
-  touché** : il a été mesuré avec `bge-m3`, il ne se règle pas sans mesure.
-- A.2 — `consolidation` branché le 28/08/2026, juste avant la construction du
-  prompt : ce que la récupération rend est regroupé sur
-  `(nature, type, projet, source, empreinte)`. Une chose retenue deux fois prend
-  **une** ligne, avec « vu 2 fois ». Rien n'est effacé en mémoire : les deux
-  souvenirs gardent leur date et leur source. Une supposition ne rejoint jamais
-  un fait, et deux sources restent deux preuves.
+### La vidéo et les documents — PR #15
 
-### Phase B — le coût d'une réponse
+- `suivi_video` + `travaux` sur **l'agent vidéo** : « où en est ma vidéo ? »
+  ouvre un suivi en fond, le chat ne l'attend pas. L'identifiant vient du
+  journal des actions, jamais de la phrase. Sans WanGP : `NOT_CONFIGURED` avec
+  la commande de lancement.
+- `indexer` + `inventory` sur **le chemin documentaire** : « indexe mes
+  documents » indexe, « d'après mes documents… » interroge. L'indexation tourne
+  hors de la boucle du serveur et ne reprend pas un fichier inchangé.
 
-- B.1 — `voies` branché le 28/08/2026 : l'orchestrateur consulte la voie juste
-  après le classement, et la voie voyage avec la réponse (`voie`, `budget`).
-  Une intention inconnue prend `LEGERE`, jamais la voie la plus chère. Effet
-  réel sur le prompt : ce que la mémoire a le droit d'y ajouter vient désormais
-  du budget de la voie et non plus d'une constante unique — « bonjour » et une
-  démonstration n'ont plus la même enveloppe. `objectif_secondes` reste une
-  **cible** : rien n'a été chronométré ici, c'est B.2 qui mesure.
-- B.2 — `mesures` branché le 28/08/2026 : chaque tour de chat est chronométré
-  sur la passerelle et confronté à la cible de sa voie. Un tour interrompu
-  n'entre **pas** avec la durée de son échec — il entre `INDISPONIBLE` avec sa
-  raison. `GET /api/observability` rend le tableau, et il porte aussi les voies
-  que personne n'a encore empruntées : `UNKNOWN`, verdict `NON_MESURE`, jamais
-  un `0` qui se lirait « instantané ». Le rapport garde les 200 derniers tours.
+### La mémoire du chat — PR #16
 
-### Phase C — le travail de fond — **faite le 28/08/2026**
+- `semantique` : « combien de panneaux » ramène « 234 plaques BA13 », que le
+  lexical seul rendait vide. L'index des vecteurs vit dans le câblage et dure.
+  Sans Ollama : `MODE_LEXICAL`, dit dans le journal. Le seuil `0.45` n'a pas été
+  touché — il a été mesuré avec `bge-m3`.
+- `consolidation` : une phrase retenue deux fois prend une ligne, « vu 2 fois ».
+  Rien n'est effacé en mémoire, une supposition ne rejoint jamais un fait.
 
-`travaux` et `suivi_video` sont branchés sur l'agent vidéo : « où en est ma
-vidéo ? » ouvre un suivi dans la file de fond et le chat ne l'attend pas.
-L'identifiant de la génération est lu dans le journal des actions, là où WanGP
-l'a déposé comme preuve. Sans WanGP lancé, la réponse est `NOT_CONFIGURED`
-avec la commande de lancement.
+### Le coût d'une réponse, et le raisonnement — PR en cours
 
-La passerelle PWA, elle, ne soumet encore aucun travail de fond d'elle-même :
-elle passe par l'agent vidéo. Un autre usage de la file (l'indexation, par
-exemple) reste possible — `SUGGESTION — NON IMPLÉMENTÉE`.
+- `voies` : l'orchestrateur consulte la voie juste après le classement ; le
+  budget mémoire du prompt en découle. Une intention inconnue prend `LEGERE`.
+- `mesures` : chaque tour est chronométré face à la cible de sa voie.
+  `GET /api/observability` rend le tableau, **avec** les voies que personne n'a
+  empruntées, marquées `UNKNOWN`. Un tour interrompu n'entre pas avec la durée
+  de son échec.
+- `reasoning_engine` : la question de la phase E est tranchée **dans le sens du
+  branchement**, pas de la suppression. Ce qu'il fait de mieux que l'existant se
+  dit en une phrase : `DEEP_REASONING` recevait une passe du modèle rapide et un
+  chiffre sorti de sa tête ; il reçoit maintenant un plan, un calcul
+  **réellement exécuté** en bac à sable, et une rédaction faite à partir du
+  résultat obtenu. Quand le bac à sable refuse, la réponse le dit au lieu de
+  présenter un résultat élégant que rien n'a vérifié. `/health` annonçait
+  « ReasoningEngine » parmi les agents actifs : l'annonce est enfin vraie.
 
-### Phase D — ses documents — **faite le 28/08/2026**
-
-`inventory` puis `indexer` sont déclenchés par une phrase réelle
-(« indexe mes documents »), sur le chemin documentaire du chat. L'indexation
-tourne hors de la boucle du serveur, et sans Ollama elle **refuse** en donnant
-la commande, au lieu d'indexer à moitié. Ces documents portent des noms de
-clients, des montants et des chantiers : ils sont hors Git et ils y restent,
-et le compte-rendu ne dit que des nombres.
-
-### Phase E — la décision sur `reasoning_engine` (module 1)
-
-Ce module n'est pas un chantier, c'est une **question**. 63 lignes, aucune
-docstring, orphelin avant même l'audit. Le lire, dire ce qu'il ferait de mieux
-que l'existant, et **proposer** : brancher ou supprimer. La suppression d'un
-module se demande au propriétaire, elle ne se décide pas.
+**Aucune suppression n'a été décidée.** Elle se demande au propriétaire.
 
 ---
 
@@ -169,7 +158,10 @@ Aucune des deux ne se tranche sans lui.
 
 | 28/08/2026 | `core/execution/mesures` | chaque tour est chronométré face à la cible de sa voie ; `/api/observability` montre aussi ce qui n'a pas été mesuré |
 
-Atteints : **64 → 68 → 72 → 73 → 74 → 75 → 76**. Le compteur est la mesure, pas le récit.
+| 28/08/2026 | `core/reasoning/reasoning_engine` | `DEEP_REASONING` planifie, exécute le calcul en bac à sable, puis rédige — et dit quand le calcul n'a pas eu lieu |
+
+Atteints : **64 → 68 → 72 → 73 → 74 → 75 → 76 → 77**. Modules réels endormis :
+**9 → 0**. Le compteur est la mesure, pas le récit.
 
 ---
 
@@ -187,6 +179,6 @@ qui entre.** Une PR par module, et dedans, dans cet ordre :
 Puis on s'arrête et on attend son « continuer ». Une phase par tour, jamais
 deux — `docs/REGLES_DE_TRAVAIL.md`.
 
-**Quand les 9 modules sont réveillés**, la mission est finie : le dire avec le
-compteur d'orphelins à l'appui, et attendre. Il a dit qu'il donnerait la tâche
-suivante lui-même.
+**Les 9 modules sont réveillés.** La mission est finie, compteur à l'appui :
+`python scripts/orphelins.py` ne nomme plus aucun module. La suite lui
+appartient — il a dit qu'il donnerait la tâche suivante lui-même.
