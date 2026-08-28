@@ -4,6 +4,7 @@ import re
 from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
+from core.execution.voies import budget_de, voie_pour
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 
@@ -309,6 +310,16 @@ class OrchestratorAgent(BaseAgent):
         # faite, on la réutilise au lieu de la refaire.
         intent = (context or {}).get("intent") or await self.analyze_intent(user_input)
 
+        # La voie dit ce que cette demande a le droit de couter. Elle est
+        # consultee ici, juste apres le classement : c'est le seul endroit ou
+        # l'intention est connue avant que la reponse ne commence. Une intention
+        # inconnue prend la voie la moins chere qui puisse encore repondre,
+        # jamais la plus puissante.
+        voie = voie_pour(intent)
+        budget = budget_de(voie)
+        logger.info("Intention %s -> voie %s (cible %.1f s, %s appel(s) modele).",
+                    intent, voie.value, budget.objectif_secondes, budget.appels_modele_max)
+
         history = self.memory.get_recent_history(session_id=session_id, limit=6) if self.memory else []
 
         # PROMPT MONDIAL SANS BIAIS LOCAL FORCÉ
@@ -332,6 +343,18 @@ class OrchestratorAgent(BaseAgent):
         reply = await self.provider.generate(prompt="\n".join(prompt_lines), system_prompt=system_prompt)
         return {
             "intent": intent,
+            # La voie voyage avec la reponse : sans elle, personne en aval ne
+            # peut dire ce que ce tour avait le droit de couter.
+            "voie": voie.value,
+            "budget": {
+                # `objectif_secondes` est une CIBLE, pas une mesure : rien n'a
+                # ete chronometre ici.
+                "objectif_secondes": budget.objectif_secondes,
+                "appels_modele_max": budget.appels_modele_max,
+                "etapes_outils_max": budget.etapes_outils_max,
+                "memoire_caracteres": budget.memoire_caracteres,
+                "reseau_autorise": budget.reseau_autorise,
+            },
             "agent": self.name,
             "response": reply.strip()
         }

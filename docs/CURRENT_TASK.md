@@ -44,21 +44,20 @@ terminée.
 
 ```
 python scripts/orphelins.py
-→ Modules totaux : 104  |  atteints : 74  |  orphelins : 30
+→ Modules totaux : 104  |  atteints : 75  |  orphelins : 29
 ```
 
-**Les 30 ne sont pas 30 chantiers.** La liste complète contient 22 fichiers
+**Les 29 ne sont pas 29 chantiers.** La liste complète contient 22 fichiers
 `__init__.py` vides (des marqueurs de paquet, rien à réveiller) et 4 fichiers
 `apps/pwa/server/*` qui sont un **second serveur**, question ouverte plus bas.
 
-**Il reste 3 modules réels.** Ils sont écrits, documentés, et **ils ont déjà
+**Il reste 2 modules réels.** Ils sont écrits, documentés, et **ils ont déjà
 tous leurs tests**. Ce qui manque n'est pas du code : c'est le câblage.
 
 | # | Module | Ce qu'il doit servir | Où le brancher |
 |---|---|---|---|
-| 1 | `core/execution/voies.py` | « bonjour » ne doit pas payer le prix d'une démonstration | l'orchestrateur, après le classement en intention |
-| 2 | `core/execution/mesures.py` | chronométrer ce que les voies **promettent** | le rapport de `voies`, et `/observability` |
-| 3 | `core/reasoning/reasoning_engine.py` | orphelin d'avant ce travail — **63 lignes, sans docstring** | à décider : brancher, ou proposer la suppression |
+| 1 | `core/execution/mesures.py` | chronométrer ce que les voies **promettent** | le rapport de `voies`, et `/observability` |
+| 2 | `core/reasoning/reasoning_engine.py` | orphelin d'avant ce travail — **63 lignes, sans docstring** | à décider : brancher, ou proposer la suppression |
 
 ---
 
@@ -85,10 +84,15 @@ C'est celle qu'il sent **à chaque conversation**.
   souvenirs gardent leur date et leur source. Une supposition ne rejoint jamais
   un fait, et deux sources restent deux preuves.
 
-### Phase B — le coût d'une réponse (modules 1 et 2)
+### Phase B — le coût d'une réponse
 
-- B.1 — `voies` consulté par l'orchestrateur après le classement en intention.
-  Une intention inconnue vaut `LEGERE`, jamais la voie la plus chère.
+- B.1 — `voies` branché le 28/08/2026 : l'orchestrateur consulte la voie juste
+  après le classement, et la voie voyage avec la réponse (`voie`, `budget`).
+  Une intention inconnue prend `LEGERE`, jamais la voie la plus chère. Effet
+  réel sur le prompt : ce que la mémoire a le droit d'y ajouter vient désormais
+  du budget de la voie et non plus d'une constante unique — « bonjour » et une
+  démonstration n'ont plus la même enveloppe. `objectif_secondes` reste une
+  **cible** : rien n'a été chronométré ici, c'est B.2 qui mesure.
 - B.2 — `mesures` confronte les budgets au réel. Les scènes qui exigent son PC
   restent `UNKNOWN` : elles ne s'estiment pas.
 
@@ -113,7 +117,7 @@ la commande, au lieu d'indexer à moitié. Ces documents portent des noms de
 clients, des montants et des chantiers : ils sont hors Git et ils y restent,
 et le compte-rendu ne dit que des nombres.
 
-### Phase E — la décision sur `reasoning_engine` (module 3)
+### Phase E — la décision sur `reasoning_engine` (module 2)
 
 Ce module n'est pas un chantier, c'est une **question**. 63 lignes, aucune
 docstring, orphelin avant même l'audit. Le lire, dire ce qu'il ferait de mieux
@@ -158,7 +162,9 @@ Aucune des deux ne se tranche sans lui.
 | 28/08/2026 | `core/memory/semantique` | « combien de panneaux » ramène « 234 plaques BA13 », que la récupération lexicale rendait vide — mesuré dans le même test |
 | 28/08/2026 | `core/memory/consolidation` | une phrase retenue deux fois n'occupe plus qu'une ligne du prompt, avec son compte ; les deux souvenirs sont toujours en mémoire |
 
-Atteints : **64 → 68 → 72 → 73 → 74**. Le compteur est la mesure, pas le récit.
+| 28/08/2026 | `core/execution/voies` | la voie de l'intention voyage avec la réponse, et le budget mémoire du prompt en découle : deux intentions, deux enveloppes |
+
+Atteints : **64 → 68 → 72 → 73 → 74 → 75**. Le compteur est la mesure, pas le récit.
 
 ---
 
