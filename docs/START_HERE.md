@@ -3,6 +3,9 @@
 ## Rôle d'Usman
 Usman est le cerveau principal et l'architecte du projet.
 
+> **Commence par `CLAUDE.md` à la racine**, puis `docs/REGLES_DE_TRAVAIL.md` et
+> `docs/REPRISE.md`. Ce fichier-ci est un complément, pas le point d'entrée.
+
 ## Comment reprendre une session ?
 1. **Lire `documents/USMAN_ENGINEERING_WORKLOG.md`** — c'est le carnet de bord
    permanent : ce qui est fait, ce qui reste, les problèmes ouverts, et la
@@ -18,7 +21,8 @@ Usman est le cerveau principal et l'architecte du projet.
 pytest
 ruff check .
 ```
-Référence au 26/08/2026 : 148 tests verts, 17 désélectionnés, 0 erreur de lint.
+L'état vérifié le plus récent est dans `docs/REPRISE.md` — le chiffre qui
+trainait ici (148 tests, 26/08/2026) était périmé de plus de mille tests.
 
 ## Statut initial
 - Machine : Win11 / RTX A2000 (12 Go) / 32 Go RAM
