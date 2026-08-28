@@ -31,6 +31,7 @@ from apps.backend.runtime import (
     orchestrator,
     plaquiste_agent,
     publisher_agent,
+    reasoning_engine,
     repo_engineer,
     researcher_agent,
     subtitle_agent,
@@ -90,6 +91,26 @@ def formater_sources(sources: List[Dict[str, Any]], question: str = "") -> str:
         return ""
     lignes = [f"[{s['index']}] {s['title']} — {s['url']}" for s in sources]
     return "\n\n**Sources**\n" + "\n".join(lignes)
+
+
+#: Ce que le moteur de raisonnement ecrit quand le calcul n a PAS eu lieu.
+#: Le prompt de synthese recoit deja cette phrase, mais une consigne n est pas
+#: une garantie : sans cette relecture, le modele pouvait presenter un resultat
+#: elegant sans dire qu aucun calcul ne l avait verifie.
+CALCUL_REFUSE = "Erreur calcul"
+
+
+def note_de_calcul(calcul: str) -> str:
+    """Ce qu il faut ajouter a la reponse quand le calcul a ete refuse.
+
+    Chaine vide quand le calcul a eu lieu, ou quand il n y en avait pas a faire :
+    on n ajoute pas un avertissement a une reponse qui ne pretend rien calculer.
+    """
+    if not calcul or not calcul.startswith(CALCUL_REFUSE):
+        return ""
+    return ("\n\n⚠️ Le calcul n a pas pu etre execute : "
+            f"{calcul[len(CALCUL_REFUSE):].lstrip(' :')} "
+            "Ce qui precede n a donc ete verifie par aucun calcul.")
 
 
 #: Ce qui demande d INDEXER ses documents, et non de les interroger.
@@ -162,7 +183,21 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
     logger.info(f"Intention détectée par Usman: {intent}")
 
     if intent == "DEEP_REASONING":
-        result = await orchestrator.run(request.prompt, context={"session_id": session_id, "intent": intent})
+        # Jusqu ici, « resous cette equation » recevait une passe du modele
+        # rapide et un chiffre sorti de sa tete. Le moteur de raisonnement
+        # planifie, EXECUTE le calcul en bac a sable, puis redige a partir du
+        # resultat obtenu — et quand le bac a sable refuse, la reponse le dit.
+        raisonnement = await reasoning_engine.solve_complex_task(request.prompt)
+        calcul = raisonnement.get("calculation_result") or ""
+        result = {
+            "status": raisonnement.get("status", "success"),
+            "agent": "ReasoningEngine",
+            "plan": raisonnement.get("plan", ""),
+            # Le calcul voyage avec la reponse : sans lui, personne ne peut
+            # verifier que le chiffre annonce vient d une execution.
+            "calcul": calcul,
+            "response": raisonnement.get("final_response", "") + note_de_calcul(calcul),
+        }
     elif intent == "FRESH_INFO":
         result = await fresh_agent.run(request.prompt)
     elif intent == "STUDIO":

@@ -1,4 +1,4 @@
-"""Les actions : ce qui s'est passe, et ce qui attend un accord.
+"""Les actions : ce qui s'est passe, ce qui attend un accord, et ce que ca a coute.
 
 Deux choses vivent ici, et elles sont volontairement separees.
 
@@ -20,10 +20,12 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from apps.backend.runtime import acces, file_attente, journal
+from apps.backend.runtime import acces, file_attente, journal, mesures_execution
 from apps.backend.security import limiter_debit, verify_api_key
 from core.actions.resultat import Statut
 from core.actions.timeline import to_dict
+from core.execution.mesures import Rapport, non_lancee, resume_chiffre
+from core.execution.voies import ORDRE, budget_de
 
 logger = logging.getLogger("usman.backend")
 
@@ -32,6 +34,24 @@ router = APIRouter()
 # Une chronologie n'est pas un export : au-dela, on pagine plutot que de tout
 # charger en memoire.
 LIMITE_MAX = 500
+
+#: Ce qu'on repond pour une voie qu'aucune demande n'a encore empruntee. La
+#: ligne reste au tableau : c'est elle qui dit ce qui n'a pas ete mesure.
+JAMAIS_EMPRUNTEE = "aucune demande n'a encore emprunte cette voie"
+
+
+def _ligne(mesure) -> Dict[str, Any]:
+    """Une mesure en JSON. `secondes` vaut `null` quand il n'y a pas de duree."""
+    return {
+        "nom": mesure.nom,
+        "voie": mesure.voie.value,
+        "etat": mesure.etat,
+        # Jamais 0 pour une absence : `null` traverse l'API tel quel.
+        "secondes": mesure.secondes,
+        "cible_secondes": budget_de(mesure.voie).objectif_secondes,
+        "verdict": mesure.verdict,
+        "detail": mesure.detail,
+    }
 
 
 @router.get("/api/actions", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
@@ -130,4 +150,39 @@ async def lire_permissions(compte: Optional[str] = Query(None)) -> Dict[str, Any
         "compte": compte,
         "coupe_circuits": dict(acces.permissions.permissions),
         "services": resolu,
+    }
+
+
+@router.get("/api/observability",
+            dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
+async def lire_mesures() -> Dict[str, Any]:
+    """Ce que les reponses ont reellement coute, face a ce que les voies promettent.
+
+    Le tableau porte les deux : les tours chronometres, et **les voies que
+    personne n'a encore empruntees**, marquees `UNKNOWN`. Une cible sans mesure
+    n'est ni tenue ni manquee — son verdict est `NON_MESURE`, jamais un chiffre
+    fabrique pour remplir la colonne.
+    """
+    rapport = Rapport(mesures=list(mesures_execution.mesures))
+
+    # Les voies jamais empruntees entrent au rapport comme non lancees : sans
+    # elles, le tableau ne montrerait que ce qui a marche.
+    empruntees = {mesure.voie for mesure in rapport.mesures}
+    for voie in ORDRE:
+        if voie not in empruntees:
+            rapport.ajouter(non_lancee(f"voie {voie.value}", voie, JAMAIS_EMPRUNTEE))
+
+    mesurees = rapport.mesurees
+    return {
+        "mesures": [_ligne(mesure) for mesure in rapport.mesures],
+        "tableau": rapport.rendre(),
+        "resume": {
+            "mesurees": len(mesurees),
+            "unknown": len(rapport.manquantes),
+            "hors_budget": len(rapport.hors_budget),
+            # `None` quand rien n'a encore ete mesure : un 0.0 se lirait comme
+            # « instantane ».
+            "mediane_secondes": resume_chiffre(mesurees),
+        },
+        "cibles": {voie.value: budget_de(voie).objectif_secondes for voie in ORDRE},
     }
