@@ -99,6 +99,14 @@ services:
     generate:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
     cancel:      {decision: ALLOWED,      risque: LOW}
 
+  # Devis UniC Plaquiste. Chiffrer ne coute rien et n'ecrit rien. Produire le
+  # PDF ecrit un document qui partira chez un client : confirmation, et
+  # coupe-circuit WRITE_FILES. Ce n'est pas irreversible — un fichier s'efface —
+  # donc pas de place dans INTERRUPTEURS_OBLIGATOIRES.
+  plaquiste:
+    read:        {decision: ALLOWED,      risque: LOW}
+    document:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail

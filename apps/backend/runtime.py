@@ -25,6 +25,7 @@ from apps.backend.config import DB_PATH, MODELE_PROFOND, MODELE_RAPIDE, OLLAMA_U
 from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
+from core.connectors.devis import DevisConnector
 from core.connectors.galsen import GalsenConnector
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.wan2gp import Wan2GPConnector
@@ -69,6 +70,11 @@ registre.declarer(
     "wan2gp",
     lambda: Wan2GPConnector(acces=acces, journal=journal, file_attente=file_attente),
 )
+# Devis PDF : chiffrage libre, production du document derriere confirmation.
+registre.declarer(
+    "devis",
+    lambda: DevisConnector(acces=acces, journal=journal, file_attente=file_attente),
+)
 registre.declarer(
     "galsen",
     lambda: GalsenConnector(acces=acces, journal=journal, file_attente=file_attente),
@@ -106,6 +112,6 @@ fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)
 repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory)
 swe_agent = SWEAgent(provider=fast_provider, memory=memory)
 # Metier UniC Plaquiste : redaction soignee, donc le modele profond.
-plaquiste_agent = PlaquisteAgent(provider=deep_provider, memory=memory)
+plaquiste_agent = PlaquisteAgent(provider=deep_provider, memory=memory, registre=registre)
 
 memory.set_fact("user_profile", "owner", "Ousmane", {"role": "Propriétaire et créateur d'Usman"})
