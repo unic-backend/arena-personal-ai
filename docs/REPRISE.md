@@ -155,6 +155,29 @@ semantique.py, consolidation.py et voies.py.
 - corpus/languages/aliases.yaml : a prendre, mais quand une recherche
   multilingue existera pour s en servir.
 
+**Generation video locale : WanGP (Wan2GP), ajoute le 2026-08-28.**
+`core/connectors/wan2gp.py` + `core/mcp/transport.py`, service
+video_generation, 12 tests. Demande par le proprietaire.
+
+WanGP n a PAS d API HTTP : son interface est Gradio. Il embarque en revanche un
+serveur MCP, et c est par la qu ARENA passe. Le format de file --process a ete
+ecarte : sa structure interne n est pas documentee, et la deviner aurait repete
+l erreur deja faite sur /files.
+
+POUR QUE CA MARCHE, sur son PC, une fois WanGP installe :
+    python wgp.py --mcp --mcp-transport streamable-http --mcp-host 127.0.0.1 --mcp-port 8765
+Sans cette commande, la sonde rapporte NON_CONFIGURE et donne cette ligne. Rien
+n a pu etre mesure contre un vrai WanGP : la machine de l assistant n a pas de
+carte graphique. Les 12 tests tournent sur un faux serveur MCP.
+
+Ce que la politique impose : generer est une ECRITURE, en CONFIRMATION, sous le
+coupe-circuit WRITE_FILES. Lire les modeles ou la galerie est libre.
+
+Decision : la generation n a PAS ete ajoutee a INTERRUPTEURS_OBLIGATOIRES. Ce
+plancher du code est reserve aux trois actions irreversibles (envoyer, publier,
+supprimer) ; une video generee s efface. Un test existant a refuse l ajout, et
+il avait raison — le test n a pas ete modifie.
+
 **Phase suivante autorisee : 11.1** - appels d offres senegalais. Le chapitre 8
 reste bloque par la purge des secrets.
 
