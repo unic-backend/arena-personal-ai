@@ -9,9 +9,11 @@ réglage (`docs/DECISIONS.md`, DEC-0002).
 
 ## ⚠️ Il y a une mission en cours. C'est ta première tâche.
 
-**`docs/CURRENT_TASK.md` — réveiller ce qui dort.** Neuf modules réels sont
-écrits, testés, et **aucune phrase du propriétaire ne les fait tourner**. La
-mission est de les brancher, un par un, chacun sur le bon agent.
+**`docs/CURRENT_TASK.md` — réveiller ce qui dort.** Neuf modules réels étaient
+écrits, testés, et **aucune phrase du propriétaire ne les faisait tourner**.
+Quatre sont branchés (la vidéo à l'agent vidéo, les documents au chemin
+documentaire) ; **cinq dorment encore**. La mission est de les brancher, un par
+un, chacun sur le bon agent.
 
 N'ouvre pas une nouvelle phase du plan, n'intègre rien de nouveau : il donnera
 la suite lui-même quand les neuf seront vivants.
@@ -106,6 +108,6 @@ l'interface ne peut pas être regardée. Toute mesure qui en dépend se rapporte
 | `tools/` | recherche, documents, vidéo, code |
 | `docs/PLAN_ARENA_OS.md` | le plan des 21 phases |
 
-**Ce qui existe mais n'est branché nulle part** : neuf modules réels et testés,
+**Ce qui existe mais n'est branché nulle part** : cinq modules réels et testés,
 listés et ordonnés dans `docs/CURRENT_TASK.md`. Mesuré, pas estimé —
 `python scripts/orphelins.py`. C'est la mission en cours.

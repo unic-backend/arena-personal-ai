@@ -29,6 +29,7 @@ from core.connectors.devis import DevisConnector
 from core.connectors.galsen import GalsenConnector
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.wan2gp import Wan2GPConnector
+from core.execution.travaux import FileDeTravaux
 from core.memory.memory_manager import MemoryManager
 from core.memory.personnelle import MemoirePersonnelle
 from core.models.ollama_provider import OllamaProvider
@@ -90,6 +91,13 @@ pieces_jointes = DepotPiecesJointes()
 lightrag_tool = LightRAGTool()
 graphrag_tool = GraphRAGTool()
 
+# --- Travaux de fond ----------------------------------------------------------
+# Une seule carte graphique, donc une seule file : dix travaux soumis ne font pas
+# dix travaux simultanes. Elle porte aujourd'hui le suivi des generations video,
+# et c'est ce qui permet a « ou en est ma video ? » de repondre sans que le chat
+# attende la carte.
+travaux = FileDeTravaux()
+
 # --- Modeles ------------------------------------------------------------------
 fast_provider = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_RAPIDE)
 deep_provider = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_PROFOND)
@@ -97,7 +105,11 @@ deep_provider = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_PROFOND)
 # --- Equipe complete d'agents -------------------------------------------------
 orchestrator = OrchestratorAgent(provider=fast_provider, memory=memory)
 trend_agent = TrendAnalyzerAgent(provider=deep_provider, memory=memory)
-video_agent = VideoAnalyzerAgent(provider=deep_provider, memory=memory)
+# L'agent video recoit de quoi suivre une generation : le registre pour joindre
+# WanGP, la file pour le faire en fond, le journal pour retrouver l'identifiant
+# de la derniere generation acceptee.
+video_agent = VideoAnalyzerAgent(provider=deep_provider, memory=memory,
+                                 registre=registre, travaux=travaux, journal=journal)
 editor_agent = EditorAgent(provider=deep_provider, memory=memory)
 subtitle_agent = SubtitleAgent(provider=deep_provider, memory=memory)
 coder_agent = CoderAgent(provider=fast_provider, memory=memory)

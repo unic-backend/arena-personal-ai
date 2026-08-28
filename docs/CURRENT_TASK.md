@@ -44,14 +44,14 @@ terminée.
 
 ```
 python scripts/orphelins.py
-→ Modules totaux : 104  |  atteints : 68  |  orphelins : 36
+→ Modules totaux : 104  |  atteints : 72  |  orphelins : 32
 ```
 
-**Les 36 ne sont pas 36 chantiers.** La liste complète contient 22 fichiers
+**Les 32 ne sont pas 32 chantiers.** La liste complète contient 22 fichiers
 `__init__.py` vides (des marqueurs de paquet, rien à réveiller) et 4 fichiers
 `apps/pwa/server/*` qui sont un **second serveur**, question ouverte plus bas.
 
-**Il reste 9 modules réels.** Ils sont écrits, documentés, et **ils ont déjà
+**Il reste 5 modules réels.** Ils sont écrits, documentés, et **ils ont déjà
 tous leurs tests**. Ce qui manque n'est pas du code : c'est le câblage.
 
 | # | Module | Ce qu'il doit servir | Où le brancher |
@@ -60,11 +60,7 @@ tous leurs tests**. Ce qui manque n'est pas du code : c'est le câblage.
 | 2 | `core/memory/consolidation.py` | dire une chose **une fois** : deux souvenirs identiques ne remplissent pas deux fois le prompt | même chemin, juste avant la construction du prompt |
 | 3 | `core/execution/voies.py` | « bonjour » ne doit pas payer le prix d'une démonstration | l'orchestrateur, après le classement en intention |
 | 4 | `core/execution/mesures.py` | chronométrer ce que les voies **promettent** | le rapport de `voies`, et `/observability` |
-| 5 | `core/execution/travaux.py` | un travail long avance **sans** faire attendre le chat | la passerelle PWA + le suivi vidéo (n° 6) |
-| 6 | `core/connectors/suivi_video.py` | répondre « où en est ma vidéo ? » sans qu'on redemande | l'agent vidéo, via la file de `travaux` |
-| 7 | `tools/documents/indexer.py` | indexer ses documents **sur demande**, pas jamais | l'agent documents / UniC Plaquiste |
-| 8 | `tools/documents/inventory.py` | ne pas réindexer un fichier qui n'a pas bougé | appelé par l'indexeur (n° 7) |
-| 9 | `core/reasoning/reasoning_engine.py` | orphelin d'avant ce travail — **63 lignes, sans docstring** | à décider : brancher, ou proposer la suppression |
+| 5 | `core/reasoning/reasoning_engine.py` | orphelin d'avant ce travail — **63 lignes, sans docstring** | à décider : brancher, ou proposer la suppression |
 
 ---
 
@@ -94,20 +90,28 @@ retrouve que par mots exacts : il reformule une question et Usman a oublié.
 - B.2 — `mesures` confronte les budgets au réel. Les scènes qui exigent son PC
   restent `UNKNOWN` : elles ne s'estiment pas.
 
-### Phase C — le travail de fond (modules 5 et 6)
+### Phase C — le travail de fond — **faite le 28/08/2026**
 
-- C.1 — `travaux` branché sur la passerelle : soumettre rend la main tout de
-  suite. `progression` vaut `None` quand le total est inconnu, jamais `0`.
-- C.2 — `suivi_video` sur l'agent vidéo. Sans WanGP lancé, la santé rapporte
-  `NOT_CONFIGURED` **avec la commande de lancement**, et rien n'est simulé.
+`travaux` et `suivi_video` sont branchés sur l'agent vidéo : « où en est ma
+vidéo ? » ouvre un suivi dans la file de fond et le chat ne l'attend pas.
+L'identifiant de la génération est lu dans le journal des actions, là où WanGP
+l'a déposé comme preuve. Sans WanGP lancé, la réponse est `NOT_CONFIGURED`
+avec la commande de lancement.
 
-### Phase D — ses documents (modules 7 et 8)
+La passerelle PWA, elle, ne soumet encore aucun travail de fond d'elle-même :
+elle passe par l'agent vidéo. Un autre usage de la file (l'indexation, par
+exemple) reste possible — `SUGGESTION — NON IMPLÉMENTÉE`.
 
-- D.1 — `inventory` puis `indexer`, déclenchés par une demande réelle.
-  Attention : ces documents portent des **noms de clients, des montants et des
-  chantiers**. Ils sont hors Git et ils y restent.
+### Phase D — ses documents — **faite le 28/08/2026**
 
-### Phase E — la décision sur `reasoning_engine` (module 9)
+`inventory` puis `indexer` sont déclenchés par une phrase réelle
+(« indexe mes documents »), sur le chemin documentaire du chat. L'indexation
+tourne hors de la boucle du serveur, et sans Ollama elle **refuse** en donnant
+la commande, au lieu d'indexer à moitié. Ces documents portent des noms de
+clients, des montants et des chantiers : ils sont hors Git et ils y restent,
+et le compte-rendu ne dit que des nombres.
+
+### Phase E — la décision sur `reasoning_engine` (module 5)
 
 Ce module n'est pas un chantier, c'est une **question**. 63 lignes, aucune
 docstring, orphelin avant même l'audit. Le lire, dire ce qu'il ferait de mieux
@@ -147,8 +151,10 @@ Aucune des deux ne se tranche sans lui.
 |---|---|---|
 | 28/08/2026 | `agents/plaquiste/calcul_materiaux` | PR #12 — 234 plaques, 288 montants, 54 rails redonnés à l'identique du devis `UC-2026-0804-FG2` |
 | 28/08/2026 | `agents/plaquiste/devis_pdf` | PR #13 — un vrai PDF de 3720 octets écrit sur le disque, son chemin est la preuve |
+| 28/08/2026 | `core/execution/travaux` + `core/connectors/suivi_video` | « où en est ma vidéo ? » ouvre un suivi en fond sur l'agent vidéo ; le tour de chat se termine avant lui |
+| 28/08/2026 | `tools/documents/indexer` + `tools/documents/inventory` | « indexe mes documents » lit, insère, et ne réindexe pas un fichier qui n'a pas bougé |
 
-Atteints : **64 → 68**. Le compteur est la mesure, pas le récit.
+Atteints : **64 → 68 → 72**. Le compteur est la mesure, pas le récit.
 
 ---
 
