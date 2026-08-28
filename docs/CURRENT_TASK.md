@@ -44,23 +44,22 @@ terminée.
 
 ```
 python scripts/orphelins.py
-→ Modules totaux : 104  |  atteints : 72  |  orphelins : 32
+→ Modules totaux : 104  |  atteints : 73  |  orphelins : 31
 ```
 
-**Les 32 ne sont pas 32 chantiers.** La liste complète contient 22 fichiers
+**Les 31 ne sont pas 31 chantiers.** La liste complète contient 22 fichiers
 `__init__.py` vides (des marqueurs de paquet, rien à réveiller) et 4 fichiers
 `apps/pwa/server/*` qui sont un **second serveur**, question ouverte plus bas.
 
-**Il reste 5 modules réels.** Ils sont écrits, documentés, et **ils ont déjà
+**Il reste 4 modules réels.** Ils sont écrits, documentés, et **ils ont déjà
 tous leurs tests**. Ce qui manque n'est pas du code : c'est le câblage.
 
 | # | Module | Ce qu'il doit servir | Où le brancher |
 |---|---|---|---|
-| 1 | `core/memory/semantique.py` | retrouver un souvenir sur le **sens** — « combien de plaques » doit ramener « BA13 commandées » | la mémoire du chat (`pwa_gateway`), à côté de la récupération lexicale |
-| 2 | `core/memory/consolidation.py` | dire une chose **une fois** : deux souvenirs identiques ne remplissent pas deux fois le prompt | même chemin, juste avant la construction du prompt |
-| 3 | `core/execution/voies.py` | « bonjour » ne doit pas payer le prix d'une démonstration | l'orchestrateur, après le classement en intention |
-| 4 | `core/execution/mesures.py` | chronométrer ce que les voies **promettent** | le rapport de `voies`, et `/observability` |
-| 5 | `core/reasoning/reasoning_engine.py` | orphelin d'avant ce travail — **63 lignes, sans docstring** | à décider : brancher, ou proposer la suppression |
+| 1 | `core/memory/consolidation.py` | dire une chose **une fois** : deux souvenirs identiques ne remplissent pas deux fois le prompt | la mémoire du chat (`pwa_gateway`), juste avant la construction du prompt |
+| 2 | `core/execution/voies.py` | « bonjour » ne doit pas payer le prix d'une démonstration | l'orchestrateur, après le classement en intention |
+| 3 | `core/execution/mesures.py` | chronométrer ce que les voies **promettent** | le rapport de `voies`, et `/observability` |
+| 4 | `core/reasoning/reasoning_engine.py` | orphelin d'avant ce travail — **63 lignes, sans docstring** | à décider : brancher, ou proposer la suppression |
 
 ---
 
@@ -69,21 +68,22 @@ tous leurs tests**. Ce qui manque n'est pas du code : c'est le câblage.
 **Une phase = un module = une pull request.** Jamais deux dans le même tour.
 L'ordre suit ce que le propriétaire ressent, pas ce qui est facile.
 
-### Phase A — la mémoire du chat (modules 1 et 2)
+### Phase A — la mémoire du chat
 
-C'est celui qu'il sent **à chaque conversation**. Aujourd'hui la mémoire ne
-retrouve que par mots exacts : il reformule une question et Usman a oublié.
+C'est celle qu'il sent **à chaque conversation**.
 
-- A.1 — brancher `semantique` comme cinquième signal de la récupération.
-  **Attention** : le seuil `0.45` a été mesuré avec `bge-m3` (1024 dimensions),
-  pas avec `nomic-embed-text`. Sans Ollama, le module retombe en
-  `MODE_LEXICAL` en disant pourquoi — c'est le comportement attendu sur la
-  machine cloud, pas un échec. Ne pas régler le seuil sans mesure.
+- A.1 — `semantique` branché le 28/08/2026 comme cinquième signal de la
+  récupération, dans `souvenirs_pertinents` de la passerelle PWA. L'index des
+  vecteurs vit dans le câblage et **dure** : un index recréé à chaque question
+  repaierait la vectorisation de toute la mémoire à chaque tour. Sans Ollama, la
+  récupération reste `MODE_LEXICAL` et le journal dit pourquoi — comportement
+  attendu sur la machine cloud, pas un échec. **Le seuil `0.45` n'a pas été
+  touché** : il a été mesuré avec `bge-m3`, il ne se règle pas sans mesure.
 - A.2 — brancher `consolidation` avant la construction du prompt.
   Le regroupement se fait sur `(nature, type, projet, source, empreinte)` et
   l'importance d'un groupe est le **maximum**, jamais une moyenne.
 
-### Phase B — le coût d'une réponse (modules 3 et 4)
+### Phase B — le coût d'une réponse (modules 2 et 3)
 
 - B.1 — `voies` consulté par l'orchestrateur après le classement en intention.
   Une intention inconnue vaut `LEGERE`, jamais la voie la plus chère.
@@ -111,7 +111,7 @@ la commande, au lieu d'indexer à moitié. Ces documents portent des noms de
 clients, des montants et des chantiers : ils sont hors Git et ils y restent,
 et le compte-rendu ne dit que des nombres.
 
-### Phase E — la décision sur `reasoning_engine` (module 5)
+### Phase E — la décision sur `reasoning_engine` (module 4)
 
 Ce module n'est pas un chantier, c'est une **question**. 63 lignes, aucune
 docstring, orphelin avant même l'audit. Le lire, dire ce qu'il ferait de mieux
@@ -153,8 +153,9 @@ Aucune des deux ne se tranche sans lui.
 | 28/08/2026 | `agents/plaquiste/devis_pdf` | PR #13 — un vrai PDF de 3720 octets écrit sur le disque, son chemin est la preuve |
 | 28/08/2026 | `core/execution/travaux` + `core/connectors/suivi_video` | « où en est ma vidéo ? » ouvre un suivi en fond sur l'agent vidéo ; le tour de chat se termine avant lui |
 | 28/08/2026 | `tools/documents/indexer` + `tools/documents/inventory` | « indexe mes documents » lit, insère, et ne réindexe pas un fichier qui n'a pas bougé |
+| 28/08/2026 | `core/memory/semantique` | « combien de panneaux » ramène « 234 plaques BA13 », que la récupération lexicale rendait vide — mesuré dans le même test |
 
-Atteints : **64 → 68 → 72**. Le compteur est la mesure, pas le récit.
+Atteints : **64 → 68 → 72 → 73**. Le compteur est la mesure, pas le récit.
 
 ---
 

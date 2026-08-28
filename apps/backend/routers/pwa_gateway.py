@@ -35,6 +35,7 @@ from apps.backend.prompts import get_arena_system_prompt
 from apps.backend.routers.chat import ChatRequest, dispatch_request
 from apps.backend.runtime import (
     fast_provider,
+    index_semantique,
     memoire_personnelle,
     memory,
     orchestrator,
@@ -43,6 +44,7 @@ from apps.backend.runtime import (
 from apps.backend.security import limiter_debit, verify_api_key
 from core.memory.recuperation import formater as formater_souvenirs
 from core.memory.recuperation import recuperer
+from core.memory.semantique import recuperer_semantique
 from core.security.trust import TrustLevel, wrap
 
 logger = logging.getLogger("usman.backend.pwa")
@@ -135,17 +137,34 @@ def instructions_persona(persona: Optional[Dict[str, Any]]) -> str:
     return brut
 
 
-def souvenirs_pertinents(question: str) -> str:
+async def souvenirs_pertinents(question: str) -> str:
     """Ce que la memoire d'ARENA sait et qui se rapporte a la question.
+
+    Le classement consulte le **sens** en plus des mots : « combien de panneaux »
+    doit ramener « 234 plaques BA13 commandees », qui ne partage avec lui aucun
+    mot utile. Quand les embeddings ne repondent pas, la recuperation reste
+    lexicale et le dit dans le journal — elle n'est jamais simulee.
 
     Une memoire illisible ne fait pas tomber la conversation : repondre sans
     souvenir vaut mieux que ne pas repondre.
     """
     try:
-        resultats = recuperer(memoire_personnelle, question, budget_caracteres=BUDGET_MEMOIRE)
+        recuperation = await recuperer_semantique(
+            memoire_personnelle, question, index=index_semantique,
+            budget_caracteres=BUDGET_MEMOIRE,
+        )
+        logger.debug("Memoire du chat : %s", recuperation.pourquoi())
+        resultats = recuperation.resultats
     except Exception as souci:  # noqa: BLE001 - la memoire ne bloque jamais la reponse
-        logger.error("Memoire illisible, la reponse continue sans elle : %s", souci)
-        return ""
+        # Le sens est un signal de plus, jamais une condition : s'il tombe, on
+        # revient exactement a ce que la passerelle faisait avant lui.
+        logger.error("Recuperation semantique impossible, repli lexical : %s", souci)
+        try:
+            resultats = recuperer(memoire_personnelle, question,
+                                  budget_caracteres=BUDGET_MEMOIRE)
+        except Exception as autre:  # noqa: BLE001
+            logger.error("Memoire illisible, la reponse continue sans elle : %s", autre)
+            return ""
     if not resultats:
         return ""
     return f"{TITRE_MEMOIRE_ARENA}\n{formater_souvenirs(resultats)}"
@@ -207,7 +226,7 @@ def contenu_pieces(identifiants: List[str]) -> str:
     return f"{TITRE_PIECES}\n" + "\n".join(blocs) if blocs else ""
 
 
-def prompt_systeme(
+async def prompt_systeme(
     persona: Optional[Dict[str, Any]] = None,
     question: str = "",
     memoires: Any = None,
@@ -229,7 +248,7 @@ def prompt_systeme(
     if notes:
         blocs.append(notes)
 
-    souvenirs = souvenirs_pertinents(question) if question else ""
+    souvenirs = await souvenirs_pertinents(question) if question else ""
     if souvenirs:
         blocs.append(souvenirs)
 
@@ -303,7 +322,7 @@ async def flux_agent(demande: DemandeAgent):
             complet = ""
             async for morceau in fast_provider.generate_stream(
                 _prompt_conversation(demande, proprietaire),
-                prompt_systeme(
+                await prompt_systeme(
                     demande.persona, demande.text, demande.memories, demande.attachments
                 ),
             ):
