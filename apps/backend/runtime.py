@@ -26,6 +26,7 @@ from apps.backend.config import DB_PATH, MODELE_PROFOND, MODELE_RAPIDE, OLLAMA_U
 from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
+from core.connectors.calendrier import CalendrierConnector
 from core.connectors.devis import DevisConnector
 from core.connectors.galsen import GalsenConnector
 from core.connectors.gmail import GmailConnector
@@ -89,6 +90,13 @@ registre.declarer(
 # declaree, donc aucune n'existe — l'envoi viendra en 8.2, derriere
 # confirmation. Non configure tant que les trois valeurs OAuth ne sont pas dans
 # le .env : la sonde le mesure au lieu de le supposer.
+# Agenda : lire, calculer ses creneaux libres, voir ce qui tombe dessus. Poser
+# un rendez-vous est une ecriture, donc une confirmation. Meme identifiant
+# Google que le courrier, autre portee.
+registre.declarer(
+    "calendrier",
+    lambda: CalendrierConnector(acces=acces, journal=journal, file_attente=file_attente),
+)
 registre.declarer(
     "gmail",
     lambda: GmailConnector(acces=acces, journal=journal, file_attente=file_attente),

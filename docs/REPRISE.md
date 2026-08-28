@@ -341,6 +341,50 @@ reste chez l assistant metier, qui connait la grille de prix. Un test du
 proprietaire du 27/08 le tenait deja ; les mots-cles du courrier ont ete
 resserres pour ne designer que sa BOITE.
 
+## Chapitre 9 — l agenda, termine le 2026-08-28
+
+Ce que le proprietaire demande a un agenda, ce n est pas une grille : c est
+« quand puis-je caser ce chantier ? » et « est-ce que ca tombe sur autre
+chose ? ». `core/connectors/calendrier.py` repond a ces deux questions-la et
+sait poser un rendez-vous, derriere confirmation.
+
+Le calcul des creneaux libres est la vraie matiere du chapitre, et il est
+teste hors ligne. Ce qu il refuse de faire :
+- un evenement « journee entiere » bloque la journee entiere. Google rend
+  `end.date` au lendemain ; le compter comme un point a minuit annoncerait libre
+  un jour ou il est deja pris ;
+- un evenement sans fin lisible bloque sa journee au lieu de ne rien prendre ;
+- un evenement qu on ne sait pas lire est COMPTE (`illisibles`), jamais oublie :
+  c est peut-etre lui qui remplit le jour qu on vient d annoncer libre ;
+- un evenement annule ne prend rien ;
+- les heures ouvrees sont declarees (8 h - 18 h, dimanche exclu), pas devinees :
+  proposer 3 h du matin serait exact et inutilisable ;
+- deux rendez-vous bout a bout ne sont pas un conflit.
+
+Ecrire est une confirmation : `creer` porte `action="create"`, que la politique
+classe en CONFIRMATION. Modifier et supprimer ne sont pas declares, donc
+n existent pas. Une creation sans identifiant rendu est un ECHEC — un SUCCESS
+sans preuve ne se construit pas.
+
+Branchement : l assistant metier. Sa description annoncait « planning » depuis
+le premier jour et il n avait acces a aucun agenda — le modele proposait des
+jours au hasard. Ses creneaux reels entrent maintenant dans l instruction comme
+des faits, avec la consigne de n en inventer aucun autre ; quand l agenda n est
+pas lisible, l instruction lui interdit de proposer une date. Poser un
+rendez-vous exige titre, debut et fin dans le CONTEXTE de la conversation,
+jamais dans la phrase : une date devinee met une equipe sur la route un mauvais
+jour.
+
+Aiguillage : « suis-je libre cette semaine ? » contient « cette semaine », un
+mot d actualite qui l envoyait chercher les nouvelles du monde. Les
+formulations d agenda sans ambiguite sont donc testees AVANT l information
+fraiche, et vont a l assistant metier — son agenda est son metier.
+
+`core/connectors/google_oauth.py` : l echange de jeton, ecrit une fois pour les
+deux services. Le courrier l utilise desormais aussi. Les noms attendus sont
+`GOOGLE_*` ; les anciens `GMAIL_*` restent acceptes pour qu un `.env` deja
+rempli ne cesse pas de marcher.
+
 ## Le diagnostic mentait — corrige le 2026-08-28
 
 Question du proprietaire : « est-ce que toutes les choses integrees sur ce

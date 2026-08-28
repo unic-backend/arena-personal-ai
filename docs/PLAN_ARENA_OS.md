@@ -7,7 +7,7 @@ justifies this order is `docs/AUDIT_ARENA_OS.md`; it was measured, not recalled.
 VOLET en cours   : ARENA OS
 Chapitres        : 12
 Phases           : 21
-Phase courante   : 9.1 — calendrier, en attente de son accord
+Phase courante   : 11.1 — appels d'offres, en attente de son accord
 Terminées        : 1.1 (2026-08-27) — `core/actions/resultat.py`, sept statuts ;
                    un succès exige une preuve, une action sans effet n'en porte pas.
                    2.1 (2026-08-27) — `core/actions/journal.py`, les neuf champs ;
@@ -48,6 +48,14 @@ Terminées        : 1.1 (2026-08-27) — `core/actions/resultat.py`, sept statut
                    extraction, brouillons, et l'envoi derrière confirmation.
                    **Chapitre 8 terminé**, après avoir été gelé jusqu'à ce que
                    le dépôt passe en privé.
+                   9.1 (2026-08-28) — `core/connectors/calendrier.py` : lire,
+                   créneaux libres, conflits ; poser un rendez-vous derrière
+                   confirmation. Branché sur l'assistant métier, qui annonçait
+                   « planning » sans avoir d'agenda. **Chapitre 9 terminé.**
+                   10.1 (2026-08-28) — `core/execution/travaux.py`, branché sur
+                   le suivi vidéo pendant la mission « réveiller ce qui dort » :
+                   le tour de chat se termine avant le travail de fond, et un
+                   test le mesure. **Chapitre 10 terminé.**
 
 **Décision sur les politiques d'automatisation.** Aucun second mécanisme n'a été
 écrit : les règles par compte de `config/permissions_services.yaml` font déjà

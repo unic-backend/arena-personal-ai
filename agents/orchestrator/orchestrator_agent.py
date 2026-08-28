@@ -29,6 +29,17 @@ INTENTIONS = {
     "EMAIL",
 }
 
+#: Ce qui parle de SON AGENDA, sans ambiguite possible. Teste avant tout le
+#: reste : « suis-je libre cette semaine ? » contient « cette semaine », qui est
+#: un mot d actualite — la question porte pourtant sur ses chantiers, pas sur
+#: les nouvelles du monde. Son agenda est son metier : il va a l assistant
+#: metier, qui connait ses chantiers.
+AGENDA = (
+    "suis-je libre", "suis je libre", "mon agenda", "dans mon agenda",
+    "quand puis-je", "quand est-ce que je peux", "creneau", "créneau",
+    "creneaux", "créneaux", "mes disponibilites", "mes disponibilités",
+)
+
 #: Ce qui parle de SA BOITE, et non d une lettre a ecrire. La difference n est
 #: pas un detail : « ecris un mail au client pour le chantier de Diamniadio »
 #: appartient a l assistant metier, qui connait la grille de prix et
@@ -231,6 +242,12 @@ class OrchestratorAgent(BaseAgent):
         """Repli hors ligne : aiguillage par mots-clés, instantané mais approximatif."""
         text = user_input.lower()
 
+        # Son agenda. Teste en premier : ces formulations ne veulent jamais dire
+        # autre chose, et plusieurs contiennent des mots de temps qui les
+        # enverraient chercher l actualite sur le web.
+        if any(k in text for k in AGENDA):
+            return "PLAQUISTE"
+
         # Information fraiche : la reponse a pu changer depuis l'entrainement du modele.
         fresh_keywords = [
             "dernière version", "derniere version", "dernier modèle", "dernier modele",
@@ -279,6 +296,9 @@ class OrchestratorAgent(BaseAgent):
         if any(k in text for k in [
             "devis", "facture", "chantier", "ba13", "ba 13", "placo",
             "cloison", "faux plafond", "plaquiste", "client", "metre carre", "m2",
+            # Planifier un chantier est du metier ; les formulations d agenda
+            # sans ambiguite sont deja traitees plus haut (AGENDA).
+            "planifie", "planifier", "disponibilite", "disponibilité",
         ]):
             return "PLAQUISTE"
 
