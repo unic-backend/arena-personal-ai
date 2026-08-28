@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional
 from core.agent.base_agent import BaseAgent
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
+from core.security.trust import TrustLevel, wrap
 from tools.search.source_fetcher import SourceFetcher
 from tools.search.web_search_tool import WebSearchTool
 
@@ -219,7 +220,11 @@ class FreshInfoAgent(BaseAgent):
         blocs = []
         for numero, page in enumerate(lues, 1):
             extrait = self.extraire_pertinent(page["text"], question, part)
-            blocs.append(f"[{numero}] {page['title']}\n    ({page['url']})\n{extrait}")
+            # Le texte vient d'une page que personne ne controle : il entre
+            # **enveloppe**, au niveau EXTERNAL. La numerotation reste dehors,
+            # sinon les citations [1] que le gabarit demande ne marcheraient plus.
+            enveloppe = wrap(extrait, TrustLevel.EXTERNAL, page.get("url") or "page sans adresse")
+            blocs.append(f"[{numero}] {page['title']}\n    ({page['url']})\n{enveloppe.text}")
         return "\n\n".join(blocs)
 
     async def run(
