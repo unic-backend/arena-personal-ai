@@ -71,7 +71,7 @@ préparée, jamais autorisée. **Cela gate le chapitre 8.**
 
 ---
 
-## VOLET ARENA OS — 15 phases, 6 chapitres sur 12
+## VOLET ARENA OS — 16 phases, 7 chapitres sur 12
 
 | Phase | Ce qui existe | Commit |
 |---|---|---|
@@ -90,6 +90,7 @@ préparée, jamais autorisée. **Cela gate le chapitre 8.**
 | 6.4 | `core/memory/consolidation.py` - regroupement sans suppression, resume par nature | 2026-08-27 |
 | 7.1 | `core/execution/voies.py` - 4 voies, budgets croissants, CHAT jamais profond | 2026-08-28 |
 | 7.2 | `core/execution/mesures.py` + `scripts/mesurer_performances.py` - 7 scenes, UNKNOWN jamais remplace par un chiffre | 2026-08-28 |
+| 10.1 | `core/execution/travaux.py` - file bornee, une panne de fond ne remonte jamais au chat | 2026-08-28 |
 
 **Phase 7.2 terminee le 2026-08-28 : l instrument existe, les chiffres non.**
 
@@ -104,10 +105,21 @@ puis coller le tableau ici. Tant que ce n est pas fait, les 4 scenes modele et
 la recherche web restent UNKNOWN, et aucune cible de la phase 7.1 n a ete
 confrontee au reel.
 
-**Phase suivante autorisee : 10.1** - travaux de fond qui ne bloquent jamais le
-chat. Choisie parce qu elle est verifiable sans Ollama et sans reseau, donc
-faisable pendant son absence. Le chapitre 8 reste bloque par la purge des
-secrets, jamais autorisee.
+**Phase 10.1 terminee le 2026-08-28.** `core/execution/travaux.py` : soumettre
+inscrit et rend la main, une panne de fond devient ECHOUE sans jamais remonter,
+le parallelisme est borne, la progression se compte et un total inconnu vaut
+None. 13 tests.
+
+Nuance a garder en tete : le test de latence mesure un **tour de chat simule**
+(une coroutine locale), pas un vrai appel au modele - Ollama n existe pas sur la
+machine de l assistant. La garantie prouvee est structurelle : le chat se
+termine pendant que le travail tourne encore. La latence reelle sous charge
+reste a mesurer sur son PC, avec le harnais de la phase 7.2.
+
+**Phase suivante autorisee : 11.1** - appels d offres senegalais : recherche,
+extraction, classement, avec source et date de recuperation. Attention : elle
+depend du reseau, donc elle sera partiellement UNKNOWN sur la machine de
+l assistant. Le chapitre 8 reste bloque par la purge des secrets.
 
 Plan complet : `docs/PLAN_ARENA_OS.md`. Audit d'origine : `docs/AUDIT_ARENA_OS.md`.
 
@@ -143,6 +155,6 @@ Plan complet : `docs/PLAN_ARENA_OS.md`. Audit d'origine : `docs/AUDIT_ARENA_OS.m
    collée dans le message qui la rapporte.
 4. Un commit par correctif. C'est **lui** qui commit et qui pousse.
 
-**État vérifié le 2026-08-28 : 1286 passed, 0 failed** — sur la machine cloud de
+**État vérifié le 2026-08-28 : 1299 passed, 0 failed** — sur la machine cloud de
 l'assistant. Dernier état mesuré sur la machine du propriétaire : 1272 passed,
 le 2026-08-28, avant les 14 tests du harnais de mesure.
