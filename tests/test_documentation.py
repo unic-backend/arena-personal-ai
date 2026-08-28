@@ -91,3 +91,63 @@ def test_les_fichiers_cites_par_la_documentation_existent():
                 manquants.append(f"{doc.relative_to(RACINE)} → {chemin}")
 
     assert manquants == [], "chemins cités mais introuvables :\n  " + "\n  ".join(manquants)
+
+
+# --- La mission en cours dit-elle la vérité sur ce qui dort ? --------------------
+#
+# Le plan de `docs/CURRENT_TASK.md` ne vaut que s'il reste exact. Un module
+# réveillé et oublié dans le plan enverrait le prochain assistant brancher
+# quelque chose qui l'est déjà ; un module qui s'endort sans y entrer ne serait
+# jamais repris. Ces tests font échouer les deux cas.
+
+MISSION = DOCS / "CURRENT_TASK.md"
+
+
+def modules_cites_par_la_mission():
+    """Les modules du tableau numéroté du plan, en notation pointée.
+
+    Seules les lignes `| 1 | ... |` comptent : le reste du document cite aussi
+    des fichiers où brancher (`apps/backend/runtime.py`), qui ne sont pas des
+    modules à réveiller.
+    """
+    ligne_numerotee = re.compile(r"^\|\s*\d+\s*\|")
+    chemin = re.compile(r"`((?:core|agents|tools|apps|social)/[\w/]+)\.py`")
+    cites = set()
+    for ligne in MISSION.read_text(encoding="utf-8").splitlines():
+        if ligne_numerotee.match(ligne):
+            cites |= set(chemin.findall(ligne))
+    return {c.replace("/", ".") for c in cites}
+
+
+def test_le_plan_nomme_exactement_les_modules_qui_dorment():
+    """Ni un module réveillé oublié dans le plan, ni un dormant absent."""
+    import sys
+
+    sys.path.insert(0, str(RACINE / "scripts"))
+    from orphelins import orphelins_reels
+
+    dorment = set(orphelins_reels())
+    cites = modules_cites_par_la_mission()
+
+    assert dorment - cites == set(), (
+        "des modules dorment sans figurer dans docs/CURRENT_TASK.md : "
+        f"{sorted(dorment - cites)}")
+    assert cites - dorment == set(), (
+        "docs/CURRENT_TASK.md demande de brancher des modules déjà atteints : "
+        f"{sorted(cites - dorment)}. Les retirer du plan et le dire dans "
+        "« Ce qui est déjà fait ».")
+
+
+def test_les_points_d_entree_dirigent_vers_la_mission():
+    """Un assistant qui arrive sans contexte doit tomber dessus, pas la chercher."""
+    manquants = [
+        nom for nom, fichier in (
+            ("CLAUDE.md", RACINE / "CLAUDE.md"),
+            ("docs/START_HERE.md", DOCS / "START_HERE.md"),
+            ("docs/REPRISE.md", DOCS / "REPRISE.md"),
+        )
+        if "CURRENT_TASK.md" not in fichier.read_text(encoding="utf-8")
+    ]
+
+    assert manquants == [], (
+        f"ces points d'entrée ne mènent pas à la mission en cours : {manquants}")

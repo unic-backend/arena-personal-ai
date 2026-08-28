@@ -1,5 +1,9 @@
 # PROCHAINES ÉTAPES
 
+> **Périmé pour l'ordre du travail.** L'ordre réel est dans
+> `docs/CURRENT_TASK.md` (mission du 28/08/2026 : réveiller les neuf modules
+> qui dorment). Ce qui suit reste utile pour le dossier clé/purge, rien de plus.
+
 *Mis à jour le 26/08/2026 (soir) — alignement après fusion Studio + rotation.*
 
 La liste détaillée vit dans `documents/USMAN_ENGINEERING_WORKLOG.md`.

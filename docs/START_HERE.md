@@ -5,6 +5,10 @@ Usman est le cerveau principal et l'architecte du projet.
 
 > **Commence par `CLAUDE.md` à la racine**, puis `docs/REGLES_DE_TRAVAIL.md` et
 > `docs/REPRISE.md`. Ce fichier-ci est un complément, pas le point d'entrée.
+>
+> **Une mission est en cours : `docs/CURRENT_TASK.md`.** Réveiller les neuf
+> modules qui ne tournent pour personne. C'est la première tâche, avant toute
+> nouvelle phase.
 
 ## Comment reprendre une session ?
 1. **Lire `documents/USMAN_ENGINEERING_WORKLOG.md`** — c'est le carnet de bord
