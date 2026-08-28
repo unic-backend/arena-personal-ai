@@ -89,13 +89,16 @@ l'interface ne peut pas être regardée. Toute mesure qui en dépend se rapporte
 
 ## Deux blocages ouverts, et ils ne sont pas à toi de lever
 
-1. **Six secrets sont dans l'historique public du dépôt, et le dépôt est
-   public.** Quatre de ces clés sont **mortes** depuis le 28/08 : LibreChat et
-   Open WebUI sont retirés, plus rien ne les lit (DEC-0007, et un test le
-   tient). La cinquième, `USMAN_API_KEY`, ouvre ARENA — le propriétaire l'a
-   changée une fois. La purge de l'historique est préparée
-   (`documents/RUNBOOK_PURGE_SECRETS.md`) et **jamais autorisée** ; elle gèle le
-   chapitre 8 (connecteur e-mail). Passer le dépôt en privé est à lui seul.
+1. **Six secrets sont dans l'historique du dépôt — qui est privé depuis le
+   28/08/2026**, mis en privé par le propriétaire lui-même. L'exposition
+   publique est close. Quatre de ces cinq clés sont en plus **mortes** :
+   LibreChat et Open WebUI sont retirés, plus rien ne les lit (DEC-0007, et un
+   test le tient). La cinquième, `USMAN_API_KEY`, ouvre ARENA — il l'a changée
+   une fois, et le serveur n'écoute que sur `127.0.0.1`.
+   La purge de l'historique reste préparée (`documents/RUNBOOK_PURGE_SECRETS.md`)
+   et **jamais autorisée** — elle n'est plus urgente, mais elle reste sa
+   décision. **Ce qui la motivait, le gel du chapitre 8 (connecteur e-mail), ne
+   tient plus de la même façon : à lui de dire s'il le rouvre.**
 2. **Les mesures de la phase 7.2 attendent son PC** :
    `python scripts/mesurer_performances.py`. Quatre scènes modèle et la
    recherche web sont `UNKNOWN` tant que ce n'est pas lancé.

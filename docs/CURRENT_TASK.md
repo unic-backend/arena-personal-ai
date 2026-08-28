@@ -140,10 +140,13 @@ que le propriétaire ressent, pas ce qui était facile.
    valeurs n'ouvrent plus rien. Reste `USMAN_API_KEY`, la seule vivante — à
    changer s'il n'est pas certain de l'avoir fait
    (`documents/RUNBOOK_PURGE_SECRETS.md`, étape 1).
-2. **Le dépôt est public.** Le passer en privé arrête l'exposition
-   immédiatement, et ça se fait depuis son téléphone : GitHub →
-   `Settings` → tout en bas → `Change repository visibility`. La purge de
-   l'historique reste **jamais autorisée** et gèle le chapitre 8 (e-mail).
+2. ~~**Le dépôt est public.**~~ **Fait le 28/08/2026 — il l'a passé en privé
+   lui-même.** Vérifié par l'API GitHub : `"private": true`, 0 fork.
+   L'exposition publique est close. La purge de l'historique reste **jamais
+   autorisée** : elle n'est plus urgente, mais c'est sa décision.
+   **Question qui s'ouvre à la place : rouvre-t-on le chapitre 8 (connecteur
+   e-mail) ?** Il était gelé parce qu'on n'ajoute pas de nouveaux secrets à un
+   dépôt public dont l'historique fuit. Les deux raisons ont changé.
 3. **`apps/pwa/server/` : on le garde ou on le supprime ?**
 
 Aucune ne se tranche sans lui.
