@@ -179,6 +179,13 @@ carte graphique. Les 12 tests tournent sur un faux serveur MCP.
 Ce que la politique impose : generer est une ECRITURE, en CONFIRMATION, sous le
 coupe-circuit WRITE_FILES. Lire les modeles ou la galerie est libre.
 
+Le suivi est branche : `core/connectors/suivi_video.py` interroge WanGP jusqu au
+fichier, DANS la file de travaux de fond. C est le PREMIER usage reel de
+core/execution/travaux.py (phase 10.1) : la conversation continue pendant que
+la carte graphique travaille. La progression vient de total_tasks et
+successful_tasks annonces par WanGP, jamais d une estimation ; tant qu il ne
+les donne pas, le total reste None.
+
 Decision : la generation n a PAS ete ajoutee a INTERRUPTEURS_OBLIGATOIRES. Ce
 plancher du code est reserve aux trois actions irreversibles (envoyer, publier,
 supprimer) ; une video generee s efface. Un test existant a refuse l ajout, et
