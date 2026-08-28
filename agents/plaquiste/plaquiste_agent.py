@@ -16,7 +16,10 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from agents.plaquiste.archives import exemple_demande, extraits_pour, formater
+from agents.plaquiste.calcul_materiaux import formater as formater_calcul
+from agents.plaquiste.calcul_materiaux import quantites_pour
 from agents.plaquiste.controle_prix import avertissement, verifier_prix
+from agents.plaquiste.metre import lire_demande
 from core.agent.base_agent import BaseAgent
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
@@ -220,6 +223,25 @@ class PlaquisteAgent(BaseAgent):
         if archives:
             instruction = f"{instruction}\n\n{archives}"
 
+        # Le metre se CALCULE. Jusqu'au 2026-08-28, `calcul_materiaux` n'etait
+        # appele par personne et le modele inventait les quantites — alors que
+        # les ratios sortent de son devis reel. Quand des dimensions sont lues,
+        # le calcul est fait ici et depose dans l'instruction comme un fait.
+        # Quand rien n'est lu, rien n'est injecte : pas de chiffre fabrique.
+        demande = lire_demande(user_input)
+        metre = None
+        if demande is not None:
+            metre = quantites_pour(
+                demande.surface, self.metier, faces=demande.faces,
+                parois=demande.parois, deja_developpee=demande.deja_developpee)
+            instruction = (
+                f"{instruction}\n\n{formater_calcul(metre)}\n\n"
+                "Ces quantites viennent d'etre calculees a partir de ses ratios reels. "
+                "Reprends-les telles quelles : ne les recalcule pas, ne les arrondis pas, "
+                "n'en ajoute aucune. Lecture des dimensions : "
+                f"{demande.lu}."
+            )
+
         reponse = ((await self.provider.generate(prompt=user_input, system_prompt=instruction)) or "").strip()
 
         # L instruction dit au modele de ne pas alterer un prix. Ce controle-ci
@@ -236,6 +258,15 @@ class PlaquisteAgent(BaseAgent):
             "articles_connus": len(_grille(self.metier)),
             "extraits_archives": [e.source for e in extraits],
             "prix_alteres": [str(a) for a in anomalies],
+            # Le metre calcule voyage avec la reponse : il doit etre verifiable
+            # sans relire le prompt.
+            "metre": {
+                "lu": demande.lu,
+                "surface_developpee": metre.surface_developpee,
+                "parois": metre.parois,
+                "parois_estimees": metre.parois_estimees,
+                "quantites": {b.article: b.quantite for b in metre.besoins},
+            } if metre is not None else None,
             "hors_perimetre": hors_metier,
             "response": reponse + avertissement(anomalies),
         }

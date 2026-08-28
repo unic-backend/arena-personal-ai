@@ -191,6 +191,28 @@ plancher du code est reserve aux trois actions irreversibles (envoyer, publier,
 supprimer) ; une video generee s efface. Un test existant a refuse l ajout, et
 il avait raison — le test n a pas ete modifie.
 
+## Audit des modules orphelins — 2026-08-28
+
+Mesure par parcours des imports depuis apps/backend/main, pwa_gateway, runtime
+et l orchestrateur : 101 modules, 64 atteints, 37 orphelins.
+
+Le pire trouve, et corrige : `agents/plaquiste/calcul_materiaux` n etait importe
+QUE par scripts/mesurer_performances.py. Le proprietaire demandait un metre et
+le modele inventait les quantites, alors que les ratios sortent de son devis
+reel. Branche par `agents/plaquiste/metre.py` : les dimensions sont lues dans la
+phrase, le calcul est fait, et les quantites entrent dans l instruction comme un
+fait a ne pas recalculer. Verifie : 18 parois de 5,40 x 2,50 redonnent les 234
+plaques, 288 montants et 54 rails du devis UC-2026-0804-FG2.
+
+Restent orphelins, par ordre de valeur :
+- agents.plaquiste.devis_pdf — genere un devis PDF, appele par personne.
+- core.execution.voies / mesures — declarent les budgets, rien ne les consulte.
+- core.memory.semantique / consolidation — la recuperation du chat reste lexicale.
+- tools.documents.indexer / inventory — l indexation ne part d aucune demande.
+- core.reasoning.reasoning_engine — orphelin d avant ce travail.
+
+La commande qui refait cette mesure vit dans scripts/orphelins.py.
+
 **Phase suivante autorisee : 11.1** - appels d offres senegalais. Le chapitre 8
 reste bloque par la purge des secrets.
 
