@@ -341,6 +341,34 @@ reste chez l assistant metier, qui connait la grille de prix. Un test du
 proprietaire du 27/08 le tenait deja ; les mots-cles du courrier ont ete
 resserres pour ne designer que sa BOITE.
 
+## Le diagnostic mentait — corrige le 2026-08-28
+
+Question du proprietaire : « est-ce que toutes les choses integrees sur ce
+projet marchent ? ». L'audit a rendu trois chiffres verifiables (ruff au vert,
+1520 tests, aucun module endormi) et une liste honnete de ce qui ne peut pas
+etre mesure depuis le cloud : 21 tests exigent Ollama, ffmpeg, Docker, un
+reseau ou LightRAG.
+
+Il a aussi trouve un vrai defaut, et il etait dans l'outil cense repondre a
+cette question. `scripts/doctor.py`, 32 lignes, aucun test, affichait :
+
+    print("[OK] Environnement virtuel (.venv) actif")
+
+sans rien verifier. Lance hors du venv, il disait quand meme OK. Un diagnostic
+auquel on ne peut pas se fier est plus dangereux qu'aucun diagnostic, parce
+qu'on lui fait confiance pour decider si le probleme est ailleurs.
+
+Reecrit : quinze mesures reelles — Python, venv (par `sys.prefix`, cette fois),
+dependances importees une par une, cle API, Ollama et ses trois modeles, carte
+graphique, ffmpeg, Docker, WanGP, les trois valeurs Gmail, le fichier de prix,
+le classeur de documents. Chaque defaut porte la commande qui le repare, et un
+test verifie qu'aucun n'en est depourvu. La cle API se verifie par sa longueur,
+jamais par sa valeur : un diagnostic colle dans une conversation ne divulgue
+rien. Ollama eteint rend `None`, pas une liste vide — « il ne repond pas » et
+« il repond sans modele » sont deux phrases et deux remedes. Le code de sortie
+vaut 1 quand ARENA ne peut pas repondre, ce qui le rend utilisable dans un
+script.
+
 ## Mission « reveiller ce qui dort » — TERMINEE le 2026-08-28
 
 Mesure finale : 104 modules, 77 atteints, 27 orphelins — dont 23 `__init__.py`
