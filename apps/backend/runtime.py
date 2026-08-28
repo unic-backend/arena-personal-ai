@@ -25,6 +25,7 @@ from apps.backend.config import DB_PATH, MODELE_PROFOND, MODELE_RAPIDE, OLLAMA_U
 from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
+from core.connectors.galsen import GalsenConnector
 from core.connectors.registre import RegistreConnecteurs
 from core.memory.memory_manager import MemoryManager
 from core.memory.personnelle import MemoirePersonnelle
@@ -58,6 +59,12 @@ file_attente = FileDAttente(db_path=str(DB_PATH), executeur=registre.executer_co
 registre.declarer(
     "tiktok",
     lambda: TikTokConnector(acces=acces, journal=journal, file_attente=file_attente),
+)
+# Premier connecteur reellement operationnel : GalsenAPI est publique, donc il
+# ne depend d'aucun secret et n'est pas gele par la purge en attente.
+registre.declarer(
+    "galsen",
+    lambda: GalsenConnector(acces=acces, journal=journal, file_attente=file_attente),
 )
 # Journal des actions a effet externe. Meme fichier que la memoire, table a part.
 journal = JournalDesActions(db_path=str(DB_PATH))
