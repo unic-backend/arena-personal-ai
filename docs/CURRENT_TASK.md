@@ -44,22 +44,21 @@ terminée.
 
 ```
 python scripts/orphelins.py
-→ Modules totaux : 104  |  atteints : 73  |  orphelins : 31
+→ Modules totaux : 104  |  atteints : 74  |  orphelins : 30
 ```
 
-**Les 31 ne sont pas 31 chantiers.** La liste complète contient 22 fichiers
+**Les 30 ne sont pas 30 chantiers.** La liste complète contient 22 fichiers
 `__init__.py` vides (des marqueurs de paquet, rien à réveiller) et 4 fichiers
 `apps/pwa/server/*` qui sont un **second serveur**, question ouverte plus bas.
 
-**Il reste 4 modules réels.** Ils sont écrits, documentés, et **ils ont déjà
+**Il reste 3 modules réels.** Ils sont écrits, documentés, et **ils ont déjà
 tous leurs tests**. Ce qui manque n'est pas du code : c'est le câblage.
 
 | # | Module | Ce qu'il doit servir | Où le brancher |
 |---|---|---|---|
-| 1 | `core/memory/consolidation.py` | dire une chose **une fois** : deux souvenirs identiques ne remplissent pas deux fois le prompt | la mémoire du chat (`pwa_gateway`), juste avant la construction du prompt |
-| 2 | `core/execution/voies.py` | « bonjour » ne doit pas payer le prix d'une démonstration | l'orchestrateur, après le classement en intention |
-| 3 | `core/execution/mesures.py` | chronométrer ce que les voies **promettent** | le rapport de `voies`, et `/observability` |
-| 4 | `core/reasoning/reasoning_engine.py` | orphelin d'avant ce travail — **63 lignes, sans docstring** | à décider : brancher, ou proposer la suppression |
+| 1 | `core/execution/voies.py` | « bonjour » ne doit pas payer le prix d'une démonstration | l'orchestrateur, après le classement en intention |
+| 2 | `core/execution/mesures.py` | chronométrer ce que les voies **promettent** | le rapport de `voies`, et `/observability` |
+| 3 | `core/reasoning/reasoning_engine.py` | orphelin d'avant ce travail — **63 lignes, sans docstring** | à décider : brancher, ou proposer la suppression |
 
 ---
 
@@ -79,11 +78,14 @@ C'est celle qu'il sent **à chaque conversation**.
   récupération reste `MODE_LEXICAL` et le journal dit pourquoi — comportement
   attendu sur la machine cloud, pas un échec. **Le seuil `0.45` n'a pas été
   touché** : il a été mesuré avec `bge-m3`, il ne se règle pas sans mesure.
-- A.2 — brancher `consolidation` avant la construction du prompt.
-  Le regroupement se fait sur `(nature, type, projet, source, empreinte)` et
-  l'importance d'un groupe est le **maximum**, jamais une moyenne.
+- A.2 — `consolidation` branché le 28/08/2026, juste avant la construction du
+  prompt : ce que la récupération rend est regroupé sur
+  `(nature, type, projet, source, empreinte)`. Une chose retenue deux fois prend
+  **une** ligne, avec « vu 2 fois ». Rien n'est effacé en mémoire : les deux
+  souvenirs gardent leur date et leur source. Une supposition ne rejoint jamais
+  un fait, et deux sources restent deux preuves.
 
-### Phase B — le coût d'une réponse (modules 2 et 3)
+### Phase B — le coût d'une réponse (modules 1 et 2)
 
 - B.1 — `voies` consulté par l'orchestrateur après le classement en intention.
   Une intention inconnue vaut `LEGERE`, jamais la voie la plus chère.
@@ -111,7 +113,7 @@ la commande, au lieu d'indexer à moitié. Ces documents portent des noms de
 clients, des montants et des chantiers : ils sont hors Git et ils y restent,
 et le compte-rendu ne dit que des nombres.
 
-### Phase E — la décision sur `reasoning_engine` (module 4)
+### Phase E — la décision sur `reasoning_engine` (module 3)
 
 Ce module n'est pas un chantier, c'est une **question**. 63 lignes, aucune
 docstring, orphelin avant même l'audit. Le lire, dire ce qu'il ferait de mieux
@@ -154,8 +156,9 @@ Aucune des deux ne se tranche sans lui.
 | 28/08/2026 | `core/execution/travaux` + `core/connectors/suivi_video` | « où en est ma vidéo ? » ouvre un suivi en fond sur l'agent vidéo ; le tour de chat se termine avant lui |
 | 28/08/2026 | `tools/documents/indexer` + `tools/documents/inventory` | « indexe mes documents » lit, insère, et ne réindexe pas un fichier qui n'a pas bougé |
 | 28/08/2026 | `core/memory/semantique` | « combien de panneaux » ramène « 234 plaques BA13 », que la récupération lexicale rendait vide — mesuré dans le même test |
+| 28/08/2026 | `core/memory/consolidation` | une phrase retenue deux fois n'occupe plus qu'une ligne du prompt, avec son compte ; les deux souvenirs sont toujours en mémoire |
 
-Atteints : **64 → 68 → 72 → 73**. Le compteur est la mesure, pas le récit.
+Atteints : **64 → 68 → 72 → 73 → 74**. Le compteur est la mesure, pas le récit.
 
 ---
 

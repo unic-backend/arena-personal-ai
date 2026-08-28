@@ -13,7 +13,6 @@ import pytest
 from apps.backend.routers import pwa_gateway
 from apps.backend.routers.pwa_gateway import souvenirs_pertinents
 from core.memory.personnelle import MemoirePersonnelle, Nature, TypeSouvenir
-from core.memory.recuperation import formater as formater_souvenirs
 from core.memory.recuperation import recuperer
 from core.memory.semantique import IndexSemantique
 
@@ -107,7 +106,9 @@ async def test_sans_embeddings_la_memoire_reste_exactement_lexicale(
     bloc = await souvenirs_pertinents("quel est le tarif de pose ?")
     lexical = recuperer(memoire_arena, "quel est le tarif de pose ?", budget_caracteres=1200)
 
-    assert bloc.endswith(formater_souvenirs(lexical))
+    assert lexical, "le lexical doit trouver ce souvenir : c'est le repli mesuré ici"
+    for resultat in lexical:
+        assert resultat.souvenir.contenu in bloc
     assert "5000 FCFA" in bloc
 
 

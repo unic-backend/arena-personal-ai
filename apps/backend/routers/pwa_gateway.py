@@ -42,7 +42,7 @@ from apps.backend.runtime import (
     pieces_jointes,
 )
 from apps.backend.security import limiter_debit, verify_api_key
-from core.memory.recuperation import formater as formater_souvenirs
+from core.memory.consolidation import grouper
 from core.memory.recuperation import recuperer
 from core.memory.semantique import recuperer_semantique
 from core.security.trust import TrustLevel, wrap
@@ -167,7 +167,16 @@ async def souvenirs_pertinents(question: str) -> str:
             return ""
     if not resultats:
         return ""
-    return f"{TITRE_MEMOIRE_ARENA}\n{formater_souvenirs(resultats)}"
+
+    # Une chose dite une fois. Retenir deux fois la meme phrase produit deux
+    # souvenirs : sans regroupement, le prompt les porte tous les deux et ARENA
+    # se repete. Le regroupement n'efface rien en memoire — chaque doublon garde
+    # sa date et sa source — il ne rend qu'une ligne, avec le compte quand il y a
+    # eu repetition. L'ordre du classement est conserve : le groupe apparait la
+    # ou son premier souvenir avait ete classe.
+    groupes = grouper([resultat.souvenir for resultat in resultats])
+    lignes = "\n".join(groupe.rendre() for groupe in groupes)
+    return f"{TITRE_MEMOIRE_ARENA}\n{lignes}"
 
 
 def notes_interface(memoires: Any) -> str:
