@@ -24,7 +24,7 @@ import asyncio
 import logging
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from core.actions.journal import JournalDesActions
 from core.actions.resultat import Statut
@@ -40,8 +40,24 @@ from tools.video.ffmpeg_tool import FFmpegTool
 
 logger = logging.getLogger("usman.agent.video_analyzer")
 
-#: Le connecteur de generation video, tel qu'il est declare dans le cablage.
-CONNECTEUR_VIDEO = "wan2gp"
+#: Les deux generateurs video declares dans le cablage, et ce qu'ils font.
+#: MoneyPrinterTurbo fabrique une video COMPLETE a partir d'un sujet — script,
+#: plans, voix, sous-titres, montage. WanGP fabrique des IMAGES a partir d'une
+#: description. Ce ne sont pas deux facons de faire la meme chose.
+CONNECTEUR_SUJET = "moneyprinter"
+CONNECTEUR_SCENE = "wan2gp"
+CONNECTEURS_VIDEO = (CONNECTEUR_SUJET, CONNECTEUR_SCENE)
+
+#: Ce qui demande de FABRIQUER une video sur un sujet. Le sujet lui-meme est ce
+#: qui reste de la phrase une fois cette demande retiree — il n'est jamais
+#: invente : sans sujet, rien n'est lance.
+DEMANDE_DE_GENERATION = re.compile(
+    r"^\s*(?:est-ce que tu peux |peux-tu |tu peux |j'?ai besoin d'?une |il me faut une )?"
+    r"(?:fais|fabrique|cr[ée]e|cree|g[ée]n[éèe]re|genere|monte|prepare|pr[ée]pare)"
+    r"(?:[- ]moi)?\s+(?:un |une |le |la |ce |cette )?(?:petit |petite |court |courte )?"
+    r"(?:vid[ée]o|short|reel)\s*(?:courte |verticale )?"
+    r"(?:sur|a propos de|à propos de|de|pour|qui parle de)?\s*",
+    re.IGNORECASE)
 
 #: Ce qui demande OU EN EST une generation, et non l'analyse d'un fichier.
 #: « analyse cette video » veut un fichier ; « ou en est ma video ? » veut un
@@ -67,6 +83,22 @@ def demande_de_suivi(texte: str) -> bool:
     return bool(DEMANDE_DE_SUIVI.search(texte or ""))
 
 
+def sujet_de(texte: str) -> Optional[str]:
+    """Le sujet d'une demande de video, ou `None` si la phrase n'en demande pas.
+
+    Le sujet est ce qui RESTE de sa phrase une fois la demande retiree :
+    « fais-moi une video sur les cloisons BA13 » laisse « les cloisons BA13 ».
+    Rien n'est complete ni reformule — un sujet invente produirait une video sur
+    autre chose que ce qu'il a demande. Une demande sans sujet rend une chaine
+    vide, et l'appelant demande de quoi il s'agit.
+    """
+    texte = (texte or "").strip()
+    correspondance = DEMANDE_DE_GENERATION.match(texte)
+    if correspondance is None:
+        return None
+    return texte[correspondance.end():].strip(" .?!,;:")
+
+
 class VideoAnalyzerAgent(BaseAgent):
     """Agent charge de transcrire, d'analyser, et de suivre ce qui se genere."""
 
@@ -90,20 +122,31 @@ class VideoAnalyzerAgent(BaseAgent):
 
     # --- Suivi d'une generation -------------------------------------------------
 
-    def derniere_generation(self) -> str:
-        """L'identifiant de la derniere generation reellement acceptee par WanGP.
+    def derniere_generation(self) -> Tuple[str, str]:
+        """La derniere generation acceptee, et par QUEL generateur.
 
-        Il est lu dans le journal des actions, la ou le connecteur l'a depose
-        comme preuve. Sans entree, il n'y a rien a suivre — et on le dit, au lieu
-        d'inventer une tache.
+        Elle est lue dans le journal des actions, la ou le connecteur a depose
+        son identifiant comme preuve. Les deux generateurs y ecrivent : on prend
+        la plus recente des deux, et on retient lequel l'a produite — suivre une
+        tache MoneyPrinter chez WanGP ne rendrait rien.
+
+        Returns:
+            `(identifiant, connecteur)`, ou `("", "")` quand il n'y a rien a
+            suivre. Aucune tache n'est inventee.
         """
         if self.journal is None:
-            return ""
-        for action in self.journal.dernieres(limite=50, cible=CONNECTEUR_VIDEO):
-            if (action.action == "generer" and action.resultat == Statut.SUCCES.value
-                    and action.preuve):
-                return str(action.preuve)
-        return ""
+            return "", ""
+        candidates = []
+        for connecteur in CONNECTEURS_VIDEO:
+            for action in self.journal.dernieres(limite=50, cible=connecteur):
+                if (action.action == "generer" and action.resultat == Statut.SUCCES.value
+                        and action.preuve):
+                    candidates.append((action.horodatage, str(action.preuve), connecteur))
+                    break
+        if not candidates:
+            return "", ""
+        _, identifiant, connecteur = max(candidates)
+        return identifiant, connecteur
 
     def _suivi_deja_en_cours(self, job_id: str) -> Optional[Travail]:
         """Le travail qui suit deja cette tache, s'il y en a un.
@@ -171,7 +214,12 @@ class VideoAnalyzerAgent(BaseAgent):
                     "message": ("Je peux analyser une video, pas suivre une generation : "
                                 "aucun connecteur video n'est branche sur cet agent.")}
 
-        job_id = (job_id or self.derniere_generation()).strip()
+        connecteur_nom = CONNECTEUR_SUJET
+        if job_id:
+            job_id = job_id.strip()
+        else:
+            job_id, connecteur_nom = self.derniere_generation()
+            connecteur_nom = connecteur_nom or CONNECTEUR_SUJET
         if not job_id:
             return {"statut": "AUCUNE", "job_id": "",
                     "message": ("Aucune generation video n'a ete lancee : je n'ai rien a "
@@ -183,13 +231,13 @@ class VideoAnalyzerAgent(BaseAgent):
 
         # La sonde ouvre une connexion : dans un fil separe, sinon elle gele la
         # boucle — et avec elle toutes les autres conversations.
-        sante = await asyncio.to_thread(self.registre.sante, CONNECTEUR_VIDEO)
+        sante = await asyncio.to_thread(self.registre.sante, connecteur_nom)
         if sante.etat is not EtatSante.OPERATIONNEL:
             return {"statut": Statut.NON_CONFIGURE.value, "job_id": job_id,
                     "message": " ".join(part for part in (sante.message, sante.ce_qui_manque)
                                         if part)}
 
-        connecteur = self.registre.obtenir(CONNECTEUR_VIDEO)
+        connecteur = self.registre.obtenir(connecteur_nom)
         travail = suivre_en_fond(connecteur, self.travaux, job_id,
                                  nom=f"{PREFIXE_SUIVI} {job_id}")
         logger.info("Suivi de la generation %s ouvert (travail %s).",
@@ -200,11 +248,48 @@ class VideoAnalyzerAgent(BaseAgent):
                 "message": (f"Je suis la generation {job_id} en fond et je te dis des "
                             "que le fichier est la. Le chat ne l'attend pas.")}
 
+    # --- Fabriquer une video ----------------------------------------------------
+
+    def fabriquer(self, sujet: str) -> Dict[str, Any]:
+        """Soumet la fabrication d'une video sur un sujet. **Rien ne part ici.**
+
+        `generer` porte `action="generate"`, que la politique classe en
+        CONFIRMATION : une generation occupe la carte graphique plusieurs
+        minutes, et c'est lui qui decide de la depenser.
+
+        Un sujet vide n'est jamais complete : on demande de quoi il s'agit.
+        """
+        if self.registre is None:
+            return {"statut": Statut.NON_CONFIGURE.value, "sujet": sujet,
+                    "message": ("Je peux analyser une video, pas en fabriquer : aucun "
+                                "generateur n'est branche sur cet agent.")}
+        if not sujet:
+            return {"statut": "INCOMPLET", "sujet": "",
+                    "message": ("Sur quoi ? Dis-moi le sujet de la video : je ne le "
+                                "devine pas.")}
+
+        resultat = self.registre.executer(CONNECTEUR_SUJET, "generer", sujet=sujet)
+        return {"statut": resultat.statut.value, "sujet": sujet,
+                "message": resultat.message, "preuve": resultat.preuve}
+
     # --- Analyse d'un fichier ---------------------------------------------------
 
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         contexte = context or {}
         job_id = contexte.get("job_id")
+
+        # Fabriquer une video : soumis a confirmation, jamais lance d'autorite.
+        sujet = sujet_de(user_input) if not job_id else None
+        if sujet is not None:
+            fabrication = await asyncio.to_thread(self.fabriquer, sujet)
+            return {
+                "status": "warning" if fabrication["statut"] in (
+                    Statut.NON_CONFIGURE.value, "INCOMPLET") else "success",
+                "agent": self.name,
+                "fabrication": fabrication,
+                "suivi": None,
+                "response": fabrication["message"],
+            }
 
         # Une question sur l'etat d'une generation ne demande aucun fichier.
         if job_id or demande_de_suivi(user_input):

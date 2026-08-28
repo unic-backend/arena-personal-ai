@@ -103,8 +103,10 @@ def configure(monkeypatch):
 
 @pytest.fixture
 def sans_identifiants(monkeypatch):
+    """Ni les noms attendus, ni les anciens : sinon un reste d'environnement masquerait le test."""
     for nom in IDENTIFIANTS:
         monkeypatch.delenv(nom, raising=False)
+        monkeypatch.delenv(nom.replace("GMAIL_", "GOOGLE_"), raising=False)
 
 
 @pytest.fixture
@@ -176,9 +178,30 @@ def test_sans_identifiants_la_sante_dit_ce_qui_manque(sans_identifiants):
     sante = GmailConnector(appel=faux_appel({}), appel_jeton=faux_jeton()).sante()
 
     assert sante.etat is EtatSante.NON_CONFIGURE
-    assert "GMAIL_CLIENT_ID" in sante.message
+    assert "GOOGLE_CLIENT_ID" in sante.message
     assert "console.cloud.google.com" in sante.ce_qui_manque
-    assert "GMAIL_REFRESH_TOKEN" in sante.ce_qui_manque
+    assert "GOOGLE_REFRESH_TOKEN" in sante.ce_qui_manque
+
+
+def test_les_anciens_noms_gmail_marchent_encore(monkeypatch):
+    """Un `.env` deja rempli au chapitre 8 ne doit pas cesser de marcher."""
+    for nom in IDENTIFIANTS:
+        monkeypatch.delenv(nom.replace("GMAIL_", "GOOGLE_"), raising=False)
+        monkeypatch.setenv(nom, "valeur-de-test")
+    connecteur = GmailConnector(appel=faux_appel({"users/me/profile": PROFIL}),
+                                appel_jeton=faux_jeton())
+
+    assert connecteur.authentifier() is True
+    assert connecteur.sante().etat is EtatSante.OPERATIONNEL
+
+
+def test_les_noms_google_ont_la_priorite(monkeypatch):
+    for nom in IDENTIFIANTS:
+        monkeypatch.setenv(nom, "ancienne-valeur")
+        monkeypatch.setenv(nom.replace("GMAIL_", "GOOGLE_"), "valeur-attendue")
+    from core.connectors.google_oauth import identifiants as lire
+
+    assert set(lire()) == {"valeur-attendue"}
 
 
 def test_sans_identifiants_une_lecture_ne_rend_pas_une_boite_vide(sans_identifiants):

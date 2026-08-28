@@ -341,6 +341,116 @@ reste chez l assistant metier, qui connait la grille de prix. Un test du
 proprietaire du 27/08 le tenait deja ; les mots-cles du courrier ont ete
 resserres pour ne designer que sa BOITE.
 
+## MoneyPrinterTurbo — integre le 2026-08-28
+
+Demande du proprietaire, capture d'ecran du depot a l'appui : « installe ce
+projet et fais le executer et qu'il marche de vrai pas installer juste et le
+laisser dormir, tu le mets dans le modele adapte ».
+
+Integre comme WanGP : un service separe, clone a cote du depot, joint par son
+API HTTP (DEC-0008). Le contrat n a pas ete devine, il a ete lu dans LEUR code (les chemins
+cites ci-apres sont dans leur depot, pas dans le notre) : prefixe « /api/v1 »
+pose dans app/controllers/v1/base.py, `POST /videos` et `GET /tasks/{task_id}`
+dans leur controleur video, les etats -1 / 1 / 4 dans leur app/models/const.py,
+et le jeton dans l en-tete `x-api-key`.
+
+Le connecteur traduit l etat d une tache dans la forme que
+`core/connectors/suivi_video.py` sait deja lire. C est ce qui permet de
+reutiliser le suivi ecrit pour WanGP au lieu d en ecrire un second : un test
+fait tourner le vrai `suivre_generation` sur une tache MoneyPrinter.
+
+Branche sur l agent video, avec deux garanties :
+- **generer est une confirmation** (`action="generate"`, CONFIRMATION dans la
+  politique) : une generation occupe la carte graphique plusieurs minutes ;
+- **le sujet n est jamais invente.** Il est ce qui RESTE de sa phrase une fois la
+  demande retiree : « fais-moi une video sur les cloisons BA13 » laisse « les
+  cloisons BA13 ». Sans sujet, on demande — on ne complete pas.
+
+Piege evite : « fais-moi une video sur les cloisons BA13 » contient « ba13 » et
+partait chez l assistant devis, qui n a jamais su faire une video. Les demandes
+de fabrication sont donc testees AVANT le metier.
+
+Bug attrape par un test au premier jet : « génère » porte un accent GRAVE sur le
+second e, que `[ée]` ne couvrait pas — l extraction du sujet rendait `None` sur
+la formulation la plus naturelle.
+
+Ce qui ne peut PAS etre mesure depuis le cloud : le service lui-meme. Il exige
+ffmpeg, une cle Pexels et un modele. Le connecteur est verifie contre le contrat
+lu ; `scripts/doctor.py` porte la ligne « Video courte (MPT) » qui dira, chez
+lui, si le service repond.
+
+## Chapitre 9 — l agenda, termine le 2026-08-28
+
+Ce que le proprietaire demande a un agenda, ce n est pas une grille : c est
+« quand puis-je caser ce chantier ? » et « est-ce que ca tombe sur autre
+chose ? ». `core/connectors/calendrier.py` repond a ces deux questions-la et
+sait poser un rendez-vous, derriere confirmation.
+
+Le calcul des creneaux libres est la vraie matiere du chapitre, et il est
+teste hors ligne. Ce qu il refuse de faire :
+- un evenement « journee entiere » bloque la journee entiere. Google rend
+  `end.date` au lendemain ; le compter comme un point a minuit annoncerait libre
+  un jour ou il est deja pris ;
+- un evenement sans fin lisible bloque sa journee au lieu de ne rien prendre ;
+- un evenement qu on ne sait pas lire est COMPTE (`illisibles`), jamais oublie :
+  c est peut-etre lui qui remplit le jour qu on vient d annoncer libre ;
+- un evenement annule ne prend rien ;
+- les heures ouvrees sont declarees (8 h - 18 h, dimanche exclu), pas devinees :
+  proposer 3 h du matin serait exact et inutilisable ;
+- deux rendez-vous bout a bout ne sont pas un conflit.
+
+Ecrire est une confirmation : `creer` porte `action="create"`, que la politique
+classe en CONFIRMATION. Modifier et supprimer ne sont pas declares, donc
+n existent pas. Une creation sans identifiant rendu est un ECHEC — un SUCCESS
+sans preuve ne se construit pas.
+
+Branchement : l assistant metier. Sa description annoncait « planning » depuis
+le premier jour et il n avait acces a aucun agenda — le modele proposait des
+jours au hasard. Ses creneaux reels entrent maintenant dans l instruction comme
+des faits, avec la consigne de n en inventer aucun autre ; quand l agenda n est
+pas lisible, l instruction lui interdit de proposer une date. Poser un
+rendez-vous exige titre, debut et fin dans le CONTEXTE de la conversation,
+jamais dans la phrase : une date devinee met une equipe sur la route un mauvais
+jour.
+
+Aiguillage : « suis-je libre cette semaine ? » contient « cette semaine », un
+mot d actualite qui l envoyait chercher les nouvelles du monde. Les
+formulations d agenda sans ambiguite sont donc testees AVANT l information
+fraiche, et vont a l assistant metier — son agenda est son metier.
+
+`core/connectors/google_oauth.py` : l echange de jeton, ecrit une fois pour les
+deux services. Le courrier l utilise desormais aussi. Les noms attendus sont
+`GOOGLE_*` ; les anciens `GMAIL_*` restent acceptes pour qu un `.env` deja
+rempli ne cesse pas de marcher.
+
+## Le diagnostic mentait — corrige le 2026-08-28
+
+Question du proprietaire : « est-ce que toutes les choses integrees sur ce
+projet marchent ? ». L'audit a rendu trois chiffres verifiables (ruff au vert,
+1520 tests, aucun module endormi) et une liste honnete de ce qui ne peut pas
+etre mesure depuis le cloud : 21 tests exigent Ollama, ffmpeg, Docker, un
+reseau ou LightRAG.
+
+Il a aussi trouve un vrai defaut, et il etait dans l'outil cense repondre a
+cette question. `scripts/doctor.py`, 32 lignes, aucun test, affichait :
+
+    print("[OK] Environnement virtuel (.venv) actif")
+
+sans rien verifier. Lance hors du venv, il disait quand meme OK. Un diagnostic
+auquel on ne peut pas se fier est plus dangereux qu'aucun diagnostic, parce
+qu'on lui fait confiance pour decider si le probleme est ailleurs.
+
+Reecrit : quinze mesures reelles — Python, venv (par `sys.prefix`, cette fois),
+dependances importees une par une, cle API, Ollama et ses trois modeles, carte
+graphique, ffmpeg, Docker, WanGP, les trois valeurs Gmail, le fichier de prix,
+le classeur de documents. Chaque defaut porte la commande qui le repare, et un
+test verifie qu'aucun n'en est depourvu. La cle API se verifie par sa longueur,
+jamais par sa valeur : un diagnostic colle dans une conversation ne divulgue
+rien. Ollama eteint rend `None`, pas une liste vide — « il ne repond pas » et
+« il repond sans modele » sont deux phrases et deux remedes. Le code de sortie
+vaut 1 quand ARENA ne peut pas repondre, ce qui le rend utilisable dans un
+script.
+
 ## Mission « reveiller ce qui dort » — TERMINEE le 2026-08-28
 
 Mesure finale : 104 modules, 77 atteints, 27 orphelins — dont 23 `__init__.py`

@@ -26,9 +26,11 @@ from apps.backend.config import DB_PATH, MODELE_PROFOND, MODELE_RAPIDE, OLLAMA_U
 from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
+from core.connectors.calendrier import CalendrierConnector
 from core.connectors.devis import DevisConnector
 from core.connectors.galsen import GalsenConnector
 from core.connectors.gmail import GmailConnector
+from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.wan2gp import Wan2GPConnector
 from core.execution.mesures import Rapport
@@ -70,7 +72,14 @@ registre.declarer(
 )
 # Premier connecteur reellement operationnel : GalsenAPI est publique, donc il
 # ne depend d'aucun secret et n'est pas gele par la purge en attente.
-# Generation video locale. Non configure tant que WanGP n'est pas lance : la
+# Video courte a partir d'un sujet : script, plans, voix, sous-titres, montage.
+# Service separe (MoneyPrinterTurbo), lance par le proprietaire ; ARENA lui parle
+# par son API. Non configure tant qu'il n'est pas lance — la sonde le mesure.
+registre.declarer(
+    "moneyprinter",
+    lambda: MoneyPrinterConnector(acces=acces, journal=journal, file_attente=file_attente),
+)
+# Generation d'images video. Non configure tant que WanGP n'est pas lance : la
 # sonde le mesure au lieu de le supposer.
 registre.declarer(
     "wan2gp",
@@ -89,6 +98,13 @@ registre.declarer(
 # declaree, donc aucune n'existe — l'envoi viendra en 8.2, derriere
 # confirmation. Non configure tant que les trois valeurs OAuth ne sont pas dans
 # le .env : la sonde le mesure au lieu de le supposer.
+# Agenda : lire, calculer ses creneaux libres, voir ce qui tombe dessus. Poser
+# un rendez-vous est une ecriture, donc une confirmation. Meme identifiant
+# Google que le courrier, autre portee.
+registre.declarer(
+    "calendrier",
+    lambda: CalendrierConnector(acces=acces, journal=journal, file_attente=file_attente),
+)
 registre.declarer(
     "gmail",
     lambda: GmailConnector(acces=acces, journal=journal, file_attente=file_attente),

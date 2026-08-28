@@ -85,6 +85,16 @@ ni modèle local, ni embeddings `bge-m3`), la recherche web n'y répond pas, et
 l'interface ne peut pas être regardée. Toute mesure qui en dépend se rapporte
 `UNKNOWN` et attend son PC. Ne la contourne pas, ne l'estime pas.
 
+Ce que la machine a vraiment, où qu'elle soit, se mesure :
+
+```
+python scripts/doctor.py
+```
+
+Quinze vérifications réelles, chacune avec la commande qui la répare. Aucun
+`[OK]` n'y est affirmé sans mesure — ce fichier l'a fait, une fois, et un test
+l'en empêche désormais.
+
 ---
 
 ## Deux blocages ouverts, et ils ne sont pas à toi de lever

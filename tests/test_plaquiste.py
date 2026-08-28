@@ -16,7 +16,7 @@ from agents.plaquiste.plaquiste_agent import (
     composer_instruction,
 )
 from apps.backend.config import AGENTS_SPECIALISES
-from core.actions.resultat import a_confirmer
+from core.actions.resultat import Statut, a_confirmer, non_configure, succes
 
 RACINE = Path(__file__).resolve().parent.parent
 FICHIER = RACINE / "config" / "unic_plaquiste.yaml"
@@ -236,3 +236,145 @@ class TestDocumentPdf:
         resultat = await agent.run("le pdf du devis, 120 m2", context=DESTINATAIRE)
 
         assert resultat["document"]["statut"] == "NOT_CONFIGURED"
+
+
+class FauxAgenda:
+    """Un registre d'agenda de test : il note, il n'appelle jamais Google."""
+
+    def __init__(self, creneaux=None, refus=None, creation=None):
+        self.appels = []
+        self._creneaux = creneaux if creneaux is not None else [
+            {"debut": "2026-08-31T12:00+00:00", "fin": "2026-08-31T18:00+00:00"},
+            {"debut": "2026-09-02T08:00+00:00", "fin": "2026-09-02T18:00+00:00"},
+        ]
+        self._refus = refus
+        self._creation = creation or a_confirmer(
+            action="creer", cible="calendrier",
+            message="Pret a poser. Rien n'est dans l'agenda : confirme.")
+
+    def executer_confirmee(self, connecteur, capacite, **parametres):
+        """Le chemin d'APRES la confirmation. L'agent ne doit jamais l'emprunter.
+
+        Il rend un succes exprès : si l'agent le prenait, le rendez-vous serait
+        pose pour de bon, et le test doit le voir plutôt que planter.
+        """
+        self.appels.append((connecteur, f"{capacite}-deja-confirmee", dict(parametres)))
+        return succes(action="creer", cible="calendrier", message="Rendez-vous pose.",
+                      preuve="evenement-1")
+
+    def executer(self, connecteur, capacite, **parametres):
+        self.appels.append((connecteur, capacite, dict(parametres)))
+        if capacite == "creneaux":
+            if self._refus is not None:
+                return self._refus
+            return succes(action="creneaux", cible="calendrier",
+                          message=f"{len(self._creneaux)} creneau(x) libre(s).",
+                          preuve="GET events", donnees=self._creneaux, illisibles=0)
+        if capacite == "creer":
+            return self._creation
+        raise AssertionError(f"capacite non prevue : {capacite}")
+
+
+class TestAgenda:
+    """Le branchement du calendrier (chapitre 9.1) sur l'assistant métier.
+
+    L'agent annonçait « planning » dans sa description depuis le premier jour.
+    Jusqu'au 28/08/2026, il n'avait accès à aucun agenda : le modèle proposait
+    des jours au hasard.
+    """
+
+    @pytest.mark.asyncio
+    async def test_les_creneaux_reels_entrent_dans_l_instruction(self):
+        modele = ModeleDouble()
+        agent = PlaquisteAgent(provider=modele, metier=charger_metier(FICHIER),
+                               registre=FauxAgenda())
+
+        await agent.run("suis-je libre cette semaine pour un chantier ?")
+
+        assert "CRENEAUX REELLEMENT LIBRES" in modele.systemes[0]
+        assert "2026-08-31T12:00" in modele.systemes[0]
+        assert "N'en invente aucun autre" in modele.systemes[0]
+
+    @pytest.mark.asyncio
+    async def test_une_demande_de_prix_ne_consulte_pas_l_agenda(self):
+        """Chiffrer n'a rien à voir avec ses dates."""
+        registre = FauxAgenda()
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run("combien coute une plaque BA13 ?")
+
+        assert registre.appels == []
+        assert resultat["agenda"] is None
+
+    @pytest.mark.asyncio
+    async def test_un_agenda_illisible_interdit_de_proposer_une_date(self):
+        """Une capacité absente se rapporte : elle n'invente pas un jour libre."""
+        refus = non_configure(action="creneaux", cible="calendrier",
+                              ce_qui_manque="GOOGLE_CLIENT_ID")
+        modele = ModeleDouble()
+        agent = PlaquisteAgent(provider=modele, metier=charger_metier(FICHIER),
+                               registre=FauxAgenda(refus=refus))
+
+        resultat = await agent.run("planifie le chantier de Diamniadio")
+
+        assert "N'EST PAS LISIBLE" in modele.systemes[0]
+        assert "Ne propose aucune date" in modele.systemes[0]
+        assert resultat["agenda"]["creneaux"] == []
+
+    @pytest.mark.asyncio
+    async def test_sans_connecteur_l_agent_le_dit(self):
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER))
+
+        resultat = await agent.run("quels sont mes creneaux libres ?")
+
+        assert resultat["agenda"]["statut"] == "NOT_CONFIGURED"
+
+    @pytest.mark.asyncio
+    async def test_poser_un_rendez_vous_passe_par_la_confirmation(self):
+        from datetime import datetime, timezone
+
+        registre = FauxAgenda()
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+        debut = datetime(2026, 8, 31, 9, 0, tzinfo=timezone.utc)
+
+        resultat = await agent.run("planifie le chantier", context={
+            "titre": "Chantier Diamniadio", "debut": debut,
+            "fin": debut.replace(hour=12)})
+
+        assert resultat["rendez_vous"]["statut"] == Statut.A_CONFIRMER.value
+        assert "Rien n'est dans l'agenda" in resultat["response"]
+
+    @pytest.mark.asyncio
+    async def test_une_heure_manquante_empeche_de_poser(self):
+        """Une date devinée met une équipe sur la route un mauvais jour."""
+        registre = FauxAgenda()
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run("planifie", context={"titre": "Chantier"})
+
+        assert resultat["rendez_vous"]["statut"] == "INCOMPLET"
+        assert "debut" in resultat["rendez_vous"]["manquants"]
+        assert [a for a in registre.appels if a[1] == "creer"] == []
+
+    @pytest.mark.asyncio
+    async def test_sans_demande_de_rendez_vous_rien_n_est_soumis(self):
+        registre = FauxAgenda()
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run("suis-je libre jeudi ?")
+
+        assert resultat["rendez_vous"] is None
+        assert [a for a in registre.appels if a[1] == "creer"] == []
+
+    @pytest.mark.parametrize("phrase", [
+        "suis-je libre cette semaine ?", "quels creneaux j'ai", "mon agenda de la semaine",
+        "planifie le chantier", "quand puis-je venir",
+    ])
+    def test_ces_demandes_vont_a_l_agent_metier(self, phrase):
+        from agents.orchestrator.orchestrator_agent import OrchestratorAgent
+
+        assert OrchestratorAgent._classer_par_mots_cles(None, phrase) == "PLAQUISTE"

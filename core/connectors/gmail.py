@@ -37,26 +37,27 @@ import logging
 import os
 import time
 from email.message import EmailMessage
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 import httpx
 
 from core.actions.resultat import ResultatAction, echec, non_configure, succes
 from core.connectors.base import Capacite, Connecteur, EtatSante, Sante
+from core.connectors.google_oauth import JetonGoogle, manquantes
 from core.security.trust import TrustLevel, wrap
 
 logger = logging.getLogger("usman.connecteurs.gmail")
 
 #: L'API officielle de Google. Dans l'environnement, jamais en dur ailleurs.
 BASE_URL = os.getenv("GMAIL_API_URL", "https://gmail.googleapis.com/gmail/v1")
-URL_JETON = os.getenv("GMAIL_TOKEN_URL", "https://oauth2.googleapis.com/token")
 
 #: Ce qu'il faut fournir, et ou le prendre. Ce texte part avec `NOT_CONFIGURED` :
 #: une capacite absente se rapporte avec la commande qui l'obtient.
 CE_QUI_MANQUE = (
     "trois valeurs dans .env, obtenues sur console.cloud.google.com "
     "(API Gmail activee, ecran de consentement, identifiant OAuth « application "
-    "de bureau ») : GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET et GMAIL_REFRESH_TOKEN. "
+    "de bureau ») : GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET et "
+    "GOOGLE_REFRESH_TOKEN (les anciens noms GMAIL_* restent acceptes). "
     "Portee gmail.readonly pour lire ; gmail.send en plus pour envoyer — sans "
     "elle, Google refuse l'envoi et ARENA le rapporte. Aucune ne s'ecrit dans "
     "le depot."
@@ -77,10 +78,6 @@ ENVOIS_PAR_MINUTE = 5
 #: une reponse de chat.
 DELAI_SECONDES = 15.0
 
-#: Marge avant l'expiration du jeton : on le renouvelle un peu avant plutot que
-#: de decouvrir en plein appel qu'il vient de perimer.
-MARGE_JETON_SECONDES = 60.0
-
 #: Ce qu'on garde du corps d'un message. Le reste est coupe, et la coupe est
 #: annoncee dans le texte rendu.
 CORPS_MAX_CARACTERES = 4000
@@ -91,32 +88,6 @@ DUREE_SONDE_SECONDES = 60.0
 #: Les en-tetes qu'on lit. Tout le reste est ignore : ce connecteur ne
 #: reconstitue pas un client de messagerie.
 ENTETES_LUS = ("From", "To", "Subject", "Date")
-
-
-def identifiants() -> Tuple[str, str, str]:
-    """Les trois valeurs OAuth, lues dans l'environnement. Vides si absentes."""
-    return (
-        os.getenv("GMAIL_CLIENT_ID", ""),
-        os.getenv("GMAIL_CLIENT_SECRET", ""),
-        os.getenv("GMAIL_REFRESH_TOKEN", ""),
-    )
-
-
-def _obtenir_jeton(client_id: str, client_secret: str, refresh_token: str) -> Dict[str, Any]:
-    """Echange le jeton de rafraichissement contre un jeton d'acces. Leve si echec.
-
-    Sortie reseau isolee dans une fonction : les tests la remplacent, et le
-    reste du module se verifie sans Google.
-    """
-    with httpx.Client(timeout=DELAI_SECONDES) as client:
-        reponse = client.post(URL_JETON, data={
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "refresh_token": refresh_token,
-            "grant_type": "refresh_token",
-        })
-        reponse.raise_for_status()
-        return reponse.json()
 
 
 def _http(chemin: str, parametres: Dict[str, Any], jeton: str) -> Dict[str, Any]:
@@ -282,9 +253,9 @@ class GmailConnector(Connecteur):
         super().__init__(**kwargs)
         self._appel = appel or _http
         self._appel_envoi = appel_envoi or _http_post
-        self._appel_jeton = appel_jeton or _obtenir_jeton
-        self._jeton: Optional[str] = None
-        self._jeton_expire_a: float = 0.0
+        # L'echange de jeton est partage avec l'agenda : un seul identifiant
+        # Google, deux services (`core/connectors/google_oauth.py`).
+        self._jetons = JetonGoogle(echange=appel_jeton)
         self._sante: Optional[Sante] = None
         self._sante_mesuree_a: float = 0.0
 
@@ -319,34 +290,8 @@ class GmailConnector(Connecteur):
     # --- Identification --------------------------------------------------------
 
     def jeton(self) -> Optional[str]:
-        """Un jeton d'acces valable, ou `None` si on n'a pas pu en obtenir.
-
-        Le jeton est garde jusqu'a peu avant son expiration : le redemander a
-        chaque appel ferait trois allers-retours pour lire un message.
-        """
-        if self._jeton and time.monotonic() < self._jeton_expire_a:
-            return self._jeton
-
-        client_id, client_secret, refresh = identifiants()
-        if not (client_id and client_secret and refresh):
-            return None
-
-        try:
-            charge = self._appel_jeton(client_id, client_secret, refresh)
-        except Exception as erreur:  # noqa: BLE001 — un refus est un etat, pas un crash
-            logger.info("Jeton Gmail refuse : %s", type(erreur).__name__)
-            return None
-
-        jeton = (charge or {}).get("access_token")
-        if not jeton:
-            logger.info("Google a repondu sans jeton d'acces.")
-            return None
-
-        duree = charge.get("expires_in")
-        duree = float(duree) if isinstance(duree, (int, float)) else 3600.0
-        self._jeton = str(jeton)
-        self._jeton_expire_a = time.monotonic() + max(0.0, duree - MARGE_JETON_SECONDES)
-        return self._jeton
+        """Un jeton d'acces valable, ou `None` si on n'a pas pu en obtenir."""
+        return self._jetons.obtenir()
 
     def authentifier(self) -> bool:
         """Vrai seulement si un jeton a **reellement** ete obtenu.
@@ -366,17 +311,12 @@ class GmailConnector(Connecteur):
         if self._sante is not None and maintenant - self._sante_mesuree_a < DUREE_SONDE_SECONDES:
             return self._sante
 
-        client_id, client_secret, refresh = identifiants()
-        manquantes = [nom for nom, valeur in (
-            ("GMAIL_CLIENT_ID", client_id),
-            ("GMAIL_CLIENT_SECRET", client_secret),
-            ("GMAIL_REFRESH_TOKEN", refresh),
-        ) if not valeur]
+        absentes = manquantes()
 
-        if manquantes:
+        if absentes:
             sante = Sante(
                 etat=EtatSante.NON_CONFIGURE,
-                message=f"Gmail n'est pas connecte : {', '.join(manquantes)} absente(s) du .env.",
+                message=f"Gmail n'est pas connecte : {', '.join(absentes)} absente(s) du .env.",
                 ce_qui_manque=CE_QUI_MANQUE,
                 mesure_le=_maintenant(),
             )

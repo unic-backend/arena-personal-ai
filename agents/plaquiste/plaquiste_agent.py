@@ -43,6 +43,21 @@ DEMANDE_DE_DOCUMENT = re.compile(
 #: Ce qu'il faut connaitre pour adresser un devis. Jamais devine dans la phrase.
 DESTINATAIRE = ("client", "lieu", "objet")
 
+#: Ce qui demande QUAND, et non combien. « planifie », « suis-je libre »,
+#: « quel creneau » : la reponse est dans son agenda, pas dans sa grille de prix.
+DEMANDE_D_AGENDA = re.compile(
+    r"\b(planifi\w*|agenda|cr[ée]neau\w*|disponibilit[ée]s?|dispo\w*"
+    r"|suis[- ]je libre|libre\s+(?:quand|le|ce|cette|lundi|mardi|mercredi|jeudi"
+    r"|vendredi|samedi)|quand\s+(?:puis|peux|est-ce)\w*)\b",
+    re.IGNORECASE)
+
+#: Ce qu'il faut connaitre pour POSER un rendez-vous. Jamais lu dans la phrase :
+#: une date devinee met une equipe sur la route un mauvais jour.
+RENDEZ_VOUS = ("titre", "debut", "fin")
+
+#: Combien de creneaux libres sont montres. Au-dela, la liste cesse d'aider.
+CRENEAUX_MONTRES = 6
+
 
 def date_du_jour() -> date:
     """Date lue sur la machine. Isolee pour que les tests la fixent."""
@@ -214,6 +229,63 @@ class PlaquisteAgent(BaseAgent):
         # etat annonce dans la reponse, pas un silence.
         self.registre = registre
 
+    def _lire_l_agenda(self, texte: str) -> Optional[Dict[str, Any]]:
+        """Les creneaux libres, quand la demande porte sur QUAND.
+
+        Rien n'est estime : les creneaux viennent de son agenda reel. Sans
+        connecteur, ou sans identifiants Google, l'etat est rapporte tel quel —
+        jamais un agenda vide, qui se lirait « ta semaine est libre ».
+
+        Returns:
+            Le compte-rendu, ou `None` quand la demande ne parle pas de dates.
+        """
+        if not DEMANDE_D_AGENDA.search(texte or ""):
+            return None
+        if self.registre is None:
+            return {"statut": "NOT_CONFIGURED",
+                    "message": ("Je peux chiffrer, pas regarder ton agenda : aucun "
+                                "connecteur n'est branche sur cet agent.")}
+
+        resultat = self.registre.executer("calendrier", "creneaux")
+        if not resultat.a_eu_lieu:
+            return {"statut": resultat.statut.value, "message": resultat.message,
+                    "creneaux": []}
+
+        creneaux = (resultat.detail or {}).get("donnees") or []
+        return {"statut": resultat.statut.value, "message": resultat.message,
+                "creneaux": creneaux[:CRENEAUX_MONTRES],
+                # Ce que l'agenda n'a pas su lire se dit : c'est peut-etre ce
+                # qui remplit le jour qu'on vient d'annoncer libre.
+                "illisibles": (resultat.detail or {}).get("illisibles", 0)}
+
+    def _poser_le_rendez_vous(self, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Soumet la pose d'un rendez-vous. **Rien n'est ecrit ici.**
+
+        Le titre et les heures viennent du contexte de la conversation, jamais
+        d'une lecture de la phrase : une date devinee met une equipe sur la
+        route un mauvais jour.
+
+        Returns:
+            Le compte-rendu, ou `None` quand aucun rendez-vous n'est demande.
+        """
+        if not any(context.get(nom) for nom in RENDEZ_VOUS):
+            return None
+        if self.registre is None:
+            return {"statut": "NOT_CONFIGURED",
+                    "message": "Aucun connecteur d'agenda n'est branche sur cet agent."}
+
+        manquants = [nom for nom in RENDEZ_VOUS if not context.get(nom)]
+        if manquants:
+            return {"statut": "INCOMPLET", "manquants": manquants,
+                    "message": ("Rien n'est pose dans l'agenda : il manque "
+                                + ", ".join(manquants) + ".")}
+
+        resultat = self.registre.executer(
+            "calendrier", "creer", titre=context["titre"], debut=context["debut"],
+            fin=context["fin"], lieu=context.get("lieu"))
+        return {"statut": resultat.statut.value, "message": resultat.message,
+                "preuve": resultat.preuve}
+
     def _proposer_le_document(self, texte: str,
                               context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Soumet la production du PDF quand un fichier est explicitement demande.
@@ -290,6 +362,25 @@ class PlaquisteAgent(BaseAgent):
                 f"{demande.lu}."
             )
 
+        # L'agenda : ses creneaux reels entrent dans l'instruction comme des
+        # faits. Sans cela, le modele proposait des jours au hasard.
+        agenda = self._lire_l_agenda(user_input)
+        if agenda and agenda.get("creneaux"):
+            lignes = "\n".join(f"- du {c['debut']} au {c['fin']}"
+                                for c in agenda["creneaux"])
+            instruction = (
+                f"{instruction}\n\nCRENEAUX REELLEMENT LIBRES dans son agenda :\n"
+                f"{lignes}\n"
+                "Ces creneaux viennent de son agenda. Propose uniquement ceux-la, "
+                "tels quels. N'en invente aucun autre et ne deplace aucune heure.")
+        elif agenda:
+            instruction = (
+                f"{instruction}\n\nSON AGENDA N'EST PAS LISIBLE : {agenda['message']}\n"
+                "Ne propose aucune date : dis-lui que tu ne peux pas voir son agenda.")
+
+        # Le rendez-vous : soumis a confirmation, jamais pose d'autorite.
+        rendez_vous = self._poser_le_rendez_vous(context or {})
+
         # Le document PDF : soumis a confirmation, jamais ecrit d'autorite.
         # Fait avant la generation pour que la reponse puisse le dire.
         document = self._proposer_le_document(user_input, context or {})
@@ -323,6 +414,11 @@ class PlaquisteAgent(BaseAgent):
             # Ce qu'il est advenu du fichier demande. `None` quand aucun ne
             # l'etait — jamais un statut inventé pour remplir le champ.
             "document": document,
+            # Ce que son agenda a repondu, et ce qu'il est advenu d'un rendez-vous
+            # demande. `None` quand la demande ne parlait pas de dates.
+            "agenda": agenda,
+            "rendez_vous": rendez_vous,
             "response": (reponse + avertissement(anomalies)
-                         + (f"\n\n{document['message']}" if document else "")),
+                         + (f"\n\n{document['message']}" if document else "")
+                         + (f"\n\n{rendez_vous['message']}" if rendez_vous else "")),
         }

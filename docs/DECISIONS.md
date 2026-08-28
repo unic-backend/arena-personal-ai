@@ -174,3 +174,57 @@ git checkout <commit-avant-le-retrait> -- docker-compose.yml librechat.yaml
 Et il faudra alors leur donner des clés **neuves**, jamais celles de
 l'historique. Un test le rappelle en échouant si ces fichiers reviennent tels
 quels.
+
+
+## DEC-0008 : MoneyPrinterTurbo tourne A COTE d'ARENA, pas dedans
+
+*Demande du proprietaire le 2026-08-28 : integrer
+`harry0703/MoneyPrinterTurbo`, « qu'il execute pour de vrai, pas installer juste
+et le laisser dormir », et le mettre sur le modele adapte.*
+
+### La decision
+
+Le projet est **clone a cote** du depot (`scripts/installer_moneyprinter.ps1`),
+avec son propre environnement virtuel et sa propre configuration. ARENA lui
+parle par son API HTTP (`core/connectors/moneyprinter.py`), et le connecteur est
+branche sur **l'agent video** — ce qui touche a la video va a la video.
+
+Aucune ligne de ce projet n'entre dans ce depot.
+
+### Pourquoi pas dedans
+
+Trois raisons, dans l'ordre de ce qu'elles coutent :
+
+1. **Ses cles.** Il a besoin d'une cle Pexels et d'un `config.toml`. Le vendre
+   dans notre arborescence ferait entrer une configuration porteuse de secrets
+   dans notre historique — celui-la meme qu'on vient de mettre en prive parce
+   qu'il en contenait deja.
+2. **Ses dependances.** Elles sont lourdes (montage, synthese vocale,
+   sous-titrage) et n'ont rien a faire dans `requirements.txt`, qui ne liste
+   que ce que ce code importe.
+3. **Le precedent existe et il tient.** WanGP est integre exactement ainsi
+   depuis le chapitre video : un service local, une API, un connecteur. Deux
+   facons d'integrer un service local seraient une de trop.
+
+### Ce que ca coute, et ce qu'il faut savoir
+
+- **`llm_provider` doit valoir `ollama` dans SON `config.toml`.** Par defaut il
+  vaut `moonshot` : les scripts video partiraient alors chez un fournisseur
+  d'IA, ce que DEC-0002 refuse. Le script d'installation le dit en clair et le
+  repete a la fin ; **il ne peut pas le forcer** — ce fichier appartient a
+  l'autre projet.
+- **Pexels est un service tiers.** Les plans video viennent de chez eux : le
+  sujet de la video sort donc de la machine sous forme de mots-cles de
+  recherche. Ce n'est pas un fournisseur d'IA, mais ce n'est pas rien, et il
+  doit le savoir.
+- **Si le service n'est pas lance, rien n'est promis.** Le connecteur rapporte
+  `NOT_CONFIGURED` avec la commande de lancement, et `scripts/doctor.py` porte
+  une ligne « Video courte (MPT) ».
+
+### Ce que ca coute si c'est faux
+
+Si le projet change son API — le prefixe `/api/v1`, la forme de `GET /tasks/{id}`
+ou les etats -1 / 1 / 4 — le connecteur cesse de suivre les generations. Il ne
+mentira pas pour autant : une reponse qu'il ne sait pas lire devient un etat
+rapporte, pas une video promise. Le contrat lu dans leur code est cite dans le
+docstring du connecteur, ce qui rend la verification possible sans le deviner.

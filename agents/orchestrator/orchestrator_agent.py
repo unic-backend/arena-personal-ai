@@ -29,6 +29,17 @@ INTENTIONS = {
     "EMAIL",
 }
 
+#: Ce qui parle de SON AGENDA, sans ambiguite possible. Teste avant tout le
+#: reste : « suis-je libre cette semaine ? » contient « cette semaine », qui est
+#: un mot d actualite — la question porte pourtant sur ses chantiers, pas sur
+#: les nouvelles du monde. Son agenda est son metier : il va a l assistant
+#: metier, qui connait ses chantiers.
+AGENDA = (
+    "suis-je libre", "suis je libre", "mon agenda", "dans mon agenda",
+    "quand puis-je", "quand est-ce que je peux", "creneau", "créneau",
+    "creneaux", "créneaux", "mes disponibilites", "mes disponibilités",
+)
+
 #: Ce qui parle de SA BOITE, et non d une lettre a ecrire. La difference n est
 #: pas un detail : « ecris un mail au client pour le chantier de Diamniadio »
 #: appartient a l assistant metier, qui connait la grille de prix et
@@ -40,6 +51,18 @@ COURRIER = (
     "reponds a ce mail", "réponds à ce mail", "reponds a ce message",
     "réponds à ce message", "j'ai recu un mail", "j'ai reçu un mail",
     "nouveaux messages", "mes messages recus", "mes messages reçus",
+)
+
+#: Fabriquer une video sur un sujet. Teste AVANT le metier, pour la meme raison
+#: que le suivi : « fais-moi une video sur les cloisons BA13 » contient « ba13 »
+#: et partait chez l assistant devis, qui n a jamais su faire une video.
+FABRIQUER_VIDEO = (
+    "fais-moi une vidéo", "fais moi une video", "fais-moi une video",
+    "fais moi une vidéo", "génère une vidéo", "genere une video",
+    "crée une vidéo", "cree une video", "fabrique une vidéo",
+    "fabrique une video", "monte une vidéo", "monte une video",
+    "fais-moi un short", "fais moi un short", "crée un short", "cree un short",
+    "génère un short", "genere un short",
 )
 
 #: « Ou en est ma video ? » n est pas une analyse de fichier : c est le suivi d une
@@ -231,6 +254,12 @@ class OrchestratorAgent(BaseAgent):
         """Repli hors ligne : aiguillage par mots-clés, instantané mais approximatif."""
         text = user_input.lower()
 
+        # Son agenda. Teste en premier : ces formulations ne veulent jamais dire
+        # autre chose, et plusieurs contiennent des mots de temps qui les
+        # enverraient chercher l actualite sur le web.
+        if any(k in text for k in AGENDA):
+            return "PLAQUISTE"
+
         # Information fraiche : la reponse a pu changer depuis l'entrainement du modele.
         fresh_keywords = [
             "dernière version", "derniere version", "dernier modèle", "dernier modele",
@@ -267,6 +296,11 @@ class OrchestratorAgent(BaseAgent):
         if any(k in text for k in COURRIER):
             return "EMAIL"
 
+        # Fabriquer une video. Teste AVANT le metier : le sujet d une video est
+        # souvent son metier, et la demande n en est pas une pour autant.
+        if any(k in text for k in FABRIQUER_VIDEO):
+            return "VIDEO_ANALYSIS"
+
         # Ou en est une generation video. Teste AVANT le metier : « ou en est la
         # video du chantier » contient « chantier » sans etre une demande de
         # devis. Ce qui touche a la video va a l agent video.
@@ -279,6 +313,9 @@ class OrchestratorAgent(BaseAgent):
         if any(k in text for k in [
             "devis", "facture", "chantier", "ba13", "ba 13", "placo",
             "cloison", "faux plafond", "plaquiste", "client", "metre carre", "m2",
+            # Planifier un chantier est du metier ; les formulations d agenda
+            # sans ambiguite sont deja traitees plus haut (AGENDA).
+            "planifie", "planifier", "disponibilite", "disponibilité",
         ]):
             return "PLAQUISTE"
 
@@ -315,7 +352,7 @@ class OrchestratorAgent(BaseAgent):
         if any(k in text for k in studio_keywords):
             return "STUDIO"
 
-        # Vidéo
+        # Vidéo. Les demandes de FABRICATION sont deja traitees plus haut.
         video_keywords = ["découpe cette vidéo", "analyse cette vidéo"]
         if any(k in text for k in video_keywords):
             return "VIDEO_ANALYSIS"
