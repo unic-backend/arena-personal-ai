@@ -9,6 +9,7 @@ d'ecrire un chiffre plausible dans un document qui part chez un client.
 Un devis faux coute plus cher qu'un devis en retard.
 """
 import logging
+import re
 from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -21,6 +22,7 @@ from agents.plaquiste.calcul_materiaux import quantites_pour
 from agents.plaquiste.controle_prix import avertissement, verifier_prix
 from agents.plaquiste.metre import lire_demande
 from core.agent.base_agent import BaseAgent
+from core.connectors.registre import RegistreConnecteurs
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 
@@ -30,6 +32,16 @@ FICHIER_METIER = Path(__file__).resolve().parents[2] / "config" / "unic_plaquist
 
 MOIS = ("janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet",
         "aout", "septembre", "octobre", "novembre", "decembre")
+
+#: Ce qui demande un FICHIER, et pas seulement un texte de devis. Le mot
+#: « devis » seul ne suffit pas : il est dans presque toutes ses phrases, et
+#: proposer un document a chaque fois transformerait la confirmation en reflexe.
+DEMANDE_DE_DOCUMENT = re.compile(
+    r"\b(pdf|document|imprim\w*|edite|édite|genere le devis|génère le devis)\b",
+    re.IGNORECASE)
+
+#: Ce qu'il faut connaitre pour adresser un devis. Jamais devine dans la phrase.
+DESTINATAIRE = ("client", "lieu", "objet")
 
 
 def date_du_jour() -> date:
@@ -188,7 +200,8 @@ class PlaquisteAgent(BaseAgent):
     """Devis, mails, argumentaire client et planification pour UniC Plaquiste."""
 
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
-                 metier: Optional[Dict[str, Any]] = None):
+                 metier: Optional[Dict[str, Any]] = None,
+                 registre: Optional[RegistreConnecteurs] = None):
         super().__init__(
             name="PlaquisteAgent",
             description="Assistant metier d'UniC Plaquiste : devis, mails, planning.",
@@ -197,6 +210,41 @@ class PlaquisteAgent(BaseAgent):
         )
         # Injectable pour les tests ; lu au demarrage sinon.
         self.metier = metier if metier is not None else charger_metier()
+        # Sans registre, l'agent redige mais ne produit aucun fichier. C'est un
+        # etat annonce dans la reponse, pas un silence.
+        self.registre = registre
+
+    def _proposer_le_document(self, texte: str,
+                              context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Soumet la production du PDF quand un fichier est explicitement demande.
+
+        Rien n'est ecrit ici : `produire` est une action a confirmer, et le
+        proprietaire garde la main. Le destinataire vient du contexte de la
+        conversation, jamais d'une lecture de la phrase — un devis adresse a la
+        mauvaise personne est pire qu'un devis absent.
+
+        Returns:
+            Le compte-rendu de la soumission, ou `None` quand aucun document
+            n'a ete demande.
+        """
+        if not DEMANDE_DE_DOCUMENT.search(texte or ""):
+            return None
+        if self.registre is None:
+            return {"statut": "NOT_CONFIGURED",
+                    "message": ("Je peux rediger le devis, pas ecrire le fichier : "
+                                "aucun connecteur n'est branche sur cet agent.")}
+
+        destinataire = {nom: str(context.get(nom) or "").strip() for nom in DESTINATAIRE}
+        manquants = [nom for nom, valeur in destinataire.items() if not valeur]
+        if manquants:
+            return {"statut": "INCOMPLET", "manquants": manquants,
+                    "message": ("Le PDF n'est pas lance : il manque "
+                                + ", ".join(manquants)
+                                + ". Je ne devine pas le destinataire d'un devis.")}
+
+        resultat = self.registre.executer("devis", "produire", demande=texte, **destinataire)
+        return {"statut": resultat.statut.value, "message": resultat.message,
+                "preuve": resultat.preuve}
 
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         logger.info("PlaquisteAgent : %r", user_input[:60])
@@ -242,6 +290,10 @@ class PlaquisteAgent(BaseAgent):
                 f"{demande.lu}."
             )
 
+        # Le document PDF : soumis a confirmation, jamais ecrit d'autorite.
+        # Fait avant la generation pour que la reponse puisse le dire.
+        document = self._proposer_le_document(user_input, context or {})
+
         reponse = ((await self.provider.generate(prompt=user_input, system_prompt=instruction)) or "").strip()
 
         # L instruction dit au modele de ne pas alterer un prix. Ce controle-ci
@@ -268,5 +320,9 @@ class PlaquisteAgent(BaseAgent):
                 "quantites": {b.article: b.quantite for b in metre.besoins},
             } if metre is not None else None,
             "hors_perimetre": hors_metier,
-            "response": reponse + avertissement(anomalies),
+            # Ce qu'il est advenu du fichier demande. `None` quand aucun ne
+            # l'etait — jamais un statut inventé pour remplir le champ.
+            "document": document,
+            "response": (reponse + avertissement(anomalies)
+                         + (f"\n\n{document['message']}" if document else "")),
         }

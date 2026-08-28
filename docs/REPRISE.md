@@ -204,10 +204,26 @@ phrase, le calcul est fait, et les quantites entrent dans l instruction comme un
 fait a ne pas recalculer. Verifie : 18 parois de 5,40 x 2,50 redonnent les 234
 plaques, 288 montants et 54 rails du devis UC-2026-0804-FG2.
 
+Le deuxieme corrige : `agents/plaquiste/devis_pdf` savait rendre le devis a la
+charte de l entreprise depuis le premier jour et aucun chemin de reponse ne l
+appelait. Branche par `core/connectors/devis.py` (service plaquiste, capacite
+`chiffrer` en lecture et `produire` en ecriture) et par le registre passe a
+PlaquisteAgent. Verifie de bout en bout : un PDF reel ecrit sur le disque,
+3720 octets, dont le chemin est la preuve du succes.
+
+Deux limites tenues par des tests, et sabotees pour le prouver :
+- `produire` ne part jamais sans confirmation — le fichier part chez un client.
+- le destinataire n est jamais devine dans la phrase : il vient du contexte de
+  la conversation, ou le PDF n est pas lance.
+
+Mesure apres ces deux corrections, master fusionne : 104 modules, 68 atteints,
+36 orphelins.
+
 Restent orphelins, par ordre de valeur :
-- agents.plaquiste.devis_pdf — genere un devis PDF, appele par personne.
 - core.execution.voies / mesures — declarent les budgets, rien ne les consulte.
 - core.memory.semantique / consolidation — la recuperation du chat reste lexicale.
+- core.connectors.suivi_video / core.execution.travaux — le suivi d une
+  generation existe, aucun chemin de reponse ne le lance encore.
 - tools.documents.indexer / inventory — l indexation ne part d aucune demande.
 - core.reasoning.reasoning_engine — orphelin d avant ce travail.
 

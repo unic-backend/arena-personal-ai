@@ -16,6 +16,7 @@ from agents.plaquiste.plaquiste_agent import (
     composer_instruction,
 )
 from apps.backend.config import AGENTS_SPECIALISES
+from core.actions.resultat import a_confirmer
 
 RACINE = Path(__file__).resolve().parent.parent
 FICHIER = RACINE / "config" / "unic_plaquiste.yaml"
@@ -159,3 +160,79 @@ class TestAiguillage:
         from apps.backend.routers import openai_gateway
         modeles = asyncio.run(openai_gateway.list_openai_models())
         assert "usman-plaquiste" in [m["id"] for m in modeles["data"]]
+
+
+class FauxRegistre:
+    """Un registre de test : il note ce qu'on lui demande, sans rien écrire."""
+
+    def __init__(self, resultat=None):
+        self.appels = []
+        self._resultat = resultat or a_confirmer(
+            action="produire", cible="devis", message="Pret. Rien n'est parti.")
+
+    def executer(self, connecteur, capacite, **parametres):
+        self.appels.append((connecteur, capacite, dict(parametres)))
+        return self._resultat
+
+
+DESTINATAIRE = {"client": "Fast Group", "lieu": "Medina", "objet": "cloisons"}
+
+
+class TestDocumentPdf:
+    """Le branchement de `devis_pdf.py` sur l'agent.
+
+    Mesuré le 28/08/2026 : le rendu PDF existait depuis le premier jour et
+    **aucun chemin de réponse ne l'appelait**. Le propriétaire demandait un
+    devis et recevait du texte. Ces tests tiennent le branchement, et surtout
+    ses deux limites : le fichier est demandé explicitement, et le destinataire
+    n'est jamais deviné.
+    """
+
+    @pytest.mark.asyncio
+    async def test_sans_demande_de_fichier_aucun_document_n_est_soumis(self):
+        registre = FauxRegistre()
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run("chiffre-moi 18 parois de 5,40 x 2,50 m",
+                                   context=DESTINATAIRE)
+
+        assert resultat["document"] is None
+        assert registre.appels == [], "un document a été soumis sans qu'on le demande"
+
+    @pytest.mark.asyncio
+    async def test_le_destinataire_n_est_jamais_devine_dans_la_phrase(self):
+        registre = FauxRegistre()
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run(
+            "fais le pdf du devis pour Fast Group à Medina, 18 parois de 5,40 x 2,50 m")
+
+        assert resultat["document"]["statut"] == "INCOMPLET"
+        assert set(resultat["document"]["manquants"]) == {"client", "lieu", "objet"}
+        assert registre.appels == [], "le connecteur a été appelé sans destinataire connu"
+
+    @pytest.mark.asyncio
+    async def test_le_document_demande_passe_par_le_connecteur_devis(self):
+        registre = FauxRegistre()
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run("le pdf du devis, 18 parois de 5,40 x 2,50 m",
+                                   context=DESTINATAIRE)
+
+        assert registre.appels, "aucun appel : `devis_pdf` reste endormi"
+        connecteur, capacite, parametres = registre.appels[0]
+        assert (connecteur, capacite) == ("devis", "produire")
+        assert parametres["client"] == "Fast Group"
+        assert resultat["document"]["statut"] == "NEEDS_CONFIRMATION"
+        assert resultat["document"]["message"] in resultat["response"]
+
+    @pytest.mark.asyncio
+    async def test_sans_registre_l_agent_le_dit_au_lieu_de_promettre_un_fichier(self):
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER))
+
+        resultat = await agent.run("le pdf du devis, 120 m2", context=DESTINATAIRE)
+
+        assert resultat["document"]["statut"] == "NOT_CONFIGURED"
