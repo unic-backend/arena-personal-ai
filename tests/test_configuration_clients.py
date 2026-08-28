@@ -1,40 +1,40 @@
-"""Le menu est court ; les capacités, elles, restent toutes joignables.
+"""Aucune capacité n'est devenue injoignable, et aucune clé morte n'est réclamée.
 
-Décision du propriétaire, 2026-08-26 puis 2026-08-27 : LibreChat propose
-quatre entrées — `usman-chat`, `usman-coder`, `usman-video` et
-`usman-plaquiste`. Sa raison — *« les utilisateurs ne connaissent
-pas des modèles, ils ouvrent le premier qui apparaît et pensent que c'est celui
-qui fait tout »*.
+Il y avait un menu, dans `librechat.yaml` : quatre entrées, décidées par le
+propriétaire. Le danger d'un menu court n'était pas le menu, c'était qu'une
+capacité devienne **inatteignable** parce que le seul chemin vers elle était son
+nom. Ces tests tiennent l'inverse, et ils le tiennent encore : pour chaque
+capacité sans entrée de menu, une intention existe, elle est déclarée
+spécialisée, et l'aiguillage appelle bien l'agent correspondant.
 
-Le danger d'un menu court n'est pas le menu : c'est qu'une capacité devienne
-**inatteignable** parce que le seul chemin vers elle était son nom. Ces tests
-tiennent l'inverse : pour chaque nom retiré du menu, une intention existe, elle
-est déclarée spécialisée, et l'aiguillage appelle bien l'agent correspondant.
-
-Ils vérifient aussi qu'aucun secret ne revient en clair — ces deux fichiers en
-ont déjà porté deux fois.
+**Le 2026-08-28, LibreChat et Open WebUI sont retirés du dépôt** — le
+propriétaire a sa propre interface. Ces deux clients étaient les derniers à
+réclamer `CREDS_KEY`, `JWT_SECRET`, `JWT_REFRESH_SECRET` et `WEBUI_SECRET_KEY`,
+quatre valeurs qui ont fuité dans l'historique public. La dernière classe de ce
+fichier vérifie que plus rien, dans ce que le système lit, ne les redemande :
+c'est ce qui rend cette fuite définitivement sans effet.
 """
-import re
 from pathlib import Path
 
 import pytest
-import yaml
 
 from apps.backend.config import AGENTS_SPECIALISES
 from apps.backend.routers import chat as routeur_chat
 from apps.backend.routers.chat import ChatRequest, dispatch_request
 
 RACINE = Path(__file__).resolve().parent.parent
-LIBRECHAT = RACINE / "librechat.yaml"
-COMPOSE = RACINE / "docker-compose.yml"
 
-# Quatrieme entree ajoutee le 2026-08-27 a la demande du proprietaire :
-# son metier. Le menu reste court par decision, pas par oubli.
-MENU_ATTENDU = {"usman-chat", "usman-coder", "usman-video", "usman-plaquiste"}
+#: Les quatre clés qui n'ouvrent plus rien. Les remettre dans un fichier lu par
+#: le système, c'est redonner de la valeur a des valeurs publiquement connues.
+CLES_MORTES = ("CREDS_KEY", "JWT_SECRET", "JWT_REFRESH_SECRET", "WEBUI_SECRET_KEY")
 
-VARIABLES_SECRETES = (
-    "USMAN_API_KEY", "CREDS_KEY", "JWT_SECRET", "JWT_REFRESH_SECRET", "WEBUI_SECRET_KEY",
-)
+#: Les clients tiers retirés. Leurs fichiers ne doivent pas revenir sans que
+#: quelqu'un le décide — et le décide en connaissance de la fuite.
+FICHIERS_RETIRES = ("librechat.yaml", "docker-compose.yml")
+
+#: Ce que le système lit vraiment au démarrage. Les documents (`docs/`,
+#: `documents/`) sont exclus : ils PARLENT des clés mortes, c'est leur rôle.
+DOSSIERS_LUS = ("apps", "core", "tools", "agents", "config")
 
 # Chaque nom retiré du menu, et l'intention qui doit le remplacer depuis
 # `usman-chat`. Le nom de l'objet est celui que l'aiguillage doit appeler.
@@ -47,19 +47,7 @@ CAPACITES_SANS_ENTREE_DE_MENU = {
 }
 
 
-def menu_de_librechat() -> set[str]:
-    config = yaml.safe_load(LIBRECHAT.read_text(encoding="utf-8"))
-    return set(config["endpoints"]["custom"][0]["models"]["default"])
-
-
 class TestMenuCourt:
-    def test_le_menu_propose_exactement_les_entrees_voulues(self):
-        assert menu_de_librechat() == MENU_ATTENDU
-
-    def test_la_video_est_dans_le_menu(self):
-        """Demandée explicitement par le propriétaire le 2026-08-26."""
-        assert "usman-video" in menu_de_librechat()
-
     @pytest.mark.parametrize("modele,attendu", sorted(CAPACITES_SANS_ENTREE_DE_MENU.items()))
     def test_chaque_capacite_retiree_a_une_intention(self, modele, attendu):
         intention, _ = attendu
@@ -111,19 +99,39 @@ class TestRienN_estDevenuInatteignable:
         assert resultat["response"] == "liens trouvés"
 
 
-class TestAucunSecretEnClair:
-    def test_librechat_lit_sa_cle_dans_l_environnement(self):
-        config = yaml.safe_load(LIBRECHAT.read_text(encoding="utf-8"))
-        cle = config["endpoints"]["custom"][0]["apiKey"]
-        assert cle == "${USMAN_API_KEY}", f"clé écrite en dur : {cle[:4]}…"
+class TestLesClesMortesNeServentPlus:
+    """Quatre valeurs publiquement connues ne doivent plus rien ouvrir."""
 
-    @pytest.mark.parametrize("variable", VARIABLES_SECRETES)
-    def test_compose_ne_fixe_aucune_valeur_en_dur(self, variable):
-        texte = COMPOSE.read_text(encoding="utf-8")
-        for ligne in re.findall(rf"^\s*-\s*{variable}=(.*)$", texte, flags=re.M):
-            assert ligne.strip().startswith("${"), (
-                f"{variable} porte une valeur en dur dans docker-compose.yml"
-            )
+    @pytest.mark.parametrize("fichier", FICHIERS_RETIRES)
+    def test_les_clients_tiers_ne_sont_pas_revenus(self, fichier):
+        assert not (RACINE / fichier).exists(), (
+            f"{fichier} est de retour : il réclame des clés qui ont fuité en public")
 
-    def test_compose_ne_declare_plus_l_attribut_version(self):
-        assert not COMPOSE.read_text(encoding="utf-8").lstrip().startswith("version:")
+    @pytest.mark.parametrize("cle", CLES_MORTES)
+    def test_le_fichier_d_exemple_ne_les_redemande_pas(self, cle):
+        """Une ligne `CLE=` dans `.env.example` invite à la remplir."""
+        lignes = (RACINE / ".env.example").read_text(encoding="utf-8").splitlines()
+        reglages = [ligne for ligne in lignes if not ligne.lstrip().startswith("#")]
+
+        assert not any(ligne.startswith(f"{cle}=") for ligne in reglages), (
+            f"{cle} est de nouveau proposée au remplissage")
+
+    @pytest.mark.parametrize("cle", CLES_MORTES)
+    def test_aucun_code_du_systeme_ne_les_lit(self, cle):
+        coupables = [
+            chemin.relative_to(RACINE)
+            for dossier in DOSSIERS_LUS
+            for chemin in (RACINE / dossier).rglob("*")
+            if chemin.is_file() and chemin.suffix in {".py", ".yaml", ".yml"}
+            and "__pycache__" not in chemin.parts
+            and cle in chemin.read_text(encoding="utf-8", errors="ignore")
+        ]
+
+        assert coupables == [], f"{cle} est encore lue par : {coupables}"
+
+    def test_la_cle_qui_reste_protege_bien_quelque_chose(self):
+        """`USMAN_API_KEY`, elle, ouvre ARENA : sans elle, la passerelle refuse."""
+        from apps.backend import security
+
+        assert "USMAN_API_KEY" in (RACINE / ".env.example").read_text(encoding="utf-8")
+        assert security.cle_presentee_valide.__doc__

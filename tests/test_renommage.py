@@ -58,29 +58,18 @@ class TestLectureDesReglages:
 
 
 class TestAucunNomOublie:
-    """Les fichiers que l'utilisateur et Docker lisent vraiment."""
+    """Le seul fichier de réglages que l'utilisateur lit encore.
 
-    @pytest.mark.parametrize("fichier", ["docker-compose.yml", "librechat.yaml", ".env.example"])
+    `docker-compose.yml` et `librechat.yaml` en faisaient partie jusqu'au
+    2026-08-28. Ils sont retirés : le propriétaire a sa propre interface, et ces
+    deux fichiers étaient les derniers à réclamer les quatre clés mortes.
+    """
+
+    @pytest.mark.parametrize("fichier", [".env.example"])
     def test_plus_aucune_variable_arena(self, fichier):
         texte = (RACINE / fichier).read_text(encoding="utf-8")
         restes = [ligne for ligne in texte.splitlines() if "ARENA_" in ligne]
         assert restes == [], f"variables non renommées dans {fichier} : {restes}"
-
-    def test_les_conteneurs_portent_le_nouveau_nom(self):
-        texte = (RACINE / "docker-compose.yml").read_text(encoding="utf-8")
-        assert "container_name: arena_" not in texte
-        assert texte.count("container_name: usman_") == 3
-
-    def test_l_interface_annonce_usman(self):
-        """Ce test s'est auto-saboté : le renommage en masse a réécrit sa propre
-        assertion, transformant « ARENA n'apparaît plus » en « Usman n'apparaît
-        plus ». Le nom recherché est donc construit, jamais écrit tel quel.
-        """
-        texte = (RACINE / "librechat.yaml").read_text(encoding="utf-8")
-        ancien_nom = "AR" + "ENA"
-
-        assert 'modelDisplayLabel: "Usman"' in texte
-        assert ancien_nom not in texte
 
 
 class TestEncodage:
@@ -98,13 +87,6 @@ class TestEncodage:
 
 class TestIdentifiantsDeModeles:
     """Les anciens identifiants doivent continuer de fonctionner."""
-
-    def test_le_menu_porte_les_nouveaux_noms(self):
-        import yaml
-        config = yaml.safe_load((RACINE / "librechat.yaml").read_text(encoding="utf-8"))
-        assert set(config["endpoints"]["custom"][0]["models"]["default"]) == {
-            "usman-chat", "usman-coder", "usman-video", "usman-plaquiste",
-        }
 
     def test_l_api_ne_sert_plus_aucun_nom_arena(self):
         import asyncio
@@ -142,10 +124,3 @@ class TestIdentifiantsDeModeles:
         assert "USMAN_API_KEY" in motif, "le nouveau nom n'est pas surveille"
         assert "ARENA_API_KEY" in motif, "l'ancien nom cesse d'etre surveille"
 
-
-class TestLaConfigurationEstRelue:
-    def test_librechat_ne_met_pas_sa_configuration_en_cache(self):
-        """Un changement invisible au redémarrage se paie en heures perdues."""
-        import yaml
-        config = yaml.safe_load((RACINE / "librechat.yaml").read_text(encoding="utf-8"))
-        assert config["cache"] is False
