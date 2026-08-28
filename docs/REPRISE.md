@@ -229,7 +229,11 @@ Restent orphelins, par ordre de valeur :
 
 La commande qui refait cette mesure vit dans scripts/orphelins.py.
 
-**Phase suivante autorisee : 11.1** - appels d offres senegalais. Le chapitre 8
+**Mission en cours, avant toute nouvelle phase : `docs/CURRENT_TASK.md`** —
+reveiller les neuf modules qui ne tournent pour personne, un par module, une
+pull request chacun. L ordre commence par la memoire semantique du chat.
+
+**Phase suivante autorisee ensuite : 11.1** - appels d offres senegalais. Le chapitre 8
 reste bloque par la purge des secrets.
 
 Plan complet : `docs/PLAN_ARENA_OS.md`. Audit d'origine : `docs/AUDIT_ARENA_OS.md`.
