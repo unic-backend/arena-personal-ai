@@ -28,11 +28,22 @@ Ce que la purge **ne peut pas** faire :
 
 ---
 
-## Étape 0 — Mettre le dépôt en privé
+## Étape 0 — Mettre le dépôt en privé ✅ **FAIT le 28/08/2026**
 
-Sur GitHub : `Settings` → tout en bas, `Change repository visibility` → `Private`.
+Le propriétaire l'a fait lui-même. Vérifié par l'API GitHub : `"private": true`,
+0 fork, 0 copie visible.
 
-C'est réversible, et ça arrête l'exposition pendant que vous travaillez.
+**Ce que ça change.** L'exposition publique est close : plus personne, hors des
+comptes autorisés, ne peut lire l'historique ni les six valeurs qu'il contient.
+Combiné au retrait de LibreChat et Open WebUI (DEC-0007), qui a rendu quatre de
+ces cinq clés inutiles, **le risque est essentiellement fermé**.
+
+**Ce que ça ne change pas.** Les valeurs restent écrites dans l'historique, et
+une copie faite avant le 28/08 les garde. C'est pour cela que l'étape 1 —
+changer `USMAN_API_KEY` — garde son intérêt si le doute subsiste, et que la
+purge reste possible. Elle n'est plus urgente.
+
+(Étape réversible : la même page permet de repasser le dépôt en public.)
 
 ---
 
