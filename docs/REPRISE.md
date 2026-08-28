@@ -131,11 +131,32 @@ reponse. Comme semantique.py, consolidation.py et voies.py, il existe et il est
 teste, mais Usman ne s en sert pas quand le proprietaire lui parle. Le
 branchement de ces quatre modules merite sa propre phase.
 
-**Phase suivante autorisee : 11.1** - appels d offres senegalais : recherche,
-extraction, classement, avec source et date de recuperation. Le connecteur
-GalsenAPI lui servira directement : un appel d offres nomme une commune, l API
-la relie a son departement, sa region et sa population. Le chapitre 8 reste
-bloque par la purge des secrets.
+**Branchement commence le 2026-08-28 : la frontiere de confiance.**
+`core/security/trust.py` vient de GalSen-IA (Apache-2.0, meme
+proprietaire), repris tel quel : il n importe que la bibliotheque standard.
+Il est BRANCHE dans `contenu_pieces()` : le texte de chaque piece jointe
+entre enveloppe, avec son origine, ses balises neutralisees et les consignes
+cachees relevees et transportees avec lui. 9 tests.
+
+Ce que le prompt gagne, que le titre en prose ne donnait pas : une origine par
+bloc (deux fichiers se distinguent), des balises qui ne traversent plus, et un
+releve qui accompagne le texte au lieu d etre efface.
+
+Reste a brancher, dans cet ordre suggere : les resultats de recherche web et
+les reponses de GalsenAPI (memes enveloppes, niveau EXTERNAL), puis
+semantique.py, consolidation.py et voies.py.
+
+**Ce qui a ete ecarte de GalSen-IA, volontairement :**
+- src/services/senegal/ : 45 departements, alors que GalsenAPI en mesure 46.
+  Deux sources qui se contredisent dans le meme projet, c est pire qu une.
+- src/knowledge_engine/ : recouvre LightRAG et GraphRAG deja presents.
+- Le corpus wolof de 2105 phrases : excellent, mais en CC BY-SA 4.0
+  (share-alike), ce qui suivrait dans ARENA. Et aucun usage aujourd hui.
+- corpus/languages/aliases.yaml : a prendre, mais quand une recherche
+  multilingue existera pour s en servir.
+
+**Phase suivante autorisee : 11.1** - appels d offres senegalais. Le chapitre 8
+reste bloque par la purge des secrets.
 
 Plan complet : `docs/PLAN_ARENA_OS.md`. Audit d'origine : `docs/AUDIT_ARENA_OS.md`.
 
@@ -171,6 +192,6 @@ Plan complet : `docs/PLAN_ARENA_OS.md`. Audit d'origine : `docs/AUDIT_ARENA_OS.m
    collée dans le message qui la rapporte.
 4. Un commit par correctif. C'est **lui** qui commit et qui pousse.
 
-**État vérifié le 2026-08-28 : 1310 passed, 0 failed** — sur la machine cloud de
+**État vérifié le 2026-08-28 : 1319 passed, 0 failed** — sur la machine cloud de
 l'assistant. Dernier état mesuré sur la machine du propriétaire : 1272 passed,
 le 2026-08-28, avant les 14 tests du harnais de mesure.

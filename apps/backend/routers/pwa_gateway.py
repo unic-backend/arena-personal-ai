@@ -43,6 +43,7 @@ from apps.backend.runtime import (
 from apps.backend.security import limiter_debit, verify_api_key
 from core.memory.recuperation import formater as formater_souvenirs
 from core.memory.recuperation import recuperer
+from core.security.trust import TrustLevel, wrap
 
 logger = logging.getLogger("usman.backend.pwa")
 
@@ -195,10 +196,13 @@ def contenu_pieces(identifiants: List[str]) -> str:
             continue
         texte = piece.texte[:restant]
         total += len(texte)
-        entete = f"--- {piece.nom} ---"
         if len(texte) < len(piece.texte):
             texte += "\n[…] coupe : le fichier depasse le budget de contexte."
-        blocs.append(f"{entete}\n{texte}")
+        # Le texte du fichier entre **enveloppe** : origine annoncee, balises
+        # neutralisees, consignes cachees relevees et transportees avec lui. Le
+        # titre du bloc disait deja « c'est une donnee » ; l'enveloppe le rend
+        # vrai bloc par bloc, et distingue deux fichiers dans la meme invite.
+        blocs.append(wrap(texte, TrustLevel.DOCUMENT, piece.nom or identifiant).text)
 
     return f"{TITRE_PIECES}\n" + "\n".join(blocs) if blocs else ""
 
