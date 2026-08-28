@@ -46,6 +46,11 @@ tags = ["usman", "secret"]
 
 [allowlist]
 description = "Emplacements ou une valeur de forme secrete est attendue"
+# Valeur factice des tests qui verifient le masquage des secrets. Le motif vise
+# la VALEUR, pas le fichier : un vrai secret depose dans ces memes tests serait
+# toujours detecte. Mesure le 2026-08-28 en plantant une autre valeur.
+regexTarget = "match"
+regexes = ['''ya29\.SECRET-[A-Z-]+''']
 # Les motifs ne sont PAS ancres par `^` : gitleaks compare le chemin tel qu'il
 # lui est donne. Avec `--source .` il est relatif, avec `--source /chemin/absolu`
 # il ne l'est pas, et un motif ancre cesse alors silencieusement de s'appliquer.
