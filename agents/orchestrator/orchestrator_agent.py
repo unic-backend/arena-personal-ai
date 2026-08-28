@@ -27,6 +27,17 @@ INTENTIONS = {
     "VIDEO_ANALYSIS",
 }
 
+#: « Ou en est ma video ? » n est pas une analyse de fichier : c est le suivi d une
+#: generation lancee sur la carte graphique. Meme agent, autre travail — et teste
+#: avant le metier, parce que « la video du chantier » contient « chantier ».
+SUIVI_VIDEO = (
+    "où en est ma vidéo", "ou en est ma video", "où en est la vidéo",
+    "ou en est la video", "où en est ta vidéo", "où en est la génération",
+    "ou en est la generation", "ma génération vidéo", "ma generation video",
+    "génération vidéo", "generation video", "avancement de la vidéo",
+    "avancement de la video",
+)
+
 # --- Contrôle daté, évalué AVANT le modèle -------------------------------------
 # Le tri d'intention est fait par un modèle. Or un modèle dont les connaissances
 # s'arrêtent avant l'année en cours ne peut pas reconnaître qu'une question porte
@@ -235,6 +246,12 @@ class OrchestratorAgent(BaseAgent):
         if any(k in text for k in research_keywords):
             return "DEEP_RESEARCH"
 
+        # Ou en est une generation video. Teste AVANT le metier : « ou en est la
+        # video du chantier » contient « chantier » sans etre une demande de
+        # devis. Ce qui touche a la video va a l agent video.
+        if any(k in text for k in SUIVI_VIDEO):
+            return "VIDEO_ANALYSIS"
+
         # Metier du proprietaire. Teste tot : « devis » et « chantier » sont
         # sans ambiguite chez lui, et ces demandes ne doivent jamais partir sur
         # le web ni chez un agent generaliste.
@@ -253,7 +270,16 @@ class OrchestratorAgent(BaseAgent):
             return "SWE_FIX"
         if any(k in text for k in ["architecture du projet", "dépôt", "depot", "plusieurs fichiers"]):
             return "REPO_ENGINEERING"
+        # Interroger ses documents, ET les indexer : les deux passent par le
+        # moteur documentaire. Sans les verbes d indexation ici, la seule phrase
+        # qui remplit l index n arrivait jamais jusqu a lui.
         if any(k in text for k in ["dans mes documents", "d'après mon fichier", "mes devis", "mes factures"]):
+            return "RAG_DOCS"
+        if any(k in text for k in [
+            "indexe mes documents", "indexer mes documents", "indexe les documents",
+            "réindexe", "reindexe", "indexation de mes documents",
+            "mets à jour mes documents", "mets a jour mes documents",
+        ]):
             return "RAG_DOCS"
         if any(k in text for k in ["graphe de connaissance", "liens entre mes documents", "graphrag"]):
             return "GRAPHRAG"

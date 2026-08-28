@@ -219,19 +219,44 @@ Deux limites tenues par des tests, et sabotees pour le prouver :
 Mesure apres ces deux corrections, master fusionne : 104 modules, 68 atteints,
 36 orphelins.
 
+## La video a la video, les documents aux documents — 2026-08-28
+
+Demande du proprietaire : « que ces modeles integres soient executes et bien
+installes dans chacune de leurs parties : celle qui contient pour video a la
+video, celle de document au document. » Deux branchements, chacun sur l agent
+que la chose concerne.
+
+**La video.** `core/connectors/suivi_video` et `core/execution/travaux` sont
+branches sur `VideoAnalyzerAgent`, et nulle part ailleurs. « Ou en est ma
+video ? » n exige plus aucun fichier : l agent lit l identifiant de la derniere
+generation acceptee **dans le journal des actions**, la ou le connecteur WanGP l
+a depose comme preuve, ouvre le suivi dans la file de fond et rend la main. Le
+tour de chat se termine avant le suivi — c est ce que le test mesure. Une
+seconde question ne rouvre pas un second suivi. Sans WanGP lance, la reponse est
+`NOT_CONFIGURED` avec la commande de lancement, et rien n est suivi.
+
+**Les documents.** `tools/documents/indexer` et `tools/documents/inventory` sont
+branches sur le chemin documentaire du chat (intention `RAG_DOCS`). « Indexe mes
+documents » indexe ; « d apres mes documents, ... » interroge — la meme intention,
+deux travaux, separes par la phrase. L indexation part dans un fil separe : sur
+la boucle, elle gelerait toutes les conversations, pas seulement la sienne.
+Relancee, elle ne reindexe rien qui n a pas bouge (c est l inventaire qui le
+dit). Sans Ollama, elle refuse en donnant `ollama pull nomic-embed-text` et
+n indexe rien a moitie. Le compte-rendu ne porte que des nombres : ces fichiers
+contiennent des noms de clients et des montants.
+
+Mesure apres ces deux branchements : 104 modules, 72 atteints, 32 orphelins.
+
 Restent orphelins, par ordre de valeur :
 - core.execution.voies / mesures — declarent les budgets, rien ne les consulte.
 - core.memory.semantique / consolidation — la recuperation du chat reste lexicale.
-- core.connectors.suivi_video / core.execution.travaux — le suivi d une
-  generation existe, aucun chemin de reponse ne le lance encore.
-- tools.documents.indexer / inventory — l indexation ne part d aucune demande.
 - core.reasoning.reasoning_engine — orphelin d avant ce travail.
 
 La commande qui refait cette mesure vit dans scripts/orphelins.py.
 
 **Mission en cours, avant toute nouvelle phase : `docs/CURRENT_TASK.md`** —
-reveiller les neuf modules qui ne tournent pour personne, un par module, une
-pull request chacun. L ordre commence par la memoire semantique du chat.
+reveiller les cinq modules qui ne tournent encore pour personne, un par module,
+une pull request chacun. L ordre reprend par la memoire semantique du chat.
 
 **Phase suivante autorisee ensuite : 11.1** - appels d offres senegalais. Le chapitre 8
 reste bloque par la purge des secrets.

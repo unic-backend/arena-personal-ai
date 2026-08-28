@@ -5,14 +5,18 @@ precis. L'intention y est calculee une seule fois : elle coute un appel au
 modele.
 """
 
+import asyncio
 import json
 import logging
+import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from agents.video_analyzer.video_analyzer_agent import demande_de_suivi
 from apps.backend.config import AGENTS_SPECIALISES, MEDIA_DIR
 from apps.backend.prompts import get_arena_system_prompt
 from apps.backend.runtime import (
@@ -36,6 +40,12 @@ from apps.backend.runtime import (
 )
 from apps.backend.security import limiter_debit, validate_media_path, verify_api_key
 from apps.backend.studio import lancer_studio
+from tools.documents.indexer import (
+    DOSSIER_DOCUMENTS,
+    FICHIER_INVENTAIRE,
+    Rapport,
+    indexer_documents,
+)
 
 logger = logging.getLogger("usman.backend")
 
@@ -82,6 +92,64 @@ def formater_sources(sources: List[Dict[str, Any]], question: str = "") -> str:
     return "\n\n**Sources**\n" + "\n".join(lignes)
 
 
+#: Ce qui demande d INDEXER ses documents, et non de les interroger.
+#: « d apres mes documents, ... » est une question ; « indexe mes documents » est
+#: un travail sur le classeur. Les deux arrivent par la meme intention RAG_DOCS,
+#: et seule la phrase les separe.
+DEMANDE_D_INDEXATION = re.compile(
+    r"(indexe|indexer|indexation|r[ée]indexe|reindexer"
+    r"|mets? [àa] jour (?:mes|les) documents"
+    r"|prends? en compte (?:mes|les) (?:nouveaux )?documents)",
+    re.IGNORECASE,
+)
+
+
+def demande_d_indexation(question: str) -> bool:
+    """Dit si la phrase demande d indexer le classeur plutot que de l interroger."""
+    return bool(DEMANDE_D_INDEXATION.search(question or ""))
+
+
+def message_indexation(rapport: Rapport) -> str:
+    """Ce qui s est reellement passe, en une phrase. Aucun compte n est refait ici.
+
+    Le rapport ne porte que des noms de fichiers et des comptes — jamais le
+    contenu des documents, qui porte des noms de clients et des montants.
+    """
+    if rapport.statut == "REFUSE":
+        return f"Rien n a ete indexe. {rapport.raison}"
+    if rapport.statut == "RIEN_A_FAIRE":
+        return (f"Tes documents sont deja indexes : {len(rapport.inchanges)} inchange(s), "
+                "rien a refaire.")
+    return f"Indexation terminee — {rapport}"
+
+
+async def indexer_ses_documents(
+    moteur: Any = None,
+    dossier: Optional[Path | str] = None,
+    inventaire: Optional[Path | str] = None,
+    verifier: bool = True,
+) -> Dict[str, Any]:
+    """Indexe son classeur sur demande, et rend ce qui s est vraiment passe.
+
+    L indexation lit des fichiers et fait travailler Ollama : elle part dans un
+    fil separe, sinon elle gelerait la boucle du serveur — donc toutes les
+    conversations, pas seulement celle-ci.
+
+    Les parametres sont injectables pour les tests ; en production, ce sont ceux
+    de l indexeur, et le moteur est LightRAG.
+    """
+    rapport = await asyncio.to_thread(
+        indexer_documents,
+        lightrag_tool if moteur is None else moteur,
+        DOSSIER_DOCUMENTS if dossier is None else dossier,
+        FICHIER_INVENTAIRE if inventaire is None else inventaire,
+        verifier,
+    )
+    logger.info("Indexation des documents : %s", rapport.resume())
+    return {"response": message_indexation(rapport), "agent": "IndexeurDocuments",
+            "indexation": rapport.resume()}
+
+
 async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -> Dict[str, Any]:
     """Aiguille la demande vers l'agent choisi.
 
@@ -108,7 +176,14 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
     elif intent == "REPO_ENGINEERING":
         result = await repo_engineer.run(request.prompt)
     elif intent == "RAG_DOCS":
-        result = {"response": lightrag_tool.query(request.prompt, mode="hybrid"), "agent": "LightRAG"}
+        # Ses documents restent hors de l index tant que personne ne les y met.
+        # Jusqu ici, aucune phrase ne declenchait l indexation : le moteur ne
+        # pouvait repondre que sur ce qui n avait jamais ete indexe.
+        if demande_d_indexation(request.prompt):
+            result = await indexer_ses_documents()
+        else:
+            result = {"response": lightrag_tool.query(request.prompt, mode="hybrid"),
+                      "agent": "LightRAG"}
     elif intent == "GRAPHRAG":
         result = graphrag_tool.query_global(request.prompt)
     elif intent == "DEEP_RESEARCH":
@@ -118,9 +193,14 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
     elif intent == "TREND_SEARCH":
         result = await trend_agent.run(request.prompt, context={"region": request.region})
     elif intent == "VIDEO_ANALYSIS":
-        raw_path = request.video_path or str(MEDIA_DIR / "source" / "test_video.mp4")
-        v_path = validate_media_path(raw_path)
-        result = await video_agent.run(request.prompt, context={"video_path": str(v_path)})
+        # « ou en est ma video ? » ne parle d aucun fichier. Reclamer un chemin
+        # ici renvoyait une erreur a une question parfaitement claire.
+        if demande_de_suivi(request.prompt):
+            result = await video_agent.run(request.prompt)
+        else:
+            raw_path = request.video_path or str(MEDIA_DIR / "source" / "test_video.mp4")
+            v_path = validate_media_path(raw_path)
+            result = await video_agent.run(request.prompt, context={"video_path": str(v_path)})
     elif "PUBLI" in request.prompt.upper() or "POSTER" in request.prompt.upper():
         result = await publisher_agent.run(request.prompt, context={"video_path": request.video_path})
     else:
