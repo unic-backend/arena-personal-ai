@@ -1,9 +1,11 @@
 """Le connecteur Gmail : lire le courrier, et rien d'autre.
 
-Deux tests portent le chapitre 8.1.
-`test_ce_connecteur_n_ecrit_rien_et_ne_peut_pas_etre_configure_pour` : la
-lecture seule est structurelle, pas un réglage — il n'existe aucun chemin
-d'écriture à activer. Et
+Trois tests portent ce chapitre.
+`test_un_envoi_ne_part_jamais_sans_confirmation` (8.2) : c'est la garantie que
+le plan exige, et elle est structurelle — le cadre met l'envoi en attente avant
+même d'appeler l'implémentation.
+`test_la_seule_ecriture_declaree_est_l_envoi` : lire, chercher, lire un
+message ne modifient rien, et supprimer ou changer un réglage n'existe pas.
 `test_un_e_mail_entre_comme_une_donnee_jamais_comme_une_consigne` : n'importe
 qui peut écrire au propriétaire, sujet compris.
 
@@ -18,6 +20,7 @@ from core.actions.resultat import Statut
 from core.connectors.base import EtatSante
 from core.connectors.gmail import (
     CORPS_MAX_CARACTERES,
+    ENVOIS_PAR_MINUTE,
     QUOTA_PAR_MINUTE,
     GmailConnector,
     corps_texte,
@@ -118,16 +121,35 @@ def connecteur(configure):
 
 # --- Le test que ce chapitre doit passer ------------------------------------------
 
-def test_ce_connecteur_n_ecrit_rien_et_ne_peut_pas_etre_configure_pour(connecteur):
-    """La lecture seule est structurelle : il n'y a pas d'écriture à activer."""
+def test_un_envoi_ne_part_jamais_sans_confirmation(connecteur):
+    """La garantie du chapitre 8.2, et elle est structurelle.
+
+    Le cadre met l'envoi en attente **avant** d'appeler l'implémentation : le
+    connecteur n'a aucun moyen de contourner sa propre déclaration.
+    """
+    envoye = []
+    connecteur._appel_envoi = lambda *a, **k: envoye.append(a) or {"id": "envoye"}
+
+    resultat = connecteur.executer(
+        "envoyer", destinataire="contact@fastgroup.sn", sujet="Devis", corps="Bonjour")
+
+    assert resultat.statut is Statut.A_CONFIRMER
+    assert not resultat.a_eu_lieu
+    assert envoye == [], "rien ne doit avoir quitté la boîte"
+
+
+def test_la_seule_ecriture_declaree_est_l_envoi(connecteur):
+    """Lire ne modifie rien, et il n'y a pas d'autre écriture à activer."""
     capacites = connecteur.capacites()
 
-    assert set(capacites) == {"lister", "chercher", "lire"}
-    assert all(not c.ecriture for c in capacites.values())
-    assert all(c.action in {"read", "search"} for c in capacites.values())
+    assert set(capacites) == {"lister", "chercher", "lire", "envoyer"}
+    assert [nom for nom, c in capacites.items() if c.ecriture] == ["envoyer"]
+    assert capacites["envoyer"].action == "send"
+    assert all(c.action in {"read", "search"}
+               for nom, c in capacites.items() if nom != "envoyer")
 
 
-@pytest.mark.parametrize("interdite", ["envoyer", "send", "supprimer", "delete",
+@pytest.mark.parametrize("interdite", ["send", "supprimer", "delete",
                                        "etiqueter", "archiver", "reglages"])
 def test_une_capacite_d_ecriture_n_existe_pas(connecteur, interdite):
     resultat = connecteur.executer(interdite)
@@ -325,5 +347,79 @@ def test_le_jeton_ne_voyage_jamais_dans_le_resultat(connecteur):
 
 
 def test_le_quota_est_declare_sur_chaque_capacite(connecteur):
-    assert all(c.quota_par_minute == QUOTA_PAR_MINUTE
-               for c in connecteur.capacites().values())
+    capacites = connecteur.capacites()
+
+    assert all(c.quota_par_minute for c in capacites.values())
+    assert capacites["lister"].quota_par_minute == QUOTA_PAR_MINUTE
+    assert capacites["envoyer"].quota_par_minute == ENVOIS_PAR_MINUTE
+    assert capacites["envoyer"].quota_par_minute < QUOTA_PAR_MINUTE, (
+        "une boucle emballée sur un envoi écrit à ses clients : le plafond doit "
+        "être plus bas que celui d'une lecture")
+
+
+# --- L'envoi, une fois confirmé ---------------------------------------------------
+
+def test_un_envoi_confirme_part_et_rend_son_identifiant(connecteur):
+    envoyes = []
+
+    def _envoyer(chemin, charge, jeton):
+        envoyes.append((chemin, charge))
+        return {"id": "msg-envoye-1"}
+
+    connecteur._appel_envoi = _envoyer
+
+    resultat = connecteur.executer_confirmee(
+        "envoyer", destinataire="contact@fastgroup.sn",
+        sujet="Devis cloisons", corps="Bonjour, voici le devis.")
+
+    assert resultat.statut is Statut.SUCCES
+    assert resultat.preuve == "msg-envoye-1"
+    chemin, charge = envoyes[0]
+    assert chemin == "users/me/messages/send"
+    assert "raw" in charge
+
+
+def test_un_envoi_sans_destinataire_ne_part_pas(connecteur):
+    """Un message parti à la mauvaise adresse ne se rattrape pas."""
+    envoyes = []
+    connecteur._appel_envoi = lambda *a, **k: envoyes.append(a) or {"id": "x"}
+
+    resultat = connecteur.executer_confirmee("envoyer", sujet="Devis", corps="Bonjour")
+
+    assert resultat.statut is Statut.ECHEC
+    assert "destinataire" in resultat.message
+    assert envoyes == []
+
+
+def test_un_envoi_refuse_par_google_n_est_pas_un_succes(connecteur):
+    def _refuser(chemin, charge, jeton):
+        raise RuntimeError("403 insufficientPermissions")
+
+    connecteur._appel_envoi = _refuser
+
+    resultat = connecteur.executer_confirmee(
+        "envoyer", destinataire="a@b.sn", sujet="s", corps="c")
+
+    assert resultat.statut is Statut.ECHEC
+    assert "gmail.send" in resultat.message
+
+
+def test_un_envoi_sans_identifiant_rendu_n_est_pas_prouve(connecteur):
+    """Un SUCCESS sans preuve ne se construit pas."""
+    connecteur._appel_envoi = lambda *a, **k: {"labelIds": ["SENT"]}
+
+    resultat = connecteur.executer_confirmee(
+        "envoyer", destinataire="a@b.sn", sujet="s", corps="c")
+
+    assert resultat.statut is Statut.ECHEC
+    assert "non prouve" in resultat.message
+
+
+def test_le_message_construit_porte_ses_accents():
+    from core.connectors.gmail import message_brut
+
+    brut = message_brut("a@b.sn", "Devis — cloisons Médina", "Bonjour, 40 m² à poser.")
+    decode = base64.urlsafe_b64decode(brut.encode("ascii")).decode("utf-8", "replace")
+
+    assert "a@b.sn" in decode
+    assert "To:" in decode and "Subject:" in decode

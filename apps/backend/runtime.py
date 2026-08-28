@@ -11,6 +11,7 @@ from agents.browser.browser_agent import BrowserAgent
 from agents.clip_selector.clip_selector_agent import ClipSelectorAgent
 from agents.coder.coder_agent import CoderAgent
 from agents.editor.editor_agent import EditorAgent
+from agents.email.email_agent import EmailAgent
 from agents.fresh_info.fresh_info_agent import FreshInfoAgent
 from agents.orchestrator.orchestrator_agent import OrchestratorAgent
 from agents.plaquiste.plaquiste_agent import PlaquisteAgent
@@ -151,6 +152,10 @@ swe_agent = SWEAgent(provider=fast_provider, memory=memory)
 # `/health` annoncait « ReasoningEngine » parmi les agents actifs alors qu'aucun
 # chemin de reponse ne l'atteignait : l'annonce est desormais vraie.
 reasoning_engine = ReasoningEngine(provider=deep_provider)
+# Courrier : tri et brouillons. Le modele rapide suffit — trier cinq messages
+# n'est pas une demonstration. L'envoi passe par le registre, donc par la
+# confirmation, et l'agent ne connait aucun autre chemin.
+email_agent = EmailAgent(provider=fast_provider, memory=memory, registre=registre)
 # Metier UniC Plaquiste : redaction soignee, donc le modele profond.
 plaquiste_agent = PlaquisteAgent(provider=deep_provider, memory=memory, registre=registre)
 

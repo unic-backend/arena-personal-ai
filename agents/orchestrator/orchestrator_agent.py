@@ -26,7 +26,21 @@ INTENTIONS = {
     "DEEP_RESEARCH",
     "TREND_SEARCH",
     "VIDEO_ANALYSIS",
+    "EMAIL",
 }
+
+#: Ce qui parle de SA BOITE, et non d une lettre a ecrire. La difference n est
+#: pas un detail : « ecris un mail au client pour le chantier de Diamniadio »
+#: appartient a l assistant metier, qui connait la grille de prix et
+#: l entreprise — un test du proprietaire le tient depuis le 27/08. Ces
+#: formulations-ci designent le courrier RECU, celui qu il faut ouvrir.
+COURRIER = (
+    "mes mails", "mes e-mails", "mes emails", "mon courrier", "ma boite mail",
+    "ma boîte mail", "du courrier", "boite de reception", "boîte de réception",
+    "reponds a ce mail", "réponds à ce mail", "reponds a ce message",
+    "réponds à ce message", "j'ai recu un mail", "j'ai reçu un mail",
+    "nouveaux messages", "mes messages recus", "mes messages reçus",
+)
 
 #: « Ou en est ma video ? » n est pas une analyse de fichier : c est le suivi d une
 #: generation lancee sur la carte graphique. Meme agent, autre travail — et teste
@@ -102,6 +116,7 @@ DEEP_REASONING  : résoudre un problème mathématique ou une démonstration.
 DEEP_RESEARCH   : produire une étude, un rapport documenté, une recherche approfondie.
 TREND_SEARCH    : chercher des tendances ou des idées de contenu vidéo.
 VIDEO_ANALYSIS  : analyser, découper ou reformater un fichier vidéo.
+EMAIL           : lire, trier ou répondre à son courrier.
 PLAQUISTE       : metier du proprietaire — devis, facture, mail client,
                   argumentaire, planning de chantier, BA13, cloison, plafond.
 STUDIO          : traiter une vidéo de bout en bout — vertical 9:16 et
@@ -246,6 +261,11 @@ class OrchestratorAgent(BaseAgent):
         research_keywords = ["étude complète", "rapport détaillé", "recherche approfondie", "étude de marché", "dossier complet"]
         if any(k in text for k in research_keywords):
             return "DEEP_RESEARCH"
+
+        # Le courrier. Teste AVANT le metier : « reponds au client par mail »
+        # contient « client » sans etre une demande de devis.
+        if any(k in text for k in COURRIER):
+            return "EMAIL"
 
         # Ou en est une generation video. Teste AVANT le metier : « ou en est la
         # video du chantier » contient « chantier » sans etre une demande de

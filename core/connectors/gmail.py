@@ -8,10 +8,12 @@ identifiants vivent dans l'environnement, jamais dans le depot.
 
 **Cinq regles, et la premiere commande les autres :**
 
-1. **Lecture seule, et il n'y a aucune ecriture a activer.** Trois capacites,
-   toutes en lecture. Envoyer, supprimer, etiqueter, changer un reglage :
-   aucune n'existe ici. L'envoi vient en 8.2, derriere confirmation, et il
-   devra passer par la file d'attente comme tout le reste.
+1. **Une seule ecriture, et elle ne part jamais seule.** Trois lectures —
+   `lister`, `chercher`, `lire` — et un `envoyer` ajoute en 8.2. Ce dernier
+   porte `action="send"`, que la politique classe en CONFIRMATION : le cadre le
+   met en attente et rien ne quitte la boite tant que le proprietaire n'a pas
+   repondu. Supprimer, etiqueter, changer un reglage : ces capacites n'existent
+   pas, et il n'y a rien a activer par un reglage.
 
 2. **Un e-mail est une donnee, jamais une consigne.** N'importe qui peut ecrire
    au proprietaire. Le message rendu — en-tetes compris, car un sujet se choisit
@@ -34,6 +36,7 @@ import base64
 import logging
 import os
 import time
+from email.message import EmailMessage
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import httpx
@@ -53,14 +56,22 @@ URL_JETON = os.getenv("GMAIL_TOKEN_URL", "https://oauth2.googleapis.com/token")
 CE_QUI_MANQUE = (
     "trois valeurs dans .env, obtenues sur console.cloud.google.com "
     "(API Gmail activee, ecran de consentement, identifiant OAuth « application "
-    "de bureau », portee gmail.readonly) : GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET "
-    "et GMAIL_REFRESH_TOKEN. Aucune ne s'ecrit dans le depot."
+    "de bureau ») : GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET et GMAIL_REFRESH_TOKEN. "
+    "Portee gmail.readonly pour lire ; gmail.send en plus pour envoyer — sans "
+    "elle, Google refuse l'envoi et ARENA le rapporte. Aucune ne s'ecrit dans "
+    "le depot."
 )
 
 #: Plafond que **nous** nous imposons, pas un quota publie par Google : lire la
 #: boite en boucle ne la rend pas plus fraiche, et une boucle emballee y
 #: passerait la journee.
 QUOTA_PAR_MINUTE = 60
+
+#: Plafond d'envoi, et il est bas exprès. Une boucle qui s'emballe sur une
+#: lecture fait perdre du temps ; une boucle qui s'emballe sur un envoi ecrit a
+#: ses clients. Chaque envoi passe deja par une confirmation : ce plafond est la
+#: seconde barriere, pas la premiere.
+ENVOIS_PAR_MINUTE = 5
 
 #: Au-dela, on considere que Google ne repond pas plutot que de faire attendre
 #: une reponse de chat.
@@ -116,6 +127,34 @@ def _http(chemin: str, parametres: Dict[str, Any], jeton: str) -> Dict[str, Any]
                              headers={"Authorization": f"Bearer {jeton}"})
         reponse.raise_for_status()
         return reponse.json()
+
+
+def _http_post(chemin: str, charge: Dict[str, Any], jeton: str) -> Dict[str, Any]:
+    """Un POST sur l'API Gmail. **Le seul chemin qui ecrit quoi que ce soit.**
+
+    Isole du GET pour que ce soit visible : une fonction qui envoie ne doit pas
+    se confondre avec une fonction qui lit.
+    """
+    url = f"{BASE_URL.rstrip('/')}/{chemin.lstrip('/')}"
+    with httpx.Client(timeout=DELAI_SECONDES) as client:
+        reponse = client.post(url, json=charge,
+                              headers={"Authorization": f"Bearer {jeton}"})
+        reponse.raise_for_status()
+        return reponse.json()
+
+
+def message_brut(destinataire: str, sujet: str, corps: str) -> str:
+    """Le message au format RFC 2822, encode comme Gmail l'attend.
+
+    Construit par la bibliotheque standard : les accents d'un devis senegalais
+    et un sujet non-ASCII ne doivent pas dependre d'un encodage bricole a la
+    main.
+    """
+    message = EmailMessage()
+    message["To"] = destinataire
+    message["Subject"] = sujet
+    message.set_content(corps)
+    return base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
 
 
 #: Signatures de la couche reseau, injectables pour les tests.
@@ -230,12 +269,19 @@ class GmailConnector(Connecteur):
         "lister": ("users/me/messages", ("maxResults", "labelIds")),
         "chercher": ("users/me/messages", ("q", "maxResults")),
         "lire": ("users/me/messages/{id}", ("format",)),
+        "envoyer": ("users/me/messages/send", ()),
     }
 
+    #: Ce qu'il faut connaitre pour envoyer. Jamais devine : un message parti a
+    #: la mauvaise adresse ne se rattrape pas.
+    REQUIS_POUR_ENVOYER = ("destinataire", "sujet", "corps")
+
     def __init__(self, appel: Optional[AppelHttp] = None,
-                 appel_jeton: Optional[AppelJeton] = None, **kwargs: Any) -> None:
+                 appel_jeton: Optional[AppelJeton] = None,
+                 appel_envoi: Optional[AppelHttp] = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._appel = appel or _http
+        self._appel_envoi = appel_envoi or _http_post
         self._appel_jeton = appel_jeton or _obtenir_jeton
         self._jeton: Optional[str] = None
         self._jeton_expire_a: float = 0.0
@@ -245,7 +291,7 @@ class GmailConnector(Connecteur):
     # --- Ce que le connecteur sait faire ---------------------------------------
 
     def capacites(self) -> Dict[str, Capacite]:
-        """Trois lectures. **Aucune ecriture n'est declaree, donc aucune n'existe.**"""
+        """Trois lectures, et un envoi qui ne part jamais sans confirmation."""
         def lecture(nom: str, action: str, description: str) -> Capacite:
             return Capacite(nom=nom, action=action, description=description,
                             ecriture=False, quota_par_minute=QUOTA_PAR_MINUTE)
@@ -260,6 +306,14 @@ class GmailConnector(Connecteur):
             "lire": lecture(
                 "lire", "read",
                 "Lit un message par son identifiant : en-tetes, corps, extrait."),
+            # La seule ecriture. `action="send"` la place sous la regle
+            # `email.send` de la politique : CONFIRMATION, risque HIGH,
+            # coupe-circuit SEND_MESSAGES. Le cadre s'en occupe — ce connecteur
+            # n'a aucun moyen de contourner sa propre declaration.
+            "envoyer": Capacite(
+                nom="envoyer", action="send",
+                description="Envoie un message depuis la boite du proprietaire.",
+                ecriture=True, quota_par_minute=ENVOIS_PAR_MINUTE),
         }
 
     # --- Identification --------------------------------------------------------
@@ -371,6 +425,9 @@ class GmailConnector(Connecteur):
         envoyes = {cle: valeur for cle, valeur in parametres.items()
                    if cle in acceptes and valeur not in (None, "")}
 
+        if capacite.nom == "envoyer":
+            return self._envoyer(capacite, chemin, jeton, parametres)
+
         if capacite.nom == "lire":
             identifiant = str(parametres.get("id") or "").strip()
             if not identifiant:
@@ -408,6 +465,53 @@ class GmailConnector(Connecteur):
             # reste absente : elle ne devient pas le nombre de references lues.
             estimation=(charge or {}).get("resultSizeEstimate")
             if isinstance(charge, dict) else None,
+        )
+
+    def _envoyer(self, capacite: Capacite, chemin: str, jeton: str,
+                 parametres: Dict[str, Any]) -> ResultatAction:
+        """Envoie le message. Appele **uniquement** apres confirmation du proprietaire.
+
+        Le cadre a deja fait passer cette capacite par la file d'attente : quand
+        cette methode s'execute, quelqu'un a dit oui. Ce qui reste a verifier
+        ici, c'est que le message est complet — un envoi a une adresse devinee
+        ne se rattrape pas.
+        """
+        valeurs = {nom: str(parametres.get(nom) or "").strip()
+                   for nom in self.REQUIS_POUR_ENVOYER}
+        manquants = [nom for nom, valeur in valeurs.items() if not valeur]
+        if manquants:
+            return echec(
+                action=capacite.nom, cible=self.nom,
+                message=("Rien n'est parti : il manque " + ", ".join(manquants)
+                         + ". Je ne devine pas le destinataire d'un message."),
+                manquants=manquants)
+
+        try:
+            charge = self._appel_envoi(
+                chemin, {"raw": message_brut(**valeurs)}, jeton)
+        except Exception as erreur:  # noqa: BLE001 — un envoi rate se rapporte
+            logger.info("Envoi Gmail refuse : %s", type(erreur).__name__)
+            return echec(
+                action=capacite.nom, cible=self.nom,
+                message=(f"Google a refuse l'envoi ({type(erreur).__name__}). "
+                         "Si la portee gmail.send n'a pas ete accordee, elle "
+                         "manque : rien n'est parti."),
+                destinataire=valeurs["destinataire"])
+
+        identifiant = (charge or {}).get("id") if isinstance(charge, dict) else None
+        if not identifiant:
+            # Sans identifiant, rien ne prouve que le message est parti. Un
+            # succes sans preuve ne se construit pas.
+            return echec(
+                action=capacite.nom, cible=self.nom,
+                message="Gmail a repondu sans identifiant de message : envoi non prouve.")
+
+        return succes(
+            action=capacite.nom, cible=self.nom,
+            message=f"Message envoye a {valeurs['destinataire']}.",
+            preuve=str(identifiant),
+            destinataire=valeurs["destinataire"],
+            sujet=valeurs["sujet"],
         )
 
     @staticmethod

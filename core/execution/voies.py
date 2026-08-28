@@ -111,7 +111,10 @@ VOIE_PAR_INTENTION: Dict[str, Voie] = {
     "SWE_FIX": Voie.PROFONDE,
     "REPO_ENGINEERING": Voie.PROFONDE,
     "DEEP_REASONING": Voie.PROFONDE,
-    # Ce qui doit aller chercher dehors.
+    # Ce qui doit aller chercher dehors. Le courrier en fait partie : la boite
+    # n'est pas sur la machine, et RECHERCHE est la seule voie qui autorise a
+    # en sortir. Lire cinq messages est aussi, reellement, plusieurs etapes.
+    "EMAIL": Voie.RECHERCHE,
     "FRESH_INFO": Voie.RECHERCHE,
     "TREND_SEARCH": Voie.RECHERCHE,
     "DEEP_RESEARCH": Voie.RECHERCHE,

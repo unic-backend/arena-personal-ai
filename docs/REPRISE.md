@@ -306,6 +306,41 @@ synthese recevait deja la phrase d erreur, mais une consigne n est pas une
 garantie. `/health` annoncait « ReasoningEngine » parmi les agents actifs alors
 qu aucun chemin ne l atteignait : l annonce est enfin vraie.
 
+## Chapitre 8 — le courrier, rouvert et termine le 2026-08-28
+
+Le chapitre etait gele pour une raison precise : on n ajoute pas de nouveaux
+secrets a un depot public dont l historique fuit. Le proprietaire a passe le
+depot en prive et retire les deux clients tiers qui portaient les cles mortes ;
+il a rouvert le chapitre le meme jour. Deux etapes, verifiees l une apres
+l autre.
+
+**8.1 — lire.** `core/connectors/gmail.py` : `lister`, `chercher`, `lire`.
+L API officielle en HTTPS avec httpx, aucune dependance ajoutee. Le jeton
+d acces s obtient par echange du jeton de rafraichissement et se garde jusqu a
+peu avant son expiration ; il ne voyage jamais dans un resultat.
+`authentifier()` ne dit vrai que si Google a reellement rendu un jeton — trois
+variables presentes ne sont pas trois variables valables. Sans identifiants :
+NOT_CONFIGURED avec ce qui manque, jamais une liste vide qui se lirait « aucun
+message ». Le message rendu, en-tetes compris, traverse la frontiere de
+confiance au niveau EXTERNAL : un sujet se choisit aussi librement qu un corps.
+
+**8.2 — trier, rediger, et n envoyer qu avec son accord.**
+`agents/email/email_agent.py` lit cinq messages au maximum par demande, les
+fait trier par le modele sous une instruction qui interdit d inventer un
+chiffre ou un nom, et rend les en-tetes seulement — le corps reste dans
+l invite. Pour repondre, il redige puis SOUMET l envoi : la capacite `envoyer`
+du connecteur porte `action="send"`, que la politique classe en CONFIRMATION.
+Le cadre met l envoi en attente avant meme d appeler l implementation, et
+l agent ne connait aucun autre chemin. Le destinataire vient du contexte de la
+conversation, jamais d une lecture de la phrase.
+
+Aiguillage : nouvelle intention EMAIL, sa voie est RECHERCHE — la boite n est
+pas sur la machine, et c est la seule voie qui autorise a en sortir. Un piege
+evite au passage : « ecris un mail au client pour le chantier de Diamniadio »
+reste chez l assistant metier, qui connait la grille de prix. Un test du
+proprietaire du 27/08 le tenait deja ; les mots-cles du courrier ont ete
+resserres pour ne designer que sa BOITE.
+
 ## Mission « reveiller ce qui dort » — TERMINEE le 2026-08-28
 
 Mesure finale : 104 modules, 77 atteints, 27 orphelins — dont 23 `__init__.py`
