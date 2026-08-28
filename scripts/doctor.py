@@ -256,6 +256,27 @@ def verifier_wangp(lecteur: Optional[Callable[[str], Any]] = None) -> Verificati
     return Verification("WanGP (generation video)", OK, f"repond sur {url}")
 
 
+def verifier_moneyprinter(lecteur: Optional[Callable[[str], Any]] = None) -> Verification:
+    """Le service de video courte, interroge pour de vrai.
+
+    Une reponse HTTP, meme un refus d'authentification, prouve qu'il ecoute :
+    c'est ce qu'on cherche a savoir. Ce qu'on ne cherche pas, c'est si un port
+    est ouvert — n'importe quoi peut tenir un port.
+    """
+    lire = lecteur or _lire_json
+    base = os.getenv("MONEYPRINTER_URL", "http://127.0.0.1:8080/api/v1")
+    try:
+        lire(f"{base.rstrip('/')}/tasks?page=1&page_size=1")
+    except urllib.error.HTTPError:
+        return Verification("Video courte (MPT)", OK, f"repond sur {base}")
+    except Exception:  # noqa: BLE001
+        return Verification(
+            "Video courte (MPT)", NON_CONFIGURE, f"ne repond pas sur {base}",
+            "Lancer MoneyPrinterTurbo : python -m uvicorn app.asgi:app "
+            "--host 127.0.0.1 --port 8080")
+    return Verification("Video courte (MPT)", OK, f"repond sur {base}")
+
+
 def variables_google_absentes() -> Optional[List[str]]:
     """Les noms des variables OAuth manquantes, ou `None` si on n'a pas pu regarder.
 
@@ -388,6 +409,7 @@ def diagnostiquer() -> Rapport:
         verifier_ffmpeg(),
         verifier_docker(),
         verifier_wangp(),
+        verifier_moneyprinter(),
         verifier_google("Courrier (Gmail)", "ARENA ne lit pas ton courrier",
                         "gmail.readonly / gmail.send", absentes_google),
         verifier_google("Agenda (Calendar)", "ARENA ne voit pas tes creneaux",

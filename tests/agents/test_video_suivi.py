@@ -266,3 +266,114 @@ def test_le_repli_hors_ligne_envoie_la_question_a_l_agent_video(phrase):
     from agents.orchestrator.orchestrator_agent import OrchestratorAgent
 
     assert OrchestratorAgent._classer_par_mots_cles(None, phrase) == "VIDEO_ANALYSIS"
+
+
+# --- Fabriquer une vidéo sur un sujet (MoneyPrinterTurbo) --------------------------
+
+class RegistreDeFabrication:
+    """Un registre de test : il note ce qu'on lui demande, sans rien fabriquer."""
+
+    def __init__(self, resultat=None):
+        self.appels = []
+        self._resultat = resultat
+
+    def executer(self, connecteur, capacite, **parametres):
+        from core.actions.resultat import a_confirmer
+        self.appels.append((connecteur, capacite, dict(parametres)))
+        return self._resultat or a_confirmer(
+            action="generer", cible=connecteur,
+            message="Pret a fabriquer. Rien n'est lance : confirme pour que ca parte.")
+
+    def executer_confirmee(self, connecteur, capacite, **parametres):
+        """Le chemin d'APRES la confirmation. L'agent ne doit jamais l'emprunter."""
+        from core.actions.resultat import succes
+        self.appels.append((connecteur, f"{capacite}-deja-confirmee", dict(parametres)))
+        return succes(action="generer", cible=connecteur, message="Video lancee.",
+                      preuve="tache-1")
+
+    def sante(self, nom):
+        return Sante(EtatSante.OPERATIONNEL, message="pret")
+
+    def obtenir(self, nom):
+        return None
+
+
+async def test_une_demande_de_video_va_au_bon_generateur(fake_provider):
+    """Un sujet part chez MoneyPrinterTurbo, pas chez le generateur d'images."""
+    registre = RegistreDeFabrication()
+    agent = VideoAnalyzerAgent(provider=fake_provider, registre=registre,
+                               travaux=FileDeTravaux())
+
+    reponse = await agent.run("fais-moi une vidéo sur les cloisons BA13")
+
+    assert registre.appels[0][0] == "moneyprinter"
+    assert registre.appels[0][1] == "generer"
+    assert registre.appels[0][2]["sujet"] == "les cloisons BA13"
+    assert reponse["fabrication"]["statut"] == "NEEDS_CONFIRMATION"
+
+
+async def test_une_generation_ne_part_jamais_sans_confirmation(fake_provider):
+    registre = RegistreDeFabrication()
+    agent = VideoAnalyzerAgent(provider=fake_provider, registre=registre,
+                               travaux=FileDeTravaux())
+
+    reponse = await agent.run("crée un short sur le placo")
+
+    assert reponse["fabrication"]["statut"] == "NEEDS_CONFIRMATION"
+    assert "Rien n'est lance" in reponse["response"]
+    assert [a for a in registre.appels if "deja-confirmee" in a[1]] == []
+
+
+async def test_un_sujet_absent_est_demande_pas_devine(fake_provider):
+    """Un sujet inventé produirait une vidéo sur autre chose que ce qu'il a demandé."""
+    registre = RegistreDeFabrication()
+    agent = VideoAnalyzerAgent(provider=fake_provider, registre=registre,
+                               travaux=FileDeTravaux())
+
+    reponse = await agent.run("fais-moi une vidéo")
+
+    assert reponse["fabrication"]["statut"] == "INCOMPLET"
+    assert "Sur quoi" in reponse["response"]
+    assert registre.appels == [], "rien ne doit partir sans sujet"
+
+
+async def test_le_sujet_est_ce_qui_reste_de_sa_phrase(fake_provider):
+    registre = RegistreDeFabrication()
+    agent = VideoAnalyzerAgent(provider=fake_provider, registre=registre,
+                               travaux=FileDeTravaux())
+
+    await agent.run("génère une vidéo pour mon entreprise de cloisons")
+
+    assert registre.appels[0][2]["sujet"] == "mon entreprise de cloisons"
+
+
+async def test_sans_generateur_l_agent_le_dit(fake_provider):
+    agent = VideoAnalyzerAgent(provider=fake_provider)
+
+    reponse = await agent.run("fais-moi une vidéo sur le BA13")
+
+    assert reponse["fabrication"]["statut"] == "NOT_CONFIGURED"
+    assert reponse["status"] == "warning"
+
+
+async def test_une_demande_d_analyse_n_est_pas_une_fabrication(fake_provider, tmp_path):
+    registre = RegistreDeFabrication()
+    agent = VideoAnalyzerAgent(provider=fake_provider, registre=registre,
+                               travaux=FileDeTravaux())
+
+    reponse = await agent.run("Analyse cette vidéo", context={"video_path": "/absent.mp4"})
+
+    assert registre.appels == []
+    assert reponse["status"] == "error"
+
+
+@pytest.mark.parametrize("phrase", [
+    "fais-moi une vidéo sur les cloisons BA13",
+    "crée un short sur le placo",
+    "génère une vidéo pour mon chantier",
+])
+def test_le_repli_hors_ligne_envoie_la_fabrication_a_l_agent_video(phrase):
+    """« BA13 », « placo », « chantier » : le sujet est son métier, la demande non."""
+    from agents.orchestrator.orchestrator_agent import OrchestratorAgent
+
+    assert OrchestratorAgent._classer_par_mots_cles(None, phrase) == "VIDEO_ANALYSIS"

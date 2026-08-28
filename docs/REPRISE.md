@@ -341,6 +341,44 @@ reste chez l assistant metier, qui connait la grille de prix. Un test du
 proprietaire du 27/08 le tenait deja ; les mots-cles du courrier ont ete
 resserres pour ne designer que sa BOITE.
 
+## MoneyPrinterTurbo — integre le 2026-08-28
+
+Demande du proprietaire, capture d'ecran du depot a l'appui : « installe ce
+projet et fais le executer et qu'il marche de vrai pas installer juste et le
+laisser dormir, tu le mets dans le modele adapte ».
+
+Integre comme WanGP : un service separe, clone a cote du depot, joint par son
+API HTTP (DEC-0008). Le contrat n a pas ete devine, il a ete lu dans LEUR code (les chemins
+cites ci-apres sont dans leur depot, pas dans le notre) : prefixe « /api/v1 »
+pose dans app/controllers/v1/base.py, `POST /videos` et `GET /tasks/{task_id}`
+dans leur controleur video, les etats -1 / 1 / 4 dans leur app/models/const.py,
+et le jeton dans l en-tete `x-api-key`.
+
+Le connecteur traduit l etat d une tache dans la forme que
+`core/connectors/suivi_video.py` sait deja lire. C est ce qui permet de
+reutiliser le suivi ecrit pour WanGP au lieu d en ecrire un second : un test
+fait tourner le vrai `suivre_generation` sur une tache MoneyPrinter.
+
+Branche sur l agent video, avec deux garanties :
+- **generer est une confirmation** (`action="generate"`, CONFIRMATION dans la
+  politique) : une generation occupe la carte graphique plusieurs minutes ;
+- **le sujet n est jamais invente.** Il est ce qui RESTE de sa phrase une fois la
+  demande retiree : « fais-moi une video sur les cloisons BA13 » laisse « les
+  cloisons BA13 ». Sans sujet, on demande — on ne complete pas.
+
+Piege evite : « fais-moi une video sur les cloisons BA13 » contient « ba13 » et
+partait chez l assistant devis, qui n a jamais su faire une video. Les demandes
+de fabrication sont donc testees AVANT le metier.
+
+Bug attrape par un test au premier jet : « génère » porte un accent GRAVE sur le
+second e, que `[ée]` ne couvrait pas — l extraction du sujet rendait `None` sur
+la formulation la plus naturelle.
+
+Ce qui ne peut PAS etre mesure depuis le cloud : le service lui-meme. Il exige
+ffmpeg, une cle Pexels et un modele. Le connecteur est verifie contre le contrat
+lu ; `scripts/doctor.py` porte la ligne « Video courte (MPT) » qui dira, chez
+lui, si le service repond.
+
 ## Chapitre 9 — l agenda, termine le 2026-08-28
 
 Ce que le proprietaire demande a un agenda, ce n est pas une grille : c est

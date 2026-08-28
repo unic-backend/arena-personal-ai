@@ -53,6 +53,18 @@ COURRIER = (
     "nouveaux messages", "mes messages recus", "mes messages reçus",
 )
 
+#: Fabriquer une video sur un sujet. Teste AVANT le metier, pour la meme raison
+#: que le suivi : « fais-moi une video sur les cloisons BA13 » contient « ba13 »
+#: et partait chez l assistant devis, qui n a jamais su faire une video.
+FABRIQUER_VIDEO = (
+    "fais-moi une vidéo", "fais moi une video", "fais-moi une video",
+    "fais moi une vidéo", "génère une vidéo", "genere une video",
+    "crée une vidéo", "cree une video", "fabrique une vidéo",
+    "fabrique une video", "monte une vidéo", "monte une video",
+    "fais-moi un short", "fais moi un short", "crée un short", "cree un short",
+    "génère un short", "genere un short",
+)
+
 #: « Ou en est ma video ? » n est pas une analyse de fichier : c est le suivi d une
 #: generation lancee sur la carte graphique. Meme agent, autre travail — et teste
 #: avant le metier, parce que « la video du chantier » contient « chantier ».
@@ -284,6 +296,11 @@ class OrchestratorAgent(BaseAgent):
         if any(k in text for k in COURRIER):
             return "EMAIL"
 
+        # Fabriquer une video. Teste AVANT le metier : le sujet d une video est
+        # souvent son metier, et la demande n en est pas une pour autant.
+        if any(k in text for k in FABRIQUER_VIDEO):
+            return "VIDEO_ANALYSIS"
+
         # Ou en est une generation video. Teste AVANT le metier : « ou en est la
         # video du chantier » contient « chantier » sans etre une demande de
         # devis. Ce qui touche a la video va a l agent video.
@@ -335,7 +352,7 @@ class OrchestratorAgent(BaseAgent):
         if any(k in text for k in studio_keywords):
             return "STUDIO"
 
-        # Vidéo
+        # Vidéo. Les demandes de FABRICATION sont deja traitees plus haut.
         video_keywords = ["découpe cette vidéo", "analyse cette vidéo"]
         if any(k in text for k in video_keywords):
             return "VIDEO_ANALYSIS"

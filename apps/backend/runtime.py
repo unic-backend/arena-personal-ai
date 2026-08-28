@@ -30,6 +30,7 @@ from core.connectors.calendrier import CalendrierConnector
 from core.connectors.devis import DevisConnector
 from core.connectors.galsen import GalsenConnector
 from core.connectors.gmail import GmailConnector
+from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.wan2gp import Wan2GPConnector
 from core.execution.mesures import Rapport
@@ -71,7 +72,14 @@ registre.declarer(
 )
 # Premier connecteur reellement operationnel : GalsenAPI est publique, donc il
 # ne depend d'aucun secret et n'est pas gele par la purge en attente.
-# Generation video locale. Non configure tant que WanGP n'est pas lance : la
+# Video courte a partir d'un sujet : script, plans, voix, sous-titres, montage.
+# Service separe (MoneyPrinterTurbo), lance par le proprietaire ; ARENA lui parle
+# par son API. Non configure tant qu'il n'est pas lance — la sonde le mesure.
+registre.declarer(
+    "moneyprinter",
+    lambda: MoneyPrinterConnector(acces=acces, journal=journal, file_attente=file_attente),
+)
+# Generation d'images video. Non configure tant que WanGP n'est pas lance : la
 # sonde le mesure au lieu de le supposer.
 registre.declarer(
     "wan2gp",
