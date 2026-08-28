@@ -116,10 +116,26 @@ machine de l assistant. La garantie prouvee est structurelle : le chat se
 termine pendant que le travail tourne encore. La latence reelle sous charge
 reste a mesurer sur son PC, avec le harnais de la phase 7.2.
 
+**Hors plan, ajoute le 2026-08-28 : le connecteur GalsenAPI.**
+`core/connectors/galsen.py`, service senegal_data, lecture seule, 11 tests.
+Demande par le proprietaire apres avoir vu le projet passer sur X. Voir
+DEC-0006 dans docs/DECISIONS.md.
+
+C est le PREMIER connecteur reellement operationnel : l API est publique, donc
+il ne depend d aucun secret et n est pas gele par la purge. Mesure en direct le
+2026-08-28 : HTTP 200, 14 regions, 46 departements, 558 communes, population
+18 126 388, source RGPH-5 2023 (ANSD).
+
+Ce qui reste a faire dessus : rien ne l appelle encore depuis le chemin de
+reponse. Comme semantique.py, consolidation.py et voies.py, il existe et il est
+teste, mais Usman ne s en sert pas quand le proprietaire lui parle. Le
+branchement de ces quatre modules merite sa propre phase.
+
 **Phase suivante autorisee : 11.1** - appels d offres senegalais : recherche,
-extraction, classement, avec source et date de recuperation. Attention : elle
-depend du reseau, donc elle sera partiellement UNKNOWN sur la machine de
-l assistant. Le chapitre 8 reste bloque par la purge des secrets.
+extraction, classement, avec source et date de recuperation. Le connecteur
+GalsenAPI lui servira directement : un appel d offres nomme une commune, l API
+la relie a son departement, sa region et sa population. Le chapitre 8 reste
+bloque par la purge des secrets.
 
 Plan complet : `docs/PLAN_ARENA_OS.md`. Audit d'origine : `docs/AUDIT_ARENA_OS.md`.
 
@@ -155,6 +171,6 @@ Plan complet : `docs/PLAN_ARENA_OS.md`. Audit d'origine : `docs/AUDIT_ARENA_OS.m
    collée dans le message qui la rapporte.
 4. Un commit par correctif. C'est **lui** qui commit et qui pousse.
 
-**État vérifié le 2026-08-28 : 1299 passed, 0 failed** — sur la machine cloud de
+**État vérifié le 2026-08-28 : 1310 passed, 0 failed** — sur la machine cloud de
 l'assistant. Dernier état mesuré sur la machine du propriétaire : 1272 passed,
 le 2026-08-28, avant les 14 tests du harnais de mesure.

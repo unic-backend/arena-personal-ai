@@ -78,3 +78,51 @@ Se priver des modèles cloud coûte de la qualité de rédaction sur les tâches
 longues, et coûte les capacités qu'un modèle local ne fait pas (vision fine,
 synthèse vocale). Le propriétaire a mesuré ce coût et l'accepte : ses données de
 chantier, ses clients et ses devis ne sortent pas de chez lui.
+
+---
+
+## DEC-0006 : GalsenAPI est la source des données du Sénégal, et son attribution voyage avec chaque chiffre
+
+*Décidé le 2026-08-28.*
+
+- **Décision** : intégrer [GalsenAPI](https://github.com/sibylassana95/GalsenAPi)
+  (Lassana Siby, licence MIT) comme connecteur en lecture seule
+  (`core/connectors/galsen.py`), service `senegal_data`.
+
+### Pourquoi celle-ci
+
+Parce que chaque chiffre y est tracé jusqu'à sa source, et que l'API le dit
+elle-même dans ses réponses : la démographie porte `"source_note": "RGPH-5 2023
+(ANSD)"`. C'est la règle du projet — rien n'entre sans source — rendue par le
+fournisseur lui-même plutôt que reconstituée après coup.
+
+Et parce qu'elle est **publique** : aucune clé, rien à stocker, rien à faire
+fuiter. C'est ce qui en fait le premier connecteur réellement opérationnel
+d'ARENA, alors que le chapitre 8 reste gelé par la purge des secrets.
+
+### Ce qui a été mesuré, le 2026-08-28
+
+Interrogée depuis la machine de l'assistant : `HTTP 200`, 14 régions,
+46 départements, **558 communes**, population totale 18 126 388.
+
+Le chiffre de 558 mérite d'être noté : l'annonce publique du projet parlait de
+553 communes, et une capture de son tableau de bord affichait une population de
+18 032 473. Aucun des deux n'a été retenu. **C'est l'API qui répond, et sa
+réponse est datée** — c'est exactement pour cela que la date de récupération
+voyage avec chaque résultat.
+
+### Ce que la licence oblige
+
+MIT, avec attribution explicite à Lassana Siby. L'attribution n'est pas reléguée
+à un fichier de licence : elle est jointe à **chaque résultat** rendu par le
+connecteur (`detail["source"]`), avec la date de récupération. Une donnée qui
+perd son auteur en route n'est plus citable.
+
+### Ce que ça coûte si c'est faux
+
+Si l'API disparaît ou change de forme, ARENA perd sa seule source de données
+administratives sénégalaises — la santé passe `EN_PANNE` et le dit, mais aucune
+réponse ne sera plus possible sur ces sujets. Le coût est assumé : la solution
+serait de mettre les données en cache localement, ce qui poserait aussitôt la
+question de leur fraîcheur et de leur date. Tant que ce n'est pas décidé, la
+dépendance est réelle et visible.

@@ -76,6 +76,14 @@ services:
     update:      {decision: CONFIRMATION, risque: HIGH, interrupteur: PUBLISH}
     reply:       {decision: CONFIRMATION, risque: HIGH, interrupteur: SEND_MESSAGES}
 
+  # Donnees publiques du Senegal (GalsenAPI). Lecture seule, sans identifiant :
+  # le connecteur ne declare aucune capacite d'ecriture, donc il n'y a rien
+  # d'autre a autoriser ici. Ajouter une action d'ecriture dans ce fichier ne la
+  # ferait pas exister — une capacite non declaree n'atteint jamais le service.
+  senegal_data:
+    read:        {decision: ALLOWED,      risque: LOW}
+    search:      {decision: ALLOWED,      risque: LOW}
+
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail
