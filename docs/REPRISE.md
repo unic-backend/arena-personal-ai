@@ -216,12 +216,14 @@ Deux limites tenues par des tests, et sabotees pour le prouver :
 - le destinataire n est jamais devine dans la phrase : il vient du contexte de
   la conversation, ou le PDF n est pas lance.
 
-Mesure apres ces deux corrections : 103 modules, 68 atteints, 35 orphelins.
+Mesure apres ces deux corrections, master fusionne : 104 modules, 68 atteints,
+36 orphelins.
 
 Restent orphelins, par ordre de valeur :
 - core.execution.voies / mesures — declarent les budgets, rien ne les consulte.
 - core.memory.semantique / consolidation — la recuperation du chat reste lexicale.
-- core.execution.travaux — la file de travaux ne sert que le suivi video.
+- core.connectors.suivi_video / core.execution.travaux — le suivi d une
+  generation existe, aucun chemin de reponse ne le lance encore.
 - tools.documents.indexer / inventory — l indexation ne part d aucune demande.
 - core.reasoning.reasoning_engine — orphelin d avant ce travail.
 
