@@ -23,6 +23,7 @@ from apps.backend.runtime import (
     browser_agent,
     coder_agent,
     editor_agent,
+    email_agent,
     fast_provider,
     fresh_agent,
     graphrag_tool,
@@ -202,6 +203,11 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         result = await fresh_agent.run(request.prompt)
     elif intent == "STUDIO":
         result = await lancer_studio(video_agent, editor_agent, subtitle_agent)
+    elif intent == "EMAIL":
+        # Son courrier : lecture et tri, ou brouillon soumis a confirmation.
+        # Le contexte porte le destinataire quand il y en a un — il n'est jamais
+        # lu dans la phrase.
+        result = await email_agent.run(request.prompt, context={"session_id": session_id})
     elif intent == "PLAQUISTE":
         result = await plaquiste_agent.run(request.prompt)
     elif intent == "BROWSER":

@@ -7,7 +7,7 @@ justifies this order is `docs/AUDIT_ARENA_OS.md`; it was measured, not recalled.
 VOLET en cours   : ARENA OS
 Chapitres        : 12
 Phases           : 21
-Phase courante   : 6.3 — en attente de confirmation
+Phase courante   : 9.1 — calendrier, en attente de son accord
 Terminées        : 1.1 (2026-08-27) — `core/actions/resultat.py`, sept statuts ;
                    un succès exige une preuve, une action sans effet n'en porte pas.
                    2.1 (2026-08-27) — `core/actions/journal.py`, les neuf champs ;
@@ -36,6 +36,18 @@ Terminées        : 1.1 (2026-08-27) — `core/actions/resultat.py`, sept statut
                    6.2 (2026-08-27) — `core/memory/recuperation.py` : quatre
                    signaux pondérés, budget dur, fenêtres de temps en français.
                    Mesuré : 1000 souvenirs, 12,2 ms, 112 caractères sur 600.
+                   6.3 / 6.4 / 7.1 / 7.2 (2026-08-28) — branchés sur le chemin
+                   de réponse pendant la mission « réveiller ce qui dort » :
+                   sens et consolidation dans la mémoire du chat, voies
+                   consultées après le classement, mesures confrontées aux
+                   cibles et servies par `GET /api/observability`.
+                   8.1 (2026-08-28) — `core/connectors/gmail.py` : lister,
+                   chercher, lire. Aucune écriture déclarée à ce stade ; sans
+                   les trois valeurs OAuth, `NOT_CONFIGURED` avec ce qui manque.
+                   8.2 (2026-08-28) — `agents/email/email_agent.py` : tri,
+                   extraction, brouillons, et l'envoi derrière confirmation.
+                   **Chapitre 8 terminé**, après avoir été gelé jusqu'à ce que
+                   le dépôt passe en privé.
 
 **Décision sur les politiques d'automatisation.** Aucun second mécanisme n'a été
 écrit : les règles par compte de `config/permissions_services.yaml` font déjà

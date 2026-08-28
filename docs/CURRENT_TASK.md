@@ -144,9 +144,11 @@ que le propriétaire ressent, pas ce qui était facile.
    lui-même.** Vérifié par l'API GitHub : `"private": true`, 0 fork.
    L'exposition publique est close. La purge de l'historique reste **jamais
    autorisée** : elle n'est plus urgente, mais c'est sa décision.
-   **Question qui s'ouvre à la place : rouvre-t-on le chapitre 8 (connecteur
-   e-mail) ?** Il était gelé parce qu'on n'ajoute pas de nouveaux secrets à un
-   dépôt public dont l'historique fuit. Les deux raisons ont changé.
+   ~~**Rouvre-t-on le chapitre 8 (connecteur e-mail) ?**~~ **Oui, le
+   28/08/2026 — et il est terminé le jour même.** 8.1 : lire et chercher son
+   courrier. 8.2 : trier, extraire, rédiger, et **envoyer derrière
+   confirmation**. Les identifiants Google vivent dans `.env`, jamais dans le
+   dépôt.
 3. **`apps/pwa/server/` : on le garde ou on le supprime ?**
 
 Aucune ne se tranche sans lui.
