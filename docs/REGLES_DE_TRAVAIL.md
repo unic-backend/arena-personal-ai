@@ -66,3 +66,30 @@ Les règles de vérification restent entières :
 `python -m ruff check .` **et** `python -m pytest tests/ -q`, sortie réelle
 collée dans le message qui la rapporte. Une réponse courte parce que le travail
 a été sauté est une fausse économie.
+
+---
+
+## Mode relais — depuis le 2026-08-28
+
+Le propriétaire n'a plus accès à son PC pendant un temps indéterminé, et lit
+depuis son téléphone. Il a autorisé explicitement l'assistant à **travailler
+seul**. Ce qui change, et seulement cela :
+
+- L'assistant **écrit les fichiers lui-même** dans le dépôt, lance `ruff` et
+  `pytest`, commite et pousse. Le propriétaire ne colle plus rien.
+- Le travail part sur la branche `claude/arena-personal-ai-qh66ix` et arrive par
+  **pull request**, que le propriétaire fusionne depuis son téléphone. Rien ne
+  va directement sur `master` en son absence : il ne peut plus lancer les tests
+  lui-même, la PR est l'endroit où il voit ce qui entre.
+
+Ce qui **ne change pas** : la vérification (`ruff` **et** `pytest`, sortie
+réelle rapportée), le sabotage avant de déclarer une garantie tenue, une phase
+par tour, et l'interdiction d'inventer une mesure.
+
+**Ce que la machine de l'assistant ne peut pas faire**, et qu'aucune permission
+ne répare : Ollama n'y est pas (donc ni modèle, ni embeddings `bge-m3`), la
+recherche web n'y répond pas, et l'interface ne peut pas être regardée. Toute
+scène qui en dépend se rapporte `UNKNOWN` et attend son PC.
+
+Dès que son PC est rallumé : lancer `python scripts/mesurer_performances.py`
+et coller le tableau — c'est la moitié manquante de la phase 7.2.

@@ -71,7 +71,7 @@ préparée, jamais autorisée. **Cela gate le chapitre 8.**
 
 ---
 
-## VOLET ARENA OS — 14 phases, 6 chapitres sur 12
+## VOLET ARENA OS — 16 phases, 7 chapitres sur 12
 
 | Phase | Ce qui existe | Commit |
 |---|---|---|
@@ -89,27 +89,37 @@ préparée, jamais autorisée. **Cela gate le chapitre 8.**
 | 6.3 | `core/memory/semantique.py` - 5e signal, embeddings locaux `bge-m3`, seuil mesure 0,45 | 2026-08-27 |
 | 6.4 | `core/memory/consolidation.py` - regroupement sans suppression, resume par nature | 2026-08-27 |
 | 7.1 | `core/execution/voies.py` - 4 voies, budgets croissants, CHAT jamais profond | 2026-08-28 |
+| 7.2 | `core/execution/mesures.py` + `scripts/mesurer_performances.py` - 7 scenes, UNKNOWN jamais remplace par un chiffre | 2026-08-28 |
+| 10.1 | `core/execution/travaux.py` - file bornee, une panne de fond ne remonte jamais au chat | 2026-08-28 |
 
-**Phase 7.2 EN COURS, interrompue le 2026-08-28.**
+**Phase 7.2 terminee le 2026-08-28 : l instrument existe, les chiffres non.**
 
-Ce qui est deja chez lui : core/execution/mesures.py (le harnais de mesure,
-il importe et la suite passe).
+python scripts/mesurer_performances.py chronometre les 7 scenes. Lancee sur la
+machine cloud de l assistant : 2 mesurees (recuperation 6,9 ms, outil 0,0 ms),
+5 UNKNOWN - pas de Ollama, pas de recherche web. **Ces chiffres ne comptent
+pas** : la specification demande la machine du proprietaire.
 
-Ce qui RESTE a coller, dans cet ordre :
-1. scripts/mesurer_performances.py - les 7 scenes de la specification
-   (premier jeton, simple, normale, complexe, recuperation, recherche, outil) ;
-2. tests/core/test_mesures_execution.py - 14 tests ;
-3. lancer python scripts/mesurer_performances.py et coller le tableau,
-   puis pytest, ruff, commit et push.
+A FAIRE DES QUE SON PC EST RALLUME, avant toute autre phase :
+    python scripts/mesurer_performances.py
+puis coller le tableau ici. Tant que ce n est pas fait, les 4 scenes modele et
+la recherche web restent UNKNOWN, et aucune cible de la phase 7.1 n a ete
+confrontee au reel.
 
-Etat verifie chez lui a la coupure : 1272 passed. Chez l assistant, avec les
-14 tests du harnais : 1286 passed. Sabotage fait : une scene qui echoue et
-qui renverrait 0.0 seconde fait tomber le test de garde.
+**Phase 10.1 terminee le 2026-08-28.** `core/execution/travaux.py` : soumettre
+inscrit et rend la main, une panne de fond devient ECHOUE sans jamais remonter,
+le parallelisme est borne, la progression se compte et un total inconnu vaut
+None. 13 tests.
 
-**Prérequis mesuré le 2026-08-27** : la récupération sémantique exige
-ollama pull bge-m3. Sans lui, elle rapporte LEXICAL - SERVEUR_ABSENT et ne
-simule rien. nomic-embed-text a été mesuré puis écarté : il classait un
-souvenir sans rapport devant le bon (0,596 contre 0,457).
+Nuance a garder en tete : le test de latence mesure un **tour de chat simule**
+(une coroutine locale), pas un vrai appel au modele - Ollama n existe pas sur la
+machine de l assistant. La garantie prouvee est structurelle : le chat se
+termine pendant que le travail tourne encore. La latence reelle sous charge
+reste a mesurer sur son PC, avec le harnais de la phase 7.2.
+
+**Phase suivante autorisee : 11.1** - appels d offres senegalais : recherche,
+extraction, classement, avec source et date de recuperation. Attention : elle
+depend du reseau, donc elle sera partiellement UNKNOWN sur la machine de
+l assistant. Le chapitre 8 reste bloque par la purge des secrets.
 
 Plan complet : `docs/PLAN_ARENA_OS.md`. Audit d'origine : `docs/AUDIT_ARENA_OS.md`.
 
@@ -145,4 +155,6 @@ Plan complet : `docs/PLAN_ARENA_OS.md`. Audit d'origine : `docs/AUDIT_ARENA_OS.m
    collée dans le message qui la rapporte.
 4. Un commit par correctif. C'est **lui** qui commit et qui pousse.
 
-**État vérifié sur sa machine le 2026-08-27 : 1272 passed, 0 failed.**
+**État vérifié le 2026-08-28 : 1299 passed, 0 failed** — sur la machine cloud de
+l'assistant. Dernier état mesuré sur la machine du propriétaire : 1272 passed,
+le 2026-08-28, avant les 14 tests du harnais de mesure.
