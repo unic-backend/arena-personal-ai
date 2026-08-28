@@ -150,9 +150,9 @@ class TestAiguillage:
     def test_l_intention_est_aiguillee_vers_un_agent(self):
         assert "PLAQUISTE" in AGENTS_SPECIALISES
 
-    def test_le_modele_est_propose_dans_le_menu(self):
-        config = yaml.safe_load((RACINE / "librechat.yaml").read_text(encoding="utf-8"))
-        assert "usman-plaquiste" in config["endpoints"]["custom"][0]["models"]["default"]
+    # Le menu de LibreChat verifiait ici que « usman-plaquiste » etait
+    # proposable. LibreChat est retire le 2026-08-28 ; la garantie qui compte
+    # reste, juste en dessous : le modele est SERVI par l'API.
 
     def test_le_modele_est_servi_par_l_api(self):
         import asyncio

@@ -131,15 +131,22 @@ que le propriétaire ressent, pas ce qui était facile.
 
 ---
 
-## Deux questions ouvertes pour le propriétaire
+## Les questions ouvertes pour le propriétaire
 
-1. **La rotation de clé a-t-elle bien eu lieu ?** Ce fichier l'affirmait au
-   26/08 ; `CLAUDE.md` dit le contraire. Les deux ne peuvent pas être vrais.
-   La purge de l'historique reste, elle, **jamais autorisée**
-   (`documents/RUNBOOK_PURGE_SECRETS.md`) et gèle le chapitre 8.
-2. **`apps/pwa/server/` : on le garde ou on le supprime ?**
+1. ~~**La rotation de clé a-t-elle bien eu lieu ?**~~ **Répondu le 28/08/2026.**
+   Il a changé la clé d'ARENA une fois ; les quatre autres n'ont jamais été
+   touchées. Elles servaient à LibreChat et Open WebUI, qu'il n'utilise plus :
+   les deux clients sont **retirés du dépôt** (DEC-0007), donc ces quatre
+   valeurs n'ouvrent plus rien. Reste `USMAN_API_KEY`, la seule vivante — à
+   changer s'il n'est pas certain de l'avoir fait
+   (`documents/RUNBOOK_PURGE_SECRETS.md`, étape 1).
+2. **Le dépôt est public.** Le passer en privé arrête l'exposition
+   immédiatement, et ça se fait depuis son téléphone : GitHub →
+   `Settings` → tout en bas → `Change repository visibility`. La purge de
+   l'historique reste **jamais autorisée** et gèle le chapitre 8 (e-mail).
+3. **`apps/pwa/server/` : on le garde ou on le supprime ?**
 
-Aucune des deux ne se tranche sans lui.
+Aucune ne se tranche sans lui.
 
 ---
 

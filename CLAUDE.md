@@ -23,7 +23,7 @@ python scripts/orphelins.py
 
 C'est la mesure, et elle ne se raconte pas. **N'ouvre pas une nouvelle phase du
 plan et n'intègre rien de nouveau** : il donne la suite lui-même. Deux questions
-attendent sa réponse — la rotation des clés, et le sort de `apps/pwa/server/`
+attendent sa réponse — la visibilité du dépôt, et le sort de `apps/pwa/server/`
 (`docs/CURRENT_TASK.md`).
 
 ---
@@ -89,10 +89,13 @@ l'interface ne peut pas être regardée. Toute mesure qui en dépend se rapporte
 
 ## Deux blocages ouverts, et ils ne sont pas à toi de lever
 
-1. **Six secrets sont encore dans l'historique public du dépôt**, et les clés
-   n'ont jamais été changées. La purge est préparée (`documents/RUNBOOK_PURGE_SECRETS.md`),
-   **jamais autorisée**. Elle gèle le chapitre 8 (connecteur e-mail). Seul le
-   propriétaire décide.
+1. **Six secrets sont dans l'historique public du dépôt, et le dépôt est
+   public.** Quatre de ces clés sont **mortes** depuis le 28/08 : LibreChat et
+   Open WebUI sont retirés, plus rien ne les lit (DEC-0007, et un test le
+   tient). La cinquième, `USMAN_API_KEY`, ouvre ARENA — le propriétaire l'a
+   changée une fois. La purge de l'historique est préparée
+   (`documents/RUNBOOK_PURGE_SECRETS.md`) et **jamais autorisée** ; elle gèle le
+   chapitre 8 (connecteur e-mail). Passer le dépôt en privé est à lui seul.
 2. **Les mesures de la phase 7.2 attendent son PC** :
    `python scripts/mesurer_performances.py`. Quatre scènes modèle et la
    recherche web sont `UNKNOWN` tant que ce n'est pas lancé.

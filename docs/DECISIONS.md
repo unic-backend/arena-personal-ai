@@ -126,3 +126,51 @@ réponse ne sera plus possible sur ces sujets. Le coût est assumé : la solutio
 serait de mettre les données en cache localement, ce qui poserait aussitôt la
 question de leur fraîcheur et de leur date. Tant que ce n'est pas décidé, la
 dépendance est réelle et visible.
+
+
+## DEC-0007 : LibreChat et Open WebUI sont retirés — on ne change pas une clé morte, on retire ce qu'elle ouvrait
+
+*Décidé par le propriétaire le 2026-08-28 : « moi j'utilise plus librechat, j'ai
+mon propre interface a moi maintenant ».*
+
+### Le problème
+
+Six valeurs de secrets sont dans l'historique public du dépôt, pour cinq
+variables. Quatre d'entre elles — `CREDS_KEY`, `JWT_SECRET`,
+`JWT_REFRESH_SECRET`, `WEBUI_SECRET_KEY` — n'existaient que pour deux clients
+tiers : LibreChat (port 3080) et Open WebUI (port 3000).
+
+La configuration de LibreChat était la pire du lot : port publié sur toutes les
+interfaces, `ALLOW_REGISTRATION=true`, et un `JWT_SECRET` publiquement lisible.
+Un `docker compose up` lancé par mégarde ouvrait une interface de chat où
+n'importe qui pouvait s'inscrire, avec de quoi forger des sessions.
+
+### La décision
+
+Retirer `docker-compose.yml` et `librechat.yaml`, et sortir les quatre clés de
+`.env.example`. Le propriétaire n'utilise plus ces interfaces : son interface
+est la PWA, servie par ARENA lui-même.
+
+**Une clé morte ne se change pas : on retire ce qu'elle ouvrait.** La rotation
+aurait demandé son PC et cinq valeurs à coller. Le retrait rend la fuite sans
+effet, définitivement, sans qu'il ait à toucher quoi que ce soit.
+
+`SECRET_KEY` part avec elles : aucune ligne de code ne la lisait. Une sécurité
+morte qui ressemble à une sécurité est pire qu'aucune.
+
+Reste **une** clé vivante, `USMAN_API_KEY` : elle ouvre `/api` et `/v1`,
+c'est-à-dire ARENA. Sans elle, la passerelle refuse de servir — elle ne démarre
+jamais « ouverte ».
+
+### Ce que ça coûte si c'est faux
+
+S'il veut rouvrir LibreChat ou Open WebUI un jour, il faut restaurer les deux
+fichiers depuis l'historique Git — une commande, rien n'est perdu :
+
+```
+git checkout <commit-avant-le-retrait> -- docker-compose.yml librechat.yaml
+```
+
+Et il faudra alors leur donner des clés **neuves**, jamais celles de
+l'historique. Un test le rappelle en échouant si ces fichiers reviennent tels
+quels.

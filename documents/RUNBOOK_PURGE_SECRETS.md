@@ -36,57 +36,59 @@ C'est réversible, et ça arrête l'exposition pendant que vous travaillez.
 
 ---
 
-## Étape 1 — Changer les clés *(la plus importante)*
+## Étape 1 — Changer la clé *(la plus importante)*
 
-Six valeurs ont fuité, correspondant à cinq variables. Générez une valeur
-nouvelle pour **chacune**.
+**Mise à jour du 2026-08-28.** Six valeurs avaient fuité, pour cinq variables.
+Le propriétaire a dit ce jour-là qu'il n'utilise plus LibreChat : il a sa propre
+interface, servie par ARENA. **LibreChat et Open WebUI ont donc été retirés du
+dépôt**, avec `docker-compose.yml` et `librechat.yaml`.
 
-**Attention : les cinq clés n'ont pas le même format.** `CREDS_KEY` sert à
-chiffrer les identifiants stockés par LibreChat, qui exige **exactement 64
-caractères hexadécimaux** — la valeur qui a fuité en faisait 64. Une valeur
-d'une autre longueur, ou contenant autre chose que `0-9` et `a-f`, empêche
-LibreChat de démarrer.
+Conséquence directe, et c'est la meilleure protection possible : quatre des cinq
+clés **n'ouvrent plus rien**.
 
-Pour `CREDS_KEY`, lancez **une fois** :
+| Clé | État |
+|---|---|
+| `CREDS_KEY` | morte — plus aucun service ne la lit |
+| `JWT_SECRET` | morte — idem |
+| `JWT_REFRESH_SECRET` | morte — idem |
+| `WEBUI_SECRET_KEY` | morte — idem |
+| **`USMAN_API_KEY`** | **vivante — elle ouvre ARENA lui-même** |
 
-```
-python -c "import secrets; print(secrets.token_hex(32))"
-```
+Une clé morte ne se change pas : on retire ce qu'elle ouvrait. C'est fait, et un
+test le tient (`tests/test_configuration_clients.py`, classe
+`TestLesClesMortesNeServentPlus`) : si l'un de ces fichiers revient, ou si l'une
+de ces quatre lignes réapparaît dans `.env.example`, la suite échoue.
 
-Pour les **quatre autres**, lancez cette commande **quatre fois**, une par
-variable :
+### Ce qu'il reste à faire : une seule clé
+
+`USMAN_API_KEY` (ancien nom : `ARENA_API_KEY`) est la seule qui protège encore
+quelque chose. Le propriétaire dit l'avoir changée une fois. **Si vous n'en êtes
+pas certain, changez-la : ça ne coûte rien et ça referme la question.**
+
+Générez une valeur, dans le terminal 1 :
 
 ```
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-Puis ouvrez votre fichier `.env` (à la racine du projet, jamais versionné) et
-remplacez ces cinq lignes par les valeurs obtenues :
+Ouvrez `.env` (à la racine, jamais versionné) et remplacez cette ligne :
 
 ```
-ARENA_API_KEY=<nouvelle valeur 1>
-CREDS_KEY=<nouvelle valeur 2>
-JWT_SECRET=<nouvelle valeur 3>
-JWT_REFRESH_SECRET=<nouvelle valeur 4>
-WEBUI_SECRET_KEY=<nouvelle valeur 5>
+USMAN_API_KEY=<la valeur obtenue>
 ```
 
-Redémarrez ensuite les services :
+Redémarrez ARENA. **Attention** : l'interface PWA garde la clé de son côté — il
+faut la remettre là aussi, sinon chaque message répond 401.
 
-```
-docker compose down
-```
+**Vérification** : ouvrez ARENA, envoyez un message. S'il répond, la nouvelle
+clé est en place, et l'ancienne — celle qui est dans l'historique public — ne
+sert plus à rien. **Le risque est écarté, indépendamment de la suite.**
 
-puis :
+### Ce qui n'est pas une clé, et qui compte plus
 
-```
-docker compose up -d
-```
-
-**Vérification** : LibreChat (`http://localhost:3080`) et Open WebUI
-(`http://localhost:3000`) répondent toujours et voient les modèles `arena-*`.
-Si oui, les anciennes clés ne servent plus à rien — **le risque est écarté**,
-indépendamment de la suite.
+Le dépôt est **public**. Le passer en privé arrête l'exposition immédiatement
+(GitHub → `Settings` → tout en bas → `Change repository visibility`). C'est
+réversible, et ça se fait depuis un téléphone.
 
 ---
 
