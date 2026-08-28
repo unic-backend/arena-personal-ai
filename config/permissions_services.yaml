@@ -84,6 +84,21 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     search:      {decision: ALLOWED,      risque: LOW}
 
+  # Generation video locale (WanGP / Wan2GP). Elle ne sort pas de la machine,
+  # mais elle monopolise la carte graphique plusieurs minutes et ecrit un
+  # fichier : elle passe par une confirmation, et par le coupe-circuit
+  # WRITE_FILES. Lire les modeles ou la galerie ne coute rien.
+  #
+  # Pourquoi elle n'est PAS dans INTERRUPTEURS_OBLIGATOIRES : ce plancher du
+  # code est reserve aux trois actions irreversibles — envoyer, publier,
+  # supprimer. Une video generee s'efface. Un test le dit
+  # (test_les_trois_interrupteurs_bloquants_couvrent_les_actions_irreversibles),
+  # il a refuse l'ajout, et il avait raison.
+  video_generation:
+    read:        {decision: ALLOWED,      risque: LOW}
+    generate:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+    cancel:      {decision: ALLOWED,      risque: LOW}
+
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail

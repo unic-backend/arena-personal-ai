@@ -27,6 +27,7 @@ from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
 from core.connectors.galsen import GalsenConnector
 from core.connectors.registre import RegistreConnecteurs
+from core.connectors.wan2gp import Wan2GPConnector
 from core.memory.memory_manager import MemoryManager
 from core.memory.personnelle import MemoirePersonnelle
 from core.models.ollama_provider import OllamaProvider
@@ -62,6 +63,12 @@ registre.declarer(
 )
 # Premier connecteur reellement operationnel : GalsenAPI est publique, donc il
 # ne depend d'aucun secret et n'est pas gele par la purge en attente.
+# Generation video locale. Non configure tant que WanGP n'est pas lance : la
+# sonde le mesure au lieu de le supposer.
+registre.declarer(
+    "wan2gp",
+    lambda: Wan2GPConnector(acces=acces, journal=journal, file_attente=file_attente),
+)
 registre.declarer(
     "galsen",
     lambda: GalsenConnector(acces=acces, journal=journal, file_attente=file_attente),
