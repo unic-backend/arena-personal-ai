@@ -27,6 +27,7 @@ from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
 from core.connectors.devis import DevisConnector
 from core.connectors.galsen import GalsenConnector
+from core.connectors.gmail import GmailConnector
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.wan2gp import Wan2GPConnector
 from core.execution.mesures import Rapport
@@ -82,6 +83,14 @@ registre.declarer(
 registre.declarer(
     "galsen",
     lambda: GalsenConnector(acces=acces, journal=journal, file_attente=file_attente),
+)
+# Courrier : LECTURE SEULE (chapitre 8.1). Aucune capacite d'ecriture n'est
+# declaree, donc aucune n'existe — l'envoi viendra en 8.2, derriere
+# confirmation. Non configure tant que les trois valeurs OAuth ne sont pas dans
+# le .env : la sonde le mesure au lieu de le supposer.
+registre.declarer(
+    "gmail",
+    lambda: GmailConnector(acces=acces, journal=journal, file_attente=file_attente),
 )
 # Journal des actions a effet externe. Meme fichier que la memoire, table a part.
 journal = JournalDesActions(db_path=str(DB_PATH))
