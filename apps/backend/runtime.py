@@ -32,6 +32,7 @@ from core.connectors.wan2gp import Wan2GPConnector
 from core.execution.travaux import FileDeTravaux
 from core.memory.memory_manager import MemoryManager
 from core.memory.personnelle import MemoirePersonnelle
+from core.memory.semantique import IndexSemantique
 from core.models.ollama_provider import OllamaProvider
 from core.permissions.controle import ControleAcces
 from core.permissions.permission_manager import PermissionManager
@@ -85,6 +86,10 @@ journal = JournalDesActions(db_path=str(DB_PATH))
 # Memoire personnelle (souvenirs, entites, relations). Construite en phase 6.1
 # et jusqu'ici lue par personne : c'est le defaut d'`agent_logs` qui recommencait.
 memoire_personnelle = MemoirePersonnelle(db_path=str(DB_PATH))
+# L'index des vecteurs vit ici, et non dans la passerelle : cree a chaque
+# question, son cache serait vide a chaque question, et chaque tour de chat
+# repaierait la vectorisation de toute la memoire. Il est partage et il dure.
+index_semantique = IndexSemantique()
 # Pieces jointes : le fichier est lu puis efface, seul son texte reste en
 # memoire le temps d'une conversation.
 pieces_jointes = DepotPiecesJointes()

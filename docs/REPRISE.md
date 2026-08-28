@@ -247,16 +247,42 @@ contiennent des noms de clients et des montants.
 
 Mesure apres ces deux branchements : 104 modules, 72 atteints, 32 orphelins.
 
+## La memoire du chat — phase A, 2026-08-28
+
+Deux etapes, chacune verifiee avant la suivante, comme le proprietaire l a
+demande : « fais-le etape par etape, sois sur que ca marche avant de livrer ».
+
+**A.1 — le sens.** `core/memory/semantique` est branche dans
+`souvenirs_pertinents` de la passerelle PWA. Ce que ca corrige, mesure :
+« combien de panneaux ai-je pris pour ce chantier ? » ne ramenait rien alors que
+« 234 plaques BA13 commandees » etait en memoire — aucun mot utile en commun.
+Le test `test_le_lexical_seul_ratait_ce_souvenir` garde cette preuve. L index des
+vecteurs vit dans runtime.py et dure : recree a chaque question, il repaierait la
+vectorisation de toute la memoire a chaque tour. `prompt_systeme` est devenue
+asynchrone — les vecteurs se demandent au serveur local. Sans Ollama, la
+recuperation reste MODE_LEXICAL et le journal dit pourquoi ; la passerelle rend
+alors ce qu elle rendait avant. Le seuil 0.45 n a pas ete touche : il a ete
+mesure avec bge-m3.
+
+**A.2 — une chose dite une fois.** `core/memory/consolidation` regroupe ce que
+la recuperation rend, juste avant la construction du prompt. Une phrase retenue
+deux fois prenait deux lignes et ARENA se repetait ; elle en prend une, suivie
+de « vu 2 fois ». Rien n est efface en memoire : les deux souvenirs gardent leur
+date et leur source (un test le verifie apres l appel). Une supposition ne
+rejoint jamais un fait, deux sources restent deux preuves, et l ordre du
+classement est conserve.
+
+Mesure apres la phase A : 104 modules, 74 atteints, 30 orphelins.
+
 Restent orphelins, par ordre de valeur :
 - core.execution.voies / mesures — declarent les budgets, rien ne les consulte.
-- core.memory.semantique / consolidation — la recuperation du chat reste lexicale.
 - core.reasoning.reasoning_engine — orphelin d avant ce travail.
 
 La commande qui refait cette mesure vit dans scripts/orphelins.py.
 
 **Mission en cours, avant toute nouvelle phase : `docs/CURRENT_TASK.md`** —
-reveiller les cinq modules qui ne tournent encore pour personne, un par module,
-une pull request chacun. L ordre reprend par la memoire semantique du chat.
+reveiller les trois modules qui ne tournent encore pour personne. L ordre reprend
+par la phase B, le cout d une reponse.
 
 **Phase suivante autorisee ensuite : 11.1** - appels d offres senegalais. Le chapitre 8
 reste bloque par la purge des secrets.

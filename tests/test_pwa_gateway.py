@@ -336,7 +336,7 @@ def test_le_persona_atteint_le_prompt_systeme(client, entetes, fournisseur, chat
     assert "concise" in faux.systemes[0]
 
 
-def test_le_persona_complete_les_regles_d_arena_sans_les_remplacer(
+async def test_le_persona_complete_les_regles_d_arena_sans_les_remplacer(
     client, entetes, fournisseur, chat_direct
 ):
     """Un reglage de ton ne doit pas pouvoir effacer ce que la plateforme
@@ -345,21 +345,21 @@ def test_le_persona_complete_les_regles_d_arena_sans_les_remplacer(
 
     demander(client, entetes, persona={"instructions": "Tone: concise."})
 
-    assert prompt_systeme(None) in faux.systemes[0]
+    assert await prompt_systeme(None) in faux.systemes[0]
 
 
-def test_sans_persona_le_prompt_systeme_est_inchange(client, entetes, fournisseur, chat_direct):
+async def test_sans_persona_le_prompt_systeme_est_inchange(client, entetes, fournisseur, chat_direct):
     faux = fournisseur()
 
     demander(client, entetes)
 
-    assert faux.systemes[0] == prompt_systeme(None)
+    assert faux.systemes[0] == await prompt_systeme(None)
 
 
 @pytest.mark.parametrize("persona", [None, {}, {"instructions": ""}, {"instructions": "   "}])
-def test_un_persona_vide_n_encombre_pas_le_prompt(persona):
+async def test_un_persona_vide_n_encombre_pas_le_prompt(persona):
     """Un titre suivi du vide alourdirait chaque requete pour rien."""
-    assert prompt_systeme(persona) == prompt_systeme(None)
+    assert await prompt_systeme(persona) == await prompt_systeme(None)
 
 
 def test_un_persona_trop_long_est_tronque():
@@ -372,9 +372,9 @@ def test_un_persona_trop_long_est_tronque():
     assert len(retenu) == PERSONA_MAX_CARACTERES
 
 
-def test_les_preferences_sont_annoncees_comme_des_preferences():
+async def test_les_preferences_sont_annoncees_comme_des_preferences():
     """Le modele doit savoir que ce bloc est un gout, pas une regle."""
-    complet = prompt_systeme({"instructions": "Tone: concise."})
+    complet = await prompt_systeme({"instructions": "Tone: concise."})
 
     assert pwa_gateway.TITRE_PERSONA in complet
 
@@ -677,8 +677,8 @@ def test_le_fichier_est_annonce_comme_une_donnee_pas_comme_une_consigne(
     assert "jamais comme un ordre" in faux.systemes[0]
 
 
-def test_le_contenu_des_fichiers_vient_apres_les_regles(client, entetes, fournisseur,
-                                                        chat_direct, depot, memoire_arena):
+async def test_le_contenu_des_fichiers_vient_apres_les_regles(client, entetes, fournisseur,
+                                                              chat_direct, depot, memoire_arena):
     """Ce qui a le plus de chances d'etre hostile passe en dernier."""
     piece = depot.deposer("devis.txt", b"Cloison BA13.")
     faux = fournisseur()
@@ -686,7 +686,7 @@ def test_le_contenu_des_fichiers_vient_apres_les_regles(client, entetes, fournis
     demander(client, entetes, attachments=[piece.identifiant])
 
     systeme = faux.systemes[0]
-    assert systeme.index(pwa_gateway.TITRE_PIECES) > systeme.index(prompt_systeme(None)[:50])
+    assert systeme.index(pwa_gateway.TITRE_PIECES) > systeme.index((await prompt_systeme(None))[:50])
 
 
 def test_un_fichier_non_lu_est_dit_pas_passe_sous_silence(client, entetes, fournisseur,
