@@ -44,20 +44,19 @@ terminée.
 
 ```
 python scripts/orphelins.py
-→ Modules totaux : 104  |  atteints : 75  |  orphelins : 29
+→ Modules totaux : 104  |  atteints : 76  |  orphelins : 28
 ```
 
-**Les 29 ne sont pas 29 chantiers.** La liste complète contient 22 fichiers
+**Les 28 ne sont pas 28 chantiers.** La liste complète contient 22 fichiers
 `__init__.py` vides (des marqueurs de paquet, rien à réveiller) et 4 fichiers
 `apps/pwa/server/*` qui sont un **second serveur**, question ouverte plus bas.
 
-**Il reste 2 modules réels.** Ils sont écrits, documentés, et **ils ont déjà
+**Il reste 1 module réel**, et ce n'est pas un chantier : c'est une question. Ils sont écrits, documentés, et **ils ont déjà
 tous leurs tests**. Ce qui manque n'est pas du code : c'est le câblage.
 
 | # | Module | Ce qu'il doit servir | Où le brancher |
 |---|---|---|---|
-| 1 | `core/execution/mesures.py` | chronométrer ce que les voies **promettent** | le rapport de `voies`, et `/observability` |
-| 2 | `core/reasoning/reasoning_engine.py` | orphelin d'avant ce travail — **63 lignes, sans docstring** | à décider : brancher, ou proposer la suppression |
+| 1 | `core/reasoning/reasoning_engine.py` | orphelin d'avant ce travail — **63 lignes, sans docstring** | à décider : brancher, ou proposer la suppression |
 
 ---
 
@@ -93,8 +92,12 @@ C'est celle qu'il sent **à chaque conversation**.
   du budget de la voie et non plus d'une constante unique — « bonjour » et une
   démonstration n'ont plus la même enveloppe. `objectif_secondes` reste une
   **cible** : rien n'a été chronométré ici, c'est B.2 qui mesure.
-- B.2 — `mesures` confronte les budgets au réel. Les scènes qui exigent son PC
-  restent `UNKNOWN` : elles ne s'estiment pas.
+- B.2 — `mesures` branché le 28/08/2026 : chaque tour de chat est chronométré
+  sur la passerelle et confronté à la cible de sa voie. Un tour interrompu
+  n'entre **pas** avec la durée de son échec — il entre `INDISPONIBLE` avec sa
+  raison. `GET /api/observability` rend le tableau, et il porte aussi les voies
+  que personne n'a encore empruntées : `UNKNOWN`, verdict `NON_MESURE`, jamais
+  un `0` qui se lirait « instantané ». Le rapport garde les 200 derniers tours.
 
 ### Phase C — le travail de fond — **faite le 28/08/2026**
 
@@ -117,7 +120,7 @@ la commande, au lieu d'indexer à moitié. Ces documents portent des noms de
 clients, des montants et des chantiers : ils sont hors Git et ils y restent,
 et le compte-rendu ne dit que des nombres.
 
-### Phase E — la décision sur `reasoning_engine` (module 2)
+### Phase E — la décision sur `reasoning_engine` (module 1)
 
 Ce module n'est pas un chantier, c'est une **question**. 63 lignes, aucune
 docstring, orphelin avant même l'audit. Le lire, dire ce qu'il ferait de mieux
@@ -164,7 +167,9 @@ Aucune des deux ne se tranche sans lui.
 
 | 28/08/2026 | `core/execution/voies` | la voie de l'intention voyage avec la réponse, et le budget mémoire du prompt en découle : deux intentions, deux enveloppes |
 
-Atteints : **64 → 68 → 72 → 73 → 74 → 75**. Le compteur est la mesure, pas le récit.
+| 28/08/2026 | `core/execution/mesures` | chaque tour est chronométré face à la cible de sa voie ; `/api/observability` montre aussi ce qui n'a pas été mesuré |
+
+Atteints : **64 → 68 → 72 → 73 → 74 → 75 → 76**. Le compteur est la mesure, pas le récit.
 
 ---
 

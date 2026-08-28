@@ -24,6 +24,7 @@ remplace pas.
 """
 import json
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
@@ -38,10 +39,12 @@ from apps.backend.runtime import (
     index_semantique,
     memoire_personnelle,
     memory,
+    mesures_execution,
     orchestrator,
     pieces_jointes,
 )
 from apps.backend.security import limiter_debit, verify_api_key
+from core.execution.mesures import ETAT_INDISPONIBLE, ETAT_MESURE, Mesure, chronometrer
 from core.execution.voies import budget_de, voie_pour
 from core.memory.consolidation import grouper
 from core.memory.recuperation import recuperer
@@ -66,6 +69,10 @@ TITRE_PIECES = (
 #: la voie de l'intention (`core/execution/voies.py`). Une constante unique
 #: donnait le meme budget a « bonjour » et a une demonstration.
 NOTES_INTERFACE_MAX = 20
+
+#: Combien de tours gardes dans le rapport de mesures. Un rapport qui grossit
+#: sans fin finirait par peser plus que ce qu'il mesure.
+MESURES_GARDEES = 200
 
 TITRE_MEMOIRE_ARENA = "Ce dont je me souviens et qui se rapporte a la demande (chaque ligne porte sa source) :"
 TITRE_NOTES_INTERFACE = "Notes que le proprietaire a saisies lui-meme dans son interface :"
@@ -299,6 +306,15 @@ def _prompt_conversation(demande: DemandeAgent, proprietaire: str) -> str:
     return "\n".join(lignes)
 
 
+def noter_mesure(mesure: Mesure) -> Mesure:
+    """Range une mesure dans le rapport partage, sans le laisser grossir sans fin."""
+    mesures_execution.ajouter(mesure)
+    surplus = len(mesures_execution.mesures) - MESURES_GARDEES
+    if surplus > 0:
+        del mesures_execution.mesures[:surplus]
+    return mesure
+
+
 @router.post("/agent/stream", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
 async def flux_agent(demande: DemandeAgent):
     """Repond a l'interface PWA, en direct, dans son protocole.
@@ -320,6 +336,10 @@ async def flux_agent(demande: DemandeAgent):
                 return
 
             intention = await orchestrator.analyze_intent(demande.text)
+            voie = voie_pour(intention)
+            # Ce que ce tour aura reellement coute. La cible vient de la voie ;
+            # la duree, elle, est chronometree ici et nulle part ailleurs.
+            depart = time.perf_counter()
 
             if intention in AGENTS_SPECIALISES:
                 # Un agent specialise a ses propres consignes. Un ton « concis »
@@ -329,9 +349,18 @@ async def flux_agent(demande: DemandeAgent):
                         "Persona non applique : la demande part vers l'agent %s, "
                         "qui a ses propres consignes.", intention,
                     )
-                resultat = await dispatch_request(
-                    ChatRequest(prompt=demande.text, session_id=session), intent=intention
-                )
+                # `chronometrer` n'aime que les appels sans argument et ne rend
+                # que la mesure : la reponse est recuperee par la fermeture.
+                rendu: Dict[str, Any] = {}
+
+                async def _repondre():
+                    rendu["resultat"] = await dispatch_request(
+                        ChatRequest(prompt=demande.text, session_id=session),
+                        intent=intention,
+                    )
+
+                noter_mesure(await chronometrer(f"agent {intention}", voie, _repondre))
+                resultat = rendu["resultat"]
                 yield jeton(resultat["response"])
                 yield fin({
                     "provider": "arena",
@@ -356,6 +385,9 @@ async def flux_agent(demande: DemandeAgent):
             memory.add_chat_message(
                 session_id=session, role="assistant", content=complet.strip()
             )
+            # Le tour est alle jusqu'au bout : sa duree est une mesure.
+            noter_mesure(Mesure(nom=f"chat {intention}", voie=voie, etat=ETAT_MESURE,
+                                secondes=time.perf_counter() - depart))
             yield fin({
                 "provider": "arena",
                 "model": fast_provider.model_name,
@@ -364,6 +396,12 @@ async def flux_agent(demande: DemandeAgent):
 
         except Exception as souci:  # noqa: BLE001 - le flux doit finir proprement
             logger.error("Flux PWA interrompu : %s", souci, exc_info=True)
+            # Un tour interrompu n'a pas de duree : il entre au rapport comme
+            # INDISPONIBLE avec sa raison, jamais avec les secondes ecoulees —
+            # elles mesureraient l'echec, pas la reponse.
+            noter_mesure(Mesure(nom="chat interrompu", voie=voie_pour(None),
+                                etat=ETAT_INDISPONIBLE,
+                                detail=f"{type(souci).__name__}: {souci}"[:120]))
             yield erreur(f"ARENA n'a pas pu terminer : {souci}")
 
     return StreamingResponse(flux(), media_type="text/event-stream")

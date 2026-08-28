@@ -11,9 +11,10 @@ réglage (`docs/DECISIONS.md`, DEC-0002).
 
 **`docs/CURRENT_TASK.md` — réveiller ce qui dort.** Neuf modules réels étaient
 écrits, testés, et **aucune phrase du propriétaire ne les faisait tourner**.
-Sept sont branchés (la vidéo à l'agent vidéo, les documents au chemin
-documentaire, le sens et la consolidation à la mémoire du chat, les voies à
-l'orchestrateur) ; **deux dorment encore**. La mission est de les brancher, un par
+Huit sont branchés (la vidéo à l'agent vidéo, les documents au chemin
+documentaire, le sens et la consolidation à la mémoire du chat, les voies et
+leurs mesures à l'exécution) ; **un seul dort encore**, et son sort est une
+question pour le propriétaire. La mission est de les brancher, un par
 un, chacun sur le bon agent.
 
 N'ouvre pas une nouvelle phase du plan, n'intègre rien de nouveau : il donnera
@@ -109,6 +110,7 @@ l'interface ne peut pas être regardée. Toute mesure qui en dépend se rapporte
 | `tools/` | recherche, documents, vidéo, code |
 | `docs/PLAN_ARENA_OS.md` | le plan des 21 phases |
 
-**Ce qui existe mais n'est branché nulle part** : deux modules réels et testés,
+**Ce qui existe mais n'est branché nulle part** : un seul module, et c'est une
+question plus qu'un chantier —
 listés et ordonnés dans `docs/CURRENT_TASK.md`. Mesuré, pas estimé —
 `python scripts/orphelins.py`. C'est la mission en cours.

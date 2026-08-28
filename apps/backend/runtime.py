@@ -29,6 +29,7 @@ from core.connectors.devis import DevisConnector
 from core.connectors.galsen import GalsenConnector
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.wan2gp import Wan2GPConnector
+from core.execution.mesures import Rapport
 from core.execution.travaux import FileDeTravaux
 from core.memory.memory_manager import MemoryManager
 from core.memory.personnelle import MemoirePersonnelle
@@ -102,6 +103,13 @@ graphrag_tool = GraphRAGTool()
 # et c'est ce qui permet a « ou en est ma video ? » de repondre sans que le chat
 # attende la carte.
 travaux = FileDeTravaux()
+
+# --- Mesures d'execution ------------------------------------------------------
+# Les voies declarent des cibles ; ce rapport garde ce que les reponses ont
+# reellement coute, pour que les deux soient confrontables. Il est lu par
+# `/api/observability`. Une scene qui n'a pas tourne n'y entre pas avec un
+# zero : elle n'y entre pas du tout, et le rapport le dit.
+mesures_execution = Rapport()
 
 # --- Modeles ------------------------------------------------------------------
 fast_provider = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_RAPIDE)
