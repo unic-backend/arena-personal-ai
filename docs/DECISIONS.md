@@ -781,3 +781,111 @@ de la carte graphique du propriétaire pour un résultat probablement à
 refaire — exactement le problème que `Hell-Grind-AIGC-Skill` documente
 avoir rencontré en production réelle, et exactement ce que ce gate empêche
 maintenant, avant le premier appel.
+
+---
+
+## DEC-0016 : GitHub Spec Kit — refusé, un problème déjà réglé et hors du métier d'ARENA
+
+*Demandé le 29/08/2026 : intégrer `github/spec-kit` comme « capacité active
+de développement et d'ingénierie » d'ARENA — un cycle
+spécifier → planifier → découper en tâches → implémenter → converger,
+câblé dans l'orchestrateur, pour qu'ARENA « développe et maintienne
+elle-même et d'autres projets logiciels ».*
+
+### Ce que le dépôt contient vraiment
+
+Cloné et inspecté fichier par fichier : `github/spec-kit`, MIT
+(Copyright GitHub, Inc.), 1.0.0, actif. `src/specify_cli` (≈ 55 000 lignes)
++ des dizaines d'intégrations d'agents (Claude Code, Copilot, Cursor,
+Windsurf, Codex...) + un système d'extensions/presets/bundles.
+
+**Ce que c'est réellement, dans les mots du dépôt lui-même** — le README :
+
+> *« Launch your coding agent in the project directory, then: 0. Establish
+> your project principles (`/speckit-constitution`)... 1. Specify... 2.
+> Plan... 3. Break down... 4. Implement... 5. Converge... »*
+
+et l'extension bug, sur son propre mécanisme :
+
+> *« This extension delivers an opinionated, repeatable bug workflow that
+> **any AI coding agent can drive**. »*
+
+Vérifié en lisant sa commande `implement` (223 lignes, dans
+templates/commands/ de Spec Kit) : ce n'est
+pas un moteur — c'est un **prompt**, un texte d'instructions que l'agent de
+codage **déjà présent dans la session de l'humain** (Claude Code, Copilot...)
+suit lui-même, avec **ses propres outils** (lire, écrire, exécuter, tester),
+sous **la même supervision humaine que n'importe quelle session de codage**.
+Spec Kit ne contient aucun exécuteur autonome : `specify_cli` scaffold des
+fichiers et des commandes ; c'est l'agent de codage — piloté par un humain —
+qui fait le travail. Exactement ce que cette session (Claude Code, sur ce
+dépôt, sous ta revue via pull request) fait déjà.
+
+### Ce qu'ARENA a déjà, vérifié avant d'écrire une ligne
+
+Cette même session a déjà tranché, il y a quelques échanges, la question
+que ce dépôt repose sous un autre nom :
+
+- **DEC-0014 (Live-SWE-agent, 29/08/2026)** a déjà refusé qu'ARENA modifie
+  du code de façon autonome — « une garde qui commettrait des correctifs ou
+  ouvrirait des pull requests elle-même contournerait exactement la
+  garantie que CLAUDE.md pose comme non négociable ». `core/guardian/`
+  DÉCOUVRE et RAPPORTE, ne MODIFIE jamais.
+- **`core/actions/resultat.py`** interdit déjà la construction d'un
+  `SUCCES` sans preuve — plus strict que la « convergence » de Spec Kit,
+  qui reste une vérification déclarative faite par l'agent, pas une
+  contrainte imposée au type lui-même.
+- **`core/execution/coordination.py` (DEC-0011)** suit déjà un état de
+  tâche à plusieurs étapes, sans rien emprunter à `grok-bot`.
+
+Le §11 de cette mission le dit lui-même : *« If ARENA already has planning;
+task management; reasoning; testing; auditing; convergence — do not build
+duplicate competing systems. »* C'est exactement la situation.
+
+### La décision
+
+**Refusé.** Pas pour une question de licence (MIT, dépôt actif, rien à
+reprocher) — pour deux raisons qui ne sont pas des préférences de style :
+
+1. **La seule étape de Spec Kit qui n'existe pas déjà dans ARENA sous une
+   forme plus stricte est « implement » — écrire et modifier du code.**
+   Câbler ça dans l'orchestrateur d'ARENA pour qu'elle « développe et
+   maintienne elle-même » romprait la même garantie non négociable que
+   DEC-0014 vient de protéger : *« il ne peut pas lancer les tests, la PR
+   est l'endroit où il voit ce qui entre »* (`CLAUDE.md`). Un ARENA qui
+   écrit et fusionne du code sans passer par une pull request qu'il revoit
+   n'est plus le produit que ce dépôt construit.
+2. **« Développer et maintenir d'autres projets logiciels » n'est pas le
+   métier d'ARENA.** ARENA est l'assistant personnel d'un plaquiste à
+   Dakar — devis, vidéo, documents, réseaux sociaux, courrier, agenda. Rien
+   dans son métier n'appelle une capacité générique d'agent de codage
+   autonome ; en construire une ferait d'ARENA un produit différent de
+   celui que `CLAUDE.md` décrit, sans qu'on le lui ait demandé.
+
+Rien n'est câblé, aucun `.specify/` n'est copié dans le dépôt : une copie
+non branchée serait exactement l'« intégration dormante » que la mission
+elle-même interdit (§10) — mieux vaut refuser proprement que fabriquer un
+dossier qui ne sert à rien.
+
+### Ce qui reste vrai, et ce qui ne l'est pas
+
+Le triage tâche-simple / tâche-moyenne / tâche-complexe que la mission
+décrit (§5) est une bonne discipline — mais c'est déjà celle que cette
+session applique à chaque mission de ce fichier `DECISIONS.md` : un
+correctif d'une ligne se pousse directement, une intégration de dépôt tiers
+passe par audit → décision → implémentation → tests → preuve. Le formaliser
+en templates Markdown dans ce dépôt (à la façon de `docs/REGLES_DE_TRAVAIL.md`)
+est possible, mais ce serait un gabarit pour les sessions futures de Claude
+Code sur CE dépôt — pas une capacité de l'ARENA déployée, et ce n'est pas ce
+que la mission demandait. `SUGGESTION — NON IMPLÉMENTÉE`.
+
+### Ce que ça coûte si c'est faux
+
+Construire un « agent de codage autonome » à l'intérieur d'ARENA sans
+passer par la revue humaine referait exactement l'erreur que le
+propriétaire a déjà cadrée dans `documents/RUNBOOK_PURGE_SECRETS.md` et
+`CLAUDE.md` : une action irréversible (du code fusionné) prise sans qu'il
+ait pu la voir passer. C'est le même coût que DEC-0014 a déjà refusé de
+payer ; refuser une seconde fois, pour un dépôt différent qui pose la même
+question, coûte une session de moins qu'une capacité qu'il faudrait
+démanteler ensuite.
