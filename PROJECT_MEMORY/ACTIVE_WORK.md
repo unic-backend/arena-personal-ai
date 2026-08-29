@@ -7,10 +7,23 @@
 | | |
 |---|---|
 | Branche | `claude/arena-personal-ai-integration-grp0ey` (repartie de `master` à chaque PR fusionnée en cours de session — voir CHANGELOG.md) |
-| `master` | `b672849` (**PR #25 fusionnée**) — PR #22 à #25 toutes fusionnées cette session |
-| Tests | **1899** hors ligne au vert, 21 `integration` désélectionnés |
+| `master` | **PR #29 fusionnée** — PR #26 à #29 toutes fusionnées cette session (gardien DEC-0014 + son correctif d'honnêteté + précision doc sur la mesure 7.2) |
+| Tests | **1937** hors ligne au vert, 21 `integration` désélectionnés |
 | Lint | `ruff` propre |
-| Orphelins | 128 modules, 98 atteints, 30 orphelins (voir `docs/CURRENT_TASK.md` pour ce qui est nommément accepté — `__init__.py` vides et `apps/pwa/server/`) |
+| Orphelins | 133 modules, 102 atteints, 31 orphelins — **tous** `__init__.py` vides ou `apps/pwa/server/` (voir `docs/CURRENT_TASK.md`). Aucun module réel endormi |
+
+## Ce qui vient de se fermer (PR #26 → #29, ce chunk)
+
+| PR | Ce qui change | Statut |
+|---|---|---|
+| **#27** | `core/guardian/` — DÉCOUVRE et RAPPORTE (jamais MODIFIE), DEC-0014 | **FERMÉ** — 25 tests unitaires + 6 API, scénario §27 bout en bout |
+| **#28** | correctif : `verifier_gardien()` distinguait mal « jamais lancé » de « lancé, rien trouvé » | **FERMÉ** — sabotage/restauration prouvés, +5 tests |
+| **#29** | doc seule : la recherche web reste `UNKNOWN` en cloud à cause d'un 403 du bac à sable, pas seulement d'Ollama absent | **FERMÉ** — aucun code touché |
+
+Mesures 7.2 (phase entière) : **toujours `UNKNOWN`**, structurellement — ne pas
+retenter depuis le cloud (Ollama absent, recherche web bloquée par la
+politique réseau du bac à sable). Attend son PC, raison déjà écrite dans
+`docs/REPRISE.md`.
 
 ## Diagnostic machine (`doctor.py`), mesuré le 29/08/2026
 
@@ -46,7 +59,7 @@ mesuré ici, jamais supposé. Le reste (Ollama, Docker, WanGP, MoneyPrinterTurbo
 Gmail/Agenda) reste `[ABS]`/`[CONF]`/`[PANNE]` sur cette machine, comme
 attendu : rien de tout ça n'y a jamais été installé.
 
-## Ce qui est fusionné dans `master` depuis le 28/08/2026 (PR #21 → #25)
+## Ce qui est fusionné dans `master` depuis le 28/08/2026 (PR #21 → #29)
 
 1. `doctor.py` réécrit, puis relié à `sonder()` de chaque connecteur (jamais une seconde logique de santé) ;
 2. **chapitre 9 — l'agenda**, **MoneyPrinterTurbo** branché sur l'agent vidéo ;
@@ -54,7 +67,8 @@ attendu : rien de tout ça n'y a jamais été installé.
 4. **Réseaux sociaux actifs (DEC-0010)** : méthode extraite de `charlie947/social-media-skills`, rien copié ;
 5. **Coordination des tâches (DEC-0011)** : `grok-bot-0.18-reconstructed` refusé (aucune licence) ; `core/execution/coordination.py` écrit sans emprunt ;
 6. **OpenTakeoff — métré de plan PDF (DEC-0012)** : transport MCP stdio, sous-ensemble réel, la limite plafond/mur/rampant corrigée sur indication du propriétaire ;
-7. **Crochets d'exécution + disjoncteur (DEC-0013)** : idée extraite de DeepSeek Harness (Cordis refusé), premier consommateur réel — coupe court après des échecs consécutifs réels sur un service tombé.
+7. **Crochets d'exécution + disjoncteur (DEC-0013)** : idée extraite de DeepSeek Harness (Cordis refusé), premier consommateur réel — coupe court après des échecs consécutifs réels sur un service tombé ;
+8. **Gardien de maintenance (DEC-0014)** : idée extraite de live-swe-agent (aucun code d'agent trouvé, refusé) — DÉCOUVRE et RAPPORTE seulement, jamais MODIFIE (commit/PR autonome explicitement hors périmètre, contraire à la règle non négociable du projet) ; correctif ultérieur pour que `doctor.py` distingue « jamais lancé » de « lancé, rien trouvé ».
 
 ## Ce qui attend une action du PROPRIÉTAIRE
 
