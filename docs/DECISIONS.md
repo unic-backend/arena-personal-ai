@@ -1105,3 +1105,167 @@ un modèle plus lent et plus coûteux pour les questions simples (en
 tokenizer, famille de modèle, infrastructure d'entraînement) tentée sans
 aucun gain de capacité à en attendre — un risque réel pour un bénéfice
 nul. Le coût de ne rien faire ici est zéro : rien n'était redondant.
+
+---
+
+## DEC-0019 : Qwen3-VL — ARENA voit une image, pour de vrai
+
+*Demandé le 29/08/2026 : construire la capacité de vision qui manquait,
+d'après le dépôt officiel `QwenLM/Qwen3-VL`, en respectant le matériel
+local (RTX A2000, 12 Go de VRAM) et l'architecture déjà en place.*
+
+### Ce que le dépôt contient vraiment
+
+Cloné et audité : `github.com/QwenLM/Qwen3-VL` (Apache 2.0). Le dépôt est
+composé de cookbooks (notebooks de demonstration — OCR, document parsing,
+grounding, video understanding, computer use...), d'un outil de fine-tuning
+(`qwen-vl-finetune`), d'un petit paquet utilitaire (`qwen-vl-utils`) et
+d'un demo web. **Aucun poids de modèle** — normal, ils vivent sur
+HuggingFace/ModelScope, pas dans un dépôt Git. Le quickstart officiel
+charge le modèle via `transformers` (`AutoModelForImageTextToText` +
+`AutoProcessor`), pensé pour un GPU de datacenter, pas pour 12 Go de VRAM
+partagés avec deux autres modèles déjà installés.
+
+**Six tailles publiées** (2B, 4B, 8B, 30B-A3B MoE, 32B, 235B-A22B MoE),
+chacune en édition Instruct et Thinking (raisonnement prolongé). Le plus
+gros modèle n'est pas retenu par défaut — la mission le demandait
+explicitement.
+
+### Le choix : Ollama sert Qwen3-VL, pas `transformers`
+
+Vérifié avant de choisir, pas supposé : `ollama.com/library/qwen3-vl`
+publie des tags GGUF prêts à l'emploi — `qwen3-vl:4b` (4,44 Md de
+paramètres, quantification Q4_K_M, **3,3 Go** de téléchargement) et
+`qwen3-vl:8b-instruct` (8,77 Md, Q4_K_M, **6,1 Go**), tous deux avec un
+contexte de 256K et une entrée texte+image.
+
+**Retenu : `qwen3-vl:4b`.** Ollama est déjà « le défaut, le repli, et le
+seul chemin autorisé » pour tout ce qui est local dans ce projet
+(`core/models/routeur.py`) — vendre `transformers`/`qwen-vl-utils` comme
+un second moteur d'inférence à côté d'Ollama aurait dupliqué toute
+l'infrastructure de chargement de modèle pour un seul cas d'usage. Le 4B
+laisse une marge confortable à côté de `qwen2.5-coder:14b` et `qwen3.5:9b`
+sur la même carte ; le 8B (`VISION_LOCAL_MODEL=qwen3-vl:8b-instruct`) reste
+un réglage possible si sa machine a la marge — jamais le défaut, comme
+demandé.
+
+**Pas de palier cloud.** `GroqProvider`/`DeepInfraProvider` ne servent
+aucun modèle de vision dans ce projet — les y faire transiter aurait
+répondu sur le texte seul, en perdant l'image en silence. Vision reste
+donc strictement locale ; un palier distant reste `SUGGESTION — NON
+IMPLÉMENTÉE` si Groq/DeepInfra proposent un jour un modèle de vision et
+que le propriétaire le demande.
+
+### Ce qu'ARENA avait déjà, vérifié avant d'écrire une ligne
+
+Une image jointe à la conversation était **rejetée d'entrée** :
+`apps/backend/pieces_jointes.py` ne reconnaît que des formats texte
+(`tools/documents/reader.py` : PDF, DOCX, TXT, MD, CSV — utilisé aussi par
+LightRAG/GraphRAG, qui n'acceptent que du texte). Une photo tombait donc en
+`NON_PRIS_EN_CHARGE`, sans faire tomber la conversation, mais sans jamais
+être comprise non plus.
+
+Autre défaut trouvé en auditant, distinct du premier : quand un agent
+spécialisé était choisi (`AGENTS_SPECIALISES`), la passerelle PWA
+construisait un `ChatRequest` **sans les pièces jointes** — même une fois
+le format image reconnu, l'image ne serait jamais arrivée jusqu'à l'agent.
+Corrigé au même endroit (`apps/backend/routers/pwa_gateway.py`).
+
+### Ce qui est construit : un chemin réel, de la phrase au modèle
+
+1. **`apps/backend/pieces_jointes.py`** — une image (`.jpg/.jpeg/.png/.webp/.gif`)
+   ne passe plus par `tools/documents/reader.py` (qui resterait
+   text-only, pour ne pas faire dériver LightRAG/GraphRAG) : ses octets
+   sont encodés en base64 **directement en mémoire**, sans jamais toucher
+   le disque — plus stricte que la règle de vie privée déjà en place pour
+   un document (`PieceJointe.image_base64`, exclu de `to_dict()`).
+2. **`core/models/ollama_provider.py`** — `OllamaProvider.generate()` gagne
+   un paramètre optionnel `images` (base64, format `/api/generate`) ; le
+   contexte passe de 4096 à 8192 jetons uniquement quand une image est
+   présente. Rétrocompatible : tous les appelants existants n'y touchent
+   pas.
+3. **`agents/vision/vision_agent.py`** — `VisionAgent` : sans image jointe,
+   il le dit et ne devine rien ; Ollama éteint, il le dit
+   (`NOT_CONFIGURED`) ; le modèle de vision non installé (Ollama refuse la
+   requête), il le dit avec la commande `ollama pull qwen3-vl:4b` ; une
+   consigne écrite sur l'image elle-même est traitée comme une donnée,
+   jamais comme un ordre — même discipline que pour un document joint.
+4. **Orchestrateur** — nouvelle intention `VISION` (« analyse cette
+   image », « lis le texte de cette image », « analyse ce plan de
+   construction »...), testée avant le métier pour la même raison que la
+   vidéo : le sujet d'une photo est souvent le chantier lui-même. Voie
+   `PROFONDE` (`core/execution/voies.py`) : une image coûte plus cher
+   qu'un tour de texte.
+5. **`scripts/doctor.py`** — `Modele de vision` rejoint les trois autres
+   modèles déjà vérifiés au démarrage (`verifier_modele`, réutilisé tel
+   quel, aucune seconde logique de santé).
+
+Chemin réel : *phrase → `VISION` (mots-clés ou modèle) → `vision_agent.run()`
+→ pièces jointes filtrées aux images → `OllamaProvider.generate(images=...)`
+→ réponse*.
+
+### La preuve
+
+```
+python -m ruff check .      → All checks passed!
+python -m pytest tests/ -q  → 2006 passed, 21 deselected (1973 avant, +33)
+python scripts/orphelins.py → 132 modules, 104 atteints (agents.vision.vision_agent atteint,
+                               seul agents.vision.__init__ orphelin — un marqueur de paquet)
+python scripts/doctor.py    → [PANNE] Modele de vision  qwen3-vl:4b : indeterminable,
+                               Ollama ne repond pas (mesuré sur cette machine cloud —
+                               honnête, pas un `[OK]` inventé)
+```
+
+Deux sabotages :
+- Le gate « sans image, rien ne part » dans `VisionAgent.run()` remplacé
+  par `if False:` → les 4 tests de `TestSansImage` tombent tous. Restauré,
+  revérifié vert.
+- Le passage de `attachments` dans `pwa_gateway.py` retiré → le nouveau
+  test `test_les_pieces_jointes_atteignent_un_agent_specialise` tombe avec
+  `[] == ['<identifiant>']` — exactement le défaut trouvé en auditant.
+  Restauré, revérifié vert.
+
+### Ce qui n'a pas pu être mesuré, et pourquoi
+
+Cette session tourne dans le cloud, sans Ollama ni GPU (comme pour chaque
+capacité locale de ce projet). Ce qui suit reste `NON VÉRIFIÉ` tant que ce
+n'est pas lancé chez le propriétaire :
+
+- le chargement réel de `qwen3-vl:4b`, son temps de démarrage et sa
+  consommation de VRAM mesurée (le calcul ci-dessus vient de la fiche
+  publiée par Ollama, pas d'une mesure sur sa carte) ;
+- la latence d'une inférence réelle, avec une vraie image ;
+- la qualité des réponses (description, OCR, plan de construction) sur des
+  photos de chantier réelles ;
+- la compréhension vidéo de Qwen3-VL (§9 de la mission) — non implémentée :
+  aucun mécanisme d'extraction de trame n'existe côté ARENA, et l'ajouter
+  sans pouvoir mesurer le coût réel (VRAM, latence) sur cette machine
+  aurait été deviner plutôt que construire. `SUGGESTION — NON
+  IMPLÉMENTÉE`.
+
+`python scripts/mesurer_performances.py` (phase 7.2, déjà `UNKNOWN` pour
+les mêmes raisons que le reste de l'inférence) est l'endroit naturel où
+ajouter une scène de vision, une fois qu'elle peut tourner chez lui.
+
+### Licence et provenance
+
+Apache 2.0 (Qwen3-VL, dépôt officiel Alibaba/QwenLM). **Aucun fichier du
+dépôt n'est copié** : ni les cookbooks, ni `qwen-vl-utils`, ni le code de
+fine-tuning — rien de tout cela n'est nécessaire une fois qu'Ollama sert le
+modèle. Le seul artefact qui entre dans ARENA est le **nom du tag**
+(`qwen3-vl:4b`), une chaîne de configuration, pas du code réutilisé. Les
+poids eux-mêmes ne transitent jamais par ce dépôt Git : ils sont
+téléchargés par Ollama, chez le propriétaire, au moment du
+`ollama pull`.
+
+### Ce que ça coûte si c'est faux
+
+Un mauvais choix de taille de modèle aurait deux coûts possibles, opposés :
+trop gros, il ne charge pas sur 12 Go à côté des deux autres modèles et
+`doctor.py` le dirait en `[PANNE]` — capacité indisponible, pas dangereuse ;
+trop petit et de mauvaise qualité sur les plans de construction, il
+donnerait une lecture erronée d'un dessin de chantier reprise dans un
+devis. C'est pourquoi la description d'une image n'est **jamais** injectée
+automatiquement dans une réponse commerciale sans qu'il l'ait demandée —
+`VISION` reste une intention explicite, jamais un enrichissement
+silencieux d'une autre.

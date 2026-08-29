@@ -5,6 +5,8 @@ ses devis, ses plans et ses courriers de clients ne doivent pas s'accumuler
 dans un dossier que personne ne surveille.
 """
 
+import base64
+
 import pytest
 
 from apps.backend.pieces_jointes import (
@@ -221,3 +223,73 @@ def test_la_forme_transportable_dit_l_etat_reel(depot):
     assert corps["status"] == "NON_PRIS_EN_CHARGE"
     assert corps["readable"] is False
     assert corps["reason"]
+
+
+# --- Les images (DEC-0019) -----------------------------------------------------
+
+OCTETS_IMAGE = b"\x89PNG\r\n\x1a\n" + b"faux-png-mais-suffit-pour-le-test"
+
+
+@pytest.mark.parametrize("nom", ["photo.jpg", "photo.jpeg", "plan.png", "chantier.webp", "schema.gif"])
+def test_une_image_est_lue_sans_toucher_au_texte(depot, nom):
+    piece = depot.deposer(nom, OCTETS_IMAGE)
+
+    assert piece.statut == "LU"
+    assert piece.lisible is True
+    assert piece.est_image is True
+    assert piece.texte == ""
+
+
+def test_une_image_est_encodee_en_base64(depot):
+    piece = depot.deposer("plan.png", OCTETS_IMAGE)
+
+    assert base64.b64decode(piece.image_base64) == OCTETS_IMAGE
+
+
+def test_une_image_ne_touche_jamais_le_disque(depot, monkeypatch):
+    """Meme regle de vie privee que pour un document — mais une image n'a meme
+    pas besoin d'un aller-retour par le disque : rien ne l'ecrit."""
+    import tempfile as tempfile_module
+
+    appels = []
+    monkeypatch.setattr(
+        "apps.backend.pieces_jointes.tempfile.mkdtemp",
+        lambda *a, **k: appels.append(1) or tempfile_module.mkdtemp(*a, **k),
+    )
+
+    depot.deposer("plan.png", OCTETS_IMAGE)
+
+    assert appels == []
+
+
+def test_une_image_trop_grosse_est_refusee():
+    petit = DepotPiecesJointes(taille_max=10)
+
+    piece = petit.deposer("plan.png", OCTETS_IMAGE)
+
+    assert piece.statut == "ECHEC"
+    assert "trop volumineux" in piece.raison
+    assert piece.est_image is False
+
+
+def test_l_image_n_est_pas_dans_la_forme_transportable(depot):
+    """Meme regle que le texte : elle ne fait que des allers-retours inutiles."""
+    piece = depot.deposer("plan.png", OCTETS_IMAGE)
+
+    assert "image_base64" not in piece.to_dict()
+    assert piece.image_base64 not in str(piece.to_dict())
+
+
+def test_la_forme_transportable_distingue_image_et_document(depot):
+    image = depot.deposer("plan.png", OCTETS_IMAGE).to_dict()
+    document = depot.deposer("devis.txt", TEXTE).to_dict()
+
+    assert image["nature"] == "image"
+    assert document["nature"] == "document"
+
+
+def test_les_formats_image_apparaissent_dans_le_refus(depot):
+    """Un format vraiment inconnu doit citer les images comme lisibles aussi."""
+    piece = depot.deposer("video.mp4", b"contenu")
+
+    assert ".png" in piece.raison

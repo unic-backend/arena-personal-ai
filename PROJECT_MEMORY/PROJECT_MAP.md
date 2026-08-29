@@ -42,14 +42,14 @@ Un module qu'aucun de ces quatre n'atteint est un orphelin :
 | `core/models/` | fournisseur Ollama |
 | `core/security/` | frontière de confiance (`trust.py`) |
 | `core/reasoning/` | moteur Plan & Solve (bac à sable) |
-| `agents/` | 15 agents ; les vivants : orchestrator, plaquiste, video_analyzer, email, fresh_info, coder, researcher… |
+| `agents/` | 16 agents ; les vivants : orchestrator, plaquiste, video_analyzer, vision (DEC-0019), email, fresh_info, coder, researcher… |
 | `apps/backend/` | serveur, routeurs, sécurité, prompts, studio |
 | `apps/pwa/` | son interface (compilée) — `apps/pwa/server/` (second serveur mort) supprimé le 29/08/2026, sur sa décision |
 | `tools/` | documents, recherche, vidéo (ffmpeg, sous-titres, audit de prompt DEC-0015), audio, code, rag, navigateur |
 | `config/` | `permissions.yaml`, `permissions_services.yaml`, `unic_plaquiste.yaml` (ses prix) |
 | `scripts/` | `doctor.py`, `orphelins.py`, `mesurer_performances.py`, installateurs |
 | `docs/` | plan, décisions, reprise, règles de travail |
-| `tests/` | 1993 tests (1972 hors ligne + 21 marqués `integration`) |
+| `tests/` | 2027 tests (2006 hors ligne + 21 marqués `integration`) |
 
 ## Les trois documents historiques (autorité, pas mémoire)
 

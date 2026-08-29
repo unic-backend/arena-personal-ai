@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from agents.video_analyzer.video_analyzer_agent import demande_de_suivi
 from apps.backend.config import AGENTS_SPECIALISES, MEDIA_DIR
@@ -40,6 +40,7 @@ from apps.backend.runtime import (
     swe_agent,
     trend_agent,
     video_agent,
+    vision_agent,
 )
 from apps.backend.security import limiter_debit, validate_media_path, verify_api_key
 from apps.backend.studio import lancer_studio
@@ -60,6 +61,7 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = "default"
     video_path: Optional[str] = None
     region: Optional[str] = "Sénégal"
+    attachments: List[str] = Field(default_factory=list)
 
 
 # Formulations par lesquelles l utilisateur reclame les sources. Decision du
@@ -232,6 +234,8 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
                       "agent": "LightRAG"}
     elif intent == "GRAPHRAG":
         result = graphrag_tool.query_global(request.prompt)
+    elif intent == "VISION":
+        result = await vision_agent.run(request.prompt, context={"attachments": request.attachments})
     elif intent == "DEEP_RESEARCH":
         result = await researcher_agent.run(request.prompt)
     elif intent == "CODE_EXECUTION":

@@ -28,6 +28,7 @@ INTENTIONS = {
     "VIDEO_ANALYSIS",
     "EMAIL",
     "SOCIAL",
+    "VISION",
 }
 
 #: Ce qui parle de ses RESEAUX SOCIAUX. Teste avant le metier : « une
@@ -75,6 +76,23 @@ FABRIQUER_VIDEO = (
     "fabrique une video", "monte une vidéo", "monte une video",
     "fais-moi un short", "fais moi un short", "crée un short", "cree un short",
     "génère un short", "genere un short",
+)
+
+#: Analyser une IMAGE — une photo, un plan, une capture d ecran. Distinct de
+#: RAG_DOCS (texte deja indexe) et de VIDEO_ANALYSIS (fichier video) : une
+#: image est comprise directement par le modele de vision (DEC-0019), jamais
+#: par extraction de texte. Teste tot : « analyse cette photo du chantier »
+#: contient « chantier » et partirait sinon chez l assistant devis.
+VISION = (
+    "analyse cette image", "analyse cette photo", "que montre cette image",
+    "que montre cette photo", "que vois-tu sur cette image",
+    "qu'est-ce qu'il y a sur cette photo", "qu'est ce qu'il y a sur cette photo",
+    "lis le texte de cette image", "lis ce qui est ecrit", "lis ce qui est écrit",
+    "extrait le tableau de cette image", "cette capture d'ecran",
+    "cette capture d'écran", "ce screenshot", "analyse ce plan de construction",
+    "analyse ce dessin", "analyse ce schema", "analyse ce schéma",
+    "decris cette image", "décris cette image", "decris cette photo",
+    "décris cette photo", "analyse ce document scanne", "analyse ce document scanné",
 )
 
 #: Preparer le prompt d une scene precise pour WanGP — distinct de FABRIQUER_VIDEO,
@@ -171,6 +189,9 @@ SWE_FIX         : corriger un bug dans un fichier existant.
 REPO_ENGINEERING: travailler sur plusieurs fichiers d'un dépôt à la fois.
 RAG_DOCS        : répondre à partir des documents de l'utilisateur.
 GRAPHRAG        : question sur les liens entre les documents.
+VISION          : comprendre une image, une photo, un plan ou une capture
+                  d'écran — décrire, lire un texte qui y figure (OCR),
+                  extraire un tableau, analyser un dessin ou un schéma.
 
 Attention : parler DE code, DE maths ou D'une erreur n'est pas demander d'en produire.
 « Explique-moi le code de la route » est CHAT, pas CODE_EXECUTION.
@@ -322,6 +343,11 @@ class OrchestratorAgent(BaseAgent):
         # contient « client » sans etre une demande de devis.
         if any(k in text for k in COURRIER):
             return "EMAIL"
+
+        # Analyser une image. Teste AVANT le metier : le sujet d une photo est
+        # souvent le chantier lui-meme, sans etre une demande de devis.
+        if any(k in text for k in VISION):
+            return "VISION"
 
         # Planifier une scene. Teste AVANT FABRIQUER_VIDEO : « prepare » est un
         # verbe partage, et celle-ci est la demande la plus specifique des deux.
