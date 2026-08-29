@@ -30,48 +30,35 @@ providers. »*
 
 ## Les étapes
 
-### Étape 1 — la confidentialité et la configuration — **écrite le 28/08/2026**
+### Étapes 1 à 3 — **faites le 28/08/2026**
 
-Quatre niveaux, la table de ce que chaque régime laisse sortir, et la règle qui
-ne se négocie pas : **un secret ne sort jamais**. 57 tests, 4 sabotages. La
-configuration hybride entre dans `apps/backend/config.py`, sans second système
-de réglages.
+**Étape 1 — la confidentialité et la configuration.** Quatre niveaux, et la
+règle qui ne se négocie pas : **un secret ne sort jamais**. Le doute penche vers
+sa machine. Le contexte joint monte le niveau, jamais l'inverse. La
+configuration entre dans `apps/backend/config.py`, sans second système.
 
-**Le module est écrit et testé, mais encore endormi** : rien ne l'appelle tant
-que l'aiguilleur n'existe pas. C'est la seule ligne du tableau ci-dessous, et
-elle disparaîtra à l'étape 3.
+**Étape 2 — les deux fournisseurs distants.** Groq et DeepInfra parlent le même
+protocole : une seule mécanique partagée, deux configurations. La clé part dans
+l'en-tête et ne revient dans aucune erreur. Sans clé, le fournisseur est
+**absent**, pas en panne.
 
-| # | Module | Ce qu'il doit servir | Où le brancher |
-|---|---|---|---|
-| 1 | `core/models/confidentialite.py` | décider ce qui a le droit de sortir de sa machine | l'aiguilleur (étape 3) |
-| 2 | `core/models/openai_compatible.py` | la mécanique partagée des deux services distants | via les deux fournisseurs |
-| 3 | `core/models/groq_provider.py` | l'inférence rapide | l'aiguilleur (étape 3) |
-| 4 | `core/models/deepinfra_provider.py` | le second service, et le repli du premier | l'aiguilleur (étape 3) |
+**Étape 3 — l'aiguilleur.** Il pose quatre questions dans un ordre qui ne se
+négocie pas : confidentialité → réglage → budget → santé. Puis le repli, chacun
+essayé **une fois** : Groq → DeepInfra → Ollama. Un service qui tombe est mis au
+frais deux minutes. Le repli n'a **pas** lieu après le premier mot — recommencer
+ailleurs ferait lire deux débuts de réponse.
 
-### Étape 2 — les deux fournisseurs distants — **écrite le 28/08/2026**
+Il est branché dans `apps/backend/runtime.py` **à la place** des deux
+fournisseurs : `fast_provider` et `deep_provider` désignent maintenant un
+aiguilleur. Comme il implémente `ModelProvider`, **aucun agent, aucun routeur,
+aucun test n'a eu à changer** — c'est ce que l'abstraction existante permettait.
 
-Une seule mécanique partagée, deux configurations : les deux parlent le
-protocole OpenAI, et deux classes qui se recopieraient seraient deux endroits où
-se tromper sur un en-tête d'authentification.
+Mesure sur la machine de l'assistant : mode `HYBRIDE`, aucun service distant
+configuré (pas de clé), l'aiguilleur retombe sur Ollama. C'est le comportement
+attendu, pas un échec.
 
-Streaming, santé mesurée, délai de connexion court (3 s), latence relevée à
-chaque appel. **La clé ne sort jamais** : elle part dans l'en-tête, et les
-erreurs sont nettoyées avant d'être rapportées. Les jetons comptés viennent du
-service ; absents, ils restent `None`. 33 tests, 3 sabotages.
-
-**Les trois modules sont écrits et testés, mais encore endormis** — ils
-attendent l'aiguilleur.
-
-### Étape 3 — l'aiguilleur *(à écrire)*
-
-Il choisit le fournisseur à partir de quatre choses, dans cet ordre : la
-**confidentialité** (étape 1), le réglage du propriétaire, la **santé** du
-service, et le **budget** restant. Il porte le repli — Groq → DeepInfra →
-Ollama — et il compte ce que le cloud coûte.
-
-Il se branche dans `apps/backend/runtime.py`, à la place des deux fournisseurs
-actuels, pour que le reste d'ARENA ne sache jamais s'il parle à sa machine ou
-au réseau.
+**Aucun module de cette mission ne dort** : `python scripts/orphelins.py` →
+116 modules, 88 atteints, aucun module réel endormi.
 
 ### Étape 4 — l'intégration réelle et la mesure
 
