@@ -94,10 +94,19 @@ préparée, jamais autorisée. **Cela gate le chapitre 8.**
 
 **Phase 7.2 terminee le 2026-08-28 : l instrument existe, les chiffres non.**
 
-python scripts/mesurer_performances.py chronometre les 7 scenes. Lancee sur la
-machine cloud de l assistant : 2 mesurees (recuperation 6,9 ms, outil 0,0 ms),
-5 UNKNOWN - pas de Ollama, pas de recherche web. **Ces chiffres ne comptent
-pas** : la specification demande la machine du proprietaire.
+python scripts/mesurer_performances.py chronometre les 7 scenes. Relancee le
+2026-08-29, meme machine cloud : 2 mesurees (recuperation 4,0 ms, outil
+0,0 ms), 5 UNKNOWN. **Ces chiffres ne comptent pas** : la specification
+demande la machine du proprietaire.
+
+Raison des 5 UNKNOWN, precisee le 2026-08-29 (`ddgs` installe pour verifier) :
+- 4 scenes modele (premier jeton, question simple, normale, complexe) :
+  `ConnectError`, Ollama n existe pas sur cette machine.
+- recherche web : les moteurs que `ddgs` interroge (startpage.com,
+  search.brave.com) rendent `403 Forbidden` via le proxy de sortie de cette
+  machine cloud - une regle du bac a sable, pas une panne reseau a reessayer.
+  Ce n est donc pas seulement Ollama qui manque : la recherche web elle-meme
+  n est mesurable QUE sur son PC, ou l acces internet n est pas filtre ainsi.
 
 A FAIRE DES QUE SON PC EST RALLUME, avant toute autre phase :
     python scripts/mesurer_performances.py
