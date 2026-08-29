@@ -402,6 +402,30 @@ async def test_les_preferences_sont_annoncees_comme_des_preferences():
     assert pwa_gateway.TITRE_PERSONA in complet
 
 
+def test_les_pieces_jointes_atteignent_un_agent_specialise(
+    client, entetes, fournisseur, monkeypatch, depot
+):
+    """Avant ce correctif : un agent specialise recevait un `ChatRequest` sans
+    `attachments` — une image jointe n'atteignait jamais VisionAgent."""
+    fournisseur()
+    piece = depot.deposer("chantier.jpg", b"\x89PNG\r\n\x1a\nfaux-png")
+
+    async def _vision(_demande):
+        return "VISION"
+    monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _vision)
+
+    recu: dict = {}
+
+    async def _resultat(requete, intent=None):
+        recu["attachments"] = requete.attachments
+        return {"response": "Une photo de chantier.", "sources": []}
+    monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+    demander(client, entetes, attachments=[piece.identifiant])
+
+    assert recu["attachments"] == [piece.identifiant]
+
+
 def test_le_persona_n_est_pas_applique_a_un_agent_specialise(
     client, entetes, fournisseur, monkeypatch, caplog
 ):
@@ -721,6 +745,21 @@ def test_un_fichier_non_lu_est_dit_pas_passe_sous_silence(client, entetes, fourn
 
     assert "photo.exe" in faux.systemes[0]
     assert "non lu" in faux.systemes[0]
+
+
+def test_une_image_jointe_est_annoncee_pas_videe_dans_le_texte(
+    client, entetes, fournisseur, chat_direct, depot, memoire_arena
+):
+    """Avant DEC-0019 : `piece.lisible` valait vrai pour une image sans texte,
+    et le bloc entrait vide dans le prompt — ni utile, ni honnete."""
+    piece = depot.deposer("chantier.jpg", b"\x89PNG\r\n\x1a\nfaux-png")
+    faux = fournisseur()
+
+    demander(client, entetes, attachments=[piece.identifiant])
+
+    assert "chantier.jpg" in faux.systemes[0]
+    assert "image jointe" in faux.systemes[0]
+    assert "demande une analyse" in faux.systemes[0].lower()
 
 
 def test_un_fichier_perime_est_dit(client, entetes, fournisseur, chat_direct, memoire_arena,

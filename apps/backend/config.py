@@ -76,6 +76,11 @@ TAILLE_BLOC_ENVOI = 1024 * 1024
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 MODELE_RAPIDE = os.getenv("CODER_LOCAL_MODEL", "qwen2.5-coder:14b")
 MODELE_PROFOND = os.getenv("DEFAULT_LOCAL_MODEL", "qwen3.5:9b")
+# Qwen3-VL 4B (Q4_K_M, ~3,3 Go) : le plus petit variant qui voit encore une
+# image, choisi pour laisser de la place aux deux autres modeles sur 12 Go de
+# VRAM (DEC-0019). Le 8B (~6,1 Go) reste un reglage possible si sa machine a
+# la marge, jamais le defaut.
+MODELE_VISION = os.getenv("VISION_LOCAL_MODEL", "qwen3-vl:4b")
 
 # --- Modeles distants (hybride) -----------------------------------------------
 # Le cloud est arrive le 2026-08-28 (DEC-0009), pour la vitesse et pour rien
@@ -153,5 +158,5 @@ AGENTS_SPECIALISES = frozenset({
     "DEEP_REASONING", "DEEP_RESEARCH", "FRESH_INFO",
     "TREND_SEARCH", "CODE_EXECUTION", "VIDEO_ANALYSIS", "STUDIO",
     "BROWSER", "SWE_FIX", "REPO_ENGINEERING", "RAG_DOCS", "GRAPHRAG",
-    "PLAQUISTE", "EMAIL", "SOCIAL",
+    "PLAQUISTE", "EMAIL", "SOCIAL", "VISION",
 })

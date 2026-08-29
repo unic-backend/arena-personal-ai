@@ -238,6 +238,14 @@ def contenu_pieces(identifiants: List[str]) -> str:
         if not piece.lisible:
             blocs.append(f"- {piece.nom} : non lu ({piece.raison or piece.statut}).")
             continue
+        if piece.est_image:
+            # Une image n'a pas de texte a inclure ici — elle est comprise par
+            # VisionAgent (DEC-0019), jamais decrite depuis ce bloc de texte.
+            # L'annoncer quand meme evite qu'elle disparaisse en silence pour
+            # une conversation qui ne demande pas explicitement une analyse.
+            blocs.append(f"- {piece.nom} : image jointe. Demande une analyse "
+                         "de cette image pour que je la regarde.")
+            continue
         restant = BUDGET_PIECES - total
         if restant <= 0:
             blocs.append(f"- {piece.nom} : non inclus, budget de contexte atteint.")
@@ -374,7 +382,8 @@ async def flux_agent(demande: DemandeAgent):
 
                 async def _repondre():
                     rendu["resultat"] = await dispatch_request(
-                        ChatRequest(prompt=demande.text, session_id=session),
+                        ChatRequest(prompt=demande.text, session_id=session,
+                                   attachments=demande.attachments),
                         intent=intention,
                     )
 

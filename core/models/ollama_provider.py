@@ -1,13 +1,19 @@
 import json
 import logging
 import re
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, List, Optional
 
 import httpx
 
 from core.models.base import ModelProvider
 
 logger = logging.getLogger("usman.ollama")
+
+# Une image occupe bien plus de contexte qu'une ligne de texte : le budget
+# fixe (4096) pris pour la vitesse en conversation couperait la description
+# du modele avant qu'elle ne commence. 8192 reste raisonnable sur 12 Go de
+# VRAM pour une seule image ; mesure, jamais suppose (DEC-0019).
+NUM_CTX_VISION = 8192
 
 class OllamaProvider(ModelProvider):
     def __init__(self, base_url: str = "http://127.0.0.1:11434", model_name: str = "qwen3.5:9b"):
@@ -22,8 +28,17 @@ class OllamaProvider(ModelProvider):
         except Exception:
             return False
 
-    async def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
-        """Génération complète non-streamée (avec keep_alive de 30 minutes)."""
+    async def generate(
+        self, prompt: str, system_prompt: Optional[str] = None,
+        images: Optional[List[str]] = None,
+    ) -> str:
+        """Génération complète non-streamée (avec keep_alive de 30 minutes).
+
+        `images` : des images encodees en base64 (sans prefixe `data:`), au
+        format attendu par `/api/generate`. Ignore par tout modele qui ne sait
+        pas voir — seul un modele de vision (DEC-0019) doit recevoir ce
+        parametre.
+        """
         url = f"{self.base_url}/api/generate"
         payload = {
             "model": self.model_name,
@@ -31,11 +46,13 @@ class OllamaProvider(ModelProvider):
             "stream": False,
             "keep_alive": "30m",  # Garde le modèle chaud dans la VRAM
             "options": {
-                "num_ctx": 4096   # Contexte optimisé pour la vitesse
+                "num_ctx": NUM_CTX_VISION if images else 4096
             }
         }
         if system_prompt:
             payload["system"] = system_prompt
+        if images:
+            payload["images"] = images
 
         long_timeout = httpx.Timeout(180.0, connect=10.0)
         async with httpx.AsyncClient(timeout=long_timeout) as client:

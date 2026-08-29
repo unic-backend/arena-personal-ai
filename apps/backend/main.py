@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from apps.backend.config import ALLOWED_ORIGINS, BASE_DIR, OLLAMA_URL, RENDERED_DIR
 from apps.backend.routers import actions, chat, gardien, media, openai_gateway, pwa_gateway
-from apps.backend.runtime import deep_provider, fast_provider
+from apps.backend.runtime import deep_provider, fast_provider, ollama_vision
 from apps.backend.security import cle_presentee_valide
 from apps.backend.verification_modeles import verifier_modeles
 
@@ -36,7 +36,10 @@ async def au_demarrage(_: FastAPI):
     `lifespan` plutot que `on_event` : ce dernier est deprecie par FastAPI et
     laissait un avertissement a chaque execution de la suite.
     """
-    await verifier_modeles([fast_provider.model_name, deep_provider.model_name], OLLAMA_URL)
+    await verifier_modeles(
+        [fast_provider.model_name, deep_provider.model_name, ollama_vision.model_name],
+        OLLAMA_URL,
+    )
     yield
 
 

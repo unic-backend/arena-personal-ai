@@ -7,12 +7,12 @@
 | | |
 |---|---|
 | Branche | `claude/arena-personal-ai-integration-grp0ey` (repartie de `master` à chaque PR fusionnée en cours de session — voir CHANGELOG.md) |
-| `master` | PR #26 à #31 fusionnées, DEC-0015 (Hell-Grind-AIGC-Skill) prête à pousser |
-| Tests | **1972** hors ligne au vert, 21 `integration` désélectionnés |
+| `master` | PR #26 à #33 fusionnées, DEC-0019 (Qwen3-VL) prête à pousser |
+| Tests | **2006** hors ligne au vert, 21 `integration` désélectionnés |
 | Lint | `ruff` propre |
-| Orphelins | 130 modules, 103 atteints, 27 orphelins — **tous** `__init__.py` vides. Aucun module réel endormi (`apps/pwa/server/` supprimé le 29/08/2026) |
+| Orphelins | 132 modules, 104 atteints, 28 orphelins — **tous** `__init__.py` vides. Aucun module réel endormi (`apps/pwa/server/` supprimé le 29/08/2026) |
 
-## Ce qui vient de se fermer (PR #26 → #31, ce chunk)
+## Ce qui vient de se fermer (PR #26 → #33, ce chunk)
 
 | PR | Ce qui change | Statut |
 |---|---|---|
@@ -20,13 +20,16 @@
 | **#28** | correctif : `verifier_gardien()` distinguait mal « jamais lancé » de « lancé, rien trouvé » | **FERMÉ** — sabotage/restauration prouvés, +5 tests |
 | **#29** | doc seule : la recherche web reste `UNKNOWN` en cloud à cause d'un 403 du bac à sable, pas seulement d'Ollama absent | **FERMÉ** — aucun code touché |
 | **#30** | `apps/pwa/server/` supprimé (4 fichiers, 482 lignes) — décidé par le propriétaire depuis son téléphone | **FERMÉ** — 27 orphelins restants, tous `__init__.py` vides |
-| **#31** | correctif interface : `.writing-text` (composeur + édition) invisible en mode clair | **FERMÉ** — build Vite réel vérifié, reste un `npm run build` chez lui |
-| *(suivante)* | DEC-0015 — `tools/video/prompt_audit.py` + `VideoAnalyzerAgent.planifier_scene()`, premier appelant réel de `wan2gp` | **FERMÉ** — 35 tests (+20 audit, +15 branchement), sabotage prouvé |
+| **#31** | correctif interface `.writing-text` (mode clair) + DEC-0015 (audit de prompt WanGP) + DEC-0016 (Spec Kit refusé) — bundlées, PR fusionnée avant que chaque commit ait sa propre PR | **FERMÉ** — 35 tests, sabotage prouvé |
+| **#32** | DEC-0017 — Agent-Reach refusé (sonde/installateur, rien à intégrer) ; `DeepResearcherAgent` corrigé : 3 recherches en séquence → en parallèle | **FERMÉ** — +1 test, sabotage (0,90 s séquentiel → 0,35 s parallèle) |
+| **#33** | DEC-0018 — consolidation des modèles auditée, rien à fusionner (doc seule) | **FERMÉ** — aucun code touché |
+| *(suivante)* | DEC-0019 — Qwen3-VL : `agents/vision/vision_agent.py`, intention `VISION`, `OllamaProvider.generate(images=...)`, pièces jointes image (jpg/png/webp/gif) | **FERMÉ** — 33 tests, 2 sabotages |
 
 Mesures 7.2 (phase entière) : **toujours `UNKNOWN`**, structurellement — ne pas
 retenter depuis le cloud (Ollama absent, recherche web bloquée par la
 politique réseau du bac à sable). Attend son PC, raison déjà écrite dans
-`docs/REPRISE.md`.
+`docs/REPRISE.md`. La vision (DEC-0019) attend la même chose : `qwen3-vl:4b`
+n'a jamais tourné, aucune image réelle n'a été analysée.
 
 ## Diagnostic machine (`doctor.py`), mesuré le 29/08/2026
 
@@ -62,7 +65,7 @@ mesuré ici, jamais supposé. Le reste (Ollama, Docker, WanGP, MoneyPrinterTurbo
 Gmail/Agenda) reste `[ABS]`/`[CONF]`/`[PANNE]` sur cette machine, comme
 attendu : rien de tout ça n'y a jamais été installé.
 
-## Ce qui est fusionné dans `master` depuis le 28/08/2026 (PR #21 → #31)
+## Ce qui est fusionné dans `master` depuis le 28/08/2026 (PR #21 → #33)
 
 1. `doctor.py` réécrit, puis relié à `sonder()` de chaque connecteur (jamais une seconde logique de santé) ;
 2. **chapitre 9 — l'agenda**, **MoneyPrinterTurbo** branché sur l'agent vidéo ;
@@ -73,7 +76,11 @@ attendu : rien de tout ça n'y a jamais été installé.
 7. **Crochets d'exécution + disjoncteur (DEC-0013)** : idée extraite de DeepSeek Harness (Cordis refusé), premier consommateur réel — coupe court après des échecs consécutifs réels sur un service tombé ;
 8. **Gardien de maintenance (DEC-0014)** : idée extraite de live-swe-agent (aucun code d'agent trouvé, refusé) — DÉCOUVRE et RAPPORTE seulement, jamais MODIFIE (commit/PR autonome explicitement hors périmètre, contraire à la règle non négociable du projet) ; correctif ultérieur pour que `doctor.py` distingue « jamais lancé » de « lancé, rien trouvé » ;
 9. `apps/pwa/server/` supprimé (décision du propriétaire) ; correctif `.writing-text` invisible en mode clair sur l'interface ;
-10. **Hell-Grind-AIGC-Skill (DEC-0015)** : `tools/video/prompt_audit.py` (audit déterministe de prompt, méthode extraite) + `VideoAnalyzerAgent.planifier_scene()` — premier appelant réel de `wan2gp.generer`, jamais invoqué si l'audit trouve une erreur bloquante.
+10. **Hell-Grind-AIGC-Skill (DEC-0015)** : `tools/video/prompt_audit.py` (audit déterministe de prompt, méthode extraite) + `VideoAnalyzerAgent.planifier_scene()` — premier appelant réel de `wan2gp.generer`, jamais invoqué si l'audit trouve une erreur bloquante ;
+11. **GitHub Spec Kit (DEC-0016)** refusé — scaffolding de prompts pour agent de codage humain-supervisé, aucun moteur autonome ; câbler « implement » romprait la garantie PR de CLAUDE.md ;
+12. **Agent-Reach (DEC-0017)** refusé — sonde/installateur pour agent de codage (yt-dlp, feedparser, Jina Reader, Exa), rien d'unique ; `DeepResearcherAgent` corrigé à la place : 3 recherches séquentielles → parallèles ;
+13. **Consolidation des modèles (DEC-0018)** : inventaire audité, rien à fusionner — léger/profond sont des paliers de coût, pas des doublons ;
+14. **Qwen3-VL — vision (DEC-0019)** : `agents/vision/vision_agent.py`, intention `VISION`, `qwen3-vl:4b` servi par Ollama (pas `transformers`), pièces jointes image encodées en mémoire jamais sur disque ; correctif au passage : `pwa_gateway.py` ne transmettait aucune pièce jointe à un agent spécialisé.
 
 ## Ce qui attend une action du PROPRIÉTAIRE
 
@@ -86,6 +93,7 @@ attendu : rien de tout ça n'y a jamais été installé.
 | **OpenTakeoff** | `scripts/installer_opentakeoff.ps1`, puis `OPENTAKEOFF_MCP_DIR` dans `.env` — vérifié bout en bout dans cette session (ci-dessus), il ne reste que le geste chez lui |
 | **Interface (PWA)** | `npm run build` dans `apps/pwa/` pour que le correctif du mode clair (PR #31) serve réellement |
 | **WanGP** | lancer `python wgp.py --mcp --mcp-transport streamable-http ...` pour que `planifier_scene` (DEC-0015) génère vraiment une scène |
+| **Vision (Qwen3-VL)** | `ollama pull qwen3-vl:4b` pour que `VisionAgent` (DEC-0019) analyse vraiment une image — jamais chargé ni mesuré dans cette session (pas de GPU ici) |
 | **Mesures 7.2** | `python -m pytest -m integration` et `python scripts/mesurer_performances.py` sur son PC |
 
 ## Prochaine action recommandée

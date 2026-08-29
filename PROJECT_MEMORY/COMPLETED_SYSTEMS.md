@@ -21,12 +21,13 @@ OpenTakeoff a pu être construit et interrogé pour de vrai — voir sa ligne
 dans le tableau plus bas, et `PROJECT_MEMORY/ACTIVE_WORK.md` pour le rapport
 `doctor.py` complet, avant/après construction.
 
-Preuve du 2026-08-29 (fin de session, apres DEC-0015) :
+Preuve du 2026-08-29 (fin de session, apres DEC-0019) :
 ```
 python -m ruff check .      → All checks passed!
-python -m pytest tests/ -q  → 1972 passed, 21 deselected
-python scripts/orphelins.py → 130 modules, 103 atteints, 27 orphelins (tous des __init__.py — apps/pwa/server/ supprime)
-python scripts/doctor.py    → sur cette machine (cloud), 12 capacité(s) indisponible(s) par defaut
+python -m pytest tests/ -q  → 2006 passed, 21 deselected
+python scripts/orphelins.py → 132 modules, 104 atteints, 28 orphelins (tous des __init__.py — apps/pwa/server/ supprime)
+python scripts/doctor.py    → sur cette machine (cloud), 13 capacité(s) indisponible(s) par defaut
+                               (Modele de vision inclus — qwen3-vl:4b, jamais mesure sans Ollama)
 ```
 
 Preuve du 2026-08-28 (historique) :
@@ -65,6 +66,9 @@ python scripts/orphelins.py → 110 modules, 82 atteints, aucun module réel end
 | `core/connectors/wan2gp.py` | **75%** | couvert | **NON VÉRIFIÉ** — WanGP jamais lancé. Premier appelant reel depuis DEC-0015 (`planifier_scene`), mais toujours jamais invoque contre le vrai service |
 | `tools/video/prompt_audit.py` | **100% LOGIQUE VÉRIFIÉE** | 20 | sans objet (pur, aucun reseau) |
 | `agents/video_analyzer/video_analyzer_agent.py` (`planifier_scene`) | **100% LOGIQUE VÉRIFIÉE** | 15 (branchement + sabotage) | **NON VÉRIFIÉ** avec le vrai WanGP — le gate d'audit avant l'appel est prouve, pas la generation elle-meme |
+| `agents/vision/vision_agent.py` (DEC-0019) | **100% LOGIQUE VÉRIFIÉE** | 11 + branchement pwa_gateway/chat | **NON VÉRIFIÉ** — qwen3-vl:4b jamais charge, aucune image reelle analysee, latence/VRAM jamais mesurees |
+| `core/models/ollama_provider.py` (`images=`) | **100% LOGIQUE VÉRIFIÉE** | 5 (offline, requete verifiee) | sans objet pour la requete ; l'inference elle-meme reste **NON VÉRIFIÉE** |
+| `apps/backend/pieces_jointes.py` (images) | **100% LOGIQUE VÉRIFIÉE** | 8 nouveaux (37 au total) | sans objet (local, deterministe) |
 | `core/connectors/suivi_video.py` | **90%** | 8 + 31 (agent) | **NON VÉRIFIÉ** avec un vrai générateur |
 | `core/connectors/galsen.py` | **90%** | couvert | mesuré une fois chez lui : 558 communes |
 | `tools/documents/{indexer,inventory}` | **75%** | 18 + 19 + 17 | **NON VÉRIFIÉ** — exige Ollama + LightRAG |

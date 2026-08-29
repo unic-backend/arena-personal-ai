@@ -81,6 +81,7 @@ async def test_un_modele_injoignable_declenche_le_repli(fake_provider):
         ("Donne-moi une idée de vidéo pour TikTok", "TREND_SEARCH"),
         ("Fais une recherche approfondie sur l IA", "DEEP_RESEARCH"),
         ("Découpe cette vidéo en short vertical", "VIDEO_ANALYSIS"),
+        ("Analyse cette photo du chantier", "VISION"),
         ("Parle-moi un peu de mon projet", "CHAT"),
     ],
 )

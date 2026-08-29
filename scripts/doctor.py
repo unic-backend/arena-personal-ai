@@ -483,6 +483,7 @@ def diagnostiquer() -> Rapport:
     rapide = os.getenv("CODER_LOCAL_MODEL", "qwen2.5-coder:14b")
     profond = os.getenv("DEFAULT_LOCAL_MODEL", "qwen3.5:9b")
     embeddings = os.getenv("EMBEDDINGS_LOCAL_MODEL", "nomic-embed-text")
+    vision = os.getenv("VISION_LOCAL_MODEL", "qwen3-vl:4b")
 
     return Rapport([
         verifier_python(),
@@ -494,6 +495,7 @@ def diagnostiquer() -> Rapport:
         verifier_modele("Modele rapide", rapide, installes, essentiel=True),
         verifier_modele("Modele profond", profond, installes),
         verifier_modele("Modele d'embeddings", embeddings, installes),
+        verifier_modele("Modele de vision", vision, installes),
         verifier_gpu(),
         verifier_ffmpeg(),
         verifier_docker(),

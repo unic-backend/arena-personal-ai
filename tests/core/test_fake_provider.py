@@ -26,7 +26,15 @@ async def test_appel_en_trop_leve_une_erreur_explicite(provider_factory):
 async def test_les_prompts_envoyes_sont_enregistres(fake_provider):
     await fake_provider.generate("Bonjour", system_prompt="Tu es Usman.")
 
-    assert fake_provider.appels == [{"prompt": "Bonjour", "system_prompt": "Tu es Usman."}]
+    assert fake_provider.appels == [
+        {"prompt": "Bonjour", "system_prompt": "Tu es Usman.", "images": None}
+    ]
+
+
+async def test_les_images_envoyees_sont_enregistrees(fake_provider):
+    await fake_provider.generate("Que vois-tu ?", images=["YmFzZTY0"])
+
+    assert fake_provider.appels[0]["images"] == ["YmFzZTY0"]
 
 
 async def test_le_streaming_rejoue_la_reponse_entiere(provider_factory):

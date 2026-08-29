@@ -54,8 +54,11 @@ class FakeProvider(ModelProvider):
         self._index += 1
         return reponse
 
-    async def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
-        self.appels.append({"prompt": prompt, "system_prompt": system_prompt})
+    async def generate(
+        self, prompt: str, system_prompt: Optional[str] = None,
+        images: Optional[List[str]] = None,
+    ) -> str:
+        self.appels.append({"prompt": prompt, "system_prompt": system_prompt, "images": images})
         return self._prochaine_reponse(prompt)
 
     async def generate_stream(

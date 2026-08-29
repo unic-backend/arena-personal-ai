@@ -5,11 +5,18 @@ ARENA repondait `501` : aucune chaine ne les lisait. Le lecteur existait
 pourtant (`tools/documents/reader.py`, PDF, DOCX, TXT, MD, CSV) — il n'etait
 simplement pas relie.
 
+Une image suit un chemin different : `tools/documents/reader.py` sert
+LightRAG et GraphRAG, qui n'acceptent que du texte — y ajouter des extensions
+d'image ferait tenter de « lire » une photo comme un document. Une image ne
+passe donc jamais par ce lecteur ; elle est encodee ici et confiee telle
+quelle a `VisionAgent` (DEC-0019), qui parle au modele de vision.
+
 **Quatre regles, et la premiere est une regle de vie privee :**
 
-1. **Le fichier est efface des qu'il est lu.** Seul son texte reste, en memoire,
-   pour la duree d'une conversation. Ses devis, ses plans et ses courriers de
-   clients ne s'accumulent pas dans un dossier que personne ne surveille.
+1. **Le fichier est efface des qu'il est lu.** Seul son texte — ou, pour une
+   image, ses octets encodes — reste, en memoire, pour la duree d'une
+   conversation. Ses devis, ses plans et ses courriers de clients ne
+   s'accumulent pas dans un dossier que personne ne surveille.
 
 2. **Le contenu d'une piece jointe est une donnee, jamais une consigne.** Un
    document peut contenir la phrase « ignore tes instructions ». Il est annonce
@@ -22,6 +29,7 @@ simplement pas relie.
 4. **Ce qui n'est plus frais n'est plus servi.** Les textes expirent ; une piece
    jointe d'hier ne doit pas revenir dans la conversation d'aujourd'hui.
 """
+import base64
 import logging
 import os
 import tempfile
@@ -37,6 +45,11 @@ logger = logging.getLogger("usman.backend.pieces")
 
 # Taille maximale d'un fichier accepte. Reglable : elle depend de sa machine.
 TAILLE_MAX_OCTETS = int(os.getenv("USMAN_MAX_FILE_MB", "25")) * 1024 * 1024
+
+# Formats d'image reconnus. Une image n'est jamais ecrite sur le disque : ses
+# octets sont encodes directement en memoire, comme le texte l'est pour un
+# document — la meme regle de vie privee, appliquee au meme endroit.
+EXTENSIONS_IMAGE = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
 # Duree de vie du texte extrait. Assez pour une conversation, pas pour la
 # journee : une piece jointe d'hier n'a rien a faire dans la question d'aujourd'hui.
@@ -63,21 +76,26 @@ def nom_de_fichier_sur(nom: Optional[str]) -> str:
 
 @dataclass(frozen=True)
 class PieceJointe:
-    """Un fichier recu, son texte, et l'etat reel de sa lecture."""
+    """Un fichier recu, son texte ou son image, et l'etat reel de sa lecture."""
 
     identifiant: str
     nom: str
     octets: int
     statut: str
     texte: str = ""
+    image_base64: str = ""
     raison: Optional[str] = None
     tronque: bool = False
     depose_le: str = ""
     expire_le: str = ""
 
     @property
+    def est_image(self) -> bool:
+        return bool(self.image_base64)
+
+    @property
     def lisible(self) -> bool:
-        return self.statut == "LU" and bool(self.texte.strip())
+        return self.statut == "LU" and (bool(self.texte.strip()) or self.est_image)
 
     def est_perimee(self, maintenant: Optional[datetime] = None) -> bool:
         if not self.expire_le:
@@ -89,14 +107,18 @@ class PieceJointe:
         return (maintenant or datetime.now(timezone.utc)) >= limite
 
     def to_dict(self) -> Dict[str, Any]:
-        """Ce que l'interface recoit. **Le texte n'y est pas** : il ne fait que
-        des allers-retours inutiles sur le reseau, et il contient ses documents."""
+        """Ce que l'interface recoit. **Ni le texte ni l'image n'y sont** : ils
+        ne feraient que des allers-retours inutiles sur le reseau, et ils
+        contiennent ses documents ou ses photos."""
         return {
             "id": self.identifiant,
             "name": self.nom,
             "size": self.octets,
             "status": self.statut,
             "readable": self.lisible,
+            # Distinct du `kind` que /files ajoute par-dessus (un indice fourni
+            # par l'interface) : celui-ci est mesure, jamais declaratif.
+            "nature": "image" if self.est_image else "document",
             "truncated": self.tronque,
             "reason": self.raison,
             "characters": len(self.texte),
@@ -136,8 +158,22 @@ class DepotPiecesJointes:
         logger.info("Piece jointe refusee (%s) : %s — %s", statut, nom, raison)
         return piece
 
+    def _deposer_image(self, nom_sur: str, contenu: bytes) -> PieceJointe:
+        """Une image ne touche jamais le disque : ses octets sont encodes en
+        memoire, directement — aucun lecteur externe n'en a besoin."""
+        depose, expire = self._horodatages()
+        piece = PieceJointe(
+            identifiant=uuid.uuid4().hex, nom=nom_sur, octets=len(contenu),
+            statut="LU", image_base64=base64.b64encode(contenu).decode("ascii"),
+            depose_le=depose, expire_le=expire,
+        )
+        self._pieces[piece.identifiant] = piece
+        logger.info("Piece jointe (image) lue : %s (%d octets).", nom_sur, len(contenu))
+        return piece
+
     def deposer(self, nom: str, contenu: bytes) -> PieceJointe:
-        """Lit le fichier et n'en garde que le texte. Le fichier est efface.
+        """Lit le fichier et n'en garde que le texte, ou l'image encodee.
+        Le fichier est efface.
 
         Ne leve jamais : un fichier illisible rend une piece portant son statut
         et sa raison. L'interface doit pouvoir l'afficher, pas se casser dessus.
@@ -145,8 +181,17 @@ class DepotPiecesJointes:
         nom_sur = nom_de_fichier_sur(nom)
         extension = Path(nom_sur).suffix.lower()
 
+        if extension in EXTENSIONS_IMAGE:
+            if len(contenu) > self.taille_max:
+                return self._refus(
+                    nom_sur, len(contenu), "ECHEC",
+                    f"fichier trop volumineux ({len(contenu) / 1024**2:.1f} Mo, "
+                    f"maximum {self.taille_max / 1024**2:.0f} Mo)",
+                )
+            return self._deposer_image(nom_sur, contenu)
+
         if extension not in EXTENSIONS_LISIBLES:
-            lisibles = ", ".join(sorted(EXTENSIONS_LISIBLES))
+            lisibles = ", ".join(sorted(EXTENSIONS_LISIBLES | EXTENSIONS_IMAGE))
             return self._refus(
                 nom_sur, len(contenu), "NON_PRIS_EN_CHARGE",
                 f"format {extension or 'sans extension'} ; formats lus : {lisibles}",

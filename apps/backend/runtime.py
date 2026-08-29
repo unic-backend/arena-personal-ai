@@ -23,6 +23,7 @@ from agents.subtitle.subtitle_agent import SubtitleAgent
 from agents.swe_agent.swe_agent import SWEAgent
 from agents.trend_analyzer.trend_analyzer_agent import TrendAnalyzerAgent
 from agents.video_analyzer.video_analyzer_agent import VideoAnalyzerAgent
+from agents.vision.vision_agent import VisionAgent
 from apps.backend.config import (
     CLOUD_BUDGET_JOURNALIER,
     CLOUD_REQUETES_PAR_JOUR,
@@ -31,6 +32,7 @@ from apps.backend.config import (
     MODE_IA,
     MODELE_PROFOND,
     MODELE_RAPIDE,
+    MODELE_VISION,
     OLLAMA_URL,
 )
 from apps.backend.pieces_jointes import DepotPiecesJointes
@@ -194,6 +196,11 @@ gardien = Gardien(file_maintenance=file_maintenance)
 # sans elle, l'aiguilleur ne les compte meme pas comme une option.
 ollama_rapide = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_RAPIDE)
 ollama_profond = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_PROFOND)
+# La vision reste locale, sans aiguilleur hybride (DEC-0019) : Groq et
+# DeepInfra ne servent aucun modele de vision dans ce projet — les faire
+# passer par l'aiguilleur ferait perdre l'image en silence des qu'Ollama
+# manquerait, en repondant quand meme sur le texte seul.
+ollama_vision = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_VISION)
 
 # Un seul compteur pour les deux aiguilleurs : le budget du jour est celui du
 # proprietaire, pas celui d'un chemin de reponse.
@@ -225,6 +232,7 @@ trend_agent = TrendAnalyzerAgent(provider=deep_provider, memory=memory)
 # de la derniere generation acceptee.
 video_agent = VideoAnalyzerAgent(provider=deep_provider, memory=memory,
                                  registre=registre, travaux=travaux, journal=journal)
+vision_agent = VisionAgent(provider=ollama_vision, memory=memory, pieces_jointes=pieces_jointes)
 editor_agent = EditorAgent(provider=deep_provider, memory=memory)
 subtitle_agent = SubtitleAgent(provider=deep_provider, memory=memory)
 coder_agent = CoderAgent(provider=fast_provider, memory=memory)
