@@ -7,10 +7,24 @@
 | | |
 |---|---|
 | Branche | `claude/arena-personal-ai-integration-grp0ey` (repartie de `master` à chaque PR fusionnée en cours de session — voir CHANGELOG.md) |
-| `master` | `b672849` (**PR #25 fusionnée**) — PR #22 à #25 toutes fusionnées cette session |
-| Tests | **1899** hors ligne au vert, 21 `integration` désélectionnés |
+| `master` | **PR #29 fusionnée** — PR #26 à #29 toutes fusionnées cette session (gardien DEC-0014 + son correctif d'honnêteté + précision doc sur la mesure 7.2) |
+| Tests | **1937** hors ligne au vert, 21 `integration` désélectionnés |
 | Lint | `ruff` propre |
-| Orphelins | 128 modules, 98 atteints, 30 orphelins (voir `docs/CURRENT_TASK.md` pour ce qui est nommément accepté — `__init__.py` vides et `apps/pwa/server/`) |
+| Orphelins | 129 modules, 102 atteints, 27 orphelins — **tous** `__init__.py` vides. Aucun module réel endormi (`apps/pwa/server/` supprimé le 29/08/2026, voir ci-dessous) |
+
+## Ce qui vient de se fermer (PR #26 → #29, ce chunk)
+
+| PR | Ce qui change | Statut |
+|---|---|---|
+| **#27** | `core/guardian/` — DÉCOUVRE et RAPPORTE (jamais MODIFIE), DEC-0014 | **FERMÉ** — 25 tests unitaires + 6 API, scénario §27 bout en bout |
+| **#28** | correctif : `verifier_gardien()` distinguait mal « jamais lancé » de « lancé, rien trouvé » | **FERMÉ** — sabotage/restauration prouvés, +5 tests |
+| **#29** | doc seule : la recherche web reste `UNKNOWN` en cloud à cause d'un 403 du bac à sable, pas seulement d'Ollama absent | **FERMÉ** — aucun code touché |
+| *(suivante)* | `apps/pwa/server/` supprimé (4 fichiers, 482 lignes) — décidé par le propriétaire depuis son téléphone le 29/08/2026 | **FERMÉ** — 27 orphelins restants, tous `__init__.py` vides |
+
+Mesures 7.2 (phase entière) : **toujours `UNKNOWN`**, structurellement — ne pas
+retenter depuis le cloud (Ollama absent, recherche web bloquée par la
+politique réseau du bac à sable). Attend son PC, raison déjà écrite dans
+`docs/REPRISE.md`.
 
 ## Diagnostic machine (`doctor.py`), mesuré le 29/08/2026
 
@@ -46,7 +60,7 @@ mesuré ici, jamais supposé. Le reste (Ollama, Docker, WanGP, MoneyPrinterTurbo
 Gmail/Agenda) reste `[ABS]`/`[CONF]`/`[PANNE]` sur cette machine, comme
 attendu : rien de tout ça n'y a jamais été installé.
 
-## Ce qui est fusionné dans `master` depuis le 28/08/2026 (PR #21 → #25)
+## Ce qui est fusionné dans `master` depuis le 28/08/2026 (PR #21 → #29)
 
 1. `doctor.py` réécrit, puis relié à `sonder()` de chaque connecteur (jamais une seconde logique de santé) ;
 2. **chapitre 9 — l'agenda**, **MoneyPrinterTurbo** branché sur l'agent vidéo ;
@@ -54,15 +68,15 @@ attendu : rien de tout ça n'y a jamais été installé.
 4. **Réseaux sociaux actifs (DEC-0010)** : méthode extraite de `charlie947/social-media-skills`, rien copié ;
 5. **Coordination des tâches (DEC-0011)** : `grok-bot-0.18-reconstructed` refusé (aucune licence) ; `core/execution/coordination.py` écrit sans emprunt ;
 6. **OpenTakeoff — métré de plan PDF (DEC-0012)** : transport MCP stdio, sous-ensemble réel, la limite plafond/mur/rampant corrigée sur indication du propriétaire ;
-7. **Crochets d'exécution + disjoncteur (DEC-0013)** : idée extraite de DeepSeek Harness (Cordis refusé), premier consommateur réel — coupe court après des échecs consécutifs réels sur un service tombé.
+7. **Crochets d'exécution + disjoncteur (DEC-0013)** : idée extraite de DeepSeek Harness (Cordis refusé), premier consommateur réel — coupe court après des échecs consécutifs réels sur un service tombé ;
+8. **Gardien de maintenance (DEC-0014)** : idée extraite de live-swe-agent (aucun code d'agent trouvé, refusé) — DÉCOUVRE et RAPPORTE seulement, jamais MODIFIE (commit/PR autonome explicitement hors périmètre, contraire à la règle non négociable du projet) ; correctif ultérieur pour que `doctor.py` distingue « jamais lancé » de « lancé, rien trouvé ».
 
 ## Ce qui attend une action du PROPRIÉTAIRE
 
 | Sujet | Ce qu'il faut de lui |
 |---|---|
 | **`USMAN_API_KEY`** | la changer s'il n'est pas certain de l'avoir fait (runbook, étape 1) |
-| **Purge de l'historique** | jamais autorisée. Plus urgente depuis que le dépôt est privé — sa décision |
-| **`apps/pwa/server/`** | on le garde ou on le supprime ? 482 lignes, second serveur mort |
+| **Purge de l'historique** | jamais autorisée. Le dépôt est privé — sa décision |
 | **Identifiants Google** | 3 valeurs dans `.env` pour réveiller courrier + agenda |
 | **MoneyPrinterTurbo** | `scripts/installer_moneyprinter.ps1`, puis `llm_provider = "ollama"` et une clé Pexels dans **leur** `config.toml` |
 | **OpenTakeoff** | `scripts/installer_opentakeoff.ps1`, puis `OPENTAKEOFF_MCP_DIR` dans `.env` — vérifié bout en bout dans cette session (ci-dessus), il ne reste que le geste chez lui |
