@@ -28,6 +28,29 @@ attendent sa réponse — la visibilité du dépôt, et le sort de `apps/pwa/ser
 
 ---
 
+## Avant de relire le dépôt : `PROJECT_MEMORY/`
+
+**Ne scanne pas le projet entier au début d'une session.** La mémoire
+opérationnelle est là pour ça, et elle est tenue à jour :
+
+| Fichier | Quand l'ouvrir |
+|---|---|
+| `PROJECT_MEMORY/PROJECT_MAP.md` | « où est quoi ? » — **toujours en premier** |
+| `PROJECT_MEMORY/ACTIVE_WORK.md` | « où en est-on, qu'attend-il de moi ? » |
+| `PROJECT_MEMORY/ARCHITECTURE.md` | « comment ça se parle ? » |
+| `PROJECT_MEMORY/LOCKED_ZONES.md` | **avant de toucher à quoi que ce soit d'existant** |
+| `PROJECT_MEMORY/COMPLETED_SYSTEMS.md` | « est-ce déjà vérifié, et jusqu'où ? » |
+| `PROJECT_MEMORY/DEPENDENCIES.md` | « de quoi ça dépend ? » |
+| `PROJECT_MEMORY/DECISIONS.md` | index de `docs/DECISIONS.md` |
+| `PROJECT_MEMORY/CHANGELOG.md` | ce que la session précédente a livré |
+
+Ouvre ensuite **les seuls fichiers que la tâche exige**. Un dépôt relu en entier
+à chaque fois est du contexte dépensé pour rien.
+
+Et tiens-la à jour : une mémoire périmée est pire qu'aucune mémoire.
+
+---
+
 ## Les trois fichiers à lire avant d'écrire une ligne
 
 | Fichier | Ce qu'il te donne |
