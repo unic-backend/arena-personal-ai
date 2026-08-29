@@ -34,7 +34,8 @@ Un module qu'aucun de ces quatre n'atteint est un orphelin :
 |---|---|
 | `core/actions/` | résultat, journal, file d'attente, chronologie |
 | `core/permissions/` | politique par service × action × risque, coupe-circuits |
-| `core/connectors/` | base + 7 connecteurs (voir DEPENDENCIES.md) |
+| `core/connectors/` | base + 8 connecteurs (voir DEPENDENCIES.md) |
+| `core/mcp/` | deux transports MCP : HTTP (`transport.py`, WanGP) et stdio (`stdio_transport.py`, OpenTakeoff) |
 | `core/memory/` | mémoire personnelle, récupération lexicale, sémantique, consolidation |
 | `core/execution/` | voies (budgets), mesures (chronométrage), travaux de fond |
 | `core/models/` | fournisseur Ollama |
@@ -47,7 +48,7 @@ Un module qu'aucun de ces quatre n'atteint est un orphelin :
 | `config/` | `permissions.yaml`, `permissions_services.yaml`, `unic_plaquiste.yaml` (ses prix) |
 | `scripts/` | `doctor.py`, `orphelins.py`, `mesurer_performances.py`, installateurs |
 | `docs/` | plan, décisions, reprise, règles de travail |
-| `tests/` | 1636 tests (1615 hors ligne + 21 marqués `integration`) |
+| `tests/` | 1882 tests (1861 hors ligne + 21 marqués `integration`) |
 
 ## Les trois documents historiques (autorité, pas mémoire)
 

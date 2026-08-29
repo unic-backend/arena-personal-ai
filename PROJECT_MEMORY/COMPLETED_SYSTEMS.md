@@ -1,6 +1,6 @@
 # SYSTÈMES ACHEVÉS — et ce que « vérifié » veut dire ici
 
-*Mise à jour : 2026-08-28. Toute ligne de ce fichier repose sur une commande
+*Mise à jour : 2026-08-29. Toute ligne de ce fichier repose sur une commande
 lancée, pas sur une impression.*
 
 ---
@@ -68,6 +68,9 @@ python scripts/orphelins.py → 110 modules, 82 atteints, aucun module réel end
 | `tools/social/idees.py` | **100% LOGIQUE VÉRIFIÉE** | couvert | sans objet (combinatoire) |
 | `agents/social/social_agent.py` | **75%** | 36 | **NON VÉRIFIÉ** — jamais tourné avec un vrai modèle |
 | `core/execution/coordination.py` | **100% LOGIQUE VÉRIFIÉE** | 18 | sans objet (pur) |
+| `core/mcp/stdio_transport.py` | **100% LOGIQUE VÉRIFIÉE** | 10 | **BOUT EN BOUT constaté** — contre le vrai serveur OpenTakeoff, dans cette session |
+| `core/connectors/opentakeoff.py` | **100% LOGIQUE VÉRIFIÉE** | 13 | **BOUT EN BOUT constaté une fois** : OpenTakeoff construit dans cette session, plan de démo mesuré (4 pièces, 1751.92 SF), rapport + PDF marqué réellement écrits. Non revérifié depuis chez lui — Node/npm à installer |
+| `agents/plaquiste/metre_plan.py` | **100% LOGIQUE VÉRIFIÉE** | 19 + 6 (branchement) | sans objet (conversion pure + branchement testé) |
 | `apps/pwa/` (interface) | **NON VÉRIFIÉ** | 25 (fichiers) | **jamais affichée ni cliquée** |
 
 ---

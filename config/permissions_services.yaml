@@ -107,6 +107,13 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     document:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
 
+  # OpenTakeoff : mesurer un plan PDF ne touche a rien hors du processus qui
+  # le lit. Exporter ecrit le rapport et le plan marque a cote du plan source
+  # — meme logique que le devis PDF : confirmation, coupe-circuit WRITE_FILES.
+  takeoff:
+    read:        {decision: ALLOWED,      risque: LOW}
+    export:      {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail

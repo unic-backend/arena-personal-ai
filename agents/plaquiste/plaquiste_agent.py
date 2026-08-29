@@ -21,6 +21,8 @@ from agents.plaquiste.calcul_materiaux import formater as formater_calcul
 from agents.plaquiste.calcul_materiaux import quantites_pour
 from agents.plaquiste.controle_prix import avertissement, verifier_prix
 from agents.plaquiste.metre import lire_demande
+from agents.plaquiste.metre_plan import chemin_dans, demande_un_plafond, depuis_mesure
+from agents.plaquiste.metre_plan import formater as formater_plan
 from core.agent.base_agent import BaseAgent
 from core.connectors.registre import RegistreConnecteurs
 from core.memory.memory_manager import MemoryManager
@@ -318,6 +320,50 @@ class PlaquisteAgent(BaseAgent):
         return {"statut": resultat.statut.value, "message": resultat.message,
                 "preuve": resultat.preuve}
 
+    def _mesurer_le_plan(self, texte: str) -> Optional[Dict[str, Any]]:
+        """Mesure un plan PDF quand son chemin est lu dans la demande.
+
+        Mesurer est une lecture : rien n'est ecrit. Le rapport et le plan
+        marque ne sont soumis, derriere la meme confirmation que le devis PDF,
+        que si la demande demande AUSSI un fichier (`DEMANDE_DE_DOCUMENT`) —
+        « analyse ce plan » ne doit pas ecrire deux fichiers sur sa machine
+        sans qu'il l'ait demande.
+
+        Returns:
+            Le compte-rendu, ou `None` quand aucun chemin de plan n'a ete lu.
+        """
+        chemin = chemin_dans(texte)
+        if chemin is None:
+            return None
+        if self.registre is None:
+            return {"statut": "NOT_CONFIGURED", "chemin": chemin,
+                    "message": ("Je peux chiffrer, pas ouvrir un plan : aucun "
+                                "connecteur n'est branche sur cet agent.")}
+
+        resultat = self.registre.executer("opentakeoff", "mesurer", chemin=chemin)
+        if not resultat.a_eu_lieu:
+            return {"statut": resultat.statut.value, "chemin": chemin, "message": resultat.message}
+
+        metre = depuis_mesure(chemin, resultat.detail or {})
+        export = None
+        # Le chemin lui-meme finit en ".pdf" : le retirer avant de tester,
+        # sinon CHAQUE plan declenche l'export — mesure sur ce module
+        # (`\bpdf\b` matche le "pdf" de l'extension, pas seulement le mot).
+        if DEMANDE_DE_DOCUMENT.search(texte.replace(chemin, "")):
+            resultat_export = self.registre.executer("opentakeoff", "exporter", chemin=chemin)
+            export = {"statut": resultat_export.statut.value, "message": resultat_export.message,
+                      "preuve": resultat_export.preuve}
+
+        return {
+            "statut": resultat.statut.value,
+            "chemin": chemin,
+            "resume": formater_plan(metre),
+            "surface_totale_m2": metre.surface_totale_m2,
+            "perimetre_total_ml": metre.perimetre_total_ml,
+            "complet": metre.complet,
+            "export": export,
+        }
+
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         logger.info("PlaquisteAgent : %r", user_input[:60])
 
@@ -350,16 +396,47 @@ class PlaquisteAgent(BaseAgent):
         # Quand rien n'est lu, rien n'est injecte : pas de chiffre fabrique.
         demande = lire_demande(user_input)
         metre = None
+        source_lu = ""
         if demande is not None:
             metre = quantites_pour(
                 demande.surface, self.metier, faces=demande.faces,
                 parois=demande.parois, deja_developpee=demande.deja_developpee)
+            source_lu = demande.lu
             instruction = (
                 f"{instruction}\n\n{formater_calcul(metre)}\n\n"
                 "Ces quantites viennent d'etre calculees a partir de ses ratios reels. "
                 "Reprends-les telles quelles : ne les recalcule pas, ne les arrondis pas, "
                 "n'en ajoute aucune. Lecture des dimensions : "
                 f"{demande.lu}."
+            )
+
+        # Un plan PDF : mesure par OpenTakeoff, jamais devine. Priorite aux
+        # dimensions dictees en texte (plus explicites) ; a defaut, un plafond
+        # nomme sans ambiguite peut se chiffrer depuis la surface au sol
+        # mesuree — voir `metre_plan.py` sur pourquoi une CLOISON ne le peut pas.
+        plan = self._mesurer_le_plan(user_input)
+        if metre is None and plan is not None and plan.get("surface_totale_m2") \
+                and demande_un_plafond(user_input):
+            metre = quantites_pour(plan["surface_totale_m2"], self.metier, faces=1)
+            source_lu = f"plafond mesure sur {plan['chemin']} : {plan['resume']}"
+            instruction = (
+                f"{instruction}\n\n{formater_calcul(metre)}\n\n"
+                "Ces quantites viennent d'etre calculees a partir de ses ratios reels, "
+                f"sur une surface MESUREE (pas dictee) : {plan['resume']} "
+                "Reprends-les telles quelles : ne les recalcule pas, ne les arrondis pas, "
+                "n'en ajoute aucune."
+            )
+        elif plan is not None and plan.get("resume"):
+            instruction = (
+                f"{instruction}\n\nCE QUE LE PLAN DONNE (mesure reelle, pas une opinion) :\n"
+                f"{plan['resume']}\nReprends ces chiffres tels quels s'ils sont demandes ; "
+                "n'en calcule aucune quantite de materiaux sans qu'il ait precise ce qui "
+                "est a poser."
+            )
+        elif plan is not None:
+            instruction = (
+                f"{instruction}\n\nLE PLAN {plan['chemin']} N'A PAS PU ETRE MESURE : "
+                f"{plan.get('message', '')}\nDis-le-lui tel quel, n'invente aucune surface."
             )
 
         # L'agenda : ses creneaux reels entrent dans l'instruction comme des
@@ -404,13 +481,16 @@ class PlaquisteAgent(BaseAgent):
             # Le metre calcule voyage avec la reponse : il doit etre verifiable
             # sans relire le prompt.
             "metre": {
-                "lu": demande.lu,
+                "lu": source_lu,
                 "surface_developpee": metre.surface_developpee,
                 "parois": metre.parois,
                 "parois_estimees": metre.parois_estimees,
                 "quantites": {b.article: b.quantite for b in metre.besoins},
             } if metre is not None else None,
             "hors_perimetre": hors_metier,
+            # Ce qu'un plan PDF joint a rendu. `None` quand aucun chemin de
+            # plan n'a ete lu dans la demande.
+            "plan": plan,
             # Ce qu'il est advenu du fichier demande. `None` quand aucun ne
             # l'etait — jamais un statut inventé pour remplir le champ.
             "document": document,
@@ -420,5 +500,7 @@ class PlaquisteAgent(BaseAgent):
             "rendez_vous": rendez_vous,
             "response": (reponse + avertissement(anomalies)
                          + (f"\n\n{document['message']}" if document else "")
-                         + (f"\n\n{rendez_vous['message']}" if rendez_vous else "")),
+                         + (f"\n\n{rendez_vous['message']}" if rendez_vous else "")
+                         + (f"\n\n{plan['export']['message']}"
+                            if plan and plan.get("export") else "")),
         }

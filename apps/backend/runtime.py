@@ -41,6 +41,7 @@ from core.connectors.devis import DevisConnector
 from core.connectors.galsen import GalsenConnector
 from core.connectors.gmail import GmailConnector
 from core.connectors.moneyprinter import MoneyPrinterConnector
+from core.connectors.opentakeoff import ConnecteurOpenTakeoff
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.wan2gp import Wan2GPConnector
 from core.execution.mesures import Rapport
@@ -103,6 +104,13 @@ registre.declarer(
 registre.declarer(
     "devis",
     lambda: DevisConnector(acces=acces, journal=journal, file_attente=file_attente),
+)
+# Metre de plan PDF : moteur OpenTakeoff, installe a cote (DEC-0008), jamais
+# dans ce depot. Non configure tant qu'il n'est pas construit sur sa machine —
+# la sonde le mesure au lieu de le supposer.
+registre.declarer(
+    "opentakeoff",
+    lambda: ConnecteurOpenTakeoff(acces=acces, journal=journal, file_attente=file_attente),
 )
 registre.declarer(
     "galsen",

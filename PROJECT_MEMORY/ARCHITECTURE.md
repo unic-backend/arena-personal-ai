@@ -78,6 +78,7 @@ niveau `EXTERNAL`/`DOCUMENT`. Un sujet d'e-mail est une donnée, pas une consign
 | Google Calendar | `core/connectors/calendrier.py` | idem, **même identifiant OAuth** |
 | GalsenAPI | `core/connectors/galsen.py` | API publique, sans clé |
 | Devis PDF | `core/connectors/devis.py` | local (reportlab) |
+| OpenTakeoff | `core/connectors/opentakeoff.py` | MCP **stdio** (processus Node, pas un port) — `core/mcp/stdio_transport.py` |
 
 **Règle d'intégration (DEC-0008)** : un projet tiers tourne **à côté**, avec ses
 dépendances et ses clés ; ARENA lui parle par son API. Aucune ligne, aucune clé

@@ -238,6 +238,138 @@ class TestDocumentPdf:
         assert resultat["document"]["statut"] == "NOT_CONFIGURED"
 
 
+class RegistreScripte:
+    """Un registre de test : un resultat different par (connecteur, capacite).
+
+    `FauxRegistre` (ci-dessus) rend toujours le meme resultat — insuffisant
+    des qu'un test fait appel a DEUX connecteurs (mesurer, puis exporter).
+    """
+
+    def __init__(self, resultats):
+        self.appels = []
+        self._resultats = resultats
+
+    def _repondre(self, connecteur, capacite, parametres):
+        self.appels.append((connecteur, capacite, dict(parametres)))
+        resultat = self._resultats.get((connecteur, capacite))
+        if resultat is None:
+            raise AssertionError(f"appel non scripte : {connecteur}.{capacite}")
+        return resultat
+
+    def executer(self, connecteur, capacite, **parametres):
+        return self._repondre(connecteur, capacite, parametres)
+
+    def executer_confirmee(self, connecteur, capacite, **parametres):
+        return self._repondre(connecteur, capacite, parametres)
+
+
+DETAIL_PLAN_UNE_PIECE = {
+    "pieces": [{"feuille": "A-101.pdf", "numero": "101", "surface_pi2": 437.98,
+               "perimetre_pi": 86.61, "confiance": 1.0}],
+    "pieces_totales": 1, "feuilles_totales": 1,
+    "feuilles_mesurees": ["A-101.pdf"], "feuilles_sans_echelle": [],
+    "perimetre_disponible": True,
+    "resume": {"totals": {"total_sf_net": 437.98, "lf_net": 86.61}},
+}
+
+
+class TestMesurerLePlan:
+    """Le branchement du connecteur OpenTakeoff sur l'agent (DEC-0012).
+
+    Trois choses sont tenues : un chemin de plan absent n'appelle rien ;
+    mesurer n'exporte jamais tout seul ; un chiffrage de materiaux ne part
+    JAMAIS d'un perimetre mesure pour une cloison — seul un plafond, sans
+    ambiguite, le peut (voir `metre_plan.py`).
+    """
+
+    @pytest.mark.asyncio
+    async def test_sans_chemin_de_plan_rien_n_est_appele(self):
+        registre = RegistreScripte({})
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run("chiffre-moi 18 parois de 5,40 x 2,50 m")
+
+        assert resultat["plan"] is None
+        assert registre.appels == []
+
+    @pytest.mark.asyncio
+    async def test_sans_registre_le_plan_le_dit_au_lieu_de_se_taire(self):
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER))
+
+        resultat = await agent.run("analyse le plan /chantiers/A-101.pdf")
+
+        assert resultat["plan"]["statut"] == "NOT_CONFIGURED"
+
+    @pytest.mark.asyncio
+    async def test_un_chemin_de_plan_declenche_la_mesure_et_rien_d_autre(self):
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff",
+                                 message="1 piece(s) mesuree(s) sur 1 feuille(s).",
+                                 preuve="/chantiers/A-101.pdf", **DETAIL_PLAN_UNE_PIECE)
+        registre = RegistreScripte({("opentakeoff", "mesurer"): resultat_mesure})
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run("analyse le plan /chantiers/A-101.pdf")
+
+        assert registre.appels == [("opentakeoff", "mesurer", {"chemin": "/chantiers/A-101.pdf"})]
+        assert resultat["plan"]["surface_totale_m2"] == pytest.approx(40.69, abs=0.01)
+        assert resultat["plan"]["export"] is None
+
+    @pytest.mark.asyncio
+    async def test_demander_aussi_un_pdf_declenche_l_export_derriere_confirmation(self):
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="/chantiers/A-101.pdf", **DETAIL_PLAN_UNE_PIECE)
+        resultat_export = a_confirmer(action="exporter", cible="opentakeoff",
+                                      message="Pret. Rien n'est ecrit.")
+        registre = RegistreScripte({
+            ("opentakeoff", "mesurer"): resultat_mesure,
+            ("opentakeoff", "exporter"): resultat_export,
+        })
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run("analyse le plan /chantiers/A-101.pdf et fais-en un pdf")
+
+        noms = [(c, cap) for c, cap, _ in registre.appels]
+        assert ("opentakeoff", "mesurer") in noms
+        assert ("opentakeoff", "exporter") in noms
+        assert resultat["plan"]["export"]["statut"] == "NEEDS_CONFIRMATION"
+        assert resultat["plan"]["export"]["message"] in resultat["response"]
+
+    @pytest.mark.asyncio
+    async def test_un_plafond_nomme_se_chiffre_depuis_la_surface_mesuree(self):
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="/chantiers/A-101.pdf", **DETAIL_PLAN_UNE_PIECE)
+        registre = RegistreScripte({("opentakeoff", "mesurer"): resultat_mesure})
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run("calcule le faux plafond du plan /chantiers/A-101.pdf")
+
+        assert resultat["metre"] is not None
+        # Un plafond compte UNE face : pas de doublement, contrairement a une
+        # cloison fermee des deux cotes.
+        assert resultat["metre"]["surface_developpee"] == pytest.approx(40.69, abs=0.01)
+        assert "/chantiers/A-101.pdf" in resultat["metre"]["lu"]
+
+    @pytest.mark.asyncio
+    async def test_une_cloison_nommee_ne_chiffre_jamais_depuis_le_seul_perimetre(self):
+        """La limite du DEC-0012 : le perimetre d'une piece entiere n'est pas
+        une surface de cloisons a poser. Le plan est mesure, mais rien n'est
+        chiffre sans que le proprietaire ait dit quels murs sont a poser."""
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="/chantiers/A-101.pdf", **DETAIL_PLAN_UNE_PIECE)
+        registre = RegistreScripte({("opentakeoff", "mesurer"): resultat_mesure})
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run("calcule la surface de la cloison, plan /chantiers/A-101.pdf")
+
+        assert resultat["metre"] is None
+        assert resultat["plan"]["surface_totale_m2"] == pytest.approx(40.69, abs=0.01)
+
+
 class FauxAgenda:
     """Un registre d'agenda de test : il note, il n'appelle jamais Google."""
 
