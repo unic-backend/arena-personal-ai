@@ -118,7 +118,33 @@ class FileDeMaintenance:
                     tentatives INTEGER NOT NULL DEFAULT 0
                 )
             """)
+            # Un cycle qui ne trouve RIEN laisse la table des taches vide :
+            # sans cette ligne, une memoire jamais consultee et une memoire
+            # qui vient de confirmer un depot propre seraient indiscernables.
+            connexion.execute("""
+                CREATE TABLE IF NOT EXISTS gardien_meta (
+                    cle TEXT PRIMARY KEY,
+                    valeur TEXT NOT NULL
+                )
+            """)
             connexion.commit()
+
+    def marquer_cycle_termine(self, horodatage: Optional[str] = None) -> None:
+        """Enregistre qu'un cycle a tourné — même quand il n'a rien trouvé.
+        Appelée par `Gardien.executer_cycle()` à chaque cycle, sans exception."""
+        with closing(self._connexion()) as connexion:
+            connexion.execute(
+                "INSERT INTO gardien_meta (cle, valeur) VALUES ('dernier_cycle_le', ?) "
+                "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur",
+                (horodatage or _maintenant(),))
+            connexion.commit()
+
+    def dernier_cycle_le(self) -> Optional[str]:
+        """L'horodatage du dernier cycle, ou `None` si aucun n'a jamais tourné."""
+        with closing(self._connexion()) as connexion:
+            ligne = connexion.execute(
+                "SELECT valeur FROM gardien_meta WHERE cle = 'dernier_cycle_le'").fetchone()
+        return ligne["valeur"] if ligne else None
 
     def _depuis_ligne(self, ligne: sqlite3.Row) -> Tache:
         return Tache(

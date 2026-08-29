@@ -92,6 +92,33 @@ class TestOuvertes:
         assert ouvertes[1].description == "mineure"
 
 
+class TestDernierCycle:
+    """Distingue « jamais consultee » de « consultee, rien trouve » — sans
+    quoi `doctor.py` ne peut pas dire lequel des deux il mesure."""
+
+    def test_sans_cycle_rend_none(self, file):
+        assert file.dernier_cycle_le() is None
+
+    def test_marquer_cycle_termine_enregistre_un_horodatage(self, file):
+        file.marquer_cycle_termine()
+
+        assert file.dernier_cycle_le() is not None
+
+    def test_un_second_cycle_ecrase_l_horodatage_du_premier(self, file):
+        file.marquer_cycle_termine(horodatage="2026-01-01T00:00:00+00:00")
+        file.marquer_cycle_termine(horodatage="2026-01-02T00:00:00+00:00")
+
+        assert file.dernier_cycle_le() == "2026-01-02T00:00:00+00:00"
+
+    def test_marquer_cycle_termine_ne_depend_pas_de_taches_trouvees(self, file):
+        """Le cas qui a trompe doctor.py avant ce correctif : un cycle qui ne
+        trouve RIEN doit quand meme laisser une trace qu'il a tourne."""
+        file.marquer_cycle_termine()
+
+        assert file.dernier_cycle_le() is not None
+        assert file.toutes() == []
+
+
 class TestPersistance:
     def test_une_nouvelle_instance_relit_l_etat_deja_enregistre(self, tmp_path):
         chemin = str(tmp_path / "maintenance.db")
