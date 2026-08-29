@@ -660,3 +660,124 @@ sans preuve ne se construit pas »). Un gardien qui écrirait du code sans
 qu'une pull request passe devant le propriétaire retirerait la seule
 protection qui l'empêche aujourd'hui de voir un mauvais correctif partir
 sans lui. Les deux sont pourquoi ce PR s'arrête où il s'arrête.
+
+---
+
+## DEC-0015 : Hell-Grind-AIGC-Skill — un auditeur de prompt, pas un moteur
+
+*Demandé le 29/08/2026 : intégrer les capacités utiles de « Higgsfield AI /
+Hell Grind » comme une capacité réelle de production vidéo dans ARENA.*
+
+### Ce que le dépôt contient vraiment
+
+Aucun lien n'accompagnait la mission — cherché et retrouvé :
+`github.com/renmu2017/Hell-Grind-AIGC-Skill` (MIT, Copyright (c) 2026
+renmu2017). Cloné et inspecté fichier par fichier.
+
+C'est un **Skill Codex** (le mécanisme de compétence de la CLI OpenAI Codex,
+sans équivalent dans ARENA) : `SKILL.md`, son `openai.yaml` (dans agents/), 22 fichiers
+`references/*.md` de méthode (architecture de prompt en 7 couches, contrat
+de plan en 12 segments, diagnostic d'échec, schéma de projet en 14 tables),
+et trois scripts Python — `init_project.py`, `validate_project.py`,
+`audit_prompt.py` — **déterministes, sans dépendance tierce, sans réseau,
+sans base de données**, comme le dépôt le revendique et comme la lecture le
+confirme. `NOTICE.md` est explicite sur ses propres limites :
+
+> *« No original film file, source asset pack, bulk prompt dataset, or
+> long project-specific prompt is distributed here. (...) The Hell Grind
+> film, original assets, bulk prompt dataset, and project-specific source
+> prompts are not included in this repository and are not licensed by
+> this repository. »*
+
+**Ce n'est ni un modèle de génération, ni un monteur.** Aucun poids, aucun
+appel réseau, aucune primitive ffmpeg — uniquement de la méthode
+(documentation) et des vérificateurs de texte locaux.
+
+### Ce qu'ARENA a déjà, vérifié avant d'écrire une ligne
+
+- `core/connectors/wan2gp.py` — génère une **scène** sur WanGP à partir d'un
+  prompt (`generer`, paramètre `source`). Câblé dans `runtime.py`,
+  enregistré dans `CONNECTEURS_VIDEO`, mais **jamais réellement invoqué** :
+  seul le suivi (`suivre_la_generation`) l'utilisait. Aucun appelant
+  n'envoyait de prompt de scène avant cette PR.
+- `core/connectors/moneyprinter.py` — fabrique une vidéo **complète** sur un
+  sujet (script, plans, voix, sous-titres, montage internes à
+  MoneyPrinterTurbo). Different problème, connecteur different — la
+  distinction est déjà posée dans `video_analyzer_agent.py`.
+- `tools/video/{ffmpeg_tool,crop_tool,subtitle_tool}.py` — montage (coupe,
+  recadrage, sous-titres).
+- `agents/video_analyzer/video_analyzer_agent.py` — un seul agent vidéo,
+  responsabilités déjà séparées en son sein (analyser / suivre / fabriquer).
+
+Le vrai manque, confirmé par grep sur tout le dépôt : **rien n'auditait un
+prompt avant de le confier à WanGP.** Une génération occupe la carte
+graphique plusieurs minutes ; un prompt sans sujet, sans durée ou avec une
+caméra verrouillée ET en mouvement dans la même phrase la dépense pour un
+résultat qu'il faudra recommencer.
+
+### La décision
+
+**Rien du Skill Codex n'est copié** — `SKILL.md` et son `openai.yaml` (dans agents/)
+n'ont pas d'équivalent ni de sens hors de Codex ; ARENA route ses intentions
+par mots-clés et par modèle, pas par fichier de compétence. **Le schéma de
+projet en 14 tables (`init_project.py`/`validate_project.py`) n'est pas
+porté non plus** : dimensionné pour un film de 95 minutes, il dépasse très
+largement l'échelle réelle d'ARENA (une poignée de scènes par demande) —
+le porter aurait été construire une capacité pour un usage qu'il n'a pas.
+`SUGGESTION — NON IMPLÉMENTÉE` si un jour une production à plusieurs scènes
+suivies dans le temps devient un besoin réel.
+
+**Ce qui est réellement réutilisable, et qui l'est** : l'auditeur de prompt
+(`audit_prompt.py`) — une méthode déterministe, testée, à coût nul, qui
+comble exactement le manque mesuré ci-dessus. Porté avec ses catégories de
+contrôle et son barème de score inchangés (c'est la partie déjà éprouvée) ;
+ses motifs de détection, écrits en chinois/anglais dans la source, sont
+retraduits en français/anglais — les prompts de génération s'écrivent en
+anglais la plupart du temps, mais Ousmane décrit une scène en français.
+
+### Ce qui est construit : un vrai chemin d'exécution, pas une capacité qui dort
+
+- `tools/video/prompt_audit.py` — `auditer_prompt(texte, support)` : 12
+  modules détectés, 10 catégories de problème (sujet manquant, durée
+  manquante, fin de caméra absente, audio absent, conflit immobile/en
+  mouvement, conflit de caméra, chronologie dépassée, négations
+  redondantes, paramètres de plateforme mêlés au prompt, dialogue exact
+  sans limite visuelle), score 0–100. Pur, sans effet de bord, testé avec
+  20 cas déterministes.
+- `agents/video_analyzer/video_analyzer_agent.py` — nouvelle méthode
+  `planifier_scene(description)` : audite, puis **n'appelle `wan2gp` que
+  si `audit.pret` est vrai** ; sinon rend les problèmes bloquants, sans
+  jamais toucher au connecteur. Premier appelant réel de la capacité
+  `generer` de WanGP.
+- Détection de phrase (`description_de_plan`, motifs `PLANIFIER_SCENE`
+  dans l'orchestrateur) : « prépare le prompt de cette scène », « storyboard »,
+  « plan de tournage », « découpe en plans » — testée AVANT la fabrication
+  complète (`FABRIQUER_VIDEO`), qui partage le verbe « prépare ».
+
+Chemin réel : *phrase du propriétaire → `description_de_plan` → audit
+déterministe → (bloqué et expliqué) OU (`registre.executer("wan2gp",
+"generer", source=...)`, sous confirmation comme toute génération)*.
+
+### La preuve
+
+```
+python -m pytest tests/tools/test_prompt_audit.py tests/agents/test_video_planification.py -q
+→ 35 passed
+python -m pytest tests/ -q
+→ 1972 passed, 21 deselected (1937 avant cette PR)
+python scripts/orphelins.py
+→ 130 modules, 103 atteints, 27 orphelins (tous des __init__.py — inchangé)
+```
+
+Sabotage : le gate d'audit dans `planifier_scene` remplacé par `if False:`
+— `test_un_prompt_incomplet_ne_part_jamais` tombe, avec la preuve exacte
+qu'un prompt sans durée ni fin de caméra atteint `wan2gp`. Restauré,
+revérifié vert.
+
+### Ce que ça coûte si c'est faux
+
+Un prompt mal formé envoyé à WanGP sans audit dépenserait plusieurs minutes
+de la carte graphique du propriétaire pour un résultat probablement à
+refaire — exactement le problème que `Hell-Grind-AIGC-Skill` documente
+avoir rencontré en production réelle, et exactement ce que ce gate empêche
+maintenant, avant le premier appel.

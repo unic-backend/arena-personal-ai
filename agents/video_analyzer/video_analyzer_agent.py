@@ -1,11 +1,14 @@
-"""L'agent video : analyser un fichier, et suivre une generation jusqu'au fichier.
+"""L'agent video : analyser un fichier, suivre une generation, planifier une scene.
 
-Deux choses, qui ne se ressemblent pas :
+Trois choses, qui ne se ressemblent pas :
 
 - **analyser** une video deja posee sur le disque — extraction audio,
   transcription locale, lecture par le modele ;
 - **suivre** une generation lancee sur WanGP, qui dure des minutes et dont le
-  proprietaire devrait autrement redemander l'etat.
+  proprietaire devrait autrement redemander l'etat ;
+- **planifier** une scene precise : auditer son prompt avant de le confier a
+  WanGP, pour ne pas depenser la carte graphique sur un prompt structurellement
+  incomplet (DEC-0015, methode extraite de Hell-Grind-AIGC-Skill).
 
 Le suivi est branche **ici**, et nulle part ailleurs : ce qui touche a la video
 va a l'agent video. Trois regles le tiennent :
@@ -37,6 +40,7 @@ from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from tools.audio.transcription_tool import TranscriptionTool
 from tools.video.ffmpeg_tool import FFmpegTool
+from tools.video.prompt_audit import auditer_prompt
 
 logger = logging.getLogger("usman.agent.video_analyzer")
 
@@ -81,6 +85,37 @@ PREFIXE_SUIVI = "suivi de la generation"
 def demande_de_suivi(texte: str) -> bool:
     """Dit si la phrase demande ou en est une generation video."""
     return bool(DEMANDE_DE_SUIVI.search(texte or ""))
+
+
+#: Ce qui demande de PREPARER le prompt d'une scene precise pour WanGP —
+#: distinct de FABRIQUER_VIDEO : celui-la fabrique une video COMPLETE sur un
+#: sujet (MoneyPrinterTurbo, aucun audit de prompt) ; celui-ci envoie une
+#: SCENE/un PLAN a WanGP, apres verification structurelle du prompt. Teste
+#: AVANT `sujet_de` : « prepare » est un verbe partage par les deux demandes,
+#: et celle-ci est la plus specifique des deux.
+DEMANDE_DE_PLAN = re.compile(
+    r"^\s*(?:est-ce que tu peux |peux-tu |tu peux |j'?ai besoin d'?(?:un |une )?)?"
+    r"(?:"
+    r"(?:pr[ée]pare|[ée]cris|envoie|g[ée]n[èe]re)(?:[- ]moi)?\s+(?:le |un |ce )?"
+    r"prompt\s+(?:de|pour)\s+(?:cette |la |ce )?(?:sc[èe]ne|plan)"
+    r"|storyboard"
+    r"|plan de tournage"
+    r"|d[ée]coupe(?:[- ]la|(?: cette)? sc[èe]ne)? en plans"
+    r")\s*(?::|sur|a propos de|à propos de)?\s*",
+    re.IGNORECASE)
+
+
+def description_de_plan(texte: str) -> Optional[str]:
+    """La description d'une scene a auditer puis confier a WanGP, ou `None`.
+
+    Meme discipline que `sujet_de` : ce qui reste de la phrase une fois la
+    demande retiree, jamais complete ni reformule.
+    """
+    texte = (texte or "").strip()
+    correspondance = DEMANDE_DE_PLAN.match(texte)
+    if correspondance is None:
+        return None
+    return texte[correspondance.end():].strip(" .?!,;:")
 
 
 def sujet_de(texte: str) -> Optional[str]:
@@ -272,11 +307,68 @@ class VideoAnalyzerAgent(BaseAgent):
         return {"statut": resultat.statut.value, "sujet": sujet,
                 "message": resultat.message, "preuve": resultat.preuve}
 
+    # --- Planifier une scene (audit puis WanGP) ---------------------------------
+
+    def planifier_scene(self, description: str) -> Dict[str, Any]:
+        """Audite le prompt d'une scene, et ne l'envoie a WanGP que s'il est pret.
+
+        Une generation WanGP occupe la carte graphique plusieurs minutes : un
+        prompt sans sujet, sans duree ou sans etat final de camera la depense
+        pour un resultat qu'il faudra recommencer. L'audit (voir
+        `tools/video/prompt_audit.py`) est deterministe et local — aucun
+        reseau, aucun modele appele avant d'avoir un prompt structurellement
+        complet.
+
+        Args:
+            description: le prompt de la scene, tel qu'il partirait vers WanGP.
+
+        Returns:
+            `A_COMPLETER` avec l'audit et les problemes bloquants si le prompt
+            n'est pas pret ; sinon le resultat de l'appel a WanGP, avec l'audit
+            joint comme preuve qu'il a ete verifie avant l'envoi.
+        """
+        if self.registre is None:
+            return {"statut": Statut.NON_CONFIGURE.value, "description": description,
+                    "message": ("Je peux analyser une video, pas planifier une scene : "
+                                "aucun generateur n'est branche sur cet agent.")}
+        if not description:
+            return {"statut": "INCOMPLET", "description": "",
+                    "message": ("Decris la scene : sujet, duree, etat final de camera "
+                                "et ambiance sonore. Je ne l'invente pas.")}
+
+        audit = auditer_prompt(description, support="video")
+        if not audit.pret:
+            erreurs = [p.message for p in audit.problemes if p.gravite == "erreur"]
+            return {"statut": "A_COMPLETER", "description": description,
+                    "audit": audit.to_dict(),
+                    "message": (f"Ce prompt n'est pas encore pret pour WanGP "
+                                f"({len(erreurs)} probleme(s) bloquant(s)) : "
+                                + " ".join(erreurs))}
+
+        resultat = self.registre.executer(CONNECTEUR_SCENE, "generer", source=description)
+        return {"statut": resultat.statut.value, "description": description,
+                "audit": audit.to_dict(), "message": resultat.message,
+                "preuve": resultat.preuve}
+
     # --- Analyse d'un fichier ---------------------------------------------------
 
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         contexte = context or {}
         job_id = contexte.get("job_id")
+
+        # Planifier une scene : teste AVANT la fabrication, « prepare » est un
+        # verbe partage par les deux et celle-ci est la plus specifique.
+        plan = description_de_plan(user_input) if not job_id else None
+        if plan is not None:
+            planification = await asyncio.to_thread(self.planifier_scene, plan)
+            return {
+                "status": "warning" if planification["statut"] in (
+                    Statut.NON_CONFIGURE.value, "INCOMPLET", "A_COMPLETER") else "success",
+                "agent": self.name,
+                "planification": planification,
+                "suivi": None,
+                "response": planification["message"],
+            }
 
         # Fabriquer une video : soumis a confirmation, jamais lance d'autorite.
         sujet = sujet_de(user_input) if not job_id else None
