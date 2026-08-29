@@ -38,6 +38,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, List, Optional
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # deja signale par verifier_dependances : pas la peine de planter ici
+    load_dotenv = None
+
 RACINE = Path(__file__).resolve().parent.parent
 
 #: Les quatre etats. `OK` exige une mesure ; les trois autres disent pourquoi.
@@ -513,7 +518,16 @@ def diagnostiquer() -> Rapport:
 
 
 def main() -> int:
-    """Affiche le rapport. Rend 1 si ARENA ne peut pas repondre, 0 sinon."""
+    """Affiche le rapport. Rend 1 si ARENA ne peut pas repondre, 0 sinon.
+
+    **Charge `.env` avant de mesurer.** Sans ceci, une cle ecrite dans `.env`
+    reste invisible : `os.getenv()` ne lit que l'environnement du processus,
+    jamais le fichier. Aucun module de ce script n'importe
+    `apps.backend.config` (qui le fait) — `doctor.py` doit rester utilisable
+    meme quand ce paquet ne s'importe pas.
+    """
+    if load_dotenv is not None:
+        load_dotenv(dotenv_path=RACINE / ".env")
     print("=" * 62)
     print("  ARENA — DIAGNOSTIC. Chaque ligne est une mesure, pas une supposition.")
     print("=" * 62)
