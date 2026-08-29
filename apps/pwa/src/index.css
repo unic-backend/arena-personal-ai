@@ -101,6 +101,13 @@ body {
   border-color: rgba(0, 0, 0, 0.08);
 }
 
+/* Le texte qu'on tape (le composeur, et l'edition d'un message envoye)
+   reste `text-zinc-100` (quasi blanc) en dur dans le JSX — correct sur
+   fond sombre, invisible une fois le fond passe clair. */
+:root[data-theme="light"] .writing-text, .light-mode .writing-text {
+  color: #18181b;
+}
+
 :root[data-theme="light"] .text-shimmer, .light-mode .text-shimmer {
   background: linear-gradient(90deg, #52525b 20%, #18181b 42%, #52525b 64%);
   background-size: 200% 100%;
