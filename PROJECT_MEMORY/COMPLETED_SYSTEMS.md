@@ -58,6 +58,11 @@ python scripts/orphelins.py → 110 modules, 82 atteints, aucun module réel end
 | `apps/backend/` (routes, sécurité, débit) | **90%** | 37 (surface) + 20 + 26 | serveur jamais observé chez lui cette session |
 | `apps/backend/routers/pwa_gateway.py` | **90%** | 72 | interface **jamais regardée** |
 | `scripts/doctor.py` | **100% LOGIQUE VÉRIFIÉE** | 27 | tourne réellement ici, sortie correcte |
+| `core/models/confidentialite.py` | **100% LOGIQUE VÉRIFIÉE** | 57 | sans objet (pur) |
+| `core/models/openai_compatible.py` | **75%** | 33 | **NON VÉRIFIÉ** — aucun appel réel à Groq/DeepInfra |
+| `core/models/routeur.py` | **90%** | 26 | **NON VÉRIFIÉ** avec de vrais services |
+| `core/models/usage.py` | **90%** | couvert | tarifs non configurés : coûts `None` |
+| `scripts/comparer_fournisseurs.py` | **75%** | 6 | **NON VÉRIFIÉ** — 0 fournisseur mesurable ici |
 | `apps/pwa/` (interface) | **NON VÉRIFIÉ** | 25 (fichiers) | **jamais affichée ni cliquée** |
 
 ---

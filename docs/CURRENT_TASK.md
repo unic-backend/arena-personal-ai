@@ -60,18 +60,44 @@ attendu, pas un échec.
 **Aucun module de cette mission ne dort** : `python scripts/orphelins.py` →
 116 modules, 88 atteints, aucun module réel endormi.
 
-### Étape 4 — l'intégration réelle et la mesure
+### Étape 4 — l'intégration réelle et la mesure — **faite le 28/08/2026**
 
-Brancher le routeur sur le chemin de réponse (passerelle PWA, moteur de
-raisonnement), afficher le fournisseur retenu, et **mesurer** : un banc d'essai
-qui compare Ollama, Groq et DeepInfra sur des prompts équivalents.
+**L'interface dit qui a répondu.** Elle annonçait « arena » quel que soit le
+moteur ; depuis DEC-0009 la réponse peut venir du réseau, et le lui cacher
+serait lui mentir sur ce qui a vu sa phrase. Le méta final porte maintenant le
+fournisseur, le modèle, et **la raison du choix**.
 
-**Aucun chiffre de performance ne sera annoncé sans cette mesure** (point 24 de
-la mission : *« Do not claim 5x faster unless measured »*). Sur la machine de
-l'assistant, il n'y a ni Ollama ni clé : ces mesures resteront `UNKNOWN` jusqu'à
-son PC.
+**Le diagnostic porte une ligne « Inference (hybride) »** : son mode, et quels
+services distants sont réellement configurés.
+
+**Le banc d'essai existe** : `python scripts/comparer_fournisseurs.py`. Trois
+scènes identiques pour tous, le temps jusqu'au **premier mot** d'abord, et la
+médiane sur plusieurs passages.
+
+Ce qu'il rend sur la machine de l'assistant, lancé le 28/08/2026 :
+
+```
+ollama       qwen3.5:9b                         ABSENT
+groq         llama-3.3-70b-versatile            ABSENT
+deepinfra    meta-llama/Llama-3.3-70B-Instruct  ABSENT
+
+0 fournisseur(s) mesure(s), 3 absent(s).
+Moins de deux fournisseurs : AUCUNE comparaison n'est possible. Ne rien conclure.
+```
+
+**Aucun chiffre de vitesse n'est donc annoncé nulle part dans ce dépôt**, et
+c'est le point 24 de la mission. La comparaison attend son PC et ses clés.
 
 ---
+
+## Ce qui reste, et qui n'est qu'à lui
+
+| Pour que… | il faut |
+|---|---|
+| Groq réponde | `GROQ_API_KEY` dans `.env` (console.groq.com) |
+| DeepInfra réponde | `DEEPINFRA_API_KEY` dans `.env` |
+| tout redevienne local | `AI_LOCAL_ONLY=true` — une seule ligne |
+| la comparaison existe | `python scripts/comparer_fournisseurs.py` sur son PC |
 
 ## Ce qui n'est PAS dans la mission
 

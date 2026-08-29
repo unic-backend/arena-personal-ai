@@ -8,13 +8,14 @@ d'ouvrir le document entier quand on cherche juste « a-t-on déjà tranché ça
 | # | Décision | Conséquence opérationnelle |
 |---|---|---|
 | **DEC-0001** | arborescence unifiée dès la phase 0 | ne pas réorganiser les dossiers |
-| **DEC-0002** | **local-first strict** | rien ne part chez un fournisseur d'IA. Vaut aussi pour les services tiers qu'on intègre (leur `llm_provider` doit être `ollama`) |
+| **DEC-0002** | local-first strict — **amendée par DEC-0009** | vaut toujours pour les services tiers qu'on intègre (leur `llm_provider` doit être `ollama`) ; pour ARENA lui-même, lire DEC-0009 |
 | **DEC-0003** | sécurité des publications | rien ne se publie sans confirmation |
 | **DEC-0004** | **sans bac à sable, l'exécution de code est refusée** | Docker absent ⇒ ARENA refuse, il ne dégrade pas |
 | **DEC-0005** | licence propriétaire | pas d'ouverture du code |
 | **DEC-0006** | GalsenAPI est la source des données du Sénégal | l'attribution voyage avec **chaque** chiffre |
 | **DEC-0007** | **LibreChat et Open WebUI retirés** | 4 des 5 clés fuitées sont mortes. Ne jamais les remettre — un test le tient |
 | **DEC-0008** | **un projet tiers tourne À CÔTÉ** | ni son code, ni ses clés, ni ses dépendances n'entrent ici. ARENA lui parle par son API |
+| **DEC-0009** | **ARENA devient hybride — DEC-0002 amendée** | rien de **sensible** ne part au cloud ; un secret ne sort **jamais** ; Ollama reste défaut et repli ; `AI_LOCAL_ONLY=true` referme tout |
 
 ## Décisions de travail (hors ADR, mais qui gouvernent autant)
 

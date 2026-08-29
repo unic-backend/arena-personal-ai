@@ -277,6 +277,37 @@ def verifier_moneyprinter(lecteur: Optional[Callable[[str], Any]] = None) -> Ver
     return Verification("Video courte (MPT)", OK, f"repond sur {base}")
 
 
+def verifier_inference() -> Verification:
+    """Le regime d'inference, et qui est reellement joignable.
+
+    Ce n'est pas un defaut de n'avoir aucun service distant : le mode local est
+    un choix valable, et c'est le defaut historique du projet. La ligne est
+    donc `OK` — elle informe, elle ne reproche pas.
+    """
+    try:
+        sys.path.insert(0, str(RACINE))
+        from apps.backend.config import (
+            DEEPINFRA_API_KEY,
+            FOURNISSEUR_DEMANDE,
+            GROQ_API_KEY,
+            MODE_IA,
+        )
+    except Exception:  # noqa: BLE001 — les dependances manquent : la ligne du dessus le dit
+        return Verification("Inference (hybride)", EN_PANNE,
+                            "indeterminable : les dependances ne s'importent pas",
+                            "pip install -r requirements.txt")
+
+    distants = [nom for nom, cle in (("Groq", GROQ_API_KEY),
+                                     ("DeepInfra", DEEPINFRA_API_KEY)) if cle]
+    if not distants:
+        return Verification(
+            "Inference (hybride)", OK,
+            f"mode {MODE_IA}, aucun service distant configure : tout passe par Ollama")
+    return Verification(
+        "Inference (hybride)", OK,
+        f"mode {MODE_IA}, demande {FOURNISSEUR_DEMANDE}, distants : {', '.join(distants)}")
+
+
 def variables_google_absentes() -> Optional[List[str]]:
     """Les noms des variables OAuth manquantes, ou `None` si on n'a pas pu regarder.
 
@@ -401,6 +432,7 @@ def diagnostiquer() -> Rapport:
         verifier_environnement_virtuel(),
         verifier_dependances(),
         verifier_cle_api(),
+        verifier_inference(),
         verifier_ollama(installes),
         verifier_modele("Modele rapide", rapide, installes, essentiel=True),
         verifier_modele("Modele profond", profond, installes),

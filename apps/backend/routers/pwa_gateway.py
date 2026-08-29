@@ -306,6 +306,25 @@ def _prompt_conversation(demande: DemandeAgent, proprietaire: str) -> str:
     return "\n".join(lignes)
 
 
+def moteur_utilise() -> Dict[str, Any]:
+    """Qui a reellement repondu, et avec quel modele.
+
+    L'interface annoncait « arena » quel que soit le moteur. Depuis DEC-0009,
+    la reponse peut venir de sa machine ou du reseau : le lui cacher serait lui
+    mentir sur ce qui vient de voir sa phrase.
+
+    Un fournisseur qui n'a encore rien fait rend « local » — pas une supposition,
+    l'etat de depart reel de l'aiguilleur.
+    """
+    choix = getattr(fast_provider, "dernier_choix", None)
+    return {
+        "provider": getattr(choix, "fournisseur", None) or "local",
+        "model": getattr(fast_provider, "model_name", "local"),
+        # D'ou vient ce choix : la confidentialite, le budget, ou une panne.
+        "raison": getattr(choix, "raison", ""),
+    }
+
+
 def noter_mesure(mesure: Mesure) -> Mesure:
     """Range une mesure dans le rapport partage, sans le laisser grossir sans fin."""
     mesures_execution.ajouter(mesure)
@@ -363,8 +382,7 @@ async def flux_agent(demande: DemandeAgent):
                 resultat = rendu["resultat"]
                 yield jeton(resultat["response"])
                 yield fin({
-                    "provider": "arena",
-                    "model": fast_provider.model_name,
+                    **moteur_utilise(),
                     "sources": resultat.get("sources", []),
                     "query": intention,
                 })
@@ -389,8 +407,7 @@ async def flux_agent(demande: DemandeAgent):
             noter_mesure(Mesure(nom=f"chat {intention}", voie=voie, etat=ETAT_MESURE,
                                 secondes=time.perf_counter() - depart))
             yield fin({
-                "provider": "arena",
-                "model": fast_provider.model_name,
+                **moteur_utilise(),
                 "query": intention,
             })
 
