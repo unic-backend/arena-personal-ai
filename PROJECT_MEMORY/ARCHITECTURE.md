@@ -42,12 +42,23 @@ confirmation périmée ne part pas.
 
 ### Connecteurs — `core/connectors/base.py`
 Classe de base qui garantit, dans cet ordre : capacité déclarée → permission →
-**confirmation** → santé → quota → exécution → journal. Une sous-classe ne peut
-pas contourner ces contrôles en oubliant de les appeler.
+**confirmation** → santé → quota → **crochets avant** → exécution → **crochets
+après** → journal. Une sous-classe ne peut pas contourner ces contrôles en
+oubliant de les appeler.
 
 > **Conséquence à retenir** : la confirmation tombe **avant** que
 > `_executer()` ne soit appelé. Un connecteur n'a aucun moyen d'envoyer sans
 > demander. C'est structurel, pas une politesse.
+
+### Crochets — `core/execution/hooks.py` (DEC-0013)
+Deux points, ajoutés **après** les quatre contrôles ci-dessus, jamais à leur
+place : `avant_execution` (un veto opérationnel, jamais une permission) et
+`apres_execution` (un observateur). Premier consommateur réel :
+`core/execution/disjoncteur.py` — coupe court après des échecs consécutifs
+**réels** sur un `(connecteur, capacité)`, pour ne pas repayer le délai
+d'attente complet d'un service tombé a chaque appel suivant. Un
+`RegistreDeCrochets` unique, partagé par tous les connecteurs (comme
+`journal`).
 
 ### Mémoire — `core/memory/`
 `personnelle` (4 types × 4 natures) → `recuperation` (4 signaux lexicaux) →

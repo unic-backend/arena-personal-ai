@@ -452,16 +452,28 @@ contrat `Reponse` de `core/mcp/transport.py` (même protocole JSON-RPC, seul le
 tuyau change) plutôt que de le dupliquer.
 
 **Une limite honnête, écrite dans `agents/plaquiste/metre_plan.py` plutôt que
-masquée dans un calcul silencieux** : `detect_rooms` mesure le PÉRIMÈTRE
-ENTIER de chaque pièce — murs porteurs et extérieurs compris, pas seulement
-les cloisons neuves à poser. L'assimiler à une surface de cloisons serait un
-excès d'affirmation. Le rapprochement n'est fait qu'une fois, où il est sans
-ambiguïté : la surface d'un **faux plafond** est, par définition, la surface
-au sol de la pièce — la convention `faces=1` que `plaquiste_agent.py`
-applique déjà à un plafond nommé en toutes lettres. Pour une cloison, le
-périmètre mesuré reste une information, jamais un chiffrage : sabotage inclus
-dans le PR, un test tient cette limite (retirer la condition « plafond nommé »
-fait chiffrer une cloison depuis le seul périmètre — le test tombe).
+masquée dans un calcul silencieux — corrigée une fois par le propriétaire lui-
+même (29/08/2026)** : la première version confondait « surface au sol » et
+« surface de mur », en traitant doublage/habillage/coffre comme un plafond.
+Sa correction : *« la surface d'un cloisons c'est largeurs et hauteur »*. Trois
+issues, jamais quatre :
+
+1. **plafond plat** (« plafond », « faux plafond ») : sa surface **est**, par
+   définition, la surface au sol de la pièce — sans ambiguïté, sans hauteur ;
+2. **un mur** (doublage/habillage/coffre = une face ; cloison/séparation, ou
+   rien de nommé = deux faces par défaut) : `périmètre mesuré × hauteur`,
+   **seulement si une hauteur est donnée** — `detect_rooms` mesure le
+   PÉRIMÈTRE ENTIER de chaque pièce (murs porteurs et extérieurs compris), pas
+   seulement les cloisons neuves ; chaque réponse qui utilise ce périmètre le
+   dit, et demande de corriger la longueur si elle couvre des murs hors scope ;
+3. **un rampant**, ou un mur **sans hauteur donnée** : rien n'est chiffré. Un
+   rampant suit la pente du toit — ni la surface au sol, ni le périmètre × une
+   hauteur verticale ne la donnent.
+
+Six sabotages tiennent ces trois issues (voir le PR) : un doublage compté à
+deux faces double sa quantité de matériaux et un test tombe ; un rampant
+chiffré depuis le périmètre × hauteur produit un devis faux avec l'air d'un
+devis mesuré, et un test le prouve.
 
 **DEC-0008 tenue, adaptée au transport** : rien du dépôt OpenTakeoff n'entre
 ici. `scripts/installer_opentakeoff.ps1` le construit à côté ; ARENA lance et
@@ -473,3 +485,85 @@ Un périmètre de pièce présenté comme une surface de cloisons partirait dans
 un devis avec un mètre qui a l'air mesuré et ne l'est pas — plus trompeur
 qu'un chiffre absent. C'est exactement ce que la limite plafond/cloison
 empêche, et que le sabotage du PR vérifie.
+
+---
+
+## DEC-0013 : DeepSeek Harness — l'idée des crochets, pas Cordis
+
+*Demandé le 29/08/2026 : auditer `deepseek-ai/deepseek-harness` (MIT,
+« developer preview ») et en extraire ce qui améliore réellement ARENA, sans
+imposer son architecture.*
+
+### Ce que le dépôt est vraiment
+
+Cloné et lu dans son propre code, pas seulement son README. `dsh` est un
+harnais d'agent en TypeScript/Node, bâti sur **Cordis** — un bus d'évènements
+à contexte partagé typé (« everything is a plugin ») où même le cœur (moteur
+de tours, registre d'outils, journal de session) est un plugin remplaçable.
+Chaque appel d'outil traverse trois « waterfalls » ordonnées —
+`tools/pre-execute` → `tools/execute` → `tools/post-execute`
+(`packages/core/tools/src/index.ts`) — sur lesquelles des politiques
+transverses se greffent sans toucher au cœur : `packages/guard/timeout-policy`
+enveloppe l'exécution d'un délai, `packages/guard/repeat-tool-reminder`
+détecte un outil rappelé à l'identique. Deux bridges (`packages/hooks/
+hooks-claude-code`, `hooks-codex`) traduisent ce même protocole vers des
+commandes shell externes, au format `hooks.json` de Claude Code et de Codex.
+
+### La décision : l'idée, jamais le code ni l'architecture entière
+
+Cordis résout un problème qu'ARENA n'a pas : de nombreuses équipes
+indépendantes qui publient des plugins dans un même hôte, avec composition à
+chaud, profils et bundles. ARENA est un seul dépôt, une seule personne qui le
+fait évoluer, huit connecteurs déclarés dans `runtime.py`. Réécrire
+`core/connectors/base.py` et `RegistreConnecteurs` en un bus d'évènements
+généraliste **créerait un second système de permissions et d'orchestration**
+à côté de celui déjà verrouillé et testé — exactement ce que la mission elle-
+même interdit (« Do not create two competing permission systems »).
+
+Ce qui est réel et manquant : **rien, dans `core/connectors/base.py`, ne
+permet d'observer ou d'intercepter une exécution sans modifier ce fichier
+verrouillé.** C'est la seule pièce extraite — traduite en Python, aucune
+ligne de TypeScript reprise (Cordis n'a pas d'équivalent direct dans un
+runtime synchrone à un seul processus).
+
+### Ce qui a été construit
+
+`core/execution/hooks.py` — `RegistreDeCrochets`, deux points, ajoutés
+**après** les quatre contrôles verrouillés (permission → confirmation →
+santé → quota), jamais à leur place : `avant_execution` (un veto
+opérationnel, jamais une permission — la différence est écrite dans le
+`ResultatAction` : `ECHEC`, jamais `DENIED`) et `apres_execution` (un
+observateur, jamais un veto). Un crochet cassé ne casse jamais l'appel qu'il
+observe.
+
+Premier consommateur réel, jamais démonstratif : `core/execution/
+disjoncteur.py`. Aucun module existant ne le faisait — `LimiteurDebit`
+plafonne un DÉBIT, pas une SANTÉ ; un service tombé (MoneyPrinterTurbo
+arrêté, OpenTakeoff jamais construit, WanGP injoignable) faisait repayer le
+délai d'attente complet à chaque appel suivant. Après des échecs consécutifs
+**réels** (`NOT_CONFIGURED`/`DENIED`/`NEEDS_CONFIRMATION` ne comptent pas :
+rien n'a été tenté contre le service), le disjoncteur coupe court sans
+rappeler `_executer()` — mesuré par un test qui vérifie le compte d'appels
+réels, pas seulement le résultat rendu.
+
+Câblé dans `apps/backend/runtime.py` : un seul `RegistreDeCrochets` et un
+seul `Disjoncteur`, partagés par les huit connecteurs déclarés — comme
+`journal` et `file_attente` le sont déjà.
+
+### Ce qui n'a délibérément pas été fait — `SUGGESTION — NON IMPLÉMENTÉE`
+
+| Idée de DeepSeek Harness | Pourquoi elle n'entre pas ici |
+|---|---|
+| Cordis entier (bus de plugins, profils, bundles) | résout un problème qu'ARENA n'a pas (plusieurs équipes) ; créerait un second système d'orchestration |
+| Assembleur de prompt par sections | `composer_instruction()` par agent, et le classement d'intention de l'orchestrateur, font déjà ce que ça vise — chaque agent ne voit déjà que son propre domaine |
+| Personas par tâche (mode chantier/recherche/code...) | ce sont déjà les agents spécialisés d'ARENA (plaquiste, email, researcher, coder…), sous un autre nom — les renommer n'ajoute aucune capacité |
+| Chargement dynamique de plugins a chaud | la mission elle-même l'exclut (« do not implement unsafe dynamic code loading ») ; `RegistreConnecteurs.declarer()` (fabriques paresseuses, santé mesurée, `orphelins.py` interdit le dormant) est déjà une frontière contrôlée |
+| Bridges hooks vers des commandes shell (format Claude Code/Codex) | ARENA est un seul processus Python ; rien n'indique un besoin de crochets en scripts externes |
+
+### Ce que ça coûte si c'est faux
+
+Un disjoncteur qui compterait un `NOT_CONFIGURED` comme un échec couperait un
+service jamais configuré après trois tentatives qui n'ont rien tenté —
+message trompeur. Un veto qui n'arrêterait pas vraiment `_executer()`
+laisserait croire à une protection qui n'existe pas. Les deux sont dans le
+tableau de sabotage du PR.

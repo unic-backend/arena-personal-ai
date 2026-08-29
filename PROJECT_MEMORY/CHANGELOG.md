@@ -86,6 +86,36 @@ mesurée.
 Mesure de fin de session : `ruff` propre, **1861 passed / 21 deselected**
 (1813 avant → 1861, +48 tests), 4 sabotages sur ce chapitre, tous restaurés.
 
+Correction du propriétaire le lendemain (« la surface d'un cloisons c'est
+largeurs et hauteur ») : la première version confondait surface au sol et
+surface de mur pour doublage/habillage/coffre. Corrigée en trois issues
+(plafond plat / mur avec hauteur / rampant jamais calculable) — **1872
+passed** (+11 tests, 2 sabotages de plus).
+
+### DeepSeek Harness — crochets, pas Cordis (DEC-0013)
+
+Audité dans son propre code (`packages/core/tools/src/index.ts`,
+`packages/guard/`), pas seulement son README. Cordis (son bus de plugins
+entier) refusé : il résout un problème qu'ARENA n'a pas (plusieurs équipes
+publiant des plugins), et le reprendre aurait créé un second système
+d'orchestration à côté de celui déjà verrouillé.
+
+Ce qui a été extrait, sans une ligne de TypeScript reprise :
+`core/execution/hooks.py` (deux points, ajoutés APRÈS les quatre contrôles
+verrouillés de `core/connectors/base.py`, jamais à leur place) et son premier
+consommateur réel, `core/execution/disjoncteur.py` — un disjoncteur qui coupe
+court après des échecs consécutifs REELS, pour ne plus repayer le délai
+d'attente complet d'un service tombé à chaque appel. Câblé une fois dans
+`runtime.py`, partagé par les huit connecteurs.
+
+Preuve bout en bout (`tests/core/test_crochets_integration.py`) : un vrai
+connecteur de test échoue 3 fois pour de vrai (`appels_reels == 3`), le 4e
+appel ne retouche plus le service (`appels_reels` reste a 3) — le compte
+d'appels réels est la preuve, pas seulement le message rendu.
+
+Mesure : **1899 passed / 21 deselected** (1872 → 1899, +27 tests), 4
+sabotages, tous restaurés.
+
 ---
 
 ## 2026-08-28 (fin) — mise en place de PROJECT_MEMORY

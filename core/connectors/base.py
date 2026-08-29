@@ -50,6 +50,7 @@ from core.actions.resultat import (
     non_configure,
     non_implemente,
 )
+from core.execution.hooks import RegistreDeCrochets
 from core.permissions.controle import ControleAcces
 
 logger = logging.getLogger("usman.connecteurs")
@@ -147,6 +148,7 @@ class Connecteur(ABC):
         acces: Optional[ControleAcces] = None,
         journal: Optional[JournalDesActions] = None,
         file_attente: Optional[FileDAttente] = None,
+        crochets: Optional[RegistreDeCrochets] = None,
     ) -> None:
         self.acces = acces or ControleAcces()
         self.journal = journal
@@ -154,6 +156,9 @@ class Connecteur(ABC):
         # la retient : le proprietaire lit « pret a envoyer » et n'a rien a quoi
         # repondre. Avec, elle recoit un identifiant qu'il peut confirmer.
         self.file_attente = file_attente
+        # Sans registre, aucun crochet ne tourne : `_conduire()` se comporte
+        # exactement comme avant ce module (voir hooks.py).
+        self.crochets = crochets
         self._limiteurs: Dict[str, LimiteurDebit] = {}
 
     # --- Ce qu'une sous-classe doit fournir -----------------------------------
@@ -358,6 +363,17 @@ class Connecteur(ABC):
                 self._journaliser(resultat, parametres, niveau)
                 return resultat
 
+        # 4.5. Crochets avant execution : un veto OPERATIONNEL, jamais une
+        #    permission — il tourne apres les quatre controles ci-dessus, il
+        #    ne peut en retirer aucun (hooks.py). Sans registre, no-op.
+        if self.crochets is not None:
+            raison = self.crochets.executer_avant(
+                self.nom or self.service, capacite.nom, parametres)
+            if raison:
+                resultat = echec(capacite.nom, cible, raison)
+                self._journaliser(resultat, parametres, niveau)
+                return resultat
+
         # 5. Execution. Une implementation qui leve ne devient jamais un succes.
         try:
             resultat = self._executer(capacite, **parametres)
@@ -372,6 +388,11 @@ class Connecteur(ABC):
                 capacite.nom, cible,
                 "L'implementation n'a pas rendu de resultat exploitable.",
             )
+
+        # 6. Crochets apres execution : un observateur, jamais un veto — il
+        #    voit le resultat deja verifie, il ne peut pas le changer.
+        if self.crochets is not None:
+            self.crochets.executer_apres(self.nom or self.service, capacite.nom, resultat)
 
         self._journaliser(resultat, parametres, niveau)
         return resultat

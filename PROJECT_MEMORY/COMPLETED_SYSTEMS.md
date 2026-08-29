@@ -71,6 +71,8 @@ python scripts/orphelins.py → 110 modules, 82 atteints, aucun module réel end
 | `core/mcp/stdio_transport.py` | **100% LOGIQUE VÉRIFIÉE** | 10 | **BOUT EN BOUT constaté** — contre le vrai serveur OpenTakeoff, dans cette session |
 | `core/connectors/opentakeoff.py` | **100% LOGIQUE VÉRIFIÉE** | 13 | **BOUT EN BOUT constaté une fois** : OpenTakeoff construit dans cette session, plan de démo mesuré (4 pièces, 1751.92 SF), rapport + PDF marqué réellement écrits. Non revérifié depuis chez lui — Node/npm à installer |
 | `agents/plaquiste/metre_plan.py` | **100% LOGIQUE VÉRIFIÉE** | 19 + 6 (branchement) | sans objet (conversion pure + branchement testé) |
+| `core/execution/hooks.py` | **100% LOGIQUE VÉRIFIÉE** | 8 | sans objet (pur) |
+| `core/execution/disjoncteur.py` | **100% LOGIQUE VÉRIFIÉE** | 13 + 6 (bout en bout, `test_crochets_integration.py`) | sans objet — le test d'intégration compte les appels REELS a `_executer()`, c'est deja la preuve |
 | `apps/pwa/` (interface) | **NON VÉRIFIÉ** | 25 (fichiers) | **jamais affichée ni cliquée** |
 
 ---
