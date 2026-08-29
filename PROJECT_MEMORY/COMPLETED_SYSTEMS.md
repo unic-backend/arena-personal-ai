@@ -12,12 +12,26 @@ lancée, pas sur une impression.*
 | **LOGIQUE VÉRIFIÉE** | les tests hors ligne passent **et** un sabotage a fait tomber un test précis | que ça tourne avec le vrai service |
 | **BOUT EN BOUT** | la chose a réellement tourné, avec son service | — |
 
-**Sur la machine de l'assistant (cloud), aucun système dépendant d'un service
-externe ne peut atteindre le second niveau** : Ollama, ffmpeg, Docker, WanGP,
-MoneyPrinterTurbo, Google et le réseau n'y sont pas. Les 21 tests marqués
-`integration` sont désélectionnés pour cette raison.
+**Sur la machine de l'assistant (cloud), la plupart des systèmes dépendant
+d'un service externe ne peuvent pas atteindre le second niveau** : Ollama,
+ffmpeg, Docker, WanGP, MoneyPrinterTurbo, Google et le réseau n'y sont pas.
+Les 21 tests marqués `integration` sont désélectionnés pour cette raison.
+**Une exception mesurée, 2026-08-29** : `node`/`npm` sont présents ici, donc
+OpenTakeoff a pu être construit et interrogé pour de vrai — voir sa ligne
+dans le tableau plus bas, et `PROJECT_MEMORY/ACTIVE_WORK.md` pour le rapport
+`doctor.py` complet, avant/après construction.
 
-Preuve du 2026-08-28 :
+Preuve du 2026-08-29 :
+```
+python -m ruff check .      → All checks passed!
+python -m pytest tests/ -q  → 1899 passed, 21 deselected
+python scripts/orphelins.py → 128 modules, 98 atteints, 30 orphelins (nommés dans docs/CURRENT_TASK.md)
+python scripts/doctor.py    → 12 capacité(s) indisponible(s) par défaut ;
+                               11 une fois OpenTakeoff construit et
+                               OPENTAKEOFF_MCP_DIR pointé dessus (mesuré, pas supposé)
+```
+
+Preuve du 2026-08-28 (historique) :
 ```
 python -m ruff check .      → All checks passed!
 python -m pytest tests/ -q  → 1615 passed, 21 deselected
