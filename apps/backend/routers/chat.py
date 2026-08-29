@@ -35,6 +35,7 @@ from apps.backend.runtime import (
     reasoning_engine,
     repo_engineer,
     researcher_agent,
+    social_agent,
     subtitle_agent,
     swe_agent,
     trend_agent,
@@ -208,6 +209,10 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         # Le contexte porte le destinataire quand il y en a un — il n'est jamais
         # lu dans la phrase.
         result = await email_agent.run(request.prompt, context={"session_id": session_id})
+    elif intent == "SOCIAL":
+        # Ses reseaux : la capacite est choisie par l'agent a partir de sa
+        # phrase — il n'a jamais a nommer une competence.
+        result = await social_agent.run(request.prompt, context={"session_id": session_id})
     elif intent == "PLAQUISTE":
         result = await plaquiste_agent.run(request.prompt)
     elif intent == "BROWSER":

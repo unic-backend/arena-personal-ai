@@ -27,7 +27,19 @@ INTENTIONS = {
     "TREND_SEARCH",
     "VIDEO_ANALYSIS",
     "EMAIL",
+    "SOCIAL",
 }
+
+#: Ce qui parle de ses RESEAUX SOCIAUX. Teste avant le metier : « une
+#: publication sur mon chantier » contient « chantier » et partirait chez
+#: l assistant devis, qui n a jamais su ecrire pour LinkedIn.
+RESEAUX = (
+    "publication", "publications", "post linkedin", "un post", "mes posts",
+    "sur linkedin", "sur instagram", "sur facebook", "reseaux sociaux",
+    "réseaux sociaux", "mon profil linkedin", "accroche", "accroches",
+    "idees de contenu", "idées de contenu", "ma voix", "mon style d'ecriture",
+    "carrousel", "un reel", "miniature youtube",
+)
 
 #: Ce qui parle de SON AGENDA, sans ambiguite possible. Teste avant tout le
 #: reste : « suis-je libre cette semaine ? » contient « cette semaine », qui est
@@ -140,6 +152,7 @@ DEEP_RESEARCH   : produire une étude, un rapport documenté, une recherche appr
 TREND_SEARCH    : chercher des tendances ou des idées de contenu vidéo.
 VIDEO_ANALYSIS  : analyser, découper ou reformater un fichier vidéo.
 EMAIL           : lire, trier ou répondre à son courrier.
+SOCIAL          : écrire, relire ou préparer une publication pour ses réseaux.
 PLAQUISTE       : metier du proprietaire — devis, facture, mail client,
                   argumentaire, planning de chantier, BA13, cloison, plafond.
 STUDIO          : traiter une vidéo de bout en bout — vertical 9:16 et
@@ -290,6 +303,11 @@ class OrchestratorAgent(BaseAgent):
         research_keywords = ["étude complète", "rapport détaillé", "recherche approfondie", "étude de marché", "dossier complet"]
         if any(k in text for k in research_keywords):
             return "DEEP_RESEARCH"
+
+        # Ses reseaux. Teste AVANT le metier, pour la meme raison que la video :
+        # le sujet d une publication est souvent son metier.
+        if any(k in text for k in RESEAUX):
+            return "SOCIAL"
 
         # Le courrier. Teste AVANT le metier : « reponds au client par mail »
         # contient « client » sans etre une demande de devis.

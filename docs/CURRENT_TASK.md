@@ -99,6 +99,25 @@ c'est le point 24 de la mission. La comparaison attend son PC et ses clés.
 | tout redevienne local | `AI_LOCAL_ONLY=true` — une seule ligne |
 | la comparaison existe | `python scripts/comparer_fournisseurs.py` sur son PC |
 
+## Réseaux sociaux — intégré le 28/08/2026 (DEC-0010)
+
+17 compétences de `charlie947/social-media-skills` inspectées. **Leur méthode
+est extraite, leurs fichiers ne sont pas copiés** : leurs règles chiffrées
+deviennent du code qui compte, leur voix devient des souvenirs, leur matrice
+devient une combinatoire.
+
+| Capacité | État |
+|---|---|
+| `social.post_writer`, `social.accroches`, `social.profil` | **opérationnelles** (modèle + voix + relecture) |
+| `social.idees`, `social.verifier` | **opérationnelles sans modèle** — calcul et comptage |
+| `social.voix` | **opérationnelle** — sa voix vit dans la mémoire personnelle |
+| `social.recherche_niche` | INDISPONIBLE — recherche web non branchée sur cet agent |
+| `social.analytics`, `social.visuel`, `social.reels` | CONFIGURATION_REQUISE — compte connecté, image, Apify/Gemini |
+
+Publier passe par le connecteur, donc par la confirmation **et** le
+coupe-circuit `PUBLISH` — qui vaut `false` dans `config/permissions.yaml` :
+**rien ne peut partir tant qu'il ne le met pas à `true` lui-même.**
+
 ## Ce qui n'est PAS dans la mission
 
 - retirer Ollama, ou le remplacer — **interdit explicitement** ;
@@ -229,6 +248,25 @@ que le propriétaire ressent, pas ce qui était facile.
 **Aucune suppression n'a été décidée.** Elle se demande au propriétaire.
 
 ---
+
+## Réseaux sociaux — intégré le 28/08/2026 (DEC-0010)
+
+17 compétences de `charlie947/social-media-skills` inspectées. **Leur méthode
+est extraite, leurs fichiers ne sont pas copiés** : leurs règles chiffrées
+deviennent du code qui compte, leur voix devient des souvenirs, leur matrice
+devient une combinatoire.
+
+| Capacité | État |
+|---|---|
+| `social.post_writer`, `social.accroches`, `social.profil` | **opérationnelles** (modèle + voix + relecture) |
+| `social.idees`, `social.verifier` | **opérationnelles sans modèle** — calcul et comptage |
+| `social.voix` | **opérationnelle** — sa voix vit dans la mémoire personnelle |
+| `social.recherche_niche` | INDISPONIBLE — recherche web non branchée sur cet agent |
+| `social.analytics`, `social.visuel`, `social.reels` | CONFIGURATION_REQUISE — compte connecté, image, Apify/Gemini |
+
+Publier passe par le connecteur, donc par la confirmation **et** le
+coupe-circuit `PUBLISH` — qui vaut `false` dans `config/permissions.yaml` :
+**rien ne peut partir tant qu'il ne le met pas à `true` lui-même.**
 
 ## Ce qui n'est PAS dans la mission
 

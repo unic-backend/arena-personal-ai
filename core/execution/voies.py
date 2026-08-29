@@ -104,6 +104,9 @@ VOIE_PAR_INTENTION: Dict[str, Voie] = {
     "PLAQUISTE": Voie.LEGERE,
     "CODE_EXECUTION": Voie.LEGERE,
     "RAG_DOCS": Voie.LEGERE,
+    # Ecrire une publication est une redaction soignee, relue puis corrigee :
+    # plusieurs passes sur la machine, sans sortir.
+    "SOCIAL": Voie.PROFONDE,
     # Plusieurs passes, sur la machine, sans sortir.
     "GRAPHRAG": Voie.PROFONDE,
     "STUDIO": Voie.PROFONDE,

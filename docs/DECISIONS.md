@@ -286,3 +286,55 @@ C'est la décision la plus coûteuse du projet si elle se retourne.
 
 Si le propriétaire veut revenir en arrière, une seule ligne suffit :
 `AI_LOCAL_ONLY=true`. La décision reste réversible, et c'est voulu.
+
+
+## DEC-0010 : d'un dossier de prompts, on extrait la méthode — pas les fichiers
+
+*Demandé par le propriétaire le 28/08/2026 : intégrer
+`charlie947/social-media-skills` (MIT) « as ACTIVE, OPERATIONAL capabilities »,
+et surtout pas « a folder full of dormant skills ».*
+
+### Ce que ce dépôt est vraiment
+
+17 fichiers `SKILL.md` : des **instructions pour un modèle**. Aucune ligne
+exécutable. Les copier dans `skills/` aurait produit exactement ce que la
+mission « réveiller ce qui dort » a passé deux jours à corriger — du contenu
+qu'aucune phrase du propriétaire n'atteint.
+
+### La décision
+
+**Leur méthode est extraite, leurs fichiers ne sont pas copiés.** Trois
+transformations, et chacune change la nature de la chose :
+
+| Dans la source | Dans ARENA |
+|---|---|
+| des règles en prose (« 20 lignes max », « no em dashes ») | du **code qui compte** — `tools/social/regles.py` |
+| deux fichiers `about-me.md` / `voice.md` | des **souvenirs** dans la mémoire personnelle |
+| « 32+ post ideas from pillars × formats » | une **combinatoire** qui rend le compte réel |
+
+Le reste — le choix de la capacité, l'enchaînement, l'approbation — passe par ce
+qu'ARENA a déjà : l'orchestrateur, le registre de connecteurs, la politique de
+permissions, la file d'attente.
+
+### Ce qui n'a PAS été intégré, et pourquoi
+
+| Compétence | Raison |
+|---|---|
+| `post-scorer`, `reels-scripting` | exigent **Apify** et **Gemini** : déclarées `CONFIGURATION_REQUISE` |
+| `gemini-infographic`, `gemini-carousel`, `quote-post`, `youtube-thumbnail`, `graphic-designer` | génération d'images : ARENA n'en a pas |
+| `analytics-dashboard` | exige l'historique d'un compte connecté |
+| `newsletter-voice`, `pinned-comment` | hors de son usage : il pose des cloisons, il n'a pas de newsletter |
+
+Aucune n'est simulée. Chacune se déclare avec **ce qui lui manque**.
+
+### Ce que ça coûte si c'est faux
+
+Si la source change ses règles, ARENA garde les anciennes : elles sont figées
+dans du code, plus dans un `SKILL.md` qu'on relirait. C'est le prix de la
+vérifiabilité — et il est assumé, parce qu'une règle qu'on ne peut pas compter
+n'en est pas une. Les seuils sont réunis en tête d'un seul fichier, cités depuis
+la source, et se changent là.
+
+**Attribution.** La source est sous licence MIT, et elle est nommée dans chaque
+module qui en dérive (`SOURCE = ...`). Son dépôt n'est ni copié, ni modifié, ni
+redistribué.

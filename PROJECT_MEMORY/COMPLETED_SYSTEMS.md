@@ -63,6 +63,10 @@ python scripts/orphelins.py → 110 modules, 82 atteints, aucun module réel end
 | `core/models/routeur.py` | **90%** | 26 | **NON VÉRIFIÉ** avec de vrais services |
 | `core/models/usage.py` | **90%** | couvert | tarifs non configurés : coûts `None` |
 | `scripts/comparer_fournisseurs.py` | **75%** | 6 | **NON VÉRIFIÉ** — 0 fournisseur mesurable ici |
+| `tools/social/regles.py` | **100% LOGIQUE VÉRIFIÉE** | 19 | sans objet (pur comptage) |
+| `tools/social/voix.py` | **90%** | couvert | mémoire réelle, jamais remplie par lui |
+| `tools/social/idees.py` | **100% LOGIQUE VÉRIFIÉE** | couvert | sans objet (combinatoire) |
+| `agents/social/social_agent.py` | **75%** | 36 | **NON VÉRIFIÉ** — jamais tourné avec un vrai modèle |
 | `apps/pwa/` (interface) | **NON VÉRIFIÉ** | 25 (fichiers) | **jamais affichée ni cliquée** |
 
 ---

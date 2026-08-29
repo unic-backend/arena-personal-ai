@@ -18,6 +18,7 @@ from agents.plaquiste.plaquiste_agent import PlaquisteAgent
 from agents.publisher.publisher_agent import PublisherAgent
 from agents.repo_engineer.repo_engineer_agent import RepoEngineerAgent
 from agents.researcher.researcher_agent import DeepResearcherAgent
+from agents.social.social_agent import SocialAgent
 from agents.subtitle.subtitle_agent import SubtitleAgent
 from agents.swe_agent.swe_agent import SWEAgent
 from agents.trend_analyzer.trend_analyzer_agent import TrendAnalyzerAgent
@@ -210,6 +211,12 @@ reasoning_engine = ReasoningEngine(provider=deep_provider)
 # n'est pas une demonstration. L'envoi passe par le registre, donc par la
 # confirmation, et l'agent ne connait aucun autre chemin.
 email_agent = EmailAgent(provider=fast_provider, memory=memory, registre=registre)
+# Reseaux sociaux : redaction soignee, donc le modele profond. Sa voix vit dans
+# la memoire personnelle, et la recherche web sert la recherche de niche —
+# absente, la capacite se declare indisponible au lieu d'inventer des tendances.
+social_agent = SocialAgent(provider=deep_provider, memory=memory,
+                           memoire_personnelle=memoire_personnelle,
+                           registre=registre)
 # Metier UniC Plaquiste : redaction soignee, donc le modele profond.
 plaquiste_agent = PlaquisteAgent(provider=deep_provider, memory=memory, registre=registre)
 
