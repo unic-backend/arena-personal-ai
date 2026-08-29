@@ -44,7 +44,7 @@ Un module qu'aucun de ces quatre n'atteint est un orphelin :
 | `core/reasoning/` | moteur Plan & Solve (bac à sable) |
 | `agents/` | 15 agents ; les vivants : orchestrator, plaquiste, video_analyzer, email, fresh_info, coder, researcher… |
 | `apps/backend/` | serveur, routeurs, sécurité, prompts, studio |
-| `apps/pwa/` | son interface (compilée) — **`apps/pwa/server/` est un second serveur mort, question ouverte** |
+| `apps/pwa/` | son interface (compilée) — `apps/pwa/server/` (second serveur mort) supprimé le 29/08/2026, sur sa décision |
 | `tools/` | documents, recherche, vidéo, audio, code, rag, navigateur |
 | `config/` | `permissions.yaml`, `permissions_services.yaml`, `unic_plaquiste.yaml` (ses prix) |
 | `scripts/` | `doctor.py`, `orphelins.py`, `mesurer_performances.py`, installateurs |

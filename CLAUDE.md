@@ -22,9 +22,10 @@ python scripts/orphelins.py
 ```
 
 C'est la mesure, et elle ne se raconte pas. **N'ouvre pas une nouvelle phase du
-plan et n'intègre rien de nouveau** : il donne la suite lui-même. Deux questions
-attendent sa réponse — la visibilité du dépôt, et le sort de `apps/pwa/server/`
-(`docs/CURRENT_TASK.md`).
+plan et n'intègre rien de nouveau** : il donne la suite lui-même. Les deux
+questions posées à ce moment-là sont tranchées depuis : la visibilité du dépôt
+(privé depuis le 28/08/2026) et le sort de `apps/pwa/server/` (supprimé le
+29/08/2026, sur sa décision — voir `docs/CURRENT_TASK.md`).
 
 ---
 
@@ -149,8 +150,8 @@ l'en empêche désormais.
 | `tools/` | recherche, documents, vidéo, code |
 | `docs/PLAN_ARENA_OS.md` | le plan des 21 phases |
 
-**Ce qui n'est branché nulle part** : plus aucun module réel. Il reste 23
-`__init__.py` vides (des marqueurs de paquet) et les 4 fichiers de
-`apps/pwa/server/`, dont le sort est une **question au propriétaire**, pas une
-tâche — `docs/CURRENT_TASK.md`. Mesuré, pas estimé :
+**Ce qui n'est branché nulle part** : plus aucun module réel. Il reste des
+`__init__.py` vides (des marqueurs de paquet). `apps/pwa/server/` — le second
+serveur FastAPI, question posée au propriétaire — a été supprimé le
+29/08/2026 sur sa décision : `docs/CURRENT_TASK.md`. Mesuré, pas estimé :
 `python scripts/orphelins.py`.

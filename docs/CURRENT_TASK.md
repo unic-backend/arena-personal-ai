@@ -337,7 +337,11 @@ dans le flou.
    courrier. 8.2 : trier, extraire, rédiger, et **envoyer derrière
    confirmation**. Les identifiants Google vivent dans `.env`, jamais dans le
    dépôt.
-3. **`apps/pwa/server/` : on le garde ou on le supprime ?**
+3. ~~**`apps/pwa/server/` : on le garde ou on le supprime ?**~~ **Répondu le
+   29/08/2026, depuis son téléphone — supprimé.** Les 4 fichiers (482 lignes)
+   n'étaient référencés nulle part (`grep` sur tout le dépôt, hors documents),
+   aucun test n'en dépendait, et c'était déjà l'analyse ci-dessus : un second
+   serveur, visiblement remplacé par `apps/backend/`.
 
 Aucune ne se tranche sans lui.
 

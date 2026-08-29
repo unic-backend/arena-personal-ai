@@ -39,7 +39,6 @@ système autour du stable plutôt que l'inverse.
 | Zone | Raison |
 |---|---|
 | `apps/pwa/` (dist compilé) | son interface ; **jamais regardée par l'assistant** — on ne modifie pas à l'aveugle ce qu'on ne peut pas voir |
-| `apps/pwa/server/` | second serveur mort. **Question ouverte au propriétaire**, pas une tâche |
 | `tests/` marqués `integration` | ils décrivent ce qui doit être vérifié chez lui. Ne pas les affaiblir pour les faire passer |
 
 ## Interdits permanents (CLAUDE.md, non négociables)
