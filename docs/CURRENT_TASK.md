@@ -118,6 +118,25 @@ Publier passe par le connecteur, donc par la confirmation **et** le
 coupe-circuit `PUBLISH` — qui vaut `false` dans `config/permissions.yaml` :
 **rien ne peut partir tant qu'il ne le met pas à `true` lui-même.**
 
+## Coordination des tâches — écrite le 28/08/2026 (DEC-0011)
+
+`core/execution/coordination.py` : une tâche à plusieurs étapes qui **garde son
+état** quand une étape tombe. Six règles, dont trois qui portent tout :
+
+- **une étape facultative qui échoue n'arrête pas la tâche** — c'est ce qui
+  permet à un calcul impossible de ne pas emporter la réponse ;
+- **la reprise est bornée**, avec une attente croissante : retenter sans fin
+  transforme une panne en boucle ;
+- **la vérification est une étape**, pas une supposition — sans contrôle
+  déclaré, `verifiee` reste `None`, jamais `True`.
+
+Branché sur le moteur de raisonnement, qui enchaînait ses trois étapes en ligne
+droite. **Son contrat n'a pas changé** : ses tests passent sans modification.
+
+Mesuré, Docker absent : `plan DONE → calcul SKIPPED (refus du bac à sable) →
+synthese DONE`, tâche **aboutie**. Avant, l'échec du calcul laissait la chaîne
+dans le flou.
+
 ## Ce qui n'est PAS dans la mission
 
 - retirer Ollama, ou le remplacer — **interdit explicitement** ;
@@ -267,6 +286,25 @@ devient une combinatoire.
 Publier passe par le connecteur, donc par la confirmation **et** le
 coupe-circuit `PUBLISH` — qui vaut `false` dans `config/permissions.yaml` :
 **rien ne peut partir tant qu'il ne le met pas à `true` lui-même.**
+
+## Coordination des tâches — écrite le 28/08/2026 (DEC-0011)
+
+`core/execution/coordination.py` : une tâche à plusieurs étapes qui **garde son
+état** quand une étape tombe. Six règles, dont trois qui portent tout :
+
+- **une étape facultative qui échoue n'arrête pas la tâche** — c'est ce qui
+  permet à un calcul impossible de ne pas emporter la réponse ;
+- **la reprise est bornée**, avec une attente croissante : retenter sans fin
+  transforme une panne en boucle ;
+- **la vérification est une étape**, pas une supposition — sans contrôle
+  déclaré, `verifiee` reste `None`, jamais `True`.
+
+Branché sur le moteur de raisonnement, qui enchaînait ses trois étapes en ligne
+droite. **Son contrat n'a pas changé** : ses tests passent sans modification.
+
+Mesuré, Docker absent : `plan DONE → calcul SKIPPED (refus du bac à sable) →
+synthese DONE`, tâche **aboutie**. Avant, l'échec du calcul laissait la chaîne
+dans le flou.
 
 ## Ce qui n'est PAS dans la mission
 

@@ -15,6 +15,8 @@ d'ouvrir le document entier quand on cherche juste « a-t-on déjà tranché ça
 | **DEC-0006** | GalsenAPI est la source des données du Sénégal | l'attribution voyage avec **chaque** chiffre |
 | **DEC-0007** | **LibreChat et Open WebUI retirés** | 4 des 5 clés fuitées sont mortes. Ne jamais les remettre — un test le tient |
 | **DEC-0008** | **un projet tiers tourne À CÔTÉ** | ni son code, ni ses clés, ni ses dépendances n'entrent ici. ARENA lui parle par son API |
+| **DEC-0010** | d'un dépôt de prompts, on extrait la **méthode** | les règles deviennent du code qui compte ; les fichiers ne sont pas copiés |
+| **DEC-0011** | **`grok-bot-0.18-reconstructed` refusé** | aucune licence, code extrait de binaires propriétaires. Le manque réel (état d'une tâche multi-étapes) est écrit sans emprunt |
 | **DEC-0009** | **ARENA devient hybride — DEC-0002 amendée** | rien de **sensible** ne part au cloud ; un secret ne sort **jamais** ; Ollama reste défaut et repli ; `AI_LOCAL_ONLY=true` referme tout |
 
 ## Décisions de travail (hors ADR, mais qui gouvernent autant)

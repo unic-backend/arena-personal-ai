@@ -67,6 +67,7 @@ python scripts/orphelins.py → 110 modules, 82 atteints, aucun module réel end
 | `tools/social/voix.py` | **90%** | couvert | mémoire réelle, jamais remplie par lui |
 | `tools/social/idees.py` | **100% LOGIQUE VÉRIFIÉE** | couvert | sans objet (combinatoire) |
 | `agents/social/social_agent.py` | **75%** | 36 | **NON VÉRIFIÉ** — jamais tourné avec un vrai modèle |
+| `core/execution/coordination.py` | **100% LOGIQUE VÉRIFIÉE** | 18 | sans objet (pur) |
 | `apps/pwa/` (interface) | **NON VÉRIFIÉ** | 25 (fichiers) | **jamais affichée ni cliquée** |
 
 ---

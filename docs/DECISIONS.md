@@ -338,3 +338,66 @@ la source, et se changent là.
 **Attribution.** La source est sous licence MIT, et elle est nommée dans chaque
 module qui en dérive (`SOURCE = ...`). Son dépôt n'est ni copié, ni modifié, ni
 redistribué.
+
+
+## DEC-0011 : `grok-bot-0.18-reconstructed` n'entre pas dans ARENA — sa leçon, si
+
+*Demandé par le propriétaire le 28/08/2026 : intégrer
+`b-nnett/grok-bot-0.18-reconstructed` comme couche d'exécution active. Sa
+consigne autorisait explicitement à passer outre les conventions du projet,
+mais **pas** les « licensing/provenance requirements ».*
+
+### Ce que le dépôt dit de lui-même
+
+Ce ne sont pas des suppositions : c'est écrit dans ses propres fichiers.
+
+- `README.md` : « unofficial, source-oriented reconstruction of the publicly
+  shipped Grok Bot 0.18.0 macOS app », « a hacking and research project ». Il
+  **télécharge l'application officielle comme entrée de compilation** et
+  **conserve le moteur de rendu d'origine**.
+- `PROVENANCE.md` : le code est **extrait des binaires livrés** — « emitted code
+  or source-path markers, extracted capsules/source maps, shipped strings/
+  assets ». Puis, textuellement :
+
+  > **« No upstream source-code license is implied. Do not present reconstructed
+  > material as original source or an official build, and complete an
+  > independent rights review before public redistribution. »**
+
+### La décision
+
+**Aucune ligne de ce dépôt n'est copiée dans ARENA.**
+
+Il n'y a **aucune licence** qui autorise la réutilisation, et le code provient
+de binaires propriétaires désassemblés. Copier cela reviendrait à redistribuer
+du code non licencié dans un dépôt qu'on vient de nettoyer — et ça reste dans
+l'historique Git pour toujours.
+
+Le propriétaire a autorisé à passer outre les **conventions du projet**. La
+provenance n'en est pas une : sa propre consigne l'exclut, et le dépôt source
+exige lui-même une revue de droits avant toute redistribution.
+
+### Ce qui a été fait à la place
+
+Le besoin réel derrière sa demande — une **couche d'exécution qui tient l'état
+d'une tâche à plusieurs étapes** — est réel, et ARENA ne l'avait pas. Il est
+écrit ici, sans une ligne empruntée : `core/execution/coordination.py`.
+
+L'audit a d'ailleurs montré qu'ARENA avait **déjà** presque tout le reste de ce
+que la mission énumérait :
+
+| Ce que la mission demandait | Ce qui existait déjà |
+|---|---|
+| routage d'inférence, repli fournisseur | `core/models/routeur.py` (DEC-0009) |
+| exécution locale, bac à sable Docker | `tools/code/sandbox_interpreter.py` |
+| MCP | `core/mcp/transport.py` + connecteur WanGP |
+| cycle de vie des outils, santé | `core/connectors/base.py` + registre |
+| streaming, activité | passerelle PWA + `Execution` |
+| suivi d'usage | `core/models/usage.py` |
+| **état d'une tâche multi-étapes** | **rien — c'est le manque, il est comblé** |
+
+### Ce que ça coûte si c'est faux
+
+Si une revue de droits établissait un jour que ce code est librement
+réutilisable, ARENA aurait écrit lui-même un coordinateur qu'il aurait pu
+emprunter. Le coût est quelques centaines de lignes — contre un historique Git
+contaminé par du code propriétaire désassemblé, qui ne s'efface pas.
