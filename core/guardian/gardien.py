@@ -79,6 +79,10 @@ class Gardien:
     def executer_cycle(self) -> RapportSante:
         constats = diagnostiquer_tout(self.executer)
         triage = self.file.enregistrer_constats(constats)
+        # Marque le cycle comme joue MEME s'il n'a rien trouve — sinon un
+        # depot propre et une memoire jamais consultee sont indiscernables
+        # (voir doctor.py : verifier_gardien()).
+        self.file.marquer_cycle_termine()
 
         empreintes_actuelles = {c.empreinte for c in constats}
         resolues = 0

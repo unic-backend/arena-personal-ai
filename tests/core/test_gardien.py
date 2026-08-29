@@ -31,6 +31,20 @@ def _gardien_qui_rend(*serie):
     return diagnostiquer
 
 
+class TestDernierCycle:
+    def test_un_cycle_sans_rien_trouver_marque_quand_meme_qu_il_a_tourne(self, file, monkeypatch):
+        """Le defaut que doctor.py a revele : un depot propre et une memoire
+        jamais consultee etaient indiscernables avant ce marquage."""
+        import core.guardian.gardien as module_gardien
+        monkeypatch.setattr(module_gardien, "diagnostiquer_tout", _gardien_qui_rend([]))
+        gardien = Gardien(file_maintenance=file)
+
+        assert file.dernier_cycle_le() is None
+        gardien.executer_cycle()
+
+        assert file.dernier_cycle_le() is not None
+
+
 class TestScenarioControle:
     """Le scénario complet de la mission §27, en un seul test."""
 

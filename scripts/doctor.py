@@ -301,6 +301,39 @@ def verifier_opentakeoff() -> Verification:
     return Verification("Metre de plan (OpenTakeoff)", EN_PANNE, sante.message)
 
 
+def verifier_gardien() -> Verification:
+    """La memoire de maintenance du gardien (DEC-0014) — ce qu'elle contient
+    deja, jamais « aucun probleme » invente si aucun cycle n'a encore tourne.
+    """
+    try:
+        sys.path.insert(0, str(RACINE))
+        from apps.backend.config import DB_PATH
+        from core.guardian.file_maintenance import FileDeMaintenance
+    except Exception:  # noqa: BLE001 — les dependances manquent : une autre ligne le dit
+        return Verification("Gardien (maintenance)", EN_PANNE,
+                            "indeterminable : les dependances ne s'importent pas")
+
+    try:
+        fichier = FileDeMaintenance(db_path=str(DB_PATH))
+        dernier_cycle = fichier.dernier_cycle_le()
+        ouvertes = fichier.ouvertes()
+        toutes = fichier.toutes()
+    except Exception as erreur:  # noqa: BLE001
+        return Verification("Gardien (maintenance)", EN_PANNE,
+                            f"file de maintenance illisible : {type(erreur).__name__}",
+                            "Verifier data/database/memory.db.")
+
+    if dernier_cycle is None:
+        return Verification("Gardien (maintenance)", OK,
+                            "aucun cycle encore lance (POST /api/gardien/cycle pour le premier)")
+    if not ouvertes:
+        return Verification("Gardien (maintenance)", OK,
+                            f"depot propre au dernier cycle ({dernier_cycle})")
+    return Verification("Gardien (maintenance)", OK,
+                        f"{len(ouvertes)} tache(s) ouverte(s) sur {len(toutes)} deja vue(s), "
+                        f"dernier cycle {dernier_cycle}")
+
+
 def verifier_inference() -> Verification:
     """Le regime d'inference, et qui est reellement joignable.
 
@@ -467,6 +500,7 @@ def diagnostiquer() -> Rapport:
         verifier_wangp(),
         verifier_moneyprinter(),
         verifier_opentakeoff(),
+        verifier_gardien(),
         verifier_google("Courrier (Gmail)", "ARENA ne lit pas ton courrier",
                         "gmail.readonly / gmail.send", absentes_google),
         verifier_google("Agenda (Calendar)", "ARENA ne voit pas tes creneaux",
