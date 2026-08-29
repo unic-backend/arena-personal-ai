@@ -44,16 +44,23 @@ elle disparaîtra à l'étape 3.
 | # | Module | Ce qu'il doit servir | Où le brancher |
 |---|---|---|---|
 | 1 | `core/models/confidentialite.py` | décider ce qui a le droit de sortir de sa machine | l'aiguilleur (étape 3) |
+| 2 | `core/models/openai_compatible.py` | la mécanique partagée des deux services distants | via les deux fournisseurs |
+| 3 | `core/models/groq_provider.py` | l'inférence rapide | l'aiguilleur (étape 3) |
+| 4 | `core/models/deepinfra_provider.py` | le second service, et le repli du premier | l'aiguilleur (étape 3) |
 
-### Étape 2 — les deux fournisseurs distants *(à écrire)*
+### Étape 2 — les deux fournisseurs distants — **écrite le 28/08/2026**
 
-Un fournisseur Groq et un fournisseur DeepInfra, tous deux derrière l'interface
-`ModelProvider` existante, avec streaming, santé mesurée, délai court et
-latence rapportée.
+Une seule mécanique partagée, deux configurations : les deux parlent le
+protocole OpenAI, et deux classes qui se recopieraient seraient deux endroits où
+se tromper sur un en-tête d'authentification.
 
-Contrainte : les deux parlent le protocole OpenAI. **Une seule implémentation
-partagée, deux configurations** — deux classes qui se recopieraient seraient
-deux endroits où se tromper.
+Streaming, santé mesurée, délai de connexion court (3 s), latence relevée à
+chaque appel. **La clé ne sort jamais** : elle part dans l'en-tête, et les
+erreurs sont nettoyées avant d'être rapportées. Les jetons comptés viennent du
+service ; absents, ils restent `None`. 33 tests, 3 sabotages.
+
+**Les trois modules sont écrits et testés, mais encore endormis** — ils
+attendent l'aiguilleur.
 
 ### Étape 3 — l'aiguilleur *(à écrire)*
 
