@@ -45,11 +45,11 @@ Un module qu'aucun de ces quatre n'atteint est un orphelin :
 | `agents/` | 15 agents ; les vivants : orchestrator, plaquiste, video_analyzer, email, fresh_info, coder, researcher… |
 | `apps/backend/` | serveur, routeurs, sécurité, prompts, studio |
 | `apps/pwa/` | son interface (compilée) — `apps/pwa/server/` (second serveur mort) supprimé le 29/08/2026, sur sa décision |
-| `tools/` | documents, recherche, vidéo, audio, code, rag, navigateur |
+| `tools/` | documents, recherche, vidéo (ffmpeg, sous-titres, audit de prompt DEC-0015), audio, code, rag, navigateur |
 | `config/` | `permissions.yaml`, `permissions_services.yaml`, `unic_plaquiste.yaml` (ses prix) |
 | `scripts/` | `doctor.py`, `orphelins.py`, `mesurer_performances.py`, installateurs |
 | `docs/` | plan, décisions, reprise, règles de travail |
-| `tests/` | 1953 tests (1932 hors ligne + 21 marqués `integration`) |
+| `tests/` | 1993 tests (1972 hors ligne + 21 marqués `integration`) |
 
 ## Les trois documents historiques (autorité, pas mémoire)
 

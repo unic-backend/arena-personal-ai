@@ -86,6 +86,20 @@ mesurée.
 Mesure de fin de session : `ruff` propre, **1861 passed / 21 deselected**
 (1813 avant → 1861, +48 tests), 4 sabotages sur ce chapitre, tous restaurés.
 
+### Suite du 29/08 — DeepSeek Harness, Gardien, décisions du propriétaire, Hell-Grind
+
+| PR | Ce qui change |
+|---|---|
+| **#25** | DeepSeek Harness (DEC-0013) : Cordis (bus de plugins) refusé — résout un problème qu'ARENA n'a pas ; `core/execution/hooks.py` + `core/execution/disjoncteur.py` extraits, premier consommateur réel |
+| **#27–28** | Live-SWE-agent (DEC-0014) : aucun code d'agent trouvé — `core/guardian/` construit à côté (DÉCOUVRE/RAPPORTE, jamais MODIFIE) ; correctif d'honnêteté sur `doctor.py` |
+| **#30** | `apps/pwa/server/` supprimé — décision du propriétaire, donnée depuis son téléphone |
+| **#31** | correctif interface : `.writing-text` invisible en mode clair (composeur + édition d'un message) |
+| **(suivante)** | Hell-Grind-AIGC-Skill (DEC-0015) : `tools/video/prompt_audit.py` — premier appelant réel de `wan2gp.generer`, bloqué tant qu'un prompt n'est pas structurellement complet |
+
+Mesure de fin de session : `ruff` propre, **1972 passed / 21 deselected**
+(1861 → 1972, +111 tests sur cette suite de PR), 130 modules / 103 atteints /
+27 orphelins (tous des `__init__.py`).
+
 Correction du propriétaire le lendemain (« la surface d'un cloisons c'est
 largeurs et hauteur ») : la première version confondait surface au sol et
 surface de mur pour doublage/habillage/coffre. Corrigée en trois issues

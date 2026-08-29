@@ -7,19 +7,21 @@
 | | |
 |---|---|
 | Branche | `claude/arena-personal-ai-integration-grp0ey` (repartie de `master` à chaque PR fusionnée en cours de session — voir CHANGELOG.md) |
-| `master` | **PR #29 fusionnée** — PR #26 à #29 toutes fusionnées cette session (gardien DEC-0014 + son correctif d'honnêteté + précision doc sur la mesure 7.2) |
-| Tests | **1937** hors ligne au vert, 21 `integration` désélectionnés |
+| `master` | PR #26 à #31 fusionnées, DEC-0015 (Hell-Grind-AIGC-Skill) prête à pousser |
+| Tests | **1972** hors ligne au vert, 21 `integration` désélectionnés |
 | Lint | `ruff` propre |
-| Orphelins | 129 modules, 102 atteints, 27 orphelins — **tous** `__init__.py` vides. Aucun module réel endormi (`apps/pwa/server/` supprimé le 29/08/2026, voir ci-dessous) |
+| Orphelins | 130 modules, 103 atteints, 27 orphelins — **tous** `__init__.py` vides. Aucun module réel endormi (`apps/pwa/server/` supprimé le 29/08/2026) |
 
-## Ce qui vient de se fermer (PR #26 → #29, ce chunk)
+## Ce qui vient de se fermer (PR #26 → #31, ce chunk)
 
 | PR | Ce qui change | Statut |
 |---|---|---|
 | **#27** | `core/guardian/` — DÉCOUVRE et RAPPORTE (jamais MODIFIE), DEC-0014 | **FERMÉ** — 25 tests unitaires + 6 API, scénario §27 bout en bout |
 | **#28** | correctif : `verifier_gardien()` distinguait mal « jamais lancé » de « lancé, rien trouvé » | **FERMÉ** — sabotage/restauration prouvés, +5 tests |
 | **#29** | doc seule : la recherche web reste `UNKNOWN` en cloud à cause d'un 403 du bac à sable, pas seulement d'Ollama absent | **FERMÉ** — aucun code touché |
-| *(suivante)* | `apps/pwa/server/` supprimé (4 fichiers, 482 lignes) — décidé par le propriétaire depuis son téléphone le 29/08/2026 | **FERMÉ** — 27 orphelins restants, tous `__init__.py` vides |
+| **#30** | `apps/pwa/server/` supprimé (4 fichiers, 482 lignes) — décidé par le propriétaire depuis son téléphone | **FERMÉ** — 27 orphelins restants, tous `__init__.py` vides |
+| **#31** | correctif interface : `.writing-text` (composeur + édition) invisible en mode clair | **FERMÉ** — build Vite réel vérifié, reste un `npm run build` chez lui |
+| *(suivante)* | DEC-0015 — `tools/video/prompt_audit.py` + `VideoAnalyzerAgent.planifier_scene()`, premier appelant réel de `wan2gp` | **FERMÉ** — 35 tests (+20 audit, +15 branchement), sabotage prouvé |
 
 Mesures 7.2 (phase entière) : **toujours `UNKNOWN`**, structurellement — ne pas
 retenter depuis le cloud (Ollama absent, recherche web bloquée par la
@@ -60,7 +62,7 @@ mesuré ici, jamais supposé. Le reste (Ollama, Docker, WanGP, MoneyPrinterTurbo
 Gmail/Agenda) reste `[ABS]`/`[CONF]`/`[PANNE]` sur cette machine, comme
 attendu : rien de tout ça n'y a jamais été installé.
 
-## Ce qui est fusionné dans `master` depuis le 28/08/2026 (PR #21 → #29)
+## Ce qui est fusionné dans `master` depuis le 28/08/2026 (PR #21 → #31)
 
 1. `doctor.py` réécrit, puis relié à `sonder()` de chaque connecteur (jamais une seconde logique de santé) ;
 2. **chapitre 9 — l'agenda**, **MoneyPrinterTurbo** branché sur l'agent vidéo ;
@@ -69,7 +71,9 @@ attendu : rien de tout ça n'y a jamais été installé.
 5. **Coordination des tâches (DEC-0011)** : `grok-bot-0.18-reconstructed` refusé (aucune licence) ; `core/execution/coordination.py` écrit sans emprunt ;
 6. **OpenTakeoff — métré de plan PDF (DEC-0012)** : transport MCP stdio, sous-ensemble réel, la limite plafond/mur/rampant corrigée sur indication du propriétaire ;
 7. **Crochets d'exécution + disjoncteur (DEC-0013)** : idée extraite de DeepSeek Harness (Cordis refusé), premier consommateur réel — coupe court après des échecs consécutifs réels sur un service tombé ;
-8. **Gardien de maintenance (DEC-0014)** : idée extraite de live-swe-agent (aucun code d'agent trouvé, refusé) — DÉCOUVRE et RAPPORTE seulement, jamais MODIFIE (commit/PR autonome explicitement hors périmètre, contraire à la règle non négociable du projet) ; correctif ultérieur pour que `doctor.py` distingue « jamais lancé » de « lancé, rien trouvé ».
+8. **Gardien de maintenance (DEC-0014)** : idée extraite de live-swe-agent (aucun code d'agent trouvé, refusé) — DÉCOUVRE et RAPPORTE seulement, jamais MODIFIE (commit/PR autonome explicitement hors périmètre, contraire à la règle non négociable du projet) ; correctif ultérieur pour que `doctor.py` distingue « jamais lancé » de « lancé, rien trouvé » ;
+9. `apps/pwa/server/` supprimé (décision du propriétaire) ; correctif `.writing-text` invisible en mode clair sur l'interface ;
+10. **Hell-Grind-AIGC-Skill (DEC-0015)** : `tools/video/prompt_audit.py` (audit déterministe de prompt, méthode extraite) + `VideoAnalyzerAgent.planifier_scene()` — premier appelant réel de `wan2gp.generer`, jamais invoqué si l'audit trouve une erreur bloquante.
 
 ## Ce qui attend une action du PROPRIÉTAIRE
 
@@ -80,6 +84,8 @@ attendu : rien de tout ça n'y a jamais été installé.
 | **Identifiants Google** | 3 valeurs dans `.env` pour réveiller courrier + agenda |
 | **MoneyPrinterTurbo** | `scripts/installer_moneyprinter.ps1`, puis `llm_provider = "ollama"` et une clé Pexels dans **leur** `config.toml` |
 | **OpenTakeoff** | `scripts/installer_opentakeoff.ps1`, puis `OPENTAKEOFF_MCP_DIR` dans `.env` — vérifié bout en bout dans cette session (ci-dessus), il ne reste que le geste chez lui |
+| **Interface (PWA)** | `npm run build` dans `apps/pwa/` pour que le correctif du mode clair (PR #31) serve réellement |
+| **WanGP** | lancer `python wgp.py --mcp --mcp-transport streamable-http ...` pour que `planifier_scene` (DEC-0015) génère vraiment une scène |
 | **Mesures 7.2** | `python -m pytest -m integration` et `python scripts/mesurer_performances.py` sur son PC |
 
 ## Prochaine action recommandée

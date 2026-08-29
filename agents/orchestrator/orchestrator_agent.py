@@ -77,6 +77,14 @@ FABRIQUER_VIDEO = (
     "génère un short", "genere un short",
 )
 
+#: Preparer le prompt d une scene precise pour WanGP — distinct de FABRIQUER_VIDEO,
+#: qui fabrique une video COMPLETE sur un sujet (MoneyPrinterTurbo, aucun audit).
+#: Teste AVANT FABRIQUER_VIDEO : « prepare » est un verbe partage par les deux.
+PLANIFIER_SCENE = (
+    "prépare le prompt", "prepare le prompt", "écris le prompt", "ecris le prompt",
+    "storyboard", "plan de tournage", "découpe en plans", "decoupe en plans",
+)
+
 #: « Ou en est ma video ? » n est pas une analyse de fichier : c est le suivi d une
 #: generation lancee sur la carte graphique. Meme agent, autre travail — et teste
 #: avant le metier, parce que « la video du chantier » contient « chantier ».
@@ -150,7 +158,8 @@ CODE_EXECUTION  : écrire ou exécuter du code, un script, un programme.
 DEEP_REASONING  : résoudre un problème mathématique ou une démonstration.
 DEEP_RESEARCH   : produire une étude, un rapport documenté, une recherche approfondie.
 TREND_SEARCH    : chercher des tendances ou des idées de contenu vidéo.
-VIDEO_ANALYSIS  : analyser, découper ou reformater un fichier vidéo.
+VIDEO_ANALYSIS  : analyser, découper ou reformater un fichier vidéo ; fabriquer
+                  une vidéo ; suivre une génération ; préparer le prompt d'une scène.
 EMAIL           : lire, trier ou répondre à son courrier.
 SOCIAL          : écrire, relire ou préparer une publication pour ses réseaux.
 PLAQUISTE       : metier du proprietaire — devis, facture, mail client,
@@ -313,6 +322,11 @@ class OrchestratorAgent(BaseAgent):
         # contient « client » sans etre une demande de devis.
         if any(k in text for k in COURRIER):
             return "EMAIL"
+
+        # Planifier une scene. Teste AVANT FABRIQUER_VIDEO : « prepare » est un
+        # verbe partage, et celle-ci est la demande la plus specifique des deux.
+        if any(k in text for k in PLANIFIER_SCENE):
+            return "VIDEO_ANALYSIS"
 
         # Fabriquer une video. Teste AVANT le metier : le sujet d une video est
         # souvent son metier, et la demande n en est pas une pour autant.

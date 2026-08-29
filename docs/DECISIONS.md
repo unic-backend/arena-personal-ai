@@ -660,3 +660,232 @@ sans preuve ne se construit pas »). Un gardien qui écrirait du code sans
 qu'une pull request passe devant le propriétaire retirerait la seule
 protection qui l'empêche aujourd'hui de voir un mauvais correctif partir
 sans lui. Les deux sont pourquoi ce PR s'arrête où il s'arrête.
+
+---
+
+## DEC-0015 : Hell-Grind-AIGC-Skill — un auditeur de prompt, pas un moteur
+
+*Demandé le 29/08/2026 : intégrer les capacités utiles de « Higgsfield AI /
+Hell Grind » comme une capacité réelle de production vidéo dans ARENA.*
+
+### Ce que le dépôt contient vraiment
+
+Aucun lien n'accompagnait la mission — cherché et retrouvé :
+`github.com/renmu2017/Hell-Grind-AIGC-Skill` (MIT, Copyright (c) 2026
+renmu2017). Cloné et inspecté fichier par fichier.
+
+C'est un **Skill Codex** (le mécanisme de compétence de la CLI OpenAI Codex,
+sans équivalent dans ARENA) : `SKILL.md`, son `openai.yaml` (dans agents/), 22 fichiers
+`references/*.md` de méthode (architecture de prompt en 7 couches, contrat
+de plan en 12 segments, diagnostic d'échec, schéma de projet en 14 tables),
+et trois scripts Python — `init_project.py`, `validate_project.py`,
+`audit_prompt.py` — **déterministes, sans dépendance tierce, sans réseau,
+sans base de données**, comme le dépôt le revendique et comme la lecture le
+confirme. `NOTICE.md` est explicite sur ses propres limites :
+
+> *« No original film file, source asset pack, bulk prompt dataset, or
+> long project-specific prompt is distributed here. (...) The Hell Grind
+> film, original assets, bulk prompt dataset, and project-specific source
+> prompts are not included in this repository and are not licensed by
+> this repository. »*
+
+**Ce n'est ni un modèle de génération, ni un monteur.** Aucun poids, aucun
+appel réseau, aucune primitive ffmpeg — uniquement de la méthode
+(documentation) et des vérificateurs de texte locaux.
+
+### Ce qu'ARENA a déjà, vérifié avant d'écrire une ligne
+
+- `core/connectors/wan2gp.py` — génère une **scène** sur WanGP à partir d'un
+  prompt (`generer`, paramètre `source`). Câblé dans `runtime.py`,
+  enregistré dans `CONNECTEURS_VIDEO`, mais **jamais réellement invoqué** :
+  seul le suivi (`suivre_la_generation`) l'utilisait. Aucun appelant
+  n'envoyait de prompt de scène avant cette PR.
+- `core/connectors/moneyprinter.py` — fabrique une vidéo **complète** sur un
+  sujet (script, plans, voix, sous-titres, montage internes à
+  MoneyPrinterTurbo). Different problème, connecteur different — la
+  distinction est déjà posée dans `video_analyzer_agent.py`.
+- `tools/video/{ffmpeg_tool,crop_tool,subtitle_tool}.py` — montage (coupe,
+  recadrage, sous-titres).
+- `agents/video_analyzer/video_analyzer_agent.py` — un seul agent vidéo,
+  responsabilités déjà séparées en son sein (analyser / suivre / fabriquer).
+
+Le vrai manque, confirmé par grep sur tout le dépôt : **rien n'auditait un
+prompt avant de le confier à WanGP.** Une génération occupe la carte
+graphique plusieurs minutes ; un prompt sans sujet, sans durée ou avec une
+caméra verrouillée ET en mouvement dans la même phrase la dépense pour un
+résultat qu'il faudra recommencer.
+
+### La décision
+
+**Rien du Skill Codex n'est copié** — `SKILL.md` et son `openai.yaml` (dans agents/)
+n'ont pas d'équivalent ni de sens hors de Codex ; ARENA route ses intentions
+par mots-clés et par modèle, pas par fichier de compétence. **Le schéma de
+projet en 14 tables (`init_project.py`/`validate_project.py`) n'est pas
+porté non plus** : dimensionné pour un film de 95 minutes, il dépasse très
+largement l'échelle réelle d'ARENA (une poignée de scènes par demande) —
+le porter aurait été construire une capacité pour un usage qu'il n'a pas.
+`SUGGESTION — NON IMPLÉMENTÉE` si un jour une production à plusieurs scènes
+suivies dans le temps devient un besoin réel.
+
+**Ce qui est réellement réutilisable, et qui l'est** : l'auditeur de prompt
+(`audit_prompt.py`) — une méthode déterministe, testée, à coût nul, qui
+comble exactement le manque mesuré ci-dessus. Porté avec ses catégories de
+contrôle et son barème de score inchangés (c'est la partie déjà éprouvée) ;
+ses motifs de détection, écrits en chinois/anglais dans la source, sont
+retraduits en français/anglais — les prompts de génération s'écrivent en
+anglais la plupart du temps, mais Ousmane décrit une scène en français.
+
+### Ce qui est construit : un vrai chemin d'exécution, pas une capacité qui dort
+
+- `tools/video/prompt_audit.py` — `auditer_prompt(texte, support)` : 12
+  modules détectés, 10 catégories de problème (sujet manquant, durée
+  manquante, fin de caméra absente, audio absent, conflit immobile/en
+  mouvement, conflit de caméra, chronologie dépassée, négations
+  redondantes, paramètres de plateforme mêlés au prompt, dialogue exact
+  sans limite visuelle), score 0–100. Pur, sans effet de bord, testé avec
+  20 cas déterministes.
+- `agents/video_analyzer/video_analyzer_agent.py` — nouvelle méthode
+  `planifier_scene(description)` : audite, puis **n'appelle `wan2gp` que
+  si `audit.pret` est vrai** ; sinon rend les problèmes bloquants, sans
+  jamais toucher au connecteur. Premier appelant réel de la capacité
+  `generer` de WanGP.
+- Détection de phrase (`description_de_plan`, motifs `PLANIFIER_SCENE`
+  dans l'orchestrateur) : « prépare le prompt de cette scène », « storyboard »,
+  « plan de tournage », « découpe en plans » — testée AVANT la fabrication
+  complète (`FABRIQUER_VIDEO`), qui partage le verbe « prépare ».
+
+Chemin réel : *phrase du propriétaire → `description_de_plan` → audit
+déterministe → (bloqué et expliqué) OU (`registre.executer("wan2gp",
+"generer", source=...)`, sous confirmation comme toute génération)*.
+
+### La preuve
+
+```
+python -m pytest tests/tools/test_prompt_audit.py tests/agents/test_video_planification.py -q
+→ 35 passed
+python -m pytest tests/ -q
+→ 1972 passed, 21 deselected (1937 avant cette PR)
+python scripts/orphelins.py
+→ 130 modules, 103 atteints, 27 orphelins (tous des __init__.py — inchangé)
+```
+
+Sabotage : le gate d'audit dans `planifier_scene` remplacé par `if False:`
+— `test_un_prompt_incomplet_ne_part_jamais` tombe, avec la preuve exacte
+qu'un prompt sans durée ni fin de caméra atteint `wan2gp`. Restauré,
+revérifié vert.
+
+### Ce que ça coûte si c'est faux
+
+Un prompt mal formé envoyé à WanGP sans audit dépenserait plusieurs minutes
+de la carte graphique du propriétaire pour un résultat probablement à
+refaire — exactement le problème que `Hell-Grind-AIGC-Skill` documente
+avoir rencontré en production réelle, et exactement ce que ce gate empêche
+maintenant, avant le premier appel.
+
+---
+
+## DEC-0016 : GitHub Spec Kit — refusé, un problème déjà réglé et hors du métier d'ARENA
+
+*Demandé le 29/08/2026 : intégrer `github/spec-kit` comme « capacité active
+de développement et d'ingénierie » d'ARENA — un cycle
+spécifier → planifier → découper en tâches → implémenter → converger,
+câblé dans l'orchestrateur, pour qu'ARENA « développe et maintienne
+elle-même et d'autres projets logiciels ».*
+
+### Ce que le dépôt contient vraiment
+
+Cloné et inspecté fichier par fichier : `github/spec-kit`, MIT
+(Copyright GitHub, Inc.), 1.0.0, actif. `src/specify_cli` (≈ 55 000 lignes)
++ des dizaines d'intégrations d'agents (Claude Code, Copilot, Cursor,
+Windsurf, Codex...) + un système d'extensions/presets/bundles.
+
+**Ce que c'est réellement, dans les mots du dépôt lui-même** — le README :
+
+> *« Launch your coding agent in the project directory, then: 0. Establish
+> your project principles (`/speckit-constitution`)... 1. Specify... 2.
+> Plan... 3. Break down... 4. Implement... 5. Converge... »*
+
+et l'extension bug, sur son propre mécanisme :
+
+> *« This extension delivers an opinionated, repeatable bug workflow that
+> **any AI coding agent can drive**. »*
+
+Vérifié en lisant sa commande `implement` (223 lignes, dans
+templates/commands/ de Spec Kit) : ce n'est
+pas un moteur — c'est un **prompt**, un texte d'instructions que l'agent de
+codage **déjà présent dans la session de l'humain** (Claude Code, Copilot...)
+suit lui-même, avec **ses propres outils** (lire, écrire, exécuter, tester),
+sous **la même supervision humaine que n'importe quelle session de codage**.
+Spec Kit ne contient aucun exécuteur autonome : `specify_cli` scaffold des
+fichiers et des commandes ; c'est l'agent de codage — piloté par un humain —
+qui fait le travail. Exactement ce que cette session (Claude Code, sur ce
+dépôt, sous ta revue via pull request) fait déjà.
+
+### Ce qu'ARENA a déjà, vérifié avant d'écrire une ligne
+
+Cette même session a déjà tranché, il y a quelques échanges, la question
+que ce dépôt repose sous un autre nom :
+
+- **DEC-0014 (Live-SWE-agent, 29/08/2026)** a déjà refusé qu'ARENA modifie
+  du code de façon autonome — « une garde qui commettrait des correctifs ou
+  ouvrirait des pull requests elle-même contournerait exactement la
+  garantie que CLAUDE.md pose comme non négociable ». `core/guardian/`
+  DÉCOUVRE et RAPPORTE, ne MODIFIE jamais.
+- **`core/actions/resultat.py`** interdit déjà la construction d'un
+  `SUCCES` sans preuve — plus strict que la « convergence » de Spec Kit,
+  qui reste une vérification déclarative faite par l'agent, pas une
+  contrainte imposée au type lui-même.
+- **`core/execution/coordination.py` (DEC-0011)** suit déjà un état de
+  tâche à plusieurs étapes, sans rien emprunter à `grok-bot`.
+
+Le §11 de cette mission le dit lui-même : *« If ARENA already has planning;
+task management; reasoning; testing; auditing; convergence — do not build
+duplicate competing systems. »* C'est exactement la situation.
+
+### La décision
+
+**Refusé.** Pas pour une question de licence (MIT, dépôt actif, rien à
+reprocher) — pour deux raisons qui ne sont pas des préférences de style :
+
+1. **La seule étape de Spec Kit qui n'existe pas déjà dans ARENA sous une
+   forme plus stricte est « implement » — écrire et modifier du code.**
+   Câbler ça dans l'orchestrateur d'ARENA pour qu'elle « développe et
+   maintienne elle-même » romprait la même garantie non négociable que
+   DEC-0014 vient de protéger : *« il ne peut pas lancer les tests, la PR
+   est l'endroit où il voit ce qui entre »* (`CLAUDE.md`). Un ARENA qui
+   écrit et fusionne du code sans passer par une pull request qu'il revoit
+   n'est plus le produit que ce dépôt construit.
+2. **« Développer et maintenir d'autres projets logiciels » n'est pas le
+   métier d'ARENA.** ARENA est l'assistant personnel d'un plaquiste à
+   Dakar — devis, vidéo, documents, réseaux sociaux, courrier, agenda. Rien
+   dans son métier n'appelle une capacité générique d'agent de codage
+   autonome ; en construire une ferait d'ARENA un produit différent de
+   celui que `CLAUDE.md` décrit, sans qu'on le lui ait demandé.
+
+Rien n'est câblé, aucun `.specify/` n'est copié dans le dépôt : une copie
+non branchée serait exactement l'« intégration dormante » que la mission
+elle-même interdit (§10) — mieux vaut refuser proprement que fabriquer un
+dossier qui ne sert à rien.
+
+### Ce qui reste vrai, et ce qui ne l'est pas
+
+Le triage tâche-simple / tâche-moyenne / tâche-complexe que la mission
+décrit (§5) est une bonne discipline — mais c'est déjà celle que cette
+session applique à chaque mission de ce fichier `DECISIONS.md` : un
+correctif d'une ligne se pousse directement, une intégration de dépôt tiers
+passe par audit → décision → implémentation → tests → preuve. Le formaliser
+en templates Markdown dans ce dépôt (à la façon de `docs/REGLES_DE_TRAVAIL.md`)
+est possible, mais ce serait un gabarit pour les sessions futures de Claude
+Code sur CE dépôt — pas une capacité de l'ARENA déployée, et ce n'est pas ce
+que la mission demandait. `SUGGESTION — NON IMPLÉMENTÉE`.
+
+### Ce que ça coûte si c'est faux
+
+Construire un « agent de codage autonome » à l'intérieur d'ARENA sans
+passer par la revue humaine referait exactement l'erreur que le
+propriétaire a déjà cadrée dans `documents/RUNBOOK_PURGE_SECRETS.md` et
+`CLAUDE.md` : une action irréversible (du code fusionné) prise sans qu'il
+ait pu la voir passer. C'est le même coût que DEC-0014 a déjà refusé de
+payer ; refuser une seconde fois, pour un dépôt différent qui pose la même
+question, coûte une session de moins qu'une capacité qu'il faudrait
+démanteler ensuite.

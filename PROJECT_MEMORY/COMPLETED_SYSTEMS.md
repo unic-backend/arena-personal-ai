@@ -21,14 +21,12 @@ OpenTakeoff a pu être construit et interrogé pour de vrai — voir sa ligne
 dans le tableau plus bas, et `PROJECT_MEMORY/ACTIVE_WORK.md` pour le rapport
 `doctor.py` complet, avant/après construction.
 
-Preuve du 2026-08-29 :
+Preuve du 2026-08-29 (fin de session, apres DEC-0015) :
 ```
 python -m ruff check .      → All checks passed!
-python -m pytest tests/ -q  → 1899 passed, 21 deselected
-python scripts/orphelins.py → 128 modules, 98 atteints, 30 orphelins (nommés dans docs/CURRENT_TASK.md)
-python scripts/doctor.py    → 12 capacité(s) indisponible(s) par défaut ;
-                               11 une fois OpenTakeoff construit et
-                               OPENTAKEOFF_MCP_DIR pointé dessus (mesuré, pas supposé)
+python -m pytest tests/ -q  → 1972 passed, 21 deselected
+python scripts/orphelins.py → 130 modules, 103 atteints, 27 orphelins (tous des __init__.py — apps/pwa/server/ supprime)
+python scripts/doctor.py    → sur cette machine (cloud), 12 capacité(s) indisponible(s) par defaut
 ```
 
 Preuve du 2026-08-28 (historique) :
@@ -64,7 +62,9 @@ python scripts/orphelins.py → 110 modules, 82 atteints, aucun module réel end
 | `core/connectors/calendrier.py` | **75%** | 26 | **NON VÉRIFIÉ** — idem |
 | `agents/email/email_agent.py` | **75%** | 23 | **NON VÉRIFIÉ** — dépend de Gmail |
 | `core/connectors/moneyprinter.py` | **75%** | 19 | **NON VÉRIFIÉ** — service jamais lancé |
-| `core/connectors/wan2gp.py` | **75%** | couvert | **NON VÉRIFIÉ** — WanGP jamais lancé |
+| `core/connectors/wan2gp.py` | **75%** | couvert | **NON VÉRIFIÉ** — WanGP jamais lancé. Premier appelant reel depuis DEC-0015 (`planifier_scene`), mais toujours jamais invoque contre le vrai service |
+| `tools/video/prompt_audit.py` | **100% LOGIQUE VÉRIFIÉE** | 20 | sans objet (pur, aucun reseau) |
+| `agents/video_analyzer/video_analyzer_agent.py` (`planifier_scene`) | **100% LOGIQUE VÉRIFIÉE** | 15 (branchement + sabotage) | **NON VÉRIFIÉ** avec le vrai WanGP — le gate d'audit avant l'appel est prouve, pas la generation elle-meme |
 | `core/connectors/suivi_video.py` | **90%** | 8 + 31 (agent) | **NON VÉRIFIÉ** avec un vrai générateur |
 | `core/connectors/galsen.py` | **90%** | couvert | mesuré une fois chez lui : 558 communes |
 | `tools/documents/{indexer,inventory}` | **75%** | 18 + 19 + 17 | **NON VÉRIFIÉ** — exige Ollama + LightRAG |
