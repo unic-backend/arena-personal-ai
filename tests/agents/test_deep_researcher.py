@@ -2,6 +2,8 @@
 
 Deux appels au modèle (plan puis synthèse) et une recherche web doublée.
 """
+import time
+
 import pytest
 
 from agents.researcher.researcher_agent import DeepResearcherAgent
@@ -73,3 +75,25 @@ async def test_les_sources_sont_transmises_au_modele_de_synthese(agent_avec_web)
     prompt_synthese = agent.provider.appels[1]["prompt"]
     assert "Source 7" in prompt_synthese
     assert "https://exemple.sn/7" in prompt_synthese
+
+
+async def test_les_trois_requetes_tournent_en_parallele(provider_factory, monkeypatch):
+    """La preuve, pas la promesse : trois recherches de 0,3 s doivent tenir en
+    un seul intervalle, pas en trois mis bout à bout."""
+    DUREE = 0.3
+    agent = DeepResearcherAgent(
+        provider=provider_factory("un\ndeux\ntrois", "Rapport final."), memory=None)
+
+    def _search_lente(query, max_results=5):
+        time.sleep(DUREE)
+        return [source(1)]
+
+    monkeypatch.setattr(agent.search_tool, "search", _search_lente)
+
+    debut = time.monotonic()
+    await agent.run("Sujet")
+    ecoule = time.monotonic() - debut
+
+    assert ecoule < DUREE * 2, (
+        f"{ecoule:.2f} s pour trois recherches de {DUREE} s : "
+        "elles n'ont pas tourne en parallele")

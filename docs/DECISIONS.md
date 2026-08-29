@@ -889,3 +889,115 @@ ait pu la voir passer. C'est le même coût que DEC-0014 a déjà refusé de
 payer ; refuser une seconde fois, pour un dépôt différent qui pose la même
 question, coûte une session de moins qu'une capacité qu'il faudrait
 démanteler ensuite.
+
+---
+
+## DEC-0017 : Agent-Reach — rien à intégrer, la recherche existante corrigée à la place
+
+*Demandé le 29/08/2026 : unifier les capacités de recherche déjà présentes
+dans ARENA (recherche web, navigateur, recherche profonde) avec
+`Panniantong/Agent-Reach`, sans dupliquer, en parallélisant ce qui peut
+l'être et en fusionnant les résultats en une seule réponse structurée.*
+
+### Ce que le dépôt contient vraiment
+
+Aucun lien fourni — la mission commençait à la section 20, sans les
+sections 1 à 19 qui auraient normalement nommé le dépôt. Retrouvé par
+recherche : `github.com/Panniantong/agent-reach` (MIT, Copyright (c) 2025
+Agent Eyes), cloné et audité fichier par fichier plutôt que supposé depuis
+son README.
+
+**Ce que chaque canal fait réellement, vérifié en lisant le code, pas
+la description** :
+
+| Canal | Ce qu'il fait vraiment |
+|---|---|
+| `youtube.py` | sonde si `yt-dlp` (un outil tiers indépendant) est installé et fonctionnel — ne récupère rien lui-même |
+| `rss.py` | sonde si `feedparser` (bibliothèque Python standard) est importable — ne parse rien lui-même |
+| `web.py` | route toute page vers **Jina Reader** (`r.jina.ai`), un service cloud tiers |
+| recherche « tout le web » | route vers **Exa**, un service cloud tiers (`mcp.exa.ai`), malgré la mention « gratuit, sans clé » |
+| Twitter, Reddit, Instagram, Facebook, Xiaohongshu | exigent les cookies de session du propriétaire, extraits de **son propre navigateur** |
+
+`core.py` le dit de lui-même dans sa docstring : *« This class provides
+health-check functionality »*. Agent-Reach n'est ni un moteur de recherche
+ni un moteur de récupération : c'est une **couche de diagnostic et
+d'installation pour un agent de codage** — elle vérifie que des outils déjà
+indépendants (`yt-dlp`, `feedparser`, `gh`) sont présents et configurés,
+puis dit à l'agent de codage (Claude Code, Copilot...) quelle commande
+lancer. Le travail réel est fait par ces outils tiers, pas par Agent-Reach.
+
+### Ce qu'ARENA a déjà, vérifié avant d'écrire une ligne
+
+Trois agents de recherche existent, chacun avec sa responsabilité — aucune
+« recherche A → B → C → D » qui se marche dessus : l'orchestrateur choisit
+UNE branche par intention (`FRESH_INFO`, `DEEP_RESEARCH`, `TREND_SEARCH`),
+jamais les quatre à la fois. Le problème que la mission redoute (plusieurs
+chercheurs qui tournent pour la même question) n'existe pas dans
+l'architecture actuelle.
+
+- **`FreshInfoAgent`** (313 lignes) : le plus abouti des trois — recherche
+  bornée dans le temps, lecture de pages **déjà en parallèle**
+  (`asyncio.wait` avec annulation des pages lentes), repli sur les extraits
+  du moteur quand aucune page n'est lisible, extraction du passage
+  pertinent (pas juste le début de la page), contenu externe **enveloppé**
+  (`TrustLevel.EXTERNAL`) avant d'atteindre le modèle, jamais de réponse
+  sans source. Rien à améliorer ici sans preuve d'un défaut — traité comme
+  **FERMÉ**.
+- **`TrendAnalyzerAgent`** (56 lignes) : une seule requête. Aucun gain de
+  parallélisme possible.
+- **`DeepResearcherAgent`** (77 lignes) : **un vrai défaut trouvé** — trois
+  requêtes issues du plan de recherche étaient lancées **séquentiellement**
+  (`for q in queries: self.search_tool.search(...)`), exactement le
+  problème que la mission décrit en §22.
+
+### La décision
+
+**Rien d'Agent-Reach n'est intégré.** Pas pour la licence (MIT, rien à
+reprocher) : parce qu'il n'y a rien à intégrer qui n'existe pas déjà,
+séparément et plus proprement, ailleurs :
+
+- Les canaux zero-config (`youtube.py`, `rss.py`) ne sont que des sondes
+  vers des bibliothèques déjà indépendantes. Si ARENA veut lire une
+  transcription YouTube ou un flux RSS, la bonne intégration est un
+  connecteur direct vers `yt-dlp`/`feedparser` — pas une dépendance vers
+  un outil de bootstrap d'agent de codage qui, lui-même, ne fait que
+  vérifier leur présence. `SUGGESTION — NON IMPLÉMENTÉE` : hors du
+  périmètre demandé (« unifier l'existant »), ce serait une nouvelle
+  capacité, avec son propre installateur et sa propre décision.
+- La recherche « tout le web » et la lecture de page passeraient par des
+  services cloud tiers non revus (Exa, Jina Reader) — exactement le genre
+  de dépendance silencieuse que DEC-0009 a explicitement encadrée
+  (confidentialité classée, jamais par défaut) pour Groq/DeepInfra. Les
+  activer sans la même revue romprait cette discipline.
+- Twitter/Reddit/Instagram/Facebook/Xiaohongshu exigent les cookies de
+  session **personnels** du propriétaire, extraits de son navigateur — une
+  question de consentement et de portée qui lui revient, pas une décision
+  que cette intégration peut prendre pour lui.
+
+**Ce qui est corrigé, réellement, dans l'existant** : le vrai défaut trouvé
+en auditant — `DeepResearcherAgent` lançait ses trois recherches en
+séquence. Corrigé avec `asyncio.gather` + `asyncio.to_thread`, aucune
+nouvelle dépendance, aucun nouveau risque.
+
+### La preuve
+
+```
+python -m pytest tests/agents/test_deep_researcher.py -q
+→ 6 passed (nouveau : test_les_trois_requetes_tournent_en_parallele)
+```
+
+Nouveau test : trois recherches truquées à 0,3 s chacune. Séquentiel :
+0,90 s (mesuré par sabotage — le `for` restauré temporairement fait tomber
+le test avec l'écart exact). Parallèle : 0,35 s pour l'ensemble du test.
+
+Sabotage : le `asyncio.gather` remplacé par le `for` séquentiel d'origine
+→ `test_les_trois_requetes_tournent_en_parallele` tombe avec
+`0.90 s ... elles n'ont pas tourne en parallele`. Restauré, revérifié vert.
+
+### Ce que ça coûte si c'est faux
+
+Prétendre avoir « unifié la recherche » en ajoutant une dépendance vers un
+outil qui ne fait que sonder d'autres outils n'aurait rien changé de
+mesurable — un dossier de plus, aucune capacité de plus. Le seul gain réel
+mesurable était dans le code déjà là, pas dans le dépôt qu'on demandait
+d'ajouter.

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any, Dict, Optional
 
@@ -36,11 +37,12 @@ class DeepResearcherAgent(BaseAgent):
         if not queries:
             queries = [user_input]
 
-        # 2. Exécution des recherches croisées
-        all_results = []
-        for q in queries:
-            results = self.search_tool.search(q, max_results=3)
-            all_results.extend(results)
+        # 2. Exécution des recherches croisées — en parallèle : trois requêtes
+        # indépendantes n'ont aucune raison d'attendre l'une l'autre.
+        lots = await asyncio.gather(*(
+            asyncio.to_thread(self.search_tool.search, q, max_results=3) for q in queries
+        ))
+        all_results = [r for lot in lots for r in lot]
 
         # Elimination des doublons d'URL
         unique_sources = []
