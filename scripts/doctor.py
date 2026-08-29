@@ -277,6 +277,30 @@ def verifier_moneyprinter(lecteur: Optional[Callable[[str], Any]] = None) -> Ver
     return Verification("Video courte (MPT)", OK, f"repond sur {base}")
 
 
+def verifier_opentakeoff() -> Verification:
+    """Le metre de plan PDF, interroge pour de vrai — pas suppose absent.
+
+    Reutilise `ConnecteurOpenTakeoff.sonder()` plutot que de reecrire une
+    seconde logique : deux mesures de la meme sante qui pourraient diverger
+    seraient pires qu'une seule, reutilisee.
+    """
+    try:
+        sys.path.insert(0, str(RACINE))
+        from core.connectors.base import EtatSante
+        from core.connectors.opentakeoff import ConnecteurOpenTakeoff
+    except Exception:  # noqa: BLE001 — les dependances manquent : une autre ligne le dit
+        return Verification("Metre de plan (OpenTakeoff)", EN_PANNE,
+                            "indeterminable : les dependances ne s'importent pas")
+
+    sante = ConnecteurOpenTakeoff().sonder()
+    if sante.etat == EtatSante.OPERATIONNEL:
+        return Verification("Metre de plan (OpenTakeoff)", OK, sante.message)
+    if sante.etat == EtatSante.NON_CONFIGURE:
+        return Verification("Metre de plan (OpenTakeoff)", NON_CONFIGURE, sante.message,
+                            "scripts/installer_opentakeoff.ps1, puis OPENTAKEOFF_MCP_DIR dans .env")
+    return Verification("Metre de plan (OpenTakeoff)", EN_PANNE, sante.message)
+
+
 def verifier_inference() -> Verification:
     """Le regime d'inference, et qui est reellement joignable.
 
@@ -442,6 +466,7 @@ def diagnostiquer() -> Rapport:
         verifier_docker(),
         verifier_wangp(),
         verifier_moneyprinter(),
+        verifier_opentakeoff(),
         verifier_google("Courrier (Gmail)", "ARENA ne lit pas ton courrier",
                         "gmail.readonly / gmail.send", absentes_google),
         verifier_google("Agenda (Calendar)", "ARENA ne voit pas tes creneaux",

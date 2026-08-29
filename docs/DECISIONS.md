@@ -401,3 +401,75 @@ Si une revue de droits établissait un jour que ce code est librement
 réutilisable, ARENA aurait écrit lui-même un coordinateur qu'il aurait pu
 emprunter. Le coût est quelques centaines de lignes — contre un historique Git
 contaminé par du code propriétaire désassemblé, qui ne s'efface pas.
+
+---
+
+## DEC-0012 : OpenTakeoff — le métré d'un plan PDF, comme capacité à côté
+
+*Demandé par le propriétaire le 29/08/2026 : intégrer
+`Kentucky-ai/opentakeoff` (Apache-2.0) comme capacité de métré de plans de
+construction, réellement utilisée par ARENA — pas installée et dormante.*
+
+### Ce que le dépôt est vraiment
+
+Un vrai moteur de métré, pas une démo : le canvas navigateur et son serveur
+MCP (« environ 40 outils ») importent **les mêmes modules** de géométrie
+(`web/src/lib`) — vérifié en le construisant et en le faisant tourner contre
+son propre plan d'exemple (`demo/sample-plan.pdf`) :
+
+```
+$ node dist/server.js   # avec un client MCP qui pilote load_plan, set_scale,
+                        # detect_rooms, derive_base, takeoff_summary
+detect_rooms : 4 pièces, 1751.92 SF
+takeoff_summary.totals.total_sf_net : 1751.92 ; lf_net : 346.44
+```
+
+Différence structurelle avec WanGP et MoneyPrinterTurbo (DEC-0008) : son
+serveur MCP **ne parle que stdio** (`StdioServerTransport`, lu dans
+`mcp/server.ts` et `mcp/Dockerfile` — « Never point a client config at
+`npm start`… `node --import tsx` is the whole invocation »), jamais HTTP. Le
+transport HTTP d'ARENA (`core/mcp/transport.py`, écrit pour WanGP) ne pouvait
+pas s'y brancher tel quel.
+
+### La décision
+
+**Un sous-ensemble réel, jamais les quarante outils.** Le moteur sait aussi
+faire cliquer une pièce à la main, marquer un rectangle autour d'un symbole
+répété, comparer des révisions — tout ce qui suppose de DÉSIGNER un point ou
+un rectangle sur l'image du plan. Un modèle de texte ne voit pas le plan ; lui
+faire deviner des coordonnées produirait un métré faux avec l'air d'un métré
+juste. Ce qui est branché ne devine aucune coordonnée : `set_scale` avec
+l'échelle détectée sur le cartouche, `detect_rooms` (lit les numéros de pièce
+déjà écrits sur le plan et flotte chaque pièce lui-même — le même moteur que
+le clic humain), `derive_base`, `takeoff_summary`, `export_report`,
+`export_marked_pdf`. Compter des portes une à une (`symbol_sweep`,
+`count_marks`) ou déduire une ouverture précise (`cut_out`) restent
+`SUGGESTION — NON IMPLÉMENTÉE` tant qu'aucun modèle ne peut regarder l'image.
+
+**Un second transport MCP, pas une extension du premier.** `core/mcp/
+stdio_transport.py` parle stdio : un processus, pas un port. Il réutilise le
+contrat `Reponse` de `core/mcp/transport.py` (même protocole JSON-RPC, seul le
+tuyau change) plutôt que de le dupliquer.
+
+**Une limite honnête, écrite dans `agents/plaquiste/metre_plan.py` plutôt que
+masquée dans un calcul silencieux** : `detect_rooms` mesure le PÉRIMÈTRE
+ENTIER de chaque pièce — murs porteurs et extérieurs compris, pas seulement
+les cloisons neuves à poser. L'assimiler à une surface de cloisons serait un
+excès d'affirmation. Le rapprochement n'est fait qu'une fois, où il est sans
+ambiguïté : la surface d'un **faux plafond** est, par définition, la surface
+au sol de la pièce — la convention `faces=1` que `plaquiste_agent.py`
+applique déjà à un plafond nommé en toutes lettres. Pour une cloison, le
+périmètre mesuré reste une information, jamais un chiffrage : sabotage inclus
+dans le PR, un test tient cette limite (retirer la condition « plafond nommé »
+fait chiffrer une cloison depuis le seul périmètre — le test tombe).
+
+**DEC-0008 tenue, adaptée au transport** : rien du dépôt OpenTakeoff n'entre
+ici. `scripts/installer_opentakeoff.ps1` le construit à côté ; ARENA lance et
+arrête lui-même le processus Node à chaque métré (`OPENTAKEOFF_MCP_DIR`).
+
+### Ce que ça coûte si c'est faux
+
+Un périmètre de pièce présenté comme une surface de cloisons partirait dans
+un devis avec un mètre qui a l'air mesuré et ne l'est pas — plus trompeur
+qu'un chiffre absent. C'est exactement ce que la limite plafond/cloison
+empêche, et que le sabotage du PR vérifie.

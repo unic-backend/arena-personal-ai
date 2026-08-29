@@ -18,6 +18,7 @@ d'ouvrir le document entier quand on cherche juste « a-t-on déjà tranché ça
 | **DEC-0010** | d'un dépôt de prompts, on extrait la **méthode** | les règles deviennent du code qui compte ; les fichiers ne sont pas copiés |
 | **DEC-0011** | **`grok-bot-0.18-reconstructed` refusé** | aucune licence, code extrait de binaires propriétaires. Le manque réel (état d'une tâche multi-étapes) est écrit sans emprunt |
 | **DEC-0009** | **ARENA devient hybride — DEC-0002 amendée** | rien de **sensible** ne part au cloud ; un secret ne sort **jamais** ; Ollama reste défaut et repli ; `AI_LOCAL_ONLY=true` referme tout |
+| **DEC-0012** | **OpenTakeoff — métré de plan PDF, à côté** | second transport MCP (stdio, `core/mcp/stdio_transport.py`) ; sous-ensemble réel des outils (rien qui devine une coordonnée) ; un périmètre de pièce n'est jamais présenté comme une surface de cloisons |
 
 ## Décisions de travail (hors ADR, mais qui gouvernent autant)
 

@@ -46,6 +46,48 @@ le connecteur : confirmation **et** coupe-circuit `PUBLISH` (à `false`).
 
 ---
 
+## 2026-08-29 — ARENA hybride, réseaux sociaux actifs, coordination, OpenTakeoff
+
+### Livré et fusionné (PR #23 — 6 commits, fusionnée 2 min après ouverture)
+
+| Ce qui change | Preuve |
+|---|---|
+| **ARENA hybride (DEC-0009)** : confidentialité 4 niveaux, Groq + DeepInfra, aiguilleur `RouteurModeles`, suivi de coût, banc d'essai | +180 tests |
+| **Réseaux sociaux actifs (DEC-0010)** : `charlie947/social-media-skills` — méthode extraite (règles → code qui compte, voix → mémoire réelle, idées → combinatoire), rien copié | `PUBLISH: false` tenu |
+| **Coordination des tâches (DEC-0011)** : `grok-bot-0.18-reconstructed` **refusé** (code extrait de binaires propriétaires, aucune licence — sa propre `PROVENANCE.md` l'interdit) ; `core/execution/coordination.py` écrit sans emprunt, branché sur le moteur de raisonnement | Docker absent : `calcul SKIPPED`, `aboutie: True` |
+
+Piège trouvé en cours de route : la PR #22 avait été fusionnée 2 minutes après
+son ouverture, n'emportant que le commit `PROJECT_MEMORY` — les 6 commits
+suivants sont restés hors PR jusqu'à la #23 (rebase propre, aucun conflit).
+
+### En cours — OpenTakeoff, le métré d'un plan PDF (DEC-0012)
+
+`Kentucky-ai/opentakeoff` (Apache-2.0) construit et **fait tourner pour de
+vrai** dans cette session (Node installé, `demo/sample-plan.pdf` mesuré : 4
+pièces, 1751.92 SF, rapport + PDF marqué réellement écrits sur disque).
+
+Différence structurelle découverte en l'inspectant : son serveur MCP ne parle
+QUE stdio (`StdioServerTransport`), jamais HTTP — le transport HTTP écrit pour
+WanGP ne pouvait pas s'y brancher. `core/mcp/stdio_transport.py` est un second
+transport MCP, qui réutilise le contrat `Reponse` du premier sans le dupliquer.
+Piège trouvé par un test, pas par relecture : mélanger `select()` bas niveau et
+`readline()` bufferisé faisait attendre le délai complet (60 s) pour une ligne
+déjà arrivée — deux lignes écrites par le même appel système atterrissaient
+dans le tampon interne de `TextIOWrapper`, invisible au `select()` suivant.
+Corrigé en lisant au niveau du descripteur (`os.read`).
+
+Sous-ensemble réel, jamais les quarante outils du serveur : rien qui suppose de
+désigner une coordonnée sur l'image du plan (un modèle de texte ne la voit
+pas). Limite honnête tenue par un test sabotable : le périmètre d'une pièce
+mesurée n'est JAMAIS transformé en surface de cloisons à chiffrer — seul un
+faux plafond, sans ambiguïté, peut se chiffrer depuis la surface au sol
+mesurée.
+
+Mesure de fin de session : `ruff` propre, **1861 passed / 21 deselected**
+(1813 avant → 1861, +48 tests), 4 sabotages sur ce chapitre, tous restaurés.
+
+---
+
 ## 2026-08-28 (fin) — mise en place de PROJECT_MEMORY
 
 Créé après la fusion de la PR #21 : ce dossier arrive donc dans une pull

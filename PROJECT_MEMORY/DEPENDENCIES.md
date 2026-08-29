@@ -11,6 +11,7 @@
 | **Docker** | démon local | ARENA **refuse** d'exécuter du code plutôt que sans isolation |
 | **WanGP** | MCP `127.0.0.1:8765` | pas de génération d'images vidéo |
 | **MoneyPrinterTurbo** | HTTP `127.0.0.1:8080/api/v1` | pas de vidéo courte sur un sujet |
+| **OpenTakeoff** | processus Node, lancé/arrêté par ARENA à chaque métré (`OPENTAKEOFF_MCP_DIR`) | pas de métré de plan PDF |
 | **Google (Gmail + Calendar)** | API, un seul identifiant OAuth | pas de courrier ni d'agenda |
 | **GalsenAPI** | API publique, sans clé | pas de données administratives du Sénégal |
 | **LightRAG** | bibliothèque + Ollama | pas de recherche dans ses documents |
@@ -28,6 +29,7 @@ fichier). La CI installe le sous-ensemble hors ligne — voir `.github/workflows
 | `USMAN_API_KEY` | la passerelle `/api` et `/v1` est **désactivée par sécurité** |
 | `GOOGLE_CLIENT_ID` / `_SECRET` / `_REFRESH_TOKEN` | pas de courrier, pas d'agenda (anciens noms `GMAIL_*` acceptés) |
 | `MONEYPRINTER_URL` / `_API_KEY` | défaut local ; la clé n'est utile que s'il en a mis une |
+| `OPENTAKEOFF_MCP_DIR` / `_NODE_BIN` | pas de métré de plan PDF (`NOT_CONFIGURED`) |
 | `AGENDA_HEURE_DEBUT` / `_FIN` | défaut 8 h – 18 h |
 | `OLLAMA_BASE_URL`, `DEFAULT_LOCAL_MODEL`, `CODER_LOCAL_MODEL` | défauts locaux |
 | `ALLOW_UNSAFE_EXEC` | **laisser vide** : sans elle, ARENA refuse d'exécuter hors bac à sable |
@@ -47,6 +49,8 @@ memory/personnelle ← recuperation ← semantique ← pwa_gateway
 travaux ← suivi_video ← video_analyzer
 google_oauth ← gmail, calendrier
 registre ← plaquiste, video_analyzer, email
+metre_plan ← plaquiste_agent (chemin de plan PDF lu dans la demande)
+stdio_transport ← connectors/opentakeoff (le seul connecteur MCP en stdio)
 runtime ← TOUT (c'est le câblage : un seul objet partagé de chaque)
 ```
 
