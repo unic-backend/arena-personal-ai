@@ -20,6 +20,7 @@ d'ouvrir le document entier quand on cherche juste « a-t-on déjà tranché ça
 | **DEC-0009** | **ARENA devient hybride — DEC-0002 amendée** | rien de **sensible** ne part au cloud ; un secret ne sort **jamais** ; Ollama reste défaut et repli ; `AI_LOCAL_ONLY=true` referme tout |
 | **DEC-0012** | **OpenTakeoff — métré de plan PDF, à côté** | second transport MCP (stdio, `core/mcp/stdio_transport.py`) ; sous-ensemble réel des outils (rien qui devine une coordonnée) ; un périmètre de pièce n'est jamais présenté comme une surface de cloisons |
 | **DEC-0013** | **DeepSeek Harness — crochets, pas Cordis** | `core/execution/hooks.py` (avant/après exécution, ajoutés apres les 4 contrôles verrouillés) + `core/execution/disjoncteur.py` (coupe court après des échecs consécutifs réels) ; Cordis (bus de plugins entier) refusé — résout un problème qu'ARENA n'a pas |
+| **DEC-0014** | **Live-SWE-agent — aucun code d'agent, gardien construit à côté** | `core/guardian/` (diagnostics + file de maintenance persistante + cycle), `GET/POST /api/gardien/*` ; aucune modification autonome du dépôt (violerait « la PR est l'endroit où il voit ce qui entre ») ; aucun travailleur distant (exige compte/budget du propriétaire) |
 
 ## Décisions de travail (hors ADR, mais qui gouvernent autant)
 

@@ -567,3 +567,96 @@ service jamais configuré après trois tentatives qui n'ont rien tenté —
 message trompeur. Un veto qui n'arrêterait pas vraiment `_executer()`
 laisserait croire à une protection qui n'existe pas. Les deux sont dans le
 tableau de sabotage du PR.
+
+---
+
+## DEC-0014 : Live-SWE-agent — rien à intégrer, un gardien construit à côté
+
+*Demandé le 29/08/2026 : intégrer `OpenAutoCoder/live-swe-agent` comme
+« gardien d'ingénierie autonome » — un sous-système qui inspecte, teste,
+diagnostique et répare ARENA en continu, y compris à distance quand la
+machine du propriétaire est éteinte.*
+
+### Ce que le dépôt contient vraiment
+
+Cloné et inspecté fichier par fichier — pas seulement le README, comme la
+mission le demandait explicitement. **Le dépôt ne contient AUCUN code
+d'agent.** `LICENSE`, `README.md`, `assets/`, et un dossier `config/` avec
+un unique fichier YAML de configuration. Sa propre documentation le dit :
+
+> *« We built Live-SWE-agent on top of the popular mini-swe-agent framework
+> with very minimal modifications. To use Live-SWE-agent, simply install
+> mini-swe-agent first (...) and use the custom Live-SWE-agent config. »*
+
+Le moteur réel — boucle d'agent, exécution, environnement — est
+**`mini-swe-agent`, un second dépôt tiers non fourni ici**. La « self-
+évolution », présentée comme l'apport central, est une INSTRUCTION dans le
+prompt système du fichier YAML (« you can create your own tools in Python
+(...) create a simple edit tool ») — pas un moteur, pas une mémoire, pas
+une file de tâches, pas un bac à sable : rien de tout ce que les §7, §14,
+§15, §19, §21 de la mission supposaient déjà écrit. Fait notable, mesuré
+dans ce même fichier : `agent.mode: confirm` — même le dépôt source fait
+confirmer chaque action par un humain par défaut.
+
+### La décision
+
+**Rien n'est copié — il n'y a rien à copier.** L'architecture « gardien
+autonome 24/7, avec ouvre-PR et travailleur distant » que la mission
+détaille (§9, §18, §19) devrait être écrite intégralement dans ARENA,
+quelle que soit la décision : aucune ligne de Live-SWE-agent ne s'y
+prêterait.
+
+**Deux parties de la mission restent hors de portée de cette session, et
+pour des raisons qui ne sont pas des préférences de style :**
+
+1. **Un gardien qui commettrait des correctifs ou ouvrirait des pull
+   requests sans revue** contournerait la règle non négociable de ce
+   projet — *« il ne peut pas lancer les tests, la PR est l'endroit où il
+   voit ce qui entre »* (`CLAUDE.md`). La mission autorise à faire évoluer
+   des conventions internes, mais exclut explicitement de contourner « des
+   sauvegardes contre les actions destructrices » — c'en est une.
+2. **Un travailleur distant (VPS, Hetzner, Railway) qui tournerait quand
+   son PC est éteint** exige un compte, un budget récurrent et des
+   identifiants que lui seul peut fournir. Rien ici ne peut décider pour
+   lui d'engager une dépense mensuelle récurrente.
+
+Les deux restent `SUGGESTION — NON IMPLÉMENTÉE` : documentées, pas
+construites à moitié pour avoir l'air faites.
+
+### Ce qui est construit : la moitié sûre, réelle, jamais démonstrative
+
+`core/guardian/` — DÉCOUVRIR, ENREGISTRER, RAPPORTER. Jamais MODIFIER.
+
+- `diagnostics.py` : trois catégories, chacune sur un outil déjà dans ce
+  dépôt — `pytest` (bugs réellement en échec), `ruff --output-format=json`
+  (qualité), `scripts/orphelins.py` réutilisé en process (code mort). Une
+  « analyse de sécurité » ou « d'architecture » n'existe pas : un champ qui
+  rendrait toujours `[]` se ferait passer pour une garantie absente.
+- `file_maintenance.py` : mémoire persistante SQLite (§14, §21 de la
+  mission) — un même constat revu ne recrée pas une tâche, une tâche dont
+  le diagnostic ne trouve plus trace passe `TERMINEE`, jamais supposée.
+- `gardien.py` : un cycle — diagnostiquer, dédupliquer, dire ce qui a
+  disparu, rapporter (§22). Câblé dans `runtime.py`, exposé par
+  `GET /api/gardien/rapport` et `POST /api/gardien/cycle` (même clé, même
+  limiteur que `/api/observability`) — déclenché explicitement, jamais une
+  boucle `while True` qui tourne seule (§28 de la mission l'interdit
+  d'ailleurs elle-même).
+
+### La preuve — le scénario contrôlé du §27, pour de vrai
+
+Un test cassé pour de vrai (`assert 1 == 2`) ajouté à `tests/`, un cycle
+réel lancé : `pytest`/`ruff` tournent en sous-processus, le défaut entre en
+file (`DISCOVERED`, gravité `P2`, preuve = la trace réelle). Le fichier de
+test retiré, un second cycle : la tâche passe `COMPLETED`. **Cette mesure a
+elle-même trouvé une vraie régression** — les deux nouvelles routes
+avaient cassé `tests/test_surface_api.py`, l'empreinte figée de la
+surface HTTP — corrigée avant ce commit, pas après.
+
+### Ce que ça coûte si c'est faux
+
+Un gardien qui dirait « résolu » sans qu'un diagnostic l'ait revérifié
+romprait la même garantie que `core/actions/resultat.py` (« un `SUCCESS`
+sans preuve ne se construit pas »). Un gardien qui écrirait du code sans
+qu'une pull request passe devant le propriétaire retirerait la seule
+protection qui l'empêche aujourd'hui de voir un mauvais correctif partir
+sans lui. Les deux sont pourquoi ce PR s'arrête où il s'arrête.

@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from apps.backend.config import ALLOWED_ORIGINS, BASE_DIR, OLLAMA_URL, RENDERED_DIR
-from apps.backend.routers import actions, chat, media, openai_gateway, pwa_gateway
+from apps.backend.routers import actions, chat, gardien, media, openai_gateway, pwa_gateway
 from apps.backend.runtime import deep_provider, fast_provider
 from apps.backend.security import cle_presentee_valide
 from apps.backend.verification_modeles import verifier_modeles
@@ -209,4 +209,5 @@ app.include_router(openai_gateway.router)
 app.include_router(media.router)
 app.include_router(chat.router)
 app.include_router(actions.router)
+app.include_router(gardien.router)
 app.include_router(pwa_gateway.router)
