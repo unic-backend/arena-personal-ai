@@ -18,11 +18,21 @@ from agents.plaquiste.plaquiste_agent import PlaquisteAgent
 from agents.publisher.publisher_agent import PublisherAgent
 from agents.repo_engineer.repo_engineer_agent import RepoEngineerAgent
 from agents.researcher.researcher_agent import DeepResearcherAgent
+from agents.social.social_agent import SocialAgent
 from agents.subtitle.subtitle_agent import SubtitleAgent
 from agents.swe_agent.swe_agent import SWEAgent
 from agents.trend_analyzer.trend_analyzer_agent import TrendAnalyzerAgent
 from agents.video_analyzer.video_analyzer_agent import VideoAnalyzerAgent
-from apps.backend.config import DB_PATH, MODELE_PROFOND, MODELE_RAPIDE, OLLAMA_URL
+from apps.backend.config import (
+    CLOUD_BUDGET_JOURNALIER,
+    CLOUD_REQUETES_PAR_JOUR,
+    DB_PATH,
+    FOURNISSEUR_DEMANDE,
+    MODE_IA,
+    MODELE_PROFOND,
+    MODELE_RAPIDE,
+    OLLAMA_URL,
+)
 from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
@@ -38,7 +48,11 @@ from core.execution.travaux import FileDeTravaux
 from core.memory.memory_manager import MemoryManager
 from core.memory.personnelle import MemoirePersonnelle
 from core.memory.semantique import IndexSemantique
+from core.models.deepinfra_provider import DeepInfraProvider
+from core.models.groq_provider import GroqProvider
 from core.models.ollama_provider import OllamaProvider
+from core.models.routeur import RouteurModeles
+from core.models.usage import CompteurUsage
 from core.permissions.controle import ControleAcces
 from core.permissions.permission_manager import PermissionManager
 from core.permissions.politique import PolitiqueDePermissions
@@ -139,8 +153,33 @@ travaux = FileDeTravaux()
 mesures_execution = Rapport()
 
 # --- Modeles ------------------------------------------------------------------
-fast_provider = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_RAPIDE)
-deep_provider = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_PROFOND)
+# Ollama reste le defaut, le repli, et le seul chemin pour ce qui est sensible
+# (DEC-0009). Les deux fournisseurs distants n'existent que s'ils ont une cle :
+# sans elle, l'aiguilleur ne les compte meme pas comme une option.
+ollama_rapide = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_RAPIDE)
+ollama_profond = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_PROFOND)
+
+# Un seul compteur pour les deux aiguilleurs : le budget du jour est celui du
+# proprietaire, pas celui d'un chemin de reponse.
+compteur_usage = CompteurUsage(requetes_par_jour=CLOUD_REQUETES_PAR_JOUR,
+                               budget_journalier=CLOUD_BUDGET_JOURNALIER)
+
+
+def _aiguilleur(local: OllamaProvider) -> RouteurModeles:
+    """Un aiguilleur pose devant un modele local. Le reste d'ARENA ne voit que lui."""
+    return RouteurModeles(
+        local=local,
+        distants={"groq": GroqProvider(), "deepinfra": DeepInfraProvider()},
+        mode=MODE_IA, fournisseur_demande=FOURNISSEUR_DEMANDE,
+        compteur=compteur_usage,
+    )
+
+
+# Ces deux noms sont ceux que tout le projet importe depuis toujours. Ils
+# designent maintenant un aiguilleur au lieu d'un fournisseur unique — et
+# comme il implemente `ModelProvider`, rien d'autre n'a eu a changer.
+fast_provider = _aiguilleur(ollama_rapide)
+deep_provider = _aiguilleur(ollama_profond)
 
 # --- Equipe complete d'agents -------------------------------------------------
 orchestrator = OrchestratorAgent(provider=fast_provider, memory=memory)
@@ -172,6 +211,12 @@ reasoning_engine = ReasoningEngine(provider=deep_provider)
 # n'est pas une demonstration. L'envoi passe par le registre, donc par la
 # confirmation, et l'agent ne connait aucun autre chemin.
 email_agent = EmailAgent(provider=fast_provider, memory=memory, registre=registre)
+# Reseaux sociaux : redaction soignee, donc le modele profond. Sa voix vit dans
+# la memoire personnelle, et la recherche web sert la recherche de niche —
+# absente, la capacite se declare indisponible au lieu d'inventer des tendances.
+social_agent = SocialAgent(provider=deep_provider, memory=memory,
+                           memoire_personnelle=memoire_personnelle,
+                           registre=registre)
 # Metier UniC Plaquiste : redaction soignee, donc le modele profond.
 plaquiste_agent = PlaquisteAgent(provider=deep_provider, memory=memory, registre=registre)
 

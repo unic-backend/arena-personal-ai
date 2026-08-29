@@ -174,12 +174,35 @@ def test_la_reponse_est_bien_un_flux_sse(client, entetes, fournisseur, chat_dire
 
 
 def test_le_meta_final_nomme_le_moteur(client, entetes, fournisseur, chat_direct):
+    """Depuis DEC-0009, « arena » ne suffit plus : la reponse peut venir du reseau.
+
+    Lui cacher qui a vu sa phrase serait lui mentir. Un fournisseur qui n'a
+    encore rien choisi rend « local » — l'etat de depart reel de l'aiguilleur,
+    pas une supposition.
+    """
     fournisseur()
 
     meta = trames(demander(client, entetes).text)[-1]["meta"]
 
-    assert meta["provider"] == "arena"
+    assert meta["provider"] == "local"
     assert meta["model"] == "qwen-test"
+
+
+def test_le_meta_nomme_le_fournisseur_qui_a_reellement_repondu(
+    client, entetes, fournisseur, chat_direct, monkeypatch
+):
+    """Le nom annonce suit le choix de l'aiguilleur, il n'est pas ecrit en dur."""
+    from core.models.confidentialite import Classement, Confidentialite
+    from core.models.routeur import Choix
+
+    faux = fournisseur()
+    faux.dernier_choix = Choix("groq", "PUBLIC autorise en HYBRIDE",
+                               Classement(Confidentialite.PUBLIC))
+
+    meta = trames(demander(client, entetes).text)[-1]["meta"]
+
+    assert meta["provider"] == "groq"
+    assert "HYBRIDE" in meta["raison"]
 
 
 # --- L'historique du navigateur fait foi --------------------------------------

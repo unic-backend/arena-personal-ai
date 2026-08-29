@@ -1,4 +1,154 @@
-# MISSION TERMINÉE — réveiller ce qui dort
+# MISSION EN COURS — ARENA hybride : local, Groq, DeepInfra
+
+*Ouverte le 28/08/2026 par le propriétaire. La décision qui la gouverne est
+**DEC-0009**, qui amende DEC-0002 — à lire avant toute chose.*
+
+> « Transform ARENA into a HYBRID AI INFERENCE SYSTEM using local Ollama + Groq
+> + DeepInfra. Do NOT remove Ollama. Do NOT replace the local model. Do NOT
+> hard-code ARENA to one provider. ARENA must intelligently choose. »
+
+**C'est la tâche en cours.** Elle se livre **étape par étape**, chacune vérifiée
+avant la suivante, comme il l'a demandé le 28/08 : « fais-le étape par étape,
+sois sûr que ça marche avant de livrer ».
+
+---
+
+## Ce qui est déjà en place, et qui ne se refait pas
+
+L'audit du 28/08 a trouvé que **quatre des vingt-huit points existaient déjà** :
+
+| Ce que la mission demande | Ce qui existe |
+|---|---|
+| abstraction de fournisseur (§2) | `core/models/base.py` — `ModelProvider` |
+| streaming (§13) | `OllamaProvider.generate_stream` + la passerelle PWA |
+| détection de complexité (§7) | `core/execution/voies.py` — 4 voies et leurs budgets |
+| télémétrie de latence (§6, §19) | `core/execution/mesures.py` + `GET /api/observability` |
+
+Ils sont **réutilisés**, pas réécrits. Le point 21 de la mission le demande
+explicitement : *« Do not introduce a huge framework just to support three
+providers. »*
+
+## Les étapes
+
+### Étapes 1 à 3 — **faites le 28/08/2026**
+
+**Étape 1 — la confidentialité et la configuration.** Quatre niveaux, et la
+règle qui ne se négocie pas : **un secret ne sort jamais**. Le doute penche vers
+sa machine. Le contexte joint monte le niveau, jamais l'inverse. La
+configuration entre dans `apps/backend/config.py`, sans second système.
+
+**Étape 2 — les deux fournisseurs distants.** Groq et DeepInfra parlent le même
+protocole : une seule mécanique partagée, deux configurations. La clé part dans
+l'en-tête et ne revient dans aucune erreur. Sans clé, le fournisseur est
+**absent**, pas en panne.
+
+**Étape 3 — l'aiguilleur.** Il pose quatre questions dans un ordre qui ne se
+négocie pas : confidentialité → réglage → budget → santé. Puis le repli, chacun
+essayé **une fois** : Groq → DeepInfra → Ollama. Un service qui tombe est mis au
+frais deux minutes. Le repli n'a **pas** lieu après le premier mot — recommencer
+ailleurs ferait lire deux débuts de réponse.
+
+Il est branché dans `apps/backend/runtime.py` **à la place** des deux
+fournisseurs : `fast_provider` et `deep_provider` désignent maintenant un
+aiguilleur. Comme il implémente `ModelProvider`, **aucun agent, aucun routeur,
+aucun test n'a eu à changer** — c'est ce que l'abstraction existante permettait.
+
+Mesure sur la machine de l'assistant : mode `HYBRIDE`, aucun service distant
+configuré (pas de clé), l'aiguilleur retombe sur Ollama. C'est le comportement
+attendu, pas un échec.
+
+**Aucun module de cette mission ne dort** : `python scripts/orphelins.py` →
+116 modules, 88 atteints, aucun module réel endormi.
+
+### Étape 4 — l'intégration réelle et la mesure — **faite le 28/08/2026**
+
+**L'interface dit qui a répondu.** Elle annonçait « arena » quel que soit le
+moteur ; depuis DEC-0009 la réponse peut venir du réseau, et le lui cacher
+serait lui mentir sur ce qui a vu sa phrase. Le méta final porte maintenant le
+fournisseur, le modèle, et **la raison du choix**.
+
+**Le diagnostic porte une ligne « Inference (hybride) »** : son mode, et quels
+services distants sont réellement configurés.
+
+**Le banc d'essai existe** : `python scripts/comparer_fournisseurs.py`. Trois
+scènes identiques pour tous, le temps jusqu'au **premier mot** d'abord, et la
+médiane sur plusieurs passages.
+
+Ce qu'il rend sur la machine de l'assistant, lancé le 28/08/2026 :
+
+```
+ollama       qwen3.5:9b                         ABSENT
+groq         llama-3.3-70b-versatile            ABSENT
+deepinfra    meta-llama/Llama-3.3-70B-Instruct  ABSENT
+
+0 fournisseur(s) mesure(s), 3 absent(s).
+Moins de deux fournisseurs : AUCUNE comparaison n'est possible. Ne rien conclure.
+```
+
+**Aucun chiffre de vitesse n'est donc annoncé nulle part dans ce dépôt**, et
+c'est le point 24 de la mission. La comparaison attend son PC et ses clés.
+
+---
+
+## Ce qui reste, et qui n'est qu'à lui
+
+| Pour que… | il faut |
+|---|---|
+| Groq réponde | `GROQ_API_KEY` dans `.env` (console.groq.com) |
+| DeepInfra réponde | `DEEPINFRA_API_KEY` dans `.env` |
+| tout redevienne local | `AI_LOCAL_ONLY=true` — une seule ligne |
+| la comparaison existe | `python scripts/comparer_fournisseurs.py` sur son PC |
+
+## Réseaux sociaux — intégré le 28/08/2026 (DEC-0010)
+
+17 compétences de `charlie947/social-media-skills` inspectées. **Leur méthode
+est extraite, leurs fichiers ne sont pas copiés** : leurs règles chiffrées
+deviennent du code qui compte, leur voix devient des souvenirs, leur matrice
+devient une combinatoire.
+
+| Capacité | État |
+|---|---|
+| `social.post_writer`, `social.accroches`, `social.profil` | **opérationnelles** (modèle + voix + relecture) |
+| `social.idees`, `social.verifier` | **opérationnelles sans modèle** — calcul et comptage |
+| `social.voix` | **opérationnelle** — sa voix vit dans la mémoire personnelle |
+| `social.recherche_niche` | INDISPONIBLE — recherche web non branchée sur cet agent |
+| `social.analytics`, `social.visuel`, `social.reels` | CONFIGURATION_REQUISE — compte connecté, image, Apify/Gemini |
+
+Publier passe par le connecteur, donc par la confirmation **et** le
+coupe-circuit `PUBLISH` — qui vaut `false` dans `config/permissions.yaml` :
+**rien ne peut partir tant qu'il ne le met pas à `true` lui-même.**
+
+## Coordination des tâches — écrite le 28/08/2026 (DEC-0011)
+
+`core/execution/coordination.py` : une tâche à plusieurs étapes qui **garde son
+état** quand une étape tombe. Six règles, dont trois qui portent tout :
+
+- **une étape facultative qui échoue n'arrête pas la tâche** — c'est ce qui
+  permet à un calcul impossible de ne pas emporter la réponse ;
+- **la reprise est bornée**, avec une attente croissante : retenter sans fin
+  transforme une panne en boucle ;
+- **la vérification est une étape**, pas une supposition — sans contrôle
+  déclaré, `verifiee` reste `None`, jamais `True`.
+
+Branché sur le moteur de raisonnement, qui enchaînait ses trois étapes en ligne
+droite. **Son contrat n'a pas changé** : ses tests passent sans modification.
+
+Mesuré, Docker absent : `plan DONE → calcul SKIPPED (refus du bac à sable) →
+synthese DONE`, tâche **aboutie**. Avant, l'échec du calcul laissait la chaîne
+dans le flou.
+
+## Ce qui n'est PAS dans la mission
+
+- retirer Ollama, ou le remplacer — **interdit explicitement** ;
+- rendre le cloud obligatoire : `AI_LOCAL_ONLY=true` doit toujours suffire ;
+- écrire une clé dans le dépôt ;
+- annoncer une vitesse qui n'a pas été chronométrée ici.
+
+---
+
+---
+
+# ARCHIVE — mission « réveiller ce qui dort » (terminée le 28/08/2026)
 
 *Ouverte et close le 28/08/2026. Mesures de ce fichier prises sur la branche de
 la dernière phase, avec `python scripts/orphelins.py`.*
@@ -117,6 +267,44 @@ que le propriétaire ressent, pas ce qui était facile.
 **Aucune suppression n'a été décidée.** Elle se demande au propriétaire.
 
 ---
+
+## Réseaux sociaux — intégré le 28/08/2026 (DEC-0010)
+
+17 compétences de `charlie947/social-media-skills` inspectées. **Leur méthode
+est extraite, leurs fichiers ne sont pas copiés** : leurs règles chiffrées
+deviennent du code qui compte, leur voix devient des souvenirs, leur matrice
+devient une combinatoire.
+
+| Capacité | État |
+|---|---|
+| `social.post_writer`, `social.accroches`, `social.profil` | **opérationnelles** (modèle + voix + relecture) |
+| `social.idees`, `social.verifier` | **opérationnelles sans modèle** — calcul et comptage |
+| `social.voix` | **opérationnelle** — sa voix vit dans la mémoire personnelle |
+| `social.recherche_niche` | INDISPONIBLE — recherche web non branchée sur cet agent |
+| `social.analytics`, `social.visuel`, `social.reels` | CONFIGURATION_REQUISE — compte connecté, image, Apify/Gemini |
+
+Publier passe par le connecteur, donc par la confirmation **et** le
+coupe-circuit `PUBLISH` — qui vaut `false` dans `config/permissions.yaml` :
+**rien ne peut partir tant qu'il ne le met pas à `true` lui-même.**
+
+## Coordination des tâches — écrite le 28/08/2026 (DEC-0011)
+
+`core/execution/coordination.py` : une tâche à plusieurs étapes qui **garde son
+état** quand une étape tombe. Six règles, dont trois qui portent tout :
+
+- **une étape facultative qui échoue n'arrête pas la tâche** — c'est ce qui
+  permet à un calcul impossible de ne pas emporter la réponse ;
+- **la reprise est bornée**, avec une attente croissante : retenter sans fin
+  transforme une panne en boucle ;
+- **la vérification est une étape**, pas une supposition — sans contrôle
+  déclaré, `verifiee` reste `None`, jamais `True`.
+
+Branché sur le moteur de raisonnement, qui enchaînait ses trois étapes en ligne
+droite. **Son contrat n'a pas changé** : ses tests passent sans modification.
+
+Mesuré, Docker absent : `plan DONE → calcul SKIPPED (refus du bac à sable) →
+synthese DONE`, tâche **aboutie**. Avant, l'échec du calcul laissait la chaîne
+dans le flou.
 
 ## Ce qui n'est PAS dans la mission
 

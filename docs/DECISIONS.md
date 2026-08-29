@@ -228,3 +228,176 @@ ou les etats -1 / 1 / 4 — le connecteur cesse de suivre les generations. Il ne
 mentira pas pour autant : une reponse qu'il ne sait pas lire devient un etat
 rapporte, pas une video promise. Le contrat lu dans leur code est cite dans le
 docstring du connecteur, ce qui rend la verification possible sans le deviner.
+
+
+## DEC-0009 : ARENA devient hybride — DEC-0002 est amendée, pas annulée
+
+*Décidé par le propriétaire le 2026-08-28 : « Transform ARENA into a HYBRID AI
+INFERENCE SYSTEM using local Ollama + Groq + DeepInfra ». Il demande
+explicitement de **ne pas retirer Ollama** et de **ne pas le remplacer**.*
+
+### Ce que ça change par rapport à DEC-0002
+
+DEC-0002 disait : **« Rien ne part chez un fournisseur d'IA : c'est une
+décision, pas un réglage. »** Cette phrase n'est plus vraie telle quelle, et il
+faut le dire au lieu de la laisser pourrir dans le registre.
+
+Ce qui la remplace :
+
+> **Rien de sensible ne part chez un fournisseur d'IA. Le reste peut partir,
+> pour la vitesse, et seulement si le réglage l'autorise.**
+
+Ce qui **n'a pas** changé, et qui n'est pas négociable :
+
+- Ollama reste le modèle **par défaut**, le **repli**, et le seul chemin autorisé
+  pour ce qui est sensible ;
+- un secret (`TRES_SENSIBLE`) ne sort **jamais** — aucun mode, aucun réglage,
+  aucune demande explicite ne le fait sortir (`core/models/confidentialite.py`) ;
+- sans réseau, sans clé, ou budget atteint : **Ollama**, et ARENA continue de
+  répondre ;
+- aucune clé n'entre dans le dépôt.
+
+### Les trois régimes
+
+| Mode | Ce qui peut sortir |
+|---|---|
+| `LOCAL_ONLY` | **rien** |
+| `HYBRIDE` *(défaut)* | `PUBLIC` et `PRIVE` |
+| `CLOUD_PREFERRED` | + `SENSIBLE` — un choix explicite du propriétaire |
+
+Un mode inconnu **refuse** : devant un réglage qu'on ne comprend pas, sa machine
+est la seule réponse sûre.
+
+### Ce que ça coûte si c'est faux
+
+C'est la décision la plus coûteuse du projet si elle se retourne.
+
+- **Une mauvaise classification envoie chez un tiers ce qui n'aurait pas dû
+  sortir** — le nom d'un client, un montant, un extrait de courrier. Ça ne se
+  rattrape pas : envoyé une fois, envoyé pour toujours. C'est pourquoi le doute
+  penche vers sa machine et pourquoi le classement est testé et saboté avant
+  d'être cru.
+- **La dépense.** Le cloud est à l'usage : un agent qui boucle coûte de l'argent
+  réel. D'où les plafonds, et le repli automatique sur Ollama quand ils sont
+  atteints — ARENA ne s'arrête pas, il redevient local.
+- **La dépendance.** Une réponse rapide obtenue chez Groq n'est pas disponible
+  quand Groq ne l'est pas. Le repli n'est pas une politesse : c'est ce qui
+  garde ARENA utilisable.
+
+Si le propriétaire veut revenir en arrière, une seule ligne suffit :
+`AI_LOCAL_ONLY=true`. La décision reste réversible, et c'est voulu.
+
+
+## DEC-0010 : d'un dossier de prompts, on extrait la méthode — pas les fichiers
+
+*Demandé par le propriétaire le 28/08/2026 : intégrer
+`charlie947/social-media-skills` (MIT) « as ACTIVE, OPERATIONAL capabilities »,
+et surtout pas « a folder full of dormant skills ».*
+
+### Ce que ce dépôt est vraiment
+
+17 fichiers `SKILL.md` : des **instructions pour un modèle**. Aucune ligne
+exécutable. Les copier dans `skills/` aurait produit exactement ce que la
+mission « réveiller ce qui dort » a passé deux jours à corriger — du contenu
+qu'aucune phrase du propriétaire n'atteint.
+
+### La décision
+
+**Leur méthode est extraite, leurs fichiers ne sont pas copiés.** Trois
+transformations, et chacune change la nature de la chose :
+
+| Dans la source | Dans ARENA |
+|---|---|
+| des règles en prose (« 20 lignes max », « no em dashes ») | du **code qui compte** — `tools/social/regles.py` |
+| deux fichiers `about-me.md` / `voice.md` | des **souvenirs** dans la mémoire personnelle |
+| « 32+ post ideas from pillars × formats » | une **combinatoire** qui rend le compte réel |
+
+Le reste — le choix de la capacité, l'enchaînement, l'approbation — passe par ce
+qu'ARENA a déjà : l'orchestrateur, le registre de connecteurs, la politique de
+permissions, la file d'attente.
+
+### Ce qui n'a PAS été intégré, et pourquoi
+
+| Compétence | Raison |
+|---|---|
+| `post-scorer`, `reels-scripting` | exigent **Apify** et **Gemini** : déclarées `CONFIGURATION_REQUISE` |
+| `gemini-infographic`, `gemini-carousel`, `quote-post`, `youtube-thumbnail`, `graphic-designer` | génération d'images : ARENA n'en a pas |
+| `analytics-dashboard` | exige l'historique d'un compte connecté |
+| `newsletter-voice`, `pinned-comment` | hors de son usage : il pose des cloisons, il n'a pas de newsletter |
+
+Aucune n'est simulée. Chacune se déclare avec **ce qui lui manque**.
+
+### Ce que ça coûte si c'est faux
+
+Si la source change ses règles, ARENA garde les anciennes : elles sont figées
+dans du code, plus dans un `SKILL.md` qu'on relirait. C'est le prix de la
+vérifiabilité — et il est assumé, parce qu'une règle qu'on ne peut pas compter
+n'en est pas une. Les seuils sont réunis en tête d'un seul fichier, cités depuis
+la source, et se changent là.
+
+**Attribution.** La source est sous licence MIT, et elle est nommée dans chaque
+module qui en dérive (`SOURCE = ...`). Son dépôt n'est ni copié, ni modifié, ni
+redistribué.
+
+
+## DEC-0011 : `grok-bot-0.18-reconstructed` n'entre pas dans ARENA — sa leçon, si
+
+*Demandé par le propriétaire le 28/08/2026 : intégrer
+`b-nnett/grok-bot-0.18-reconstructed` comme couche d'exécution active. Sa
+consigne autorisait explicitement à passer outre les conventions du projet,
+mais **pas** les « licensing/provenance requirements ».*
+
+### Ce que le dépôt dit de lui-même
+
+Ce ne sont pas des suppositions : c'est écrit dans ses propres fichiers.
+
+- `README.md` : « unofficial, source-oriented reconstruction of the publicly
+  shipped Grok Bot 0.18.0 macOS app », « a hacking and research project ». Il
+  **télécharge l'application officielle comme entrée de compilation** et
+  **conserve le moteur de rendu d'origine**.
+- `PROVENANCE.md` : le code est **extrait des binaires livrés** — « emitted code
+  or source-path markers, extracted capsules/source maps, shipped strings/
+  assets ». Puis, textuellement :
+
+  > **« No upstream source-code license is implied. Do not present reconstructed
+  > material as original source or an official build, and complete an
+  > independent rights review before public redistribution. »**
+
+### La décision
+
+**Aucune ligne de ce dépôt n'est copiée dans ARENA.**
+
+Il n'y a **aucune licence** qui autorise la réutilisation, et le code provient
+de binaires propriétaires désassemblés. Copier cela reviendrait à redistribuer
+du code non licencié dans un dépôt qu'on vient de nettoyer — et ça reste dans
+l'historique Git pour toujours.
+
+Le propriétaire a autorisé à passer outre les **conventions du projet**. La
+provenance n'en est pas une : sa propre consigne l'exclut, et le dépôt source
+exige lui-même une revue de droits avant toute redistribution.
+
+### Ce qui a été fait à la place
+
+Le besoin réel derrière sa demande — une **couche d'exécution qui tient l'état
+d'une tâche à plusieurs étapes** — est réel, et ARENA ne l'avait pas. Il est
+écrit ici, sans une ligne empruntée : `core/execution/coordination.py`.
+
+L'audit a d'ailleurs montré qu'ARENA avait **déjà** presque tout le reste de ce
+que la mission énumérait :
+
+| Ce que la mission demandait | Ce qui existait déjà |
+|---|---|
+| routage d'inférence, repli fournisseur | `core/models/routeur.py` (DEC-0009) |
+| exécution locale, bac à sable Docker | `tools/code/sandbox_interpreter.py` |
+| MCP | `core/mcp/transport.py` + connecteur WanGP |
+| cycle de vie des outils, santé | `core/connectors/base.py` + registre |
+| streaming, activité | passerelle PWA + `Execution` |
+| suivi d'usage | `core/models/usage.py` |
+| **état d'une tâche multi-étapes** | **rien — c'est le manque, il est comblé** |
+
+### Ce que ça coûte si c'est faux
+
+Si une revue de droits établissait un jour que ce code est librement
+réutilisable, ARENA aurait écrit lui-même un coordinateur qu'il aurait pu
+emprunter. Le coût est quelques centaines de lignes — contre un historique Git
+contaminé par du code propriétaire désassemblé, qui ne s'efface pas.

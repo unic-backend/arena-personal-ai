@@ -37,6 +37,13 @@ Mesure finale de la session : `ruff` propre, **1615 passed / 21 deselected**,
 restaurées. Les plus parlantes : « l'agent envoie sans confirmation » fait passer
 le statut de `NEEDS_CONFIRMATION` à **`SUCCESS`** — le message part vraiment.
 
+### Réseaux sociaux (DEC-0010)
+
+17 compétences de `charlie947/social-media-skills` inspectées, **méthode
+extraite, fichiers non copiés**. Six capacités opérationnelles, quatre déclarées
+`CONFIGURATION_REQUISE`/`INDISPONIBLE` avec ce qui leur manque. Publier passe par
+le connecteur : confirmation **et** coupe-circuit `PUBLISH` (à `false`).
+
 ---
 
 ## 2026-08-28 (fin) — mise en place de PROJECT_MEMORY

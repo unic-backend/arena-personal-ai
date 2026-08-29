@@ -31,6 +31,16 @@
 | **MoneyPrinterTurbo** | `scripts/installer_moneyprinter.ps1`, puis `llm_provider = "ollama"` et une clé Pexels dans **leur** `config.toml` |
 | **Mesures 7.2** | `python -m pytest -m integration` et `python scripts/mesurer_performances.py` sur son PC |
 
+## Mission en cours : ARENA hybride (DEC-0009)
+
+Étapes 1 à 4 **écrites et testées** le 28/08/2026 : confidentialité, les deux
+fournisseurs distants, l'aiguilleur, l'intégration et le banc d'essai.
+
+**Ce qui est vérifié** : la logique, hors ligne, avec sabotages
+(1738 tests). **Ce qui ne l'est pas** : aucun appel réel à Groq ni à DeepInfra
+n'a jamais eu lieu — pas de clé sur cette machine. Le banc d'essai rend
+`0 fournisseur mesuré, 3 absents`, et **aucun chiffre de vitesse n'est annoncé**.
+
 ## Prochaine action recommandée
 
 **Ne pas ouvrir une nouvelle phase du plan de soi-même.** Le propriétaire donne
