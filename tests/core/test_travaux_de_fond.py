@@ -9,6 +9,7 @@ import asyncio
 
 import pytest
 
+import core.execution.travaux as travaux_module
 from core.execution.mesures import ETAT_MESURE, VERDICT_DANS_LE_BUDGET, chronometrer
 from core.execution.travaux import EtatTravail, FileDeTravaux, Travail
 from core.execution.voies import Voie
@@ -199,3 +200,46 @@ async def test_l_inventaire_montre_aussi_les_echecs():
 
     assert etats == {"rate": EtatTravail.ECHOUE, "reussi": EtatTravail.TERMINE}
     assert len(file.inventaire(EtatTravail.ECHOUE)) == 1
+
+
+# --- L'historique des travaux finis est borne ---------------------------------
+
+async def test_l_historique_des_travaux_finis_est_borne(monkeypatch):
+    """`_travaux`/`_taches` grossissaient sans fin, meme pour des travaux deja
+    TERMINE : un serveur de longue duree les accumulerait pour toujours. Seuls
+    les `TRAVAUX_TERMINES_GARDES` plus recents doivent rester."""
+    monkeypatch.setattr(travaux_module, "TRAVAUX_TERMINES_GARDES", 3)
+    file = FileDeTravaux()
+
+    for numero in range(10):
+        travail = file.soumettre(f"travail {numero}", lambda n=numero: n)
+        await file.attendre(travail.identifiant)
+
+    assert len(file.inventaire()) == 3, "l'historique doit rester plafonne"
+    noms = {t.nom for t in file.inventaire()}
+    assert noms == {"travail 7", "travail 8", "travail 9"}, "seuls les plus recents restent"
+
+
+async def test_un_travail_en_cours_n_est_jamais_purge(monkeypatch):
+    """La purge ne touche que les travaux FINIS : un travail encore EN_COURS
+    ne doit jamais disparaitre, meme quand l'historique deborde autour de lui."""
+    monkeypatch.setattr(travaux_module, "TRAVAUX_TERMINES_GARDES", 1)
+    file = FileDeTravaux(parallelisme=2)
+    bloque = asyncio.Event()
+
+    async def occupe():
+        await bloque.wait()
+
+    en_cours = file.soumettre("encore en cours", occupe)
+    await asyncio.sleep(0)
+
+    for numero in range(5):
+        fini = file.soumettre(f"fini {numero}", lambda n=numero: n)
+        await file.attendre(fini.identifiant)
+
+    encore_la = file.lire(en_cours.identifiant)
+    assert encore_la is not None, "un travail EN_COURS ne doit jamais etre purge"
+    assert encore_la.etat is EtatTravail.EN_COURS
+
+    bloque.set()
+    await file.fermer()

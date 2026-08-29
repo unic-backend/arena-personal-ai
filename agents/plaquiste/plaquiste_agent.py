@@ -31,6 +31,7 @@ from agents.plaquiste.metre_plan import (
     surface_murs_m2,
 )
 from agents.plaquiste.metre_plan import formater as formater_plan
+from apps.backend.config import BASE_DIR
 from core.agent.base_agent import BaseAgent
 from core.connectors.registre import RegistreConnecteurs
 from core.memory.memory_manager import MemoryManager
@@ -82,6 +83,24 @@ def date_en_toutes_lettres(jour: date) -> str:
 def numero_du_jour(jour: date, suffixe: str = "XXX") -> str:
     """Numerotation maison : UC-AAAA-MMJJ-CLI."""
     return f"UC-{jour.year}-{jour.month:02d}{jour.day:02d}-{suffixe}"
+
+
+def chemin_hors_du_depot(chemin: str) -> bool:
+    """Faux si le chemin tombe dans le depot d'ARENA lui-meme — a refuser.
+
+    `chemin_dans()` lit un chemin absolu **ecrit dans la phrase**, sans autre
+    controle : le proprietaire designe ainsi un plan pose n'importe ou sur sa
+    machine, par conception (DEC-0012). Mais rien n'empechait alors une phrase
+    de designer `.env`, `config/unic_plaquiste.yaml` ou tout autre fichier du
+    depot lui-meme — le seul endroit ou ARENA garde ses propres secrets. Ce
+    n'est pas un chemin qu'un plan de chantier a une seule raison de designer.
+    """
+    try:
+        resolu = Path(chemin).resolve()
+        resolu.relative_to(BASE_DIR.resolve())
+    except (ValueError, OSError):
+        return True
+    return False
 
 
 def charger_metier(chemin: Path = FICHIER_METIER) -> Dict[str, Any]:
@@ -343,6 +362,10 @@ class PlaquisteAgent(BaseAgent):
         chemin = chemin_dans(texte)
         if chemin is None:
             return None
+        if not chemin_hors_du_depot(chemin):
+            logger.warning("Chemin de plan refuse (dans le depot d'ARENA) : %s", chemin)
+            return {"statut": "REFUSE", "chemin": chemin,
+                    "message": "Ce chemin n'est pas ouvert : il tombe dans le depot d'ARENA."}
         if self.registre is None:
             return {"statut": "NOT_CONFIGURED", "chemin": chemin,
                     "message": ("Je peux chiffrer, pas ouvrir un plan : aucun "

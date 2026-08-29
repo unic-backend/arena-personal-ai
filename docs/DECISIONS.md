@@ -1269,3 +1269,126 @@ devis. C'est pourquoi la description d'une image n'est **jamais** injectée
 automatiquement dans une réponse commerciale sans qu'il l'ait demandée —
 `VISION` reste une intention explicite, jamais un enrichissement
 silencieux d'une autre.
+
+---
+
+## DEC-0020 : diagnostic et réparation — aucune nouvelle capacité, la dette technique
+
+*Demandé le 29/08/2026 : auditer ce que les missions précédentes ont
+laissé derrière elles — pas ajouter, réparer. Diagnostic d'abord, preuve
+par sabotage pour chaque correctif, jamais de second tour de dette pendant
+la réparation.*
+
+### Ce qui a été audité
+
+TODO/FIXME/XXX (aucun réel — les deux hits sont le suffixe de document
+`"XXX"`, pas un marqueur de code) ; les ~50 `except Exception` du dépôt,
+un par un ; le cycle de vie des clients `httpx` et du transport MCP stdio
+(fermeture, timeout, escalade `terminate`→`wait`→`kill`) ; `shell=True`,
+`eval`/`exec`/`pickle`, les excepts nus (aucun) ; les frontières
+MODEL→RUNTIME et STREAMING→CLIENT (`core/models/routeur.py`,
+`core/models/ollama_provider.py`, `core/models/openai_compatible.py`) ;
+`core/execution/travaux.py` (la file de fond) ; l'intégration Qwen3-VL
+(DEC-0019) relue au niveau du code, pas seulement de la mesure manquante ;
+`scripts/orphelins.py` (aucun module réel endormi, inchangé).
+
+La quasi-totalité de ce qui a été inspecté était déjà correcte — chaque
+panne externe s'y rapporte comme un état (`echec()`, `Sante(EN_PANNE)`,
+`NOT_CONFIGURED`), jamais comme un `pass` silencieux. C'est la mesure
+attendue d'un dépôt déjà passé par la discipline sabotage-puis-restauration
+sur chaque mission précédente — ce n'est pas un satisfecit gratuit, c'est
+ce que l'audit a trouvé.
+
+### Deux défauts confirmés, corrigés
+
+**1. Sécurité, P2 — un chemin de plan pouvait désigner le dépôt d'ARENA
+lui-même.** `agents/plaquiste/plaquiste_agent.py` : `chemin_dans()`
+(`agents/plaquiste/metre_plan.py`) lit n'importe quel chemin absolu
+terminé par `.pdf` **écrit dans la phrase**, sans autre contrôle — par
+conception (DEC-0012), pour que le propriétaire désigne un plan posé
+n'importe où sur sa machine. Mais rien n'empêchait alors une phrase de
+désigner un fichier du dépôt lui-même — le seul endroit où ARENA garde ses
+propres secrets (`.env`, `config/unic_plaquiste.yaml`) — avant de le
+transmettre à `core/connectors/opentakeoff.py`, qui ne fait lui-même
+qu'une vérification d'existence, aucune contention. Portée aujourd'hui :
+narrow (serveur lié à `127.0.0.1`) ; deviendrait P1 si le serveur était un
+jour exposé au-delà.
+
+Correctif : `chemin_hors_du_depot()`, un contrôle de contention
+(`Path(chemin).resolve().relative_to(BASE_DIR.resolve())`) appelé juste
+après l'extraction du chemin dans `_mesurer_le_plan()`. Un chemin qui tombe
+dans le dépôt rend `REFUSE` avant tout appel au connecteur. La légitimité
+du proprietaire — designer un plan n'importe ou ailleurs sur sa machine —
+n'est pas restreinte.
+
+**2. Fiabilité/Architecture, P2/P3 — l'historique des travaux de fond
+grossissait sans fin.** `core/execution/travaux.py` documente le
+parallélisme comme borné (règle 3 du module, un sémaphore) mais rien ne
+bornait le **stockage** : `_travaux`/`_taches` n'évacuaient jamais un
+travail `TERMINE`/`ECHOUE`/`ANNULE`. Sur un serveur de longue durée, ces
+deux dictionnaires grossissent pour toujours — le défaut exact que la
+mission demandait de chercher (« unbounded queues/unbounded memory
+growth »). Impact réel aujourd'hui borné (un seul utilisateur, peu de
+travaux soumis), mais réel sur l'échelle de temps d'un serveur qui tourne
+des mois.
+
+Correctif : `TRAVAUX_TERMINES_GARDES = 200` (même forme que
+`MESURES_GARDEES` dans `pwa_gateway.py`), et `_purger_les_anciens()`
+appelée à chaque fin de travail (`finally`) — retire les travaux **finis**
+les plus anciens au-delà de la limite. Un travail encore `EN_ATTENTE` ou
+`EN_COURS` n'est jamais purgé, quel que soit le nombre de travaux finis
+accumulés autour de lui.
+
+**3. Fiabilité, P3 — un jeton de flux Ollama illisible disparaissait sans
+trace.** `core/models/ollama_provider.py`, `generate_stream()` : une ligne
+de flux qui échoue au `json.loads` (chunk tronqué, ligne malformée) était
+absorbée par un `except Exception: pass` sans aucun journal, même en
+`DEBUG` — exactement le « malformed model output silently accepted » que
+la mission signale. Le flux continue correctement (bon comportement), mais
+une anomalie réelle du modèle local — celui que ce dépôt existe pour faire
+tourner — devenait indiagnosticable. Correctif : un `logger.debug()` sur
+la ligne rejetée, cohérent avec la convention déjà en place partout
+ailleurs dans le dépôt (chaque `except Exception` documenté du dépôt
+journalise ou renvoie un état — celui-ci était la seule exception).
+
+### La preuve
+
+Trois sabotages, un par correctif, chacun restauré et revérifié vert :
+- `chemin_hors_du_depot()` remplacée par `return True` inconditionnel →
+  `test_un_chemin_dans_le_depot_d_arena_est_refuse` tombe : le chemin
+  atteint réellement `opentakeoff.mesurer` (l'appel non scripté du double
+  de test le prouve).
+- `_purger_les_anciens()` neutralisée (`if True: return` avant tout
+  retrait) → `test_l_historique_des_travaux_finis_est_borne` tombe :
+  `10 == 3` échoue, l'historique n'est plus plafonné.
+- Le nouveau `logger.debug()` retiré, `except Exception: pass` restauré →
+  `test_la_ligne_illisible_est_journalisee` tombe : plus aucune trace de
+  la ligne rejetée.
+
+```
+python -m ruff check .      → All checks passed!
+python -m pytest tests/ -q  → 2011 passed, 21 deselected (2006 avant, +5)
+python scripts/orphelins.py → 132 modules, 104 atteints, 28 orphelins (inchangé —
+                               tous des __init__.py, aucun module réel touché)
+```
+
+### Ce qui a été délibérément laissé de côté
+
+Rien d'autre n'a franchi le seuil de « confirmé, avec une preuve ». Ne pas
+confondre absence de preuve et absence de défaut : les composants marqués
+`NON VÉRIFIÉ` dans `PROJECT_MEMORY/COMPLETED_SYSTEMS.md` (Qwen3-VL chargé
+réellement, Gmail/Agenda, WanGP, LightRAG, la mesure 7.2 entière) le
+restent — ils dépendent d'Ollama/Docker/réseau/GPU, absents de cette
+machine, et rien dans cette session ne les rend mesurables. Aucun d'eux
+n'a été rouvert « pour être sûr », conformément à la règle du projet.
+
+### Ce que ça coûte si c'est faux
+
+Le correctif §1 est le plus sensible : un contrôle de contention trop
+étroit refuserait à tort un plan légitime posé ailleurs sur sa machine — le
+test `test_demander_aussi_un_pdf_declenche_l_export_derriere_confirmation`
+(chemin hors dépôt, `/chantiers/A-101.pdf`) continue de passer, preuve que
+la contention ne mord que sur le dépôt lui-même. Les correctifs §2 et §3
+sont sans risque de régression fonctionnelle : l'un purge un historique
+déjà lu par `inventaire()` uniquement pour affichage, l'autre ajoute un
+journal sans changer le comportement du flux.

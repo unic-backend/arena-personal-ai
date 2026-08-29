@@ -317,6 +317,23 @@ class TestMesurerLePlan:
         assert resultat["plan"]["export"] is None
 
     @pytest.mark.asyncio
+    async def test_un_chemin_dans_le_depot_d_arena_est_refuse(self):
+        """`chemin_dans` lit n'importe quel chemin absolu ecrit dans la phrase —
+        y compris `.env` ou `config/unic_plaquiste.yaml`, les seuls endroits ou
+        ARENA garde ses propres secrets. Rien ne doit atteindre OpenTakeoff."""
+        from apps.backend.config import BASE_DIR
+
+        registre = RegistreScripte({})
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+        chemin_secret = str(BASE_DIR / "config" / "unic_plaquiste.yaml.pdf")
+
+        resultat = await agent.run(f"analyse le plan {chemin_secret}")
+
+        assert resultat["plan"]["statut"] == "REFUSE"
+        assert registre.appels == [], "aucun chemin du depot ne doit atteindre OpenTakeoff"
+
+    @pytest.mark.asyncio
     async def test_demander_aussi_un_pdf_declenche_l_export_derriere_confirmation(self):
         resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
                                  preuve="/chantiers/A-101.pdf", **DETAIL_PLAN_UNE_PIECE)

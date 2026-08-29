@@ -21,13 +21,20 @@ OpenTakeoff a pu être construit et interrogé pour de vrai — voir sa ligne
 dans le tableau plus bas, et `PROJECT_MEMORY/ACTIVE_WORK.md` pour le rapport
 `doctor.py` complet, avant/après construction.
 
-Preuve du 2026-08-29 (fin de session, apres DEC-0019) :
+Preuve du 2026-08-29 (fin de session, apres DEC-0020 — diagnostic/réparation) :
+```
+python -m ruff check .      → All checks passed!
+python -m pytest tests/ -q  → 2011 passed, 21 deselected (2006 avant DEC-0020, +5)
+python scripts/orphelins.py → 132 modules, 104 atteints, 28 orphelins (tous des __init__.py — apps/pwa/server/ supprime)
+python scripts/doctor.py    → sur cette machine (cloud), 13 capacité(s) indisponible(s) par defaut
+                               (Modele de vision inclus — qwen3-vl:4b, jamais mesure sans Ollama)
+```
+
+Preuve du 2026-08-29 (avant DEC-0020, juste apres DEC-0019) :
 ```
 python -m ruff check .      → All checks passed!
 python -m pytest tests/ -q  → 2006 passed, 21 deselected
 python scripts/orphelins.py → 132 modules, 104 atteints, 28 orphelins (tous des __init__.py — apps/pwa/server/ supprime)
-python scripts/doctor.py    → sur cette machine (cloud), 13 capacité(s) indisponible(s) par defaut
-                               (Modele de vision inclus — qwen3-vl:4b, jamais mesure sans Ollama)
 ```
 
 Preuve du 2026-08-28 (historique) :
@@ -53,7 +60,7 @@ python scripts/orphelins.py → 110 modules, 82 atteints, aucun module réel end
 | `core/memory/recuperation.py` | **100% LOGIQUE VÉRIFIÉE** | 43 | sans objet |
 | `core/security/trust.py` | **100% LOGIQUE VÉRIFIÉE** | couvert par gateway + gmail | sans objet |
 | `core/execution/voies.py` | **100% LOGIQUE VÉRIFIÉE** | 16 + 24 (branchement) | sans objet |
-| `core/execution/travaux.py` | **90%** | couvert | file réelle, jamais sous charge |
+| `core/execution/travaux.py` | **90%** | couvert (+2 DEC-0020) | file réelle, jamais sous charge ; historique des travaux finis désormais plafonné (`TRAVAUX_TERMINES_GARDES`, DEC-0020) |
 | `core/execution/mesures.py` | **90%** | 11 (branchement) | durées réelles jamais mesurées chez lui |
 | `core/memory/semantique.py` | **75%** | 8 (branchement) | **NON VÉRIFIÉ** — exige Ollama + `bge-m3` |
 | `core/memory/consolidation.py` | **100% LOGIQUE VÉRIFIÉE** | 8 (branchement) | sans objet |

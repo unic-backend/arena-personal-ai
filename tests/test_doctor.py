@@ -17,6 +17,7 @@ import pytest
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE / "scripts"))
 
+import doctor  # noqa: E402 — le chemin est posé juste au-dessus
 from doctor import (  # noqa: E402 — le chemin est posé juste au-dessus
     ABSENT,
     EN_PANNE,
@@ -266,3 +267,29 @@ def test_chaque_defaut_porte_son_remede():
 
 def test_un_ok_ne_porte_jamais_de_remede():
     assert verifier_python().remede == ""
+
+
+def test_main_charge_le_dotenv_avant_de_diagnostiquer(monkeypatch):
+    """`os.getenv()` ne lit que l'environnement du processus, jamais `.env` —
+    seul `load_dotenv()` fait le pont. `doctor.py` ne passe jamais par
+    `apps.backend.config` (l'autre endroit ou `.env` est charge), donc sans
+    cet appel une cle correctement ecrite dans `.env` restait mesuree comme
+    absente : exactement le defaut reproduit en conditions reelles, une
+    USMAN_API_KEY presente dans `.env` mais que `doctor.py` disait absente."""
+    appels = []
+    monkeypatch.setattr(doctor, "load_dotenv", lambda dotenv_path=None: appels.append(dotenv_path))
+    monkeypatch.setattr(doctor, "diagnostiquer", lambda: Rapport([]))
+
+    doctor.main()
+
+    assert len(appels) == 1, "main() doit charger .env avant toute mesure"
+    assert appels[0] == RACINE / ".env"
+
+
+def test_sans_dotenv_installe_main_ne_plante_pas(monkeypatch):
+    """`dotenv` est une dependance parmi d'autres : son absence doit se lire
+    dans la ligne « Dependances », jamais faire planter le diagnostic entier."""
+    monkeypatch.setattr(doctor, "load_dotenv", None)
+    monkeypatch.setattr(doctor, "diagnostiquer", lambda: Rapport([]))
+
+    assert doctor.main() == 0

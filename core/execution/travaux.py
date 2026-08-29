@@ -42,6 +42,13 @@ logger = logging.getLogger("usman.execution.travaux")
 #: divulguer.
 RAISON_MAX = 200
 
+#: Combien de travaux FINIS (TERMINE/ECHOUE/ANNULE) restent dans l'inventaire.
+#: Le parallelisme est borne par le semaphore (regle 3), mais rien ne bornait
+#: le nombre de travaux **accumules** : un serveur de longue duree grossirait
+#: sans fin. Les travaux en cours ne sont jamais purges, quel que soit leur
+#: nombre — seul l'historique des travaux finis est plafonne.
+TRAVAUX_TERMINES_GARDES = 200
+
 
 class EtatTravail(str, Enum):
     """Les cinq etats possibles. Aucun n'est deduit : chacun est ecrit."""
@@ -157,26 +164,48 @@ class FileDeTravaux:
         """Le corps du travail. Aucune exception n'en sort."""
         async with self._verrou:
             if travail.etat is EtatTravail.ANNULE:
+                self._purger_les_anciens()
                 return  # annule avant d'avoir commence : on ne le lance pas
             travail.etat = EtatTravail.EN_COURS
             travail.demarre_le = _maintenant()
             try:
-                resultat = appel(travail) if passer_le_travail else appel()
-                if inspect.isawaitable(resultat):
-                    resultat = await resultat
-            except asyncio.CancelledError:
-                travail.etat = EtatTravail.ANNULE
+                try:
+                    resultat = appel(travail) if passer_le_travail else appel()
+                    if inspect.isawaitable(resultat):
+                        resultat = await resultat
+                except asyncio.CancelledError:
+                    travail.etat = EtatTravail.ANNULE
+                    travail.fini_le = _maintenant()
+                    raise
+                except Exception as erreur:  # noqa: BLE001 — une panne de fond reste au fond
+                    travail.etat = EtatTravail.ECHOUE
+                    travail.raison = f"{type(erreur).__name__}: {erreur}"[:RAISON_MAX]
+                    travail.fini_le = _maintenant()
+                    logger.info("Travail %s echoue : %s", travail.nom, travail.raison)
+                    return
+                travail.resultat = resultat
+                travail.etat = EtatTravail.TERMINE
                 travail.fini_le = _maintenant()
-                raise
-            except Exception as erreur:  # noqa: BLE001 — une panne de fond reste au fond
-                travail.etat = EtatTravail.ECHOUE
-                travail.raison = f"{type(erreur).__name__}: {erreur}"[:RAISON_MAX]
-                travail.fini_le = _maintenant()
-                logger.info("Travail %s echoue : %s", travail.nom, travail.raison)
-                return
-            travail.resultat = resultat
-            travail.etat = EtatTravail.TERMINE
-            travail.fini_le = _maintenant()
+            finally:
+                self._purger_les_anciens()
+
+    def _purger_les_anciens(self) -> None:
+        """Retire les travaux FINIS les plus anciens au-dela de la limite.
+
+        Jamais un travail EN_ATTENTE ou EN_COURS : seul l'historique deja
+        fini (TERMINE/ECHOUE/ANNULE) est plafonne, et la tache associee est
+        deja terminee a ce stade (`_taches` peut donc etre purge avec).
+        """
+        finis = sorted(
+            (t for t in self._travaux.values() if t.fini),
+            key=lambda t: t.fini_le or "",
+        )
+        exces = len(finis) - TRAVAUX_TERMINES_GARDES
+        if exces <= 0:
+            return
+        for travail in finis[:exces]:
+            self._travaux.pop(travail.identifiant, None)
+            self._taches.pop(travail.identifiant, None)
 
     # --- Lecture ---------------------------------------------------------------
 

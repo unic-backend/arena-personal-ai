@@ -90,5 +90,5 @@ class OllamaProvider(ModelProvider):
                             token = chunk.get("response", "")
                             if token:
                                 yield token
-                        except Exception:
-                            pass
+                        except Exception as erreur:  # noqa: BLE001 — une ligne illisible ne casse pas le flux
+                            logger.debug("Ligne de flux Ollama ignoree (%s) : %r", erreur, line)
