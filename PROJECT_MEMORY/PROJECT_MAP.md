@@ -38,6 +38,7 @@ Un module qu'aucun de ces quatre n'atteint est un orphelin :
 | `core/mcp/` | deux transports MCP : HTTP (`transport.py`, WanGP) et stdio (`stdio_transport.py`, OpenTakeoff) |
 | `core/memory/` | mémoire personnelle, récupération lexicale, sémantique, consolidation |
 | `core/execution/` | voies (budgets), mesures (chronométrage), travaux de fond, coordination (tâches à état), crochets + disjoncteur (DEC-0013) |
+| `core/guardian/` | diagnostics + file de maintenance + cycle (DEC-0014) — DÉCOUVRE et RAPPORTE, ne MODIFIE jamais le dépôt |
 | `core/models/` | fournisseur Ollama |
 | `core/security/` | frontière de confiance (`trust.py`) |
 | `core/reasoning/` | moteur Plan & Solve (bac à sable) |
@@ -48,7 +49,7 @@ Un module qu'aucun de ces quatre n'atteint est un orphelin :
 | `config/` | `permissions.yaml`, `permissions_services.yaml`, `unic_plaquiste.yaml` (ses prix) |
 | `scripts/` | `doctor.py`, `orphelins.py`, `mesurer_performances.py`, installateurs |
 | `docs/` | plan, décisions, reprise, règles de travail |
-| `tests/` | 1920 tests (1899 hors ligne + 21 marqués `integration`) |
+| `tests/` | 1953 tests (1932 hors ligne + 21 marqués `integration`) |
 
 ## Les trois documents historiques (autorité, pas mémoire)
 

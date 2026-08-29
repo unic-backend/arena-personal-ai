@@ -48,6 +48,8 @@ from core.execution.disjoncteur import Disjoncteur
 from core.execution.hooks import RegistreDeCrochets
 from core.execution.mesures import Rapport
 from core.execution.travaux import FileDeTravaux
+from core.guardian.file_maintenance import FileDeMaintenance
+from core.guardian.gardien import Gardien
 from core.memory.memory_manager import MemoryManager
 from core.memory.personnelle import MemoirePersonnelle
 from core.memory.semantique import IndexSemantique
@@ -177,6 +179,14 @@ travaux = FileDeTravaux()
 # `/api/observability`. Une scene qui n'a pas tourne n'y entre pas avec un
 # zero : elle n'y entre pas du tout, et le rapport le dit.
 mesures_execution = Rapport()
+
+# --- Gardien (DEC-0014) --------------------------------------------------------
+# Un cycle de diagnostic reel (ruff, pytest, orphelins) qui alimente une
+# memoire de maintenance persistante — jamais une modification autonome du
+# depot. `GET /api/gardien/rapport` et `POST /api/gardien/cycle` le lisent
+# et le declenchent ; voir core/guardian/gardien.py sur la limite volontaire.
+file_maintenance = FileDeMaintenance(db_path=str(DB_PATH))
+gardien = Gardien(file_maintenance=file_maintenance)
 
 # --- Modeles ------------------------------------------------------------------
 # Ollama reste le defaut, le repli, et le seul chemin pour ce qui est sensible
