@@ -1001,3 +1001,107 @@ outil qui ne fait que sonder d'autres outils n'aurait rien changé de
 mesurable — un dossier de plus, aucune capacité de plus. Le seul gain réel
 mesurable était dans le code déjà là, pas dans le dépôt qu'on demandait
 d'ajouter.
+
+---
+
+## DEC-0018 : consolidation des modèles — rien à fusionner, déjà minimal par conception
+
+*Demandé le 29/08/2026 : classer les modèles d'ARENA par groupe de capacité
+(raisonnement, code, vision, embeddings, audio, génération vidéo) et, pour
+chaque groupe qui contiendrait plusieurs modèles redondants, déterminer
+s'ils peuvent être fusionnés (poids, LoRA, distillation...) en un seul
+moteur le plus fort possible.*
+
+### L'inventaire réel, mesuré dans le code — pas supposé
+
+```
+apps/backend/config.py:
+  MODELE_RAPIDE = "qwen2.5-coder:14b"   (voie LEGERE)
+  MODELE_PROFOND = "qwen3.5:9b"          (voie PROFONDE)
+  GROQ_MODELE = "llama-3.3-70b-versatile"       (cloud, repli, opt-in)
+  DEEPINFRA_MODELE = "meta-llama/Llama-3.3-70B-Instruct"  (cloud, repli, opt-in)
+
+core/memory/semantique.py:
+  MODELE_EMBEDDINGS = "bge-m3"           (Ollama, local)
+
+tools/audio/transcription_tool.py:
+  faster-whisper, taille "tiny"          (CPU, local)
+```
+
+**Aucun modèle de vision. Aucun modèle de génération vidéo possédé par
+ARENA** — WanGP et MoneyPrinterTurbo sont des outils tiers appelés par
+connecteur (`core/connectors/wan2gp.py`, `moneyprinter.py`) : ARENA n'a ni
+leurs poids ni leur code d'entraînement, il n'y a donc rien qui *lui*
+appartienne à fusionner ou distiller dans ces deux groupes.
+
+### Classement par groupe (taxonomie de la mission)
+
+| Groupe | Modèles trouvés | Nombre |
+|---|---|---|
+| A — Raisonnement général | `qwen3.5:9b` (local, profond) ; `qwen2.5-coder:14b` (local, léger) ; Llama 3.3 70B chez Groq et DeepInfra (cloud, repli, opt-in) | 4 emplacements, **0 redondance de même rang** |
+| B — Code | `qwen2.5-coder:14b` — **le même modèle que la voie légère du groupe A**, vérifié : `apps/backend/runtime.py:230` cable `CoderAgent` sur `fast_provider` | 1, déjà partagé avec A |
+| C — Vision | aucun | 0 |
+| D — Embeddings / retrieval | `bge-m3` | 1 |
+| E — Audio | `faster-whisper` (tiny) | 1 |
+| F — Génération vidéo | aucun modèle possédé (WanGP/MoneyPrinterTurbo sont des outils tiers, pas des poids ARENA) | 0 |
+
+### La décision
+
+**Rien n'est fusionné, rien n'est distillé.** Chaque groupe contient soit
+zéro modèle, soit un seul, à une exception près (groupe A) qui n'est pas
+une redondance mais une architecture de coût **déjà documentée et
+délibérée** — la fusionner casserait une garantie déjà écrite, pas
+seulement inutile :
+
+**`qwen2.5-coder:14b` et `qwen3.5:9b` ne sont pas deux modèles qui font le
+même travail.** `core/execution/voies.py` le dit dans ses propres règles :
+
+> *« Une question simple n'atteint jamais le raisonnement profond. »*
+> *« Les budgets croissent avec la voie, sur toutes les dimensions. Une
+> voie plus profonde qui s'autoriserait moins que la précédente serait une
+> erreur de table, pas un réglage. »*
+
+Fusionner les deux en « le plus fort des deux » ferait payer à *chaque*
+question — y compris « bonjour » — le coût GPU et la latence du modèle
+profond. C'est exactement l'inverse de ce que la phase 7.1 (DEC déjà
+actée) a construit : un palier bon marché pour ce qui est simple, un
+palier coûteux réservé à ce qui le mérite. La mission elle-même l'interdit
+— *« If two models perform different jobs, DO NOT merge them »* — et ici,
+« répondre vite et pas cher » et « raisonner longtemps » sont deux jobs,
+pas un.
+
+**Groq et DeepInfra ne sont pas deux fournisseurs redondants à fusionner
+non plus.** `core/models/routeur.py` documente sa propre raison d'être :
+
+> *« Puis le repli, dans cet ordre : Groq → DeepInfra → Ollama. Il s'arrête
+> au premier qui répond, et il ne boucle jamais. »*
+
+C'est une chaîne de **repli infrastructurel** (l'un est indisponible, on
+essaie l'autre), pas deux intelligences qui tournent pour la même question
+— et ARENA ne possède les poids d'aucun des deux : il n'y a rien à
+fusionner chez un fournisseur cloud tiers.
+
+**`qwen2.5-coder:14b` n'a pas besoin d'être « consolidé » avec un modèle de
+code séparé, parce qu'il n'y en a pas** : `CoderAgent` utilise déjà ce même
+modèle (`runtime.py:230`, `provider=fast_provider`). Groupe A et groupe B
+partagent déjà un seul moteur — la mission demande la conclusion à
+laquelle ARENA était déjà arrivée, pour une raison différente (limiter le
+nombre de modèles à charger sur 12 Go de VRAM, DEC-0002).
+
+### Pourquoi ARENA n'a jamais eu de doublons à consolider
+
+Ce n'est pas un hasard : DEC-0002 (local-first strict) et la contrainte
+matérielle (RTX A2000, 12 Go de VRAM) ont empêché dès le départ d'accumuler
+plusieurs modèles par domaine — charger un deuxième modèle de 9-14B a un
+coût réel et immédiat sur cette carte. « Un modèle par palier, un modèle
+par domaine » n'est pas une simplification a posteriori : c'est la
+contrainte qui a toujours gouverné ce dépôt.
+
+### Ce que ça coûte si c'est faux
+
+Fusionner ou distiller sans preuve d'une vraie redondance produirait soit
+un modèle plus lent et plus coûteux pour les questions simples (en
+écrasant la voie légère), soit une opération d'ingénierie ML (poids,
+tokenizer, famille de modèle, infrastructure d'entraînement) tentée sans
+aucun gain de capacité à en attendre — un risque réel pour un bénéfice
+nul. Le coût de ne rien faire ici est zéro : rien n'était redondant.
