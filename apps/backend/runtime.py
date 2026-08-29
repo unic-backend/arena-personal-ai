@@ -44,6 +44,8 @@ from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.wan2gp import Wan2GPConnector
+from core.execution.disjoncteur import Disjoncteur
+from core.execution.hooks import RegistreDeCrochets
 from core.execution.mesures import Rapport
 from core.execution.travaux import FileDeTravaux
 from core.memory.memory_manager import MemoryManager
@@ -81,9 +83,18 @@ registre = RegistreConnecteurs()
 # connecteurs qui deposent dans la file. Le lien se fait par une fonction plutot
 # que par un import croise : `attente.py` n'a jamais entendu parler du registre.
 file_attente = FileDAttente(db_path=str(DB_PATH), executeur=registre.executer_confirmee)
+# Crochets autour de l'execution (DEC-0013) : partages par tous les
+# connecteurs, comme journal/file_attente. Premier consommateur reel — un
+# disjoncteur qui coupe court apres des echecs consecutifs REELS, au lieu de
+# repayer le meme delai d'attente a chaque appel d'un service tombe.
+crochets = RegistreDeCrochets()
+disjoncteur = Disjoncteur()
+crochets.avant(disjoncteur.avant_execution)
+crochets.apres(disjoncteur.apres_execution)
 registre.declarer(
     "tiktok",
-    lambda: TikTokConnector(acces=acces, journal=journal, file_attente=file_attente),
+    lambda: TikTokConnector(acces=acces, journal=journal, file_attente=file_attente,
+                            crochets=crochets),
 )
 # Premier connecteur reellement operationnel : GalsenAPI est publique, donc il
 # ne depend d'aucun secret et n'est pas gele par la purge en attente.
@@ -92,29 +103,34 @@ registre.declarer(
 # par son API. Non configure tant qu'il n'est pas lance — la sonde le mesure.
 registre.declarer(
     "moneyprinter",
-    lambda: MoneyPrinterConnector(acces=acces, journal=journal, file_attente=file_attente),
+    lambda: MoneyPrinterConnector(acces=acces, journal=journal, file_attente=file_attente,
+                                  crochets=crochets),
 )
 # Generation d'images video. Non configure tant que WanGP n'est pas lance : la
 # sonde le mesure au lieu de le supposer.
 registre.declarer(
     "wan2gp",
-    lambda: Wan2GPConnector(acces=acces, journal=journal, file_attente=file_attente),
+    lambda: Wan2GPConnector(acces=acces, journal=journal, file_attente=file_attente,
+                            crochets=crochets),
 )
 # Devis PDF : chiffrage libre, production du document derriere confirmation.
 registre.declarer(
     "devis",
-    lambda: DevisConnector(acces=acces, journal=journal, file_attente=file_attente),
+    lambda: DevisConnector(acces=acces, journal=journal, file_attente=file_attente,
+                           crochets=crochets),
 )
 # Metre de plan PDF : moteur OpenTakeoff, installe a cote (DEC-0008), jamais
 # dans ce depot. Non configure tant qu'il n'est pas construit sur sa machine —
 # la sonde le mesure au lieu de le supposer.
 registre.declarer(
     "opentakeoff",
-    lambda: ConnecteurOpenTakeoff(acces=acces, journal=journal, file_attente=file_attente),
+    lambda: ConnecteurOpenTakeoff(acces=acces, journal=journal, file_attente=file_attente,
+                                  crochets=crochets),
 )
 registre.declarer(
     "galsen",
-    lambda: GalsenConnector(acces=acces, journal=journal, file_attente=file_attente),
+    lambda: GalsenConnector(acces=acces, journal=journal, file_attente=file_attente,
+                            crochets=crochets),
 )
 # Courrier : LECTURE SEULE (chapitre 8.1). Aucune capacite d'ecriture n'est
 # declaree, donc aucune n'existe — l'envoi viendra en 8.2, derriere
@@ -125,11 +141,13 @@ registre.declarer(
 # Google que le courrier, autre portee.
 registre.declarer(
     "calendrier",
-    lambda: CalendrierConnector(acces=acces, journal=journal, file_attente=file_attente),
+    lambda: CalendrierConnector(acces=acces, journal=journal, file_attente=file_attente,
+                                crochets=crochets),
 )
 registre.declarer(
     "gmail",
-    lambda: GmailConnector(acces=acces, journal=journal, file_attente=file_attente),
+    lambda: GmailConnector(acces=acces, journal=journal, file_attente=file_attente,
+                           crochets=crochets),
 )
 # Journal des actions a effet externe. Meme fichier que la memoire, table a part.
 journal = JournalDesActions(db_path=str(DB_PATH))

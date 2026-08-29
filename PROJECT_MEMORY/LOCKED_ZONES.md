@@ -28,7 +28,7 @@ système autour du stable plutôt que l'inverse.
 | `core/actions/journal.py` | 9 champs, masquage des secrets | la traçabilité, et le suivi vidéo qui y lit l'identifiant |
 | `core/actions/attente.py` | confirmer deux fois n'exécute qu'une fois | l'e-mail, le devis PDF, l'agenda, la génération vidéo |
 | `core/permissions/` + `config/permissions*.yaml` | deux couches, la plus stricte gagne | **toutes** les confirmations. Un `ALLOWED` de trop et un e-mail part seul |
-| `core/connectors/base.py` | l'ordre contrôle → confirmation → santé → quota | l'impossibilité structurelle d'envoyer sans demander |
+| `core/connectors/base.py` | l'ordre contrôle → confirmation → santé → quota → **crochets** (DEC-0013, ajoutés APRÈS, jamais avant) → exécution | l'impossibilité structurelle d'envoyer sans demander |
 | `core/security/trust.py` | frontière donnée / consigne | la protection contre un e-mail ou un document hostile |
 | `config/unic_plaquiste.yaml` | **ses prix réels**, tirés de ses devis | un devis faux part chez un client |
 | `agents/plaquiste/calcul_materiaux.py` | vérifié contre le devis `UC-2026-0804-FG2` | ses quantités |

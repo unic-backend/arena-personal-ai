@@ -485,3 +485,85 @@ Un périmètre de pièce présenté comme une surface de cloisons partirait dans
 un devis avec un mètre qui a l'air mesuré et ne l'est pas — plus trompeur
 qu'un chiffre absent. C'est exactement ce que la limite plafond/cloison
 empêche, et que le sabotage du PR vérifie.
+
+---
+
+## DEC-0013 : DeepSeek Harness — l'idée des crochets, pas Cordis
+
+*Demandé le 29/08/2026 : auditer `deepseek-ai/deepseek-harness` (MIT,
+« developer preview ») et en extraire ce qui améliore réellement ARENA, sans
+imposer son architecture.*
+
+### Ce que le dépôt est vraiment
+
+Cloné et lu dans son propre code, pas seulement son README. `dsh` est un
+harnais d'agent en TypeScript/Node, bâti sur **Cordis** — un bus d'évènements
+à contexte partagé typé (« everything is a plugin ») où même le cœur (moteur
+de tours, registre d'outils, journal de session) est un plugin remplaçable.
+Chaque appel d'outil traverse trois « waterfalls » ordonnées —
+`tools/pre-execute` → `tools/execute` → `tools/post-execute`
+(`packages/core/tools/src/index.ts`) — sur lesquelles des politiques
+transverses se greffent sans toucher au cœur : `packages/guard/timeout-policy`
+enveloppe l'exécution d'un délai, `packages/guard/repeat-tool-reminder`
+détecte un outil rappelé à l'identique. Deux bridges (`packages/hooks/
+hooks-claude-code`, `hooks-codex`) traduisent ce même protocole vers des
+commandes shell externes, au format `hooks.json` de Claude Code et de Codex.
+
+### La décision : l'idée, jamais le code ni l'architecture entière
+
+Cordis résout un problème qu'ARENA n'a pas : de nombreuses équipes
+indépendantes qui publient des plugins dans un même hôte, avec composition à
+chaud, profils et bundles. ARENA est un seul dépôt, une seule personne qui le
+fait évoluer, huit connecteurs déclarés dans `runtime.py`. Réécrire
+`core/connectors/base.py` et `RegistreConnecteurs` en un bus d'évènements
+généraliste **créerait un second système de permissions et d'orchestration**
+à côté de celui déjà verrouillé et testé — exactement ce que la mission elle-
+même interdit (« Do not create two competing permission systems »).
+
+Ce qui est réel et manquant : **rien, dans `core/connectors/base.py`, ne
+permet d'observer ou d'intercepter une exécution sans modifier ce fichier
+verrouillé.** C'est la seule pièce extraite — traduite en Python, aucune
+ligne de TypeScript reprise (Cordis n'a pas d'équivalent direct dans un
+runtime synchrone à un seul processus).
+
+### Ce qui a été construit
+
+`core/execution/hooks.py` — `RegistreDeCrochets`, deux points, ajoutés
+**après** les quatre contrôles verrouillés (permission → confirmation →
+santé → quota), jamais à leur place : `avant_execution` (un veto
+opérationnel, jamais une permission — la différence est écrite dans le
+`ResultatAction` : `ECHEC`, jamais `DENIED`) et `apres_execution` (un
+observateur, jamais un veto). Un crochet cassé ne casse jamais l'appel qu'il
+observe.
+
+Premier consommateur réel, jamais démonstratif : `core/execution/
+disjoncteur.py`. Aucun module existant ne le faisait — `LimiteurDebit`
+plafonne un DÉBIT, pas une SANTÉ ; un service tombé (MoneyPrinterTurbo
+arrêté, OpenTakeoff jamais construit, WanGP injoignable) faisait repayer le
+délai d'attente complet à chaque appel suivant. Après des échecs consécutifs
+**réels** (`NOT_CONFIGURED`/`DENIED`/`NEEDS_CONFIRMATION` ne comptent pas :
+rien n'a été tenté contre le service), le disjoncteur coupe court sans
+rappeler `_executer()` — mesuré par un test qui vérifie le compte d'appels
+réels, pas seulement le résultat rendu.
+
+Câblé dans `apps/backend/runtime.py` : un seul `RegistreDeCrochets` et un
+seul `Disjoncteur`, partagés par les huit connecteurs déclarés — comme
+`journal` et `file_attente` le sont déjà.
+
+### Ce qui n'a délibérément pas été fait — `SUGGESTION — NON IMPLÉMENTÉE`
+
+| Idée de DeepSeek Harness | Pourquoi elle n'entre pas ici |
+|---|---|
+| Cordis entier (bus de plugins, profils, bundles) | résout un problème qu'ARENA n'a pas (plusieurs équipes) ; créerait un second système d'orchestration |
+| Assembleur de prompt par sections | `composer_instruction()` par agent, et le classement d'intention de l'orchestrateur, font déjà ce que ça vise — chaque agent ne voit déjà que son propre domaine |
+| Personas par tâche (mode chantier/recherche/code...) | ce sont déjà les agents spécialisés d'ARENA (plaquiste, email, researcher, coder…), sous un autre nom — les renommer n'ajoute aucune capacité |
+| Chargement dynamique de plugins a chaud | la mission elle-même l'exclut (« do not implement unsafe dynamic code loading ») ; `RegistreConnecteurs.declarer()` (fabriques paresseuses, santé mesurée, `orphelins.py` interdit le dormant) est déjà une frontière contrôlée |
+| Bridges hooks vers des commandes shell (format Claude Code/Codex) | ARENA est un seul processus Python ; rien n'indique un besoin de crochets en scripts externes |
+
+### Ce que ça coûte si c'est faux
+
+Un disjoncteur qui compterait un `NOT_CONFIGURED` comme un échec couperait un
+service jamais configuré après trois tentatives qui n'ont rien tenté —
+message trompeur. Un veto qui n'arrêterait pas vraiment `_executer()`
+laisserait croire à une protection qui n'existe pas. Les deux sont dans le
+tableau de sabotage du PR.
