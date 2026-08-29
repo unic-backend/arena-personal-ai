@@ -354,10 +354,10 @@ class TestMesurerLePlan:
         assert "/chantiers/A-101.pdf" in resultat["metre"]["lu"]
 
     @pytest.mark.asyncio
-    async def test_une_cloison_nommee_ne_chiffre_jamais_depuis_le_seul_perimetre(self):
-        """La limite du DEC-0012 : le perimetre d'une piece entiere n'est pas
-        une surface de cloisons a poser. Le plan est mesure, mais rien n'est
-        chiffre sans que le proprietaire ait dit quels murs sont a poser."""
+    async def test_une_cloison_sans_hauteur_ne_chiffre_rien(self):
+        """Le perimetre d'une piece entiere n'est pas une surface de mur a
+        poser tant qu'aucune hauteur n'est donnee : rien ne se calcule tout
+        seul depuis un perimetre."""
         resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
                                  preuve="/chantiers/A-101.pdf", **DETAIL_PLAN_UNE_PIECE)
         registre = RegistreScripte({("opentakeoff", "mesurer"): resultat_mesure})
@@ -368,6 +368,55 @@ class TestMesurerLePlan:
 
         assert resultat["metre"] is None
         assert resultat["plan"]["surface_totale_m2"] == pytest.approx(40.69, abs=0.01)
+
+    @pytest.mark.asyncio
+    async def test_une_cloison_avec_hauteur_se_chiffre_depuis_le_perimetre(self):
+        """Correction du propriétaire (29/08/2026) : la surface d'un mur, c'est
+        largeur (le perimetre mesure) x hauteur — deux faces par defaut pour
+        une cloison/separation."""
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="/chantiers/A-101.pdf", **DETAIL_PLAN_UNE_PIECE)
+        registre = RegistreScripte({("opentakeoff", "mesurer"): resultat_mesure})
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run(
+            "calcule la cloison, hauteur de 2,50 m, plan /chantiers/A-101.pdf")
+
+        assert resultat["metre"] is not None
+        # perimetre 86.61 pi = 26.4 ml ; 26.4 x 2,50 m x 2 faces = 132.0 m2 developpes
+        assert resultat["metre"]["surface_developpee"] == pytest.approx(132.0, abs=0.1)
+
+    @pytest.mark.asyncio
+    async def test_un_doublage_avec_hauteur_ne_compte_qu_une_face(self):
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="/chantiers/A-101.pdf", **DETAIL_PLAN_UNE_PIECE)
+        registre = RegistreScripte({("opentakeoff", "mesurer"): resultat_mesure})
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run(
+            "calcule le doublage, hauteur de 2,50 m, plan /chantiers/A-101.pdf")
+
+        assert resultat["metre"] is not None
+        # meme perimetre x hauteur, UNE seule face : 66.0 m2, pas 132.0
+        assert resultat["metre"]["surface_developpee"] == pytest.approx(66.0, abs=0.1)
+
+    @pytest.mark.asyncio
+    async def test_un_rampant_ne_chiffre_jamais_meme_avec_une_hauteur(self):
+        """Un rampant suit la pente du toit : ni la surface au sol, ni le
+        perimetre x une hauteur verticale ne la donnent. Aucune mesure de ce
+        plan ne doit produire un chiffrage, meme avec une hauteur dictee."""
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="/chantiers/A-101.pdf", **DETAIL_PLAN_UNE_PIECE)
+        registre = RegistreScripte({("opentakeoff", "mesurer"): resultat_mesure})
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run(
+            "calcule le rampant, hauteur de 2,50 m, plan /chantiers/A-101.pdf")
+
+        assert resultat["metre"] is None
 
 
 class FauxAgenda:

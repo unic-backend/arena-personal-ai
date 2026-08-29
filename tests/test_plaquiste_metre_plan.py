@@ -5,10 +5,13 @@ from agents.plaquiste.metre_plan import (
     MetrePlan,
     Piece,
     chemin_dans,
+    demande_non_calculable_depuis_le_plan,
     demande_un_plafond,
     depuis_mesure,
+    faces_du_mur,
     formater,
     lire_hauteur,
+    surface_murs_m2,
 )
 
 
@@ -43,14 +46,49 @@ class TestLireHauteur:
 
 
 class TestDemandeUnPlafond:
+    """Seul un plafond PLAT est floor-area-equivalent (correction du
+    29/08/2026) : un doublage, un habillage ou un coffre sont posés sur un
+    MUR, pas au plafond — les confondre avec un plafond aurait chiffré une
+    surface au sol la où il fallait largeur x hauteur."""
+
     def test_plafond_nomme(self):
         assert demande_un_plafond("calcule le faux plafond de cette piece") is True
 
-    def test_doublage_nomme(self):
-        assert demande_un_plafond("c'est un doublage") is True
+    def test_doublage_n_est_plus_confondu_avec_un_plafond(self):
+        assert demande_un_plafond("c'est un doublage") is False
 
     def test_cloison_n_est_pas_un_plafond(self):
         assert demande_un_plafond("la surface de la cloison") is False
+
+
+class TestFacesDuMur:
+    def test_doublage_est_une_seule_face(self):
+        assert faces_du_mur("le doublage de ce mur") == 1
+
+    def test_habillage_est_une_seule_face(self):
+        assert faces_du_mur("un habillage") == 1
+
+    def test_cloison_est_deux_faces_par_defaut(self):
+        assert faces_du_mur("la cloison a poser") == 2
+
+    def test_rien_de_nomme_est_deux_faces_par_defaut(self):
+        assert faces_du_mur("la surface du mur") == 2
+
+
+class TestDemandeNonCalculable:
+    def test_rampant_n_est_calculable_depuis_aucune_mesure(self):
+        assert demande_non_calculable_depuis_le_plan("le rampant de ce comble") is True
+
+    def test_une_cloison_est_calculable(self):
+        assert demande_non_calculable_depuis_le_plan("la cloison") is False
+
+
+class TestSurfaceMurs:
+    def test_perimetre_fois_hauteur(self):
+        assert surface_murs_m2(perimetre_ml=26.4, hauteur_m=2.5) == 66.0
+
+    def test_perimetre_absent_ne_leve_pas(self):
+        assert surface_murs_m2(perimetre_ml=None, hauteur_m=2.5) == 0.0
 
 
 DETAIL_UNE_PIECE = {
@@ -120,9 +158,9 @@ class TestFormater:
 
     def test_le_perimetre_n_est_jamais_presente_comme_un_chiffrage(self):
         """La limite honnete du module : un perimetre mesure n'est pas encore
-        une surface de cloisons a poser (docstring du module)."""
+        une surface de mur a poser (docstring du module)."""
         metre = depuis_mesure("/x/a.pdf", DETAIL_UNE_PIECE)
 
         rendu = formater(metre)
 
-        assert "pas encore une surface de cloisons" in rendu
+        assert "pas encore une surface de mur" in rendu

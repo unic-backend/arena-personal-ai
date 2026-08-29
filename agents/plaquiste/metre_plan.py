@@ -5,25 +5,40 @@ dans une phrase, et convertit ce que le connecteur OpenTakeoff en a mesure
 (pieds carres, pieds lineaires — le moteur est americain) en m2 et en metres
 lineaires, ses unites a lui.
 
-**Une limite honnete, ecrite ici plutot que masquee dans un calcul silencieux** :
-`detect_rooms` mesure le PERIMETRE ENTIER de chaque piece detectee — murs
-porteurs et murs exterieurs compris, pas seulement les cloisons neuves a
-poser. L'assimiler a une surface de cloisons a chiffrer serait un exces
-d'affirmation, pas une mesure. Ce module ne le fait qu'une fois, ou
-l'assimilation est sans ambiguite : la surface d'un FAUX PLAFOND est, par
-definition, la surface au sol de la piece — c'est deja la convention
-`faces=1` que `plaquiste_agent.py` applique a un plafond ecrit en toutes
-lettres (`metre.UNE_SEULE_FACE`). Pour une cloison, ce module rend le
-perimetre mesure comme une INFORMATION, jamais comme un chiffrage : le
-chiffrage a besoin d'une hauteur, ET de savoir lesquels de ces murs sont
-vraiment a poser — ce que le plan seul ne dit pas.
+**La surface d'un mur, c'est largeur x hauteur — jamais une surface au sol.**
+Le propriétaire l'a corrigé lui-même (29/08/2026) : la première version de ce
+module traitait « doublage »/« habillage »/« coffre » comme un plafond, en
+reprenant telle quelle la liste `UNE_SEULE_FACE` de `metre.py` — fausse
+équivalence. Un plafond PLAT est la seule surface verticale... non, la seule
+surface dont la mesure au sol EST la mesure réelle : sa surface est, par
+définition, celle du sol qu'il couvre. Un doublage, un habillage, un coffre,
+une cloison ou une séparation sont posés sur un MUR : leur surface est
+`largeur (la longueur du mur) x hauteur`, jamais la surface au sol de la
+pièce. Un rampant suit la pente du toit — ni l'un ni l'autre : sa surface
+n'est déductible d'AUCUNE mesure que ce plan donne.
+
+**Ce que `detect_rooms` mesure, et sa limite** : le PÉRIMÈTRE ENTIER de
+chaque pièce détectée — murs porteurs et murs extérieurs compris, pas
+seulement les cloisons neuves à poser. Une hauteur donnée en texte permet de
+calculer `perimetre x hauteur`, mais **ce périmètre reste celui de tout le
+contour** : si certains de ces murs ne sont pas à poser, la longueur doit
+être corrigée à la main avant de faire confiance au chiffre — c'est écrit
+dans chaque réponse qui l'utilise, jamais tû.
+
+**Trois issues, jamais quatre** :
+1. plafond plat (« plafond », « faux plafond ») → surface au sol, sans hauteur ;
+2. mur (doublage/habillage/coffre = 1 face ; cloison/séparation ou rien de
+   nommé = 2 faces, par défaut) → périmètre mesuré x hauteur, **si une
+   hauteur est donnée** ;
+3. rampant, ou un mur sans hauteur donnée → **rien n'est chiffré**, les
+   mesures brutes sont rendues telles quelles.
 """
 import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from agents.plaquiste.metre import NOMBRE, UNE_SEULE_FACE
+from agents.plaquiste.metre import NOMBRE
 
 logger = logging.getLogger("usman.plaquiste.metre_plan")
 
@@ -42,10 +57,18 @@ HAUTEUR = re.compile(
     rf"hauteur\D{{0,6}}{NOMBRE}\s*m\b|{NOMBRE}\s*m(?:etres?)?\s+de\s+hauteur",
     re.IGNORECASE)
 
-#: Mots qui font de la surface au sol mesuree une surface exploitable sans
-#: ambiguite (voir docstring du module) — les memes qu'une seule face dans
-#: `metre.py`, plus la formulation la plus frequente.
-MOTS_PLAFOND = UNE_SEULE_FACE + ("faux plafond",)
+#: Plafond PLAT uniquement : sa surface EST la surface au sol, par
+#: definition. Un rampant n'en est pas un — voir `MOTS_NON_CALCULABLES`.
+MOTS_PLAFOND = ("plafond", "faux plafond")
+
+#: Pose sur UNE seule face d'un mur. Une cloison/separation (ou rien de
+#: nomme) est l'hypothese par defaut, DEUX faces — comme `metre._faces_pour`.
+MOTS_UNE_FACE_MUR = ("doublage", "habillage", "coffre")
+
+#: Nomme, mais dont la surface ne se deduit d'AUCUNE mesure de ce plan : un
+#: rampant suit la pente du toit, jamais donnee par une hauteur verticale
+#: ni par une surface au sol.
+MOTS_NON_CALCULABLES = ("rampant",)
 
 
 def chemin_dans(texte: str) -> Optional[str]:
@@ -65,9 +88,34 @@ def lire_hauteur(texte: str) -> Optional[float]:
 
 
 def demande_un_plafond(texte: str) -> bool:
-    """Vrai quand la demande nomme explicitement un plafond/doublage/rampant."""
+    """Vrai seulement pour un plafond PLAT : sa surface est, par definition,
+    la surface au sol de la piece. Un rampant n'en est pas un."""
     minuscule = (texte or "").lower()
     return any(mot in minuscule for mot in MOTS_PLAFOND)
+
+
+def demande_non_calculable_depuis_le_plan(texte: str) -> bool:
+    """Vrai pour ce qu'aucune mesure de ce plan ne peut chiffrer, meme avec
+    une hauteur donnee (voir `MOTS_NON_CALCULABLES`)."""
+    minuscule = (texte or "").lower()
+    return any(mot in minuscule for mot in MOTS_NON_CALCULABLES)
+
+
+def faces_du_mur(texte: str) -> int:
+    """1 face (doublage/habillage/coffre), 2 par defaut (cloison/separation)."""
+    minuscule = (texte or "").lower()
+    return 1 if any(mot in minuscule for mot in MOTS_UNE_FACE_MUR) else 2
+
+
+def surface_murs_m2(perimetre_ml: float, hauteur_m: float) -> float:
+    """Largeur (perimetre mesure) x hauteur — la formule d'un MUR, pas d'un sol.
+
+    Le perimetre est celui de TOUT le contour de chaque piece mesuree : s'il
+    inclut des murs qui ne sont pas a poser, la longueur doit etre corrigee a
+    la main avant de faire confiance au chiffre — a dire dans la reponse qui
+    l'utilise, jamais a taire.
+    """
+    return round((perimetre_ml or 0) * hauteur_m, 2)
 
 
 @dataclass
@@ -150,7 +198,9 @@ def formater(metre: MetrePlan) -> str:
             + ", ".join(metre.feuilles_sans_echelle) + ".")
     lignes.append(
         "Le perimetre mesure est celui de CHAQUE piece entiere (murs existants "
-        "compris) : ce n'est pas encore une surface de cloisons a chiffrer. "
-        "Pour un faux plafond, la surface au sol suffit ; pour une cloison, "
-        "dis quels murs sont a poser et la hauteur.")
+        "compris) : ce n'est pas encore une surface de mur a chiffrer. Pour un "
+        "plafond plat, la surface au sol suffit. Pour un mur (doublage, "
+        "cloison, separation...), il faut une hauteur — et savoir si ce "
+        "perimetre couvre bien les murs a poser. Pour un rampant, aucune "
+        "mesure de ce plan ne suffit : il suit la pente du toit.")
     return "\n".join(lignes)

@@ -21,7 +21,15 @@ from agents.plaquiste.calcul_materiaux import formater as formater_calcul
 from agents.plaquiste.calcul_materiaux import quantites_pour
 from agents.plaquiste.controle_prix import avertissement, verifier_prix
 from agents.plaquiste.metre import lire_demande
-from agents.plaquiste.metre_plan import chemin_dans, demande_un_plafond, depuis_mesure
+from agents.plaquiste.metre_plan import (
+    chemin_dans,
+    demande_non_calculable_depuis_le_plan,
+    demande_un_plafond,
+    depuis_mesure,
+    faces_du_mur,
+    lire_hauteur,
+    surface_murs_m2,
+)
 from agents.plaquiste.metre_plan import formater as formater_plan
 from core.agent.base_agent import BaseAgent
 from core.connectors.registre import RegistreConnecteurs
@@ -411,10 +419,15 @@ class PlaquisteAgent(BaseAgent):
             )
 
         # Un plan PDF : mesure par OpenTakeoff, jamais devine. Priorite aux
-        # dimensions dictees en texte (plus explicites) ; a defaut, un plafond
-        # nomme sans ambiguite peut se chiffrer depuis la surface au sol
-        # mesuree — voir `metre_plan.py` sur pourquoi une CLOISON ne le peut pas.
+        # dimensions dictees en texte (plus explicites). Trois issues ensuite
+        # (metre_plan.py, corrige le 29/08/2026 sur indication du proprietaire :
+        # « la surface d'un mur, c'est largeur x hauteur ») :
+        #   1. plafond PLAT nomme -> sa surface au sol EST sa surface, sans hauteur ;
+        #   2. mur nomme ou non (cloison/separation/doublage/habillage/coffre),
+        #      UNE hauteur donnee -> perimetre mesure x hauteur, faces selon le mot ;
+        #   3. rampant, ou un mur SANS hauteur -> rien n'est chiffre.
         plan = self._mesurer_le_plan(user_input)
+        hauteur = lire_hauteur(user_input)
         if metre is None and plan is not None and plan.get("surface_totale_m2") \
                 and demande_un_plafond(user_input):
             metre = quantites_pour(plan["surface_totale_m2"], self.metier, faces=1)
@@ -425,6 +438,35 @@ class PlaquisteAgent(BaseAgent):
                 f"sur une surface MESUREE (pas dictee) : {plan['resume']} "
                 "Reprends-les telles quelles : ne les recalcule pas, ne les arrondis pas, "
                 "n'en ajoute aucune."
+            )
+        elif metre is None and plan is not None and plan.get("perimetre_total_ml") \
+                and hauteur and not demande_non_calculable_depuis_le_plan(user_input):
+            faces = faces_du_mur(user_input)
+            surface = surface_murs_m2(plan["perimetre_total_ml"], hauteur)
+            metre = quantites_pour(surface, self.metier, faces=faces)
+            source_lu = (f"mur mesure sur {plan['chemin']} : perimetre "
+                         f"{plan['perimetre_total_ml']:g} ml x hauteur {hauteur:g} m")
+            instruction = (
+                f"{instruction}\n\n{formater_calcul(metre)}\n\n"
+                "Ces quantites viennent d'etre calculees a partir de ses ratios reels, "
+                f"sur une surface MESUREE : {surface:g} m2 = perimetre "
+                f"{plan['perimetre_total_ml']:g} ml (mesure sur le plan) x hauteur "
+                f"{hauteur:g} m (donnee dans la demande). "
+                "ATTENTION a le dire : ce perimetre est celui de TOUT le contour "
+                "de chaque piece mesuree — s'il inclut des murs qui ne sont pas a "
+                "poser, dis-lui de corriger la longueur avant de faire confiance "
+                "au chiffre. Reprends les quantites telles quelles : ne les "
+                "recalcule pas, ne les arrondis pas, n'en ajoute aucune."
+            )
+        elif plan is not None and plan.get("resume") \
+                and demande_non_calculable_depuis_le_plan(user_input):
+            instruction = (
+                f"{instruction}\n\nUN RAMPANT SUIT LA PENTE DU TOIT : sa surface "
+                "n'est deductible d'AUCUNE mesure de ce plan (ni la surface au "
+                "sol, ni le perimetre x une hauteur verticale — il faut la "
+                f"longueur le long de la pente). Ce que le plan a mesure : "
+                f"{plan['resume']}\nDis-le-lui, et demande cette longueur en "
+                "texte comme d'habitude si tu veux la chiffrer."
             )
         elif plan is not None and plan.get("resume"):
             instruction = (

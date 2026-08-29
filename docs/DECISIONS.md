@@ -452,16 +452,28 @@ contrat `Reponse` de `core/mcp/transport.py` (même protocole JSON-RPC, seul le
 tuyau change) plutôt que de le dupliquer.
 
 **Une limite honnête, écrite dans `agents/plaquiste/metre_plan.py` plutôt que
-masquée dans un calcul silencieux** : `detect_rooms` mesure le PÉRIMÈTRE
-ENTIER de chaque pièce — murs porteurs et extérieurs compris, pas seulement
-les cloisons neuves à poser. L'assimiler à une surface de cloisons serait un
-excès d'affirmation. Le rapprochement n'est fait qu'une fois, où il est sans
-ambiguïté : la surface d'un **faux plafond** est, par définition, la surface
-au sol de la pièce — la convention `faces=1` que `plaquiste_agent.py`
-applique déjà à un plafond nommé en toutes lettres. Pour une cloison, le
-périmètre mesuré reste une information, jamais un chiffrage : sabotage inclus
-dans le PR, un test tient cette limite (retirer la condition « plafond nommé »
-fait chiffrer une cloison depuis le seul périmètre — le test tombe).
+masquée dans un calcul silencieux — corrigée une fois par le propriétaire lui-
+même (29/08/2026)** : la première version confondait « surface au sol » et
+« surface de mur », en traitant doublage/habillage/coffre comme un plafond.
+Sa correction : *« la surface d'un cloisons c'est largeurs et hauteur »*. Trois
+issues, jamais quatre :
+
+1. **plafond plat** (« plafond », « faux plafond ») : sa surface **est**, par
+   définition, la surface au sol de la pièce — sans ambiguïté, sans hauteur ;
+2. **un mur** (doublage/habillage/coffre = une face ; cloison/séparation, ou
+   rien de nommé = deux faces par défaut) : `périmètre mesuré × hauteur`,
+   **seulement si une hauteur est donnée** — `detect_rooms` mesure le
+   PÉRIMÈTRE ENTIER de chaque pièce (murs porteurs et extérieurs compris), pas
+   seulement les cloisons neuves ; chaque réponse qui utilise ce périmètre le
+   dit, et demande de corriger la longueur si elle couvre des murs hors scope ;
+3. **un rampant**, ou un mur **sans hauteur donnée** : rien n'est chiffré. Un
+   rampant suit la pente du toit — ni la surface au sol, ni le périmètre × une
+   hauteur verticale ne la donnent.
+
+Six sabotages tiennent ces trois issues (voir le PR) : un doublage compté à
+deux faces double sa quantité de matériaux et un test tombe ; un rampant
+chiffré depuis le périmètre × hauteur produit un devis faux avec l'air d'un
+devis mesuré, et un test le prouve.
 
 **DEC-0008 tenue, adaptée au transport** : rien du dépôt OpenTakeoff n'entre
 ici. `scripts/installer_opentakeoff.ps1` le construit à côté ; ARENA lance et
