@@ -228,3 +228,61 @@ ou les etats -1 / 1 / 4 — le connecteur cesse de suivre les generations. Il ne
 mentira pas pour autant : une reponse qu'il ne sait pas lire devient un etat
 rapporte, pas une video promise. Le contrat lu dans leur code est cite dans le
 docstring du connecteur, ce qui rend la verification possible sans le deviner.
+
+
+## DEC-0009 : ARENA devient hybride — DEC-0002 est amendée, pas annulée
+
+*Décidé par le propriétaire le 2026-08-28 : « Transform ARENA into a HYBRID AI
+INFERENCE SYSTEM using local Ollama + Groq + DeepInfra ». Il demande
+explicitement de **ne pas retirer Ollama** et de **ne pas le remplacer**.*
+
+### Ce que ça change par rapport à DEC-0002
+
+DEC-0002 disait : **« Rien ne part chez un fournisseur d'IA : c'est une
+décision, pas un réglage. »** Cette phrase n'est plus vraie telle quelle, et il
+faut le dire au lieu de la laisser pourrir dans le registre.
+
+Ce qui la remplace :
+
+> **Rien de sensible ne part chez un fournisseur d'IA. Le reste peut partir,
+> pour la vitesse, et seulement si le réglage l'autorise.**
+
+Ce qui **n'a pas** changé, et qui n'est pas négociable :
+
+- Ollama reste le modèle **par défaut**, le **repli**, et le seul chemin autorisé
+  pour ce qui est sensible ;
+- un secret (`TRES_SENSIBLE`) ne sort **jamais** — aucun mode, aucun réglage,
+  aucune demande explicite ne le fait sortir (`core/models/confidentialite.py`) ;
+- sans réseau, sans clé, ou budget atteint : **Ollama**, et ARENA continue de
+  répondre ;
+- aucune clé n'entre dans le dépôt.
+
+### Les trois régimes
+
+| Mode | Ce qui peut sortir |
+|---|---|
+| `LOCAL_ONLY` | **rien** |
+| `HYBRIDE` *(défaut)* | `PUBLIC` et `PRIVE` |
+| `CLOUD_PREFERRED` | + `SENSIBLE` — un choix explicite du propriétaire |
+
+Un mode inconnu **refuse** : devant un réglage qu'on ne comprend pas, sa machine
+est la seule réponse sûre.
+
+### Ce que ça coûte si c'est faux
+
+C'est la décision la plus coûteuse du projet si elle se retourne.
+
+- **Une mauvaise classification envoie chez un tiers ce qui n'aurait pas dû
+  sortir** — le nom d'un client, un montant, un extrait de courrier. Ça ne se
+  rattrape pas : envoyé une fois, envoyé pour toujours. C'est pourquoi le doute
+  penche vers sa machine et pourquoi le classement est testé et saboté avant
+  d'être cru.
+- **La dépense.** Le cloud est à l'usage : un agent qui boucle coûte de l'argent
+  réel. D'où les plafonds, et le repli automatique sur Ollama quand ils sont
+  atteints — ARENA ne s'arrête pas, il redevient local.
+- **La dépendance.** Une réponse rapide obtenue chez Groq n'est pas disponible
+  quand Groq ne l'est pas. Le repli n'est pas une politesse : c'est ce qui
+  garde ARENA utilisable.
+
+Si le propriétaire veut revenir en arrière, une seule ligne suffit :
+`AI_LOCAL_ONLY=true`. La décision reste réversible, et c'est voulu.

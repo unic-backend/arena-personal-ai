@@ -1,4 +1,96 @@
-# MISSION TERMINÉE — réveiller ce qui dort
+# MISSION EN COURS — ARENA hybride : local, Groq, DeepInfra
+
+*Ouverte le 28/08/2026 par le propriétaire. La décision qui la gouverne est
+**DEC-0009**, qui amende DEC-0002 — à lire avant toute chose.*
+
+> « Transform ARENA into a HYBRID AI INFERENCE SYSTEM using local Ollama + Groq
+> + DeepInfra. Do NOT remove Ollama. Do NOT replace the local model. Do NOT
+> hard-code ARENA to one provider. ARENA must intelligently choose. »
+
+**C'est la tâche en cours.** Elle se livre **étape par étape**, chacune vérifiée
+avant la suivante, comme il l'a demandé le 28/08 : « fais-le étape par étape,
+sois sûr que ça marche avant de livrer ».
+
+---
+
+## Ce qui est déjà en place, et qui ne se refait pas
+
+L'audit du 28/08 a trouvé que **quatre des vingt-huit points existaient déjà** :
+
+| Ce que la mission demande | Ce qui existe |
+|---|---|
+| abstraction de fournisseur (§2) | `core/models/base.py` — `ModelProvider` |
+| streaming (§13) | `OllamaProvider.generate_stream` + la passerelle PWA |
+| détection de complexité (§7) | `core/execution/voies.py` — 4 voies et leurs budgets |
+| télémétrie de latence (§6, §19) | `core/execution/mesures.py` + `GET /api/observability` |
+
+Ils sont **réutilisés**, pas réécrits. Le point 21 de la mission le demande
+explicitement : *« Do not introduce a huge framework just to support three
+providers. »*
+
+## Les étapes
+
+### Étape 1 — la confidentialité et la configuration — **écrite le 28/08/2026**
+
+Quatre niveaux, la table de ce que chaque régime laisse sortir, et la règle qui
+ne se négocie pas : **un secret ne sort jamais**. 57 tests, 4 sabotages. La
+configuration hybride entre dans `apps/backend/config.py`, sans second système
+de réglages.
+
+**Le module est écrit et testé, mais encore endormi** : rien ne l'appelle tant
+que l'aiguilleur n'existe pas. C'est la seule ligne du tableau ci-dessous, et
+elle disparaîtra à l'étape 3.
+
+| # | Module | Ce qu'il doit servir | Où le brancher |
+|---|---|---|---|
+| 1 | `core/models/confidentialite.py` | décider ce qui a le droit de sortir de sa machine | l'aiguilleur (étape 3) |
+
+### Étape 2 — les deux fournisseurs distants *(à écrire)*
+
+Un fournisseur Groq et un fournisseur DeepInfra, tous deux derrière l'interface
+`ModelProvider` existante, avec streaming, santé mesurée, délai court et
+latence rapportée.
+
+Contrainte : les deux parlent le protocole OpenAI. **Une seule implémentation
+partagée, deux configurations** — deux classes qui se recopieraient seraient
+deux endroits où se tromper.
+
+### Étape 3 — l'aiguilleur *(à écrire)*
+
+Il choisit le fournisseur à partir de quatre choses, dans cet ordre : la
+**confidentialité** (étape 1), le réglage du propriétaire, la **santé** du
+service, et le **budget** restant. Il porte le repli — Groq → DeepInfra →
+Ollama — et il compte ce que le cloud coûte.
+
+Il se branche dans `apps/backend/runtime.py`, à la place des deux fournisseurs
+actuels, pour que le reste d'ARENA ne sache jamais s'il parle à sa machine ou
+au réseau.
+
+### Étape 4 — l'intégration réelle et la mesure
+
+Brancher le routeur sur le chemin de réponse (passerelle PWA, moteur de
+raisonnement), afficher le fournisseur retenu, et **mesurer** : un banc d'essai
+qui compare Ollama, Groq et DeepInfra sur des prompts équivalents.
+
+**Aucun chiffre de performance ne sera annoncé sans cette mesure** (point 24 de
+la mission : *« Do not claim 5x faster unless measured »*). Sur la machine de
+l'assistant, il n'y a ni Ollama ni clé : ces mesures resteront `UNKNOWN` jusqu'à
+son PC.
+
+---
+
+## Ce qui n'est PAS dans la mission
+
+- retirer Ollama, ou le remplacer — **interdit explicitement** ;
+- rendre le cloud obligatoire : `AI_LOCAL_ONLY=true` doit toujours suffire ;
+- écrire une clé dans le dépôt ;
+- annoncer une vitesse qui n'a pas été chronométrée ici.
+
+---
+
+---
+
+# ARCHIVE — mission « réveiller ce qui dort » (terminée le 28/08/2026)
 
 *Ouverte et close le 28/08/2026. Mesures de ce fichier prises sur la branche de
 la dernière phase, avec `python scripts/orphelins.py`.*
