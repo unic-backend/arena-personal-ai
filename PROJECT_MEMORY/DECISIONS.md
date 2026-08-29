@@ -3,7 +3,7 @@
 *`docs/DECISIONS.md` reste **l'autorité**. Ce fichier est son index : il évite
 d'ouvrir le document entier quand on cherche juste « a-t-on déjà tranché ça ? ».*
 
-*Mise à jour : 2026-08-28.*
+*Mise à jour : 2026-08-29.*
 
 | # | Décision | Conséquence opérationnelle |
 |---|---|---|
@@ -26,6 +26,7 @@ d'ouvrir le document entier quand on cherche juste « a-t-on déjà tranché ça
 | **DEC-0017** | **Agent-Reach — rien à intégrer, `DeepResearcherAgent` corrigé à la place** | c'est une sonde/installateur pour agent de codage (yt-dlp, feedparser, Jina Reader, Exa) — rien d'unique à récupérer ; `FreshInfoAgent` déjà le plus abouti (parallèle, sourcé, jamais inventé) ; vrai défaut trouvé et corrigé : `DeepResearcherAgent` lançait ses 3 recherches en séquence, maintenant en parallèle (`asyncio.gather`) |
 | **DEC-0018** | **Consolidation des modèles — rien à fusionner** | inventaire réel : 1 modèle par groupe (léger/profond = paliers de coût documentés dans `voies.py`, pas des doublons ; Groq/DeepInfra = repli infrastructurel, pas des intelligences redondantes ; `CoderAgent` utilise déjà le modèle léger, groupes A et B déjà partagés) ; aucune vision, aucun modèle vidéo possédé par ARENA |
 | **DEC-0019** | **Qwen3-VL — ARENA voit une image** | `qwen3-vl:4b` (Ollama, local, 3,3 Go), pas `transformers`/`qwen-vl-utils` — aucun second moteur d'inference ; `agents/vision/vision_agent.py`, intention `VISION`, `OllamaProvider.generate(images=...)` ; pieces jointes image (jpg/png/webp/gif) encodees en memoire, jamais sur disque ; pas de palier cloud (Groq/DeepInfra ne servent aucun modele de vision) ; video understanding non implemente (mesure impossible depuis le cloud) |
+| **DEC-0020** | **Diagnostic et réparation — dette technique, aucune nouvelle capacité** | 3 défauts confirmés et corrigés, chacun sabote-puis-restauré : chemin de plan pouvant désigner le dépôt d'ARENA lui-même (`chemin_hors_du_depot()`), historique de `core/execution/travaux.py` non borné (`TRAVAUX_TERMINES_GARDES`), ligne de flux Ollama illisible absorbée sans trace (`logger.debug`) ; le reste de l'audit (≈50 `except Exception`, cycle de vie httpx/MCP, TODO/FIXME, orphelins) n'a rien trouvé de plus — déjà correct |
 
 ## Décisions de travail (hors ADR, mais qui gouvernent autant)
 

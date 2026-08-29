@@ -7,12 +7,37 @@
 | | |
 |---|---|
 | Branche | `claude/arena-personal-ai-integration-grp0ey` (repartie de `master` à chaque PR fusionnée en cours de session — voir CHANGELOG.md) |
-| `master` | PR #26 à #33 fusionnées, DEC-0019 (Qwen3-VL) prête à pousser |
-| Tests | **2006** hors ligne au vert, 21 `integration` désélectionnés |
+| `master` | PR #26 à #34 fusionnées (DEC-0019, Qwen3-VL) ; DEC-0020 (diagnostic/réparation) prête à pousser |
+| Tests | **2011** hors ligne au vert, 21 `integration` désélectionnés (+5 depuis DEC-0020) |
 | Lint | `ruff` propre |
 | Orphelins | 132 modules, 104 atteints, 28 orphelins — **tous** `__init__.py` vides. Aucun module réel endormi (`apps/pwa/server/` supprimé le 29/08/2026) |
 
-## Ce qui vient de se fermer (PR #26 → #33, ce chunk)
+## Dernier chunk : DEC-0020 — diagnostic et réparation, pas de nouvelle capacité
+
+Mission demandée le 29/08/2026 : auditer la dette technique laissée par les
+missions précédentes (silences avalés, fuites de ressources, frontières
+entre composants, sécurité) et **réparer**, pas ajouter. Détail complet :
+`docs/DECISIONS.md` DEC-0020.
+
+Trois défauts confirmés et corrigés, chacun sabote-puis-restauré :
+1. `agents/plaquiste/plaquiste_agent.py` — un chemin de plan pouvait
+   désigner un fichier du dépôt d'ARENA lui-même (`.env`,
+   `config/unic_plaquiste.yaml`) avant d'atteindre OpenTakeoff. Corrigé par
+   `chemin_hors_du_depot()`, un contrôle de contention.
+2. `core/execution/travaux.py` — l'historique des travaux **finis**
+   grossissait sans fin (seul le parallélisme était borné). Corrigé par
+   `TRAVAUX_TERMINES_GARDES = 200` + `_purger_les_anciens()`.
+3. `core/models/ollama_provider.py` — une ligne de flux Ollama illisible
+   disparaissait sans aucune trace (`except Exception: pass`). Corrigé par
+   un `logger.debug()`.
+
+Le reste de l'audit (≈50 `except Exception` du dépôt relus un par un,
+cycle de vie httpx/MCP, TODO/FIXME/XXX, `shell=True`/`eval`/`exec`/
+`pickle`, l'intégration Qwen3-VL relue au niveau du code) n'a rien trouvé
+de plus — déjà correct. **Ne pas rouvrir ces composants "pour être sûr"** :
+c'est exactement ce que la règle du projet interdit.
+
+## Ce qui s'est fermé avant (PR #26 → #33)
 
 | PR | Ce qui change | Statut |
 |---|---|---|

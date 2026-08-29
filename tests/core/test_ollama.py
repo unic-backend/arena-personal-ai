@@ -93,3 +93,42 @@ class TestImages:
         reponse = await provider.generate(prompt="Que vois-tu ?", images=["YmFzZTY0"])
 
         assert reponse == "une scene de chantier"
+
+
+class TestFluxAvecLigneIllisible:
+    """Une ligne de flux illisible ne doit ni casser le flux, ni disparaitre
+    sans laisser de trace — un jeton du modele mal decode reste diagnosticable."""
+
+    @pytest.fixture
+    def provider(self, monkeypatch):
+        lignes = [
+            '{"response": "bonjour"}',
+            "ceci n'est pas du JSON",
+            '{"response": " Usman"}',
+        ]
+
+        def repondre(requete: httpx.Request) -> httpx.Response:
+            corps = "\n".join(lignes) + "\n"
+            return httpx.Response(200, content=corps)
+
+        vrai_client = httpx.AsyncClient
+
+        def fabrique(*args, **kw):
+            kw["transport"] = httpx.MockTransport(repondre)
+            return vrai_client(*args, **kw)
+
+        monkeypatch.setattr(httpx, "AsyncClient", fabrique)
+        return OllamaProvider()
+
+    async def test_les_jetons_valides_arrivent_malgre_la_ligne_cassee(self, provider):
+        jetons = [j async for j in provider.generate_stream(prompt="Bonjour")]
+
+        assert jetons == ["bonjour", " Usman"]
+
+    async def test_la_ligne_illisible_est_journalisee(self, provider, caplog):
+        with caplog.at_level("DEBUG", logger="usman.ollama"):
+            [j async for j in provider.generate_stream(prompt="Bonjour")]
+
+        assert any("ignoree" in enregistrement.message for enregistrement in caplog.records), (
+            "une ligne de flux illisible doit laisser une trace, pas disparaitre sans bruit"
+        )
