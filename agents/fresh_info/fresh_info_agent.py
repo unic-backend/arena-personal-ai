@@ -61,6 +61,20 @@ DELAI_LECTURE_SECONDES = 6.0
 # la synthese, et couvre les 25 s que l'outil peut legitimement prendre.
 DELAI_RECHERCHE_SECONDES = 30.0
 
+#: Mesure du 30/08/2026 : « Qui a gagné la coupe du monde 2002 » puis « Celle de
+#: 2006 » repondaient juste (CHAT, connaissance du modele). « Celle de 2026 »
+#: bascule en FRESH_INFO (annee a venir) et part chercher **« Celle de 2026 »**
+#: tel quel : sans le sujet, « Celle » est lu comme la ville allemande, et la
+#: reponse cite des faits divers du Landkreis Celle. La question elliptique
+#: doit etre completee avec la conversation AVANT de partir en recherche.
+GABARIT_REFORMULATION = """Voici les derniers échanges d'une conversation, puis une nouvelle question qui peut être elliptique (elle suppose implicitement le sujet d'un échange précédent, par exemple « et 2006 ? » après une question sur une coupe du monde).
+
+{historique}
+
+Nouvelle question : {question}
+
+Réécris cette question sous une forme autonome et complète, qui garde son sens SANS le reste de la conversation. Si elle est déjà autonome, recopie-la sans rien changer. Réponds UNIQUEMENT par la question réécrite, rien d'autre."""
+
 GABARIT_SYNTHESE = """Tu es Usman. Réponds à la question en t'appuyant UNIQUEMENT sur les sources ci-dessous.
 
 Règles :
@@ -242,16 +256,48 @@ class FreshInfoAgent(BaseAgent):
             blocs.append(f"[{numero}] {page['title']}\n    ({page['url']})\n{enveloppe.text}")
         return "\n\n".join(blocs)
 
+    async def _reformuler_si_ellipse(
+        self, user_input: str, context: Optional[Dict[str, Any]]
+    ) -> str:
+        """Complete une question elliptique avec le sujet d'un echange precedent.
+
+        Sans historique disponible (pas de session, pas de memoire, ou aucun
+        tour precedent), la question part telle quelle : rien a completer, et
+        un appel modele inutile couterait de la latence pour rien.
+        """
+        session_id = (context or {}).get("session_id")
+        if not session_id or not self.memory:
+            return user_input
+        historique = self.memory.get_recent_history(session_id=session_id, limit=4)
+        if not historique:
+            return user_input
+
+        lignes = "\n".join(
+            f"{'Utilisateur' if msg['role'] == 'user' else 'Usman'}: {msg['content']}"
+            for msg in historique
+        )
+        prompt = GABARIT_REFORMULATION.format(historique=lignes, question=user_input)
+        try:
+            reformulee = (await self.provider.generate(prompt=prompt)).strip()
+        except Exception as erreur:  # noqa: BLE001 — une reformulation ratee n'annule pas la recherche
+            logger.warning(f"Reformulation impossible, question gardee telle quelle : {erreur}")
+            return user_input
+        return reformulee or user_input
+
     async def run(
         self, user_input: str, context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        logger.info(f"FreshInfoAgent cherche : {user_input}")
+        question = await self._reformuler_si_ellipse(user_input, context)
+        if question != user_input:
+            logger.info(f"FreshInfoAgent cherche : {question} (reformulee depuis « {user_input} »)")
+        else:
+            logger.info(f"FreshInfoAgent cherche : {question}")
         # `search` est bloquant : lance tel quel, il fige la boucle et donc tout
         # le serveur. Il part dans un fil d execution, avec un plafond.
         try:
             resultats = await asyncio.wait_for(
                 asyncio.to_thread(
-                    self.search_tool.search, user_input,
+                    self.search_tool.search, question,
                     max_results=RESULTATS_RECHERCHE, recent=True,
                 ),
                 timeout=DELAI_RECHERCHE_SECONDES,
@@ -301,14 +347,14 @@ class FreshInfoAgent(BaseAgent):
 
         part = self._repartir_le_budget(lues)
         prompt = GABARIT_SYNTHESE.format(
-            sources=self._formater_les_sources(lues, part, user_input), question=user_input
+            sources=self._formater_les_sources(lues, part, question), question=question
         )
         reponse = await self.provider.generate(prompt=prompt)
 
         return {
             "status": "success",
             "agent": self.name,
-            "query": user_input,
+            "query": question,
             "sources_count": len(lues),
             "sources": [
                 {
