@@ -256,14 +256,14 @@ d'habitude avec son propriétaire, pas une extrapolation de code.
 
 ## 6. Plan d'implémentation proposé — phases, dans l'ordre du risque
 
-Ordre proposé, chaque phase vérifiable seule. Les phases 1 et 2 sont faites ;
-les cinq autres restent à autoriser :
+Ordre proposé, chaque phase vérifiable seule. Les phases 1, 2 et 3 sont
+faites ; les quatre autres restent à autoriser :
 
 | Phase | Ce qu'elle ferme | Nouvelle dépendance | Touche une zone verrouillée ? |
 |---|---|---|---|
 | **1 — FAIT** | XLSX + PPTX dans `reader.py`, via `openpyxl`/`python-pptx` (pas Docling — voir §4, corrigé après mesure : 66 Mo contre 5,5 Go) | `openpyxl`, `python-pptx` (tous deux MIT/légers) | Non |
 | **2 — FAIT** | OCR sur PDF scanné (trou A), via Tesseract + `pypdfium2` (pas Docling/MinerU — voir §4, mesuré : ~65 Mo, bout en bout avec le vrai binaire) | `pytesseract`, `pypdfium2` (Apache 2.0/BSD) + le binaire système `tesseract-ocr` | Non |
-| **3** | `type_document="FACTURE"` réellement orchestré (trou E, partiel) | Aucune | Non |
+| **3 — FAIT** | `type_document="FACTURE"` réellement orchestré (trou E, partiel) : détection de « génère la facture » (même discipline que « génère le devis », jamais le mot seul), transmise à `DevisConnector`, vérifiée dans le vrai PDF produit (`pypdf`) | Aucune | Non |
 | **4** | Décision du propriétaire sur §5, puis upload PWA → OpenTakeoff (trou C) | Aucune | Non (mais §5 à trancher avec lui) |
 | **5** | Détection d'ouvertures via Qwen3-VL sur une page de plan rendue en image (trou D) | Aucune — `pypdfium2` (déjà en place depuis la phase 2) rend la page en image | Non — mais **NON VÉRIFIABLE avant que `qwen3-vl:4b` tourne réellement chez lui** |
 | **6** | Bon de commande / bon de livraison / rapport de métré (reste du trou E) | Aucune | Non |
