@@ -337,3 +337,64 @@ class TestUnePanneNeTueJamaisLeDiagnostic:
 
         assert len(rapport.verifications) == 3
         assert [v.etat for v in rapport.verifications] == [OK, EN_PANNE, OK]
+
+
+class TestAucuneSondeNEmporteLeRapport:
+    """La garde de `verifier_opentakeoff` ne disait rien des vingt autres.
+
+    Mesuré le 29/08/2026 : une sonde levait `OSError [WinError 10038]` et le
+    diagnostic entier mourait. La sonde a été corrigée — et une sonde corrigée
+    ne protège que d'elle-même. Les autres lisent des fichiers, ouvrent des
+    sous-processus et importent des modules : n'importe laquelle peut lever
+    demain, et le propriétaire reperdrait ses vingt lignes utiles.
+
+    `test_le_rapport_survit_a_n_importe_quelle_sonde_qui_leve` est le test qui
+    porte la garantie : elle est celle du **rapport**, pas d'une sonde.
+    """
+
+    def test_mesurer_transforme_une_exception_en_ligne_en_panne(self):
+        def sonde_qui_casse():
+            raise RuntimeError("le disque a disparu")
+
+        verification = doctor.mesurer("Une sonde", sonde_qui_casse)
+
+        assert verification.nom == "Une sonde"
+        assert verification.etat == EN_PANNE
+        assert "RuntimeError" in verification.detail
+        assert "le disque a disparu" in verification.detail, (
+            "la ligne ne dit pas ce qui a cassé : elle n'aide personne")
+
+    def test_mesurer_ne_touche_pas_a_une_sonde_qui_va_bien(self):
+        attendue = Verification("Ollama", OK, "en ligne, 4 modele(s)")
+
+        assert doctor.mesurer("Ollama", lambda: attendue) is attendue
+
+    def test_le_rapport_survit_a_n_importe_quelle_sonde_qui_leve(self, monkeypatch):
+        """Chaque sonde est cassée à son tour ; le rapport doit rester entier."""
+        sondes = [nom for nom in dir(doctor)
+                  if nom.startswith("verifier_") and nom != "verifier_modele"]
+        assert len(sondes) >= 10, "l'inventaire des sondes n'a rien trouvé"
+
+        entier = len(doctor.diagnostiquer().verifications)
+
+        for nom in sondes:
+            with monkeypatch.context() as contexte:
+                contexte.setattr(
+                    doctor, nom,
+                    lambda *a, **k: (_ for _ in ()).throw(OSError(10038, "pas un socket")))
+                rapport = doctor.diagnostiquer()
+
+            assert len(rapport.verifications) == entier, (
+                f"{nom} en panne fait disparaître des lignes du rapport")
+            assert any(v.etat == EN_PANNE for v in rapport.verifications), (
+                f"{nom} a levé sans qu'aucune ligne ne le signale")
+
+    def test_ollama_injoignable_ne_tue_pas_le_rapport(self, monkeypatch):
+        """`modeles_ollama` est appelé avant la liste : il était hors du filet."""
+        monkeypatch.setattr(
+            doctor, "modeles_ollama",
+            lambda *a, **k: (_ for _ in ()).throw(RuntimeError("réseau coupé")))
+
+        rapport = doctor.diagnostiquer()
+
+        assert rapport.verifications, "le rapport est vide"
