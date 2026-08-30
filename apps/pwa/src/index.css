@@ -256,6 +256,10 @@ button, textarea { touch-action: manipulation; }
 }
 .floaty { animation: floaty 5s ease-in-out infinite; }
 
+/* le logo (soleil + point qui orbite) tournant sur lui-meme — l'indicateur
+   "en train de reflechir", en ligne, jamais dans un encadre. */
+.thinking-logo { animation: spin 1.6s linear infinite; }
+
 /* shimmering status text */
 .text-shimmer {
   background: linear-gradient(90deg, #a1a1aa 20%, #f4f4f5 42%, #a1a1aa 64%);
