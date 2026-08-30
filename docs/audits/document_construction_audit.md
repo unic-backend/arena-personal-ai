@@ -125,23 +125,41 @@ même chaîne permission → confirmation → journal, comme `devis` aujourd'hui
 
 ## 4. Candidats externes — audités, pas supposés
 
-### Docling (IBM/Linux Foundation AAIF) — **retenu pour combler A et B**
+### Docling (IBM/Linux Foundation AAIF) — **corrigé après mesure : trop lourd pour B, encore candidat pour A seul**
+
+*Correction du 30/08/2026, phase 1 : ce paragraphe annonçait Docling
+« CPU-capable » et « léger » sans l'avoir installé. Mesuré depuis, dans un
+environnement isolé — l'erreur est corrigée ici plutôt que laissée debout.*
 
 - **Licence** : MIT (le compagnon `Granite-Docling` est Apache 2.0). Propre.
 - **Maintenance** : très active — donné à la Linux Foundation AAIF début
   2026, disponibilité générale sur IBM watsonx en juin 2026. Pas un projet
   gelé.
-- **Ce qu'il apporte** : conversion PDF (avec OCR pour les pages sans
-  texte — moteurs légers disponibles, y compris sans GPU), DOCX, XLSX,
-  PPTX, HTML, en une seule bibliothèque Python. Comble A et B **avec le
-  même outil**, sans ajouter un second moteur pour chaque format.
-- **Matériel** : peut tourner CPU-only avec un moteur OCR léger — cohérent
-  avec la RTX A2000 déjà partagée entre trois modèles Ollama (DEC-0019).
-  **Non mesuré** sur sa machine : à vérifier chez lui avant d'en faire une
-  dépendance ferme.
-- **Windows** : bibliothèque Python pure + dépendances OCR standards
-  (Tesseract ou moteurs ONNX) — pas de piste connue d'incompatibilité
-  Windows, non testé ici faute de la machine.
+- **Mesuré, pas supposé** : `pip install docling` embarque par défaut
+  `torch`, `torchvision`, `transformers`, `accelerate` et une douzaine de
+  paquets `nvidia-cu13-*` (CUDA) — **5,5 Go installés**, pour une capacité
+  qui n'a pas besoin de tout ça pour XLSX et PPTX (ce sont des formats
+  structurés, pas des images à faire lire par un modèle de mise en page).
+  Cette pile poserait aussi un risque réel de conflit avec le CUDA
+  qu'Ollama utilise déjà sur sa carte, jamais mesuré ensemble.
+- **Décision revue** : Docling **ne sert plus** à combler B — voir plus bas.
+  Il reste un candidat pour A (OCR sur PDF scanné) **seulement**, où son
+  poids pourrait se justifier ; à re-évaluer avec la même rigueur (mesurer
+  d'abord) au moment de la phase 2, pas supposé bon parce qu'il l'était
+  pour B.
+
+### XLSX et PPTX (trou B) — fermé sans Docling, avec `openpyxl` et `python-pptx`
+
+**Fait, phase 1 (cette PR).** Les formats structurés n'ont besoin d'aucun
+modèle : `openpyxl` (déjà la bibliothèque derrière `XlsxWriter`, présente
+en transitif) et `python-pptx` lisent XLSX et PPTX directement, sans
+dépendance à un moteur de mise en page ou d'OCR. **Mesuré** : les deux
+installés ensemble pèsent **66 Mo**, contre 5,5 Go pour Docling — le même
+principe que `python-docx` déjà en place pour `.docx`, appliqué aux deux
+formats qui manquaient. Zéro conflit avec l'écosystème CUDA d'Ollama,
+puisqu'aucun des deux n'en a besoin.
+
+### MinerU (OpenDataLab) — alternative, pas retenue par défaut
 
 ### MinerU (OpenDataLab) — alternative, pas retenue par défaut
 
@@ -212,13 +230,13 @@ d'habitude avec son propriétaire, pas une extrapolation de code.
 
 ## 6. Plan d'implémentation proposé — phases, dans l'ordre du risque
 
-Rien n'est fait dans cette PR au-delà de l'audit, conformément à la règle 1
-de la mission. Ordre proposé, chaque phase vérifiable seule :
+Ordre proposé, chaque phase vérifiable seule. La phase 1 est faite (cette
+PR) ; les six autres restent à autoriser :
 
 | Phase | Ce qu'elle ferme | Nouvelle dépendance | Touche une zone verrouillée ? |
 |---|---|---|---|
-| **1** | XLSX + PPTX dans `reader.py`, via Docling | Docling (MIT) | Non |
-| **2** | OCR sur PDF scanné (trou A), même bibliothèque | — (déjà en 1) | Non |
+| **1 — FAIT** | XLSX + PPTX dans `reader.py`, via `openpyxl`/`python-pptx` (pas Docling — voir §4, corrigé après mesure : 66 Mo contre 5,5 Go) | `openpyxl`, `python-pptx` (tous deux MIT/légers) | Non |
+| **2** | OCR sur PDF scanné (trou A) | À choisir et mesurer en phase 2 — Docling reste candidat, MinerU en réserve, un moteur OCR seul (ex. Tesseract) aussi à comparer | Non |
 | **3** | `type_document="FACTURE"` réellement orchestré (trou E, partiel) | Aucune | Non |
 | **4** | Décision du propriétaire sur §5, puis upload PWA → OpenTakeoff (trou C) | Aucune | Non (mais §5 à trancher avec lui) |
 | **5** | Détection d'ouvertures via Qwen3-VL sur une page de plan rendue en image (trou D) | Rendu PDF→image (à choisir : `pypdf`+`Pillow` ou via Docling) | Non — mais **NON VÉRIFIABLE avant que `qwen3-vl:4b` tourne réellement chez lui** |

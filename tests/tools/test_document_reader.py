@@ -10,6 +10,8 @@ from tools.documents.reader import Passage, lire_document
 
 pytest.importorskip("pypdf", reason="pypdf n'est pas installe.")
 pytest.importorskip("docx", reason="python-docx n'est pas installe.")
+pytest.importorskip("openpyxl", reason="openpyxl n'est pas installe.")
+pytest.importorskip("pptx", reason="python-pptx n'est pas installe.")
 
 
 def fabriquer_pdf(pages: list[str]) -> bytes:
@@ -76,6 +78,46 @@ def facture_docx(tmp_path):
     return chemin
 
 
+@pytest.fixture
+def metre_xlsx(tmp_path):
+    from openpyxl import Workbook
+
+    classeur = Workbook()
+    feuille = classeur.active
+    feuille.title = "Metre"
+    feuille.append(["Designation", "Quantite", "Prix"])
+    feuille.append(["Plaque BA13", 40, 180000])
+
+    autre = classeur.create_sheet("Notes")
+    autre.append(["Chantier Almadies"])
+
+    chemin = tmp_path / "metre_2026_118.xlsx"
+    classeur.save(str(chemin))
+    return chemin
+
+
+@pytest.fixture
+def argumentaire_pptx(tmp_path):
+    from pptx import Presentation
+
+    presentation = Presentation()
+    diapo1 = presentation.slides.add_slide(presentation.slide_layouts[1])
+    diapo1.shapes.title.text = "UniC Plaquiste"
+    diapo1.placeholders[1].text = "Chantier Almadies - cloison BA13"
+
+    diapo2 = presentation.slides.add_slide(presentation.slide_layouts[6])
+    tableau_forme = diapo2.shapes.add_table(2, 2, 0, 0, 4000000, 800000)
+    tableau = tableau_forme.table
+    tableau.cell(0, 0).text = "Designation"
+    tableau.cell(0, 1).text = "Prix"
+    tableau.cell(1, 0).text = "Plaque BA13"
+    tableau.cell(1, 1).text = "180000"
+
+    chemin = tmp_path / "argumentaire_2026_118.pptx"
+    presentation.save(str(chemin))
+    return chemin
+
+
 # --- PDF -----------------------------------------------------------------------
 
 def test_un_pdf_est_lu_page_par_page(devis_pdf):
@@ -135,6 +177,86 @@ def test_le_contenu_des_tableaux_est_conserve(facture_docx):
     assert "Designation | Quantite | Prix" in document.texte
 
 
+# --- Excel ---------------------------------------------------------------------
+
+def test_un_xlsx_est_lu_feuille_par_feuille(metre_xlsx):
+    document = lire_document(metre_xlsx)
+
+    assert document.lu
+    assert len(document.passages) == 2
+    assert "Plaque BA13" in document.passages[0].texte
+    assert "Almadies" in document.passages[1].texte
+
+
+def test_le_nom_de_la_feuille_xlsx_est_dans_la_provenance(metre_xlsx):
+    document = lire_document(metre_xlsx)
+
+    assert document.passages[0].source == "metre_2026_118.xlsx (Metre)"
+
+
+def test_les_lignes_xlsx_gardent_leurs_colonnes(metre_xlsx):
+    document = lire_document(metre_xlsx)
+
+    assert "Designation | Quantite | Prix" in document.texte
+    assert "Plaque BA13 | 40 | 180000" in document.texte
+
+
+def test_une_feuille_xlsx_vide_ne_produit_aucun_passage(tmp_path):
+    from openpyxl import Workbook
+
+    classeur = Workbook()
+    classeur.active.title = "Vide"
+    chemin = tmp_path / "vide.xlsx"
+    classeur.save(str(chemin))
+
+    document = lire_document(chemin)
+
+    assert document.statut == "VIDE"
+
+
+def test_un_xlsx_corrompu_ne_fait_pas_tomber_la_lecture(tmp_path):
+    chemin = tmp_path / "casse.xlsx"
+    chemin.write_bytes(b"ceci n'est pas un classeur Excel")
+
+    document = lire_document(chemin)
+
+    assert document.statut == "ECHEC"
+
+
+# --- PowerPoint ------------------------------------------------------------------
+
+def test_un_pptx_est_lu_diapositive_par_diapositive(argumentaire_pptx):
+    document = lire_document(argumentaire_pptx)
+
+    assert document.lu
+    assert len(document.passages) == 2
+    assert "UniC Plaquiste" in document.passages[0].texte
+    assert "Almadies" in document.passages[0].texte
+
+
+def test_le_tableau_d_une_diapositive_est_conserve(argumentaire_pptx):
+    document = lire_document(argumentaire_pptx)
+
+    assert "Designation | Prix" in document.texte
+    assert "Plaque BA13 | 180000" in document.texte
+
+
+def test_chaque_passage_pptx_garde_son_numero_de_diapositive(argumentaire_pptx):
+    document = lire_document(argumentaire_pptx)
+
+    assert [p.page for p in document.passages] == [1, 2]
+    assert document.passages[0].source == "argumentaire_2026_118.pptx, page 1"
+
+
+def test_un_pptx_corrompu_ne_fait_pas_tomber_la_lecture(tmp_path):
+    chemin = tmp_path / "casse.pptx"
+    chemin.write_bytes(b"ceci n'est pas une presentation")
+
+    document = lire_document(chemin)
+
+    assert document.statut == "ECHEC"
+
+
 # --- Texte ---------------------------------------------------------------------
 
 @pytest.mark.parametrize("extension", [".txt", ".md", ".csv"])
@@ -167,7 +289,7 @@ def test_les_lignes_vides_en_trop_sont_reduites(tmp_path):
 
 # --- Refus ---------------------------------------------------------------------
 
-@pytest.mark.parametrize("nom", ["photo.jpg", "archive.zip", "video.mp4", "tableur.xlsx"])
+@pytest.mark.parametrize("nom", ["photo.jpg", "archive.zip", "video.mp4", "tableur.ods"])
 def test_un_format_non_pris_en_charge_est_refuse_explicitement(tmp_path, nom):
     chemin = tmp_path / nom
     chemin.write_bytes(b"contenu quelconque")
