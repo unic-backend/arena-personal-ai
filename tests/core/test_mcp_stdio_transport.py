@@ -68,17 +68,34 @@ class TestAppelDOutil:
 
 
 class TestPanneDeLancement:
+    """Une panne de lancement doit dire CE QUI n'a pas démarré.
+
+    Mesuré le 30/08/2026 sur la machine du propriétaire (Windows) : ces deux
+    tests attendaient le message d'erreur **de Linux**. Windows répond
+    « [WinError 2] Le fichier spécifié est introuvable » — sans nommer le
+    fichier — et « [WinError 267] Nom de répertoire invalide ». Les tests
+    échouaient chez lui et passaient en CI : la garantie n'était vérifiée que
+    sur un seul système.
+
+    La correction n'est pas d'affaiblir l'assertion. C'est le **connecteur**
+    qui porte maintenant la commande et le dossier dans sa raison, pour que la
+    promesse tienne là où le système ne la tient pas.
+    """
+
     def test_dossier_absent_rend_la_vraie_raison_pas_un_message_generique(self):
         with ClientMcpStdio(COMMANDE, dossier="/aucun/dossier/ici") as client:
             reponse = client.outils()
         assert reponse.ok is False
-        assert "No such file or directory" in reponse.raison or "FileNotFoundError" in reponse.raison
+        assert "/aucun/dossier/ici" in reponse.raison, (
+            "la raison ne nomme pas le dossier introuvable")
+        assert "Error" in reponse.raison, "le type de la panne manque"
 
     def test_binaire_absent_rend_la_vraie_raison(self):
         with ClientMcpStdio(["binaire-qui-n-existe-pas-ici"], dossier=DOSSIER) as client:
             reponse = client.outils()
         assert reponse.ok is False
-        assert "binaire-qui-n-existe-pas-ici" in reponse.raison
+        assert "binaire-qui-n-existe-pas-ici" in reponse.raison, (
+            "la raison ne nomme pas le programme qui n'a pas démarré")
 
 
 class TestNettoyage:

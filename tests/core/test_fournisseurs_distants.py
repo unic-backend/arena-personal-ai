@@ -110,7 +110,21 @@ def test_la_cle_ne_fuit_jamais(classe):
 
 
 @pytest.mark.parametrize("classe", CLASSES)
-async def test_sans_cle_le_fournisseur_est_absent_et_ne_tente_rien(classe):
+async def test_sans_cle_le_fournisseur_est_absent_et_ne_tente_rien(classe, monkeypatch):
+    """Sans clé, rien ne part — y compris sur une machine qui en a une.
+
+    Mesuré le 30/08/2026 : ce test échouait chez le propriétaire dès qu'il a
+    mis sa vraie clé Groq dans `.env`, et passait en CI qui n'en a aucune.
+    La cause est dans le fournisseur : `api_key=api_key or GROQ_API_KEY` fait
+    qu'une clé **vide** retombe sur celle de la configuration. Passer `""` ne
+    voulait donc pas dire « sans clé » — cela voulait dire « celle du .env ».
+
+    **Le test ne prouvait la garantie que sur une machine qui ne pouvait pas
+    la violer.** C'est exactement la façon dont un test passe pour la mauvaise
+    raison. La configuration est donc vidée ici, et l'absence devient réelle.
+    """
+    monkeypatch.setattr("apps.backend.config.GROQ_API_KEY", "", raising=False)
+    monkeypatch.setattr("apps.backend.config.DEEPINFRA_API_KEY", "", raising=False)
     client = FauxClient()
     absent = classe(api_key="", model_name="modele-de-test", client=client)
 
