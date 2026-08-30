@@ -11,15 +11,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from apps.backend.config import ALLOWED_ORIGINS, BASE_DIR, OLLAMA_URL, RENDERED_DIR
+from apps.backend.config import ALLOWED_ORIGINS, BASE_DIR, OLLAMA_URL, RENDERED_DIR, docs_actives
 from apps.backend.routers import actions, chat, gardien, media, openai_gateway, pwa_gateway
 from apps.backend.runtime import deep_provider, fast_provider, ollama_vision
-from apps.backend.security import cle_presentee_valide
+from apps.backend.security import cle_presentee_valide, validate_media_path, verify_media_access
 from apps.backend.verification_modeles import verifier_modeles
 
 logging.basicConfig(level=logging.INFO)
@@ -43,7 +43,18 @@ async def au_demarrage(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Usman Personal AI API", version="1.7.0", lifespan=au_demarrage)
+app = FastAPI(
+    title="Usman Personal AI API",
+    version="1.7.0",
+    lifespan=au_demarrage,
+    # Fermes par defaut (VOLET « ARENA en ligne », phase 4.2) : `docs_actives()`
+    # ne s'ouvre que si `.env` porte `APP_ENV=development`. FastAPI n'a aucun
+    # moyen de proteger ces trois routes par une dependance — ne jamais les
+    # generer est la seule fermeture qui existe.
+    docs_url="/docs" if docs_actives() else None,
+    redoc_url="/redoc" if docs_actives() else None,
+    openapi_url="/openapi.json" if docs_actives() else None,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -54,7 +65,23 @@ app.add_middleware(
 )
 
 RENDERED_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/media/rendered", StaticFiles(directory=str(RENDERED_DIR)), name="rendered")
+
+
+@app.get("/media/rendered/{nom}", dependencies=[Depends(verify_media_access)])
+async def servir_media_rendu(nom: str):
+    """Sert un fichier rendu — cle en en-tete ou en parametre, jamais sans.
+
+    Remplace le mount `StaticFiles` d'origine, qui servait n'importe quel
+    fichier de ce dossier a quiconque en devinait le nom — prouve avec un
+    fichier reel nomme comme `/api/upload` le nommerait (VOLET « ARENA en
+    ligne », phase 4.1). `validate_media_path` refuse toute sortie de
+    `media/` ; `verify_media_access` explique le parametre `cle`.
+    """
+    chemin = validate_media_path(str(RENDERED_DIR / nom))
+    if not chemin.is_file():
+        raise HTTPException(status_code=404, detail="Fichier introuvable.")
+    return FileResponse(str(chemin))
+
 
 # Fichiers tiers embarques (Tailwind) : l'interface doit s'afficher sans Internet.
 # Origine et empreinte : apps/frontend/vendor/PROVENANCE.md
