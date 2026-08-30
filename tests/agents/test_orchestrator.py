@@ -181,3 +181,53 @@ async def test_sans_memoire_l_agent_repond_quand_meme(provider_factory):
     res = await agent.run("Bonjour", context={"intent": "CHAT"})
 
     assert res["response"] == "Réponse sans mémoire."
+
+
+class TestRoutageParEspace:
+    """VOLET « espaces separes », phase 2 : l'espace choisi dans la PWA route
+    directement vers son agent, sans passer par le modele classeur — mais
+    jamais avant les deux controles determinstes, qu'un espace ne peut pas
+    deviner mieux qu'une phrase ordinaire.
+    """
+
+    @pytest.mark.parametrize("espace,attendu", [
+        ("code", "CODE_EXECUTION"),
+        ("plaquiste", "PLAQUISTE"),
+        ("video", "VIDEO_ANALYSIS"),
+        ("web", "FRESH_INFO"),
+        ("documents", "RAG_DOCS"),
+    ])
+    async def test_un_espace_connu_route_sans_appeler_le_modele(self, provider_factory, espace, attendu):
+        # Aucune reponse scriptee : un appel au modele ferait echouer le test.
+        agent = OrchestratorAgent(provider=provider_factory(), memory=None)
+
+        resultat = await agent.analyze_intent("peu importe la phrase", espace=espace)
+
+        assert resultat == attendu
+
+    async def test_un_espace_inconnu_retombe_sur_le_modele(self, provider_factory):
+        agent = OrchestratorAgent(provider=provider_factory("CHAT"), memory=None)
+
+        assert await agent.analyze_intent("bonjour", espace="espace-qui-n-existe-pas") == "CHAT"
+
+    async def test_sans_espace_rien_ne_change(self, provider_factory):
+        """Le comportement par defaut (Usman general) est inchange par cette phase."""
+        agent = OrchestratorAgent(provider=provider_factory("DEEP_RESEARCH"), memory=None)
+
+        assert await agent.analyze_intent("bonjour") == "DEEP_RESEARCH"
+
+    async def test_le_controle_date_l_emporte_sur_l_espace(self, provider_factory):
+        """Une question d'actualite reste FRESH_INFO, meme depuis « Usman Coder »."""
+        agent = OrchestratorAgent(provider=provider_factory(), memory=None)
+
+        resultat = await agent.analyze_intent("que se passe-t-il aujourd'hui ?", espace="code")
+
+        assert resultat == "FRESH_INFO"
+
+    async def test_la_question_personnelle_l_emporte_sur_l_espace(self, provider_factory):
+        """« Qui suis-je » reste CHAT, meme depuis l'espace Video."""
+        agent = OrchestratorAgent(provider=provider_factory(), memory=None)
+
+        resultat = await agent.analyze_intent("qui suis-je ?", espace="video")
+
+        assert resultat == "CHAT"

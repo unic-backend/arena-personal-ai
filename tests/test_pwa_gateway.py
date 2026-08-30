@@ -62,7 +62,7 @@ def fournisseur(monkeypatch):
 @pytest.fixture
 def chat_direct(monkeypatch):
     """Force l'intention CHAT : le classement par modele n'est pas le sujet ici."""
-    async def _chat(_demande):
+    async def _chat(_demande, espace=None):
         return "CHAT"
     monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _chat)
 
@@ -410,7 +410,7 @@ def test_les_pieces_jointes_atteignent_un_agent_specialise(
     fournisseur()
     piece = depot.deposer("chantier.jpg", b"\x89PNG\r\n\x1a\nfaux-png")
 
-    async def _vision(_demande):
+    async def _vision(_demande, espace=None):
         return "VISION"
     monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _vision)
 
@@ -432,7 +432,7 @@ def test_le_persona_n_est_pas_applique_a_un_agent_specialise(
     """Un ton « concis » ne doit pas raccourcir un devis ni une recherche sourcee."""
     fournisseur()
 
-    async def _plaquiste(_demande):
+    async def _plaquiste(_demande, espace=None):
         return "PLAQUISTE"
     monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _plaquiste)
 
@@ -444,6 +444,35 @@ def test_le_persona_n_est_pas_applique_a_un_agent_specialise(
         demander(client, entetes, persona={"instructions": "Tone: concise."})
 
     assert any("Persona non applique" in ligne.message for ligne in caplog.records)
+
+
+def test_l_espace_de_la_requete_route_vers_son_agent(client, entetes, fournisseur, monkeypatch):
+    """VOLET « espaces separes », phase 2, bout en bout : l'espace choisi dans
+    la PWA route reellement vers son agent, via l'orchestrateur reel — pas un
+    double qui simulerait la conclusion.
+    """
+    fournisseur()  # aucune reponse scriptee : le classeur ne doit pas etre appele
+
+    intent_recu = {}
+
+    async def _resultat(_requete, intent=None):
+        intent_recu["valeur"] = intent
+        return {"response": "Voici le script.", "sources": []}
+    monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+    meta = trames(demander(client, entetes, text="peu importe", espace="code").text)[-1]["meta"]
+
+    assert intent_recu["valeur"] == "CODE_EXECUTION"
+    assert meta["query"] == "CODE_EXECUTION"
+
+
+def test_sans_espace_le_classeur_habituel_decide(client, entetes, fournisseur, chat_direct):
+    """`espace` absent (Usman general) ne doit rien changer au comportement existant."""
+    fournisseur()
+
+    meta = trames(demander(client, entetes).text)[-1]["meta"]
+
+    assert meta["query"] == "CHAT"
 
 
 def test_une_requete_sans_ces_champs_ne_journalise_rien(client, entetes, fournisseur,

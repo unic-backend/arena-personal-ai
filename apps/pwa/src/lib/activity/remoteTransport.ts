@@ -30,6 +30,7 @@ import { resolveActiveConnectors } from '../store/connectorStore';
 import { delay, useNetwork, waitForOnline } from '../network/networkStore';
 import { buildPersonaPrompt, usePersona } from '../store/personaStore';
 import { getActiveMemoriesPayload } from '../memory/memoryStore';
+import { useCapacite } from '../capacites';
 
 export interface RemoteConfig {
   url: string;
@@ -199,6 +200,11 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
         attachments: uploaded.map((value) => value.id),
         connectors: await resolveActiveConnectors(),
         run_id: runId,
+        // L'espace ouvert dans l'interface, pour que le serveur route direct
+        // vers l'agent dedie au lieu de deviner l'intention depuis la phrase.
+        // `null` (Usman general) ne change rien : le classifieur habituel
+        // continue de decider, comme avant ce changement.
+        espace: useCapacite.getState().active,
         persona: {
           user_name: personaProfile.userName,
           user_role: personaProfile.userRole,
