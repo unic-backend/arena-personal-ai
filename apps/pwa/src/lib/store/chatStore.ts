@@ -10,6 +10,7 @@ import {
   ActivityNode, MessageMeta, StreamChunk, upsertNode, normalizeLoaded, findNode,
 } from '../activity/types';
 import { normaliserSources } from '../activity/sources';
+import { pousserEtTirer } from '../sync/conversations';
 import { localTransport } from '../activity/transport';
 import { makeRemoteTransport } from '../activity/remoteTransport';
 import { activeRemoteCfg } from './backendStore';
@@ -67,6 +68,41 @@ export interface LogEntry {
 }
 
 const CHAT_KEY = 'usman.chats.v1';
+
+/* Les suppressions doivent voyager, elles aussi.
+
+   Sans trace locale, l'appareil qui n'etait pas la au moment de la suppression
+   renverrait la conversation au prochain envoi, et elle ressusciterait. On
+   garde donc l'identifiant et la date, jusqu'a ce que le serveur les ait
+   acceptes. */
+const TOMBES_KEY = 'usman.chats.deleted.v1';
+
+interface PierreTombale { id: string; supprimee: true; updatedAt: number }
+
+function lireTombes(): PierreTombale[] {
+  try {
+    const brut = localStorage.getItem(TOMBES_KEY);
+    return brut ? (JSON.parse(brut) as PierreTombale[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function ecrireTombes(tombes: PierreTombale[]) {
+  try {
+    localStorage.setItem(TOMBES_KEY, JSON.stringify(tombes.slice(-200)));
+  } catch { /* stockage plein — ignore */ }
+}
+
+function marquerSupprimee(ids: string[]) {
+  if (!ids.length) return;
+  const date = Date.now();
+  const deja = new Set(lireTombes().map((t) => t.id));
+  ecrireTombes([
+    ...lireTombes(),
+    ...ids.filter((id) => !deja.has(id)).map((id) => ({ id, supprimee: true as const, updatedAt: date })),
+  ]);
+}
 
 function uid(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
@@ -149,6 +185,7 @@ interface ChatState {
   cancel(): void;
   rerunCommand(conversationId: string, messageId: string, nodeId: string): Promise<void>;
   resetWorkspace(): void;
+  synchroniser(): Promise<void>;
   vfsVersion: number;
 }
 
@@ -236,18 +273,25 @@ export const useChat = create<ChatState>((set, get) => ({
 
   deleteConversation: (id) => {
     useSpeech.getState().stop();
+    // La pierre tombale part AVANT la synchronisation : sans elle, l'autre
+    // appareil renverrait la conversation et elle reviendrait.
+    marquerSupprimee([id]);
     set((s) => {
       const conversations = s.conversations.filter((c) => c.id !== id);
       persist(conversations);
       return { conversations, activeId: s.activeId === id ? null : s.activeId };
     });
+    void get().synchroniser();
   },
 
   renameConversation: (id, newTitle) => {
     const trimmed = newTitle.trim();
     if (!trimmed) return;
     set((s) => {
-      const conversations = s.conversations.map((c) => (c.id === id ? { ...c, title: trimmed } : c));
+      // `updatedAt` doit bouger : l'arbitrage du serveur se fait sur cette
+      // date, et un renommage non date perdrait contre la copie de l'autre
+      // appareil.
+      const conversations = s.conversations.map((c) => (c.id === id ? { ...c, title: trimmed, updatedAt: Date.now() } : c));
       persist(conversations);
       return { conversations };
     });
@@ -255,7 +299,7 @@ export const useChat = create<ChatState>((set, get) => ({
 
   togglePinConversation: (id) => {
     set((s) => {
-      const conversations = s.conversations.map((c) => (c.id === id ? { ...c, pinned: !c.pinned } : c));
+      const conversations = s.conversations.map((c) => (c.id === id ? { ...c, pinned: !c.pinned, updatedAt: Date.now() } : c));
       persist(conversations);
       return { conversations };
     });
@@ -263,8 +307,10 @@ export const useChat = create<ChatState>((set, get) => ({
 
   clearAllConversations: () => {
     useSpeech.getState().stop();
+    marquerSupprimee(get().conversations.map((c) => c.id));
     set({ conversations: [], activeId: null });
     persist([]);
+    void get().synchroniser();
   },
 
   importConversations: (imported, mode = 'merge') => {
@@ -289,6 +335,34 @@ export const useChat = create<ChatState>((set, get) => ({
   },
 
   cancel: () => abort?.abort(),
+
+  /* Envoie les conversations locales au serveur et applique ce qu'il rend.
+
+     Silencieuse par construction : si le serveur n'est pas configure, s'il ne
+     repond pas, ou s'il ignore la route, rien ne change et rien n'est dit. Une
+     synchronisation ratee est un non-evenement — ce qui serait grave, c'est
+     qu'elle fasse disparaitre une conversation. */
+  synchroniser: async () => {
+    const cfg = activeRemoteCfg();
+    if (!cfg) return;
+
+    const tombes = lireTombes();
+    const resultat = await pousserEtTirer(get().conversations, tombes, cfg);
+    if (!resultat) return;
+
+    // Les pierres tombales que le serveur a prises en compte ont fini leur
+    // travail : les garder ferait grossir le stockage sans rien protéger.
+    const acceptees = new Set(resultat.supprimees);
+    ecrireTombes(tombes.filter((tombe) => !acceptees.has(tombe.id)));
+
+    persist(resultat.conversations);
+    set((s) => ({
+      conversations: resultat.conversations,
+      // Ne jamais fermer sous ses yeux la conversation ouverte : si le serveur
+      // ne la connait pas encore, elle reste affichee.
+      activeId: resultat.conversations.some((c) => c.id === s.activeId) ? s.activeId : null,
+    }));
+  },
 
   resetWorkspace: () => {
     tree = resetVFS();
@@ -455,6 +529,10 @@ export const useChat = create<ChatState>((set, get) => ({
         persist(conversations);
         return { isRunning: false, conversations };
       });
+      // Le tour est fini et enregistre : l'autre appareil peut le recevoir.
+      // Volontairement non attendu — une synchronisation lente ne doit pas
+      // retarder l'affichage de la reponse.
+      void get().synchroniser();
     }
   },
 
@@ -601,6 +679,10 @@ export const useChat = create<ChatState>((set, get) => ({
         persist(conversations);
         return { isRunning: false, conversations };
       });
+      // Le tour est fini et enregistre : l'autre appareil peut le recevoir.
+      // Volontairement non attendu — une synchronisation lente ne doit pas
+      // retarder l'affichage de la reponse.
+      void get().synchroniser();
     }
   },
 
@@ -748,6 +830,10 @@ export const useChat = create<ChatState>((set, get) => ({
         persist(conversations);
         return { isRunning: false, conversations };
       });
+      // Le tour est fini et enregistre : l'autre appareil peut le recevoir.
+      // Volontairement non attendu — une synchronisation lente ne doit pas
+      // retarder l'affichage de la reponse.
+      void get().synchroniser();
     }
   },
 
