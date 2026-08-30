@@ -648,3 +648,37 @@ Les deux défauts de la 4.1, fermés :
 nouvelle route et sa dépendance.
 
 Chapitre 4 terminé.
+
+## VOLET « ARENA en ligne, PC éteint » — chapitre 5, premier déploiement réel du 30/08/2026
+
+Serveur choisi : **Railway** (Docker direct, domaine HTTPS fixe, volumes
+persistants, pas de GPU nécessaire — cohérent avec DEC-0022 : ce serveur ne
+fait jamais tourner Ollama, seul le PC du propriétaire le fait).
+
+Premier déploiement réel, trouvé et corrigé sur le vif :
+
+- **L'interface servie n'était pas la PWA.** `apps/backend/Dockerfile` ne
+  construisait jamais `apps/pwa/dist/` — gitignoré par construction (Vite le
+  régénère), il n'existe donc jamais dans une image construite depuis un
+  clone frais. `interface_servie()` (`apps/backend/main.py`) retombait alors
+  silencieusement sur l'ancienne interface classique, sans qu'aucun test ne
+  le voie (les tests tournent sur le dépôt, où `dist/` peut déjà exister
+  localement). Corrigé par une étape de construction (`node:20-slim`) ajoutée
+  au Dockerfile, dont le résultat est copié dans l'image finale.
+  Vérifié réellement : image construite et lancée, `GET /` renvoie
+  `"interface":"pwa"` dans `/health` et le HTML de la PWA (thème sombre,
+  `theme-color: #0a0a0b`), pas celui de l'interface classique.
+- `.dockerignore` exclut désormais `apps/pwa/node_modules` et `apps/pwa/dist`
+  du contexte : reconstruits par l'image à chaque fois, ceux du poste de
+  travail ne servent à rien et alourdissaient l'envoi pour rien.
+
+Variables de service posées sur Railway : `USMAN_API_KEY` (propre au
+serveur, différente de celle du PC), `APP_ENV=production`,
+`AI_MODE=CLOUD_PREFERRED` (DEC-0022 : réglage du serveur, pas celui du PC),
+`GROQ_API_KEY` (réutilisée depuis le `.env` du PC), `USMAN_ALLOWED_ORIGINS`
+pointée sur le domaine Railway généré.
+
+Point non résolu, sans gravité : `/health` rapporte `"ollama_available":true`
+sur Railway alors qu'aucun Ollama n'y tourne — ce champ ne sert qu'au
+diagnostic secondaire, pas au routage réel (DEC-0022), et n'affecte donc rien
+de fonctionnel. À creuser si l'occasion se présente.
