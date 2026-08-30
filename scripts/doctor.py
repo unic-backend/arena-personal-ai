@@ -488,40 +488,80 @@ class Rapport:
         return "\n".join(lignes)
 
 
+def mesurer(nom: str, sonde: Callable[[], Verification]) -> Verification:
+    """Fait UNE mesure. Une sonde qui leve marque SA ligne, jamais le rapport.
+
+    Mesure du 29/08/2026 sur la machine du proprietaire : la sonde OpenTakeoff
+    levait `OSError [WinError 10038]`, et `doctor.py` s'arretait la. Il perdait
+    le GPU, Ollama, ffmpeg, la cle API — vingt lignes utiles — a cause d'une
+    seule qui ne l'etait pas.
+
+    Cette panne a ete corrigee dans la sonde elle-meme. **Ce filet-ci existe
+    parce que la correction d'une sonde ne dit rien des vingt autres** : elles
+    lisent des fichiers, ouvrent des sous-processus et importent des modules,
+    et n'importe laquelle peut lever demain. Un diagnostic qui meurt de ce
+    qu'il diagnostique ne diagnostique rien.
+
+    La garde dans une sonde reste utile : elle nomme la panne avec ses mots.
+    Celle-ci est la promesse du rapport, pas celle d'une sonde.
+    """
+    try:
+        return sonde()
+    except Exception as erreur:  # noqa: BLE001 — c'est precisement le but
+        return Verification(
+            nom, EN_PANNE,
+            f"la sonde a echoue : {type(erreur).__name__}: {erreur}")
+
+
 def diagnostiquer() -> Rapport:
-    """Fait toutes les mesures. Ollama n'est interroge qu'une fois."""
-    installes = modeles_ollama()
+    """Fait toutes les mesures. Ollama n'est interroge qu'une fois.
+
+    Chaque sonde passe par `mesurer()` : aucune ne peut emporter les autres.
+    """
+    try:
+        installes = modeles_ollama()
+    except Exception:  # noqa: BLE001 — `None` veut deja dire « pas de reponse »
+        installes = None
     # Un seul identifiant Google pour deux services : une seule lecture.
-    absentes_google = variables_google_absentes()
+    try:
+        absentes_google = variables_google_absentes()
+    except Exception:  # noqa: BLE001 — `None` veut deja dire « on n'a pas pu regarder »
+        absentes_google = None
     rapide = os.getenv("CODER_LOCAL_MODEL", "qwen2.5-coder:14b")
     profond = os.getenv("DEFAULT_LOCAL_MODEL", "qwen3.5:9b")
     embeddings = os.getenv("EMBEDDINGS_LOCAL_MODEL", "nomic-embed-text")
     vision = os.getenv("VISION_LOCAL_MODEL", "qwen3-vl:4b")
 
     return Rapport([
-        verifier_python(),
-        verifier_environnement_virtuel(),
-        verifier_dependances(),
-        verifier_cle_api(),
-        verifier_inference(),
-        verifier_ollama(installes),
-        verifier_modele("Modele rapide", rapide, installes, essentiel=True),
-        verifier_modele("Modele profond", profond, installes),
-        verifier_modele("Modele d'embeddings", embeddings, installes),
-        verifier_modele("Modele de vision", vision, installes),
-        verifier_gpu(),
-        verifier_ffmpeg(),
-        verifier_docker(),
-        verifier_wangp(),
-        verifier_moneyprinter(),
-        verifier_opentakeoff(),
-        verifier_gardien(),
-        verifier_google("Courrier (Gmail)", "ARENA ne lit pas ton courrier",
-                        "gmail.readonly / gmail.send", absentes_google),
-        verifier_google("Agenda (Calendar)", "ARENA ne voit pas tes creneaux",
-                        "calendar.readonly / calendar.events", absentes_google),
-        verifier_connaissances_metier(),
-        verifier_documents(),
+        mesurer("Python", verifier_python),
+        mesurer("Environnement virtuel", verifier_environnement_virtuel),
+        mesurer("Dependances", verifier_dependances),
+        mesurer("Cle API", verifier_cle_api),
+        mesurer("Inference (hybride)", verifier_inference),
+        mesurer("Ollama", lambda: verifier_ollama(installes)),
+        mesurer("Modele rapide",
+                lambda: verifier_modele("Modele rapide", rapide, installes, essentiel=True)),
+        mesurer("Modele profond",
+                lambda: verifier_modele("Modele profond", profond, installes)),
+        mesurer("Modele d'embeddings",
+                lambda: verifier_modele("Modele d'embeddings", embeddings, installes)),
+        mesurer("Modele de vision",
+                lambda: verifier_modele("Modele de vision", vision, installes)),
+        mesurer("Carte graphique", verifier_gpu),
+        mesurer("ffmpeg (video)", verifier_ffmpeg),
+        mesurer("Docker (bac a sable)", verifier_docker),
+        mesurer("WanGP (generation video)", verifier_wangp),
+        mesurer("Video courte (MPT)", verifier_moneyprinter),
+        mesurer("Metre de plan (OpenTakeoff)", verifier_opentakeoff),
+        mesurer("Gardien (maintenance)", verifier_gardien),
+        mesurer("Courrier (Gmail)", lambda: verifier_google(
+            "Courrier (Gmail)", "ARENA ne lit pas ton courrier",
+            "gmail.readonly / gmail.send", absentes_google)),
+        mesurer("Agenda (Calendar)", lambda: verifier_google(
+            "Agenda (Calendar)", "ARENA ne voit pas tes creneaux",
+            "calendar.readonly / calendar.events", absentes_google)),
+        mesurer("Connaissances metier", verifier_connaissances_metier),
+        mesurer("Documents", verifier_documents),
     ])
 
 
