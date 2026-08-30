@@ -18,6 +18,7 @@ import { SettingsModal } from './components/chat/SettingsModal';
 import { CommandPalette } from './components/chat/CommandPalette';
 import { GlobalDropZone } from './components/chat/GlobalDropZone';
 import { NetworkStatus } from './components/chat/NetworkStatus';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { cn } from './utils/cn';
 
 export default function App() {
@@ -166,13 +167,16 @@ export default function App() {
         <div ref={scrollRef} onScroll={onScroll} className="scroll-slim relative z-0 flex-1 overflow-y-auto">
           {hasMessages ? (
             <div className="mx-auto w-full max-w-3xl space-y-7 px-4 py-6 sm:px-6 sm:py-8">
+              {/* Chaque message est isole : un seul en echec ne peut plus
+                  faire disparaitre la conversation entiere. */}
               {messages.map((m) => (
-                <ChatMessage
-                  key={m.id}
-                  msg={m}
-                  conversationId={conv!.id}
-                  onRetryCommand={(messageId, nodeId) => rerunCommand(conv!.id, messageId, nodeId)}
-                />
+                <ErrorBoundary key={m.id}>
+                  <ChatMessage
+                    msg={m}
+                    conversationId={conv!.id}
+                    onRetryCommand={(messageId, nodeId) => rerunCommand(conv!.id, messageId, nodeId)}
+                  />
+                </ErrorBoundary>
               ))}
               <div className="h-2" />
             </div>

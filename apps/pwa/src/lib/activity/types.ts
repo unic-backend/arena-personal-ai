@@ -46,7 +46,12 @@ export interface ActivityProgress {
 
 export interface SourceMeta {
   title: string;
-  domain: string;
+  /** Facultatif : le serveur envoie une adresse, jamais un domaine. Il est
+   *  deduit a la frontiere (`normaliserSources`) et reste absent quand
+   *  l'adresse est illisible — l'affichage doit savoir s'en passer. Le declarer
+   *  obligatoire ne le rendait pas present : ca cachait seulement le trou, que
+   *  le rendu decouvrait en plantant. */
+  domain?: string;
   url?: string;
   date?: string;
   excerpt?: string;

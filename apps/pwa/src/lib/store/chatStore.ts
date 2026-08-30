@@ -9,6 +9,7 @@ import { create } from 'zustand';
 import {
   ActivityNode, MessageMeta, StreamChunk, upsertNode, normalizeLoaded, findNode,
 } from '../activity/types';
+import { normaliserSources } from '../activity/sources';
 import { localTransport } from '../activity/transport';
 import { makeRemoteTransport } from '../activity/remoteTransport';
 import { activeRemoteCfg } from './backendStore';
@@ -85,8 +86,21 @@ function loadConversations(): Conversation[] {
               activity: normalizeLoaded(m.activity),
               status: m.status === 'working' || m.status === 'streaming' ? 'done' : m.status,
               text: m.text || m.live,
+              // Les reponses enregistrees avant le 30/08/2026 portent des
+              // sources sans domaine — celles-la memes qui noircissaient
+              // l'ecran. Elles sont reparees a la lecture, sinon elles
+              // resteraient incompletes pour toujours.
+              meta: m.meta?.sources
+                ? { ...m.meta, sources: normaliserSources(m.meta.sources) }
+                : m.meta,
               variants: m.variants
-                ? m.variants.map((v) => ({ ...v, activity: normalizeLoaded(v.activity ?? []) }))
+                ? m.variants.map((v) => ({
+                    ...v,
+                    activity: normalizeLoaded(v.activity ?? []),
+                    meta: v.meta?.sources
+                      ? { ...v.meta, sources: normaliserSources(v.meta.sources) }
+                      : v.meta,
+                  }))
                 : undefined,
             }
           : m,
