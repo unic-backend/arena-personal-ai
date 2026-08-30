@@ -511,3 +511,39 @@ Plan complet : `docs/PLAN_ARENA_OS.md`. Audit d'origine : `docs/AUDIT_ARENA_OS.m
 **État vérifié le 2026-08-28 : 1320 passed, 0 failed** — sur la machine cloud de
 l'assistant. Dernier état mesuré sur la machine du propriétaire : 1272 passed,
 le 2026-08-28, avant les 14 tests du harnais de mesure.
+---
+
+## VOLET « ARENA en ligne, PC éteint » — phase 2.1, mesure du 30/08/2026
+
+DEC-0021 envoie ARENA sur un serveur sans carte graphique. La question était :
+que devient le routeur quand Ollama n'est pas là ?
+
+```
+python scripts/mesurer_sans_ollama.py
+```
+
+Mesure réelle — fournisseur local sur un port mort, Groq déclaré :
+
+| Scène | Niveau | Candidats | Pourquoi |
+|---|---|---|---|
+| une définition | `PRIVE` | `groq, local` | PRIVE autorisé en HYBRIDE, groq d'abord |
+| un rappel | `PRIVE` | `groq, local` | PRIVE autorisé en HYBRIDE, groq d'abord |
+| un devis client | `SENSIBLE` | **`local` seul** | SENSIBLE reste sur sa machine en HYBRIDE |
+
+**Le constat, en une ligne : sur le serveur, toute demande métier n'a nulle part
+où aller.** Devis, prix et clients sont classés `SENSIBLE`, et le mode `HYBRIDE`
+les route vers sa machine — et vers elle seule. C'est exactement ce que DEC-0021
+fait monter sur le serveur, donc exactement ce qui cesserait de répondre.
+
+Second constat, plus discret : l'échec est un `RuntimeError` nu — « Aucun
+fournisseur n'a pu répondre. » Il ne distingue pas *« Ollama n'existe pas sur
+cette machine »* de *« tout est tombé une minute »*. Sur le serveur, le premier
+serait permanent et le message resterait le même.
+
+Ce que la mesure ne dit pas : aucune réponse réelle n'a été obtenue ici, faute
+de clé Groq sur la machine cloud. Ce qui est mesuré, c'est la **décision** du
+routeur — candidats, ordre, raison — qui ne demande aucun réseau.
+
+Rien n'est corrigé ici : la phase 2.1 mesure, la 2.2 corrigera. Et la correction
+touche à la **confidentialité**, pas seulement au routage : elle demande une
+décision du propriétaire, pas un patch.
