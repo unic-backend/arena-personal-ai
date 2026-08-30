@@ -44,7 +44,22 @@ DELAI_LECTURE_SECONDES = 6.0
 
 # Delai accorde a la recherche elle-meme. Sans plafond, un moteur qui ne repond
 # pas fige la reponse entiere.
-DELAI_RECHERCHE_SECONDES = 6.0
+#
+# 6 s a longtemps suffi, tant que `search(recent=True)` ne faisait qu'un seul
+# appel reseau. Ce n'est plus le cas : cette passe enchaine jusqu'a cinq appels
+# sequentiels a DDGS (news/jour, news/jour elargie, news/semaine, text/semaine,
+# text sans date), et `WebSearchTool` s'accorde elle-meme 25 s
+# (`DELAI_TOTAL_SECONDES`) pour les mener a bien. Mesure le 30/08/2026 sur
+# Railway : un appel direct et isole au moteur reussit en une seconde, mais une
+# question sans actualite au sens strict ("qui est le president du Senegal")
+# epuise les passes `news` sans resultat avant d'atteindre la derniere passe
+# `text` non datee — celle qui aurait repondu. Coupee a 6 s, la recherche etait
+# abandonnee en cours de route et Usman rendait le refus « aucun resultat »
+# alors que le moteur, livre a lui-meme, en avait un. Le budget de la voie
+# RECHERCHE (`core/execution/voies.py`) vise 180 s pour tout le tour : 30 s
+# pour la recherche seule laisse largement la place aux lectures de pages et a
+# la synthese, et couvre les 25 s que l'outil peut legitimement prendre.
+DELAI_RECHERCHE_SECONDES = 30.0
 
 GABARIT_SYNTHESE = """Tu es Usman. Réponds à la question en t'appuyant UNIQUEMENT sur les sources ci-dessous.
 
