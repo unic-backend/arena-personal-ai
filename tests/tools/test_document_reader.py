@@ -4,14 +4,19 @@ Les fichiers d'essai sont de **vrais** PDF et de **vrais** `.docx`, fabriqués
 dans le test : un lecteur de PDF vérifié sur une chaîne de caractères ne prouve
 rien.
 """
+import shutil
+
 import pytest
 
+import tools.documents.reader as reader
 from tools.documents.reader import Passage, lire_document
 
 pytest.importorskip("pypdf", reason="pypdf n'est pas installe.")
 pytest.importorskip("docx", reason="python-docx n'est pas installe.")
 pytest.importorskip("openpyxl", reason="openpyxl n'est pas installe.")
 pytest.importorskip("pptx", reason="python-pptx n'est pas installe.")
+pytest.importorskip("pypdfium2", reason="pypdfium2 n'est pas installe.")
+pytest.importorskip("pytesseract", reason="pytesseract n'est pas installe.")
 
 
 def fabriquer_pdf(pages: list[str]) -> bytes:
@@ -56,6 +61,33 @@ def devis_pdf(tmp_path):
         "Devis numero 2026-041 - cloison BA13 salon",
         "Total HT 450000 FCFA - validite 30 jours",
     ]))
+    return chemin
+
+
+@pytest.fixture
+def plan_scanne_pdf(tmp_path):
+    """Un vrai « scan » : le texte est une IMAGE, sans aucune couche texte.
+
+    Pleine page a une resolution proche de 300 DPI — un scan reel, pas une
+    vignette. Mesure du 30/08/2026 : une image plus petite ou un rendu moins
+    resolu rend le texte illisible pour tesseract, meme si `pypdf` confirme
+    bien l'absence de couche texte.
+    """
+    from PIL import Image, ImageDraw
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    image = Image.new("RGB", (2480, 3508), "white")  # A4 a ~300 DPI
+    dessin = ImageDraw.Draw(image)
+    dessin.text((150, 200), "Devis numero 2026-118 Chantier Almadies", fill="black")
+    dessin.text((150, 300), "Cloison BA13 20.00 m2 Total HT 450000 FCFA", fill="black")
+    image_chemin = tmp_path / "page_scan.png"
+    image.save(image_chemin)
+
+    chemin = tmp_path / "plan_scanne.pdf"
+    c = canvas.Canvas(str(chemin), pagesize=A4)
+    c.drawImage(str(image_chemin), 0, 0, width=A4[0], height=A4[1])
+    c.save()
     return chemin
 
 
@@ -157,6 +189,64 @@ def test_un_pdf_corrompu_ne_fait_pas_tomber_la_lecture(tmp_path):
 
     assert document.statut in {"ECHEC", "VIDE"}
     assert document.raison
+
+
+# --- OCR (PDF scanné) -----------------------------------------------------------
+
+@pytest.fixture
+def tesseract_disponible():
+    """Le binaire reel, pas seulement les paquets Python — comme `gitleaks` ailleurs."""
+    if shutil.which("tesseract") is None:
+        pytest.skip("le binaire tesseract n'est pas installe sur cette machine.")
+
+
+@pytest.mark.integration
+def test_une_page_scannee_est_lue_par_ocr(tesseract_disponible, plan_scanne_pdf):
+    """Bout en bout, avec le vrai moteur — pas un moteur simule."""
+    document = lire_document(plan_scanne_pdf)
+
+    assert document.lu
+    assert "2026-118" in document.texte
+    assert "Almadies" in document.texte or "Amadies" in document.texte  # police de test grossiere
+    assert document.passages[0].via_ocr is True
+    assert document.passages[0].source == "plan_scanne.pdf, page 1 (OCR)"
+    assert document.resume()["passages_ocr"] == 1
+
+
+def test_une_page_sans_texte_appelle_l_ocr(monkeypatch, tmp_path):
+    """Sans dependre du vrai tesseract : verifie que le relais est bien branche."""
+    monkeypatch.setattr(reader, "_ocr_page", lambda chemin, index: "Texte devine par OCR")
+    chemin = tmp_path / "scan.pdf"
+    chemin.write_bytes(fabriquer_pdf([""]))
+
+    document = lire_document(chemin)
+
+    assert document.lu
+    assert "Texte devine par OCR" in document.texte
+    assert document.passages[0].via_ocr is True
+
+
+def test_une_page_avec_texte_n_appelle_pas_l_ocr(monkeypatch, devis_pdf):
+    """Une page deja lisible ne doit jamais repasser par l'OCR — coute cher pour rien."""
+    def _echoue_si_appele(chemin, index):
+        raise AssertionError("l'OCR a ete appele sur une page qui avait deja du texte")
+    monkeypatch.setattr(reader, "_ocr_page", _echoue_si_appele)
+
+    document = lire_document(devis_pdf)
+
+    assert document.lu
+    assert all(not p.via_ocr for p in document.passages)
+
+
+def test_ocr_qui_ne_trouve_rien_reste_vide(monkeypatch, tmp_path):
+    """Tesseract absent ou une page vraiment blanche : `_ocr_page` rend "" — jamais un crash."""
+    monkeypatch.setattr(reader, "_ocr_page", lambda chemin, index: "")
+    chemin = tmp_path / "scan.pdf"
+    chemin.write_bytes(fabriquer_pdf([""]))
+
+    document = lire_document(chemin)
+
+    assert document.statut == "VIDE"
 
 
 # --- Word ----------------------------------------------------------------------

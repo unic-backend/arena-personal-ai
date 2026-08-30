@@ -142,11 +142,11 @@ environnement isolé — l'erreur est corrigée ici plutôt que laissée debout.
   structurés, pas des images à faire lire par un modèle de mise en page).
   Cette pile poserait aussi un risque réel de conflit avec le CUDA
   qu'Ollama utilise déjà sur sa carte, jamais mesuré ensemble.
-- **Décision revue** : Docling **ne sert plus** à combler B — voir plus bas.
-  Il reste un candidat pour A (OCR sur PDF scanné) **seulement**, où son
-  poids pourrait se justifier ; à re-évaluer avec la même rigueur (mesurer
-  d'abord) au moment de la phase 2, pas supposé bon parce qu'il l'était
-  pour B.
+- **Décision revue** : Docling **ne sert plus** à combler B ni A. Réévalué
+  avec la même rigueur en phase 2 (mesurer avant de choisir) : Tesseract +
+  `pypdfium2` couvrent A pour moins de 65 Mo, sans le risque de conflit CUDA.
+  Docling ne reste écarté que pour cette raison de poids — pas pour une
+  faiblesse de qualité, jamais mesurée ici.
 
 ### XLSX et PPTX (trou B) — fermé sans Docling, avec `openpyxl` et `python-pptx`
 
@@ -159,19 +159,45 @@ principe que `python-docx` déjà en place pour `.docx`, appliqué aux deux
 formats qui manquaient. Zéro conflit avec l'écosystème CUDA d'Ollama,
 puisqu'aucun des deux n'en a besoin.
 
-### MinerU (OpenDataLab) — alternative, pas retenue par défaut
+### Tesseract + `pypdfium2` — **retenu pour le trou A (OCR), phase 2, fait**
 
-### MinerU (OpenDataLab) — alternative, pas retenue par défaut
+*Choisi et mesuré en phase 2 (cette PR), après le même geste qu'en phase 1 :
+peser avant d'installer, jamais supposer.*
+
+- **Licence** : Apache 2.0 (Tesseract, maintenu par Google). `pypdfium2`
+  (rendu PDF→image) Apache-2.0/BSD, `pytesseract` (le pont Python) Apache 2.0.
+  Aucun des trois n'a de restriction d'usage commercial.
+- **Mesuré** : `tesseract-ocr` + `tesseract-ocr-fra` (binaire système) pèsent
+  **~6 Mo** installés ; `pytesseract` + `pypdfium2` (Python) **56 Mo**. Total
+  sous les 65 Mo, contre 5,5 Go pour Docling — même ordre de grandeur que la
+  correction de phase 1, pour la même raison : aucun modèle de mise en page
+  n'est nécessaire pour reconnaître du texte imprimé.
+- **Bout en bout, avec le vrai binaire** : un « scan » réel fabriqué dans le
+  test (texte rendu en image, aucune couche texte, page pleine à ~300 DPI) →
+  `pypdf` confirme l'absence de texte → rendu par `pypdfium2` → lu par
+  `pytesseract` → texte retrouvé. **Résolution critique, mesurée, pas
+  supposée** : un rendu à ~144 DPI (`scale=2.0`) rendait le texte illisible
+  pour tesseract sur la même image ; 300 DPI (`scale=300/72`) le lit
+  correctement — la valeur retenue dans le code porte cette mesure en
+  commentaire, pas un chiffre choisi au hasard.
+- **Windows** : Tesseract publie un installeur officiel UB Mannheim, et un
+  paquet `winget` (`UB-Mannheim.TesseractOCR`) — même mécanisme que ffmpeg
+  déjà utilisé dans ce projet (`scripts/doctor.py`). Non testé sur sa machine
+  (pas de Windows ici) ; `doctor.py` le vérifie désormais au démarrage,
+  comme ffmpeg et Docker, et nomme la commande qui l'installe s'il manque.
+
+### MinerU (OpenDataLab) — non retenu, la même raison que Docling
 
 - **Licence** : Apache 2.0, avec un plafond commercial (100 M d'utilisateurs
   actifs mensuels ou 20 M$/mois de revenu) — sans objet pour UniC Plaquiste.
 - **Maintenance** : très active (v3.4.0, juin 2026, ~69,7k étoiles).
-- **Pourquoi pas retenu en premier** : moteur OCR plus lourd (PP-OCRv6,
-  écosystème PaddleOCR), pensé pour un débit documentaire élevé, pas pour
-  cohabiter avec trois modèles déjà chargés sur 12 Go de VRAM partagés. À
-  garder en réserve si la qualité OCR de Docling s'avère insuffisante sur
-  de vrais plans scannés — décision à prendre **après mesure chez lui**,
-  jamais avant.
+- **Pourquoi pas retenu** : même famille de coût que Docling — moteur OCR
+  PP-OCRv6 (écosystème PaddleOCR), pensé pour un débit documentaire élevé,
+  pas pour cohabiter avec trois modèles déjà chargés sur 12 Go de VRAM
+  partagés. Tesseract fait le travail demandé (reconnaître du texte imprimé
+  sur un plan ou un devis scanné) sans cette pile. À reconsidérer seulement
+  si la qualité de Tesseract s'avère insuffisante sur de vrais scans du
+  propriétaire — mesuré chez lui, jamais supposé d'ici.
 
 ### CubiCasa5K — **rejeté**, sur la licence autant que sur le principe
 
@@ -230,16 +256,16 @@ d'habitude avec son propriétaire, pas une extrapolation de code.
 
 ## 6. Plan d'implémentation proposé — phases, dans l'ordre du risque
 
-Ordre proposé, chaque phase vérifiable seule. La phase 1 est faite (cette
-PR) ; les six autres restent à autoriser :
+Ordre proposé, chaque phase vérifiable seule. Les phases 1 et 2 sont faites ;
+les cinq autres restent à autoriser :
 
 | Phase | Ce qu'elle ferme | Nouvelle dépendance | Touche une zone verrouillée ? |
 |---|---|---|---|
 | **1 — FAIT** | XLSX + PPTX dans `reader.py`, via `openpyxl`/`python-pptx` (pas Docling — voir §4, corrigé après mesure : 66 Mo contre 5,5 Go) | `openpyxl`, `python-pptx` (tous deux MIT/légers) | Non |
-| **2** | OCR sur PDF scanné (trou A) | À choisir et mesurer en phase 2 — Docling reste candidat, MinerU en réserve, un moteur OCR seul (ex. Tesseract) aussi à comparer | Non |
+| **2 — FAIT** | OCR sur PDF scanné (trou A), via Tesseract + `pypdfium2` (pas Docling/MinerU — voir §4, mesuré : ~65 Mo, bout en bout avec le vrai binaire) | `pytesseract`, `pypdfium2` (Apache 2.0/BSD) + le binaire système `tesseract-ocr` | Non |
 | **3** | `type_document="FACTURE"` réellement orchestré (trou E, partiel) | Aucune | Non |
 | **4** | Décision du propriétaire sur §5, puis upload PWA → OpenTakeoff (trou C) | Aucune | Non (mais §5 à trancher avec lui) |
-| **5** | Détection d'ouvertures via Qwen3-VL sur une page de plan rendue en image (trou D) | Rendu PDF→image (à choisir : `pypdf`+`Pillow` ou via Docling) | Non — mais **NON VÉRIFIABLE avant que `qwen3-vl:4b` tourne réellement chez lui** |
+| **5** | Détection d'ouvertures via Qwen3-VL sur une page de plan rendue en image (trou D) | Aucune — `pypdfium2` (déjà en place depuis la phase 2) rend la page en image | Non — mais **NON VÉRIFIABLE avant que `qwen3-vl:4b` tourne réellement chez lui** |
 | **6** | Bon de commande / bon de livraison / rapport de métré (reste du trou E) | Aucune | Non |
 | **7** | Tests bout en bout : plan → métré → devis → PDF, avec un plan de test connu | Aucune | Non |
 

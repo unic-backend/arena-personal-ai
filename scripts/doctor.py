@@ -234,6 +234,16 @@ def verifier_ffmpeg(sonde: Optional[Callable[[], bool]] = None) -> Verification:
     return Verification("ffmpeg (video)", OK, "repond")
 
 
+def verifier_tesseract(sonde: Optional[Callable[[], bool]] = None) -> Verification:
+    presente = sonde() if sonde else _commande_repond("tesseract", ["--version"])
+    if not presente:
+        return Verification(
+            "Tesseract (OCR)", ABSENT,
+            "absent : un PDF scanne (sans couche texte) reste illisible",
+            "winget install UB-Mannheim.TesseractOCR")
+    return Verification("Tesseract (OCR)", OK, "repond")
+
+
 def verifier_docker(sonde: Optional[Callable[[], bool]] = None) -> Verification:
     presente = sonde() if sonde else _commande_repond("docker", ["info"])
     if not presente:
@@ -549,6 +559,7 @@ def diagnostiquer() -> Rapport:
                 lambda: verifier_modele("Modele de vision", vision, installes)),
         mesurer("Carte graphique", verifier_gpu),
         mesurer("ffmpeg (video)", verifier_ffmpeg),
+        mesurer("Tesseract (OCR)", verifier_tesseract),
         mesurer("Docker (bac a sable)", verifier_docker),
         mesurer("WanGP (generation video)", verifier_wangp),
         mesurer("Video courte (MPT)", verifier_moneyprinter),
