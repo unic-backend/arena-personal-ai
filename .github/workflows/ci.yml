@@ -88,6 +88,18 @@ jobs:
             --entrypoint apps/backend/entrypoint.sh arena:ci \
             sh -c "touch /app/data/preuve-ecriture && whoami"
 
+      - name: Verify the container starts with no volume at all
+        # Panne reelle du premier deploiement (Railway, chapitre 5) : `data/`
+        # est exclu de l'image par `.dockerignore` (monte en volume, jamais
+        # copie), et Railway ne monte aucun volume par defaut — /app/data
+        # n'existe nulle part. `chown` sur un chemin absent tuait le
+        # conteneur en boucle avant meme que /health reponde. L'etape
+        # ci-dessus ne peut pas voir cette panne : elle monte toujours un
+        # volume.
+        run: |
+          docker run --rm --entrypoint apps/backend/entrypoint.sh arena:ci \
+            sh -c "ls -ld /app/data /app/media && whoami"
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest

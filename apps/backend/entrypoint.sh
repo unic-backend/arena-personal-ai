@@ -16,8 +16,16 @@
 # temps de ces deux lignes, jamais plus), donne `data/` et `media/` a
 # l'utilisateur `arena`, puis lui passe la main avec `gosu` — qui ne revient
 # jamais en root ensuite, contrairement a `sudo`.
+#
+# Regression du premier deploiement reel (Railway, chapitre 5) : `data/` est
+# exclu de l'image par `.dockerignore` (monte en volume, jamais copie), et
+# sans volume configure — ce que Railway ne fait pas tout seul — le dossier
+# n'existe nulle part. `chown` sur un chemin absent plantait le conteneur en
+# boucle. `mkdir -p` rend ce script correct dans les deux cas : avec ou sans
+# volume monte.
 set -e
 
+mkdir -p /app/data /app/media
 chown -R arena:arena /app/data /app/media
 
 exec gosu arena "$@"
