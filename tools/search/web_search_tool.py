@@ -37,6 +37,22 @@ pour un incident passager. D'ou la quatrieme correction :
 4. **un timeout reseau se reessaie une fois.** Un moteur qui ne repond pas
    n'est pas un moteur qui n'a rien trouve. Un seul reessai, et un delai global
    pour qu'une reponse ne depende jamais d'un moteur muet.
+
+Mesure du 2026-08-30, sur le serveur en ligne. A « qui est le president du
+senegal », `recent=True` rendait cinq pages hors sujet — Ahmed Sekou Toure,
+Emmanuel Macron, l'equipe nationale de football — quand `recent=False` rendait
+« Bassirou Diomaye Faye » et « President de la republique du Senegal ». La passe
+fautive a ete isolee : `text` avec `timelimit="w"`. Interrogee seule sur la meme
+question, elle rend *QUI - Wikipedia*, *Log in to Quizlet*, *Merriam-Webster* —
+elle ne cherche plus la question, seulement le mot « qui ». D'ou la cinquieme
+correction :
+
+5. **un filtre de fraicheur ne s'applique qu'a `news`.** `news` date ses
+   articles, donc le filtre y a un sens. Sur `text`, il ne filtre pas sur la
+   date de publication — les resultats reviennent sans date, ce qui suffit a le
+   prouver — et il abime la requete. Cette passe-la ne rendait donc aucune
+   fraicheur, tout en consommant le quota : les cinq places etaient prises, et
+   la derniere passe — celle qui repond — n'etait jamais lancee.
 """
 import logging
 import re
@@ -237,9 +253,11 @@ class WebSearchTool:
         2. `news` du jour sur la requete elargie — le cas mesure : « actualite
            Senegal » rend zero, « Senegal » rend cinq articles dates ;
         3. `news` de la semaine — un sujet peu couvert n'a pas d'article du jour ;
-        4. `text` de la semaine ;
-        5. `text` sans contrainte de date, pour ne jamais rendre zero resultat
+        4. `text` sans contrainte de date, pour ne jamais rendre zero resultat
            quand la reponse existe mais n'est pas recente.
+
+        Le filtre de fraicheur ne sert que pour `news` : sur `text` il rend des
+        pages sans rapport avec la question (point 5 de l'en-tete du module).
 
         Sans `recent`, seule la derniere passe a lieu : une question intemporelle
         n'a rien a gagner a un filtre de fraicheur.
@@ -288,8 +306,11 @@ class WebSearchTool:
             if il_en_manque():
                 ajouter(self._executer("news", query, max_results, timelimit="w"))
 
-            if il_en_manque():
-                ajouter(self._executer("text", query, max_results, timelimit="w"))
+            # Il n'y a PAS de passe `text` filtree sur la semaine : voir le
+            # point 5 de l'en-tete du module. Elle rendait des pages sans
+            # rapport avec la question, et prenait la place de la passe
+            # suivante — la seule qui reponde a « qui est le president du
+            # Senegal ».
 
         if il_en_manque():
             ajouter(self._executer("text", query, max_results))
