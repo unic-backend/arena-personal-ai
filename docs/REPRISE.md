@@ -747,3 +747,9 @@ second.
 éphémère à chaque redéploiement sur ce serveur — la mémoire et les devis n'y
 survivraient pas. DEC-0021 l'exige ; un volume Railway sur `/app/data` (et
 `/app/media`) reste à poser.
+
+**Chapitre 5 terminé, confirmé par le propriétaire depuis son téléphone** :
+l'interface PWA répond, authentifiée, sur l'adresse Railway. Le VOLET
+« ARENA en ligne, PC éteint » est fonctionnel — ARENA est joignable sans que
+son PC soit allumé. Reste ouvert, pas bloquant : le volume persistant
+ci-dessus.
