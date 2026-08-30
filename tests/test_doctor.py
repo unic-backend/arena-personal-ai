@@ -36,6 +36,7 @@ from doctor import (  # noqa: E402 — le chemin est posé juste au-dessus
     verifier_modele,
     verifier_ollama,
     verifier_python,
+    verifier_tesseract,
 )
 
 CLE = "une-cle-de-test-tres-longue-et-secrete"
@@ -152,6 +153,15 @@ def test_un_paquet_manquant_est_nomme():
 def test_les_outils_systeme_sont_sondes(sonde, attendu):
     assert verifier_ffmpeg(sonde=sonde).etat == attendu
     assert verifier_docker(sonde=sonde).etat == attendu
+    assert verifier_tesseract(sonde=sonde).etat == attendu
+
+
+def test_tesseract_absent_dit_ce_qui_reste_illisible():
+    verification = verifier_tesseract(sonde=lambda: False)
+
+    assert verification.etat == ABSENT
+    assert "scanne" in verification.detail
+    assert verification.remede
 
 
 def test_docker_absent_dit_qu_arena_refuse_plutot_que_de_degrader():

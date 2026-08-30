@@ -33,16 +33,23 @@ TAILLE_MAX_OCTETS = 50 * 1024 * 1024
 
 @dataclass
 class Passage:
-    """Un morceau de texte, et l'endroit exact d'ou il vient."""
+    """Un morceau de texte, et l'endroit exact d'ou il vient.
+
+    `via_ocr` distingue un texte réellement encodé dans le document d'un texte
+    **deviné** par reconnaissance optique sur une page scannée. Les deux sont
+    utiles, mais pas avec la même certitude — la citation le dit.
+    """
 
     texte: str
     fichier: str
     page: Optional[int] = None
+    via_ocr: bool = False
 
     @property
     def source(self) -> str:
         """Libellé lisible de la provenance, tel qu'il sera cité."""
-        return f"{self.fichier}, page {self.page}" if self.page else self.fichier
+        base = f"{self.fichier}, page {self.page}" if self.page else self.fichier
+        return f"{base} (OCR)" if self.via_ocr else base
 
 
 @dataclass
@@ -74,6 +81,7 @@ class Document:
             "statut": self.statut,
             "passages": len(self.passages),
             "caracteres": self.caracteres,
+            "passages_ocr": sum(1 for p in self.passages if p.via_ocr),
             "raison": self.raison,
         }
 
@@ -104,8 +112,47 @@ def _lire_texte_simple(chemin: Path) -> List[Passage]:
     return [Passage(texte=contenu, fichier=chemin.name)] if contenu else []
 
 
+#: Langue passee a tesseract. ARENA n'a qu'un seul public (UniC Plaquiste,
+#: Senegal) : pas de configurabilite qu'aucune tache n'a demandee.
+LANGUE_OCR = "fra"
+
+#: 300 DPI : la resolution standard pour une reconnaissance fiable. Mesure du
+#: 30/08/2026 : en dessous (scale=2.0, ~144 DPI), le texte d'une page A4
+#: entiere devient illisible pour tesseract — verifie avec un vrai scan
+#: fabrique dans le test, pas suppose.
+ECHELLE_RENDU_OCR = 300 / 72
+
+
+def _ocr_page(chemin: Path, index: int) -> str:
+    """Le texte d'une page sans couche texte, lu par reconnaissance optique.
+
+    Rend une chaine vide si l'OCR n'est pas disponible (`pypdfium2`/
+    `pytesseract` non installes, ou le binaire `tesseract` absent de la
+    machine) ou n'a rien trouve — jamais une exception qui ferait perdre tout
+    le document pour une seule page.
+    """
+    try:
+        import pypdfium2 as pdfium
+        import pytesseract
+    except ImportError:
+        return ""
+    try:
+        page = pdfium.PdfDocument(str(chemin))[index]
+        image = page.render(scale=ECHELLE_RENDU_OCR).to_pil()
+        return pytesseract.image_to_string(image, lang=LANGUE_OCR)
+    except Exception as e:  # noqa: BLE001 — tesseract absent, page corrompue : un etat, pas un crash
+        logger.debug(f"OCR impossible sur la page {index + 1} de {chemin.name} : {e}")
+        return ""
+
+
 def _lire_pdf(chemin: Path) -> List[Passage]:
-    """PDF : un passage par page, la page est conservée pour la citation."""
+    """PDF : un passage par page, la page est conservée pour la citation.
+
+    Une page sans texte extractible est un candidat au scan : elle passe par
+    l'OCR avant d'être déclarée vide. Le passage garde la trace de son
+    origine (`via_ocr`) — un texte deviné par reconnaissance optique n'a pas
+    la même certitude qu'un texte réellement encodé dans le PDF.
+    """
     from pypdf import PdfReader
 
     lecteur = PdfReader(str(chemin))
@@ -117,8 +164,12 @@ def _lire_pdf(chemin: Path) -> List[Passage]:
             # Une page illisible ne doit pas faire perdre tout le document.
             logger.debug(f"Page {numero} illisible dans {chemin.name} : {e}")
             continue
+        via_ocr = False
+        if not contenu:
+            contenu = _nettoyer(_ocr_page(chemin, numero - 1))
+            via_ocr = bool(contenu)
         if contenu:
-            passages.append(Passage(texte=contenu, fichier=chemin.name, page=numero))
+            passages.append(Passage(texte=contenu, fichier=chemin.name, page=numero, via_ocr=via_ocr))
     return passages
 
 
