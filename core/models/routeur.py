@@ -199,6 +199,40 @@ class RouteurModeles(ModelProvider):
 
     # --- Repondre --------------------------------------------------------------------
 
+    def _pourquoi_personne(self, classement: Classement, candidats: Sequence[str],
+                           essayes: Sequence[str]) -> str:
+        """La phrase d'echec : sa cause, et ce qui la leverait.
+
+        Un `RuntimeError` nu — « Aucun fournisseur n'a pu repondre. » — ne
+        distingue pas **« ce modele n'existe pas sur cette machine »** de
+        **« tout est tombe une minute »**. La difference est celle entre une
+        panne qu'on attend et une panne qu'on ne verra jamais passer.
+
+        Mesure du 30/08/2026 (`scripts/mesurer_sans_ollama.py`) : sur un
+        serveur sans Ollama, une demande classee `SENSIBLE` est routee vers la
+        machine du proprietaire **et vers elle seule**, qui n'existe pas la.
+        L'echec est alors permanent, et l'ancien message aurait envoye le
+        proprietaire chercher une coupure reseau.
+        """
+        phrases = ["Aucun fournisseur n'a pu repondre."]
+        if essayes:
+            phrases.append(f"Essayes : {', '.join(essayes)}.")
+
+        if list(candidats) == [LOCAL]:
+            # Le cloud n'a meme pas ete tente : c'est le classement qui a
+            # ferme la porte, pas une panne. Le dire, sinon on cherche ailleurs.
+            _, raison = self._candidats(classement)
+            adresse = getattr(self.local, "base_url", "") or "sa machine"
+            phrases.append(f"Seule sa machine etait autorisee ({raison}), "
+                           f"et {adresse} ne repond pas.")
+            if cloud_autorise(classement, "CLOUD_PREFERRED").autorise:
+                phrases.append("En mode CLOUD_PREFERRED, cette demande aurait pu "
+                               "partir chez un service distant.")
+        elif LOCAL in essayes:
+            adresse = getattr(self.local, "base_url", "") or "sa machine"
+            phrases.append(f"Sa machine ({adresse}) ne repond pas non plus.")
+        return " ".join(phrases)
+
     async def generate(self, prompt: str, system_prompt: Optional[str] = None,
                        contexte: Optional[Sequence[str]] = None) -> str:
         """Repond, en essayant chaque fournisseur **une fois**.
@@ -231,7 +265,7 @@ class RouteurModeles(ModelProvider):
         # Tous ont echoue, Ollama compris : on le dit, on n'invente pas de reponse.
         self.dernier_choix = Choix(LOCAL, "tous les fournisseurs ont echoue",
                                    classement, essayes)
-        raise RuntimeError("Aucun fournisseur n'a pu repondre.")
+        raise RuntimeError(self._pourquoi_personne(classement, candidats, essayes))
 
     async def generate_stream(self, prompt: str, system_prompt: Optional[str] = None,
                               contexte: Optional[Sequence[str]] = None
@@ -284,7 +318,7 @@ class RouteurModeles(ModelProvider):
 
         self.dernier_choix = Choix(LOCAL, "tous les fournisseurs ont echoue",
                                    classement, essayes)
-        raise RuntimeError("Aucun fournisseur n'a pu repondre.")
+        raise RuntimeError(self._pourquoi_personne(classement, candidats, essayes))
 
     async def is_available(self) -> bool:
         """ARENA peut-il repondre ? Vrai des qu'un seul fournisseur repond."""
