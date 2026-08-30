@@ -41,6 +41,10 @@ class FauxFournisseur:
     async def generate_stream(self, prompt, system_prompt=None):
         self.prompts.append(prompt)
         self.systemes.append(system_prompt)
+        if not self._disponible:
+            # Comme le ferait le vrai aiguilleur quand plus personne ne repond :
+            # une raison reelle, jamais un message qui ne parle que d'Ollama.
+            raise RuntimeError("Aucun fournisseur n'a pu repondre. Essayes : groq, local.")
         if self._leve:
             raise ConnectionError("le modele a coupe")
         for morceau in self._morceaux:
@@ -128,13 +132,21 @@ def test_une_reponse_normale_finit_par_done(client, entetes, fournisseur, chat_d
     assert trames(demander(client, entetes).text)[-1]["type"] == "done"
 
 
-def test_ollama_hors_ligne_finit_par_une_erreur_expliquee(client, entetes, fournisseur, chat_direct):
+def test_aucun_fournisseur_disponible_finit_par_une_erreur_honnete(client, entetes, fournisseur, chat_direct):
+    """La raison vient du fournisseur, jamais d'un message code en dur sur Ollama.
+
+    Regression : un aiguilleur hybride (cloud + Ollama) momentanement sans
+    aucun fournisseur joignable renvoyait "Ollama est hors-ligne. Demarre-le
+    (ollama serve)" - vrai seulement quand Ollama est le seul fournisseur, et
+    trompeur quand le PC du proprietaire est eteint par choix (DEC-0022).
+    """
     fournisseur(disponible=False)
 
     derniere = trames(demander(client, entetes).text)[-1]
 
     assert derniere["type"] == "error"
-    assert "ollama serve" in derniere["message"]
+    assert "ollama serve" not in derniere["message"]
+    assert "Aucun fournisseur n'a pu repondre" in derniere["message"]
 
 
 def test_une_panne_en_cours_de_flux_devient_une_erreur(client, entetes, fournisseur, chat_direct):

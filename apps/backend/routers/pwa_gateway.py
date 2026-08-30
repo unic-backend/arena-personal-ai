@@ -359,13 +359,11 @@ async def flux_agent(demande: DemandeAgent):
 
     async def flux():
         try:
-            if not await fast_provider.is_available():
-                yield erreur(
-                    "Ollama est hors-ligne. Demarre-le (ollama serve) : ARENA ne "
-                    "fabrique pas de reponse sans son modele."
-                )
-                return
-
+            # Pas de sonde a part : `fast_provider` est l'aiguilleur hybride
+            # (cloud puis Ollama), et une sonde ici partagerait son propre
+            # repos de 120 s avec celle que `generate_stream` refait plus bas.
+            # Le rater une fois ne doit pas coller a la reponse un message qui
+            # ne parle que d'Ollama alors que le cloud, lui, marche peut-etre.
             intention = await orchestrator.analyze_intent(demande.text, espace=demande.espace)
             voie = voie_pour(intention)
             # Ce que ce tour aura reellement coute. La cible vient de la voie ;
