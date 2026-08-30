@@ -38,6 +38,7 @@ from apps.backend.config import (
 from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
+from core.agent.capacites import RegistreCapacites, adaptateur_synchrone
 from core.connectors.calendrier import CalendrierConnector
 from core.connectors.devis import DevisConnector
 from core.connectors.galsen import GalsenConnector
@@ -268,3 +269,26 @@ social_agent = SocialAgent(provider=deep_provider, memory=memory,
 plaquiste_agent = PlaquisteAgent(provider=deep_provider, memory=memory, registre=registre)
 
 memory.set_fact("user_profile", "owner", "Ousmane", {"role": "Propriétaire et créateur d'Usman"})
+
+# --- Capacites entre espaces (VOLET « espaces separes », phase 3) --------------
+# Le canal par lequel un espace de la PWA peut en demander un autre — voir
+# `core/agent/capacites.py`. Rempli ici, et nulle part ailleurs : ce module
+# est le seul a avoir deja construit les cinq agents en meme temps, ce que
+# `core/agent/capacites.py` refuse volontairement de faire lui-meme pour ne
+# jamais dependre de ce fichier (import circulaire des qu'un agent voudrait
+# a son tour appeler `capacites.demander`).
+#
+# Les identifiants sont ceux choisis dans la barre laterale de la PWA
+# (`apps/pwa/src/lib/capacites/index.ts`) et ceux que l'orchestrateur route
+# deja directement (`INTENTION_PAR_ESPACE`, VOLET phase 2) : les memes cinq,
+# le meme sens.
+capacites = RegistreCapacites()
+capacites.enregistrer("code", coder_agent)
+capacites.enregistrer("plaquiste", plaquiste_agent)
+capacites.enregistrer("video", video_agent)
+capacites.enregistrer("web", fresh_agent)
+# LightRAGTool.query() est synchrone et rend une chaine, pas le dictionnaire
+# structure que rendent les agents : adapte une fois ici, jamais a l'appel.
+capacites.enregistrer("documents", adaptateur_synchrone(
+    lambda texte: lightrag_tool.query(texte, mode="hybrid"), "LightRAG",
+))
