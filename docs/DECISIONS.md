@@ -1421,3 +1421,96 @@ la contention ne mord que sur le dépôt lui-même. Les correctifs §2 et §3
 sont sans risque de régression fonctionnelle : l'un purge un historique
 déjà lu par `inventaire()` uniquement pour affichage, l'autre ajoute un
 journal sans changer le comportement du flux.
+
+
+## DEC-0021 : ARENA est hébergé en ligne — tout monte, sauf les documents clients
+
+*Décidé par le propriétaire le 30/08/2026. Sa demande, dans ses mots :
+« utiliser mon IA comme une IA normale, chat, Grok, Gemini, où je veux quand je
+veux, avec un serveur un peu plus puissant que mon PC, et oui, sans que mon PC
+s'allume ».*
+
+### Le constat qui a ouvert la question
+
+L'accès téléphone existait déjà (PWA servie par ARENA, tunnel Cloudflare,
+mesuré le 27/08). Groq a été branché et mesuré le 30/08 : **0,349 s jusqu'au
+premier mot contre 85 s en local** (DEC-0009). Ces deux choses réunies donnent
+presque ce qu'il demande — il manque une seule pièce, et ce n'est ni le modèle
+ni l'interface : **c'est l'endroit où le serveur tourne.**
+
+Corollaire qui compte pour le budget : **le serveur n'a pas besoin d'être
+puissant.** La puissance est chez Groq. Le serveur ne fait que porter ARENA et
+sa base. Un serveur modeste suffit, et c'est ce qui rend la chose finançable.
+
+### Ce qui est décidé
+
+| Ce qui monte | Ce qui reste chez lui |
+|---|---|
+| la mémoire (conversations, faits retenus) | `data/documents/` — contrats, plans, pièces jointes |
+| `config/unic_plaquiste.yaml` — sa grille de prix | |
+| `data/devis/` — les devis produits | |
+
+Il a tranché en connaissant les trois niveaux de visibilité, qui lui ont été
+donnés avant la question :
+
+1. **Les autres personnes : non.** `USMAN_API_KEY` garde la passerelle. ARENA
+   reste à lui seul, comme aujourd'hui.
+2. **L'hébergeur : oui, techniquement.** C'est sa machine et son disque. Ce
+   n'est pas une question de piratage, c'est une question de propriétaire du
+   matériel — et c'est la vraie différence avec son PC.
+3. **Groq : voit le texte qu'on lui envoie.** Déjà vrai aujourd'hui pour tout
+   ce qui n'est pas classé sensible.
+
+### Ce que ça change dans DEC-0009, et ce que ça ne change pas
+
+DEC-0009 disait : *« Rien de sensible ne part chez un fournisseur d'IA. »* Cette
+phrase visait les **fournisseurs de modèles**. Elle ne prévoyait pas qu'ARENA
+lui-même quitte sa machine, et il faut le dire au lieu de laisser l'ambiguïté.
+
+Ce qui la remplace :
+
+> **Sa grille de prix et ses devis vivent là où ARENA vit. Ses documents
+> clients, non : ils restent chez lui, et ARENA dit qu'il ne les voit pas
+> plutôt que de répondre sans eux.**
+
+Ce qui **n'a pas** changé :
+
+- un secret (`TRES_SENSIBLE`) ne sort toujours **jamais** vers un fournisseur de
+  modèle, aucun mode, aucun réglage ;
+- `data/documents/` reste hors dépôt et hors serveur — c'est la seule ligne que
+  cette décision trace, et elle est nette ;
+- une capacité absente **se rapporte**. Un document injoignable parce que son PC
+  est éteint donne `NOT_CONFIGURED` avec sa raison, jamais une réponse bâtie sur
+  ce qui manque.
+
+### Les deux conséquences techniques, nommées ici, construites ailleurs
+
+Elles ne sont pas implémentées par cette décision — elles sont ses phases
+suivantes, et les écrire ici évite qu'on les découvre en production :
+
+1. **Le routeur suppose Ollama présent.** `_candidats()` ajoute toujours
+   `LOCAL` en dernier recours — sa docstring dit « rend toujours au moins
+   Ollama : ARENA répond, quoi qu'il arrive ». Sur un serveur sans GPU, ce
+   dernier recours n'existe pas. Pire : une demande classée sensible est routée
+   vers `LOCAL` **et lui seul**. Telle quelle, elle n'aurait nulle part où
+   aller. À mesurer avant de corriger.
+2. **La surface publique change de nature.** ARENA écoute aujourd'hui chez lui.
+   En ligne, n'importe qui peut frapper à la porte. L'authentification et le
+   limiteur existent ; ils n'ont jamais été audités sous cet angle.
+
+### Ce que ça coûte si c'est faux
+
+- **Sa grille de prix est son métier.** Elle sort de ses devis réels et vaut des
+  années de chantiers. Sur le disque d'un tiers, elle est exposée à ce que ce
+  tiers subit — une faille chez l'hébergeur, une saisie, une revente d'actifs.
+  Ça ne se rattrape pas : copié une fois, copié pour toujours.
+- **Une dépense mensuelle récurrente** commence, et elle continue même les mois
+  où il n'utilise pas ARENA. DEC-0014 avait laissé cette question ouverte
+  précisément parce que personne ne peut engager son argent à sa place ; elle
+  est maintenant tranchée par lui.
+- **La dépendance à l'hébergeur.** ARENA hébergé n'est disponible que lorsque
+  l'hébergeur l'est. Son PC, lui, ne tombe que quand il le décide.
+- **Le retour arrière reste possible** et doit le rester : la base est un
+  fichier SQLite, la configuration des variables d'environnement. Rapatrier
+  ARENA chez lui doit rester une copie de fichiers, jamais une migration. Si un
+  jour ce n'est plus vrai, c'est que cette décision a dérivé.
