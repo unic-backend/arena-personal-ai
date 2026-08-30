@@ -57,13 +57,47 @@ def rang(niveau: Confidentialite) -> int:
     return ORDRE.index(niveau)
 
 
-#: Ce qui ANNONCE un secret. Reprend les fragments deja utilises par le journal
-#: des actions (`core/actions/journal.py`) : une seule liste, un seul endroit ou
-#: se tromper. Les formulations francaises courantes s'y ajoutent.
-ANNONCES_DE_SECRET = tuple(FRAGMENTS_SECRETS) + (
+#: Ce qui ANNONCE un secret : les formulations par lesquelles le proprietaire
+#: parle du sien. Cherchees telles quelles, elles ne veulent rien dire d'autre.
+#:
+#: Les possessifs (« mon token », « mon password ») sont ici et pas dans
+#: `MOTIF_CHAMP_SECRET` : annonce par un possessif, le nom d'un champ redevient
+#: une declaration, meme sans valeur collee derriere.
+ANNONCES_DE_SECRET = (
     "mot de passe", "identifiant de connexion", "cle privee", "clé privée",
     "cle d'api", "clé d'api", "cle secrete", "clé secrète", "code pin",
     "numero de carte", "numéro de carte", "cvv", "iban",
+    "mon password", "mon token", "mon jeton", "mon secret", "mon cookie",
+    "ma cle api", "ma clé api", "mon api key", "mes identifiants",
+)
+
+#: Les noms de champ du journal des actions (`core/actions/journal.py`) —
+#: **une seule liste, un seul endroit ou se tromper**. Mais ils sont cherches
+#: autrement : la ou `masquer()` les lit comme des NOMS DE CHAMP, les chercher
+#: comme des sous-chaines dans de la prose confond un secret avec un mot
+#: ordinaire.
+#:
+#: Mesure du 30/08/2026, serveur en ligne. A « qui est le president du
+#: Senegal », la page Wikipedia expliquant que le president est elu *au scrutin
+#: secret* contenait le mot « secret ». Toute la demande passait en
+#: `TRES_SENSIBLE` — donc interdite de cloud — et comme aucun Ollama ne tourne
+#: sur ce serveur, plus aucun fournisseur ne pouvait repondre. La protection ne
+#: protegeait rien : elle refusait une page publique.
+#:
+#: Un nom de champ ne designe donc un secret que **suivi de sa valeur** :
+#: `SECRET=...`, `"token": "..."`. C'est la forme d'une configuration collee,
+#: et ce n'est jamais celle d'une phrase. Les valeurs de moins de 8 caracteres
+#: sont ignorees — « le secret : bien melanger » n'est pas une fuite.
+#:
+#: Deux details que les tests ont trouves, et qu'un `\b` seul manquait :
+#: `USMAN_API_KEY=` colle le nom a son prefixe par un souligne, et la forme
+#: JSON `"token": "..."` glisse un guillemet entre le nom et le deux-points.
+MOTIF_CHAMP_SECRET = re.compile(
+    r"(?<![A-Za-z0-9])(?:"
+    + "|".join(re.escape(nom) for nom in FRAGMENTS_SECRETS)
+    + r")s?(?![A-Za-z0-9])"
+    r"[\"']?\s{0,3}[:=]\s{0,3}[\"']?[A-Za-z0-9_\-./+]{8,}",
+    re.IGNORECASE,
 )
 
 #: Ce qui RESSEMBLE a un secret. Complement, jamais substitut : ces motifs
@@ -156,11 +190,17 @@ def classer(texte: str, contexte: Optional[Sequence[str]] = None) -> Classement:
     #    faire redescendre.
     annonces = _contient(minuscule, ANNONCES_DE_SECRET)
     formes = [motif.pattern for motif in FORMES_DE_SECRET if motif.search(entier)]
-    if annonces or formes:
+    champ = MOTIF_CHAMP_SECRET.search(entier)
+    if annonces or formes or champ:
         if annonces:
             motifs.append(f"secret annonce ({annonces[0]})")
         if formes:
             motifs.append("valeur en forme de secret")
+        if champ:
+            # Le nom du champ suffit a nommer le motif : la valeur, elle, ne
+            # doit apparaitre nulle part — surtout pas dans un motif qui sera
+            # journalise.
+            motifs.append(f"champ nomme comme un secret ({champ.group().split('=')[0].split(':')[0].strip()})")
         return Classement(Confidentialite.TRES_SENSIBLE, motifs)
 
     # 2. Ses affaires : clients, argent, courrier.
