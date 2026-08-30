@@ -226,8 +226,24 @@ class TestDocumentPdf:
         connecteur, capacite, parametres = registre.appels[0]
         assert (connecteur, capacite) == ("devis", "produire")
         assert parametres["client"] == "Fast Group"
+        assert parametres["type_document"] == "DEVIS"
         assert resultat["document"]["statut"] == "NEEDS_CONFIRMATION"
         assert resultat["document"]["message"] in resultat["response"]
+
+    @pytest.mark.asyncio
+    async def test_une_facture_demandee_produit_le_bon_type_document(self):
+        """Le renderer sait deja faire une facture ; seule l'orchestration manquait."""
+        registre = FauxRegistre()
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run(
+            "génère la facture, 18 parois de 5,40 x 2,50 m", context=DESTINATAIRE)
+
+        assert registre.appels, "aucun appel : « génère la facture » ne declenche rien"
+        _, _, parametres = registre.appels[0]
+        assert parametres["type_document"] == "FACTURE"
+        assert resultat["document"]["statut"] == "NEEDS_CONFIRMATION"
 
     @pytest.mark.asyncio
     async def test_sans_registre_l_agent_le_dit_au_lieu_de_promettre_un_fichier(self):

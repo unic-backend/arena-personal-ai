@@ -119,6 +119,10 @@ class DevisConnector(Connecteur):
             objet=str(parametres.get("objet") or ""),
             lignes=lignes,
             main_oeuvre_m2=parametres.get("main_oeuvre_m2"),
+            # Le renderer (devis_pdf.py) accepte deja un type libre ; seul
+            # l'appelant decide. "DEVIS" par defaut : tous les appelants
+            # existants (avant l'orchestration d'une facture) n'y touchent pas.
+            type_document=str(parametres.get("type_document") or "DEVIS"),
         )
         calcul = chiffrer(devis, self.metier)
 
@@ -154,7 +158,7 @@ class DevisConnector(Connecteur):
 
         return succes(
             action=capacite.nom, cible=self.nom,
-            message=(f"Devis {devis.numero} ecrit pour {devis.client} "
-                     f"({calcul['total']} FCFA)."),
+            message=(f"{devis.type_document.capitalize()} {devis.numero} ecrit pour "
+                     f"{devis.client} ({calcul['total']} FCFA)."),
             preuve=str(sortie),
             chiffrage=calcul, octets=sortie.stat().st_size)

@@ -47,9 +47,16 @@ MOIS = ("janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet",
 #: Ce qui demande un FICHIER, et pas seulement un texte de devis. Le mot
 #: « devis » seul ne suffit pas : il est dans presque toutes ses phrases, et
 #: proposer un document a chaque fois transformerait la confirmation en reflexe.
+#: Meme regle pour « facture » : la phrase exacte, jamais le mot seul.
 DEMANDE_DE_DOCUMENT = re.compile(
-    r"\b(pdf|document|imprim\w*|edite|édite|genere le devis|génère le devis)\b",
+    r"\b(pdf|document|imprim\w*|edite|édite|genere le devis|génère le devis"
+    r"|genere la facture|génère la facture)\b",
     re.IGNORECASE)
+
+#: Distingue une facture d'un devis, une fois qu'un FICHIER est deja demande
+#: (DEMANDE_DE_DOCUMENT ci-dessus). Le renderer (`devis_pdf.py`) accepte deja
+#: `type_document` librement ; seule l'orchestration manquait.
+DEMANDE_DE_FACTURE = re.compile(r"facture", re.IGNORECASE)
 
 #: Ce qu'il faut connaitre pour adresser un devis. Jamais devine dans la phrase.
 DESTINATAIRE = ("client", "lieu", "objet")
@@ -343,7 +350,9 @@ class PlaquisteAgent(BaseAgent):
                                 + ", ".join(manquants)
                                 + ". Je ne devine pas le destinataire d'un devis.")}
 
-        resultat = self.registre.executer("devis", "produire", demande=texte, **destinataire)
+        type_document = "FACTURE" if DEMANDE_DE_FACTURE.search(texte or "") else "DEVIS"
+        resultat = self.registre.executer(
+            "devis", "produire", demande=texte, type_document=type_document, **destinataire)
         return {"statut": resultat.statut.value, "message": resultat.message,
                 "preuve": resultat.preuve}
 

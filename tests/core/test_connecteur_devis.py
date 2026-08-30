@@ -57,6 +57,36 @@ def test_un_devis_produit_laisse_un_fichier_qui_est_sa_preuve(connecteur, dossie
     assert resultat.detail["octets"] == ecrit.stat().st_size
 
 
+# --- FACTURE : le renderer savait deja, seule l'orchestration manquait ----------
+
+def test_sans_type_document_le_pdf_reste_un_devis(connecteur, dossier):
+    """Retro-compatible : aucun appelant existant n'est affecte."""
+    pytest.importorskip("pypdf", reason="pypdf n'est pas installe.")
+    from pypdf import PdfReader
+
+    resultat = connecteur.executer_confirmee("produire", demande=DEMANDE, **DESTINATAIRE)
+
+    ecrit = dossier / resultat.preuve.rsplit("/", 1)[-1]
+    texte = PdfReader(str(ecrit)).pages[0].extract_text()
+    assert "DEVIS" in texte
+    assert "Devis" in resultat.message
+
+
+def test_type_document_facture_est_ecrit_dans_le_vrai_pdf(connecteur, dossier):
+    """Verifie le fichier reellement produit, pas seulement le parametre transmis."""
+    pytest.importorskip("pypdf", reason="pypdf n'est pas installe.")
+    from pypdf import PdfReader
+
+    resultat = connecteur.executer_confirmee(
+        "produire", demande=DEMANDE, type_document="FACTURE", **DESTINATAIRE)
+
+    assert resultat.statut is Statut.SUCCES
+    ecrit = dossier / resultat.preuve.rsplit("/", 1)[-1]
+    texte = PdfReader(str(ecrit)).pages[0].extract_text()
+    assert "FACTURE" in texte
+    assert "Facture" in resultat.message, "le message de succes doit nommer ce qui a ete ecrit"
+
+
 # --- Le destinataire n'est jamais devine -----------------------------------------
 
 def test_sans_destinataire_rien_n_est_produit(connecteur, dossier):
