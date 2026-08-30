@@ -19,7 +19,12 @@ target-version = "py311"
 # **Cette exclusion est provisoire** : le jour ou ce serveur est absorbe dans
 # ARENA, il entre sous `core/` et il est linté comme le reste ; le jour ou il est
 # ecarte, l'exclusion part avec lui.
-exclude = ["media", "data", "apps/pwa"]
+#
+# `.claude/skills/` : contenu tiers copie verbatim (licence MIT, provenance
+# dans `docs/audits/`). Le lint d'ARENA ne le corrige pas : c'est un skill de
+# developpement, jamais execute par ARENA en service, et le reformater
+# divergerait de la source qu'on pourrait vouloir resynchroniser plus tard.
+exclude = ["media", "data", "apps/pwa", ".claude/skills"]
 
 [tool.ruff.lint]
 # Jeu volontairement resserre : erreurs reelles, imports inutiles, imports non
