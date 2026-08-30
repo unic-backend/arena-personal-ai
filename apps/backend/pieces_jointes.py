@@ -76,7 +76,14 @@ def nom_de_fichier_sur(nom: Optional[str]) -> str:
 
 @dataclass(frozen=True)
 class PieceJointe:
-    """Un fichier recu, son texte ou son image, et l'etat reel de sa lecture."""
+    """Un fichier recu, son texte ou son image, et l'etat reel de sa lecture.
+
+    `pdf_base64` suit la meme regle que `image_base64` — en memoire, jamais
+    sur le disque au-dela de la lecture. Un PDF peut etre un plan de
+    construction : `PlaquisteAgent` en a besoin, brievement, pour le confier a
+    OpenTakeoff (un processus externe qui lit un vrai fichier). Le texte
+    extrait (`texte`) reste la voie normale pour un devis ou un document.
+    """
 
     identifiant: str
     nom: str
@@ -84,6 +91,7 @@ class PieceJointe:
     statut: str
     texte: str = ""
     image_base64: str = ""
+    pdf_base64: str = ""
     raison: Optional[str] = None
     tronque: bool = False
     depose_le: str = ""
@@ -226,6 +234,10 @@ class DepotPiecesJointes:
         piece = PieceJointe(
             identifiant=uuid.uuid4().hex, nom=nom_sur, octets=len(contenu),
             statut=document.statut, texte=texte, raison=document.raison,
+            # Un PDF peut etre un plan : ses octets restent en memoire (deja
+            # la, `contenu` — aucune relecture du disque), au cas ou
+            # `PlaquisteAgent` en a besoin pour OpenTakeoff.
+            pdf_base64=base64.b64encode(contenu).decode("ascii") if extension == ".pdf" else "",
             tronque=tronque, depose_le=depose, expire_le=expire,
         )
         self._pieces[piece.identifiant] = piece

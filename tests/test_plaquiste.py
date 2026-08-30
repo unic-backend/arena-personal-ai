@@ -452,6 +452,170 @@ class TestMesurerLePlan:
         assert resultat["metre"] is None
 
 
+def _pdf_valide() -> bytes:
+    """Un vrai PDF, pas une chaine qui y ressemble — comme le reste du projet le fait."""
+    from io import BytesIO
+
+    from reportlab.pdfgen import canvas
+
+    tampon = BytesIO()
+    c = canvas.Canvas(tampon)
+    c.drawString(100, 700, "plan")
+    c.save()
+    return tampon.getvalue()
+
+
+class TestPlanParPieceJointe:
+    """Un plan envoye par upload PWA (pas un chemin tape) atteint OpenTakeoff.
+
+    Decide par le propriétaire le 30/08/2026 : surtout sur son téléphone, au
+    chantier, PC éteint le jour — taper un chemin ne marche pas pour lui dans
+    ce cas. L'upload doit suffire, et le fichier ne doit toucher le disque
+    que le temps de la mesure — jamais plus.
+    """
+
+    @pytest.mark.asyncio
+    async def test_une_piece_jointe_pdf_est_mesuree(self):
+        from apps.backend.pieces_jointes import DepotPiecesJointes
+
+        depot = DepotPiecesJointes()
+        piece = depot.deposer("plan_almadies.pdf", _pdf_valide())
+
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="peu importe", **DETAIL_PLAN_UNE_PIECE)
+        registre = RegistreScripte({("opentakeoff", "mesurer"): resultat_mesure})
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre, pieces_jointes=depot)
+
+        resultat = await agent.run(
+            "mesure ce plan", context={"attachments": [piece.identifiant]})
+
+        assert resultat["plan"]["statut"] == Statut.SUCCES.value
+        connecteur, capacite, parametres = registre.appels[0]
+        assert (connecteur, capacite) == ("opentakeoff", "mesurer")
+        chemin_utilise = parametres["chemin"]
+        assert not Path(chemin_utilise).exists(), "le fichier temporaire n'a pas ete efface"
+        # Il ne voit jamais un chemin temporaire genere par ARENA — seulement
+        # le nom du fichier qu'il a lui-meme envoye.
+        assert resultat["plan"]["chemin"] == "plan_almadies.pdf"
+
+    @pytest.mark.asyncio
+    async def test_un_chemin_tape_prime_sur_une_piece_jointe(self):
+        """Le texte est plus explicite : s'il y a les deux, le chemin tape gagne."""
+        from apps.backend.pieces_jointes import DepotPiecesJointes
+
+        depot = DepotPiecesJointes()
+        piece = depot.deposer("plan_almadies.pdf", _pdf_valide())
+
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="peu importe", **DETAIL_PLAN_UNE_PIECE)
+        registre = RegistreScripte({("opentakeoff", "mesurer"): resultat_mesure})
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre, pieces_jointes=depot)
+
+        resultat = await agent.run(
+            "mesure /chantiers/A-101.pdf", context={"attachments": [piece.identifiant]})
+
+        assert resultat["plan"]["chemin"] == "/chantiers/A-101.pdf"
+
+    @pytest.mark.asyncio
+    async def test_sans_depot_une_piece_jointe_ne_declenche_rien(self):
+        """Retro-compatible : un agent sans depot se comporte comme avant."""
+        resultat = await PlaquisteAgent(
+            provider=ModeleDouble(), metier=charger_metier(FICHIER),
+            registre=RegistreScripte({}),
+        ).run("mesure ce plan", context={"attachments": ["un-identifiant"]})
+
+        assert resultat["plan"] is None
+
+
+class TestMemoireDuPlan:
+    """Les chiffres mesures restent, pour les reprendre sans renvoyer le plan.
+
+    Décidé par le propriétaire le 30/08/2026 — jamais l'image du plan,
+    seulement ce qu'OpenTakeoff en a mesuré.
+    """
+
+    def _memoire(self, tmp_path):
+        from core.memory.personnelle import MemoirePersonnelle
+
+        return MemoirePersonnelle(db_path=str(tmp_path / "memoire.db"))
+
+    @pytest.mark.asyncio
+    async def test_une_mesure_reussie_est_retenue(self, tmp_path):
+        from core.memory.personnelle import Nature, TypeSouvenir
+
+        memoire = self._memoire(tmp_path)
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="peu importe", **DETAIL_PLAN_UNE_PIECE)
+        registre = RegistreScripte({("opentakeoff", "mesurer"): resultat_mesure})
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre, memoire_personnelle=memoire)
+
+        await agent.run("analyse le plan /chantiers/A-101.pdf",
+                        context={"client": "Fast Group", "lieu": "Almadies"})
+
+        souvenirs = memoire.souvenirs()
+        assert len(souvenirs) == 1
+        assert souvenirs[0].type is TypeSouvenir.EPISODIQUE
+        assert souvenirs[0].nature is Nature.FAIT
+        assert souvenirs[0].projet == "Almadies"
+        assert "A-101.pdf" in souvenirs[0].contenu
+        assert "OpenTakeoff" in souvenirs[0].source
+
+    @pytest.mark.asyncio
+    async def test_une_mesure_qui_echoue_n_est_pas_retenue(self, tmp_path):
+        """Un chemin refuse ou une panne n'a rien mesure : rien a retenir."""
+        memoire = self._memoire(tmp_path)
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               memoire_personnelle=memoire)  # sans registre -> NOT_CONFIGURED
+
+        await agent.run("analyse le plan /chantiers/A-101.pdf")
+
+        assert memoire.souvenirs() == []
+
+    @pytest.mark.asyncio
+    async def test_un_plan_deja_mesure_est_rappele_des_jours_apres(self, tmp_path):
+        """Le proprietaire ne renvoie pas le plan : les chiffres suffisent."""
+        from core.memory.personnelle import Nature, TypeSouvenir
+
+        memoire = self._memoire(tmp_path)
+        memoire.retenir(
+            contenu="Plan /chantiers/A-101.pdf mesure : 1 piece, 40.69 m2",
+            type=TypeSouvenir.EPISODIQUE, nature=Nature.FAIT,
+            source="OpenTakeoff, plan /chantiers/A-101.pdf", projet="Almadies",
+        )
+        modele = ModeleDouble()
+        agent = PlaquisteAgent(provider=modele, metier=charger_metier(FICHIER),
+                               memoire_personnelle=memoire)
+
+        await agent.run("le chantier Almadies, ou en est la mesure du plan ?")
+
+        assert "A-101.pdf" in modele.systemes[-1]
+        assert "PLANS DEJA MESURES" in modele.systemes[-1]
+
+    @pytest.mark.asyncio
+    async def test_sans_rapport_rien_n_est_ajoute_a_l_instruction(self, tmp_path):
+        """Pas un reflexe a chaque reponse : seulement quand ca se rapporte."""
+        from core.memory.personnelle import Nature, TypeSouvenir
+
+        memoire = self._memoire(tmp_path)
+        memoire.retenir(
+            contenu="Plan /chantiers/A-101.pdf mesure : 1 piece, 40.69 m2",
+            type=TypeSouvenir.EPISODIQUE, nature=Nature.FAIT,
+            source="OpenTakeoff, plan /chantiers/A-101.pdf", projet="Almadies",
+        )
+        modele = ModeleDouble()
+        agent = PlaquisteAgent(provider=modele, metier=charger_metier(FICHIER),
+                               memoire_personnelle=memoire)
+
+        # Aucun mot en commun avec le souvenir stocke (verifie : ni "plaques"
+        # ni "22" ne recoupent "plan/chantiers/A-101/mesure/piece/m2").
+        await agent.run("chiffre-moi 22 plaques BA13 pour un client")
+
+        assert "PLANS DEJA MESURES" not in modele.systemes[-1]
+
+
 class FauxAgenda:
     """Un registre d'agenda de test : il note, il n'appelle jamais Google."""
 

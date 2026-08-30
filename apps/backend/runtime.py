@@ -266,7 +266,9 @@ social_agent = SocialAgent(provider=deep_provider, memory=memory,
                            memoire_personnelle=memoire_personnelle,
                            registre=registre)
 # Metier UniC Plaquiste : redaction soignee, donc le modele profond.
-plaquiste_agent = PlaquisteAgent(provider=deep_provider, memory=memory, registre=registre)
+plaquiste_agent = PlaquisteAgent(
+    provider=deep_provider, memory=memory, registre=registre,
+    pieces_jointes=pieces_jointes, memoire_personnelle=memoire_personnelle)
 
 memory.set_fact("user_profile", "owner", "Ousmane", {"role": "Propriétaire et créateur d'Usman"})
 

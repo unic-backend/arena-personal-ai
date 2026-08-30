@@ -8,8 +8,10 @@ d'ecrire un chiffre plausible dans un document qui part chez un client.
 
 Un devis faux coute plus cher qu'un devis en retard.
 """
+import base64
 import logging
 import re
+import tempfile
 from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -32,9 +34,13 @@ from agents.plaquiste.metre_plan import (
 )
 from agents.plaquiste.metre_plan import formater as formater_plan
 from apps.backend.config import BASE_DIR
+from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.agent.base_agent import BaseAgent
 from core.connectors.registre import RegistreConnecteurs
 from core.memory.memory_manager import MemoryManager
+from core.memory.personnelle import MemoirePersonnelle, Nature, TypeSouvenir
+from core.memory.recuperation import formater as formater_souvenirs
+from core.memory.recuperation import recuperer
 from core.models.base import ModelProvider
 
 logger = logging.getLogger("usman.agent.plaquiste")
@@ -252,7 +258,9 @@ class PlaquisteAgent(BaseAgent):
 
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
                  metier: Optional[Dict[str, Any]] = None,
-                 registre: Optional[RegistreConnecteurs] = None):
+                 registre: Optional[RegistreConnecteurs] = None,
+                 pieces_jointes: Optional[DepotPiecesJointes] = None,
+                 memoire_personnelle: Optional[MemoirePersonnelle] = None):
         super().__init__(
             name="PlaquisteAgent",
             description="Assistant metier d'UniC Plaquiste : devis, mails, planning.",
@@ -264,6 +272,12 @@ class PlaquisteAgent(BaseAgent):
         # Sans registre, l'agent redige mais ne produit aucun fichier. C'est un
         # etat annonce dans la reponse, pas un silence.
         self.registre = registre
+        # Sans depot, un plan envoye par piece jointe (upload PWA) reste
+        # invisible : seul un chemin tape en texte peut encore etre mesure.
+        self.pieces_jointes = pieces_jointes
+        # Sans memoire personnelle, une mesure de plan n'est jamais retenue :
+        # le proprietaire devra renvoyer le meme plan s'il y revient plus tard.
+        self.memoire_personnelle = memoire_personnelle
 
     def _lire_l_agenda(self, texte: str) -> Optional[Dict[str, Any]]:
         """Les creneaux libres, quand la demande porte sur QUAND.
@@ -356,30 +370,13 @@ class PlaquisteAgent(BaseAgent):
         return {"statut": resultat.statut.value, "message": resultat.message,
                 "preuve": resultat.preuve}
 
-    def _mesurer_le_plan(self, texte: str) -> Optional[Dict[str, Any]]:
-        """Mesure un plan PDF quand son chemin est lu dans la demande.
+    def _mesurer_depuis(self, chemin: str, texte: str) -> Dict[str, Any]:
+        """Le coeur de la mesure, une fois qu'un vrai chemin sur disque existe.
 
-        Mesurer est une lecture : rien n'est ecrit. Le rapport et le plan
-        marque ne sont soumis, derriere la meme confirmation que le devis PDF,
-        que si la demande demande AUSSI un fichier (`DEMANDE_DE_DOCUMENT`) —
-        « analyse ce plan » ne doit pas ecrire deux fichiers sur sa machine
-        sans qu'il l'ait demande.
-
-        Returns:
-            Le compte-rendu, ou `None` quand aucun chemin de plan n'a ete lu.
+        Partage par les deux origines d'un plan (chemin tape en texte, ou
+        piece jointe ecrite brievement le temps de cet appel) : la mesure et
+        l'export ne doivent pas exister en double.
         """
-        chemin = chemin_dans(texte)
-        if chemin is None:
-            return None
-        if not chemin_hors_du_depot(chemin):
-            logger.warning("Chemin de plan refuse (dans le depot d'ARENA) : %s", chemin)
-            return {"statut": "REFUSE", "chemin": chemin,
-                    "message": "Ce chemin n'est pas ouvert : il tombe dans le depot d'ARENA."}
-        if self.registre is None:
-            return {"statut": "NOT_CONFIGURED", "chemin": chemin,
-                    "message": ("Je peux chiffrer, pas ouvrir un plan : aucun "
-                                "connecteur n'est branche sur cet agent.")}
-
         resultat = self.registre.executer("opentakeoff", "mesurer", chemin=chemin)
         if not resultat.a_eu_lieu:
             return {"statut": resultat.statut.value, "chemin": chemin, "message": resultat.message}
@@ -403,6 +400,116 @@ class PlaquisteAgent(BaseAgent):
             "complet": metre.complet,
             "export": export,
         }
+
+    def _piece_plan_pdf(self, identifiants: Optional[List[str]]):
+        """La premiere piece jointe qui porte un PDF, ou None.
+
+        `pdf_base64` n'existe que pour un `.pdf` deja recu par la passerelle
+        (`apps/backend/pieces_jointes.py`) — jamais relu, jamais devine.
+        """
+        if not identifiants or self.pieces_jointes is None:
+            return None
+        for identifiant in identifiants:
+            piece = self.pieces_jointes.lire(identifiant)
+            if piece is not None and piece.pdf_base64:
+                return piece
+        return None
+
+    def _mesurer_la_piece_jointe(self, piece, texte: str) -> Dict[str, Any]:
+        """Ecrit brievement les octets deja recus, mesure, efface tout de suite.
+
+        La seule fenetre ou un plan envoye par upload touche le disque : le
+        temps de cet appel, jamais plus. Meme regle de vie privee que
+        `apps/backend/pieces_jointes.py`, juste reportee au moment ou la
+        mesure est reellement demandee plutot qu'a l'upload — OpenTakeoff est
+        un processus externe, il ne peut pas lire des octets en memoire.
+        """
+        dossier = Path(tempfile.mkdtemp(prefix="arena-plan-"))
+        chemin_temp = dossier / (piece.nom or "plan.pdf")
+        try:
+            chemin_temp.write_bytes(base64.b64decode(piece.pdf_base64))
+            resultat = self._mesurer_depuis(str(chemin_temp), texte)
+        finally:
+            chemin_temp.unlink(missing_ok=True)
+            dossier.rmdir()
+        # Le chemin rapporte est celui du fichier envoye, jamais le chemin
+        # temporaire — qui n'existe deja plus, et n'a aucun sens pour lui.
+        resultat["chemin"] = piece.nom
+        return resultat
+
+    def _mesurer_le_plan(self, texte: str,
+                         identifiants_pieces: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
+        """Mesure un plan PDF, tape en chemin ou envoye par piece jointe.
+
+        Mesurer est une lecture : rien n'est ecrit de facon durable. Le
+        rapport et le plan marque ne sont soumis, derriere la meme
+        confirmation que le devis PDF, que si la demande demande AUSSI un
+        fichier (`DEMANDE_DE_DOCUMENT`) — « analyse ce plan » ne doit pas
+        ecrire deux fichiers sur sa machine sans qu'il l'ait demande.
+
+        Returns:
+            Le compte-rendu, ou `None` quand aucun plan n'a ete trouve —
+            ni chemin tape, ni piece jointe PDF.
+        """
+        chemin = chemin_dans(texte)
+        if chemin is not None:
+            if not chemin_hors_du_depot(chemin):
+                logger.warning("Chemin de plan refuse (dans le depot d'ARENA) : %s", chemin)
+                return {"statut": "REFUSE", "chemin": chemin,
+                        "message": "Ce chemin n'est pas ouvert : il tombe dans le depot d'ARENA."}
+            if self.registre is None:
+                return {"statut": "NOT_CONFIGURED", "chemin": chemin,
+                        "message": ("Je peux chiffrer, pas ouvrir un plan : aucun "
+                                    "connecteur n'est branche sur cet agent.")}
+            return self._mesurer_depuis(chemin, texte)
+
+        piece = self._piece_plan_pdf(identifiants_pieces)
+        if piece is None:
+            return None
+        if self.registre is None:
+            return {"statut": "NOT_CONFIGURED", "chemin": piece.nom,
+                    "message": ("Je peux chiffrer, pas ouvrir un plan : aucun "
+                                "connecteur n'est branche sur cet agent.")}
+        return self._mesurer_la_piece_jointe(piece, texte)
+
+    def _retenir_la_mesure(self, plan: Dict[str, Any], context: Dict[str, Any]) -> None:
+        """Garde les CHIFFRES mesures pour qu'il puisse reprendre le meme plan
+        plus tard sans le renvoyer. Jamais l'image du plan — seulement ce
+        qu'OpenTakeoff en a mesure, deja un texte, deja sans donnee brute.
+
+        Best-effort : une memoire qui echoue ne doit pas faire perdre la
+        reponse de ce tour.
+        """
+        if self.memoire_personnelle is None or not plan.get("resume"):
+            return
+        projet = str(context.get("lieu") or context.get("client") or "").strip() or None
+        try:
+            self.memoire_personnelle.retenir(
+                contenu=f"Plan {plan['chemin']} mesure : {plan['resume']}",
+                type=TypeSouvenir.EPISODIQUE, nature=Nature.FAIT,
+                source=f"OpenTakeoff, plan {plan['chemin']}",
+                projet=projet,
+                metadonnees={
+                    "surface_totale_m2": plan.get("surface_totale_m2"),
+                    "perimetre_total_ml": plan.get("perimetre_total_ml"),
+                },
+            )
+        except Exception as erreur:  # noqa: BLE001 — une memoire ratee n'annule pas la reponse
+            logger.warning("Mesure de plan non retenue en memoire : %s", erreur)
+
+    def _plans_deja_mesures(self, texte: str) -> str:
+        """Ce qu'un plan mesure il y a des jours peut rappeler a cette question.
+
+        Lexical seulement (`recuperer`, pas d'embeddings) : cet agent n'a
+        jamais eu d'index semantique, et lui en donner un pour ce seul usage
+        deviendrait un second systeme de recherche a cote de celui du chat.
+        """
+        if self.memoire_personnelle is None:
+            return ""
+        resultats = recuperer(self.memoire_personnelle, texte, type=TypeSouvenir.EPISODIQUE)
+        # `formater_souvenirs([])` dirait "Aucun souvenir pertinent." — un bruit
+        # ajoute a chaque reponse. Rien de pertinent ne doit rien ajouter du tout.
+        return formater_souvenirs(resultats) if resultats else ""
 
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         logger.info("PlaquisteAgent : %r", user_input[:60])
@@ -428,6 +535,18 @@ class PlaquisteAgent(BaseAgent):
         archives = formater(extraits)
         if archives:
             instruction = f"{instruction}\n\n{archives}"
+
+        # Un plan mesure il y a des jours : les chiffres restent disponibles
+        # sans qu'il ait besoin de renvoyer le fichier. Jamais injecte quand
+        # rien ne se rapporte a la question — pas un reflexe a chaque reponse.
+        plans_connus = self._plans_deja_mesures(user_input)
+        if plans_connus:
+            instruction = (
+                f"{instruction}\n\nPLANS DEJA MESURES (des tours precedents, "
+                f"pas de ce message) :\n{plans_connus}\nCe sont des mesures reelles, "
+                "pas une opinion. Reprends-les si la question s'y rapporte, "
+                "ne les recalcule pas."
+            )
 
         # Le metre se CALCULE. Jusqu'au 2026-08-28, `calcul_materiaux` n'etait
         # appele par personne et le modele inventait les quantites — alors que
@@ -458,7 +577,9 @@ class PlaquisteAgent(BaseAgent):
         #   2. mur nomme ou non (cloison/separation/doublage/habillage/coffre),
         #      UNE hauteur donnee -> perimetre mesure x hauteur, faces selon le mot ;
         #   3. rampant, ou un mur SANS hauteur -> rien n'est chiffre.
-        plan = self._mesurer_le_plan(user_input)
+        plan = self._mesurer_le_plan(user_input, (context or {}).get("attachments"))
+        if plan is not None:
+            self._retenir_la_mesure(plan, context or {})
         hauteur = lire_hauteur(user_input)
         if metre is None and plan is not None and plan.get("surface_totale_m2") \
                 and demande_un_plafond(user_input):

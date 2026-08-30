@@ -63,6 +63,45 @@ def test_un_fichier_texte_est_lu(depot):
     assert piece.lisible is True
 
 
+# --- Le PDF, pour une mesure de plan eventuelle --------------------------------
+
+def _pdf_valide() -> bytes:
+    """Un vrai PDF, pas une chaine qui y ressemble."""
+    from io import BytesIO
+
+    from reportlab.pdfgen import canvas
+
+    tampon = BytesIO()
+    c = canvas.Canvas(tampon)
+    c.drawString(100, 700, "plan")
+    c.save()
+    return tampon.getvalue()
+
+
+def test_un_pdf_garde_ses_octets_pour_une_mesure_eventuelle(depot):
+    """PlaquisteAgent en a besoin pour OpenTakeoff, un processus externe qui
+    ne peut pas lire le texte deja extrait — seuls de vrais octets lui servent."""
+    contenu = _pdf_valide()
+
+    piece = depot.deposer("plan.pdf", contenu)
+
+    assert piece.pdf_base64
+    assert base64.b64decode(piece.pdf_base64) == contenu
+
+
+def test_un_document_non_pdf_ne_garde_aucun_octet(depot):
+    """Meme regle de vie privee que toujours : pas d'exception sans raison."""
+    piece = depot.deposer("devis.txt", TEXTE)
+
+    assert piece.pdf_base64 == ""
+
+
+def test_le_pdf_n_est_pas_dans_la_forme_transportable(depot):
+    piece = depot.deposer("plan.pdf", _pdf_valide())
+
+    assert "pdf_base64" not in piece.to_dict()
+
+
 @pytest.mark.parametrize("nom", ["photo.exe", "video.mp4", "archive.zip", "sans_extension"])
 def test_un_format_non_lu_est_refuse_en_le_disant(depot, nom):
     piece = depot.deposer(nom, b"contenu")
