@@ -66,13 +66,27 @@ body {
 
 /* ── Light Mode Color Inversions & Polish ── */
 :root[data-theme="light"], .light-mode {
-  --color-ink-950: #f8f9fa;
+  --color-ink-950: #ffffff;
   --color-ink-900: #ffffff;
   --color-ink-850: #f1f3f5;
   --color-ink-800: #e9ecef;
   --color-ink-700: #dee2e6;
   color-scheme: light;
 }
+
+/* Le texte de l'app est ecrit en `text-zinc-*` dans tout le JSX, une echelle
+   choisie pour un fond sombre : zinc-200 (quasi-blanc) y est le texte
+   principal. Sans repli, ce meme texte reste quasi-blanc une fois le fond
+   passe clair — pale sur pale, illisible (ecran d'accueil, libelles,
+   exemples...). Chaque nuance est reprise ici avec son role d'origine, pas
+   sa valeur : la plus claire en sombre devient la plus sombre en clair. */
+:root[data-theme="light"] .text-zinc-100, .light-mode .text-zinc-100,
+:root[data-theme="light"] .text-zinc-200, .light-mode .text-zinc-200 { color: #18181b; }
+:root[data-theme="light"] .text-zinc-300, .light-mode .text-zinc-300 { color: #27272a; }
+:root[data-theme="light"] .text-zinc-400, .light-mode .text-zinc-400 { color: #3f3f46; }
+:root[data-theme="light"] .text-zinc-500, .light-mode .text-zinc-500 { color: #52525b; }
+:root[data-theme="light"] .text-zinc-600, .light-mode .text-zinc-600 { color: #71717a; }
+:root[data-theme="light"] .text-zinc-700, .light-mode .text-zinc-700 { color: #a1a1aa; }
 
 :root[data-theme="light"] body, .light-mode body {
   background: #f8f9fa;
@@ -153,9 +167,10 @@ body {
 button, textarea { touch-action: manipulation; }
 
 /* ── Keyboard Accessibility & Focus Rings ── */
+/* Le cadre orange etait dessine par le navigateur sur TOUT element focus
+   (input, textarea, bouton) — demande explicitement retiree partout. */
 :focus-visible {
-  outline: 2px solid var(--color-accent-500);
-  outline-offset: 2px;
+  outline: none;
 }
 
 /* ── Accessible Skip to Main Content Link ── */
