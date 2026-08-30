@@ -44,7 +44,7 @@ class TestStrategieDeRecherche:
         assert resultats[0]["date"] == "2026-08-26"
 
     def test_sans_actualite_du_jour_on_elargit_a_la_semaine(self):
-        moteur = MoteurDouble({("text", "w"): [_resultat("https://b.test")]})
+        moteur = MoteurDouble({("news", "w"): [_resultat("https://b.test")]})
         outil = WebSearchTool()
         outil._executer = moteur
 
@@ -52,7 +52,45 @@ class TestStrategieDeRecherche:
 
         categories = [(a["categorie"], a["timelimit"]) for a in moteur.appels]
         assert ("news", "d") in categories
-        assert ("text", "w") in categories
+        assert ("news", "w") in categories
+
+    def test_le_filtre_de_fraicheur_ne_s_applique_jamais_a_text(self):
+        """Mesuré le 2026-08-30, serveur en ligne, « qui est le president du senegal ».
+
+        `text` avec `timelimit="w"` rendait *QUI - Wikipedia*, *Log in to
+        Quizlet*, *Merriam-Webster* : la passe ne cherchait plus la question,
+        seulement le mot « qui ». Ses résultats revenaient tous sans date — la
+        preuve qu'elle ne filtrait sur aucune date — et ils prenaient les cinq
+        places, si bien que la passe suivante, la seule à rendre « Bassirou
+        Diomaye Faye », n'était jamais lancée.
+        """
+        moteur = MoteurDouble({})
+        outil = WebSearchTool()
+        outil._executer = moteur
+
+        outil.search("qui est le president du senegal", max_results=5, recent=True)
+
+        filtres_sur_text = [
+            a for a in moteur.appels if a["categorie"] == "text" and a["timelimit"]
+        ]
+        assert filtres_sur_text == [], (
+            "une passe `text` filtrée sur la date est revenue : elle rend des "
+            f"pages hors sujet et vole la place de la dernière passe ({filtres_sur_text})"
+        )
+
+    def test_la_passe_qui_repond_est_atteinte_quand_les_actualites_ne_rendent_rien(self):
+        """Le cas de l'utilisateur : aucune actualité, mais la réponse existe."""
+        moteur = MoteurDouble({
+            ("text", None): [_resultat("https://fr.wikipedia.org/wiki/Bassirou_Diomaye_Faye")],
+        })
+        outil = WebSearchTool()
+        outil._executer = moteur
+
+        resultats = outil.search("qui est le president du senegal", max_results=5, recent=True)
+
+        assert [r["href"] for r in resultats] == [
+            "https://fr.wikipedia.org/wiki/Bassirou_Diomaye_Faye"
+        ]
 
     def test_on_finit_sans_contrainte_de_date_plutot_que_zero_resultat(self):
         """Le cas exact du 2026-08-26 : la recherche rendait zéro."""
