@@ -24,7 +24,7 @@ logger = logging.getLogger("usman.tools.documents")
 
 # Formats que ce module sait ouvrir. Une extension absente d'ici est refusee
 # explicitement, elle n'est pas ignoree en silence.
-EXTENSIONS_LISIBLES = {".pdf", ".docx", ".txt", ".md", ".csv"}
+EXTENSIONS_LISIBLES = {".pdf", ".docx", ".txt", ".md", ".csv", ".xlsx", ".pptx"}
 
 # Un document plus gros que cela est probablement une archive ou une video mal
 # nommee ; le lire d'un bloc occuperait la memoire pour rien.
@@ -139,12 +139,63 @@ def _lire_docx(chemin: Path) -> List[Passage]:
     return [Passage(texte=contenu, fichier=chemin.name)] if contenu else []
 
 
+def _lire_xlsx(chemin: Path) -> List[Passage]:
+    """Excel : un passage par feuille, les lignes vides ignorees.
+
+    `data_only=True` lit la derniere valeur calculee d'une formule, pas sa
+    formule elle-meme — un devis dans un tableur montre ses chiffres, pas
+    `=B2*C2`.
+    """
+    from openpyxl import load_workbook
+
+    classeur = load_workbook(str(chemin), data_only=True, read_only=True)
+    try:
+        passages = []
+        for nom_feuille in classeur.sheetnames:
+            feuille = classeur[nom_feuille]
+            lignes = []
+            for ligne in feuille.iter_rows(values_only=True):
+                cellules = [str(v).strip() for v in ligne if v is not None and str(v).strip()]
+                if cellules:
+                    lignes.append(" | ".join(cellules))
+            contenu = _nettoyer("\n".join(lignes))
+            if contenu:
+                passages.append(Passage(texte=contenu, fichier=f"{chemin.name} ({nom_feuille})"))
+        return passages
+    finally:
+        classeur.close()
+
+
+def _lire_pptx(chemin: Path) -> List[Passage]:
+    """PowerPoint : un passage par diapositive, la diapositive vaut la page."""
+    from pptx import Presentation
+
+    presentation = Presentation(str(chemin))
+    passages = []
+    for numero, diapositive in enumerate(presentation.slides, 1):
+        morceaux = []
+        for forme in diapositive.shapes:
+            if forme.has_text_frame and forme.text_frame.text.strip():
+                morceaux.append(forme.text_frame.text)
+            elif forme.has_table:
+                for ligne in forme.table.rows:
+                    cellules = [c.text.strip() for c in ligne.cells if c.text.strip()]
+                    if cellules:
+                        morceaux.append(" | ".join(cellules))
+        contenu = _nettoyer("\n".join(morceaux))
+        if contenu:
+            passages.append(Passage(texte=contenu, fichier=chemin.name, page=numero))
+    return passages
+
+
 LECTEURS = {
     ".pdf": _lire_pdf,
     ".docx": _lire_docx,
     ".txt": _lire_texte_simple,
     ".md": _lire_texte_simple,
     ".csv": _lire_texte_simple,
+    ".xlsx": _lire_xlsx,
+    ".pptx": _lire_pptx,
 }
 
 

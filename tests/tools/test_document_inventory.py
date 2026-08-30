@@ -111,11 +111,11 @@ def test_un_document_supprime_est_signale_pas_oublie(dossier, inventaire):
 def test_un_format_non_lisible_est_compte_a_part(dossier, inventaire):
     deposer(dossier, "devis.txt")
     (dossier / "photo.jpg").write_bytes(b"\xff\xd8\xff")
-    (dossier / "tableur.xlsx").write_bytes(b"PK\x03\x04")
+    (dossier / "tableur.ods").write_bytes(b"PK\x03\x04")
 
     plan = inventaire.analyser(dossier)
 
-    assert sorted(c.name for c in plan.ignores) == ["photo.jpg", "tableur.xlsx"]
+    assert sorted(c.name for c in plan.ignores) == ["photo.jpg", "tableur.ods"]
     assert [c.name for c in plan.nouveaux] == ["devis.txt"]
 
 
