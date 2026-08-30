@@ -22,6 +22,7 @@
    ───────────────────────────────────────────────────────────── */
 
 import type { ActivityEvent, StreamChunk } from './types';
+import { normaliserSources } from './sources';
 import type { AgentTransport } from './transport';
 import type { AgentRequest } from '../agent/orchestrator';
 import { uiLocale } from '../i18n';
@@ -33,6 +34,12 @@ import { getActiveMemoriesPayload } from '../memory/memoryStore';
 export interface RemoteConfig {
   url: string;
   apiKey?: string;
+}
+
+/** Le contrat du serveur devient celui de l'interface — voir `./sources`. */
+function normaliserChunk(chunk: StreamChunk): StreamChunk {
+  if (chunk.type !== 'done' || !chunk.meta?.sources) return chunk;
+  return { ...chunk, meta: { ...chunk.meta, sources: normaliserSources(chunk.meta.sources) } };
 }
 
 interface UploadedAttachment {
@@ -253,7 +260,7 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
                 if (!payload || payload === '[DONE]') continue;
                 const chunk = JSON.parse(payload) as StreamChunk;
                 if (chunk.type === 'error') throw new Error(chunk.message);
-                yield chunk;
+                yield normaliserChunk(chunk);
                 if (chunk.type === 'done') return;
               }
             }

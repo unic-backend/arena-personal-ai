@@ -120,11 +120,18 @@ export const KIND_ACCENT: Record<ActivityKind, string> = {
   error: 'text-red-400',
 };
 
-/* deterministic letter-mark for a source domain (no external favicon calls) */
-export function DomainMark({ domain, className }: { domain: string; className?: string }) {
+/* deterministic letter-mark for a source domain (no external favicon calls)
+
+   `domain` est facultatif **par mesure**, pas par prudence : les sources
+   renvoyees par le serveur portent une adresse, jamais un domaine. Lire
+   `domain.length` sur `undefined` levait une exception en plein rendu, React
+   demontait tout l'arbre, et l'ecran du proprietaire devenait entierement noir
+   — mesure le 30/08/2026. Sans domaine, la pastille porte « ? ». */
+export function DomainMark({ domain, className }: { domain?: string; className?: string }) {
+  const nom = domain ?? '';
   let h = 0;
-  for (let i = 0; i < domain.length; i++) h = (h * 31 + domain.charCodeAt(i)) % 360;
-  const letter = domain.replace(/^(www\.)?/, '')[0]?.toUpperCase() ?? '?';
+  for (let i = 0; i < nom.length; i++) h = (h * 31 + nom.charCodeAt(i)) % 360;
+  const letter = nom.replace(/^(www\.)?/, '')[0]?.toUpperCase() ?? '?';
   return (
     <span
       className={cn('grid shrink-0 place-items-center rounded-md text-[9px] font-semibold text-white/90', className)}
