@@ -743,13 +743,160 @@ volume existe ou non. Vérifié réellement, les deux cas rejoués : sans volume
 La CI rejoue maintenant le premier cas à chaque build, pas seulement le
 second.
 
-**Aucun volume Railway n'est encore configuré** : `/app/data` reste donc
-éphémère à chaque redéploiement sur ce serveur — la mémoire et les devis n'y
-survivraient pas. DEC-0021 l'exige ; un volume Railway sur `/app/data` (et
-`/app/media`) reste à poser.
+**Aucun volume Railway n'était configuré** au moment de ce chapitre :
+`/app/data` était donc éphémère à chaque redéploiement — la mémoire et les
+devis n'y survivaient pas, alors que DEC-0021 l'exige. **Réglé le 30/08/2026**,
+voir *VOLET « Mêmes conversations sur tous ses appareils », phase 1* plus bas :
+volume monté sur `/app/data`, persistance vérifiée après redéploiement.
 
 **Chapitre 5 terminé, confirmé par le propriétaire depuis son téléphone** :
 l'interface PWA répond, authentifiée, sur l'adresse Railway. Le VOLET
 « ARENA en ligne, PC éteint » est fonctionnel — ARENA est joignable sans que
-son PC soit allumé. Reste ouvert, pas bloquant : le volume persistant
-ci-dessus.
+son PC soit allumé. Le volume persistant, seul point resté ouvert à la clôture
+de ce chapitre, a été posé le 30/08/2026 (voir plus bas).
+
+---
+
+## Suite du 30/08/2026 — ce qui a été trouvé une fois le serveur en ligne
+
+Le VOLET précédent s'arrêtait à « ARENA répond depuis le téléphone ». La suite
+est ce que l'usage réel a révélé, dans l'ordre où le propriétaire l'a rencontré.
+Chaque point a été **mesuré sur le serveur en ligne**, jamais déduit.
+
+### La clé d'API refusée trois fois — et ce n'était pas la clé
+
+Trois clés successives, toutes rejetées par `/health`. Deux hypothèses fausses
+avant la bonne :
+
+1. des caractères spéciaux abîmés par un copier-coller mobile — faux ;
+2. une espace ou un retour à la ligne en fin de valeur — **vrai mais pas la
+   cause** ici. `reglage()` ne faisait aucun `.strip()`, ce qui est un défaut
+   réel : corrigé et testé (PR #52), mais l'erreur a persisté après.
+
+La cause a été trouvée par la **Console Railway**, en interrogeant le conteneur
+vivant plutôt qu'en supposant :
+
+```
+python3 -c "import os; print(repr(os.environ.get('USMAN_API_KEY')))"  ->  None
+printenv | grep -i usman                                             ->  USMAN API KEY=...
+```
+
+Le **nom** de la variable portait des espaces au lieu de tirets bas. La valeur
+était correcte depuis le début. Variable supprimée puis recréée sous le bon nom.
+
+*Leçon retenue : la Console Railway répond en une commande à une question qui a
+coûté une heure de suppositions. À utiliser dès le deuxième échec inexpliqué.*
+
+### La recherche web ne cherchait pas — trois défauts empilés
+
+Le propriétaire : « il répond mais il ne fait pas de recherche ». Trois causes
+distinctes, trouvées l'une après l'autre, chacune masquée par la précédente.
+
+| # | Cause | Correctif |
+|---|---|---|
+| 1 | `FreshInfoAgent` bornait la recherche à 6 s alors que `search(recent=True)` enchaîne jusqu'à cinq appels réseau et s'accorde 25 s | délai porté à 30 s (PR #53) |
+| 2 | La passe `text` + `timelimit="w"` ne cherchait plus la question — seulement le mot « qui » (*Quizlet*, *Merriam-Webster*) — et prenait les 5 places, si bien que la passe qui répond n'était jamais lancée | passe supprimée ; le filtre de fraîcheur ne s'applique plus qu'à `news` (PR #54) |
+| 3 | Le mot **« secret »**, lu dans la page Wikipédia (« élu au scrutin secret »), classait la demande `TRES_SENSIBLE` → cloud interdit → et sans Ollama sur Railway, plus aucun fournisseur | un nom de champ n'est un secret que **suivi de sa valeur** (PR #55) |
+
+Le troisième mérite d'être retenu : `FRAGMENTS_SECRETS` vient de
+`core/actions/journal.py`, où `masquer()` lit ces chaînes comme des **noms de
+champ**. Les chercher comme sous-chaînes dans de la prose téléchargée confond un
+secret avec un mot ordinaire. Rien n'a été affaibli : les regex de clés, les
+formulations françaises (mot de passe, IBAN, CVV) et les formes possessives
+classent toujours `TRES_SENSIBLE`, et les neuf tests de sécurité existants
+passent sans avoir été touchés.
+
+Vérifié en direct après déploiement : « qui est le président du Sénégal » →
+*« Bassirou Diomaye Faye, depuis son investiture le 2 avril 2024 »*, trois
+sources Wikipédia à l'appui.
+
+### L'écran noir de la PWA
+
+Une réponse de recherche rendait l'écran **entièrement noir**, et rouvrir la
+conversation le renoircissait — elle est enregistrée.
+
+Le serveur décrit une source par son **adresse** et n'envoie jamais de
+`domain` ; `SourceMeta` le déclarait obligatoire et `DomainMark` lisait
+`domain.length`. Une exception pendant le rendu démonte tout l'arbre React — et
+**il n'existait aucun `ErrorBoundary` dans toute l'application**, ce qui est le
+vrai défaut : n'importe quelle erreur d'affichage effaçait l'écran.
+
+Corrigé (PR #56) : domaine déduit de l'adresse aux deux frontières (flux SSE et
+`localStorage`, pour réparer aussi l'existant), `DomainMark` tolérant, et un
+`ErrorBoundary` autour de chaque message. Reproduit puis vérifié avec Playwright
+sur le paquet construit ; la garde a été **sabotée-vérifiée** — encadré
+d'erreur au lieu de l'écran noir.
+
+*Déclarer un champ obligatoire ne le rend pas présent : ça cache le trou
+jusqu'à ce que le rendu le trouve.*
+
+## VOLET « Mêmes conversations sur tous ses appareils » — terminé le 30/08/2026
+
+Le propriétaire : les conversations de son PC n'apparaissaient pas sur son
+téléphone. Ce n'était pas une panne : elles vivaient dans le `localStorage` de
+chaque navigateur, donc nulle part en commun.
+
+**Phase 1 — le disque persistant.** Le point laissé ouvert au chapitre 5 est
+fermé. Volume Railway monté sur `/app/data` (0,5 Go, disponible sur le forfait
+d'essai). Il ne se crée pas depuis *Settings* mais depuis le **canevas du
+projet** (`+ Add` → *Volume*), et il faut **redéployer à la main** ensuite.
+Persistance prouvée, pas supposée : après redéploiement dans un conteneur neuf
+(`fa8bc69abbbd` → `372911692e56`), un fichier daté écrit avant se relisait
+inchangé, et `df` montre `/dev/zd7376 … /app/data` comme système de fichiers
+distinct. La mémoire, le journal et les approbations y survivent désormais —
+DEC-0021 est enfin satisfaite.
+
+**Phase 2 — le coffre côté serveur** (`core/conversations/depot.py`, PR #57).
+Deux décisions, avec ce qu'elles coûtent si elles sont fausses :
+
+- *La conversation est stockée entière, en JSON, jamais découpée en colonnes.*
+  Le serveur est un coffre, pas un modèle : la forme appartient à l'interface,
+  qui la fait évoluer souvent. La découper obligerait à migrer la base à chaque
+  changement d'écran et perdrait en silence les champs inconnus du serveur.
+  Coût si c'est faux : aucune requête champ par champ côté serveur — dont rien
+  n'a besoin aujourd'hui.
+- *La plus récente gagne*, arbitrée sur le `updatedAt` du client. Un seul
+  propriétaire, deux appareils jamais utilisés en même temps. Coût si c'est
+  faux : une modification faite sur un appareil endormi perd contre une plus
+  récente ailleurs.
+
+Une suppression pose une **pierre tombale** au lieu d'effacer la ligne : sans
+elle, l'appareil absent au moment de la suppression renvoie la conversation et
+elle ressuscite à chaque synchronisation.
+
+**Phase 3 — le client** (`apps/pwa/src/lib/sync/`, PR #58). Synchronisation au
+démarrage, à la fin de chaque tour et après une suppression. Trois règles de
+sûreté qui disent toutes la même chose — **synchroniser ne doit jamais coûter
+une conversation** : une panne réseau ne change rien localement ; une
+conversation locale absente de la réponse est **gardée**, seule une pierre
+tombale efface ; un serveur trop ancien fait taire la synchronisation au lieu
+d'échouer à chaque message.
+
+Renommer et épingler datent désormais la conversation : l'arbitrage se fait sur
+cette date, et un renommage non daté perdrait silencieusement contre la copie de
+l'autre appareil.
+
+Vérifié en direct sur le serveur après déploiement : dépôt (`ecrites: 1`),
+relecture entière, puis pierre tombale (`total: 0`) — la trace de test effacée.
+Côté interface, vérifié avec Playwright sur le paquet construit : une
+conversation « écrite sur le PC » arrive, s'enregistre et s'affiche ; serveur
+injoignable, rien n'est perdu ; suppression par l'interface, la pierre tombale
+part bien.
+
+### Ce qui reste ouvert
+
+- **La CI ne peut pas passer au vert** : le budget GitHub Actions du compte est
+  à 0 $ avec « arrêt d'utilisation », donc chaque exécution est tuée en quelques
+  secondes avant qu'un runner soit attribué — sur `master` aussi, depuis la PR
+  #43. Relever le budget demande un moyen de paiement, refusé à ce jour. Les
+  dépôts **ne doivent pas** être repassés en public pour contourner : leur
+  historique contient encore les six valeurs de secrets décrites dans
+  `documents/RUNBOOK_PURGE_SECRETS.md`.
+- **`apps/pwa` n'a aucun lanceur de tests.** Les correctifs d'interface (#56,
+  #58) sont vérifiés par Playwright à la main, mais rien ne les fige. En ajouter
+  un est un travail à part, non demandé à ce jour.
+- **Une seule panne de `/health` déconnecte l'application.** `backendStore.test()`
+  met `enabled: false` dès que la sonde échoue, et la synchronisation s'arrête
+  jusqu'à reconnexion manuelle. Comportement antérieur à ce VOLET, non modifié.
+- **La fusion est par conversation, pas par message.** Modifier le même fil sur
+  les deux appareils hors ligne garde le plus récent en entier.

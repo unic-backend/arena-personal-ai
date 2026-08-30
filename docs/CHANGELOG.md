@@ -1,6 +1,43 @@
 # CHANGELOG - Usman PERSONAL AI
 
 ## [Non publié]
+
+### Ajouté — 30/08/2026
+- **Les conversations sont les mêmes sur tous ses appareils.** Coffre côté
+  serveur (`core/conversations/depot.py`), deux routes authentifiées
+  (`GET /conversations`, `POST /conversations/sync`), et synchronisation depuis
+  l'interface au démarrage, à la fin de chaque tour et après une suppression.
+  La plus récente gagne ; une suppression pose une pierre tombale pour ne pas
+  ressusciter au prochain envoi ; une panne réseau ne coûte jamais une
+  conversation.
+- **Volume persistant Railway** monté sur `/app/data` : la mémoire, le journal
+  et les approbations survivent enfin aux redéploiements (DEC-0021).
+- **Un `ErrorBoundary` autour de chaque message.** Il n'en existait aucun dans
+  l'application : une seule erreur de rendu effaçait tout l'écran.
+
+### Corrigé — 30/08/2026
+- **Écran noir sur une réponse de recherche.** Le serveur envoie une adresse de
+  source, jamais un domaine ; `DomainMark` lisait `domain.length` dessus. Le
+  domaine est désormais déduit de l'adresse à la réception **et** à la lecture
+  du stockage, pour réparer aussi les conversations déjà enregistrées.
+- **La recherche web ne cherchait pas.** Trois causes empilées : le délai de
+  recherche était plus court que ce que l'outil s'accorde (6 s contre 25 s) ;
+  la passe `text` filtrée sur la semaine ne cherchait plus la question et
+  volait la place de celle qui répond ; et le mot « secret », lu dans une page
+  Wikipédia, faisait classer la demande `TRES_SENSIBLE`, ce qui interdit le
+  cloud — sans Ollama sur le serveur, plus aucun fournisseur ne pouvait
+  répondre.
+- **Un nom de champ n'est un secret que suivi de sa valeur.** `FRAGMENTS_SECRETS`
+  vient du journal des actions, où ces chaînes sont des *noms de champ* ; les
+  chercher dans de la prose confondait « scrutin secret » avec une fuite. Les
+  regex de clés, les formulations françaises (mot de passe, IBAN, CVV) et les
+  formes possessives classent toujours `TRES_SENSIBLE`.
+- `reglage()` retire les espaces et retours à la ligne en fin de valeur : un
+  panneau de variables mobile en ajoute, et la clé stockée ne correspondait
+  alors plus jamais à celle présentée.
+- Renommer ou épingler une conversation met à jour sa date : sans cela
+  l'arbitrage de la synchronisation aurait perdu ces changements en silence.
+
 ### Sécurité
 - La clé de la passerelle ne figure plus dans le dépôt : `librechat.yaml` lit
   `${ARENA_API_KEY}`, que `docker-compose.yml` transmet au conteneur LibreChat.
