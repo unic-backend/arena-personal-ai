@@ -160,6 +160,27 @@ QUESTIONS_PERSONNELLES = (
 )
 
 
+# Salutations pures — jamais suffisantes pour declencher un agent specialise.
+#
+# Mesure le 30/08/2026, sur le serveur en ligne, apres la phase 2 (routage
+# direct par espace) : un simple « bonjour » envoye depuis l'espace UniC
+# Plaquiste forcait PLAQUISTE, et PlaquisteAgent — qui n'a qu'un mode, ecrire
+# un devis — a redige un email de cloture complet avec une reference et des
+# details de client fabriques, pour une phrase qui n'en demandait aucun. Sa
+# regle absolue (« n'invente jamais un prix ») ne dit rien de « n'invente
+# jamais un devis » quand rien n'en a demande un.
+#
+# Avant le routage par espace, « bonjour » retombait sur CHAT par le
+# classement habituel — cette regression est celle du routage direct, pas de
+# PlaquisteAgent lui-meme, qu'on se garde de modifier ici pour un defaut qui
+# n'est pas le sien.
+SALUTATIONS_PURES = (
+    "bonjour", "bonsoir", "salut", "coucou", "hello", "hi", "yo",
+    "merci", "ça va", "ca va", "ça va ?", "ca va ?",
+    "comment vas-tu", "comment vas tu", "comment allez-vous", "comment allez vous",
+)
+
+
 ANNEE = re.compile(r"\b(19|20)\d{2}\b")
 
 # Formulations qui portent sur un état ou un résultat courant. Elles ne
@@ -267,6 +288,18 @@ class OrchestratorAgent(BaseAgent):
         """
         return any(motif in (user_input or "").lower() for motif in QUESTIONS_PERSONNELLES)
 
+    @staticmethod
+    def salutation_pure(user_input: str) -> bool:
+        """Vrai seulement si la phrase ENTIERE n'est que la salutation.
+
+        Un simple `in` prendrait « bonjour, peux-tu me faire un devis » pour
+        une salutation — la ponctuation finale est retiree, rien d'autre.
+        Deux `strip()` : « salut ! » laisse une espace en trop entre le retrait
+        du « ! » et la comparaison, sans le second passage.
+        """
+        texte = (user_input or "").strip().lower().rstrip("!.?").strip()
+        return texte in SALUTATIONS_PURES
+
     async def analyze_intent(self, user_input: str, espace: Optional[str] = None) -> str:
         """Détermine vers quel agent envoyer la demande.
 
@@ -275,15 +308,23 @@ class OrchestratorAgent(BaseAgent):
         son agent, sans appeler le modele classeur — l'utilisateur a deja dit
         ou il voulait aller en cliquant dessus.
 
-        Le contrôle daté passe en premier, espace ou non : il ne coûte rien et
-        il rattrape ce que ni le modèle ni l'espace ne peuvent voir. Ensuite
-        seulement l'espace, puis le modèle. S'ils sont indisponibles ou
-        répondent autre chose qu'une étiquette connue, on retombe sur les
-        mots-clés — un repli moins fin, mais annoncé dans les journaux plutôt
+        Trois controles determinstes passent avant l'espace, dans cet ordre :
+        question personnelle, salutation pure, puis controle date. Aucun des
+        trois ne coute rien, et chacun rattrape ce que l'espace ne peut pas
+        savoir mieux qu'une phrase ordinaire — une salutation depuis « UniC
+        Plaquiste » ne doit pas faire rediger un devis fabrique.
+
+        Ensuite seulement l'espace, puis le modele. S'ils sont indisponibles ou
+        repondent autre chose qu'une etiquette connue, on retombe sur les
+        mots-cles — un repli moins fin, mais annonce dans les journaux plutot
         que silencieux.
         """
         if self.question_personnelle(user_input):
             logger.info("Question personnelle : reponse par la memoire, sans web ni classeur")
+            return "CHAT"
+
+        if self.salutation_pure(user_input):
+            logger.info("Salutation pure : CHAT, quel que soit l'espace")
             return "CHAT"
 
         if self.exige_verification(user_input):
