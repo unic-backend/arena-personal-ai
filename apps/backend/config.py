@@ -134,7 +134,9 @@ if FOURNISSEUR_DEMANDE not in FOURNISSEURS:
 MODELE_LOCAL = os.getenv("OLLAMA_MODEL") or MODELE_PROFOND
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODELE = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+# Voir la note de `.env.example` : le modele par defaut suit le catalogue
+# Groq, qui retire des modeles. Les deux valeurs ne doivent pas diverger.
+GROQ_MODELE = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 GROQ_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
 
 DEEPINFRA_API_KEY = os.getenv("DEEPINFRA_API_KEY", "")

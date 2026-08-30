@@ -287,6 +287,35 @@ C'est la décision la plus coûteuse du projet si elle se retourne.
 Si le propriétaire veut revenir en arrière, une seule ligne suffit :
 `AI_LOCAL_ONLY=true`. La décision reste réversible, et c'est voulu.
 
+### Ce que ça donne réellement — mesuré le 30/08/2026
+
+Jusqu'ici, ce registre ne portait **aucun chiffre** : `scripts/comparer_fournisseurs.py`
+existe précisément pour que personne n'écrive « 5× plus rapide » sans l'avoir
+lancé. Il a tourné, sur la machine du propriétaire (Windows, RTX A2000) :
+
+| Fournisseur | Modèle | Scène | 1er mot | Total |
+|---|---|---|---|---|
+| ollama | `qwen3.5:9b` | courte | 48,1 s | 49,1 s |
+| ollama | `qwen3.5:9b` | normale | 85,1 s | 87,8 s |
+| ollama | `qwen3.5:9b` | longue | `UNKNOWN` | 114,6 s |
+| groq | `openai/gpt-oss-120b` | courte | **0,707 s** | 0,711 s |
+| groq | `openai/gpt-oss-120b` | normale | **0,349 s** | 0,739 s |
+| groq | `openai/gpt-oss-120b` | longue | **0,383 s** | 1,019 s |
+| deepinfra | — | — | `ABSENT` | pas de clé |
+
+**Deux ordres de grandeur sur le temps jusqu'au premier mot** — la mesure qui
+décide de ce qu'il ressent (règle 3 du script). Une réponse locale se fait
+attendre presque une minute avant son premier mot ; la même question chez Groq
+répond avant qu'il ait fini de lire sa propre phrase.
+
+Cela ne change **rien** aux régimes ci-dessus : ce qui est sensible reste sur sa
+machine, et lentement vaut mieux que dehors. Ce que ces chiffres justifient,
+c'est le repli **inverse** — un `HYBRIDE` qui n'utiliserait jamais le cloud
+rendrait ARENA inutilisable pour la conversation ordinaire.
+
+Le `UNKNOWN` de la scène longue est à lire tel quel : aucun premier mot n'a été
+horodaté sur ce passage. Ce n'est pas « instantané », et ce n'est pas zéro.
+
 
 ## DEC-0010 : d'un dossier de prompts, on extrait la méthode — pas les fichiers
 
