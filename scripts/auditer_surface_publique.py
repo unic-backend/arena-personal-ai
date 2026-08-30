@@ -21,23 +21,18 @@ pourra le trouver aussi.
    défaut si elle n'y est pas.** `/`, `/health`, les fichiers de l'interface :
    personne n'a de raison de les protéger. Le reste, oui.
 """
-import os
 import sys
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import Iterator, List
 
 RACINE = Path(__file__).resolve().parent.parent
 if str(RACINE) not in sys.path:
     sys.path.insert(0, str(RACINE))
 
-# Sans cle configuree (poste de developpement, ce bac a sable), la passerelle
-# refuse tout par defaut de securite — mais avec un code 500, pas le 401 d'un
-# serveur deploye normalement. Ce script mesure la surface publique, pas la
-# configuration locale : une cle de test, jamais lue ni ecrite ailleurs, sert
-# uniquement a voir les vrais codes 401/429 qu'un visiteur obtiendrait. Elle
-# n'ecrase jamais une vraie cle deja presente dans l'environnement.
-os.environ.setdefault("USMAN_API_KEY", "audit-cle-de-test-non-secrete")
+#: Une cle de test, jamais lue ni ecrite ailleurs — voir `_avec_une_cle_de_test`.
+CLE_DE_TEST = "audit-cle-de-test-non-secrete"
 
 #: Ce qui n'a jamais eu besoin de la clé, et n'en aura jamais besoin : l'interface
 #: elle-même, pas ce qu'elle sert. Toute route absente de cette liste ET
@@ -104,29 +99,55 @@ def _auditer_mount_media(client) -> Constat:
     return Constat(f"/media/rendered/{nom_fichier}", reponse.status_code, attendu_public=False)
 
 
+@contextmanager
+def _avec_une_cle_de_test() -> Iterator[None]:
+    """Force `security.USMAN_API_KEY` le temps de l'audit, puis la restitue.
+
+    Sans cle reelle configuree (ce bac a sable, un poste de developpement),
+    `verify_api_key`/`verify_media_access` refusent tout avec un 500 — le
+    defaut de securite, pas le 401 qu'un visiteur obtiendrait vraiment sur un
+    serveur deploye. Passer par `os.environ` ne suffit pas : `apps.backend.config`
+    lit la variable une seule fois, a son tout premier import — souvent deja
+    fait par un autre module (la suite de tests, par exemple) avant que ce
+    script ne s'execute. Patcher directement l'attribut du module, comme le
+    font deja les tests du depot (`monkeypatch.setattr(securite, ...)`),
+    fonctionne quel que soit l'ordre d'import — et la restitution en `finally`
+    ne laisse rien pour l'appelant suivant.
+    """
+    from apps.backend import security
+
+    originale = security.USMAN_API_KEY
+    security.USMAN_API_KEY = CLE_DE_TEST
+    try:
+        yield
+    finally:
+        security.USMAN_API_KEY = originale
+
+
 def auditer() -> List[Constat]:
     """Appelle chaque route déclarée et les mounts connus, sans aucune clé."""
     from fastapi.testclient import TestClient
 
     from apps.backend.main import app
 
-    client = TestClient(app)
-    constats = []
+    with _avec_une_cle_de_test():
+        client = TestClient(app)
+        constats = []
 
-    for chemin in _routes_api_declarees():
-        if "{" in chemin:
-            continue  # parametree : /icons/{nom} est deja sur la liste publique
-        reponse = client.get(chemin)
-        constats.append(Constat(chemin, reponse.status_code,
-                                attendu_public=chemin in ROUTES_DELIBEREMENT_PUBLIQUES))
+        for chemin in _routes_api_declarees():
+            if "{" in chemin:
+                continue  # parametree : /icons/{nom} est deja sur la liste publique
+            reponse = client.get(chemin)
+            constats.append(Constat(chemin, reponse.status_code,
+                                    attendu_public=chemin in ROUTES_DELIBEREMENT_PUBLIQUES))
 
-    constats.append(_auditer_mount_media(client))
+        constats.append(_auditer_mount_media(client))
 
-    # La documentation auto-generee de FastAPI ne figure pas dans `app.routes`
-    # comme une `APIRoute` : sondes directes.
-    for chemin in ("/openapi.json", "/docs", "/redoc"):
-        reponse = client.get(chemin)
-        constats.append(Constat(chemin, reponse.status_code, attendu_public=False))
+        # La documentation auto-generee de FastAPI ne figure pas dans `app.routes`
+        # comme une `APIRoute` : sondes directes.
+        for chemin in ("/openapi.json", "/docs", "/redoc"):
+            reponse = client.get(chemin)
+            constats.append(Constat(chemin, reponse.status_code, attendu_public=False))
 
     return constats
 

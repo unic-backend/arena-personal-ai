@@ -1,16 +1,15 @@
 """L'audit de la surface publique dit-il la vérité ?
 
-VOLET « ARENA en ligne », phase 4.1. `scripts/auditer_surface_publique.py`
-mesure l'application réelle (`TestClient`), jamais son code source — ce
-fichier protège cette promesse de deux façons :
+VOLET « ARENA en ligne », phases 4.1 puis 4.2. `scripts/auditer_surface_publique.py`
+mesure l'application réelle (`TestClient`), jamais son code source — ce fichier
+protège cette promesse de deux façons :
 
 1. `Constat.est_un_defaut` est testé seul, sans dépendre de l'application
    (sabotage direct sur le dataclass).
-2. `auditer()` est appelé pour de vrai et doit retrouver les deux défauts
-   déjà prouvés à la main le 30/08/2026 : le mount `/media/rendered` sans
-   clé, et la documentation FastAPI auto-générée. Tant que la phase 4.2
-   (le correctif) n'est pas faite, ces défauts sont réels — le test les
-   attend présents, pas absents.
+2. `auditer()` est appelé pour de vrai et doit désormais retrouver **zéro**
+   défaut : la 4.2 a fermé les deux trouvés par la 4.1 (`/media/rendered`
+   exige la clé, la documentation FastAPI est fermée par défaut). Une
+   régression sur l'un ou l'autre doit faire échouer ce fichier.
 """
 import sys
 from pathlib import Path
@@ -34,32 +33,44 @@ def test_pas_de_defaut_si_deliberement_public():
 
 
 def test_pas_de_defaut_si_la_route_refuse():
-    """Une route protégée qui répond 401/403/405 n'est pas un défaut."""
-    for code in (401, 403, 405, 500):
+    """Une route protégée qui répond 401/403/404/405 n'est pas un défaut."""
+    for code in (401, 403, 404, 405, 500):
         c = Constat(chemin="/api/actions", code=code, attendu_public=False)
         assert c.est_un_defaut is False, f"code {code} ne devrait pas etre un defaut"
 
 
-def test_audit_detecte_le_mount_media_sans_cle():
-    """Le fichier depose dans /media/rendered doit ressortir servi sans cle.
+def test_audit_ne_trouve_plus_aucun_defaut():
+    """Phase 4.2 : les deux défauts mesurés en 4.1 doivent être fermés."""
+    constats = auditer()
+    defauts = [c.chemin for c in constats if c.est_un_defaut]
+    assert defauts == [], f"routes encore joignables sans cle : {defauts}"
 
-    Reproduit le defaut prouve a la main le 30/08/2026 : un fichier reel,
-    nom derive d'un upload, servi en HTTP 200 sans Authorization.
+
+def test_le_mount_media_exige_desormais_la_cle():
+    """Le fichier depose dans /media/rendered ne repond plus sans cle.
+
+    Avant la 4.2, ce meme appel rendait le fichier en HTTP 200 — prouve a la
+    main le 30/08/2026. Il doit desormais refuser.
     """
     constats = auditer()
     media = [c for c in constats if c.chemin.startswith("/media/rendered/")]
     assert media, "l'audit doit sonder le mount /media/rendered"
-    assert media[0].code == 200
-    assert media[0].est_un_defaut is True
+    assert media[0].code == 401
+    assert media[0].est_un_defaut is False
 
 
-def test_audit_detecte_la_documentation_publique():
-    """`/openapi.json`, `/docs` et `/redoc` doivent ressortir comme défauts."""
+def test_la_documentation_est_fermee_par_defaut():
+    """`/openapi.json`, `/docs` et `/redoc` ne doivent plus repondre sans cle.
+
+    `APP_ENV` n'est pas positionne dans cet environnement de test : c'est
+    exactement le cas — le plus probable — que `docs_actives()` doit fermer.
+    """
     constats = auditer()
     par_chemin = {c.chemin: c for c in constats}
     for chemin in ("/openapi.json", "/docs", "/redoc"):
         assert chemin in par_chemin, f"{chemin} doit etre sonde"
-        assert par_chemin[chemin].est_un_defaut is True
+        assert par_chemin[chemin].code == 404
+        assert par_chemin[chemin].est_un_defaut is False
 
 
 def test_aucune_route_api_reelle_n_est_publique():

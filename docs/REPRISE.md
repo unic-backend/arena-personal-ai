@@ -618,14 +618,33 @@ Ce qui a été vérifié comme correct, pas seulement supposé :
   aucune n'a été trouvée en défaut.
 - CORS n'autorise jamais `*` (`ALLOWED_ORIGINS` par défaut : `localhost`
   uniquement).
-- Les pages d'interface volontairement publiques (`/`, `/health`,
-  `/offline.html`, `/manifest.webmanifest`, `/sw.js`, `/ui/classique`,
-  `/icons/{nom}`) le sont par choix, pas par oubli.
+- Les pages d'interface volontairement publiques (`/`, `/health`, la page hors
+  ligne, le manifeste, le service worker, `/ui/classique`, `/icons/{nom}`) le
+  sont par choix, pas par oubli.
 
-Rien n'est corrigé ici : cette phase mesure, la 4.2 durcira. Les tests
-(`tests/test_auditer_surface_publique.py`) verrouillent ces quatre défauts
-comme présents — ils devront être mis à jour quand la 4.2 les fermera, pas
-avant.
+Rien n'est corrigé dans cette phase : elle mesure, la 4.2 durcit.
 
-Prochaine phase : **4.2**, protéger `/media/rendered` et la documentation
-auto-générée.
+## VOLET « ARENA en ligne, PC éteint » — chapitre 4, phase 4.2, durcissement du 30/08/2026
+
+Les deux défauts de la 4.1, fermés :
+
+- **`/media/rendered` exige désormais la clé.** Le mount `StaticFiles` est
+  remplacé par une route (`servir_media_rendu`) qui appelle
+  `validate_media_path` puis `verify_media_access` — une variante de
+  `verify_api_key` qui accepte aussi la clé en paramètre `?cle=`, parce qu'un
+  `<video src="...">` ne peut poser aucun en-tête `Authorization` ; c'est le
+  navigateur qui charge l'URL, pas du JavaScript. L'interface classique
+  (`apps/frontend/index.html`) est mise à jour pour l'y ajouter — la lecture
+  vidéo existante n'est pas cassée par ce durcissement.
+- **La documentation FastAPI est fermée par défaut.** `docs_actives()`
+  (`apps/backend/config.py`) ne s'ouvre que si `.env` porte
+  `APP_ENV=development` ; sans cette variable — l'oubli le plus probable — le
+  serveur reste fermé. `.env.example` est mis à jour à `APP_ENV=production`
+  pour qu'un nouveau clone parte fermé, pas ouvert.
+
+`scripts/auditer_surface_publique.py` ne trouve plus aucun défaut :
+`tests/test_auditer_surface_publique.py` verrouille ce zéro, et
+`tests/test_surface_api.py` (l'empreinte de toute la surface HTTP) connaît la
+nouvelle route et sa dépendance.
+
+Chapitre 4 terminé.

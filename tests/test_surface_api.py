@@ -25,6 +25,8 @@ SURFACE_ATTENDUE = {
     "/manifest.webmanifest": (["GET"], []),
     "/offline.html": (["GET"], []),
     "/icons/{nom}": (["GET"], []),
+    # Remplace le mount StaticFiles d'origine, joignable sans cle (phase 4.2).
+    "/media/rendered/{nom}": (["GET"], ["verify_media_access"]),
     # Passerelle vers l'interface PWA du proprietaire.
     "/agent/stream": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/files": (["POST"], ["verify_api_key"]),
@@ -107,9 +109,8 @@ def test_toute_route_appelant_le_modele_est_limitee_en_debit():
 
 
 def test_le_dossier_des_rendus_reste_servi():
-    montages = [getattr(r, "path", "") for r in main.app.routes]
-
-    assert "/media/rendered" in montages
+    """Route authentifiee depuis la 4.2 — plus un mount StaticFiles public."""
+    assert "/media/rendered/{nom}" in routes_declarees()
 
 
 def test_le_chemin_du_projet_est_pret_avant_tout_import_du_paquet():
@@ -177,8 +178,9 @@ PROPRIETAIRE = {
         "lightrag_tool", "graphrag_tool",
     ],
     "security": [
-        "verify_api_key", "limiter_debit", "validate_media_path", "client_de",
-        "limiteur", "USMAN_API_KEY", "REQUETES_MAX",
+        "verify_api_key", "verify_media_access", "limiter_debit",
+        "validate_media_path", "client_de", "limiteur", "USMAN_API_KEY",
+        "REQUETES_MAX",
     ],
     "prompts": ["get_arena_system_prompt", "date_du_jour", "FAITS_DU_PROPRIETAIRE"],
     "main": ["app"],
