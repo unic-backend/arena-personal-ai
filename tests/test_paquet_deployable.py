@@ -60,6 +60,21 @@ class TestLImageNeTourneJamaisEnRootUneFoisDemarree:
         assert "entrypoint.sh" in source
         assert "chmod +x" in source, "sans ça, l'entrypoint n'est pas executable au demarrage"
 
+    def test_entrypoint_cree_les_dossiers_avant_de_les_corriger(self):
+        """Panne réelle du premier déploiement (Railway, chapitre 5).
+
+        `data/` est exclu de l'image par `.dockerignore` (monté en volume,
+        jamais copié) ; sans volume configuré — ce que Railway ne fait pas
+        tout seul — le dossier n'existe nulle part, et `chown` sur un chemin
+        absent tuait le conteneur en boucle avant même que `/health` réponde.
+        """
+        code = ENTRYPOINT.read_text(encoding="utf-8").split("set -e", 1)[-1]
+
+        mkdir = code.index("mkdir")
+        chown = code.index("chown")
+        assert mkdir < chown, "mkdir -p doit venir avant chown, sinon un chemin absent replante"
+        assert "mkdir -p /app/data /app/media" in code
+
 
 class TestLaCiVerifieLePermissionDuVolume:
     """Le bug du test ci-dessus n'était visible qu'avec un vrai volume monté.

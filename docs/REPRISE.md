@@ -726,3 +726,24 @@ Point non résolu, sans gravité : `/health` rapporte `"ollama_available":true`
 sur Railway alors qu'aucun Ollama n'y tourne — ce champ ne sert qu'au
 diagnostic secondaire, pas au routage réel (DEC-0022), et n'affecte donc rien
 de fonctionnel. À creuser si l'occasion se présente.
+
+**Panne réelle après ce déploiement : le serveur ne répondait plus du tout**
+(502, en boucle). `apps/backend/entrypoint.sh` plantait :
+
+```
+chown: cannot access '/app/data': No such file or directory
+```
+
+`data/` est exclu de l'image par `.dockerignore` (monté en volume, jamais
+copié) — et Railway ne monte aucun volume par défaut, contrairement à
+`deploy/docker-compose.yml`. Le dossier n'existait donc nulle part. Corrigé
+par un `mkdir -p /app/data /app/media` avant le `chown` : correct que le
+volume existe ou non. Vérifié réellement, les deux cas rejoués : sans volume
+(le cas Railway), et avec un volume root:root (le cas docker-compose.yml).
+La CI rejoue maintenant le premier cas à chaque build, pas seulement le
+second.
+
+**Aucun volume Railway n'est encore configuré** : `/app/data` reste donc
+éphémère à chaque redéploiement sur ce serveur — la mémoire et les devis n'y
+survivraient pas. DEC-0021 l'exige ; un volume Railway sur `/app/data` (et
+`/app/media`) reste à poser.
