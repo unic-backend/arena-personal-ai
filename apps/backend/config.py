@@ -43,6 +43,22 @@ MEDIA_DIR = BASE_DIR / "media"
 RENDERED_DIR = MEDIA_DIR / "rendered"
 DB_PATH = BASE_DIR / "data" / "database" / "memory.db"
 
+# --- Environnement -------------------------------------------------------------
+# `APP_ENV` existait deja dans `.env.example`, sans qu'aucun code ne le lise.
+# Il decide desormais si la documentation auto-generee de FastAPI existe.
+APP_ENV = os.getenv("APP_ENV", "production")
+
+
+def docs_actives() -> bool:
+    """Vrai seulement si `APP_ENV=development`. Par defaut : documentation fermee.
+
+    `/openapi.json`, `/docs` et `/redoc` n'ont aucune dependance possible en
+    FastAPI natif — la seule protection reelle est de ne jamais les generer
+    (VOLET « ARENA en ligne », phase 4.2). Un serveur qui demarre sans
+    `APP_ENV` du tout (l'oubli le plus probable) reste ferme, pas ouvert.
+    """
+    return APP_ENV == "development"
+
 # --- Origines autorisees (CORS) -----------------------------------------------
 # Jamais « * » : le navigateur laisserait n'importe quel site appeler /api.
 ORIGINES_PAR_DEFAUT = "http://localhost:3000,http://localhost:3080,http://localhost:8000"

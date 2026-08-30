@@ -279,9 +279,11 @@
                     document.getElementById('res-ai-summary').innerText = data.ai_summary || 'Aucun résumé disponible.';
 
                     if (data.video_web_url) {
+                        // /media/rendered exige la cle depuis la phase 4.2 : un <video src>
+                        // ne peut poser aucun en-tete, elle voyage donc en parametre ici.
                         const player = document.getElementById('video-player');
                         const source = document.getElementById('video-source');
-                        source.src = data.video_web_url;
+                        source.src = data.video_web_url + '?cle=' + encodeURIComponent(cleUsman());
                         player.load();
                     }
 

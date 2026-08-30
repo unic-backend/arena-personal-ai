@@ -63,6 +63,33 @@ def verify_api_key(request: Request, authorization: Optional[str] = Header(None)
     return True
 
 
+def verify_media_access(request: Request, authorization: Optional[str] = Header(None)):
+    """Comme `verify_api_key`, avec un repli en parametre `cle` pour les medias.
+
+    Un `<video src="...">` ou `<img src="...">` charge son URL directement
+    depuis le navigateur, sans jamais poser d'en-tete `Authorization` — seul un
+    `fetch()`/XHR le peut. `/media/rendered` accepte donc aussi la cle en
+    parametre de requete, pour ce seul usage (VOLET « ARENA en ligne »,
+    phase 4.2). Le reste de la passerelle garde `verify_api_key` tel quel.
+    """
+    if not USMAN_API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="USMAN_API_KEY absente du fichier .env : passerelle desactivee par securite."
+        )
+    if cle_presentee_valide(authorization):
+        return True
+    if request.query_params.get("cle") == USMAN_API_KEY:
+        return True
+
+    motif = "cle absente" if not authorization and "cle" not in request.query_params else "cle invalide"
+    logger.warning(
+        "Authentification refusee media (%s) : %s -> %s",
+        motif, client_de(request), request.url.path,
+    )
+    raise HTTPException(status_code=401, detail="Cle API invalide ou manquante.")
+
+
 def limiter_debit(request: Request):
     """Refuse une requete de trop et indique dans combien de temps reessayer."""
     client = client_de(request)

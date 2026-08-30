@@ -591,3 +591,60 @@ Ce qui a été durci et ajouté :
   chaque push et chaque PR.
 
 Prochaine phase : **3.2**, les données (SQLite) et leur sauvegarde.
+
+## VOLET « ARENA en ligne, PC éteint » — chapitre 4, phase 4.1, audit du 30/08/2026
+
+Aujourd'hui ARENA écoute chez son propriétaire, derrière un tunnel Cloudflare
+dont l'adresse est longue et change à chaque redémarrage. En ligne (DEC-0021),
+l'adresse sera fixe et permanente : ce que cette phase trouve joignable
+aujourd'hui, tout Internet pourra le trouver aussi.
+
+Mesuré, pas lu : `scripts/auditer_surface_publique.py` appelle l'application
+réelle (`TestClient` sur `apps.backend.main.app`) sans jamais présenter de
+clé, plutôt que de faire confiance à `dependencies=[Depends(verify_api_key)]`
+dans le code. Résultat, **4 défauts réels** :
+
+- **`/media/rendered` répond sans clé.** Prouvé avec un vrai fichier : déposé
+  sous un nom que `/api/upload` produirait (`…_vertical_9_16.mp4`), il est
+  servi en `HTTP 200` à quiconque en devine — ou en connaît déjà — le nom.
+  Rien ne protège ce mount : c'est un `StaticFiles` sans dépendance.
+- **`/openapi.json`, `/docs`, `/redoc` répondent sans clé.** Le comportement
+  par défaut de FastAPI ; aucune route déclarée ne les couvre.
+
+Ce qui a été vérifié comme correct, pas seulement supposé :
+
+- Chaque route réelle sous `/api/*` et `/v1/*` (introspection récursive de
+  `app.routes`, y compris les sous-routeurs `include_router`) exige la clé —
+  aucune n'a été trouvée en défaut.
+- CORS n'autorise jamais `*` (`ALLOWED_ORIGINS` par défaut : `localhost`
+  uniquement).
+- Les pages d'interface volontairement publiques (`/`, `/health`, la page hors
+  ligne, le manifeste, le service worker, `/ui/classique`, `/icons/{nom}`) le
+  sont par choix, pas par oubli.
+
+Rien n'est corrigé dans cette phase : elle mesure, la 4.2 durcit.
+
+## VOLET « ARENA en ligne, PC éteint » — chapitre 4, phase 4.2, durcissement du 30/08/2026
+
+Les deux défauts de la 4.1, fermés :
+
+- **`/media/rendered` exige désormais la clé.** Le mount `StaticFiles` est
+  remplacé par une route (`servir_media_rendu`) qui appelle
+  `validate_media_path` puis `verify_media_access` — une variante de
+  `verify_api_key` qui accepte aussi la clé en paramètre `?cle=`, parce qu'un
+  `<video src="...">` ne peut poser aucun en-tête `Authorization` ; c'est le
+  navigateur qui charge l'URL, pas du JavaScript. L'interface classique
+  (`apps/frontend/index.html`) est mise à jour pour l'y ajouter — la lecture
+  vidéo existante n'est pas cassée par ce durcissement.
+- **La documentation FastAPI est fermée par défaut.** `docs_actives()`
+  (`apps/backend/config.py`) ne s'ouvre que si `.env` porte
+  `APP_ENV=development` ; sans cette variable — l'oubli le plus probable — le
+  serveur reste fermé. `.env.example` est mis à jour à `APP_ENV=production`
+  pour qu'un nouveau clone parte fermé, pas ouvert.
+
+`scripts/auditer_surface_publique.py` ne trouve plus aucun défaut :
+`tests/test_auditer_surface_publique.py` verrouille ce zéro, et
+`tests/test_surface_api.py` (l'empreinte de toute la surface HTTP) connaît la
+nouvelle route et sa dépendance.
+
+Chapitre 4 terminé.
