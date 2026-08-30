@@ -293,3 +293,47 @@ def test_sans_dotenv_installe_main_ne_plante_pas(monkeypatch):
     monkeypatch.setattr(doctor, "diagnostiquer", lambda: Rapport([]))
 
     assert doctor.main() == 0
+
+
+class TestUnePanneNeTueJamaisLeDiagnostic:
+    """Une sonde qui casse marque SA ligne, pas les vingt autres.
+
+    Mesure du 29/08/2026, machine du proprietaire (Windows) : la sonde
+    OpenTakeoff levait `OSError [WinError 10038]` — le `select()` sur un pipe,
+    corrige dans `core/mcp/stdio_transport.py` — et `doctor.py` s'arretait la.
+    Il perdait le GPU, Ollama, ffmpeg, la cle API : tout, a cause d'un seul
+    connecteur en panne. Un diagnostic qui meurt de ce qu'il diagnostique ne
+    diagnostique rien.
+    """
+
+    def test_une_sonde_qui_leve_marque_sa_ligne_et_ne_remonte_pas(self, monkeypatch):
+        from core.connectors import opentakeoff
+
+        def sonde_qui_casse(self):
+            raise OSError(10038, "Une operation a ete tentee sur autre chose qu'un socket")
+
+        monkeypatch.setattr(opentakeoff.ConnecteurOpenTakeoff, "sonder", sonde_qui_casse)
+
+        verification = doctor.verifier_opentakeoff()
+
+        assert verification.etat == EN_PANNE
+        assert "10038" in verification.detail, (
+            "la ligne ne dit pas ce qui a cassé : le propriétaire ne peut pas agir dessus")
+
+    def test_le_rapport_complet_survit_a_cette_panne(self, monkeypatch):
+        """Le vrai enjeu : les autres lignes sont toujours là."""
+        from core.connectors import opentakeoff
+
+        monkeypatch.setattr(
+            opentakeoff.ConnecteurOpenTakeoff, "sonder",
+            lambda self: (_ for _ in ()).throw(OSError(10038, "pas un socket")))
+
+        verification = doctor.verifier_opentakeoff()
+        rapport = Rapport([
+            Verification("GPU", OK, "RTX A2000"),
+            verification,
+            Verification("Ollama", OK, "4 modeles"),
+        ])
+
+        assert len(rapport.verifications) == 3
+        assert [v.etat for v in rapport.verifications] == [OK, EN_PANNE, OK]

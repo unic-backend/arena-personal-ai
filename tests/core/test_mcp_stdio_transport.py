@@ -98,3 +98,76 @@ class TestNettoyage:
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+class TestLectureMultiplateforme:
+    """La lecture du flux doit marcher aussi sous Windows.
+
+    Mesure du 29/08/2026 sur la machine du proprietaire : la premiere version
+    attendait sur `selectors.DefaultSelector().select()` applique au
+    descripteur du pipe `stdout` du sous-processus. Sous Windows, `select()`
+    n'accepte que des sockets — jamais un pipe — d'ou `OSError: [WinError
+    10038]` a **chaque** appel MCP. OpenTakeoff etait inutilisable la-bas,
+    alors qu'il tournait de bout en bout ici.
+
+    Le test qui compte est structurel, et il l'est pour une raison : sous
+    Linux, `select()` sur un pipe **fonctionne**. Aucun test de comportement
+    lance sur cette machine ne peut voir la panne. Seule l'absence de
+    `select()` dans le chemin de lecture se verifie des deux cotes.
+    """
+
+    SOURCE = Path(__file__).resolve().parents[2] / "core" / "mcp" / "stdio_transport.py"
+
+    def test_le_chemin_de_lecture_n_appelle_aucun_select(self):
+        code = self.SOURCE.read_text(encoding="utf-8")
+        # La docstring du module raconte la panne : on ne lit que le code.
+        sans_entete = code.split('"""', 2)[-1]
+
+        assert "selectors" not in sans_entete, (
+            "`selectors` est revenu dans le chemin de lecture. Sous Windows, "
+            "select() sur le pipe d'un sous-processus leve WinError 10038 a "
+            "chaque appel MCP — voir la regle 4 du module.")
+        assert ".select(" not in sans_entete
+
+    def test_le_thread_lecteur_ne_survit_pas_a_la_fermeture(self):
+        client = ClientMcpStdio(COMMANDE, dossier=DOSSIER)
+        client.ouvrir()
+        lecteur = client._lecteur
+        assert lecteur is not None and lecteur.is_alive()
+
+        client.fermer()
+
+        assert not lecteur.is_alive(), "un thread lecteur survit a son processus"
+        assert client._lecteur is None
+
+    def test_une_session_rouverte_ne_traine_pas_le_flux_de_la_precedente(self):
+        """Un morceau non consomme de la session d'avant ferait deraper la suivante."""
+        client = ClientMcpStdio(COMMANDE, dossier=DOSSIER)
+        client.ouvrir()
+        client._tampon = b'{"jsonrpc": "2.0", "id": "restant"'  # ligne incomplete
+        client.fermer()
+
+        try:
+            assert client.ouvrir().ok
+            assert client._tampon == b"", "le tampon de la session precedente a survecu"
+            assert client.outils().ok
+        finally:
+            client.fermer()
+
+    def test_un_processus_mort_rend_une_raison_sans_attendre_le_delai(self):
+        """Le fil se ferme, le thread pousse la fin du flux : pas d'attente inutile."""
+        import time as _time
+
+        client = ClientMcpStdio(COMMANDE, dossier=DOSSIER, delai=30.0)
+        client.ouvrir()
+        client._processus.kill()
+        client._processus.wait(timeout=5)
+
+        debut = _time.monotonic()
+        reponse = client.outils()
+        ecoule = _time.monotonic() - debut
+        client.fermer()
+
+        assert not reponse.ok
+        assert reponse.raison, "une panne sans raison n'est pas un etat"
+        assert ecoule < 10, f"a attendu {ecoule:.1f}s alors que le processus etait mort"

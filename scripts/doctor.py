@@ -297,7 +297,15 @@ def verifier_opentakeoff() -> Verification:
         return Verification("Metre de plan (OpenTakeoff)", EN_PANNE,
                             "indeterminable : les dependances ne s'importent pas")
 
-    sante = ConnecteurOpenTakeoff().sonder()
+    # Une panne d'un connecteur marque SA ligne, jamais tout le diagnostic.
+    # Mesure du 29/08/2026 : sous Windows, `sonder()` levait `OSError
+    # [WinError 10038]` et faisait planter `doctor.py` en entier — le
+    # proprietaire perdait les vingt autres lignes a cause d'une seule.
+    try:
+        sante = ConnecteurOpenTakeoff().sonder()
+    except Exception as erreur:  # noqa: BLE001 — un diagnostic ne meurt pas d'une panne qu'il diagnostique
+        return Verification("Metre de plan (OpenTakeoff)", EN_PANNE,
+                            f"la sonde a echoue : {type(erreur).__name__}: {erreur}")
     if sante.etat == EtatSante.OPERATIONNEL:
         return Verification("Metre de plan (OpenTakeoff)", OK, sante.message)
     if sante.etat == EtatSante.NON_CONFIGURE:
