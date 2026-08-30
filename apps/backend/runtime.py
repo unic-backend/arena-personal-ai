@@ -46,6 +46,7 @@ from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.wan2gp import Wan2GPConnector
+from core.conversations.depot import DepotConversations
 from core.execution.disjoncteur import Disjoncteur
 from core.execution.hooks import RegistreDeCrochets
 from core.execution.mesures import Rapport
@@ -72,6 +73,8 @@ logger = logging.getLogger("usman.backend")
 
 # --- Etat et outils -----------------------------------------------------------
 memory = MemoryManager(db_path=str(DB_PATH))
+# Le coffre a conversations : ce que ses appareils se partagent (VOLET synchro).
+depot_conversations = DepotConversations(db_path=str(DB_PATH))
 permissions = PermissionManager()
 # Politique fine (compte x service x action x risque) et controle qui la combine
 # aux neuf coupe-circuits ci-dessus. La plus stricte des deux couches gagne.

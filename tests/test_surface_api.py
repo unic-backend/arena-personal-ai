@@ -49,6 +49,10 @@ SURFACE_ATTENDUE = {
     # declenchement d'un cycle de diagnostic reel.
     "/api/gardien/rapport": (["GET"], ["verify_api_key", "limiter_debit"]),
     "/api/gardien/cycle": (["POST"], ["verify_api_key", "limiter_debit"]),
+    # Les conversations partagees entre ses appareils. Meme protection que le
+    # reste : sans la cle, elles ne se lisent ni ne s'ecrivent.
+    "/conversations": (["GET"], ["verify_api_key", "limiter_debit"]),
+    "/conversations/sync": (["POST"], ["verify_api_key", "limiter_debit"]),
 }
 
 
