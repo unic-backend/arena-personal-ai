@@ -547,3 +547,47 @@ routeur — candidats, ordre, raison — qui ne demande aucun réseau.
 Rien n'est corrigé ici : la phase 2.1 mesure, la 2.2 corrigera. Et la correction
 touche à la **confidentialité**, pas seulement au routage : elle demande une
 décision du propriétaire, pas un patch.
+
+## VOLET « ARENA en ligne, PC éteint » — phase 2.2, DEC-0022 du 30/08/2026
+
+Sa décision : son PC reste `HYBRIDE`, le serveur tourne en `CLOUD_PREFERRED`.
+Le réglage existait déjà (`NIVEAUX_SORTANTS`) — rien d'inventé, un choix par
+machine. `.env.example` ne change pas : un dépôt cloné démarre toujours dans le
+mode le plus fermé. Détail complet et ce que ça coûte si c'est faux : DEC-0022.
+
+Construit avec la décision : `RouteurModeles._pourquoi_personne()`. Un échec
+disait « Aucun fournisseur n'a pu répondre. », sans dire si c'était une
+coupure passagère ou un modèle qui n'existe pas sur cette machine. Il nomme
+maintenant les fournisseurs essayés et, quand c'est le classement qui a fermé
+la porte (pas une panne), le mode qui l'aurait ouverte — jamais pour un secret.
+
+## VOLET « ARENA en ligne, PC éteint » — phase 3.1, paquet déployable du 30/08/2026
+
+`apps/backend/Dockerfile` existe depuis le tout premier commit du dépôt et
+**personne ne l'avait jamais construit** — ni un humain, ni la CI, qui ne
+faisait que résoudre `requirements.txt` (ce qui avait déjà attrapé pywin32
+sans marqueur de plateforme, mais ne prouve pas qu'une image se construit).
+
+Construit et lancé réellement pendant cette phase, en contournant le proxy du
+bac à sable pour joindre PyPI : l'image tourne, `/health` répond authentifié
+et non authentifié, et le conteneur passe `healthy` sous le `HEALTHCHECK` de
+Docker lui-même — pas seulement dans le fichier.
+
+Ce qui a été durci et ajouté :
+
+- `USER arena` — le propriétaire ne se connecte jamais à ce conteneur, il n'a
+  besoin d'aucun privilège que le processus n'a pas lui-même. Vérifié :
+  `whoami` dans le conteneur rend `arena`, pas `root`.
+- `HEALTHCHECK` sur `/health` — la bonne sonde pour un conteneur : elle mesure
+  que le processus vit, pas que chaque service distant répond (ça, c'est le
+  diagnostic applicatif, DEC-0022).
+- `deploy/docker-compose.yml` — **pas à la racine** : un `docker-compose.yml`
+  racine a déjà fui quatre secrets (LibreChat, Open WebUI) et un test le garde
+  absent. `data/` et `media/` sont montés en volume — sans ça, reconstruire
+  l'image effacerait la mémoire, la grille de prix et les devis produits
+  (DEC-0021) en silence. Aucune variable n'y est fixée en dur : tout vient de
+  `.env`, jamais de ce fichier versionné.
+- `.github/workflows/ci.yml` — un nouveau job construit vraiment l'image à
+  chaque push et chaque PR.
+
+Prochaine phase : **3.2**, les données (SQLite) et leur sauvegarde.

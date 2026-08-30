@@ -59,6 +59,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install --dry-run -r requirements.txt
 
+  docker-build:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build apps/backend/Dockerfile
+        # Cette image existe depuis le tout premier commit du depot et
+        # personne — aucun outil, aucun humain — ne l'avait jamais construite.
+        # "dependencies" (ci-dessus) verifiait deja que requirements.txt se
+        # resout, precisement parce que c'est ce qui avait un jour rendu
+        # l'image irreconstructible (pywin32 sans marqueur de plateforme).
+        # Une resolution qui reussit ne prouve pas qu'une image se construit :
+        # cette etape construit l'image elle-meme, pour de vrai.
+        run: docker build -f apps/backend/Dockerfile -t arena:ci .
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
