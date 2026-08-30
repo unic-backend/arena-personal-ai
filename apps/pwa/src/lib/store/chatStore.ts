@@ -69,6 +69,34 @@ export interface LogEntry {
 
 const CHAT_KEY = 'usman.chats.v1';
 
+/* La conversation ouverte doit survivre a un F5.
+
+   `conversations` etait sauvegarde, `activeId` non : recharger la page pendant
+   une conversation retombait toujours sur l'ecran vide (« Bonjour »), meme si
+   la conversation existait encore dans la liste juste a cote. Mesure le
+   30/08/2026, signale par le proprietaire. */
+const ACTIVE_KEY = 'usman.chats.active.v1';
+
+/** L'identifiant memorise, seulement s'il designe encore une conversation reelle.
+
+    Une conversation supprimee entre-temps (par soi, ou par l'autre appareil via
+    la synchronisation) ne doit pas rouvrir un ecran vide sur un fantome. */
+function lireActiveId(conversations: Conversation[]): string | null {
+  try {
+    const id = localStorage.getItem(ACTIVE_KEY);
+    return id && conversations.some((c) => c.id === id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+function ecrireActiveId(id: string | null) {
+  try {
+    if (id) localStorage.setItem(ACTIVE_KEY, id);
+    else localStorage.removeItem(ACTIVE_KEY);
+  } catch { /* stockage plein — ignore */ }
+}
+
 /* Les suppressions doivent voyager, elles aussi.
 
    Sans trace locale, l'appareil qui n'etait pas la au moment de la suppression
@@ -200,9 +228,11 @@ export const vfsContext: AgentContext = {
   },
 };
 
-export const useChat = create<ChatState>((set, get) => ({
-  conversations: loadConversations(),
-  activeId: null,
+export const useChat = create<ChatState>((set, get) => {
+  const conversationsInitiales = loadConversations();
+  return {
+  conversations: conversationsInitiales,
+  activeId: lireActiveId(conversationsInitiales),
   isRunning: false,
   eventLog: [],
   logOpen: false,
@@ -928,4 +958,14 @@ export const useChat = create<ChatState>((set, get) => ({
       return { conversations };
     });
   },
-}));
+};
+});
+
+/* Sauvegarde `activeId` des qu'il change, quelle qu'en soit la cause —
+   selection manuelle, nouvelle conversation, suppression, ou synchronisation
+   avec l'autre appareil. Un seul point d'ecriture plutot qu'un `ecrireActiveId`
+   glisse dans chacune des actions ci-dessus, qui finirait par en oublier une. */
+useChat.subscribe((etat, precedent) => {
+  if (etat.activeId !== precedent.activeId) ecrireActiveId(etat.activeId);
+});
+
