@@ -231,40 +231,54 @@ réels.
 
 ---
 
-## 5. Le point qui change l'implémentation — à trancher avant de coder
+## 5. Le point qui changeait l'implémentation — tranché par le propriétaire, fait
 
-**Fermer le trou C (upload PWA → OpenTakeoff) demande de choisir entre deux
-principes du projet, et ce n'est pas à moi de trancher seul** :
+**Décidé le 30/08/2026, par le propriétaire lui-même** — deux questions,
+deux réponses, chacune motivée par son usage réel (téléphone, au chantier,
+PC éteint le jour ; taper un chemin ne marche pas dans ce cas-là) :
 
-1. Garder la règle actuelle (« un document est effacé dès qu'il est lu »)
-   → un plan envoyé par upload ne pourra **jamais** être mesuré par
-   OpenTakeoff, qui a besoin d'un vrai fichier sur disque pendant la durée
-   de la mesure. La capacité resterait limitée aux plans désignés par un
-   chemin tapé (le cas déjà couvert).
-2. Assouplir la règle, **seulement pour un plan activement en cours de
-   mesure** : garder le fichier le temps de l'appel à OpenTakeoff (quelques
-   secondes), l'effacer aussitôt après — jamais accumulé, jamais au-delà
-   du tour de conversation.
+1. **Upload direct autorisé, avec l'exception la plus étroite possible** :
+   un plan envoyé par la PWA garde ses octets en mémoire (comme une image
+   le fait déjà — même règle, même endroit), et ne touche le disque que le
+   temps de l'appel à OpenTakeoff, effacé aussitôt après. Jamais accumulé,
+   jamais au-delà de ce seul appel.
+2. **Les chiffres mesurés sont retenus, jamais l'image du plan** : après une
+   mesure réussie, `agents/plaquiste/plaquiste_agent.py` dépose ce
+   qu'OpenTakeoff a réellement mesuré (surfaces, périmètre — un texte, pas
+   une image) dans la mémoire personnelle (`core/memory/personnelle.py`,
+   déjà là, jamais dupliquée) — pour qu'il puisse reprendre le même plan
+   des jours après sans le renvoyer.
 
-Les deux sont défendables ; aucun n'est neutre. La règle actuelle est une
-protection de vie privée écrite en toutes lettres dans
-`pieces_jointes.py` ; l'assouplir, même brièvement, pour un seul type de
-fichier est le genre de décision que `docs/DECISIONS.md` documente
-d'habitude avec son propriétaire, pas une extrapolation de code.
+**Fait dans cette PR** (phase 4) :
+
+- `apps/backend/pieces_jointes.py` : `PieceJointe.pdf_base64`, la même
+  exception déjà acceptée pour une image, étendue à un PDF.
+- `agents/plaquiste/plaquiste_agent.py` : un plan envoyé par piece jointe
+  est écrit dans un fichier temporaire, mesuré, effacé — dans la même
+  méthode, jamais entre deux tours. Le chemin rapporté au propriétaire est
+  le nom qu'il a envoyé, jamais le chemin temporaire (qui n'existe déjà
+  plus). Une mesure réussie est retenue en mémoire personnelle
+  (`type=EPISODIQUE, nature=FAIT`, source = OpenTakeoff, projet = client/lieu
+  quand connu) ; une question ultérieure qui s'y rapporte la retrouve via la
+  récupération lexicale déjà existante (`core/memory/recuperation.py`),
+  injectée dans l'instruction seulement quand elle se rapporte réellement à
+  la question — jamais à chaque réponse.
+- Sabotage-vérifié : désactiver l'effacement du fichier temporaire, ou la
+  garde qui retient la mesure, fait échouer un test précis dans les deux cas.
 
 ---
 
 ## 6. Plan d'implémentation proposé — phases, dans l'ordre du risque
 
-Ordre proposé, chaque phase vérifiable seule. Les phases 1, 2 et 3 sont
-faites ; les quatre autres restent à autoriser :
+Ordre proposé, chaque phase vérifiable seule. Les phases 1 à 4 sont faites ;
+les trois autres restent à autoriser :
 
 | Phase | Ce qu'elle ferme | Nouvelle dépendance | Touche une zone verrouillée ? |
 |---|---|---|---|
 | **1 — FAIT** | XLSX + PPTX dans `reader.py`, via `openpyxl`/`python-pptx` (pas Docling — voir §4, corrigé après mesure : 66 Mo contre 5,5 Go) | `openpyxl`, `python-pptx` (tous deux MIT/légers) | Non |
 | **2 — FAIT** | OCR sur PDF scanné (trou A), via Tesseract + `pypdfium2` (pas Docling/MinerU — voir §4, mesuré : ~65 Mo, bout en bout avec le vrai binaire) | `pytesseract`, `pypdfium2` (Apache 2.0/BSD) + le binaire système `tesseract-ocr` | Non |
 | **3 — FAIT** | `type_document="FACTURE"` réellement orchestré (trou E, partiel) : détection de « génère la facture » (même discipline que « génère le devis », jamais le mot seul), transmise à `DevisConnector`, vérifiée dans le vrai PDF produit (`pypdf`) | Aucune | Non |
-| **4** | Décision du propriétaire sur §5, puis upload PWA → OpenTakeoff (trou C) | Aucune | Non (mais §5 à trancher avec lui) |
+| **4 — FAIT** | Décision du propriétaire (§5) puis upload PWA → OpenTakeoff (trou C) : plan gardé en mémoire comme une image, écrit brièvement pour la mesure, effacé aussitôt ; les chiffres mesurés retenus en mémoire personnelle, jamais l'image | Aucune | Non |
 | **5** | Détection d'ouvertures via Qwen3-VL sur une page de plan rendue en image (trou D) | Aucune — `pypdfium2` (déjà en place depuis la phase 2) rend la page en image | Non — mais **NON VÉRIFIABLE avant que `qwen3-vl:4b` tourne réellement chez lui** |
 | **6** | Bon de commande / bon de livraison / rapport de métré (reste du trou E) | Aucune | Non |
 | **7** | Tests bout en bout : plan → métré → devis → PDF, avec un plan de test connu | Aucune | Non |

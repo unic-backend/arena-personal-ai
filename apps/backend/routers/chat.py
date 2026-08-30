@@ -219,7 +219,9 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         # phrase — il n'a jamais a nommer une competence.
         result = await social_agent.run(request.prompt, context={"session_id": session_id})
     elif intent == "PLAQUISTE":
-        result = await plaquiste_agent.run(request.prompt)
+        # Sans les pieces jointes, un plan envoye par upload PWA reste invisible :
+        # seul un chemin tape en texte peut alors etre mesure.
+        result = await plaquiste_agent.run(request.prompt, context={"attachments": request.attachments})
     elif intent == "BROWSER":
         result = await browser_agent.run(request.prompt)
     elif intent == "SWE_FIX":
