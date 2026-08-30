@@ -10,6 +10,24 @@ from core.models.base import ModelProvider
 
 logger = logging.getLogger("usman.agent.orchestrator")
 
+# Les espaces de la PWA (VOLET « espaces separes »). Chaque espace choisi
+# dans l'interface route DIRECTEMENT vers son agent — sans appeler le modele
+# classeur, qui ne fait alors que deviner ce que l'utilisateur a deja dit en
+# choisissant son espace. `null` (Usman general) n'a pas d'entree ici : sans
+# espace choisi, le classement habituel s'applique, inchange.
+#
+# Les deux controles determinstes (question personnelle, controle date)
+# passent AVANT cette table, dans `analyze_intent` : choisir "UniC Plaquiste"
+# ne doit pas empecher de reconnaitre "qui suis-je" ou une question d'actualite,
+# que l'espace ne peut pas deviner mieux qu'une phrase ordinaire.
+INTENTION_PAR_ESPACE = {
+    "code": "CODE_EXECUTION",
+    "plaquiste": "PLAQUISTE",
+    "video": "VIDEO_ANALYSIS",
+    "web": "FRESH_INFO",
+    "documents": "RAG_DOCS",
+}
+
 # Liste fermée : toute réponse du modèle hors de cet ensemble est rejetée.
 INTENTIONS = {
     "CHAT",
@@ -249,14 +267,20 @@ class OrchestratorAgent(BaseAgent):
         """
         return any(motif in (user_input or "").lower() for motif in QUESTIONS_PERSONNELLES)
 
-    async def analyze_intent(self, user_input: str) -> str:
+    async def analyze_intent(self, user_input: str, espace: Optional[str] = None) -> str:
         """Détermine vers quel agent envoyer la demande.
 
-        Le contrôle daté passe en premier : il ne coûte rien et il rattrape ce
-        que le modèle ne peut pas voir. Ensuite seulement le modèle tranche.
-        S'il est indisponible ou répond autre chose qu'une étiquette connue, on
-        retombe sur les mots-clés — un repli moins fin, mais annoncé dans les
-        journaux plutôt que silencieux.
+        `espace` vient de la PWA : l'espace choisi dans la barre laterale
+        (VOLET « espaces separes »). Un espace connu route directement vers
+        son agent, sans appeler le modele classeur — l'utilisateur a deja dit
+        ou il voulait aller en cliquant dessus.
+
+        Le contrôle daté passe en premier, espace ou non : il ne coûte rien et
+        il rattrape ce que ni le modèle ni l'espace ne peuvent voir. Ensuite
+        seulement l'espace, puis le modèle. S'ils sont indisponibles ou
+        répondent autre chose qu'une étiquette connue, on retombe sur les
+        mots-clés — un repli moins fin, mais annoncé dans les journaux plutôt
+        que silencieux.
         """
         if self.question_personnelle(user_input):
             logger.info("Question personnelle : reponse par la memoire, sans web ni classeur")
@@ -265,6 +289,10 @@ class OrchestratorAgent(BaseAgent):
         if self.exige_verification(user_input):
             logger.info("Contrôle daté : la question demande une vérification -> FRESH_INFO")
             return "FRESH_INFO"
+
+        if espace and espace in INTENTION_PAR_ESPACE:
+            logger.info("Espace %s choisi dans l'interface -> %s", espace, INTENTION_PAR_ESPACE[espace])
+            return INTENTION_PAR_ESPACE[espace]
 
         intention = await self._classer_par_modele(user_input)
         if intention is not None:

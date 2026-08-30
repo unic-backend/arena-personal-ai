@@ -76,7 +76,7 @@ def fournisseur(monkeypatch):
 @pytest.fixture
 def intention(monkeypatch):
     def _fixer(valeur):
-        async def _classer(_demande):
+        async def _classer(_demande, espace=None):
             return valeur
         monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _classer)
     return _fixer

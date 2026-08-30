@@ -93,6 +93,10 @@ class DemandeAgent(BaseModel):
     run_id: Optional[str] = None
     persona: Optional[Dict[str, Any]] = None
     memories: Any = None
+    # L'espace choisi dans la barre laterale de la PWA (VOLET « espaces
+    # separes ») — `null` pour Usman general. Route directement vers l'agent
+    # dedie, voir `OrchestratorAgent.analyze_intent`.
+    espace: Optional[str] = None
 
 
 def trame(charge: Dict[str, Any]) -> str:
@@ -362,7 +366,7 @@ async def flux_agent(demande: DemandeAgent):
                 )
                 return
 
-            intention = await orchestrator.analyze_intent(demande.text)
+            intention = await orchestrator.analyze_intent(demande.text, espace=demande.espace)
             voie = voie_pour(intention)
             # Ce que ce tour aura reellement coute. La cible vient de la voie ;
             # la duree, elle, est chronometree ici et nulle part ailleurs.
