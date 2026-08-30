@@ -103,6 +103,53 @@ def test_un_secret_cache_dans_le_contexte_est_vu():
     assert classement.niveau is Confidentialite.TRES_SENSIBLE
 
 
+# --- Un nom de champ n'est un secret que suivi de sa valeur --------------------------------
+
+
+@pytest.mark.parametrize("phrase", [
+    # Le cas mesuré le 30/08/2026 sur le serveur en ligne : la page Wikipédia
+    # du Sénégal explique que le président est élu au scrutin secret. Le mot
+    # « secret » y est un mot ordinaire.
+    "Le president est elu au suffrage universel direct et au scrutin secret.",
+    "Le secret : bien melanger avant de servir.",
+    "un token est une unite lexicale en informatique",
+    "ce site depose un cookie de mesure d'audience",
+    "l'authorization du parlement etait requise",
+])
+def test_un_mot_ordinaire_dans_une_page_publique_n_est_pas_un_secret(phrase):
+    """Refuser une page publique ne protège rien : ça empêche seulement de répondre.
+
+    Mesuré le 30/08/2026 : `TRES_SENSIBLE` interdit le cloud, et aucun Ollama ne
+    tourne sur le serveur — la question restait donc sans aucune réponse
+    possible, pour un mot lu dans une encyclopédie.
+    """
+    assert classer(phrase).niveau is not Confidentialite.TRES_SENSIBLE
+
+
+@pytest.mark.parametrize("phrase", [
+    "USMAN_API_KEY=4409dde42d4099b9296b5cca987b7c00",
+    'config: {"token": "abcdefghijklmnop"}',
+    "secret = monMotDePasseTresLong",
+    "session_key: aZ09-_./+xyzabcd",
+    # Le possessif suffit : il annonce le secret sans en coller la valeur.
+    "mon password ne marche plus",
+    "j'ai perdu mon token",
+])
+def test_un_champ_suivi_de_sa_valeur_reste_un_secret(phrase):
+    """La forme d'une configuration collée, elle, ne veut rien dire d'autre."""
+    classement = classer(phrase)
+
+    assert classement.niveau is Confidentialite.TRES_SENSIBLE
+    assert classement.sortie_interdite is True
+
+
+def test_le_motif_ne_recopie_jamais_la_valeur_du_secret():
+    """Un motif est journalisé : y recopier la clé la ferait fuir par le journal."""
+    classement = classer("USMAN_API_KEY=4409dde42d4099b9296b5cca987b7c00")
+
+    assert "4409dde42d4099b9296b5cca987b7c00" not in classement.pourquoi()
+
+
 # --- La politique ------------------------------------------------------------------------
 
 @pytest.mark.parametrize("niveau,mode,attendu", [
