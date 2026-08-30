@@ -32,12 +32,24 @@ c'est le meme protocole JSON-RPC, seul le tuyau change.
    premiere ligne venue — une mesure faite sur ce serveur reel l'a confirme :
    la premiere ligne apres `load_plan` etait cette notification, pas son
    resultat.
+
+4. **La lecture ne passe pas par `select()`.** La premiere version attendait
+   sur `selectors.DefaultSelector().select()`, applique au descripteur du
+   pipe `stdout` du sous-processus. Cela marche sous Linux et **echoue sous
+   Windows** : `select()` n'y accepte que des sockets, jamais un pipe, d'ou
+   `OSError: [WinError 10038]` a chaque appel — mesure faite le 2026-08-29
+   sur la machine du proprietaire, ou OpenTakeoff etait inutilisable alors
+   qu'il tournait de bout en bout sur Linux. La lecture se fait desormais
+   dans un **thread bloquant** qui pousse les octets dans une `queue.Queue`,
+   et l'attente est un `queue.get(timeout=...)` : le meme code sur les deux
+   systemes, sans rien qui dependent du type de descripteur.
 """
 import json
 import logging
 import os
-import selectors
+import queue
 import subprocess
+import threading
 import time
 import uuid
 from types import TracebackType
@@ -72,16 +84,16 @@ class ClientMcpStdio:
         self.dossier = dossier
         self.delai = delai
         self._processus: Optional[subprocess.Popen] = None
-        self._selecteur: Optional[selectors.BaseSelector] = None
         self._echec_ouverture: str = ""
-        #: Octets lus mais pas encore coupes en lignes. Lire au niveau du
-        #: descripteur (`os.read`) plutot que via `TextIOWrapper.readline()`
-        #: est deliberement plus bas niveau : un `readline()` bufferise peut
-        #: avaler plusieurs lignes d'un coup dans SON tampon a lui, invisible
-        #: au `select()` qui suit — mesure sur ce module (deux lignes ecrites
-        #: par le faux serveur de test dans le meme appel systeme), `select()`
-        #: attendait alors le delai complet pour une ligne deja arrivee.
+        #: Octets lus par le thread lecteur, pas encore coupes en lignes.
+        #: `os.read` sur le descripteur plutot que `TextIOWrapper.readline()` :
+        #: un `readline()` bufferise avale plusieurs lignes d'un coup dans SON
+        #: tampon a lui, invisible a l'appelant — mesure sur ce module, avec
+        #: deux lignes ecrites par le faux serveur dans le meme appel systeme.
         self._tampon: bytes = b""
+        #: Les morceaux lus, dans l'ordre. `None` marque la fin du flux.
+        self._file: "queue.Queue[Optional[bytes]]" = queue.Queue()
+        self._lecteur: Optional[threading.Thread] = None
 
     def __enter__(self) -> "ClientMcpStdio":
         poignee = self.ouvrir()
@@ -108,14 +120,22 @@ class ClientMcpStdio:
                 # `os.read()` sur le descripteur, jamais par le tampon interne
                 # d'un `TextIOWrapper` — voir la note sur `self._tampon`.
             )
-            self._selecteur = selectors.DefaultSelector()
-            self._selecteur.register(self._processus.stdout.fileno(), selectors.EVENT_READ)
         except (OSError, FileNotFoundError) as erreur:
             self._processus = None
-            self._selecteur = None
             logger.info("Lancement impossible (%s dans %s) : %s",
                         self.commande, self.dossier, erreur)
             return Reponse(ok=False, raison=f"{type(erreur).__name__}: {erreur}")
+
+        # Une session neuve part d'un flux neuf : ni tampon ni morceau de la
+        # precedente. Le thread est `daemon` pour qu'un appelant qui oublie
+        # `fermer()` n'empeche pas Python de s'arreter.
+        self._tampon = b""
+        self._file = queue.Queue()
+        self._lecteur = threading.Thread(
+            target=self._lire_sans_fin,
+            args=(self._processus.stdout.fileno(), self._file),
+            name="mcp-stdio-lecteur", daemon=True)
+        self._lecteur.start()
 
         poignee = self._poster({
             "jsonrpc": "2.0", "id": uuid.uuid4().hex, "method": "initialize",
@@ -133,12 +153,6 @@ class ClientMcpStdio:
 
     def fermer(self) -> None:
         """Arrete le processus. N'echoue jamais — un processus deja mort n'est pas une erreur."""
-        if self._selecteur is not None:
-            try:
-                self._selecteur.close()
-            except Exception:  # noqa: BLE001 - fermeture, pas une operation qui doit lever
-                pass
-            self._selecteur = None
         processus, self._processus = self._processus, None
         if processus is None:
             return
@@ -153,6 +167,11 @@ class ClientMcpStdio:
                 processus.wait(timeout=DELAI_ARRET_SECONDES)
             except Exception:  # noqa: BLE001 - le processus ne repond plus, rien de plus a faire
                 pass
+        # Le pipe se ferme avec le processus : `os.read` rend b"" et le thread
+        # sort tout seul. On l'attend brievement, sans jamais bloquer dessus.
+        lecteur, self._lecteur = self._lecteur, None
+        if lecteur is not None:
+            lecteur.join(timeout=DELAI_ARRET_SECONDES)
 
     # --- Protocole ----------------------------------------------------------------
 
@@ -181,25 +200,47 @@ class ClientMcpStdio:
         except Exception as erreur:  # noqa: BLE001 - une panne est un etat
             logger.info("Notification MCP impossible : %s", erreur)
 
+    @staticmethod
+    def _lire_sans_fin(fd: int, file: "queue.Queue[Optional[bytes]]") -> None:
+        """Lit le flux jusqu'a sa fin et pousse chaque morceau dans la file.
+
+        Tourne dans son propre thread : c'est ce qui remplace le `select()`
+        d'origine, impossible sur un pipe sous Windows (regle 4 du module).
+        Une lecture vide, un descripteur ferme ou une erreur systeme donnent
+        tous la meme chose — `None`, la fin du flux. Ce thread ne leve rien :
+        personne n'est la pour le rattraper.
+        """
+        try:
+            while True:
+                morceau = os.read(fd, 65536)
+                if not morceau:
+                    break
+                file.put(morceau)
+        except (OSError, ValueError):  # descripteur ferme sous nos pieds
+            pass
+        finally:
+            file.put(None)
+
     def _ligne_suivante(self, limite: float) -> Optional[bytes]:
-        """Une ligne (sans le `\\n`), en lisant au niveau du descripteur.
+        """Une ligne (sans le `\\n`), prise sur la file du thread lecteur.
 
         Rend `None` si le delai est depasse, le processus est mort, ou le
         flux s'est ferme sans plus rien envoyer.
         """
         processus = self._processus
-        fd = processus.stdout.fileno()
         while b"\n" not in self._tampon:
             restant = limite - time.monotonic()
             if restant <= 0:
                 return None
-            evenements = self._selecteur.select(timeout=restant) if self._selecteur else []
-            if not evenements:
+            try:
+                morceau = self._file.get(timeout=restant)
+            except queue.Empty:
+                # Rien n'est arrive dans le temps restant. Si le processus est
+                # mort entre-temps, inutile d'attendre le delai complet.
                 if processus.poll() is not None:
                     return None
                 continue
-            morceau = os.read(fd, 65536)
-            if not morceau:
+            if morceau is None:
                 return None  # flux ferme
             self._tampon += morceau
         ligne, _, self._tampon = self._tampon.partition(b"\n")
