@@ -39,6 +39,15 @@ export default function App() {
     const backend = useBackend.getState();
     if (backend.enabled && backend.status === 'local') void backend.test();
   }, []);
+
+  /* Va chercher les conversations écrites depuis l'autre appareil.
+
+     Au démarrage seulement : la suite se synchronise à la fin de chaque tour et
+     après chaque suppression. Rien n'est attendu ici — l'atelier s'affiche tout
+     de suite, et les conversations distantes arrivent quand elles arrivent. */
+  useEffect(() => {
+    void useChat.getState().synchroniser();
+  }, []);
   const [desktopNav, setDesktopNav] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
