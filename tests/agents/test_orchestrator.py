@@ -142,7 +142,7 @@ async def test_la_reponse_reprend_ce_que_le_modele_a_produit(provider_factory, m
     provider = provider_factory("CHAT", "  Bonjour Usman, tout va bien.  ")
     agent = OrchestratorAgent(provider=provider, memory=memoire)
 
-    res = await agent.run("Bonjour", context={"session_id": "s1"})
+    res = await agent.run("Parle-moi de choses interessantes", context={"session_id": "s1"})
 
     assert res["response"] == "Bonjour Usman, tout va bien."
     assert res["agent"] == "OrchestratorAgent"
@@ -208,13 +208,15 @@ class TestRoutageParEspace:
     async def test_un_espace_inconnu_retombe_sur_le_modele(self, provider_factory):
         agent = OrchestratorAgent(provider=provider_factory("CHAT"), memory=None)
 
-        assert await agent.analyze_intent("bonjour", espace="espace-qui-n-existe-pas") == "CHAT"
+        assert await agent.analyze_intent(
+            "explique-moi comment ça marche", espace="espace-qui-n-existe-pas"
+        ) == "CHAT"
 
     async def test_sans_espace_rien_ne_change(self, provider_factory):
         """Le comportement par defaut (Usman general) est inchange par cette phase."""
         agent = OrchestratorAgent(provider=provider_factory("DEEP_RESEARCH"), memory=None)
 
-        assert await agent.analyze_intent("bonjour") == "DEEP_RESEARCH"
+        assert await agent.analyze_intent("demontre ce theoreme") == "DEEP_RESEARCH"
 
     async def test_le_controle_date_l_emporte_sur_l_espace(self, provider_factory):
         """Une question d'actualite reste FRESH_INFO, meme depuis « Usman Coder »."""
@@ -231,3 +233,43 @@ class TestRoutageParEspace:
         resultat = await agent.analyze_intent("qui suis-je ?", espace="video")
 
         assert resultat == "CHAT"
+
+
+class TestSalutationPure:
+    """Regression du 30/08/2026 : une salutation forcait un devis fabrique.
+
+    Le routage direct par espace (VOLET « espaces separes », phase 2) a
+    supprime le filet que le classement offrait par accident a « bonjour »
+    (jamais un mot-cle metier, donc jamais route chez PlaquisteAgent). Une
+    salutation pure doit rester CHAT, quel que soit l'espace ouvert.
+    """
+
+    @pytest.mark.parametrize("phrase", [
+        "bonjour", "Bonjour", "Bonjour !", "  bonsoir  ", "salut", "salut !",
+        "coucou", "merci", "ça va", "ça va ?", "ca va ?", "comment vas-tu",
+    ])
+    @pytest.mark.parametrize("espace", ["plaquiste", "code", "video", "web", "documents"])
+    async def test_une_salutation_reste_chat_quel_que_soit_l_espace(
+        self, provider_factory, phrase, espace
+    ):
+        # Aucune reponse scriptee : ni le modele ni l'agent specialise ne
+        # doivent etre appeles pour une salutation.
+        agent = OrchestratorAgent(provider=provider_factory(), memory=None)
+
+        assert await agent.analyze_intent(phrase, espace=espace) == "CHAT"
+
+    async def test_une_vraie_demande_n_est_pas_prise_pour_une_salutation(self, provider_factory):
+        """« bonjour, » suivi d'une vraie demande route toujours vers l'espace."""
+        agent = OrchestratorAgent(provider=provider_factory(), memory=None)
+
+        resultat = await agent.analyze_intent(
+            "bonjour, peux-tu me faire un devis pour 20 m2 de cloison ?", espace="plaquiste"
+        )
+
+        assert resultat == "PLAQUISTE"
+
+    async def test_la_salutation_pure_l_emporte_meme_sans_espace(self, provider_factory):
+        """Usman general n'est pas different : une salutation reste CHAT sans appeler le modele."""
+        agent = OrchestratorAgent(provider=provider_factory(), memory=None)
+
+        assert await agent.analyze_intent("bonjour") == "CHAT"
