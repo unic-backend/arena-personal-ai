@@ -1,0 +1,46 @@
+# Le paquet deployable d'ARENA — VOLET « ARENA en ligne », phase 3.1.
+#
+# Ce fichier est dans deploy/, pas a la racine : un fichier `docker-compose.yml`
+# a la racine a deja fui six secrets par le passe (LibreChat, Open WebUI) et
+# `tests/test_configuration_clients.py::test_les_clients_tiers_ne_sont_pas_revenus`
+# verifie qu'il n'y revient pas. Celui-ci ne les concerne pas, mais partage le
+# nom : autant que ca ne soit jamais ambigu.
+#
+# Lancement, sur le serveur :
+#   cd deploy && docker compose up -d --build
+#
+# `.env` doit exister a la racine du depot (a cote de `.env.example`) AVANT de
+# lancer cette commande. Sur ce serveur precisement, deux reglages different de
+# ce que le proprietaire utilise sur son PC (DEC-0022) :
+#
+#   AI_MODE=CLOUD_PREFERRED   # son PC reste HYBRIDE : lui seul voit ses devis
+#   GROQ_API_KEY=...          # sans elle, CLOUD_PREFERRED ne change rien
+#
+# `.env.example`, lui, ne change PAS : un depot clone ne doit jamais demarrer
+# dans le mode le plus ouvert (DEC-0022 le dit explicitement).
+
+services:
+  arena:
+    build:
+      context: ..
+      dockerfile: apps/backend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../.env
+    volumes:
+      # `data/` porte la memoire SQLite, la grille de prix et les devis
+      # produits (DEC-0021) : sans ce volume, un `docker compose up --build`
+      # recreerait le conteneur et les perdrait tous — silencieusement, un
+      # SQLite dans /app ne survit pas a une image reconstruite.
+      - ../data:/app/data
+      # Les rendus (devis PDF, media) suivent la meme regle : produits une
+      # fois, ils doivent survivre a la prochaine image.
+      - ../media:/app/media
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
