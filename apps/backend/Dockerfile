@@ -3,6 +3,22 @@
 # `.github/workflows/ci.yml` avait deja trouve un probleme qu'elle aurait pu
 # eviter (pywin32 sans marqueur de plateforme, resolu depuis) mais ne
 # construisait jamais l'image elle-meme. Elle le fait desormais.
+
+# --- Etape 1 : construction de la PWA (React + Vite) --------------------------
+# `apps/pwa/dist/` est gitignore par construction (Vite le regenere) : sans
+# cette etape, l'image ne contient jamais cette interface. `main.py` retombe
+# alors sur l'ancienne interface classique, en silence — exactement ce qui
+# s'est produit sur le premier deploiement en ligne (VOLET « ARENA en ligne »,
+# chapitre 5).
+FROM node:20-slim AS pwa-builder
+
+WORKDIR /pwa
+COPY apps/pwa/package.json apps/pwa/package-lock.json ./
+RUN npm ci
+COPY apps/pwa/ ./
+RUN npm run build
+
+# --- Etape 2 : l'image de service --------------------------------------------
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -17,6 +33,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+COPY --from=pwa-builder /pwa/dist ./apps/pwa/dist
 
 # Le proprietaire ne se connecte jamais a ce conteneur : il n'a besoin
 # d'aucun privilege que le processus n'a pas lui-meme. Sans cette ligne,

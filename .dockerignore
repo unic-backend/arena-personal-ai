@@ -26,3 +26,9 @@ media
 
 # Environnement fige : l'image installe requirements.txt
 requirements.lock.txt
+
+# PWA : reconstruite par l'etape pwa-builder du Dockerfile (npm ci && npm run
+# build) a chaque image — le node_modules et le dist du poste de travail ne
+# servent a rien ici, et pesent 150+ Mo pour rien dans le contexte envoye.
+apps/pwa/node_modules
+apps/pwa/dist
