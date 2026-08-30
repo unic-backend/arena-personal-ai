@@ -24,9 +24,9 @@ import { useI18n } from '../../lib/i18n';
 import { useSettings } from './SettingsModal';
 import { cn } from '../../utils/cn';
 
-export function Logo({ size = 26 }: { size?: number }) {
+export function Logo({ size = 26, className }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" className="text-accent-500">
+    <svg width={size} height={size} viewBox="0 0 32 32" className={cn('text-accent-500', className)}>
       <circle cx="16" cy="16" r="12.5" fill="none" stroke="currentColor" strokeWidth="2.4" />
       <circle cx="16" cy="16" r="4.6" fill="currentColor" />
       <circle cx="26.7" cy="16" r="2" fill="currentColor" opacity="0.55" />

@@ -5,6 +5,7 @@ import {
   ActivityNode, activeLabel, collectStats, formatDuration, flatten,
 } from '../../lib/activity/types';
 import { ActivityItem, ThinkingIndicator, ItemCtx } from './ActivityItem';
+import { Logo } from '../chat/Sidebar';
 import { useI18n } from '../../lib/i18n';
 import { cn } from '../../utils/cn';
 
@@ -92,6 +93,25 @@ export function AIActivity({
     const done = all.filter((n) => n.status === 'completed');
     return { done: done.length, total: all.length, tail: [...all].slice(-3) };
   }, [nodes]);
+
+  /* En cours : le petit logo qui tourne, et ce qu'il fait a cote — jamais
+     un encadre. Une fois termine, le detail (etapes, duree) reste ouvert a
+     la demande sur la carte ci-dessous, inchangee. */
+  if (live) {
+    return (
+      <motion.div
+        role="region"
+        aria-label={t('a11y.activityStatus', { status: headerText })}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
+        className="flex items-center gap-2 py-1"
+      >
+        <Logo size={15} className="thinking-logo shrink-0" />
+        <span className="truncate text-[12.5px] font-medium text-shimmer">{headerText}</span>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.section
