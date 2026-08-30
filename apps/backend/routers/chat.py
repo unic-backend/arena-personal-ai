@@ -203,7 +203,10 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
             "response": raisonnement.get("final_response", "") + note_de_calcul(calcul),
         }
     elif intent == "FRESH_INFO":
-        result = await fresh_agent.run(request.prompt)
+        # Le session_id porte l'historique : sans lui, une question elliptique
+        # ("Celle de 2006 ?" apres une question sur une coupe du monde) part en
+        # recherche telle quelle et cherche le mauvais sujet.
+        result = await fresh_agent.run(request.prompt, context={"session_id": session_id})
     elif intent == "STUDIO":
         result = await lancer_studio(video_agent, editor_agent, subtitle_agent)
     elif intent == "EMAIL":
