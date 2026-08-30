@@ -591,3 +591,41 @@ Ce qui a été durci et ajouté :
   chaque push et chaque PR.
 
 Prochaine phase : **3.2**, les données (SQLite) et leur sauvegarde.
+
+## VOLET « ARENA en ligne, PC éteint » — chapitre 4, phase 4.1, audit du 30/08/2026
+
+Aujourd'hui ARENA écoute chez son propriétaire, derrière un tunnel Cloudflare
+dont l'adresse est longue et change à chaque redémarrage. En ligne (DEC-0021),
+l'adresse sera fixe et permanente : ce que cette phase trouve joignable
+aujourd'hui, tout Internet pourra le trouver aussi.
+
+Mesuré, pas lu : `scripts/auditer_surface_publique.py` appelle l'application
+réelle (`TestClient` sur `apps.backend.main.app`) sans jamais présenter de
+clé, plutôt que de faire confiance à `dependencies=[Depends(verify_api_key)]`
+dans le code. Résultat, **4 défauts réels** :
+
+- **`/media/rendered` répond sans clé.** Prouvé avec un vrai fichier : déposé
+  sous un nom que `/api/upload` produirait (`…_vertical_9_16.mp4`), il est
+  servi en `HTTP 200` à quiconque en devine — ou en connaît déjà — le nom.
+  Rien ne protège ce mount : c'est un `StaticFiles` sans dépendance.
+- **`/openapi.json`, `/docs`, `/redoc` répondent sans clé.** Le comportement
+  par défaut de FastAPI ; aucune route déclarée ne les couvre.
+
+Ce qui a été vérifié comme correct, pas seulement supposé :
+
+- Chaque route réelle sous `/api/*` et `/v1/*` (introspection récursive de
+  `app.routes`, y compris les sous-routeurs `include_router`) exige la clé —
+  aucune n'a été trouvée en défaut.
+- CORS n'autorise jamais `*` (`ALLOWED_ORIGINS` par défaut : `localhost`
+  uniquement).
+- Les pages d'interface volontairement publiques (`/`, `/health`,
+  `/offline.html`, `/manifest.webmanifest`, `/sw.js`, `/ui/classique`,
+  `/icons/{nom}`) le sont par choix, pas par oubli.
+
+Rien n'est corrigé ici : cette phase mesure, la 4.2 durcira. Les tests
+(`tests/test_auditer_surface_publique.py`) verrouillent ces quatre défauts
+comme présents — ils devront être mis à jour quand la 4.2 les fermera, pas
+avant.
+
+Prochaine phase : **4.2**, protéger `/media/rendered` et la documentation
+auto-générée.
