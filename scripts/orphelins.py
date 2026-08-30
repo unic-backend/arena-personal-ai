@@ -26,7 +26,15 @@ DEPART = ['apps.backend.main', 'apps.backend.routers.pwa_gateway',
 
 
 def _module_de(chemin: pathlib.Path) -> str:
-    return str(chemin.relative_to(RACINE).with_suffix('')).replace('/', '.')
+    """`core/memory/semantique.py` -> `core.memory.semantique`, partout.
+
+    `as_posix()` n est pas un detail de style. Sous Windows, `str(chemin)` rend
+    `core\\memory\\semantique` : aucun nom ne correspondait plus aux imports,
+    le parcours ne trouvait meme pas ses points d entree, et TOUT le depot
+    ressortait orphelin. Mesure le 2026-08-30 sur la machine du proprietaire —
+    la CI, sous Linux, ne pouvait pas le voir.
+    """
+    return chemin.relative_to(RACINE).with_suffix('').as_posix().replace('/', '.')
 
 
 def fichiers_du_projet() -> Dict[str, pathlib.Path]:

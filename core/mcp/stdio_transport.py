@@ -124,7 +124,15 @@ class ClientMcpStdio:
             self._processus = None
             logger.info("Lancement impossible (%s dans %s) : %s",
                         self.commande, self.dossier, erreur)
-            return Reponse(ok=False, raison=f"{type(erreur).__name__}: {erreur}")
+            # Le systeme ne dit pas toujours CE QUI manque : Linux nomme le
+            # fichier absent, Windows repond « [WinError 2] Le fichier
+            # specifie est introuvable » sans le nommer. La raison porte donc
+            # elle-meme la commande et le dossier — sinon le proprietaire lit
+            # une panne sans savoir de quoi elle parle.
+            programme = self.commande[0] if self.commande else "(commande vide)"
+            return Reponse(ok=False, raison=(
+                f"{type(erreur).__name__}: {erreur} "
+                f"(programme {programme}, dossier {self.dossier})"))
 
         # Une session neuve part d'un flux neuf : ni tampon ni morceau de la
         # precedente. Le thread est `daemon` pour qu'un appelant qui oublie

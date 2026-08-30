@@ -151,3 +151,28 @@ def test_les_points_d_entree_dirigent_vers_la_mission():
 
     assert manquants == [], (
         f"ces points d'entrée ne mènent pas à la mission en cours : {manquants}")
+
+
+def test_les_noms_de_modules_sont_pointes_sur_les_deux_systemes():
+    """`scripts/orphelins.py` doit rendre `a.b.c`, jamais `a\\b\\c`.
+
+    Mesuré le 30/08/2026 sur la machine du propriétaire (Windows) :
+    `str(chemin).replace('/', '.')` laissait les antislashs intacts. Aucun nom
+    ne correspondait plus aux imports, le parcours ne retrouvait même pas ses
+    points d'entrée, et **tout le dépôt ressortait orphelin** — le plan de
+    `docs/CURRENT_TASK.md` échouait en réclamant des modules déjà branchés.
+
+    Ce test est structurel, et il l'est pour la même raison que celui du
+    transport MCP : sous Linux les chemins utilisent `/`, donc le défaut est
+    invisible ici. Seule l'absence de la construction fragile se vérifie des
+    deux côtés.
+    """
+    source = (RACINE / "scripts" / "orphelins.py").read_text(encoding="utf-8")
+    # La ligne qui construit le nom, pas la prose qui l'explique.
+    retours = [ligne.strip() for ligne in source.splitlines()
+               if ligne.strip().startswith("return chemin.relative_to")]
+
+    assert retours, "la construction du nom de module a disparu ou changé de forme"
+    assert all("as_posix()" in ligne for ligne in retours), (
+        "les noms de modules ne sont plus construits en POSIX : sous Windows "
+        f"ils sortiront avec des antislashs et le parcours ne trouvera rien — {retours}")
