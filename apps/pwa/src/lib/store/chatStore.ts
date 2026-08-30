@@ -11,6 +11,7 @@ import {
 } from '../activity/types';
 import { normaliserSources } from '../activity/sources';
 import { pousserEtTirer } from '../sync/conversations';
+import { useCapacite } from '../capacites';
 import { localTransport } from '../activity/transport';
 import { makeRemoteTransport } from '../activity/remoteTransport';
 import { activeRemoteCfg } from './backendStore';
@@ -60,6 +61,10 @@ export interface Conversation {
   createdAt: number;
   updatedAt: number;
   pinned?: boolean;
+  /** L'espace ou elle est nee — l'id d'une capacite, ou `null`/absent pour
+   *  Usman general. Fixe a la creation : changer d'espace en cours de route
+   *  deplacerait une conversation sans que rien ne l'ait demande. */
+  espace?: string | null;
 }
 
 export interface LogEntry {
@@ -230,9 +235,18 @@ export const vfsContext: AgentContext = {
 
 export const useChat = create<ChatState>((set, get) => {
   const conversationsInitiales = loadConversations();
+  const activeIdInitial = lireActiveId(conversationsInitiales);
+
+  // La barre laterale filtre par espace : sans ceci, un F5 pendant une
+  // conversation « Usman Coder » rouvrirait bien le bon message (grace a
+  // `activeId`), mais dans une liste qui ne le montre plus, filtree sur
+  // l'espace general par defaut. Les deux doivent se restaurer ensemble.
+  const conversationActive = conversationsInitiales.find((c) => c.id === activeIdInitial);
+  useCapacite.getState().choisir(conversationActive?.espace ?? null);
+
   return {
   conversations: conversationsInitiales,
-  activeId: lireActiveId(conversationsInitiales),
+  activeId: activeIdInitial,
   isRunning: false,
   eventLog: [],
   logOpen: false,
@@ -469,6 +483,9 @@ export const useChat = create<ChatState>((set, get) => {
         messages: [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        // L'espace ouvert au moment ou le PREMIER mot est ecrit — jamais
+        // celui d'un clic ulterieur, qui ne fait que consulter l'historique.
+        espace: useCapacite.getState().active,
       };
       const misAJour: Conversation = {
         ...base,

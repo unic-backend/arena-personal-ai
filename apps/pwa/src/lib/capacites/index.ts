@@ -1,8 +1,15 @@
 /* ─────────────────────────────────────────────────────────────
-   Capacités — les entrées du menu de gauche.
-   Une capacité n'active aucun mode caché : elle propose des
-   phrases de départ. C'est la phrase qui oriente ARENA, comme
-   quand tu écris toi-même. Rien n'est promis ici.
+   Capacités — les espaces de la barre latérale.
+
+   Chaque capacité est aussi un ESPACE : les conversations qui y
+   naissent y restent (`Conversation.espace`), et changer d'espace
+   change la liste affichée, pas seulement les phrases proposées.
+   `null` designe l'espace general — Usman, sans capacite choisie.
+
+   Une capacite n'active aucun mode cache cote serveur : elle
+   propose des phrases de depart, envoyees telles quelles, et
+   filtre l'historique. C'est la phrase qui oriente ARENA, comme
+   quand on ecrit soi-meme.
    ───────────────────────────────────────────────────────────── */
 
 import { create } from 'zustand';
@@ -101,8 +108,11 @@ export const CAPACITES: Capacite[] = [
 ];
 
 interface CapaciteState {
+  /** L'espace actif : l'id d'une capacite, ou `null` pour Usman general. */
   active: string | null;
-  choisir: (id: string) => void;
+  /** Choisit un espace. `null` bascule vers Usman general. */
+  choisir: (id: string | null) => void;
+  /** Alias de `choisir(null)` — garde le nom existant pour les appels deja en place. */
   effacer: () => void;
 }
 
@@ -115,4 +125,11 @@ export const useCapacite = create<CapaciteState>((set) => ({
 export function capaciteActive(id: string | null): Capacite | null {
   if (!id) return null;
   return CAPACITES.find((c) => c.id === id) ?? null;
+}
+
+/** Le nom affichable de l'espace — « Usman » pour l'espace general. */
+export function nomEspace(id: string | null, locale: string): string {
+  const cap = capaciteActive(id);
+  if (!cap) return 'Usman';
+  return locale === 'fr' ? cap.nomFr : cap.nomEn;
 }

@@ -19,6 +19,7 @@ import { CommandPalette } from './components/chat/CommandPalette';
 import { GlobalDropZone } from './components/chat/GlobalDropZone';
 import { NetworkStatus } from './components/chat/NetworkStatus';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { useCapacite, nomEspace } from './lib/capacites';
 import { cn } from './utils/cn';
 
 export default function App() {
@@ -55,6 +56,9 @@ export default function App() {
   const conv = conversations.find((c) => c.id === activeId) ?? null;
   const messages = conv?.messages ?? [];
   const hasMessages = messages.length > 0;
+  // L'espace se lit toujours ici, jamais sur `conv` : un ecran vide (aucune
+  // conversation ouverte) doit quand meme dire dans quel espace on se trouve.
+  const { active: espaceActif } = useCapacite();
 
   /* Défilement automatique : suit le flux sauf si l'utilisateur est remonté. */
   useEffect(() => {
@@ -157,6 +161,13 @@ export default function App() {
 
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
             {!desktopNav && <span className="hidden lg:block"><Logo size={20} /></span>}
+            {/* Dans quel espace on se trouve, toujours visible — meme sans
+                conversation ouverte. Ce que le clic sur une capacite change
+                doit se lire dans l'en-tete, pas seulement dans la barre
+                laterale. */}
+            <span className="shrink-0 rounded-md bg-white/[0.04] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+              {nomEspace(espaceActif, locale)}
+            </span>
             <div className="min-w-0 truncate text-[13px] text-zinc-400">
               {conv?.title && hasMessages ? conv.title : ''}
             </div>
