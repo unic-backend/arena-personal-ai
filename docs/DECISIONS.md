@@ -1514,3 +1514,73 @@ suivantes, et les écrire ici évite qu'on les découvre en production :
   fichier SQLite, la configuration des variables d'environnement. Rapatrier
   ARENA chez lui doit rester une copie de fichiers, jamais une migration. Si un
   jour ce n'est plus vrai, c'est que cette décision a dérivé.
+
+
+## DEC-0022 : deux régimes — sa machine reste prudente, le serveur est utile
+
+*Décidé par le propriétaire le 30/08/2026, après lui avoir demandé de trancher
+et lui avoir donné une recommandation qu'il a suivie. La question posée était :
+« sur le serveur en ligne, tes devis et tes prix ont-ils le droit de partir chez
+Groq pour recevoir une réponse ? »*
+
+### Ce que la mesure avait montré
+
+Phase 2.1 (`scripts/mesurer_sans_ollama.py`, PR #39) : sur un serveur sans carte
+graphique, une demande classée `SENSIBLE` est routée vers sa machine **et vers
+elle seule**. DEC-0021 fait justement monter sa grille de prix et ses devis sur
+ce serveur. Sans décision, ARENA hébergé aurait su discuter de tout — sauf de
+son métier.
+
+### La décision
+
+| Où | Mode | Ce qui peut sortir |
+|---|---|---|
+| son PC | `HYBRIDE` *(inchangé)* | `PUBLIC`, `PRIVE` |
+| le serveur | `CLOUD_PREFERRED` | + `SENSIBLE` |
+
+**Le réglage existait déjà** (`NIVEAUX_SORTANTS`, DEC-0009). Rien n'est inventé :
+c'est un choix **par machine**, pas un changement d'architecture.
+
+Ce qui ne bouge dans aucun mode :
+
+- `TRES_SENSIBLE` — mots de passe, clés, jetons — **ne sort jamais** ;
+- `data/documents/` reste chez lui (DEC-0021) ;
+- une capacité absente se rapporte, elle ne se simule pas.
+
+### Pourquoi ce partage plutôt qu'un mode unique
+
+Les jours où son PC tourne, rien de sensible ne le quitte : c'est gratuit, et
+c'est la prudence par défaut. Les jours où il est éteint — un chantier, un
+déplacement — il accepte que Groq voie, parce que l'alternative est de ne pas
+avoir son assistant du tout. Un mode unique aurait choisi une fois pour toutes
+à sa place, dans un sens ou dans l'autre.
+
+### Ce que ça coûte si c'est faux
+
+- **Groq reçoit le texte de ses devis et le nom de ses clients** dès qu'il passe
+  par le serveur. Ce n'est pas une hypothèse : l'API lit ce qu'on lui envoie.
+  Envoyé une fois, envoyé pour toujours.
+- **`UNKNOWN`, et il le reste** : la politique de confidentialité de Groq ne dit
+  pas si les entrées de l'API sont conservées ou servent à entraîner — elle
+  renvoie à un contrat de service qui n'a pas été lu. Cette inconnue lui a été
+  dite avant qu'il tranche, et elle est une raison de plus pour que ses devis ne
+  partent que les jours où il n'a pas le choix.
+- **Un serveur mal configuré devient le régime permanent.** Si le PC finit par
+  démarrer en `CLOUD_PREFERRED` par recopie d'un fichier, la prudence des jours
+  où il est allumé disparaît sans que personne le remarque. Le mode se lit dans
+  le diagnostic (`Inference (hybride)`) : c'est là qu'on le vérifie.
+
+Retour arrière : `AI_LOCAL_ONLY=true`, une ligne, comme dans DEC-0009.
+
+### Ce que cette décision autorise, et rien de plus
+
+Elle ne change **aucune valeur par défaut du dépôt** : `.env.example` reste en
+`HYBRIDE`, et c'est voulu — un dépôt cloné ne doit pas partir en mode le plus
+ouvert. Le serveur recevra son mode par sa propre configuration, au moment où il
+sera monté (chapitre 3).
+
+Ce qui est construit avec elle, et qui vaut dans tous les modes : quand personne
+ne peut répondre, l'échec **dit sa cause et ce qui la lèverait**
+(`RouteurModeles._pourquoi_personne`). Un `RuntimeError` nu ne distinguait pas
+« ce modèle n'existe pas ici » de « tout est tombé une minute ». Sur le serveur,
+le premier est permanent, et le second ne se produira jamais.

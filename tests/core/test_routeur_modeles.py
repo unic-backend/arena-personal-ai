@@ -359,3 +359,86 @@ async def test_le_contexte_joint_compte_dans_le_classement():
 
     assert groq.appels == []
     assert r.dernier_choix.fournisseur == LOCAL
+
+
+class TestQuandPersonneNePeutRepondre:
+    """L'échec doit dire sa cause, et ce qui la lèverait.
+
+    Mesuré le 30/08/2026 (`scripts/mesurer_sans_ollama.py`, phase 2.1) : sur un
+    serveur sans Ollama, une demande classée `SENSIBLE` est routée vers la
+    machine du propriétaire **et vers elle seule** — qui n'existe pas là-bas.
+    L'ancien message, « Aucun fournisseur n'a pu répondre. », ne distinguait
+    pas *« ce modèle n'existe pas ici »* de *« tout est tombé une minute »*.
+
+    `test_une_demande_sensible_sans_machine_locale_dit_ce_qui_la_debloquerait`
+    est le test qui porte la garantie : sur le serveur, cet échec est
+    **permanent**, et un message qui ne le dit pas envoie le propriétaire
+    chercher une coupure réseau qui n'existe pas.
+    """
+
+    def _tous_absents(self, mode="HYBRIDE"):
+        return routeur(
+            mode=mode,
+            local=FauxFournisseur("local", leve=True),
+            groq=FauxFournisseur("groq", disponible=False),
+            deepinfra=FauxFournisseur("deepinfra", disponible=False))
+
+    # --- Le test qui porte la garantie ---------------------------------------
+
+    async def test_une_demande_sensible_sans_machine_locale_dit_ce_qui_la_debloquerait(self):
+        r = self._tous_absents()
+
+        with pytest.raises(RuntimeError) as echec:
+            await r.generate("Prepare le devis du client Dupont pour 450000 FCFA.")
+
+        message = str(echec.value)
+        assert "Seule sa machine etait autorisee" in message, (
+            "le message ne dit pas que c'est le classement qui a fermé la porte")
+        assert "CLOUD_PREFERRED" in message, (
+            "le message ne dit pas ce qui lèverait le blocage")
+
+    # --- Ce que l'échec dit dans les autres cas -------------------------------
+
+    async def test_un_echec_ordinaire_nomme_les_fournisseurs_essayes(self):
+        r = self._tous_absents()
+
+        with pytest.raises(RuntimeError) as echec:
+            await r.generate("bonjour, comment vas-tu ?")
+
+        message = str(echec.value)
+        assert "groq" in message and "local" in message, (
+            f"les fournisseurs essayés ne sont pas nommés : {message}")
+        assert "CLOUD_PREFERRED" not in message, (
+            "le cloud avait déjà le droit : proposer de l'autoriser n'a aucun sens")
+
+    async def test_le_flux_echoue_avec_le_meme_diagnostic_que_la_generation(self):
+        """Deux chemins, une seule vérité : le flux ne dit pas autre chose."""
+        r = self._tous_absents()
+
+        with pytest.raises(RuntimeError) as echec:
+            async for _ in r.generate_stream("Prepare le devis du client Dupont."):
+                pass
+
+        assert "CLOUD_PREFERRED" in str(echec.value)
+
+    async def test_en_cloud_prefere_le_message_ne_propose_plus_ce_mode(self):
+        """Proposer un réglage déjà actif ferait tourner le propriétaire en rond."""
+        r = self._tous_absents(mode="CLOUD_PREFERRED")
+
+        with pytest.raises(RuntimeError) as echec:
+            await r.generate("Prepare le devis du client Dupont.")
+
+        assert "CLOUD_PREFERRED" not in str(echec.value)
+
+    async def test_un_secret_ne_se_voit_jamais_proposer_le_cloud(self):
+        """`TRES_SENSIBLE` ne sort dans aucun mode : le suggérer serait un piège."""
+        r = self._tous_absents()
+
+        with pytest.raises(RuntimeError) as echec:
+            await r.generate("mon mot de passe est Azerty123")
+
+        message = str(echec.value)
+        assert "CLOUD_PREFERRED" not in message, (
+            "le message invite à un réglage qui ne débloquerait rien, et qui "
+            "donnerait au propriétaire l'idée d'envoyer un secret au cloud")
+        assert "Azerty123" not in message, "le secret est recopié dans l'erreur"
