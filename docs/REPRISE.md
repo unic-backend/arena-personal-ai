@@ -591,3 +591,49 @@ Ce qui a été durci et ajouté :
   chaque push et chaque PR.
 
 Prochaine phase : **3.2**, les données (SQLite) et leur sauvegarde.
+
+## VOLET « ARENA en ligne, PC éteint » — phase 3.2, sauvegarde du 30/08/2026
+
+`data/database/memory.db` porte **tout** : mémoire du chat, journal des
+actions, tâches en attente, mémoire personnelle, entités et relations, file du
+gardien — onze tables mesurées, un seul fichier. Le volume monté en phase 3.1
+protège d'un rebuild du conteneur ; **rien ne protégeait d'un fichier
+corrompu, d'une écriture interrompue ou d'un `rm -rf data`.**
+
+```
+python scripts/sauvegarder_donnees.py
+```
+
+Testé sur sa vraie base — pas une base de test — pendant cette phase : une
+copie écrite via l'API de sauvegarde de SQLite (jamais un `cp` brut, qui
+saisirait une page à moitié écrite pendant une transaction), relue et vérifiée
+par `PRAGMA integrity_check` sur la copie elle-même, puis re-confirmée par une
+seconde connexion indépendante — 11 tables retrouvées, intactes.
+
+Un vrai bug trouvé par le test de rétention lui-même avant d'être corrigé :
+`garder=0` supprimait la sauvegarde qui venait d'être écrite, avant même que
+son chemin soit renvoyé — un succès rapporté sur un fichier qui n'existait
+déjà plus. La sauvegarde qui vient d'être vérifiée est maintenant protégée de
+sa propre purge ; `garder` compte le total voulu, elle incluse.
+
+Documenté dans `deploy/docker-compose.yml` : la ligne de crontab qui déclenche
+la sauvegarde depuis l'hôte via `docker compose exec`. Le résultat vit dans
+`data/sauvegardes/`, sur le volume — une reconstruction du conteneur ne
+l'efface pas non plus.
+
+**Un second bug, plus grave, trouvé en testant cette ligne pour de vrai.**
+`USER arena`, fixé en phase 3.1, casse le conteneur au tout premier démarrage
+dès que `data/` est monté depuis l'hôte — la phase 3.1 n'avait été vérifiée
+que sans volume. Un volume monté arrive `root:root` ; `USER arena` ne peut
+plus rien y écrire, et `PermissionError: /app/data/rag` tue le conteneur avant
+que `/health` réponde. Corrigé par `apps/backend/entrypoint.sh` : le
+conteneur démarre root le temps de corriger les permissions du volume, puis
+passe la main avec `gosu` — jamais `sudo`, qui permettrait un retour à root.
+Reproduit avec le vrai `Dockerfile`, corrigé, puis rejoué à l'identique :
+`docker exec ... ls -la /app/data` montre `arena arena`, `/health` répond. La
+CI rejoue maintenant ce même scénario (volume root, écriture, `whoami`) à
+chaque build — `docker build` seul ne pouvait pas voir cette panne.
+
+**Chapitre 3 terminé.** Prochain chapitre : **4 — l'exposition publique**.
+Aujourd'hui ARENA écoute chez lui ; en ligne, n'importe qui peut frapper à la
+porte. 4.1 audite la surface (clé, limiteur, CORS) ; 4.2 durcit ce qui manque.

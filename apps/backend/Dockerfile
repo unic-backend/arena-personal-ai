@@ -8,9 +8,10 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # ffmpeg : audio/video (tools/audio, tools/video). curl : sonde de sante
-# ci-dessous, sans lui HEALTHCHECK n'aurait aucun outil pour interroger le
-# serveur depuis l'interieur du conteneur.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl \
+# ci-dessous. gosu : passer la main a l'utilisateur non-root sans jamais
+# pouvoir revenir root ensuite (voir entrypoint.sh) — contrairement a `sudo`,
+# qui le pourrait.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl gosu \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -19,12 +20,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Le proprietaire ne se connecte jamais a ce conteneur : il n'a besoin
-# d'aucun privilege que le processus n'a pas lui-meme. Sans cette ligne,
+# d'aucun privilege que le processus n'a pas lui-meme. Sans ces lignes,
 # ARENA tournait en root — le compte le plus large qu'un conteneur puisse
 # avoir, pour un serveur qui n'en a besoin d'aucun.
+#
+# Le conteneur demarre root — `USER arena` n'est PAS fixe ici — parce que
+# `entrypoint.sh` doit pouvoir corriger les permissions d'un volume monte
+# depuis l'hote avant de lacher les privileges. Voir ce fichier pour la
+# panne reelle que ceci corrige.
 RUN useradd --create-home --shell /usr/sbin/nologin arena \
     && chown -R arena:arena /app
-USER arena
+RUN chmod +x apps/backend/entrypoint.sh
 
 EXPOSE 8000
 
@@ -37,4 +43,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -f http://127.0.0.1:8000/health || exit 1
 
+ENTRYPOINT ["apps/backend/entrypoint.sh"]
 CMD ["uvicorn", "apps.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

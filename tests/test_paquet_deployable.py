@@ -12,26 +12,68 @@ import yaml
 
 RACINE = Path(__file__).resolve().parent.parent
 DOCKERFILE = RACINE / "apps" / "backend" / "Dockerfile"
+ENTRYPOINT = RACINE / "apps" / "backend" / "entrypoint.sh"
 COMPOSE = RACINE / "deploy" / "docker-compose.yml"
 
 
-class TestLImageNeTourneJamaisEnRoot:
+class TestLImageNeTourneJamaisEnRootUneFoisDemarree:
     """Le propriétaire ne se connecte jamais à ce conteneur : root n'a aucun usage.
 
-    Construit et lancé réellement pendant cette phase (contournement du proxy
-    de ce bac à sable pour joindre PyPI) : `/health` répond, authentifié et
-    non authentifié, exactement comme documenté dans `apps/backend/main.py`.
+    D'abord construite avec un `USER arena` fixe dans le Dockerfile — et ça
+    cassait au premier démarrage sur un volume monté depuis l'hôte : un volume
+    arrive root:root, `USER arena` ne peut plus rien y écrire, et
+    `PermissionError: /app/data/rag` tuait le conteneur avant même que
+    `/health` réponde. Reproduit et corrigé pendant cette phase.
+
+    `entrypoint.sh` corrige les permissions du volume **avant** de passer la
+    main, et `gosu` — jamais `sudo` — ne permet aucun retour à root ensuite.
+    Vérifié en rejouant le scénario exact : conteneur démarré sur un volume
+    root:root fraîchement créé, `docker exec ... ls -la /app/data` montrant
+    `arena arena`, `/health` répondant authentifié et non authentifié.
     """
 
-    def test_un_utilisateur_non_root_est_cree_et_active(self):
+    def test_le_conteneur_ne_demarre_plus_directement_en_utilisateur_fixe(self):
         source = DOCKERFILE.read_text(encoding="utf-8")
 
-        assert "USER " in source, "aucun USER : l'image tourne en root par défaut"
-        # La ligne USER doit venir après la création de l'utilisateur, jamais
-        # avant — sinon `USER arena` échouerait au démarrage du conteneur.
-        creation = source.index("useradd")
-        bascule = source.index("USER ")
-        assert creation < bascule, "USER arrive avant que l'utilisateur existe"
+        # Le proprietaire du volume ne peut etre corrige qu'AVANT le
+        # changement d'utilisateur : un `USER arena` fixe dans le Dockerfile
+        # rendrait `entrypoint.sh` incapable de faire le chown en premier.
+        assert "\nUSER " not in source, (
+            "USER est fixe dans le Dockerfile : entrypoint.sh ne pourra plus "
+            "corriger les permissions d'un volume avant de lacher les privileges")
+
+    def test_l_entree_corrige_les_permissions_puis_bascule_sans_retour(self):
+        # Le code executable seulement : le prologue en prose nomme `gosu`
+        # avant `chown` a plusieurs reprises pour l'expliquer, ce qui fausserait
+        # une recherche sur le fichier entier.
+        code = ENTRYPOINT.read_text(encoding="utf-8").split("set -e", 1)[-1]
+
+        chown = code.index("chown")
+        bascule = code.index("gosu")
+        assert chown < bascule, "les permissions doivent etre corrigees avant de lacher root"
+        assert "sudo " not in code, (
+            "sudo permettrait un retour a root : gosu ne le permet pas, c'est voulu")
+
+    def test_le_dockerfile_reference_bien_cet_entrypoint(self):
+        source = DOCKERFILE.read_text(encoding="utf-8")
+
+        assert "entrypoint.sh" in source
+        assert "chmod +x" in source, "sans ça, l'entrypoint n'est pas executable au demarrage"
+
+
+class TestLaCiVerifieLePermissionDuVolume:
+    """Le bug du test ci-dessus n'était visible qu'avec un vrai volume monté.
+
+    `docker build` seul ne le voit jamais : c'est exactement pourquoi il a
+    fallu construire et LANCER l'image avec un volume pour le trouver. La CI
+    rejoue ce lancement à chaque build, sans démarrer uvicorn.
+    """
+
+    def test_le_workflow_lance_l_image_sur_un_volume_root(self):
+        source = (RACINE / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+        assert "entrypoint.sh" in source
+        assert "docker run" in source
 
 
 class TestLaSondeDeSanteMesureLeProcessus:

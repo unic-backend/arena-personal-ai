@@ -18,6 +18,15 @@
 #
 # `.env.example`, lui, ne change PAS : un depot clone ne doit jamais demarrer
 # dans le mode le plus ouvert (DEC-0022 le dit explicitement).
+#
+# Sauvegarde de la base (phase 3.2, scripts/sauvegarder_donnees.py) : ce volume
+# protege d'un rebuild, pas d'un fichier corrompu ni d'un `rm -rf data`. Une
+# ligne de crontab sur l'hote, hors de ce fichier — la commande s'execute dans
+# le conteneur, mais son resultat vit dans `data/sauvegardes/`, sur le volume :
+# une reconstruction du conteneur ne l'efface pas non plus.
+#
+#   0 3 * * * cd /chemin/vers/le/depot && docker compose -f deploy/docker-compose.yml \
+#     exec -T arena python scripts/sauvegarder_donnees.py >> /var/log/arena-sauvegarde.log 2>&1
 
 services:
   arena:

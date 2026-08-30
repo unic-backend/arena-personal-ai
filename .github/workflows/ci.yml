@@ -75,6 +75,19 @@ jobs:
         # cette etape construit l'image elle-meme, pour de vrai.
         run: docker build -f apps/backend/Dockerfile -t arena:ci .
 
+      - name: Verify a root-owned bind mount is still writable by arena
+        # Trouve pendant la phase 3.2 en testant la sauvegarde SQLite pour de
+        # vrai : un volume monte depuis l'hote arrive root:root, et `USER
+        # arena` fixe (phase 3.1) rendait /app/data illisible au demarrage —
+        # PermissionError des la premiere ecriture. `entrypoint.sh` corrige
+        # les permissions avant de passer la main via `gosu` ; cette etape le
+        # verifie a chaque build, sans avoir a demarrer uvicorn.
+        run: |
+          mkdir -p /tmp/donnees-test
+          docker run --rm -v /tmp/donnees-test:/app/data \
+            --entrypoint apps/backend/entrypoint.sh arena:ci \
+            sh -c "touch /app/data/preuve-ecriture && whoami"
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
