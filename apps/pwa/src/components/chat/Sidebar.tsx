@@ -15,6 +15,7 @@ import {
   Plus,
   Search,
   Settings,
+  Sparkles,
   Trash2,
   X,
 } from 'lucide-react';
@@ -101,16 +102,25 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
   const [editTitle, setEditTitle] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
 
-  /* Recherche sur le titre et sur le contenu des messages. */
+  /* Chaque espace a sa propre liste : une conversation nee dans « Usman
+     Coder » ne se voit pas dans « UniC Plaquiste », ni dans l'espace
+     general. `espace` absent (conversations d'avant ce changement) compte
+     comme l'espace general, au meme titre que `null`. */
+  const conversationsDeLEspace = useMemo(
+    () => conversations.filter((c) => (c.espace ?? null) === capaciteActive),
+    [conversations, capaciteActive],
+  );
+
+  /* Recherche sur le titre et sur le contenu des messages, DANS l'espace actif. */
   const filteredConversations = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return conversations;
-    return conversations.filter((c) => {
+    if (!q) return conversationsDeLEspace;
+    return conversationsDeLEspace.filter((c) => {
       const matchTitle = (c.title || '').toLowerCase().includes(q);
       const matchMsg = c.messages.some((m) => (m.text || '').toLowerCase().includes(q));
       return matchTitle || matchMsg;
     });
-  }, [conversations, searchQuery]);
+  }, [conversationsDeLEspace, searchQuery]);
 
   const groups = useMemo(() => groupConversations(filteredConversations), [filteredConversations]);
 
@@ -181,7 +191,6 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
           isActive ? 'bg-white/[0.08] text-zinc-100' : 'text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200',
         )}
         onClick={() => {
-          effacer();
           selectConversation(c.id);
           onClose?.();
         }}
@@ -271,7 +280,9 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       <div className="px-3">
         <button
           onClick={() => {
-            effacer();
+            // Reste dans l'espace ouvert : une nouvelle conversation depuis
+            // « Usman Coder » doit rester une conversation Coder, pas
+            // repartir sur l'espace general.
             newChat();
             onClose?.();
           }}
@@ -282,8 +293,27 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
         </button>
       </div>
 
-      {/* capacités — chacune propose des phrases de départ, rien de plus */}
+      {/* espaces — Usman general, puis une capacite par espace specialise.
+          Chacun a sa propre liste de conversations juste en dessous : changer
+          d'espace change ce qui s'affiche, pas seulement les suggestions. */}
       <div className="mt-2 space-y-0.5 px-3">
+        <button
+          type="button"
+          onClick={() => {
+            effacer();
+            newChat();
+            onClose?.();
+          }}
+          className={cn(
+            'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] transition active:scale-[0.99]',
+            capaciteActive === null
+              ? 'bg-accent-500/10 text-accent-200'
+              : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200',
+          )}
+        >
+          <Sparkles size={14} className={capaciteActive === null ? 'text-accent-400' : 'text-zinc-500'} />
+          Usman
+        </button>
         {CAPACITES.map((cap) => {
           const Icone = cap.icone;
           const choisie = capaciteActive === cap.id;
@@ -310,8 +340,8 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
         })}
       </div>
 
-      {/* recherche */}
-      {conversations.length > 0 && (
+      {/* recherche — sur l'espace actif uniquement */}
+      {conversationsDeLEspace.length > 0 && (
         <div className="mt-3 border-t border-white/6 px-3 pt-3">
           <div className="relative flex items-center">
             <Search size={12} className="pointer-events-none absolute left-2.5 text-zinc-500" />
@@ -338,7 +368,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
 
       {/* historique */}
       <div className="scroll-slim mt-2.5 flex-1 overflow-y-auto px-3">
-        {conversations.length === 0 ? (
+        {conversationsDeLEspace.length === 0 ? (
           <p className="px-1 py-3 text-[11px] leading-relaxed text-zinc-600">{t('sidebar.empty')}</p>
         ) : filteredConversations.length === 0 ? (
           <div className="px-1 py-4 text-center">
