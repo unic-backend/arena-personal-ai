@@ -26,6 +26,9 @@ media/archive/*
 
 # Base de données & Cache
 data/database/*.db
+# Sauvegardes (scripts/sauvegarder_donnees.py, VOLET « ARENA en ligne » 3.2) :
+# des copies de la meme base, jamais versionnees non plus.
+data/sauvegardes/*.db
 data/cache/*
 data/embeddings/*
 data/documents/*
