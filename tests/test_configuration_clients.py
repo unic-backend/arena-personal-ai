@@ -135,3 +135,45 @@ class TestLesClesMortesNeServentPlus:
 
         assert "USMAN_API_KEY" in (RACINE / ".env.example").read_text(encoding="utf-8")
         assert security.cle_presentee_valide.__doc__
+
+
+class TestLesModelesParDefautNeDiverguentPas:
+    """`.env.example` et `config.py` proposent-ils le même modèle distant ?
+
+    Mesuré le 30/08/2026 sur la machine du propriétaire : `GROQ_MODEL` valait
+    `llama-3.3-70b-versatile` des deux côtés — **un modèle retiré du catalogue
+    Groq**. Chaque appel rendait `HTTPStatusError`, indiscernable d'une clé
+    refusée, et il a fallu interroger `/v1/models` pour comprendre. Un défaut
+    mort coûte une heure à celui qui branche le fournisseur pour la première
+    fois.
+
+    Ce test ne peut pas vérifier qu'un modèle existe encore — le catalogue est
+    en ligne et bouge. Il vérifie ce qui se vérifie hors ligne : que les deux
+    valeurs restent la même, pour qu'une correction ne s'applique jamais à
+    moitié.
+    """
+
+    def _valeur_dans_exemple(self, cle: str) -> str:
+        for ligne in (RACINE / ".env.example").read_text(encoding="utf-8").splitlines():
+            if ligne.startswith(f"{cle}="):
+                return ligne.split("=", 1)[1].strip()
+        raise AssertionError(f"{cle} est absente de .env.example")
+
+    def test_le_modele_groq_est_le_meme_des_deux_cotes(self):
+        from apps.backend import config
+
+        assert config.GROQ_MODELE == self._valeur_dans_exemple("GROQ_MODEL")
+
+    def test_le_modele_deepinfra_est_le_meme_des_deux_cotes(self):
+        from apps.backend import config
+
+        assert config.DEEPINFRA_MODELE == self._valeur_dans_exemple("DEEPINFRA_MODEL")
+
+    def test_le_modele_groq_retire_du_catalogue_ne_revient_pas(self):
+        """`llama-3.3-70b-versatile` n'existe plus chez Groq — mesure du 30/08/2026."""
+        from apps.backend import config
+
+        assert config.GROQ_MODELE != "llama-3.3-70b-versatile"
+        assert "llama-3.3-70b-versatile" not in (
+            RACINE / ".env.example").read_text(encoding="utf-8").replace(
+                "# ", "").split("GROQ_MODEL=")[-1].splitlines()[0]
