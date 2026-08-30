@@ -19,8 +19,8 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from agents.plaquiste.archives import exemple_demande, extraits_pour, formater
+from agents.plaquiste.calcul_materiaux import Calcul, quantites_pour
 from agents.plaquiste.calcul_materiaux import formater as formater_calcul
-from agents.plaquiste.calcul_materiaux import quantites_pour
 from agents.plaquiste.controle_prix import avertissement, verifier_prix
 from agents.plaquiste.metre import lire_demande
 from agents.plaquiste.metre_plan import (
@@ -354,14 +354,22 @@ class PlaquisteAgent(BaseAgent):
         return {"statut": resultat.statut.value, "message": resultat.message,
                 "preuve": resultat.preuve}
 
-    def _proposer_le_document(self, texte: str,
-                              context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _proposer_le_document(self, texte: str, context: Dict[str, Any],
+                              metre: Optional[Calcul] = None) -> Optional[Dict[str, Any]]:
         """Soumet la production du PDF quand un fichier est explicitement demande.
 
         Rien n'est ecrit ici : `produire` est une action a confirmer, et le
         proprietaire garde la main. Le destinataire vient du contexte de la
         conversation, jamais d'une lecture de la phrase — un devis adresse a la
         mauvaise personne est pire qu'un devis absent.
+
+        `metre` est le calcul deja fait par `run()` (dimensions dictees OU
+        surface mesuree sur un plan) : quand il existe, ses lignes sont
+        transmises telles quelles au connecteur, qui n'a plus a relire la
+        phrase pour les retrouver. Mesure du 30/08/2026 : sans ca, un devis
+        demande apres la mesure d'un PLAN echouait a la confirmation avec
+        « aucune dimension lue » — le calcul affiche dans la reponse ne
+        rejoignait jamais le PDF reellement ecrit.
 
         Returns:
             Le compte-rendu de la soumission, ou `None` quand aucun document
@@ -382,9 +390,15 @@ class PlaquisteAgent(BaseAgent):
                                 + ", ".join(manquants)
                                 + ". Je ne devine pas le destinataire d'un devis.")}
 
+        parametres_lignes: Dict[str, Any] = {}
+        if metre is not None:
+            parametres_lignes["lignes"] = [
+                {"designation": besoin.article, "quantite": besoin.quantite}
+                for besoin in metre.besoins]
+
         resultat = self.registre.executer(
             "devis", "produire", demande=texte,
-            type_document=type_document_demande(texte), **destinataire)
+            type_document=type_document_demande(texte), **destinataire, **parametres_lignes)
         return {"statut": resultat.statut.value, "message": resultat.message,
                 "preuve": resultat.preuve}
 
@@ -673,7 +687,7 @@ class PlaquisteAgent(BaseAgent):
 
         # Le document PDF : soumis a confirmation, jamais ecrit d'autorite.
         # Fait avant la generation pour que la reponse puisse le dire.
-        document = self._proposer_le_document(user_input, context or {})
+        document = self._proposer_le_document(user_input, context or {}, metre)
 
         reponse = ((await self.provider.generate(prompt=user_input, system_prompt=instruction)) or "").strip()
 
