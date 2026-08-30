@@ -53,16 +53,34 @@ MOIS = ("janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet",
 #: Ce qui demande un FICHIER, et pas seulement un texte de devis. Le mot
 #: « devis » seul ne suffit pas : il est dans presque toutes ses phrases, et
 #: proposer un document a chaque fois transformerait la confirmation en reflexe.
-#: Meme regle pour « facture » : la phrase exacte, jamais le mot seul.
+#: Meme regle pour facture, bon de commande et bon de livraison : la phrase
+#: exacte, jamais le mot seul.
 DEMANDE_DE_DOCUMENT = re.compile(
     r"\b(pdf|document|imprim\w*|edite|édite|genere le devis|génère le devis"
-    r"|genere la facture|génère la facture)\b",
+    r"|genere la facture|génère la facture"
+    r"|genere le bon de commande|génère le bon de commande"
+    r"|genere le bon de livraison|génère le bon de livraison)\b",
     re.IGNORECASE)
 
-#: Distingue une facture d'un devis, une fois qu'un FICHIER est deja demande
-#: (DEMANDE_DE_DOCUMENT ci-dessus). Le renderer (`devis_pdf.py`) accepte deja
-#: `type_document` librement ; seule l'orchestration manquait.
-DEMANDE_DE_FACTURE = re.compile(r"facture", re.IGNORECASE)
+#: Le type de document a produire, une fois qu'un FICHIER est deja demande
+#: (DEMANDE_DE_DOCUMENT ci-dessus, qui seule declenche une ecriture). Le
+#: renderer (`devis_pdf.py`) accepte deja `type_document` librement ; seule
+#: l'orchestration manquait. « Bon de commande »/« bon de livraison » avant
+#: « facture » : une phrase qui cite plusieurs mots doit garder le plus
+#: specifique.
+TYPES_DE_DOCUMENT = (
+    (re.compile(r"bon de commande", re.IGNORECASE), "BON DE COMMANDE"),
+    (re.compile(r"bon de livraison", re.IGNORECASE), "BON DE LIVRAISON"),
+    (re.compile(r"facture", re.IGNORECASE), "FACTURE"),
+)
+
+
+def type_document_demande(texte: str) -> str:
+    """DEVIS par defaut — le cas le plus frequent, jamais un type devine."""
+    for motif, type_document in TYPES_DE_DOCUMENT:
+        if motif.search(texte or ""):
+            return type_document
+    return "DEVIS"
 
 #: Ce qu'il faut connaitre pour adresser un devis. Jamais devine dans la phrase.
 DESTINATAIRE = ("client", "lieu", "objet")
@@ -364,9 +382,9 @@ class PlaquisteAgent(BaseAgent):
                                 + ", ".join(manquants)
                                 + ". Je ne devine pas le destinataire d'un devis.")}
 
-        type_document = "FACTURE" if DEMANDE_DE_FACTURE.search(texte or "") else "DEVIS"
         resultat = self.registre.executer(
-            "devis", "produire", demande=texte, type_document=type_document, **destinataire)
+            "devis", "produire", demande=texte,
+            type_document=type_document_demande(texte), **destinataire)
         return {"statut": resultat.statut.value, "message": resultat.message,
                 "preuve": resultat.preuve}
 

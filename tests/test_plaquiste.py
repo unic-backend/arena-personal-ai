@@ -246,6 +246,35 @@ class TestDocumentPdf:
         assert resultat["document"]["statut"] == "NEEDS_CONFIRMATION"
 
     @pytest.mark.asyncio
+    async def test_un_bon_de_commande_demande_produit_le_bon_type_document(self):
+        """Meme branchement : « bon de commande » va au fournisseur, pas au client."""
+        registre = FauxRegistre()
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run(
+            "génère le bon de commande, 18 parois de 5,40 x 2,50 m", context=DESTINATAIRE)
+
+        assert registre.appels, "aucun appel : « génère le bon de commande » ne declenche rien"
+        _, _, parametres = registre.appels[0]
+        assert parametres["type_document"] == "BON DE COMMANDE"
+        assert resultat["document"]["statut"] == "NEEDS_CONFIRMATION"
+
+    @pytest.mark.asyncio
+    async def test_un_bon_de_livraison_demande_produit_le_bon_type_document(self):
+        registre = FauxRegistre()
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run(
+            "génère le bon de livraison, 18 parois de 5,40 x 2,50 m", context=DESTINATAIRE)
+
+        assert registre.appels, "aucun appel : « génère le bon de livraison » ne declenche rien"
+        _, _, parametres = registre.appels[0]
+        assert parametres["type_document"] == "BON DE LIVRAISON"
+        assert resultat["document"]["statut"] == "NEEDS_CONFIRMATION"
+
+    @pytest.mark.asyncio
     async def test_sans_registre_l_agent_le_dit_au_lieu_de_promettre_un_fichier(self):
         agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER))
 

@@ -270,8 +270,8 @@ PC éteint le jour ; taper un chemin ne marche pas dans ce cas-là) :
 
 ## 6. Plan d'implémentation proposé — phases, dans l'ordre du risque
 
-Ordre proposé, chaque phase vérifiable seule. Les phases 1 à 4 sont faites ;
-les trois autres restent à autoriser :
+Ordre proposé, chaque phase vérifiable seule. Les phases 1 à 4 et 6 sont
+faites ; les deux autres restent à autoriser :
 
 | Phase | Ce qu'elle ferme | Nouvelle dépendance | Touche une zone verrouillée ? |
 |---|---|---|---|
@@ -280,7 +280,7 @@ les trois autres restent à autoriser :
 | **3 — FAIT** | `type_document="FACTURE"` réellement orchestré (trou E, partiel) : détection de « génère la facture » (même discipline que « génère le devis », jamais le mot seul), transmise à `DevisConnector`, vérifiée dans le vrai PDF produit (`pypdf`) | Aucune | Non |
 | **4 — FAIT** | Décision du propriétaire (§5) puis upload PWA → OpenTakeoff (trou C) : plan gardé en mémoire comme une image, écrit brièvement pour la mesure, effacé aussitôt ; les chiffres mesurés retenus en mémoire personnelle, jamais l'image | Aucune | Non |
 | **5** | Détection d'ouvertures via Qwen3-VL sur une page de plan rendue en image (trou D) | Aucune — `pypdfium2` (déjà en place depuis la phase 2) rend la page en image | Non — mais **NON VÉRIFIABLE avant que `qwen3-vl:4b` tourne réellement chez lui** |
-| **6** | Bon de commande / bon de livraison / rapport de métré (reste du trou E) | Aucune | Non |
+| **6 — FAIT** | Bon de commande / bon de livraison réellement orchestrés (reste du trou E) : `TYPES_DE_DOCUMENT` distingue « bon de commande »/« bon de livraison »/« facture » (le plus spécifique gagne), le renderer adresse un bon de commande au **fournisseur** et un bon de livraison au lieu de livraison — jamais « CLIENT » sur un document qui n'en a pas. Bug réel trouvé en testant le vrai PDF : le titre « BON DE COMMANDE » débordait sa colonne à 20 pt et se coupait en deux lignes ; `taille_du_titre()` mesure la largeur réelle (`stringWidth`) et réduit jusqu'à ce que ça tienne. Le « rapport de métré » cité dans le trou E existe déjà : c'est `exporter` du connecteur OpenTakeoff (DEC-0012), pas un nouveau document — rien à faire ici | Aucune | Non |
 | **7** | Tests bout en bout : plan → métré → devis → PDF, avec un plan de test connu | Aucune | Non |
 
 La phase 5 dépend d'une mesure que cette machine ne peut pas faire

@@ -24,6 +24,7 @@ from reportlab.lib.enums import TA_JUSTIFY, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import (
     Image as RLImage,
 )
@@ -39,6 +40,40 @@ from reportlab.platypus import (
 logger = logging.getLogger("usman.agent.plaquiste.pdf")
 
 A_CONFIRMER = "a confirmer"
+
+#: Le bloc destinataire dit toujours « CLIENT » — faux pour un bon de commande,
+#: qui s'adresse a un fournisseur. Un type absent d'ici garde « CLIENT » : la
+#: liste s'etend sans jamais casser un type_document deja en usage (devis,
+#: facture, ou tout autre texte libre que l'appelant aurait choisi).
+LIBELLES_DESTINATAIRE = {
+    "BON DE COMMANDE": "FOURNISSEUR",
+    "BON DE LIVRAISON": "LIVRE A",
+}
+
+
+def libelle_destinataire(type_document: str) -> str:
+    return LIBELLES_DESTINATAIRE.get(type_document.upper(), "CLIENT")
+
+
+#: Largeur reelle du bloc titre (`bloc_doc`, colonne droite de l'entete) :
+#: 51 mm, moins une marge pour ne pas coller au bord.
+LARGEUR_TITRE_MM = 46
+TAILLE_TITRE_MAX = 20
+TAILLE_TITRE_MIN = 11
+
+
+def taille_du_titre(texte: str) -> int:
+    """Le plus grand corps qui tient sur UNE ligne — mesure, jamais suppose.
+
+    « DEVIS » et « FACTURE » gardaient toujours 20 pt (mesure : aucun des
+    deux ne depasse). « BON DE COMMANDE » et « BON DE LIVRAISON » sont plus
+    longs et retournaient a la ligne a 20 pt — un vrai defaut trouve en
+    testant le rendu, pas en relisant le code.
+    """
+    for taille in range(TAILLE_TITRE_MAX, TAILLE_TITRE_MIN - 1, -1):
+        if stringWidth(texte, "Helvetica-Bold", taille) <= LARGEUR_TITRE_MM * mm:
+            return taille
+    return TAILLE_TITRE_MIN
 
 
 # --- Charte -------------------------------------------------------------------
@@ -177,8 +212,9 @@ def construire(devis: Devis, metier: Dict[str, Any], sortie: Path,
                                textColor=c["jaune"], leading=12, spaceAfter=3),
         "info": ParagraphStyle("info", fontName="Helvetica-Bold", fontSize=8.5,
                                textColor=colors.black, leading=10.5),
-        "titre": ParagraphStyle("titre", fontName="Helvetica-Bold", fontSize=20,
-                                textColor=c["bleu"], alignment=TA_RIGHT, leading=22),
+        "titre": ParagraphStyle(
+            "titre", fontName="Helvetica-Bold", fontSize=taille_du_titre(devis.type_document),
+            textColor=c["bleu"], alignment=TA_RIGHT, leading=taille_du_titre(devis.type_document) + 2),
         "num": ParagraphStyle("num", fontName="Helvetica-Bold", fontSize=10,
                               textColor=colors.black, alignment=TA_RIGHT, leading=14),
         "secblanc": ParagraphStyle("secblanc", fontName="Helvetica-Bold", fontSize=11,
@@ -233,7 +269,7 @@ def construire(devis: Devis, metier: Dict[str, Any], sortie: Path,
 
     story: List[Any] = [entete, Spacer(1, 2), ligne_jaune, Spacer(1, 4)]
 
-    gauche = [Paragraph("CLIENT", st["clienttitre"]),
+    gauche = [Paragraph(libelle_destinataire(devis.type_document), st["clienttitre"]),
               Paragraph(devis.client, st["txt"]),
               Paragraph(f"Lieu du chantier : {devis.lieu}", st["txt"])]
     droite = [Paragraph(f"Date : {devis.date}", st["txt"]),
@@ -329,7 +365,8 @@ def construire(devis: Devis, metier: Dict[str, Any], sortie: Path,
 
     signatures = Table([
         [Paragraph(e.get("nom", "UniC Plaquiste"), st["txt"]),
-         Paragraph(f"Client ({devis.client})", st["txt"])],
+         Paragraph(f"{libelle_destinataire(devis.type_document).title()} ({devis.client})",
+                   st["txt"])],
         [signature_gerant,
          Paragraph("Signature : ______________________", st["txt"])],
         [Paragraph(f"{e.get('gerant', '')} — Gerant" if devis.signe else "Date : ____________",
