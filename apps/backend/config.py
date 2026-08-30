@@ -24,16 +24,22 @@ def reglage(nom: str, defaut: str = "") -> str:
     proprietaire sans qu il ait rien fait de mal. Le repli est **annonce**,
     jamais silencieux — un repli qu on ne voit pas devient permanent.
     """
+    # `.strip()` : un panneau de variables (Railway, et d'autres) accepte un
+    # copier-coller mobile qui embarque un retour a la ligne ou une espace
+    # invisible en fin de valeur. La cle stockee ne correspond alors plus
+    # jamais a celle presentee — mesure le 30/08/2026, trois cles differentes
+    # refusees a la suite pour cette seule raison. Rien ne distingue « une
+    # cle avec un espace en trop » d'« une cle differente » sans ce strip.
     valeur = os.getenv(f"USMAN_{nom}")
     if valeur is not None:
-        return valeur
+        return valeur.strip()
 
     ancienne = os.getenv(f"ARENA_{nom}")
     if ancienne is not None:
         logging.getLogger("usman.config").warning(
             f"ARENA_{nom} est lue faute de USMAN_{nom}. Renomme-la dans .env."
         )
-        return ancienne
+        return ancienne.strip()
 
     return defaut
 

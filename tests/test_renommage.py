@@ -56,6 +56,16 @@ class TestLectureDesReglages:
         monkeypatch.setenv("ARENA_API_KEY", "ancienne")
         assert reglage("API_KEY") == ""
 
+    def test_un_retour_a_la_ligne_colle_par_erreur_est_retire(self, monkeypatch):
+        """Panneau de variables (Railway...) : un copier-coller mobile embarque
+        souvent un retour a la ligne ou une espace en fin de valeur. Mesure le
+        30/08/2026 : trois cles differentes refusees a la suite pour cette
+        seule raison — la cle stockee ne correspondait plus jamais a celle
+        presentee dans l'en-tete Authorization.
+        """
+        monkeypatch.setenv("USMAN_API_KEY", "vraie-cle-du-serveur\n")
+        assert reglage("API_KEY") == "vraie-cle-du-serveur"
+
 
 class TestAucunNomOublie:
     """Le seul fichier de réglages que l'utilisateur lit encore.
