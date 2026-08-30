@@ -205,19 +205,13 @@ export const useChat = create<ChatState>((set, get) => ({
 
   newChat: () => {
     useSpeech.getState().stop();
+    // N'ecrit rien dans `conversations` : une conversation n'existe, comme
+    // partout ailleurs, qu'une fois un premier mot ecrit. `send()` la cree
+    // reellement a ce moment-la. Ouvrir une capacite ou "+ Nouvelle
+    // conversation" sans rien ecrire ne doit donc rien laisser dans
+    // l'historique — juste changer l'id actif vers un ecran vide.
     const id = uid('conv');
-    const conv: Conversation = {
-      id,
-      title: 'New conversation',
-      messages: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    set((s) => {
-      const conversations = [conv, ...s.conversations];
-      persist(conversations);
-      return { conversations, activeId: id };
-    });
+    set({ activeId: id });
     return id;
   },
 
@@ -346,19 +340,29 @@ export const useChat = create<ChatState>((set, get) => ({
         return { conversations };
       });
 
-    set((s) => ({
-      isRunning: true,
-      conversations: s.conversations.map((c) =>
-        c.id === convId
-          ? {
-              ...c,
-              title: c.messages.length === 0 ? title.slice(0, 52) : c.title,
-              updatedAt: Date.now(),
-              messages: [...c.messages, userMsg, assistantMsg],
-            }
-          : c,
-      ),
-    }));
+    set((s) => {
+      // `newChat()` ne cree plus l'entree : premier message ici, elle
+      // n'existe encore nulle part dans `conversations` — il faut l'inserer,
+      // pas seulement la mettre a jour.
+      const existante = s.conversations.find((c) => c.id === convId);
+      const base: Conversation = existante ?? {
+        id: convId,
+        title: 'New conversation',
+        messages: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      const misAJour: Conversation = {
+        ...base,
+        title: base.messages.length === 0 ? title.slice(0, 52) : base.title,
+        updatedAt: Date.now(),
+        messages: [...base.messages, userMsg, assistantMsg],
+      };
+      const conversations = existante
+        ? s.conversations.map((c) => (c.id === convId ? misAJour : c))
+        : [misAJour, ...s.conversations];
+      return { isRunning: true, conversations };
+    });
 
     abort = new AbortController();
     const log = (chunk: StreamChunk) =>
