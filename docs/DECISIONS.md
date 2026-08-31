@@ -1584,3 +1584,107 @@ ne peut répondre, l'échec **dit sa cause et ce qui la lèverait**
 (`RouteurModeles._pourquoi_personne`). Un `RuntimeError` nu ne distinguait pas
 « ce modèle n'existe pas ici » de « tout est tombé une minute ». Sur le serveur,
 le premier est permanent, et le second ne se produira jamais.
+
+---
+
+## DEC-0023 : trou D fermé en deux signaux — un décompte lu, un avis regardé
+
+*Demandé par le propriétaire le 30/08/2026, après une clarification qu'il a
+lui-même demandée (« qu'est-ce que chacun rapporte ? ») sur deux façons
+possibles de fermer le trou D (détection d'ouvertures) laissé ouvert à la
+phase 5 de `docs/audits/document_construction_audit.md`. Sa décision, dans ses
+mots : « on peut avoir les 2 ».*
+
+### Les deux options posées, et pourquoi aucune ne suffisait seule
+
+1. **`count_marks` d'OpenTakeoff** — lit les tags déjà écrits sur le plan
+   (un tableau de menuiseries D1/W1 avec ses comptes). Déterministe, sans
+   modèle, sans coordonnée devinée. Mais **ne dit rien si le plan n'a pas de
+   tableau de menuiseries déjà annoté** — beaucoup de plans reçus n'en ont pas.
+2. **Un avis de Qwen3-VL** sur l'image de la page. Fonctionne même sans
+   tableau annoté. Mais c'est une lecture d'image par un modèle : une
+   impression, jamais une mesure — le present comme un chiffre certain aurait
+   été exactement le risque que DEC-0012 refuse déjà pour `symbol_sweep`/
+   `cut_out` (« un métré faux avec l'air d'un métré juste »).
+
+Les deux se complètent plus qu'ils ne se remplacent : le premier est fiable
+quand il répond, le second répond toujours mais n'engage rien. Le propriétaire
+a choisi de les construire tous les deux, présentés **toujours distinctement**,
+jamais fondus en un seul chiffre.
+
+### Ce qui est construit
+
+**Signal 1 — `compter_marques`** (`core/connectors/opentakeoff.py`) : nouvelle
+capacité en lecture seule, appelle `load_plan` puis `count_marks` (`commit`
+toujours `False`). Déclenchée par une nouvelle regex `DEMANDE_DE_DECOMPTE`
+(« combien de portes/fenêtres », « compter les portes/fenêtres », « nombre de
+portes/fenêtres »). `agents/plaquiste/metre_plan.py` traduit le détail brut en
+`MarquesPlan`/`formater_marques`, qui rapporte chaque marque, le total, un
+avertissement `INCOMPLET` si des feuilles ont été ignorées, et se termine
+toujours par une phrase rappelant que ceci lit du texte déjà écrit et « ne
+devine aucun symbole sur l'image ».
+
+**Signal 2 — avis visuel Qwen3-VL** (`agents/plaquiste/plaquiste_agent.py`) :
+`_rendre_premiere_page` rend la première page du plan en PNG (`pypdfium2`,
+déjà en place depuis la phase 2 de l'audit OCR) ; `_avis_visuel_depuis` l'envoie
+à `provider_vision.generate()` avec une consigne explicite (`DEMANDE_VISUELLE_
+OUVERTURES`) demandant une impression et invitant le modèle à dire son
+incertitude. Tout échec (modèle absent, erreur réseau, image illisible) est
+absorbé et rend `None` — ce signal ne casse jamais une réponse par ailleurs
+utile. `PlaquisteAgent` reçoit `provider_vision` en constructeur ;
+`apps/backend/runtime.py` lui transmet **la même instance** `ollama_vision`
+déjà construite pour `VisionAgent` — pas un second modèle chargé pour cet
+agent seul.
+
+Dans `run()`, quand les deux signaux sont présents, la réponse les distingue
+explicitement : le décompte OpenTakeoff d'abord, puis « CE QUE LE MODELE DE
+VISION DIT AVOIR VU... (une IMPRESSION, jamais une mesure certaine) », avec une
+phrase rappelant que l'un lit du texte déjà écrit et l'autre regarde l'image et
+peut se tromper ou en manquer.
+
+`symbol_sweep`/`cut_out` (désigner un rectangle sur l'image) restent
+`SUGGESTION — NON IMPLEMENTEE` : personne n'a mesuré si Qwen3-VL peut pointer
+une coordonnée avec une précision suffisante, et les construire sans cette
+mesure aurait été le même risque refusé plus haut.
+
+### Preuve par sabotage
+
+- `core/connectors/opentakeoff.py` : forcer `commit=True` dans l'appel à
+  `count_marks` a fait échouer le test vérifiant `commit is False` (lecture
+  seule garantie) — restauré.
+- `agents/plaquiste/plaquiste_agent.py` : retirer le `try/except` de
+  `_avis_visuel_depuis` a fait remonter un `ConnectionError` brut jusqu'à
+  `run()`, cassant `TestAvisVisuelDuPlan::test_un_echec_du_modele_ne_casse_pas_
+  la_reponse` (le reste de la réponse doit survivre à un échec du modèle de
+  vision) — restauré.
+
+`python -m pytest tests/ -q` → 2229 passed, 1 skipped, 21 deselected.
+`python -m ruff check .` → All checks passed!
+
+### Ce qui reste `NON VÉRIFIÉ`
+
+Le signal 1 (`compter_marques`) est testé entièrement hors ligne (double
+scripté du transport MCP) — sa logique est vérifiée, mais aucun vrai plan avec
+tableau de menuiseries n'a été mesuré ici.
+
+Le signal 2 (avis visuel) n'a **jamais tourné sur `qwen3-vl:4b` réel** — cette
+machine n'a pas de GPU (§ »Ce que la machine de l'assistant ne peut pas
+faire », `CLAUDE.md`). Le branchement et la logique sont testés avec un double
+du modèle ; la qualité réelle de l'impression reste `UNKNOWN` tant que le
+propriétaire ne l'a pas fait tourner chez lui sur un vrai plan.
+
+### Ce que ça coûte si c'est faux
+
+- **Si le signal 2 est pris pour une mesure** malgré l'avertissement répété
+  dans la phrase elle-même : un chiffrage basé dessus serait faux avec l'air
+  d'être juste — exactement le risque déjà refusé pour `symbol_sweep`/
+  `cut_out`. La phrase « impression, jamais une mesure certaine » est la seule
+  garde ; elle n'empêche rien côté code, elle informe.
+- **Si `compter_marques` est incomplet** (`feuilles_ignorees` non vide) et que
+  ce n'est pas remarqué : `complet=False` est toujours transmis jusqu'à
+  l'utilisateur (`formater_marques` l'affiche en `INCOMPLET`), jamais caché —
+  mais rien n'empêche de lire la réponse trop vite.
+
+Retour arrière : retirer le branchement de `run()` (deux blocs identifiés,
+`marques = ...` et `avis_visuel = ...`) restaure le comportement précédent sans
+toucher au reste de l'agent.

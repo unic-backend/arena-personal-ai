@@ -12,6 +12,7 @@ import yaml
 
 from agents.plaquiste.plaquiste_agent import (
     PlaquisteAgent,
+    _rendre_premiere_page,
     charger_metier,
     composer_instruction,
 )
@@ -31,6 +32,22 @@ class ModeleDouble:
         self.prompts.append(prompt)
         self.systemes.append(system_prompt)
         return "  reponse redigee  "
+
+
+class ModeleVisionDouble:
+    """Un double du modele de vision (DEC-0022) : note les images recues,
+    rend une reponse scriptee ou leve une exception scriptee."""
+
+    def __init__(self, reponse="3 portes et 2 fenetres, environ.", erreur=None):
+        self.appels = []
+        self._reponse = reponse
+        self._erreur = erreur
+
+    async def generate(self, prompt, system_prompt=None, images=None, **kw):
+        self.appels.append({"prompt": prompt, "images": images})
+        if self._erreur is not None:
+            raise self._erreur
+        return self._reponse
 
 
 class TestConnaissancesMetier:
@@ -502,6 +519,274 @@ class TestMesurerLePlan:
             "calcule le rampant, hauteur de 2,50 m, plan /chantiers/A-101.pdf")
 
         assert resultat["metre"] is None
+
+
+DETAIL_MARQUES = {
+    "marques": [{"mark": "D1", "count": 3}, {"mark": "W1", "count": 5}],
+    "total": 8, "complet": True, "feuilles_ignorees": [],
+}
+
+
+class TestCompterLesMarquesDuPlan:
+    """Le decompte de menuiseries (DEC-0022) : sur demande explicite
+    seulement, et jamais confondu avec la mesure de surface."""
+
+    @pytest.mark.asyncio
+    async def test_sans_demande_de_decompte_rien_n_est_appele(self):
+        """Un chemin de plan present ne suffit pas seul — seule la mesure de
+        surface se declenche sur la simple presence d'un chemin, jamais le
+        decompte de menuiseries."""
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="/chantiers/A-101.pdf", **DETAIL_PLAN_UNE_PIECE)
+        registre = RegistreScripte({("opentakeoff", "mesurer"): resultat_mesure})
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run("analyse le plan /chantiers/A-101.pdf")
+
+        assert resultat["marques"] is None
+        assert ("opentakeoff", "compter_marques") not in [
+            (c, cap) for c, cap, _ in registre.appels]
+
+    @pytest.mark.asyncio
+    async def test_combien_de_portes_declenche_le_decompte(self):
+        """Un chemin de plan declenche toujours la mesure (comportement
+        existant, inchange) ; « combien de portes » declenche EN PLUS le
+        decompte — les deux capacites repondent chacune a son propre
+        declencheur, independamment."""
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="/chantiers/A-101.pdf", **DETAIL_PLAN_UNE_PIECE)
+        resultat_marques = succes(action="compter_marques", cible="opentakeoff",
+                                  message="8 marque(s) recensee(s).",
+                                  preuve="/chantiers/A-101.pdf", **DETAIL_MARQUES)
+        registre = RegistreScripte({
+            ("opentakeoff", "mesurer"): resultat_mesure,
+            ("opentakeoff", "compter_marques"): resultat_marques,
+        })
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat_agent = await agent.run(
+            "combien de portes sur le plan /chantiers/A-101.pdf ?")
+
+        assert ("opentakeoff", "compter_marques", {"chemin": "/chantiers/A-101.pdf"}) \
+            in registre.appels
+        assert resultat_agent["marques"]["total"] == 8
+        assert "D1" in resultat_agent["marques"]["resume"]
+
+    @pytest.mark.asyncio
+    async def test_sans_registre_le_decompte_le_dit_au_lieu_de_se_taire(self):
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER))
+
+        resultat = await agent.run("combien de portes sur le plan /chantiers/A-101.pdf ?")
+
+        assert resultat["marques"]["statut"] == "NOT_CONFIGURED"
+
+    @pytest.mark.asyncio
+    async def test_un_chemin_dans_le_depot_est_refuse_pour_le_decompte_aussi(self):
+        from apps.backend.config import BASE_DIR
+
+        registre = RegistreScripte({})
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+        chemin_secret = str(BASE_DIR / "config" / "unic_plaquiste.yaml.pdf")
+
+        resultat = await agent.run(f"combien de portes sur le plan {chemin_secret} ?")
+
+        assert resultat["marques"]["statut"] == "REFUSE"
+        assert registre.appels == []
+
+    @pytest.mark.asyncio
+    async def test_un_decompte_incomplet_est_transmis_tel_quel(self):
+        detail = dict(DETAIL_MARQUES, complet=False)
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="/chantiers/A-101.pdf", **DETAIL_PLAN_UNE_PIECE)
+        resultat = succes(action="compter_marques", cible="opentakeoff",
+                          message="2 marque(s) recensee(s).",
+                          preuve="/chantiers/A-101.pdf", **detail)
+        registre = RegistreScripte({
+            ("opentakeoff", "mesurer"): resultat_mesure,
+            ("opentakeoff", "compter_marques"): resultat,
+        })
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat_agent = await agent.run(
+            "combien de portes sur le plan /chantiers/A-101.pdf ?")
+
+        assert resultat_agent["marques"]["complet"] is False
+
+
+class TestRendrePremierePage:
+    """Le rendu d'une page en image (DEC-0022) : la seule fenetre ou une
+    question visuelle touche un plan — jamais persiste, juste renvoyee
+    encodee pour un appel de modele."""
+
+    def test_un_vrai_pdf_est_rendu_en_base64(self, tmp_path):
+        chemin = tmp_path / "plan.pdf"
+        chemin.write_bytes(_pdf_valide())
+
+        resultat = _rendre_premiere_page(str(chemin))
+
+        assert resultat is not None
+        assert len(resultat) > 100  # une vraie image encodee, pas une chaine vide
+
+    def test_un_fichier_absent_rend_none_sans_lever(self):
+        assert _rendre_premiere_page("/rien/ici/plan.pdf") is None
+
+    def test_un_pdf_corrompu_rend_none_sans_lever(self, tmp_path):
+        chemin = tmp_path / "casse.pdf"
+        chemin.write_bytes(b"ceci n'est pas un PDF")
+
+        assert _rendre_premiere_page(str(chemin)) is None
+
+    def test_pypdfium2_absent_rend_none(self, monkeypatch):
+        """Une dependance optionnelle absente est un etat, jamais un crash —
+        `compter_marques` (deterministe) doit pouvoir continuer seul."""
+        import builtins
+
+        reel_import = builtins.__import__
+
+        def import_sans_pypdfium2(nom, *args, **kwargs):
+            if nom == "pypdfium2":
+                raise ImportError("pypdfium2 non installe, pour ce test")
+            return reel_import(nom, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", import_sans_pypdfium2)
+
+        assert _rendre_premiere_page("/peu/importe.pdf") is None
+
+
+class TestAvisVisuelDuPlan:
+    """L'avis de Qwen3-VL sur les ouvertures (DEC-0022) : un SECOND signal,
+    jamais fondu avec le decompte deterministe, jamais bloquant s'il manque."""
+
+    @pytest.mark.asyncio
+    async def test_sans_provider_vision_configure_rien_n_est_tente(self):
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="/chantiers/A-101.pdf", **DETAIL_PLAN_UNE_PIECE)
+        resultat_marques = succes(action="compter_marques", cible="opentakeoff",
+                                  message="ok", preuve="/chantiers/A-101.pdf", **DETAIL_MARQUES)
+        registre = RegistreScripte({
+            ("opentakeoff", "mesurer"): resultat_mesure,
+            ("opentakeoff", "compter_marques"): resultat_marques,
+        })
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)  # provider_vision omis
+
+        resultat = await agent.run("combien de portes sur le plan /chantiers/A-101.pdf ?")
+
+        assert resultat["avis_visuel_ouvertures"] is None
+
+    @pytest.mark.asyncio
+    async def test_sans_demande_de_decompte_rien_n_est_tente(self):
+        """Un plan mesure sans question de decompte ne declenche pas non plus
+        l'avis visuel — meme garde que le decompte deterministe."""
+        vision = ModeleVisionDouble()
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="/chantiers/A-101.pdf", **DETAIL_PLAN_UNE_PIECE)
+        registre = RegistreScripte({("opentakeoff", "mesurer"): resultat_mesure})
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre, provider_vision=vision)
+
+        resultat = await agent.run("analyse le plan /chantiers/A-101.pdf")
+
+        assert resultat["avis_visuel_ouvertures"] is None
+        assert vision.appels == []
+
+    @pytest.mark.asyncio
+    async def test_une_piece_jointe_produit_un_avis_visuel(self):
+        """Le seul chemin ou l'on peut fournir un vrai PDF a l'appel reel :
+        via une piece jointe, comme l'upload PWA (phase 4)."""
+        from apps.backend.pieces_jointes import DepotPiecesJointes
+
+        depot = DepotPiecesJointes()
+        piece = depot.deposer("plan_almadies.pdf", _pdf_valide())
+
+        vision = ModeleVisionDouble(reponse="2 portes visibles, une fenetre au nord.")
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="peu importe", **DETAIL_PLAN_UNE_PIECE)
+        resultat_marques = succes(action="compter_marques", cible="opentakeoff",
+                                  message="ok", preuve="peu importe", **DETAIL_MARQUES)
+        registre = RegistreScripte({
+            ("opentakeoff", "mesurer"): resultat_mesure,
+            ("opentakeoff", "compter_marques"): resultat_marques,
+        })
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre, pieces_jointes=depot,
+                               provider_vision=vision)
+
+        resultat = await agent.run(
+            "combien de portes sur ce plan ?", context={"attachments": [piece.identifiant]})
+
+        assert resultat["avis_visuel_ouvertures"] == "2 portes visibles, une fenetre au nord."
+        assert len(vision.appels) == 1
+        assert vision.appels[0]["images"], "aucune image transmise au modele de vision"
+
+    @pytest.mark.asyncio
+    async def test_le_fichier_temporaire_est_efface_apres_l_avis(self, monkeypatch):
+        """Meme regle de vie privee que la mesure (phase 4) : le fichier
+        n'existe que le temps de l'appel, jamais au-dela."""
+        import agents.plaquiste.plaquiste_agent as module_agent
+        from apps.backend.pieces_jointes import DepotPiecesJointes
+
+        depot = DepotPiecesJointes()
+        piece = depot.deposer("plan_almadies.pdf", _pdf_valide())
+
+        chemins_vus = []
+        reel = module_agent._rendre_premiere_page
+
+        def espion(chemin):
+            chemins_vus.append(chemin)
+            assert Path(chemin).exists(), "le fichier doit exister PENDANT l'appel"
+            return reel(chemin)
+
+        monkeypatch.setattr(module_agent, "_rendre_premiere_page", espion)
+
+        vision = ModeleVisionDouble()
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="peu importe", **DETAIL_PLAN_UNE_PIECE)
+        resultat_marques = succes(action="compter_marques", cible="opentakeoff",
+                                  message="ok", preuve="peu importe", **DETAIL_MARQUES)
+        registre = RegistreScripte({
+            ("opentakeoff", "mesurer"): resultat_mesure,
+            ("opentakeoff", "compter_marques"): resultat_marques,
+        })
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre, pieces_jointes=depot,
+                               provider_vision=vision)
+
+        await agent.run("combien de fenetres sur ce plan ?",
+                        context={"attachments": [piece.identifiant]})
+
+        assert len(chemins_vus) == 1
+        assert not Path(chemins_vus[0]).exists(), "le fichier temporaire n'a pas ete efface"
+
+    @pytest.mark.asyncio
+    async def test_un_echec_du_modele_de_vision_ne_casse_pas_la_reponse(self):
+        from apps.backend.pieces_jointes import DepotPiecesJointes
+
+        depot = DepotPiecesJointes()
+        piece = depot.deposer("plan_almadies.pdf", _pdf_valide())
+
+        vision = ModeleVisionDouble(erreur=ConnectionError("Ollama injoignable"))
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="peu importe", **DETAIL_PLAN_UNE_PIECE)
+        resultat_marques = succes(action="compter_marques", cible="opentakeoff",
+                                  message="ok", preuve="peu importe", **DETAIL_MARQUES)
+        registre = RegistreScripte({
+            ("opentakeoff", "mesurer"): resultat_mesure,
+            ("opentakeoff", "compter_marques"): resultat_marques,
+        })
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre, pieces_jointes=depot,
+                               provider_vision=vision)
+
+        resultat = await agent.run(
+            "combien de portes sur ce plan ?", context={"attachments": [piece.identifiant]})
+
+        assert resultat["avis_visuel_ouvertures"] is None
+        assert resultat["status"] == "success"  # le reste de la reponse tient toujours
 
 
 class TestDocumentDepuisUnPlanMesure:

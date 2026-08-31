@@ -11,15 +11,23 @@ transport ; ce module l'utilise sans en reimplementer une ligne.
 
 **Ce qui est mesure ici, et pourquoi c'est un sous-ensemble des quarante
 outils du serveur** : le moteur sait aussi faire cliquer une piece a la main,
-compter des symboles repetes, comparer des revisions — tout ce qui suppose de
-DESIGNER un point ou un rectangle sur l'image du plan. Un modele de texte ne
-voit pas le plan ; lui faire deviner des coordonnees produirait un metre faux
-avec l'air d'un metre juste. Ce qui est branche ici se fait sans deviner une
-coordonnee : `detect_rooms` lit les numeros de piece deja ecrits sur le plan
-et flotte chaque piece lui-meme (le meme moteur que le clic humain), et
-`derive_base` en tire le perimetre. Compter des portes une a une, ou deduire
-une ouverture precise, restent hors de portee **tant que rien ne peut regarder
-l'image** — `SUGGESTION — NON IMPLEMENTEE`, pas simulees.
+marquer un rectangle autour d'un symbole repete, comparer des revisions —
+tout ce qui suppose de DESIGNER un point ou un rectangle sur l'image du plan.
+Un modele de texte ne voit pas le plan ; lui faire deviner des coordonnees
+produirait un metre faux avec l'air d'un metre juste. Ce qui est branche ici
+se fait sans deviner une coordonnee : `detect_rooms` lit les numeros de piece
+deja ecrits sur le plan et flotte chaque piece lui-meme (le meme moteur que
+le clic humain), `derive_base` en tire le perimetre, et `count_marks`
+(`compter_marques`, DEC-0022) recense les marques annotees deja ecrites sur
+le plan (un tag de menuiserie au-dessus d'une valeur) — texte, pas image,
+donc sans deviner de coordonnee non plus.
+
+Compter un symbole repete par une marquee (`symbol_sweep`) ou deduire une
+ouverture precise (`cut_out`) restent hors de portee **tant que rien n'a
+mesure si un modele de vision peut vraiment designer un rectangle sur
+l'image avec une precision suffisante** — `SUGGESTION — NON IMPLEMENTEE`,
+pas simulees. Qwen3-VL (DEC-0019) existe, mais personne n'a jamais mesure
+sa capacite a pointer un symbole en pixels sur cette machine (pas de GPU).
 
 **Quatre regles :**
 
@@ -117,6 +125,12 @@ class ConnecteurOpenTakeoff(Connecteur):
                 nom="exporter", action="export",
                 description="Ecrit le rapport de metre et le plan marque, a cote du plan source.",
                 ecriture=True),
+            "compter_marques": Capacite(
+                nom="compter_marques", action="read",
+                description=(
+                    "Recense les marques annotees (ex. un tableau de menuiseries "
+                    "D1/W1) deja ecrites sur le plan, sans rien ecrire."),
+                ecriture=False),
         }
 
     def authentifier(self) -> bool:
@@ -170,6 +184,9 @@ class ConnecteurOpenTakeoff(Connecteur):
             return non_configure(action=capacite.nom, cible=self.nom, ce_qui_manque=CE_QUI_MANQUE)
 
         with ClientMcpStdio(commande, dossier=DOSSIER_MCP) as client:
+            if capacite.nom == "compter_marques":
+                return self._compter_marques(client, chemin, parametres.get("marques"))
+
             mesure = self._mesurer_session(client, chemin)
             if mesure is None:
                 return echec(action=capacite.nom, cible=self.nom,
@@ -212,6 +229,45 @@ class ConnecteurOpenTakeoff(Connecteur):
                 chemin_rapport=chemin_rapport,
                 chemin_marque=donnees_marque.get("path"),
                 **mesure)
+
+    # --- Le decompte de marques, sans image ni coordonnee ---------------------------
+
+    def _compter_marques(self, client: ClientMcpStdio, chemin: str,
+                         marques: Optional[List[str]]) -> ResultatAction:
+        """Recense les marques annotees deja ecrites sur le plan (`count_marks`).
+
+        Aucune echelle requise (le decompte est en unites, EA — jamais une
+        longueur ni une surface), et aucune coordonnee n'est designee : l'outil
+        lit le texte deja present sur le plan (un tag de menuiserie au-dessus
+        d'une valeur, comme un tableau de portes/fenetres), jamais une image.
+        C'est le seul des trois outils "symboles" du serveur qui ne suppose pas
+        qu'un modele regarde l'image — voir la docstring du module.
+        """
+        reponse_ouverture = client.appeler("load_plan", {"path": chemin})
+        erreur_ouverture = _erreur_outil(reponse_ouverture)
+        if not reponse_ouverture.ok or erreur_ouverture:
+            return echec(action="compter_marques", cible=self.nom,
+                         message=f"Plan illisible : {erreur_ouverture or reponse_ouverture.raison}")
+
+        arguments: Dict[str, Any] = {"commit": False}
+        if marques:
+            arguments["marks"] = list(marques)
+        reponse = client.appeler("count_marks", arguments)
+        erreur = _erreur_outil(reponse)
+        if not reponse.ok or erreur:
+            return echec(action="compter_marques", cible=self.nom,
+                         message=f"Decompte impossible : {erreur or reponse.raison}")
+
+        donnees = reponse.donnees() or {}
+        return succes(
+            action="compter_marques", cible=self.nom,
+            message=f"{donnees.get('total', 0)} marque(s) recensee(s).",
+            preuve=chemin,
+            marques=donnees.get("marks", []),
+            total=donnees.get("total", 0),
+            complet=donnees.get("complete", True),
+            feuilles_ignorees=donnees.get("skipped", []),
+        )
 
     # --- Le metre lui-meme, partage entre les deux capacites -----------------------
 

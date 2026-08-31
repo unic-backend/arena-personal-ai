@@ -9,6 +9,7 @@ d'ecrire un chiffre plausible dans un document qui part chez un client.
 Un devis faux coute plus cher qu'un devis en retard.
 """
 import base64
+import io
 import logging
 import re
 import tempfile
@@ -27,8 +28,10 @@ from agents.plaquiste.metre_plan import (
     chemin_dans,
     demande_non_calculable_depuis_le_plan,
     demande_un_plafond,
+    depuis_marques,
     depuis_mesure,
     faces_du_mur,
+    formater_marques,
     lire_hauteur,
     surface_murs_m2,
 )
@@ -89,6 +92,28 @@ def type_document_demande(texte: str) -> str:
         if motif.search(texte or ""):
             return type_document
     return "DEVIS"
+
+#: Ce qui demande un DECOMPTE de marques annotees (menuiseries) sur un plan —
+#: DEC-0022. Ne declenche PAS lui-meme la mesure de surface : un plan mesure
+#: pour ses m2 et un plan compte pour ses portes/fenetres sont deux demandes
+#: differentes, jamais confondues.
+DEMANDE_DE_DECOMPTE = re.compile(
+    r"\bcombien de (?:portes?|fenetres?|fenêtres?|menuiseries?)\b"
+    r"|\bcompter? les (?:portes?|fenetres?|fenêtres?)\b"
+    r"|\bnombre de (?:portes?|fenetres?|fenêtres?)\b",
+    re.IGNORECASE)
+
+#: La question posee au modele de vision (DEC-0022) — jamais habillee en
+#: mesure : le prompt lui-meme demande une IMPRESSION, et dit que le modele
+#: peut se tromper. Sert le meme decompte que `DEMANDE_DE_DECOMPTE` ; le
+#: decompte deterministe (OpenTakeoff) et cet avis visuel sont deux signaux
+#: differents, jamais fondus en un seul chiffre.
+DEMANDE_VISUELLE_OUVERTURES = (
+    "Regarde ce plan de construction. Decris ce que tu vois comme portes et "
+    "fenetres : leur nombre approximatif et, si possible, leur emplacement. "
+    "Sois clair sur le fait que c'est une lecture visuelle, pas un comptage "
+    "certain — dis-le si tu n'es pas sur, et n'invente rien que tu ne vois pas."
+)
 
 #: Ce qu'il faut connaitre pour adresser un devis. Jamais devine dans la phrase.
 DESTINATAIRE = ("client", "lieu", "objet")
@@ -279,6 +304,30 @@ def composer_instruction(metier: Dict[str, Any]) -> str:
     return "\n".join(ligne for ligne in lignes if ligne is not None)
 
 
+def _rendre_premiere_page(chemin: str) -> Optional[str]:
+    """La premiere page d'un plan PDF, rendue en PNG et encodee en base64.
+
+    Rend `None` si `pypdfium2` n'est pas installe ou que le rendu echoue —
+    une capacite absente se rapporte, elle ne leve jamais. 200 DPI (contre
+    300 pour l'OCR de `tools/documents/reader.py`, qui doit lire du texte
+    fin) : ici la question porte sur des symboles visibles a l'oeil, une
+    resolution plus legere suffit.
+    """
+    try:
+        import pypdfium2 as pdfium
+    except ImportError:
+        return None
+    try:
+        page = pdfium.PdfDocument(chemin)[0]
+        image = page.render(scale=200 / 72).to_pil()
+        tampon = io.BytesIO()
+        image.save(tampon, format="PNG")
+        return base64.b64encode(tampon.getvalue()).decode("ascii")
+    except Exception as erreur:  # noqa: BLE001 — un rendu rate est un etat, pas un crash
+        logger.debug("Rendu de page impossible (%s) : %s", chemin, erreur)
+        return None
+
+
 class PlaquisteAgent(BaseAgent):
     """Devis, mails, argumentaire client et planification pour UniC Plaquiste."""
 
@@ -286,7 +335,8 @@ class PlaquisteAgent(BaseAgent):
                  metier: Optional[Dict[str, Any]] = None,
                  registre: Optional[RegistreConnecteurs] = None,
                  pieces_jointes: Optional[DepotPiecesJointes] = None,
-                 memoire_personnelle: Optional[MemoirePersonnelle] = None):
+                 memoire_personnelle: Optional[MemoirePersonnelle] = None,
+                 provider_vision: Optional[ModelProvider] = None):
         super().__init__(
             name="PlaquisteAgent",
             description="Assistant metier d'UniC Plaquiste : devis, mails, planning.",
@@ -304,6 +354,11 @@ class PlaquisteAgent(BaseAgent):
         # Sans memoire personnelle, une mesure de plan n'est jamais retenue :
         # le proprietaire devra renvoyer le meme plan s'il y revient plus tard.
         self.memoire_personnelle = memoire_personnelle
+        # Le meme modele que VisionAgent (qwen3-vl:4b, DEC-0019), jamais
+        # self.provider : celui-ci n'est pas forcement configure pour voir une
+        # image. Sans lui, l'avis visuel (DEC-0022) est simplement absent —
+        # le decompte deterministe (`compter_marques`) continue seul.
+        self.provider_vision = provider_vision
 
     def _lire_l_agenda(self, texte: str) -> Optional[Dict[str, Any]]:
         """Les creneaux libres, quand la demande porte sur QUAND.
@@ -455,20 +510,21 @@ class PlaquisteAgent(BaseAgent):
                 return piece
         return None
 
-    def _mesurer_la_piece_jointe(self, piece, texte: str) -> Dict[str, Any]:
-        """Ecrit brievement les octets deja recus, mesure, efface tout de suite.
+    def _avec_la_piece_jointe(self, piece, executer) -> Dict[str, Any]:
+        """Ecrit brievement les octets deja recus, appelle `executer(chemin)`,
+        efface tout de suite.
 
         La seule fenetre ou un plan envoye par upload touche le disque : le
         temps de cet appel, jamais plus. Meme regle de vie privee que
         `apps/backend/pieces_jointes.py`, juste reportee au moment ou la
-        mesure est reellement demandee plutot qu'a l'upload — OpenTakeoff est
-        un processus externe, il ne peut pas lire des octets en memoire.
+        capacite est reellement demandee plutot qu'a l'upload — OpenTakeoff
+        est un processus externe, il ne peut pas lire des octets en memoire.
         """
         dossier = Path(tempfile.mkdtemp(prefix="arena-plan-"))
         chemin_temp = dossier / (piece.nom or "plan.pdf")
         try:
             chemin_temp.write_bytes(base64.b64decode(piece.pdf_base64))
-            resultat = self._mesurer_depuis(str(chemin_temp), texte)
+            resultat = executer(str(chemin_temp))
         finally:
             chemin_temp.unlink(missing_ok=True)
             dossier.rmdir()
@@ -476,6 +532,42 @@ class PlaquisteAgent(BaseAgent):
         # temporaire — qui n'existe deja plus, et n'a aucun sens pour lui.
         resultat["chemin"] = piece.nom
         return resultat
+
+    def _avec_le_chemin_du_plan(self, texte: str, identifiants_pieces: Optional[List[str]],
+                                executer) -> Optional[Dict[str, Any]]:
+        """Resout un plan (chemin tape ou piece jointe PDF), puis appelle
+        `executer(chemin)` avec un vrai chemin sur disque.
+
+        Partagee par toute capacite qui a besoin d'ouvrir un plan — mesurer,
+        compter les marques (DEC-0022) : la resolution (refus si le chemin
+        tombe dans le depot, `NOT_CONFIGURED` sans registre, ecriture
+        temporaire puis effacement pour une piece jointe) ne doit exister
+        qu'une seule fois.
+
+        Returns:
+            Le compte-rendu de `executer`, ou `None` quand aucun plan n'a ete
+            trouve — ni chemin tape, ni piece jointe PDF.
+        """
+        chemin = chemin_dans(texte)
+        if chemin is not None:
+            if not chemin_hors_du_depot(chemin):
+                logger.warning("Chemin de plan refuse (dans le depot d'ARENA) : %s", chemin)
+                return {"statut": "REFUSE", "chemin": chemin,
+                        "message": "Ce chemin n'est pas ouvert : il tombe dans le depot d'ARENA."}
+            if self.registre is None:
+                return {"statut": "NOT_CONFIGURED", "chemin": chemin,
+                        "message": ("Je peux chiffrer, pas ouvrir un plan : aucun "
+                                    "connecteur n'est branche sur cet agent.")}
+            return executer(chemin)
+
+        piece = self._piece_plan_pdf(identifiants_pieces)
+        if piece is None:
+            return None
+        if self.registre is None:
+            return {"statut": "NOT_CONFIGURED", "chemin": piece.nom,
+                    "message": ("Je peux chiffrer, pas ouvrir un plan : aucun "
+                                "connecteur n'est branche sur cet agent.")}
+        return self._avec_la_piece_jointe(piece, executer)
 
     def _mesurer_le_plan(self, texte: str,
                          identifiants_pieces: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
@@ -491,26 +583,105 @@ class PlaquisteAgent(BaseAgent):
             Le compte-rendu, ou `None` quand aucun plan n'a ete trouve —
             ni chemin tape, ni piece jointe PDF.
         """
+        return self._avec_le_chemin_du_plan(
+            texte, identifiants_pieces, lambda chemin: self._mesurer_depuis(chemin, texte))
+
+    def _compter_marques_depuis(self, chemin: str) -> Dict[str, Any]:
+        """Recense les marques annotees (menuiseries) deja ecrites sur le plan.
+
+        A la difference de `_mesurer_depuis`, aucune echelle n'est requise et
+        aucune coordonnee n'est designee : `compter_marques` lit du texte deja
+        sur le plan (voir `core/connectors/opentakeoff.py`).
+        """
+        resultat = self.registre.executer("opentakeoff", "compter_marques", chemin=chemin)
+        if not resultat.a_eu_lieu:
+            return {"statut": resultat.statut.value, "chemin": chemin, "message": resultat.message}
+
+        marques = depuis_marques(chemin, resultat.detail or {})
+        return {
+            "statut": resultat.statut.value,
+            "chemin": chemin,
+            "resume": formater_marques(marques),
+            "total": marques.total,
+            "complet": marques.complet,
+        }
+
+    def _compter_les_marques_du_plan(self, texte: str,
+                                     identifiants_pieces: Optional[List[str]] = None
+                                     ) -> Optional[Dict[str, Any]]:
+        """Recense les marques annotees d'un plan, sur demande EXPLICITE.
+
+        Contrairement a `_mesurer_le_plan`, un chemin de plan present dans le
+        texte ne suffit pas seul a declencher ce decompte : sans la garde
+        `DEMANDE_DE_DECOMPTE`, chaque mention de plan lancerait un second
+        appel OpenTakeoff pour rien — « analyse ce plan » ne compte pas les
+        menuiseries s'il n'a rien demande de tel.
+
+        Returns:
+            Le compte-rendu, ou `None` quand aucun decompte n'a ete demande,
+            ou qu'aucun plan n'a ete trouve.
+        """
+        if not DEMANDE_DE_DECOMPTE.search(texte or ""):
+            return None
+        return self._avec_le_chemin_du_plan(
+            texte, identifiants_pieces, self._compter_marques_depuis)
+
+    async def _avis_visuel_depuis(self, chemin: str) -> Optional[str]:
+        """Ce que le modele de vision dit avoir vu — une IMPRESSION, jamais
+        une mesure. `None` sans image rendue ou si l'appel echoue : un avis
+        absent ne doit jamais faire perdre le decompte deterministe qui
+        l'accompagne.
+        """
+        image_b64 = _rendre_premiere_page(chemin)
+        if image_b64 is None:
+            return None
+        try:
+            reponse = await self.provider_vision.generate(
+                prompt=DEMANDE_VISUELLE_OUVERTURES, images=[image_b64])
+        except Exception as erreur:  # noqa: BLE001 — un avis rate est une absence, pas un crash
+            logger.info("Avis visuel impossible sur %s : %s", chemin, erreur)
+            return None
+        return (reponse or "").strip() or None
+
+    async def _avis_visuel_du_plan(self, texte: str,
+                                   identifiants_pieces: Optional[List[str]] = None
+                                   ) -> Optional[str]:
+        """L'avis du modele de vision sur les ouvertures d'un plan (DEC-0022).
+
+        Chemin async separe de `_avec_le_chemin_du_plan` (synchrone, partage
+        par la mesure et le decompte) : appeler un modele de vision exige un
+        `await`, et faire de toute la chaine de resolution un chemin async
+        pour ce seul appelant aurait touche la mesure de surface deja
+        verifiee. La resolution du chemin (chemin tape, ou piece jointe
+        ecrite brievement) est donc reprise ici, plus courte : aucun message
+        REFUSE/NOT_CONFIGURED n'est produit sur ce chemin best-effort — sans
+        modele de vision, ou sans plan trouve, l'avis est simplement absent.
+
+        Returns:
+            L'avis du modele, ou `None` sans `provider_vision` configure,
+            sans decompte demande (meme garde que `_compter_les_marques_du_plan`),
+            ou sans plan trouve.
+        """
+        if self.provider_vision is None or not DEMANDE_DE_DECOMPTE.search(texte or ""):
+            return None
+
         chemin = chemin_dans(texte)
         if chemin is not None:
-            if not chemin_hors_du_depot(chemin):
-                logger.warning("Chemin de plan refuse (dans le depot d'ARENA) : %s", chemin)
-                return {"statut": "REFUSE", "chemin": chemin,
-                        "message": "Ce chemin n'est pas ouvert : il tombe dans le depot d'ARENA."}
-            if self.registre is None:
-                return {"statut": "NOT_CONFIGURED", "chemin": chemin,
-                        "message": ("Je peux chiffrer, pas ouvrir un plan : aucun "
-                                    "connecteur n'est branche sur cet agent.")}
-            return self._mesurer_depuis(chemin, texte)
+            if not chemin_hors_du_depot(chemin) or self.registre is None:
+                return None
+            return await self._avis_visuel_depuis(chemin)
 
         piece = self._piece_plan_pdf(identifiants_pieces)
-        if piece is None:
+        if piece is None or self.registre is None:
             return None
-        if self.registre is None:
-            return {"statut": "NOT_CONFIGURED", "chemin": piece.nom,
-                    "message": ("Je peux chiffrer, pas ouvrir un plan : aucun "
-                                "connecteur n'est branche sur cet agent.")}
-        return self._mesurer_la_piece_jointe(piece, texte)
+        dossier = Path(tempfile.mkdtemp(prefix="arena-plan-"))
+        chemin_temp = dossier / (piece.nom or "plan.pdf")
+        try:
+            chemin_temp.write_bytes(base64.b64decode(piece.pdf_base64))
+            return await self._avis_visuel_depuis(str(chemin_temp))
+        finally:
+            chemin_temp.unlink(missing_ok=True)
+            dossier.rmdir()
 
     def _retenir_la_mesure(self, plan: Dict[str, Any], context: Dict[str, Any]) -> None:
         """Garde les CHIFFRES mesures pour qu'il puisse reprendre le meme plan
@@ -674,6 +845,42 @@ class PlaquisteAgent(BaseAgent):
                 f"{plan.get('message', '')}\nDis-le-lui tel quel, n'invente aucune surface."
             )
 
+        # Un decompte de menuiseries (DEC-0022) : seulement sur demande
+        # explicite (DEMANDE_DE_DECOMPTE), jamais parce qu'un plan a ete
+        # mesure — mesurer des m2 et compter des portes sont deux demandes
+        # differentes. `compter_marques` lit du texte deja sur le plan
+        # (un tag au-dessus d'une valeur, comme un tableau de menuiseries),
+        # jamais une image : aucune coordonnee n'y est devinee.
+        marques = self._compter_les_marques_du_plan(
+            user_input, (context or {}).get("attachments"))
+        if marques is not None and marques.get("resume"):
+            instruction = (
+                f"{instruction}\n\nDECOMPTE DE MENUISERIES DU PLAN (mesure reelle, "
+                f"pas une opinion) :\n{marques['resume']}\nReprends ce chiffre tel "
+                "quel s'il est demande ; ne recompte rien toi-meme."
+            )
+        elif marques is not None:
+            instruction = (
+                f"{instruction}\n\nLE DECOMPTE DE MENUISERIES DE {marques['chemin']} "
+                f"N'A PAS PU ETRE FAIT : {marques.get('message', '')}\nDis-le-lui tel "
+                "quel, n'invente aucun chiffre."
+            )
+
+        # L'avis visuel de Qwen3-VL sur les memes ouvertures (DEC-0022) : un
+        # SECOND signal, jamais fondu avec le decompte deterministe ci-dessus.
+        # Absent sans provider_vision configure, sans plan, ou si le rendu ou
+        # l'appel echoue — best-effort, ne bloque jamais la reponse.
+        avis_visuel = await self._avis_visuel_du_plan(
+            user_input, (context or {}).get("attachments"))
+        if avis_visuel:
+            instruction = (
+                f"{instruction}\n\nCE QUE LE MODELE DE VISION DIT AVOIR VU sur ce "
+                f"plan (une IMPRESSION, jamais une mesure certaine) :\n{avis_visuel}\n"
+                "Presente-le distinctement du decompte OpenTakeoff ci-dessus si les "
+                "deux sont presents : l'un lit du texte deja ecrit sur le plan, "
+                "l'autre regarde l'image et peut se tromper ou en manquer."
+            )
+
         # L'agenda : ses creneaux reels entrent dans l'instruction comme des
         # faits. Sans cela, le modele proposait des jours au hasard.
         agenda = self._lire_l_agenda(user_input)
@@ -726,6 +933,13 @@ class PlaquisteAgent(BaseAgent):
             # Ce qu'un plan PDF joint a rendu. `None` quand aucun chemin de
             # plan n'a ete lu dans la demande.
             "plan": plan,
+            # Ce qu'un decompte de menuiseries a rendu. `None` quand aucun
+            # decompte n'a ete demande (DEMANDE_DE_DECOMPTE).
+            "marques": marques,
+            # L'impression du modele de vision sur les memes ouvertures —
+            # jamais une mesure. `None` sans modele configure ou sans decompte
+            # demande.
+            "avis_visuel_ouvertures": avis_visuel,
             # Ce qu'il est advenu du fichier demande. `None` quand aucun ne
             # l'etait — jamais un statut inventé pour remplir le champ.
             "document": document,

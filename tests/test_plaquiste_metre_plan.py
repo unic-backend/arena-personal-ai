@@ -2,14 +2,17 @@
 et la limite honnete sur ce qu'un perimetre de piece peut devenir.
 """
 from agents.plaquiste.metre_plan import (
+    MarquesPlan,
     MetrePlan,
     Piece,
     chemin_dans,
     demande_non_calculable_depuis_le_plan,
     demande_un_plafond,
+    depuis_marques,
     depuis_mesure,
     faces_du_mur,
     formater,
+    formater_marques,
     lire_hauteur,
     surface_murs_m2,
 )
@@ -164,3 +167,70 @@ class TestFormater:
         rendu = formater(metre)
 
         assert "pas encore une surface de mur" in rendu
+
+
+DETAIL_MARQUES = {
+    "marques": [{"mark": "D1", "count": 3}, {"mark": "W1", "count": 5}],
+    "total": 8, "complet": True, "feuilles_ignorees": [],
+}
+
+
+class TestDepuisMarques:
+    def test_traduit_le_decompte(self):
+        marques = depuis_marques("/x/a.pdf", DETAIL_MARQUES)
+
+        assert marques.total == 8
+        assert {m["marque"] for m in marques.marques} == {"D1", "W1"}
+        assert marques.complet is True
+
+    def test_un_detail_vide_ne_leve_pas(self):
+        marques = depuis_marques("/x/a.pdf", {})
+
+        assert marques.marques == []
+        assert marques.total == 0
+        assert marques.complet is True  # absent veut dire "rien ne dit le contraire"
+
+    def test_incomplet_est_transmis(self):
+        detail = dict(DETAIL_MARQUES, complet=False,
+                      feuilles_ignorees=[{"sheet": "b.pdf", "role": "detail"}])
+        marques = depuis_marques("/x/a.pdf", detail)
+
+        assert marques.complet is False
+        assert marques.feuilles_ignorees == [{"sheet": "b.pdf", "role": "detail"}]
+
+
+class TestFormaterMarques:
+    def test_chaque_marque_et_le_total_apparaissent(self):
+        marques = depuis_marques("/x/a.pdf", DETAIL_MARQUES)
+
+        rendu = formater_marques(marques)
+
+        assert "D1 : 3" in rendu
+        assert "W1 : 5" in rendu
+        assert "Total : 8" in rendu
+
+    def test_aucune_marque_le_dit_sans_rien_inventer(self):
+        marques = MarquesPlan(chemin="/x/vide.pdf")
+
+        rendu = formater_marques(marques)
+
+        assert "vide.pdf" in rendu
+        assert "Aucune marque annotee" in rendu
+
+    def test_incomplet_est_signale(self):
+        marques = MarquesPlan(chemin="/x/a.pdf",
+                              marques=[{"marque": "D1", "compte": 1}],
+                              total=1, complet=False)
+
+        rendu = formater_marques(marques)
+
+        assert "INCOMPLET" in rendu
+
+    def test_jamais_de_symbole_devine_sur_l_image(self):
+        """La limite honnete du module : ce decompte lit du texte, jamais une
+        image — a la difference de symbol_sweep/cut_out, non implementes."""
+        marques = depuis_marques("/x/a.pdf", DETAIL_MARQUES)
+
+        rendu = formater_marques(marques)
+
+        assert "ne devine aucun symbole sur l'image" in rendu
