@@ -397,8 +397,20 @@ async def flux_agent(demande: DemandeAgent):
 
                 async def _repondre():
                     rendu["resultat"] = await dispatch_request(
-                        ChatRequest(prompt=texte, session_id=session,
-                                   attachments=demande.attachments),
+                        ChatRequest(
+                            prompt=texte, session_id=session,
+                            attachments=demande.attachments,
+                            # Structure encore intacte pour PLAQUISTE : `texte`
+                            # ci-dessus est deja le fil aplati (pour le modele
+                            # et les recherches par mots-cles existantes) ;
+                            # `history`/`message_actuel` gardent les tours
+                            # separes, pour que la capture deterministe du
+                            # destinataire (agents/plaquiste/plaquiste_agent.py)
+                            # sache exactement quelle reponse va avec quelle
+                            # question, sans avoir a redecouper le fil aplati.
+                            history=demande.history if intention == "PLAQUISTE" else [],
+                            message_actuel=demande.text if intention == "PLAQUISTE" else None,
+                        ),
                         intent=intention,
                     )
 

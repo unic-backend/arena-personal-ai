@@ -490,20 +490,25 @@ def test_plaquiste_recoit_le_fil_entier_pas_la_derniere_ligne_seule(
 
     async def _resultat(requete, intent=None):
         recu["prompt"] = requete.prompt
+        recu["history"] = requete.history
+        recu["message_actuel"] = requete.message_actuel
         return {"response": "Devis chiffre.", "sources": []}
     monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
 
-    demander(
-        client, entetes, text="C'est fann hock",
-        history=[
-            {"role": "assistant", "content": "Quel est le nom du client ?"},
-            {"role": "user", "content": "Seck, cloison 100m2, pas d'isolation"},
-        ],
-    )
+    historique = [
+        {"role": "assistant", "content": "Quel est le nom du client ?"},
+        {"role": "user", "content": "Seck, cloison 100m2, pas d'isolation"},
+    ]
+    demander(client, entetes, text="C'est fann hock", history=historique)
 
     assert "Seck" in recu["prompt"]
     assert "100m2" in recu["prompt"]
     assert "C'est fann hock" in recu["prompt"]
+    # La structure des tours reste intacte a cote du fil aplati : c'est elle
+    # que la capture deterministe du destinataire lit (plaquiste_agent.py),
+    # pas le fil aplati qu'il faudrait redecouper.
+    assert recu["history"] == historique
+    assert recu["message_actuel"] == "C'est fann hock"
 
 
 def test_un_autre_agent_specialise_ne_recoit_que_la_derniere_ligne(
@@ -522,6 +527,8 @@ def test_un_autre_agent_specialise_ne_recoit_que_la_derniere_ligne(
 
     async def _resultat(requete, intent=None):
         recu["prompt"] = requete.prompt
+        recu["history"] = requete.history
+        recu["message_actuel"] = requete.message_actuel
         return {"response": "Tri du courrier.", "sources": []}
     monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
 
@@ -531,6 +538,8 @@ def test_un_autre_agent_specialise_ne_recoit_que_la_derniere_ligne(
     )
 
     assert recu["prompt"] == "et le troisieme ?"
+    assert recu["history"] == []
+    assert recu["message_actuel"] is None
 
 
 def test_le_persona_n_est_pas_applique_a_un_agent_specialise(

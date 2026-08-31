@@ -62,6 +62,14 @@ class ChatRequest(BaseModel):
     video_path: Optional[str] = None
     region: Optional[str] = "Sénégal"
     attachments: List[str] = Field(default_factory=list)
+    # Les deux champs suivants ne servent qu'a PLAQUISTE (chapitre metier,
+    # capture deterministe du destinataire d'un devis — DEC a venir) :
+    # `history` porte les tours precedents, structures ; `message_actuel`
+    # porte la derniere phrase seule, distincte de `prompt` qui devient le
+    # fil entier aplati pour cette seule intention (voir pwa_gateway.py).
+    # Vides pour tout le reste de l'API, qui continue de ne lire que `prompt`.
+    history: List[Dict[str, str]] = Field(default_factory=list)
+    message_actuel: Optional[str] = None
 
 
 # Formulations par lesquelles l utilisateur reclame les sources. Decision du
@@ -220,8 +228,16 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         result = await social_agent.run(request.prompt, context={"session_id": session_id})
     elif intent == "PLAQUISTE":
         # Sans les pieces jointes, un plan envoye par upload PWA reste invisible :
-        # seul un chemin tape en texte peut alors etre mesure.
-        result = await plaquiste_agent.run(request.prompt, context={"attachments": request.attachments})
+        # seul un chemin tape en texte peut alors etre mesure. `historique` et
+        # `message_actuel` alimentent la capture deterministe du destinataire
+        # d'un devis (nom du client, lieu) — jamais devinee dans une phrase
+        # libre, seulement quand elle repond a une question posee au tour
+        # precedent (agents/plaquiste/plaquiste_agent.py).
+        result = await plaquiste_agent.run(request.prompt, context={
+            "attachments": request.attachments,
+            "historique": request.history,
+            "message_actuel": request.message_actuel,
+        })
     elif intent == "BROWSER":
         result = await browser_agent.run(request.prompt)
     elif intent == "SWE_FIX":
