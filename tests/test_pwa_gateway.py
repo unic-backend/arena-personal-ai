@@ -472,6 +472,67 @@ def test_un_agent_specialise_qui_leve_rend_une_vraie_erreur(
     assert not any(c["type"] == "done" for c in charges)
 
 
+def test_plaquiste_recoit_le_fil_entier_pas_la_derniere_ligne_seule(
+    client, entetes, fournisseur, monkeypatch,
+):
+    """Trouve en direct avec le proprietaire (31/08/2026) : un devis se
+    negocie sur plusieurs tours (« c'est fann hock » repond a « quel est
+    le nom du client ? » d'un tour plus tot) — sans l'historique,
+    PlaquisteAgent ne voit jamais que la derniere phrase et redemande les
+    memes informations en boucle."""
+    fournisseur()
+
+    async def _plaquiste(_demande, espace=None):
+        return "PLAQUISTE"
+    monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _plaquiste)
+
+    recu: dict = {}
+
+    async def _resultat(requete, intent=None):
+        recu["prompt"] = requete.prompt
+        return {"response": "Devis chiffre.", "sources": []}
+    monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+    demander(
+        client, entetes, text="C'est fann hock",
+        history=[
+            {"role": "assistant", "content": "Quel est le nom du client ?"},
+            {"role": "user", "content": "Seck, cloison 100m2, pas d'isolation"},
+        ],
+    )
+
+    assert "Seck" in recu["prompt"]
+    assert "100m2" in recu["prompt"]
+    assert "C'est fann hock" in recu["prompt"]
+
+
+def test_un_autre_agent_specialise_ne_recoit_que_la_derniere_ligne(
+    client, entetes, fournisseur, monkeypatch,
+):
+    """Portee volontairement limitee a PLAQUISTE : rien ne dit que EMAIL ou
+    VISION ont le meme besoin, et l'elargir sans le mesurer serait la meme
+    erreur en sens inverse."""
+    fournisseur()
+
+    async def _email(_demande, espace=None):
+        return "EMAIL"
+    monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _email)
+
+    recu: dict = {}
+
+    async def _resultat(requete, intent=None):
+        recu["prompt"] = requete.prompt
+        return {"response": "Tri du courrier.", "sources": []}
+    monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+    demander(
+        client, entetes, text="et le troisieme ?",
+        history=[{"role": "user", "content": "Fast Group, SENELEC, Orange"}],
+    )
+
+    assert recu["prompt"] == "et le troisieme ?"
+
+
 def test_le_persona_n_est_pas_applique_a_un_agent_specialise(
     client, entetes, fournisseur, monkeypatch, caplog
 ):

@@ -382,9 +382,22 @@ async def flux_agent(demande: DemandeAgent):
                 # que la mesure : la reponse est recuperee par la fermeture.
                 rendu: Dict[str, Any] = {}
 
+                # PLAQUISTE recoit le FIL entier, pas la derniere ligne seule.
+                # Trouve le 31/08/2026, en direct avec le proprietaire : un
+                # devis se negocie sur plusieurs tours (« c'est fann hock »
+                # repond a « quel est le nom du client ? » d'un tour plus tot)
+                # — sans l'historique, l'agent ne voit jamais que la derniere
+                # phrase et redemande les memes informations en boucle, jamais
+                # assez pour finaliser un devis. Les autres agents specialises
+                # ne sont pas touches : rien ne dit qu'ils ont le meme besoin,
+                # et l'elargir sans le mesurer serait la meme erreur en sens
+                # inverse.
+                texte = (_prompt_conversation(demande, proprietaire)
+                         if intention == "PLAQUISTE" else demande.text)
+
                 async def _repondre():
                     rendu["resultat"] = await dispatch_request(
-                        ChatRequest(prompt=demande.text, session_id=session,
+                        ChatRequest(prompt=texte, session_id=session,
                                    attachments=demande.attachments),
                         intent=intention,
                     )
