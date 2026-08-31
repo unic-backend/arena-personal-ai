@@ -477,6 +477,27 @@ async def flux_agent(demande: DemandeAgent):
     return StreamingResponse(flux(), media_type="text/event-stream")
 
 
+#: Taille d'un bloc de lecture d'envoi. Meme ordre de grandeur que
+#: `TAILLE_BLOC_ENVOI` de routers/media.py, qui lit deja par blocs.
+TAILLE_BLOC_PIECE = 1024 * 1024
+
+
+async def lire_borne(file: UploadFile, plafond: int) -> Optional[bytes]:
+    """Les octets de l'envoi, ou `None` des que le plafond est depasse.
+
+    S'arrete de lire au premier bloc qui fait passer au-dessus : rien
+    au-dela du plafond n'est jamais garde en memoire.
+    """
+    blocs: List[bytes] = []
+    total = 0
+    while bloc := await file.read(TAILLE_BLOC_PIECE):
+        total += len(bloc)
+        if total > plafond:
+            return None
+        blocs.append(bloc)
+    return b"".join(blocs)
+
+
 @router.post("/files", dependencies=[Depends(verify_api_key)])
 async def envoyer_fichier(
     file: UploadFile = File(...),
@@ -494,8 +515,18 @@ async def envoyer_fichier(
     tous les cas, y compris pour un refus — l'interface doit pouvoir afficher
     pourquoi son fichier n'a pas ete pris, et non se casser dessus.
     """
-    contenu = await file.read()
-    piece = pieces_jointes.deposer(file.filename or "sans-nom", contenu)
+    # Lecture BORNEE : `deposer()` mesure `len(contenu)`, donc apres coup —
+    # un `await file.read()` nu chargeait d'abord l'envoi entier en memoire,
+    # quelle que soit sa taille, pour ne decouvrir qu'ensuite qu'il depassait
+    # le plafond. Sur un hebergement a petite memoire, un seul envoi enorme
+    # emportait tout le serveur. `/api/upload` (routers/media.py) lisait deja
+    # par blocs ; cette route-ci ne le faisait pas. Trouve en revue le
+    # 31/08/2026.
+    contenu = await lire_borne(file, pieces_jointes.taille_max)
+    if contenu is None:
+        piece = pieces_jointes.refuser_trop_volumineux(file.filename or "sans-nom")
+    else:
+        piece = pieces_jointes.deposer(file.filename or "sans-nom", contenu)
 
     logger.info("Piece jointe recue : %s (%s), lue : %s.",
                 piece.nom, piece.statut, piece.lisible)
