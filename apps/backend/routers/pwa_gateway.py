@@ -389,7 +389,24 @@ async def flux_agent(demande: DemandeAgent):
                         intent=intention,
                     )
 
-                noter_mesure(await chronometrer(f"agent {intention}", voie, _repondre))
+                mesure = await chronometrer(f"agent {intention}", voie, _repondre)
+                noter_mesure(mesure)
+                if mesure.etat != ETAT_MESURE:
+                    # `chronometrer` avale toute exception par conception
+                    # (core/execution/mesures.py) : une campagne de mesures ne
+                    # doit pas s'arreter a la premiere scene impossible. Mais
+                    # ici ce n'est pas une campagne, c'est la reponse reelle a
+                    # son message — la laisser passer masquait tout echec de
+                    # `dispatch_request` derriere un KeyError('resultat')
+                    # opaque, mesure le 31/08/2026 (EMAIL en echec silencieux
+                    # apres la premiere vraie connexion Gmail). Le detail de
+                    # l'exception, deja capture par `chronometrer` et deja
+                    # plafonne a 120 caracteres pour ne rien divulguer, est
+                    # ce qui reste diagnosticable au lieu de disparaitre.
+                    yield erreur(
+                        f"L'agent {intention} n'a pas pu repondre : "
+                        f"{mesure.detail or 'raison inconnue'}.")
+                    return
                 resultat = rendu["resultat"]
                 yield jeton(resultat["response"])
                 yield fin({

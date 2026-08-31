@@ -438,6 +438,40 @@ def test_les_pieces_jointes_atteignent_un_agent_specialise(
     assert recu["attachments"] == [piece.identifiant]
 
 
+def test_un_agent_specialise_qui_leve_rend_une_vraie_erreur(
+    client, entetes, fournisseur, monkeypatch,
+):
+    """Avant ce correctif : `chronometrer` avale toute exception venant de
+    `dispatch_request` (par conception, core/execution/mesures.py — une
+    campagne de mesures ne doit pas s'arreter a la premiere scene
+    impossible), donc `rendu["resultat"]` n'etait jamais rempli et la ligne
+    suivante levait un KeyError('resultat') opaque — c'est exactement ce
+    qu'a vu le proprietaire en testant EmailAgent juste apres avoir connecte
+    Gmail pour de vrai (31/08/2026). Le flux doit rapporter la vraie raison,
+    pas cette erreur secondaire."""
+    fournisseur()
+
+    async def _email(_demande, espace=None):
+        return "EMAIL"
+    monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _email)
+
+    async def _casse(_requete, intent=None):
+        raise RuntimeError("Aucun fournisseur disponible pour SENSIBLE")
+    monkeypatch.setattr(pwa_gateway, "dispatch_request", _casse)
+
+    reponse = demander(client, entetes, text="regarde mes gmail")
+    charges = trames(reponse.text)
+
+    erreurs = [c for c in charges if c["type"] == "error"]
+    assert len(erreurs) == 1
+    assert "resultat" not in erreurs[0]["message"]
+    assert "EMAIL" in erreurs[0]["message"]
+    assert "Aucun fournisseur disponible pour SENSIBLE" in erreurs[0]["message"]
+    # Le flux se termine bien par une trame terminale — jamais par un flux
+    # qui traine sans jamais dire qu'il s'est arrete.
+    assert not any(c["type"] == "done" for c in charges)
+
+
 def test_le_persona_n_est_pas_applique_a_un_agent_specialise(
     client, entetes, fournisseur, monkeypatch, caplog
 ):
