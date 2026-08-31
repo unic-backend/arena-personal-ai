@@ -10,6 +10,7 @@ Un devis faux coute plus cher qu'un devis en retard.
 """
 import base64
 import io
+import json
 import logging
 import re
 import tempfile
@@ -253,6 +254,46 @@ def destinataire_annonce(message_actuel: str) -> Dict[str, str]:
         if nettoye:
             valeurs["objet"] = nettoye
     return valeurs
+
+#: Le 31/08/2026, le proprietaire est revenu sur son propre choix du meme
+#: jour (« il les redit clairement, je les capture ») : la capture
+#: deterministe ci-dessus exige un mot-cle labelise ("le nom du client
+#: c'est ..."), et une phrase naturelle comme "Fais un devis pour Augustin
+#: a Almadie" n'etait jamais captee. Prevenu explicitement du risque reel —
+#: le modele peut se tromper de nom ou de lieu, et rien ne le detecterait
+#: avant l'envoi — il a choisi quand meme de laisser le modele comprendre.
+#:
+#: `_destinataire_par_modele()` n'intervient qu'en dernier recours : APRES
+#: la capture deterministe ci-dessus (qui reste prioritaire quand elle
+#: trouve quelque chose), et seulement pour un champ ENCORE manquant au
+#: moment ou un document est reellement demande. Chaque champ ainsi compris
+#: est signale dans la reponse — jamais silencieux, pour qu'il le verifie
+#: avant de confirmer un document qui part chez un client.
+INSTRUCTION_EXTRACTION_DESTINATAIRE = (
+    "Lis cet echange entre un plaquiste et son client. Extrais, uniquement "
+    "s'ils sont clairement exprimes quelque part dans l'echange (pas "
+    "forcement dans le dernier message) :\n"
+    "- le nom du client\n"
+    "- le lieu du chantier\n"
+    "- l'objet des travaux (ce qui doit etre fait)\n\n"
+    "Reponds en JSON strict, rien d'autre autour :\n"
+    '{"client": "...", "lieu": "...", "objet": "..."}\n\n'
+    "Si un champ n'est pas clairement donne, mets une chaine vide \"\" pour "
+    "ce champ. N'INVENTE JAMAIS un nom, un lieu ou un objet qui ne serait "
+    "pas explicitement present dans le texte. Ne devine rien a partir du "
+    "style d'ecriture ou d'un contexte suppose."
+)
+
+
+def _extraire_json(texte: str) -> str:
+    """Le premier bloc `{...}` plausible d'une reponse de modele.
+
+    Le modele ne rend pas toujours du JSON pur malgre la consigne — parfois
+    entoure de texte ou de balises ```json```. `json.loads("{}")` rend un
+    dict vide plutot que de lever quand rien n'est trouve.
+    """
+    trouve = re.search(r"\{.*\}", texte or "", re.DOTALL)
+    return trouve.group(0) if trouve else "{}"
 
 #: Ce qui demande QUAND, et non combien. « planifie », « suis-je libre »,
 #: « quel creneau » : la reponse est dans son agenda, pas dans sa grille de prix.
@@ -614,6 +655,37 @@ class PlaquisteAgent(BaseAgent):
             type_document=type_document_demande(texte), **destinataire, **parametres_lignes)
         return {"statut": resultat.statut.value, "message": resultat.message,
                 "preuve": resultat.preuve}
+
+    async def _destinataire_par_modele(
+        self, historique: List[Dict[str, str]], message_actuel: str,
+    ) -> Dict[str, str]:
+        """Le client/lieu/objet, compris par le modele lui-meme dans une
+        phrase libre — INSTRUCTION_EXTRACTION_DESTINATAIRE ci-dessus, choix
+        du proprietaire du 31/08/2026 apres avoir accepte le risque explicite
+        d'un champ mal compris.
+
+        Best-effort et jamais bloquant, meme pattern que
+        `_avis_visuel_du_plan` pour le modele de vision : une reponse
+        illisible ou un appel qui echoue rend simplement {}, jamais un
+        crash. Appele seulement en dernier recours par `run()`, pour un
+        champ que la capture deterministe n'a pas trouve.
+        """
+        tours = list(historique) + [{"role": "user", "content": message_actuel}]
+        fil = "\n".join(
+            f"{'Client' if tour.get('role') == 'user' else 'Plaquiste'} : "
+            f"{tour.get('content') or ''}"
+            for tour in tours)
+        try:
+            brut = await self.provider.generate(
+                prompt=fil, system_prompt=INSTRUCTION_EXTRACTION_DESTINATAIRE)
+            donnees = json.loads(_extraire_json(brut or ""))
+        except Exception as erreur:  # noqa: BLE001 — une extraction ratee rend {}, jamais un crash
+            logger.info("Extraction du destinataire par le modele impossible : %s", erreur)
+            return {}
+        if not isinstance(donnees, dict):
+            return {}
+        return {champ: str(donnees[champ]).strip() for champ in DESTINATAIRE
+                if str(donnees.get(champ) or "").strip()}
 
     def _mesurer_depuis(self, chemin: str, texte: str) -> Dict[str, Any]:
         """Le coeur de la mesure, une fois qu'un vrai chemin sur disque existe.
@@ -1084,7 +1156,35 @@ class PlaquisteAgent(BaseAgent):
 
         # Le document PDF : soumis a confirmation, jamais ecrit d'autorite.
         # Fait avant la generation pour que la reponse puisse le dire.
+        #
+        # Dernier recours avant de proposer le document : un champ encore
+        # manquant apres la capture deterministe est tente par le modele
+        # lui-meme (INSTRUCTION_EXTRACTION_DESTINATAIRE, choix du
+        # proprietaire du 31/08/2026). Seulement quand un document est
+        # reellement demande CE tour — un appel modele en plus a chaque
+        # message serait du gaspillage pour un champ qui ne sert a rien
+        # tant qu'aucun document n'est demande.
+        compris_par_modele: List[str] = []
+        if DEMANDE_DE_DOCUMENT.search(message_actuel or ""):
+            manquants_avant_modele = [
+                champ for champ in DESTINATAIRE if not contexte.get(champ)]
+            if manquants_avant_modele:
+                compris = await self._destinataire_par_modele(
+                    contexte.get("historique") or [], message_actuel)
+                for champ, valeur in compris.items():
+                    if not contexte.get(champ):
+                        contexte[champ] = valeur
+                        compris_par_modele.append(champ)
+
         document = self._proposer_le_document(message_actuel, contexte, metre)
+        if document is not None and compris_par_modele:
+            # Jamais silencieux : un champ devine par le modele doit se voir
+            # avant qu'il confirme un document qui part chez un client.
+            resume = ", ".join(f"{champ} = {contexte[champ]}" for champ in compris_par_modele)
+            document["message"] = (
+                f"Compris automatiquement dans ta phrase, verifie avant de confirmer : "
+                f"{resume}.\n{document['message']}"
+            )
 
         reponse = ((await self.provider.generate(prompt=user_input, system_prompt=instruction)) or "").strip()
 

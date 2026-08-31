@@ -12,6 +12,7 @@ import yaml
 
 from agents.plaquiste.plaquiste_agent import (
     PlaquisteAgent,
+    _extraire_json,
     _rendre_premiere_page,
     charger_metier,
     composer_instruction,
@@ -34,6 +35,26 @@ class ModeleDouble:
         self.prompts.append(prompt)
         self.systemes.append(system_prompt)
         return "  reponse redigee  "
+
+
+class ModeleScripte:
+    """Un modele dont chaque appel rend la reponse suivante d'une liste
+    scriptee, dans l'ordre — pour distinguer l'appel d'extraction du
+    destinataire (le premier, quand un document est demande) de l'appel de
+    redaction finale (toujours le dernier), au lieu de la meme reponse fixe
+    pour les deux comme `ModeleDouble`."""
+
+    def __init__(self, reponses):
+        self._reponses = list(reponses)
+        self.prompts = []
+        self.systemes = []
+
+    async def generate(self, prompt, system_prompt=None, **kw):
+        self.prompts.append(prompt)
+        self.systemes.append(system_prompt)
+        if self._reponses:
+            return self._reponses.pop(0)
+        return "reponse redigee"
 
 
 class ModeleVisionDouble:
@@ -326,6 +347,88 @@ class TestDestinataireAnnonce:
         assert valeurs == {}
 
 
+class TestExtraireJson:
+    """`_extraire_json`, un simple filet pour une reponse de modele qui ne
+    respecte pas toujours la consigne « du JSON strict, rien d'autre »."""
+
+    def test_un_json_pur_est_rendu_tel_quel(self):
+        assert _extraire_json('{"client": "Fast Group"}') == '{"client": "Fast Group"}'
+
+    def test_un_json_entoure_de_texte_est_extrait(self):
+        brut = 'Voici : {"client": "Fast Group", "lieu": ""} voila.'
+        assert _extraire_json(brut) == '{"client": "Fast Group", "lieu": ""}'
+
+    def test_sans_bloc_json_rend_un_objet_vide(self):
+        assert _extraire_json("je ne sais pas") == "{}"
+
+    def test_une_chaine_vide_rend_un_objet_vide(self):
+        assert _extraire_json("") == "{}"
+
+
+class TestDestinataireParModele:
+    """`_destinataire_par_modele()` — le 31/08/2026, le proprietaire est
+    revenu sur son propre choix du matin meme (DEC-0024 : « il les redit
+    clairement, je les capture ») apres avoir teste en direct une phrase
+    naturelle sans label, jamais captee par `destinataire_annonce()`.
+    Prevenu explicitement du risque (un nom ou un lieu mal compris, sans
+    detection avant l'envoi), il a choisi de laisser le modele comprendre —
+    en dernier recours, jamais a la place de la capture deterministe."""
+
+    @pytest.mark.asyncio
+    async def test_un_json_valide_est_compris(self):
+        modele = ModeleScripte(
+            ['{"client": "Augustin", "lieu": "Almadies", "objet": ""}'])
+        agent = PlaquisteAgent(provider=modele, metier=charger_metier(FICHIER))
+
+        valeurs = await agent._destinataire_par_modele(
+            [], "Fais un devis pour Augustin a Almadies")
+
+        assert valeurs == {"client": "Augustin", "lieu": "Almadies"}
+        assert "N'INVENTE JAMAIS" in modele.systemes[0]
+
+    @pytest.mark.asyncio
+    async def test_une_reponse_illisible_ne_leve_pas_et_rend_rien(self):
+        modele = ModeleScripte(["desole, je ne comprends pas ta demande"])
+        agent = PlaquisteAgent(provider=modele, metier=charger_metier(FICHIER))
+
+        valeurs = await agent._destinataire_par_modele([], "peu importe")
+
+        assert valeurs == {}
+
+    @pytest.mark.asyncio
+    async def test_un_appel_qui_leve_ne_fait_pas_planter_l_agent(self):
+        class ModeleEnPanne:
+            async def generate(self, prompt, system_prompt=None, **kw):
+                raise RuntimeError("modele indisponible")
+
+        agent = PlaquisteAgent(provider=ModeleEnPanne(), metier=charger_metier(FICHIER))
+
+        valeurs = await agent._destinataire_par_modele([], "peu importe")
+
+        assert valeurs == {}
+
+    @pytest.mark.asyncio
+    async def test_un_champ_absent_du_json_n_est_pas_rendu(self):
+        modele = ModeleScripte(['{"client": "Augustin"}'])
+        agent = PlaquisteAgent(provider=modele, metier=charger_metier(FICHIER))
+
+        valeurs = await agent._destinataire_par_modele([], "c'est pour Augustin")
+
+        assert valeurs == {"client": "Augustin"}
+
+    @pytest.mark.asyncio
+    async def test_l_historique_entier_est_transmis_au_modele(self):
+        modele = ModeleScripte(['{}'])
+        agent = PlaquisteAgent(provider=modele, metier=charger_metier(FICHIER))
+        historique = [{"role": "user", "content": "chambre de 4 sur 4"},
+                      {"role": "assistant", "content": "quelle hauteur ?"}]
+
+        await agent._destinataire_par_modele(historique, "3m, pour Augustin a Almadies")
+
+        assert "chambre de 4 sur 4" in modele.prompts[0]
+        assert "Augustin a Almadies" in modele.prompts[0]
+
+
 class TestDocumentPdf:
     """Le branchement de `devis_pdf.py` sur l'agent.
 
@@ -420,6 +523,95 @@ class TestDocumentPdf:
 
         assert resultat["document"]["statut"] == "INCOMPLET"
         assert resultat["document"]["manquants"] == ["objet"]
+        assert registre.appels == []
+
+    @pytest.mark.asyncio
+    async def test_une_phrase_naturelle_sans_label_est_comprise_par_le_modele(self):
+        """DEC-0025 : le proprietaire, apres avoir teste la capture
+        deterministe seule, a explicitement demande que le modele comprenne
+        une phrase naturelle sans label — « Oui, laisse le modele comprendre
+        naturellement ». La capture deterministe (test precedent) ne trouve
+        rien ici : aucun mot-cle "le client", "lieu de chantier"..."""
+        registre = FauxRegistre()
+        modele = ModeleScripte([
+            '{"client": "Augustin", "lieu": "Almadies", "objet": "cloisons"}',
+        ])
+        agent = PlaquisteAgent(provider=modele, metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run(
+            "Fais un devis pour Augustin a Almadies, 18 parois de 5,40 x 2,50 m, "
+            "genere le pdf")
+
+        assert registre.appels, "le modele n'a pas comble le destinataire manquant"
+        _, _, parametres = registre.appels[0]
+        assert parametres["client"] == "Augustin"
+        assert parametres["lieu"] == "Almadies"
+        assert resultat["document"]["statut"] == "NEEDS_CONFIRMATION"
+        assert "Compris automatiquement" in resultat["document"]["message"]
+        assert "client = Augustin" in resultat["document"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_la_capture_deterministe_reste_prioritaire_sur_le_modele(self):
+        """Un champ deja capte par une annonce labelisee (fiable) n'est
+        jamais ecrase par ce que le modele comprendrait d'une autre facon."""
+        registre = FauxRegistre()
+        modele = ModeleScripte([
+            '{"client": "UN AUTRE NOM", "lieu": "Almadies", "objet": "cloisons"}',
+        ])
+        agent = PlaquisteAgent(provider=modele, metier=charger_metier(FICHIER),
+                               registre=registre)
+        historique = [{"role": "user", "content": "le client s'appelle Fast Group"}]
+
+        resultat = await agent.run(
+            "peu importe",
+            context={
+                "historique": historique,
+                "message_actuel": "fais le en pdf, 18 parois de 5,40 x 2,50 m",
+            })
+
+        _, _, parametres = registre.appels[0]
+        assert parametres["client"] == "Fast Group"
+        assert parametres["lieu"] == "Almadies"
+        assert resultat["document"]["statut"] == "NEEDS_CONFIRMATION"
+        assert "client = Fast Group" not in resultat["document"]["message"]
+        assert "lieu = Almadies" in resultat["document"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_aucun_appel_d_extraction_sans_demande_de_document(self):
+        """Un appel modele en plus a chaque message serait du gaspillage :
+        rien n'est tente tant qu'aucun document n'est demande."""
+        modele = ModeleScripte(['{"client": "Augustin"}'])
+        agent = PlaquisteAgent(provider=modele, metier=charger_metier(FICHIER))
+
+        await agent.run("Fais un devis pour Augustin a Almadies, chambre de 4 sur 4")
+
+        assert len(modele.prompts) == 1, "un appel d'extraction a eu lieu sans demande de document"
+
+    @pytest.mark.asyncio
+    async def test_aucun_appel_d_extraction_quand_le_destinataire_est_deja_complet(self):
+        modele = ModeleScripte(['{"client": "Augustin"}'])
+        agent = PlaquisteAgent(provider=modele, metier=charger_metier(FICHIER),
+                               registre=FauxRegistre())
+
+        await agent.run("fais le pdf du devis, 18 parois de 5,40 x 2,50 m",
+                        context=DESTINATAIRE)
+
+        assert len(modele.prompts) == 1, "un appel d'extraction a eu lieu alors que rien ne manquait"
+
+    @pytest.mark.asyncio
+    async def test_une_extraction_ratee_laisse_le_document_incomplet_comme_avant(self):
+        """Le comportement DEC-0024 reste le filet quand le modele ne
+        comprend rien lui non plus : jamais un crash, jamais un appel au
+        connecteur sans destinataire connu."""
+        registre = FauxRegistre()
+        modele = ModeleScripte(["je ne comprends pas ta demande"])
+        agent = PlaquisteAgent(provider=modele, metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run("fais le pdf du devis, 18 parois de 5,40 x 2,50 m")
+
+        assert resultat["document"]["statut"] == "INCOMPLET"
         assert registre.appels == []
 
     @pytest.mark.asyncio

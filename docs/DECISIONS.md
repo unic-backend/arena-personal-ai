@@ -1817,3 +1817,55 @@ redirection `{PUBLIC_BASE_URL}/connectors/gmail/callback`), mettre
 Retour arrière : retirer `app.include_router(connectors.router)` de
 `apps/backend/main.py` restaure le comportement précédent (bouton mort) sans
 toucher au reste du backend.
+
+## DEC-0025 : destinataire du devis — le modèle comprend, sur son propre choix contraire du matin même
+
+*Le 31/08/2026, plus tard le même jour que DEC-0024 : le propriétaire a
+testé en direct la capture déterministe qu'il avait lui-même demandée
+(« Il les redit clairement, je les capture »). Sur une vraie conversation,
+il avait donné le nom du client et le lieu du chantier dans une phrase
+libre, sans le mot-clé attendu — rien n'avait été capté, le PDF refusait de
+partir. Sa réaction : « il va falloir l'entraîner pour ca alors car il
+dois bien comprendre ». Prévenu explicitement, avant de trancher, que ce
+n'est pas un problème d'entraînement mais un choix de sécurité volontaire,
+et que le lever fait courir un risque réel — le modèle peut se tromper de
+nom ou de lieu sur un devis, et rien ne le détecterait avant l'envoi — il a
+choisi quand même : « Oui, laisse le modèle comprendre naturellement ».*
+
+### Ce qui change
+
+`destinataire_depuis_l_historique()` (capture déterministe, Q&A labellisée
+— DEC créée le matin même) reste en place et reste **prioritaire** : elle
+ne devine jamais, et un champ qu'elle trouve n'est jamais écrasé.
+
+Un second mécanisme, `_destinataire_par_modele()`
+(`agents/plaquiste/plaquiste_agent.py`), intervient en **dernier recours
+seulement** : au moment où un document est réellement demandé
+(`DEMANDE_DE_DOCUMENT`) et qu'un champ (client, lieu ou objet) manque
+encore après la capture déterministe. Un appel séparé au modèle, avec une
+instruction dédiée à l'extraction (`INSTRUCTION_EXTRACTION_DESTINATAIRE`)
+qui lui interdit explicitement d'inventer et lui demande une chaîne vide
+plutôt qu'une supposition, lit tout l'échange et rend un JSON strict. Une
+réponse illisible ou un appel qui échoue rend `{}`, jamais un crash — même
+discipline « best-effort » que `_avis_visuel_du_plan` pour le modèle de
+vision.
+
+**Jamais silencieux** : chaque champ compris ainsi par le modèle est
+signalé en tête du message de confirmation du document — « Compris
+automatiquement dans ta phrase, vérifie avant de confirmer : client = ...,
+lieu = ... » — avant que `produire` (action à confirmer, jamais écrite
+d'autorité) ne parte. Le principe qui restait vrai avant DEC-0024 et
+continue de l'être ici : ce n'est jamais un envoi automatique à un client,
+c'est un fichier local qu'il relit.
+
+### Ce que ça coûte si c'est faux
+
+Le risque que DEC-0024 avait précisément voulu fermer redevient réel : un
+nom de client ou un lieu de chantier mal compris dans une phrase ambiguë
+peut atterrir dans un PDF sans qu'aucun mécanisme automatique ne le
+détecte — seule la relecture du propriétaire avant confirmation l'attrape.
+Accepté explicitement par lui, pas une régression passée inaperçue.
+
+Retour arrière : ne plus appeler `_destinataire_par_modele()` dans `run()`
+restaure la capture strictement déterministe de DEC-0024, sans toucher au
+reste de l'agent.
