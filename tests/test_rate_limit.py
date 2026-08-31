@@ -206,3 +206,79 @@ def test_un_depassement_de_debit_est_journalise(client, caplog):
         client.post("/api/chat", json={"prompt": "x"}, headers=ENTETES)
 
     assert any("Debit depasse" in e.getMessage() for e in caplog.records)
+
+
+class TestPurgeReellementBranchee:
+    """La purge existait, était testée, et **personne ne l'appelait**.
+
+    Mesuré le 31/08/2026 : `nettoyer()` n'apparaissait que dans ce fichier de
+    tests. Le module annonce pourtant la conséquence dans sa propre docstring —
+    « sans cela, la table grandirait indéfiniment au fil des adresses vues ».
+    Une adresse vue une fois restait en mémoire pour la durée de vie du
+    processus.
+    """
+
+    def _limiteur_charge(self, monkeypatch, clients: int, horloge):
+        from apps.backend import security
+
+        limiteur = LimiteurDebit(requetes_max=10, fenetre_secondes=60, horloge=horloge)
+        monkeypatch.setattr(security, "limiteur", limiteur)
+        for n in range(clients):
+            limiteur.secondes_a_attendre(f"10.0.0.{n}")
+        return limiteur, security
+
+    def test_sous_le_seuil_rien_n_est_purge(self, monkeypatch):
+        from apps.backend import security
+
+        limiteur, _ = self._limiteur_charge(monkeypatch, 5, lambda: 0.0)
+
+        assert security.purger_les_clients_inactifs() == 0
+        assert limiteur.clients_suivis() == 5
+
+    def test_au_dela_du_seuil_les_inactifs_sont_oublies(self, monkeypatch):
+        from apps.backend import security
+
+        temps = {"t": 0.0}
+        limiteur, _ = self._limiteur_charge(
+            monkeypatch, security.CLIENTS_AVANT_PURGE + 10, lambda: temps["t"])
+        temps["t"] = 1000.0  # tout le monde est sorti de la fenêtre
+
+        efaces = security.purger_les_clients_inactifs()
+
+        assert efaces == security.CLIENTS_AVANT_PURGE + 10
+        assert limiteur.clients_suivis() == 0, "la table n'a pas ete videe"
+
+    def test_un_client_encore_dans_sa_fenetre_n_est_jamais_oublie(self, monkeypatch):
+        from apps.backend import security
+
+        temps = {"t": 0.0}
+        limiteur, _ = self._limiteur_charge(
+            monkeypatch, security.CLIENTS_AVANT_PURGE + 10, lambda: temps["t"])
+        temps["t"] = 1000.0
+        limiteur.secondes_a_attendre("client-actif")  # passage récent
+
+        security.purger_les_clients_inactifs()
+
+        assert limiteur.restantes("client-actif") == 9, (
+            "un client encore dans sa fenetre a perdu son historique")
+
+    def test_la_table_ne_grandit_pas_sans_fin_a_travers_la_dependance(self, monkeypatch):
+        """Le vrai chemin : c'est `limiter_debit` qui doit purger, pas un appel manuel."""
+        from apps.backend import security
+
+        temps = {"t": 0.0}
+        limiteur = LimiteurDebit(requetes_max=10, fenetre_secondes=60,
+                                 horloge=lambda: temps["t"])
+        monkeypatch.setattr(security, "limiteur", limiteur)
+
+        class FausseRequete:
+            def __init__(self, hote):
+                self.client = type("C", (), {"host": hote})()
+                self.url = type("U", (), {"path": "/api/chat"})()
+
+        for n in range(security.CLIENTS_AVANT_PURGE * 2):
+            temps["t"] += 120.0  # chacun sort de la fenêtre avant le suivant
+            security.limiter_debit(FausseRequete(f"10.1.{n // 256}.{n % 256}"))
+
+        assert limiteur.clients_suivis() <= security.CLIENTS_AVANT_PURGE + 1, (
+            f"{limiteur.clients_suivis()} clients gardes en memoire : la table grandit sans fin")
