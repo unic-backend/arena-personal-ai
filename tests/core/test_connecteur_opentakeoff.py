@@ -252,6 +252,117 @@ class TestExporter:
         assert "disque plein" in resultat.message
 
 
+class TestCompterMarques:
+    """`compter_marques` (DEC-0022) : le seul des trois outils "symboles" du
+    serveur qui lit du texte deja sur le plan, jamais une image — pas de
+    coordonnee a deviner, donc pas de dependance a un modele de vision.
+    """
+
+    def test_sans_chemin_est_un_echec(self, monkeypatch):
+        _brancher(monkeypatch, {})
+        connecteur = ConnecteurOpenTakeoff()
+
+        resultat = connecteur.executer("compter_marques", chemin="")
+
+        assert resultat.statut is Statut.ECHEC
+
+    def test_ne_demande_aucune_confirmation(self, monkeypatch, plan_pdf):
+        """Lecture seule, comme `mesurer` : rien a ecrire, rien a confirmer."""
+        script = {
+            "load_plan": Reponse(ok=True, resultat=_texte({"sheets": [{"sheet": "a.pdf"}]})),
+            "count_marks": Reponse(ok=True, resultat=_texte(
+                {"marks": [], "total": 0, "per_sheet": [], "skipped": [], "complete": True})),
+        }
+        _brancher(monkeypatch, script)
+        connecteur = ConnecteurOpenTakeoff()
+
+        resultat = connecteur.executer("compter_marques", chemin=plan_pdf)
+
+        assert resultat.statut is Statut.SUCCES
+
+    def test_plan_illisible_est_un_echec(self, monkeypatch, plan_pdf):
+        script = {"load_plan": Reponse(ok=True, resultat=_echec_outil("PDF corrompu"))}
+        _brancher(monkeypatch, script)
+        connecteur = ConnecteurOpenTakeoff()
+
+        resultat = connecteur.executer("compter_marques", chemin=plan_pdf)
+
+        assert resultat.statut is Statut.ECHEC
+        assert "PDF corrompu" in resultat.message
+
+    def test_recense_les_marques_du_plan(self, monkeypatch, plan_pdf):
+        script = {
+            "load_plan": Reponse(ok=True, resultat=_texte({"sheets": [{"sheet": "a.pdf"}]})),
+            "count_marks": Reponse(ok=True, resultat=_texte({
+                "marks": [
+                    {"mark": "D1", "count": 3, "occurrences": [], "withheld": []},
+                    {"mark": "W1", "count": 5, "occurrences": [], "withheld": []},
+                ],
+                "total": 8, "per_sheet": [{"sheet": "a.pdf", "counts": {"D1": 3, "W1": 5}}],
+                "skipped": [], "complete": True,
+            })),
+        }
+        _brancher(monkeypatch, script)
+        connecteur = ConnecteurOpenTakeoff()
+
+        resultat = connecteur.executer("compter_marques", chemin=plan_pdf)
+
+        assert resultat.statut is Statut.SUCCES
+        assert resultat.detail["total"] == 8
+        assert {m["mark"] for m in resultat.detail["marques"]} == {"D1", "W1"}
+        assert resultat.preuve == plan_pdf
+
+    def test_les_marques_demandees_sont_transmises_a_l_outil(self, monkeypatch, plan_pdf):
+        script = {
+            "load_plan": Reponse(ok=True, resultat=_texte({"sheets": [{"sheet": "a.pdf"}]})),
+            "count_marks": Reponse(ok=True, resultat=_texte(
+                {"marks": [], "total": 0, "per_sheet": [], "skipped": [], "complete": True})),
+        }
+        appels = _brancher(monkeypatch, script)
+        connecteur = ConnecteurOpenTakeoff()
+
+        connecteur.executer("compter_marques", chemin=plan_pdf, marques=["D1", "W1"])
+
+        appel_count_marks = next(args for nom, args in appels if nom == "count_marks")
+        assert appel_count_marks["marks"] == ["D1", "W1"]
+        assert appel_count_marks["commit"] is False, "jamais d'ecriture depuis une capacite en lecture"
+
+    def test_decompte_incomplet_est_rapporte_pas_cache(self, monkeypatch, plan_pdf):
+        """`complete: false` veut dire que le total est un plancher, pas un
+        chiffre final — l'appelant doit pouvoir le voir, jamais un compte
+        rendu comme s'il etait exhaustif."""
+        script = {
+            "load_plan": Reponse(ok=True, resultat=_texte({"sheets": [{"sheet": "a.pdf"}]})),
+            "count_marks": Reponse(ok=True, resultat=_texte({
+                "marks": [{"mark": "D1", "count": 2, "occurrences": [], "withheld": []}],
+                "total": 2, "per_sheet": [], "skipped": [{"sheet": "b.pdf", "role": "detail",
+                                                          "reason": "hors plan"}],
+                "complete": False,
+            })),
+        }
+        _brancher(monkeypatch, script)
+        connecteur = ConnecteurOpenTakeoff()
+
+        resultat = connecteur.executer("compter_marques", chemin=plan_pdf)
+
+        assert resultat.detail["complet"] is False
+        assert resultat.detail["feuilles_ignorees"] == [{"sheet": "b.pdf", "role": "detail",
+                                                          "reason": "hors plan"}]
+
+    def test_decompte_impossible_est_un_echec(self, monkeypatch, plan_pdf):
+        script = {
+            "load_plan": Reponse(ok=True, resultat=_texte({"sheets": [{"sheet": "a.pdf"}]})),
+            "count_marks": Reponse(ok=True, resultat=_echec_outil("aucune table de calepinage")),
+        }
+        _brancher(monkeypatch, script)
+        connecteur = ConnecteurOpenTakeoff()
+
+        resultat = connecteur.executer("compter_marques", chemin=plan_pdf)
+
+        assert resultat.statut is Statut.ECHEC
+        assert "aucune table de calepinage" in resultat.message
+
+
 class TestErreurOutil:
     def test_une_reponse_sans_isError_n_est_pas_une_erreur(self):
         assert _erreur_outil(Reponse(ok=True, resultat={"structuredContent": {}})) is None

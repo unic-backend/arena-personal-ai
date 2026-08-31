@@ -266,9 +266,13 @@ social_agent = SocialAgent(provider=deep_provider, memory=memory,
                            memoire_personnelle=memoire_personnelle,
                            registre=registre)
 # Metier UniC Plaquiste : redaction soignee, donc le modele profond.
+# `provider_vision` : le meme `ollama_vision` que VisionAgent (DEC-0019) —
+# un second avis, visuel, sur les ouvertures d'un plan (DEC-0022), jamais
+# un second modele construit pour cet agent seul.
 plaquiste_agent = PlaquisteAgent(
     provider=deep_provider, memory=memory, registre=registre,
-    pieces_jointes=pieces_jointes, memoire_personnelle=memoire_personnelle)
+    pieces_jointes=pieces_jointes, memoire_personnelle=memoire_personnelle,
+    provider_vision=ollama_vision)
 
 memory.set_fact("user_profile", "owner", "Ousmane", {"role": "Propriétaire et créateur d'Usman"})
 

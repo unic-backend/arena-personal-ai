@@ -270,8 +270,8 @@ PC éteint le jour ; taper un chemin ne marche pas dans ce cas-là) :
 
 ## 6. Plan d'implémentation proposé — phases, dans l'ordre du risque
 
-Ordre proposé, chaque phase vérifiable seule. Les phases 1 à 4 et 6 à 7 sont
-faites ; la phase 5 reste à autoriser :
+Ordre proposé, chaque phase vérifiable seule. Les phases 1 à 4 et 6 à 8 sont
+faites :
 
 | Phase | Ce qu'elle ferme | Nouvelle dépendance | Touche une zone verrouillée ? |
 |---|---|---|---|
@@ -279,15 +279,17 @@ faites ; la phase 5 reste à autoriser :
 | **2 — FAIT** | OCR sur PDF scanné (trou A), via Tesseract + `pypdfium2` (pas Docling/MinerU — voir §4, mesuré : ~65 Mo, bout en bout avec le vrai binaire) | `pytesseract`, `pypdfium2` (Apache 2.0/BSD) + le binaire système `tesseract-ocr` | Non |
 | **3 — FAIT** | `type_document="FACTURE"` réellement orchestré (trou E, partiel) : détection de « génère la facture » (même discipline que « génère le devis », jamais le mot seul), transmise à `DevisConnector`, vérifiée dans le vrai PDF produit (`pypdf`) | Aucune | Non |
 | **4 — FAIT** | Décision du propriétaire (§5) puis upload PWA → OpenTakeoff (trou C) : plan gardé en mémoire comme une image, écrit brièvement pour la mesure, effacé aussitôt ; les chiffres mesurés retenus en mémoire personnelle, jamais l'image | Aucune | Non |
-| **5** | Détection d'ouvertures via Qwen3-VL sur une page de plan rendue en image (trou D) | Aucune — `pypdfium2` (déjà en place depuis la phase 2) rend la page en image | Non — mais **NON VÉRIFIABLE avant que `qwen3-vl:4b` tourne réellement chez lui** |
+| **5 — FERMÉ, voir phase 8** | Détection d'ouvertures via Qwen3-VL (trou D) | — | — |
 | **6 — FAIT** | Bon de commande / bon de livraison réellement orchestrés (reste du trou E) : `TYPES_DE_DOCUMENT` distingue « bon de commande »/« bon de livraison »/« facture » (le plus spécifique gagne), le renderer adresse un bon de commande au **fournisseur** et un bon de livraison au lieu de livraison — jamais « CLIENT » sur un document qui n'en a pas. Bug réel trouvé en testant le vrai PDF : le titre « BON DE COMMANDE » débordait sa colonne à 20 pt et se coupait en deux lignes ; `taille_du_titre()` mesure la largeur réelle (`stringWidth`) et réduit jusqu'à ce que ça tienne. Le « rapport de métré » cité dans le trou E existe déjà : c'est `exporter` du connecteur OpenTakeoff (DEC-0012), pas un nouveau document — rien à faire ici | Aucune | Non |
 | **7 — FAIT** | Tests bout en bout : plan → métré → devis → PDF, avec un plan de test connu. **A révélé un vrai trou en l'écrivant, pas seulement documenté** : `_proposer_le_document` transmettait la phrase brute au connecteur devis, qui la relisait pour ses propres dimensions — jamais le metre déjà calculé depuis un plan mesuré. Confirmer un devis demandé après la mesure d'un plafond ou d'un mur échouait donc avec « aucune dimension lue », alors que le plan en donnait une. Décision du propriétaire (30/08/2026) : corriger avant de tester, pas seulement constater. `lignes_depuis_parametres()` (`core/connectors/devis.py`) accepte désormais des lignes déjà calculées ; `PlaquisteAgent` les transmet quand un metre existe (dicté ou mesuré), sans plus jamais faire redire la phrase | Aucune | Non |
+| **8 — FAIT** | Trou D (détection d'ouvertures) fermé en DEUX signaux distincts, jamais fondus (DEC-0022) : (1) `compter_marques` — l'outil `count_marks` d'OpenTakeoff, jamais câblé jusqu'ici, recense les tags de menuiserie **déjà écrits sur le plan** (ex. un tableau D1/W1) — déterministe, aucune coordonnée devinée, aucune dépendance à un modèle de vision ; (2) un avis visuel de Qwen3-VL sur la même question, explicitement présenté comme une IMPRESSION et jamais une mesure. `symbol_sweep`/`cut_out` (marquer un rectangle sur l'image) restent `SUGGESTION — NON IMPLÉMENTÉE` : personne n'a mesuré si Qwen3-VL peut désigner une coordonnée avec une précision suffisante — les construire à l'aveugle aurait produit exactement le risque que DEC-0012 refuse (« un métré faux avec l'air d'un métré juste ») | Aucune (`pypdfium2`, déjà en place depuis la phase 2, rend la page pour l'avis visuel) | Non |
 
-La phase 5 dépend d'une mesure que cette machine ne peut pas faire
-(§ »Ce que la machine de l'assistant ne peut pas faire », `CLAUDE.md`) —
-elle peut être **codée et testée en logique** ici, mais son résultat réel
-restera `NON VÉRIFIÉ` tant que le propriétaire n'a pas chargé
-`qwen3-vl:4b` et fait tourner une vraie image de plan.
+Le signal (1) est **logique vérifiée** : `compter_marques` testé entièrement
+hors ligne (double scripté du transport MCP), aucune dépendance à Qwen3-VL.
+Le signal (2) reste **NON VÉRIFIÉ** au sens fort — la logique et le
+branchement sont testés (double du modèle), mais aucune vraie image n'a
+jamais été soumise à `qwen3-vl:4b`, faute de GPU sur cette machine
+(§ »Ce que la machine de l'assistant ne peut pas faire », `CLAUDE.md`).
 
 ## Ce que ça coûte si cet audit est faux
 

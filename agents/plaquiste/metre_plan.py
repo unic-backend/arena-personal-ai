@@ -178,6 +178,61 @@ def depuis_mesure(chemin: str, detail: Dict[str, Any]) -> MetrePlan:
     )
 
 
+@dataclass
+class MarquesPlan:
+    """Le decompte des marques annotees d'un plan (DEC-0022) — un tag de
+    menuiserie deja ecrit sur le plan, jamais un symbole devine sur l'image."""
+
+    chemin: str
+    marques: List[Dict[str, Any]] = field(default_factory=list)
+    total: int = 0
+    complet: bool = True
+    feuilles_ignorees: List[Dict[str, Any]] = field(default_factory=list)
+
+
+def depuis_marques(chemin: str, detail: Dict[str, Any]) -> MarquesPlan:
+    """Traduit le detail rendu par `ConnecteurOpenTakeoff.compter_marques`.
+
+    Args:
+        chemin: le chemin du plan, tel que demande.
+        detail: `ResultatAction.detail` d'un appel `compter_marques` reussi.
+    """
+    marques = [
+        {"marque": str(m.get("mark") or ""), "compte": int(m.get("count") or 0)}
+        for m in (detail.get("marques") or [])
+    ]
+    return MarquesPlan(
+        chemin=chemin,
+        marques=marques,
+        total=int(detail.get("total") or 0),
+        complet=bool(detail.get("complet", True)),
+        feuilles_ignorees=list(detail.get("feuilles_ignorees") or []),
+    )
+
+
+def formater_marques(marques: MarquesPlan) -> str:
+    """Un compte-rendu en francais du decompte — lisible sans reouvrir le plan."""
+    if not marques.marques:
+        return (f"Aucune marque annotee recensee dans {marques.chemin} : le plan "
+                "n'a peut-etre pas de tableau de menuiseries, ou les tags n'y sont pas.")
+
+    lignes = [f"Marques recensees dans {marques.chemin} :"]
+    for marque in marques.marques:
+        lignes.append(f"- {marque['marque']} : {marque['compte']}")
+    lignes.append(f"Total : {marques.total}.")
+    if not marques.complet:
+        lignes.append(
+            "Decompte INCOMPLET : ce total est un plancher, pas un chiffre final — "
+            "certaines occurrences n'ont pas pu etre evaluees sur ce plan.")
+    if marques.feuilles_ignorees:
+        noms = ", ".join(str(f.get("sheet") or "?") for f in marques.feuilles_ignorees)
+        lignes.append(f"Feuille(s) ignoree(s) (hors plan, sans role reconnu) : {noms}.")
+    lignes.append(
+        "Ce decompte lit les tags deja ecrits sur le plan (ex. un tableau de "
+        "menuiseries) — il ne devine aucun symbole sur l'image.")
+    return "\n".join(lignes)
+
+
 def formater(metre: MetrePlan) -> str:
     """Un compte-rendu en francais, lisible sans reouvrir le plan."""
     if not metre.pieces:
