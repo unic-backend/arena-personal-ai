@@ -959,3 +959,66 @@ def test_ce_qui_depasse_le_budget_est_annonce(client, entetes, fournisseur,
 
 def test_les_pieces_jointes_ne_figurent_plus_parmi_les_champs_ignores():
     assert "attachments" not in pwa_gateway.CHAMPS_NON_APPLIQUES
+
+
+class TestEnvoiBorne:
+    """Un envoi enorme ne doit jamais etre charge entier en memoire.
+
+    Trouve en revue le 31/08/2026 : `/files` faisait `await file.read()` nu,
+    puis `deposer()` mesurait `len(contenu)` — le plafond n'etait donc consulte
+    qu'APRES avoir tout charge. `/api/upload` (routers/media.py) lisait deja par
+    blocs ; cette route-ci non. Sur un hebergement a petite memoire, un seul
+    envoi suffisait a emporter le serveur.
+    """
+
+    @pytest.mark.asyncio
+    async def test_la_lecture_s_arrete_des_le_plafond_depasse(self):
+        from apps.backend.routers.pwa_gateway import lire_borne
+
+        class EnvoiEnorme:
+            """Rend un bloc de 1 Mo a chaque appel, sans fin — comme un envoi
+            de plusieurs Go le ferait."""
+
+            def __init__(self):
+                self.blocs_rendus = 0
+
+            async def read(self, taille: int = -1) -> bytes:
+                self.blocs_rendus += 1
+                if self.blocs_rendus > 10_000:
+                    raise AssertionError(
+                        "la lecture ne s'est jamais arretee : tout l'envoi part en memoire")
+                return b"x" * (1024 * 1024)
+
+        envoi = EnvoiEnorme()
+        resultat = await lire_borne(envoi, 5 * 1024 * 1024)
+
+        assert resultat is None, "un envoi au-dela du plafond a ete rendu quand meme"
+        assert envoi.blocs_rendus <= 6, (
+            f"{envoi.blocs_rendus} blocs lus pour un plafond de 5 Mo : "
+            "la lecture continue au-dela du plafond")
+
+    @pytest.mark.asyncio
+    async def test_un_envoi_sous_le_plafond_est_rendu_entier(self):
+        from apps.backend.routers.pwa_gateway import lire_borne
+
+        class PetitEnvoi:
+            def __init__(self, octets: bytes):
+                self._reste = octets
+
+            async def read(self, taille: int = -1) -> bytes:
+                bloc, self._reste = self._reste[:taille], self._reste[taille:]
+                return bloc
+
+        contenu = b"a" * 3000
+        assert await lire_borne(PetitEnvoi(contenu), 10_000) == contenu
+
+    def test_un_refus_de_taille_n_avance_aucun_chiffre_invente(self):
+        """La taille reelle n'a PAS ete mesuree — la dire serait la fabriquer."""
+        from apps.backend.pieces_jointes import DepotPiecesJointes
+
+        piece = DepotPiecesJointes(taille_max=25 * 1024**2).refuser_trop_volumineux("plan.pdf")
+
+        assert piece.statut == "ECHEC"
+        assert "trop volumineux" in piece.raison
+        assert "25 Mo" in piece.raison, "le refus ne dit pas quel est le plafond"
+        assert piece.octets == 0

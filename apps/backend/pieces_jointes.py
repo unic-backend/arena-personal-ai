@@ -179,6 +179,24 @@ class DepotPiecesJointes:
         logger.info("Piece jointe (image) lue : %s (%d octets).", nom_sur, len(contenu))
         return piece
 
+    def refuser_trop_volumineux(self, nom: str) -> PieceJointe:
+        """Refuse un envoi dont la taille depasse le plafond, sans l'avoir lu.
+
+        Existe pour que l'appelant puisse s'arreter de lire DES QU'il a
+        depasse le plafond, au lieu de charger tout l'envoi en memoire pour
+        decouvrir ensuite qu'il etait trop gros (`deposer` mesure
+        `len(contenu)`, donc apres coup).
+
+        `octets=0` n'est pas une taille mesuree ici : elle ne l'a
+        volontairement pas ete, et la raison le dit sans avancer de chiffre —
+        un « 25,0 Mo » affiche pour un envoi de 2 Go serait faux.
+        """
+        return self._refus(
+            nom_de_fichier_sur(nom), 0, "ECHEC",
+            f"fichier trop volumineux : depasse le maximum de "
+            f"{self.taille_max / 1024**2:.0f} Mo",
+        )
+
     def deposer(self, nom: str, contenu: bytes) -> PieceJointe:
         """Lit le fichier et n'en garde que le texte, ou l'image encodee.
         Le fichier est efface.
