@@ -19,8 +19,8 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from agents.plaquiste.archives import exemple_demande, extraits_pour, formater
+from agents.plaquiste.calcul_materiaux import Calcul, quantites_pour
 from agents.plaquiste.calcul_materiaux import formater as formater_calcul
-from agents.plaquiste.calcul_materiaux import quantites_pour
 from agents.plaquiste.controle_prix import avertissement, verifier_prix
 from agents.plaquiste.metre import lire_demande
 from agents.plaquiste.metre_plan import (
@@ -53,22 +53,42 @@ MOIS = ("janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet",
 #: Ce qui demande un FICHIER, et pas seulement un texte de devis. Le mot
 #: « devis » seul ne suffit pas : il est dans presque toutes ses phrases, et
 #: proposer un document a chaque fois transformerait la confirmation en reflexe.
-#: Meme regle pour « facture » : la phrase exacte, jamais le mot seul.
+#: Meme regle pour facture, bon de commande et bon de livraison : la phrase
+#: exacte, jamais le mot seul.
 DEMANDE_DE_DOCUMENT = re.compile(
     r"\b(pdf|document|imprim\w*|edite|édite|genere le devis|génère le devis"
-    r"|genere la facture|génère la facture)\b",
+    r"|genere la facture|génère la facture"
+    r"|genere le bon de commande|génère le bon de commande"
+    r"|genere le bon de livraison|génère le bon de livraison)\b",
     re.IGNORECASE)
 
-#: Distingue une facture d'un devis, une fois qu'un FICHIER est deja demande
-#: (DEMANDE_DE_DOCUMENT ci-dessus). Le renderer (`devis_pdf.py`) accepte deja
-#: `type_document` librement ; seule l'orchestration manquait.
+#: Le type de document a produire, une fois qu'un FICHIER est deja demande
+#: (DEMANDE_DE_DOCUMENT ci-dessus, qui seule declenche une ecriture). Le
+#: renderer (`devis_pdf.py`) accepte deja `type_document` librement ; seule
+#: l'orchestration manquait. « Bon de commande »/« bon de livraison » avant
+#: « facture » : une phrase qui cite plusieurs mots doit garder le plus
+#: specifique.
 #:
-#: La meme phrase exacte que DEMANDE_DE_DOCUMENT, jamais le mot seul : un mot
-#: nu laissait « genere le devis, comme la facture de la semaine derniere »
-#: produire une FACTURE alors que le devis etait ce qui avait ete demande —
-#: exactement l'anti-motif que DEMANDE_DE_DOCUMENT s'interdit deja pour la
-#: meme raison, juste reintroduit ici par megarde.
-DEMANDE_DE_FACTURE = re.compile(r"genere la facture|génère la facture", re.IGNORECASE)
+#: La meme phrase exacte que DEMANDE_DE_DOCUMENT pour chaque type, jamais le
+#: mot nu : un mot nu laissait « genere le devis, comme la facture de la
+#: semaine derniere » produire une FACTURE alors que le devis etait ce qui
+#: avait ete demande — l'anti-motif que DEMANDE_DE_DOCUMENT s'interdit deja,
+#: reintroduit ici par megarde une premiere fois puis corrige pour chaque type.
+TYPES_DE_DOCUMENT = (
+    (re.compile(r"genere le bon de commande|génère le bon de commande", re.IGNORECASE),
+     "BON DE COMMANDE"),
+    (re.compile(r"genere le bon de livraison|génère le bon de livraison", re.IGNORECASE),
+     "BON DE LIVRAISON"),
+    (re.compile(r"genere la facture|génère la facture", re.IGNORECASE), "FACTURE"),
+)
+
+
+def type_document_demande(texte: str) -> str:
+    """DEVIS par defaut — le cas le plus frequent, jamais un type devine."""
+    for motif, type_document in TYPES_DE_DOCUMENT:
+        if motif.search(texte or ""):
+            return type_document
+    return "DEVIS"
 
 #: Ce qu'il faut connaitre pour adresser un devis. Jamais devine dans la phrase.
 DESTINATAIRE = ("client", "lieu", "objet")
@@ -342,14 +362,22 @@ class PlaquisteAgent(BaseAgent):
         return {"statut": resultat.statut.value, "message": resultat.message,
                 "preuve": resultat.preuve}
 
-    def _proposer_le_document(self, texte: str,
-                              context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _proposer_le_document(self, texte: str, context: Dict[str, Any],
+                              metre: Optional[Calcul] = None) -> Optional[Dict[str, Any]]:
         """Soumet la production du PDF quand un fichier est explicitement demande.
 
         Rien n'est ecrit ici : `produire` est une action a confirmer, et le
         proprietaire garde la main. Le destinataire vient du contexte de la
         conversation, jamais d'une lecture de la phrase — un devis adresse a la
         mauvaise personne est pire qu'un devis absent.
+
+        `metre` est le calcul deja fait par `run()` (dimensions dictees OU
+        surface mesuree sur un plan) : quand il existe, ses lignes sont
+        transmises telles quelles au connecteur, qui n'a plus a relire la
+        phrase pour les retrouver. Mesure du 30/08/2026 : sans ca, un devis
+        demande apres la mesure d'un PLAN echouait a la confirmation avec
+        « aucune dimension lue » — le calcul affiche dans la reponse ne
+        rejoignait jamais le PDF reellement ecrit.
 
         Returns:
             Le compte-rendu de la soumission, ou `None` quand aucun document
@@ -370,9 +398,15 @@ class PlaquisteAgent(BaseAgent):
                                 + ", ".join(manquants)
                                 + ". Je ne devine pas le destinataire d'un devis.")}
 
-        type_document = "FACTURE" if DEMANDE_DE_FACTURE.search(texte or "") else "DEVIS"
+        parametres_lignes: Dict[str, Any] = {}
+        if metre is not None:
+            parametres_lignes["lignes"] = [
+                {"designation": besoin.article, "quantite": besoin.quantite}
+                for besoin in metre.besoins]
+
         resultat = self.registre.executer(
-            "devis", "produire", demande=texte, type_document=type_document, **destinataire)
+            "devis", "produire", demande=texte,
+            type_document=type_document_demande(texte), **destinataire, **parametres_lignes)
         return {"statut": resultat.statut.value, "message": resultat.message,
                 "preuve": resultat.preuve}
 
@@ -661,7 +695,7 @@ class PlaquisteAgent(BaseAgent):
 
         # Le document PDF : soumis a confirmation, jamais ecrit d'autorite.
         # Fait avant la generation pour que la reponse puisse le dire.
-        document = self._proposer_le_document(user_input, context or {})
+        document = self._proposer_le_document(user_input, context or {}, metre)
 
         reponse = ((await self.provider.generate(prompt=user_input, system_prompt=instruction)) or "").strip()
 

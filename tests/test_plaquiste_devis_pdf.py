@@ -9,8 +9,15 @@ contenu. Aucun n'affirme qu'un fichier existe sans l'avoir ouvert.
 """
 import pytest
 from pypdf import PdfReader
+from reportlab.pdfbase.pdfmetrics import stringWidth
 
-from agents.plaquiste.devis_pdf import Devis, Ligne, chiffrer, construire
+from agents.plaquiste.devis_pdf import (
+    Devis,
+    Ligne,
+    chiffrer,
+    construire,
+    taille_du_titre,
+)
 from agents.plaquiste.plaquiste_agent import charger_metier
 
 METIER = charger_metier()
@@ -117,6 +124,33 @@ class TestRendu:
         construire(_devis(type_document="FACTURE"), METIER, sortie)
         assert "FACTURE" in PdfReader(str(sortie)).pages[0].extract_text()
 
+    def test_un_bon_de_commande_s_adresse_a_un_fournisseur_pas_un_client(self, tmp_path):
+        """Le bloc destinataire ne peut pas dire « CLIENT » quand on commande
+        du materiel a un fournisseur — ce serait factuellement faux."""
+        sortie = tmp_path / "commande.pdf"
+        construire(_devis(type_document="BON DE COMMANDE", client="Sen Materiaux"),
+                  METIER, sortie)
+        texte = PdfReader(str(sortie)).pages[0].extract_text()
+
+        assert "BON DE COMMANDE" in texte
+        assert "FOURNISSEUR" in texte
+        assert "CLIENT" not in texte
+        assert "Sen Materiaux" in texte
+
+    def test_un_bon_de_livraison_porte_le_bon_titre_et_libelle(self, tmp_path):
+        sortie = tmp_path / "livraison.pdf"
+        construire(_devis(type_document="BON DE LIVRAISON"), METIER, sortie)
+        texte = PdfReader(str(sortie)).pages[0].extract_text()
+
+        assert "BON DE LIVRAISON" in texte
+        assert "LIVRE A" in texte
+
+    def test_un_devis_dit_toujours_client_comme_avant(self, tmp_path):
+        """Retro-compatible : le cas par defaut ne change pas."""
+        sortie = tmp_path / "devis.pdf"
+        construire(_devis(), METIER, sortie)
+        assert "CLIENT" in PdfReader(str(sortie)).pages[0].extract_text()
+
     def test_l_absence_de_logo_n_empeche_pas_le_devis(self, tmp_path):
         """Son logo est un fichier local ; il peut manquer sur une autre machine."""
         sortie = tmp_path / "devis.pdf"
@@ -127,6 +161,37 @@ class TestRendu:
         sortie = tmp_path / "sous" / "dossier" / "devis.pdf"
         construire(_devis(), METIER, sortie)
         assert sortie.exists()
+
+
+class TestTailleDuTitre:
+    """Le titre ne doit jamais retourner a la ligne — mesure, pas suppose.
+
+    Trouve en testant le vrai PDF genere : « BON DE COMMANDE » a 20 pt
+    (la taille fixe d'avant) debordait de sa colonne et se coupait en deux
+    lignes dans le document reel.
+    """
+
+    LARGEUR_MM = 46  # doit rester synchronise avec LARGEUR_TITRE_MM
+
+    @pytest.mark.parametrize("titre", ["DEVIS", "FACTURE", "BON DE COMMANDE", "BON DE LIVRAISON"])
+    def test_le_titre_tient_toujours_sur_une_ligne(self, titre):
+        from reportlab.lib.units import mm
+
+        taille = taille_du_titre(titre)
+        largeur = stringWidth(titre, "Helvetica-Bold", taille)
+
+        assert largeur <= self.LARGEUR_MM * mm, (
+            f"« {titre} » a {taille} pt deborde de sa colonne ({largeur / mm:.1f} mm)"
+        )
+
+    def test_devis_et_facture_gardent_la_taille_maximale(self):
+        """Retro-compatible : les deux types courts ne doivent pas retrecir."""
+        assert taille_du_titre("DEVIS") == 20
+        assert taille_du_titre("FACTURE") == 20
+
+    def test_un_titre_plus_long_retrecit(self):
+        assert taille_du_titre("BON DE COMMANDE") < 20
+        assert taille_du_titre("BON DE LIVRAISON") < 20
 
 
 class TestCharte:
