@@ -246,6 +246,25 @@ class TestDocumentPdf:
         assert resultat["document"]["statut"] == "NEEDS_CONFIRMATION"
 
     @pytest.mark.asyncio
+    async def test_un_devis_demande_reste_un_devis_meme_si_facture_est_mentionnee(self):
+        """« facture » cite en passant ne doit pas faire glisser un devis
+        demande vers une facture — seule la phrase exacte « genere la
+        facture » decide du type. Un mot nu ferait produire le mauvais
+        document a un client sans que rien ne le signale."""
+        registre = FauxRegistre()
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run(
+            "génère le devis, comme la facture de la semaine derniere",
+            context=DESTINATAIRE)
+
+        assert registre.appels, "aucun appel : « génère le devis » ne declenche rien"
+        _, _, parametres = registre.appels[0]
+        assert parametres["type_document"] == "DEVIS"
+        assert resultat["document"]["statut"] == "NEEDS_CONFIRMATION"
+
+    @pytest.mark.asyncio
     async def test_sans_registre_l_agent_le_dit_au_lieu_de_promettre_un_fichier(self):
         agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER))
 
