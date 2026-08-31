@@ -787,6 +787,35 @@ class PlaquisteAgent(BaseAgent):
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         logger.info("PlaquisteAgent : %r", user_input[:60])
 
+        # `user_input` peut etre le FIL ENTIER aplati (PLAQUISTE seul,
+        # pwa_gateway.py, DEC a venir) — voulu pour que le modele et
+        # l'accumulation de FAITS (dimensions, materiaux) voient tout
+        # l'echange. Mais un DECLENCHEUR D'ACTION (mesurer CE plan, produire
+        # UN document, compter les ouvertures MAINTENANT) n'est pas un fait
+        # qui s'accumule : le lire dans tout le fil le rend « collant » —
+        # trouve le 31/08/2026, en diagnostic apres coup : un chemin de plan
+        # cite tot dans la conversation restait le seul jamais mesure meme
+        # apres qu'un second plan soit donne (chemin_dans fait un `.search`,
+        # qui rend le PREMIER match, pas le dernier), et « genere le pdf »
+        # dit une fois faisait retenter la production a chaque tour suivant,
+        # meme sans rapport. `message_actuel` est le seul texte que ces
+        # declencheurs doivent lire.
+        message_actuel = (context or {}).get("message_actuel") or user_input
+
+        # Le destinataire du devis (client/lieu/objet), captes UNIQUEMENT
+        # quand la reponse suit une question qui les demandait explicitement
+        # — voir destinataire_depuis_l_historique(). Un champ deja present
+        # dans `context` (une future saisie structuree, par exemple) gagne
+        # toujours sur ce qui est capte ici. Fait tot : `_retenir_la_mesure`,
+        # plus bas, tague le souvenir d'un plan mesure avec ce meme
+        # `contexte` — un plan mesure le tour ou le nom du client est
+        # justement donne doit pouvoir le retrouver.
+        contexte = dict(context or {})
+        capture = destinataire_depuis_l_historique(
+            contexte.get("historique") or [], message_actuel)
+        for champ, valeur in capture.items():
+            contexte.setdefault(champ, valeur)
+
         if not self.metier:
             return {
                 "status": "warning",
@@ -850,9 +879,9 @@ class PlaquisteAgent(BaseAgent):
         #   2. mur nomme ou non (cloison/separation/doublage/habillage/coffre),
         #      UNE hauteur donnee -> perimetre mesure x hauteur, faces selon le mot ;
         #   3. rampant, ou un mur SANS hauteur -> rien n'est chiffre.
-        plan = self._mesurer_le_plan(user_input, (context or {}).get("attachments"))
+        plan = self._mesurer_le_plan(message_actuel, (context or {}).get("attachments"))
         if plan is not None:
-            self._retenir_la_mesure(plan, context or {})
+            self._retenir_la_mesure(plan, contexte)
         hauteur = lire_hauteur(user_input)
         if metre is None and plan is not None and plan.get("surface_totale_m2") \
                 and demande_un_plafond(user_input):
@@ -914,7 +943,7 @@ class PlaquisteAgent(BaseAgent):
         # (un tag au-dessus d'une valeur, comme un tableau de menuiseries),
         # jamais une image : aucune coordonnee n'y est devinee.
         marques = self._compter_les_marques_du_plan(
-            user_input, (context or {}).get("attachments"))
+            message_actuel, (context or {}).get("attachments"))
         if marques is not None and marques.get("resume"):
             instruction = (
                 f"{instruction}\n\nDECOMPTE DE MENUISERIES DU PLAN (mesure reelle, "
@@ -933,7 +962,7 @@ class PlaquisteAgent(BaseAgent):
         # Absent sans provider_vision configure, sans plan, ou si le rendu ou
         # l'appel echoue — best-effort, ne bloque jamais la reponse.
         avis_visuel = await self._avis_visuel_du_plan(
-            user_input, (context or {}).get("attachments"))
+            message_actuel, (context or {}).get("attachments"))
         if avis_visuel:
             instruction = (
                 f"{instruction}\n\nCE QUE LE MODELE DE VISION DIT AVOIR VU sur ce "
@@ -960,22 +989,11 @@ class PlaquisteAgent(BaseAgent):
                 "Ne propose aucune date : dis-lui que tu ne peux pas voir son agenda.")
 
         # Le rendez-vous : soumis a confirmation, jamais pose d'autorite.
-        rendez_vous = self._poser_le_rendez_vous(context or {})
-
-        # Le destinataire du devis (client/lieu/objet), captes UNIQUEMENT
-        # quand la reponse suit une question qui les demandait explicitement
-        # — voir destinataire_depuis_l_historique(). Un champ deja present
-        # dans `context` (une future saisie structuree, par exemple) gagne
-        # toujours sur ce qui est capte ici.
-        contexte = dict(context or {})
-        capture = destinataire_depuis_l_historique(
-            contexte.get("historique") or [], contexte.get("message_actuel") or user_input)
-        for champ, valeur in capture.items():
-            contexte.setdefault(champ, valeur)
+        rendez_vous = self._poser_le_rendez_vous(contexte)
 
         # Le document PDF : soumis a confirmation, jamais ecrit d'autorite.
         # Fait avant la generation pour que la reponse puisse le dire.
-        document = self._proposer_le_document(user_input, contexte, metre)
+        document = self._proposer_le_document(message_actuel, contexte, metre)
 
         reponse = ((await self.provider.generate(prompt=user_input, system_prompt=instruction)) or "").strip()
 

@@ -248,6 +248,17 @@ async def recevoir_callback(
 
     _persister_refresh_token(config["variable_env"], str(refresh))
 
+    # Une sonde recente (la PWA interroge /status pendant qu'elle attend le
+    # popup) resterait en cache jusqu'a 60 s et rendrait encore NON_CONFIGURE
+    # ici, juste apres une connexion pourtant reussie — purement cosmetique
+    # (la page dirait "compte connecte" plutot que la vraie adresse), corrige
+    # quand meme. `/status` (etat_connecteur, plus bas) garde le cache tel
+    # quel : forcer une sonde fraiche a chaque appel viderait tout l'interet
+    # du cache pour la seule route qui est vraiment interrogee en boucle.
+    connecteur = registre.obtenir(fournisseur)
+    if connecteur is not None and hasattr(connecteur, "invalider_sonde"):
+        connecteur.invalider_sonde()
+
     sante = registre.sante(fournisseur)
     compte = sante.message if sante.etat == EtatSante.OPERATIONNEL else "compte connecte"
     return _page_succes(fournisseur, compte)
