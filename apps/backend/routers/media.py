@@ -17,6 +17,7 @@ from apps.backend.config import (
     TAILLE_BLOC_ENVOI,
     TAILLE_MAX_ENVOI,
 )
+from apps.backend.pieces_jointes import nom_de_fichier_sur
 from apps.backend.runtime import clip_selector, editor_agent, permissions, subtitle_agent, video_agent
 from apps.backend.security import limiter_debit, verify_api_key
 
@@ -37,8 +38,14 @@ def valider_nom_de_fichier(nom_brut: Optional[str]) -> str:
     if not nom_brut or not nom_brut.strip():
         raise HTTPException(status_code=400, detail="Nom de fichier manquant.")
 
-    nom_sur = Path(nom_brut).name
-    if not nom_sur or nom_sur in {".", ".."}:
+    # `Path(...).name` seul ne suffit pas : sur Linux, le `\\` de Windows n'est
+    # pas un separateur, donc « C:\\Users\\Saer\\clip.mp4 » revenait ENTIER et
+    # devenait un nom de fichier absurde dans `incoming/`. Le proprietaire est
+    # sous Windows, son serveur sous Linux : c'est le cas courant, pas un cas
+    # limite. `nom_de_fichier_sur` (apps/backend/pieces_jointes.py) coupe deja
+    # les deux separateurs — reutilise plutot que redit ici.
+    nom_sur = nom_de_fichier_sur(nom_brut)
+    if not nom_sur or nom_sur in {".", "..", "sans-nom"}:
         raise HTTPException(status_code=400, detail="Nom de fichier invalide.")
 
     extension = Path(nom_sur).suffix.lower()

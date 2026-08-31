@@ -79,6 +79,33 @@ def test_un_chemin_remontant_est_neutralise(client, dossier_media, tmp_path):
     assert not (tmp_path.parent / "evade.mp4").exists()
 
 
+@pytest.mark.parametrize("envoye, attendu", [
+    ("C:\\Users\\Saer\\clip.mp4", "clip.mp4"),
+    ("..\\..\\evade.mp4", "evade.mp4"),
+    ("dossier\\sous-dossier\\video.mp4", "video.mp4"),
+    ("../../evade.mp4", "evade.mp4"),
+    ("normal.mp4", "normal.mp4"),
+])
+def test_un_chemin_windows_est_coupe_comme_un_chemin_posix(envoye, attendu):
+    """Le proprietaire est sous Windows, le serveur sous Linux : le `\\` n'y est
+    pas un separateur, donc « C:\\Users\\Saer\\clip.mp4 » revenait ENTIER et
+    devenait un nom de fichier absurde dans `incoming/`. `pieces_jointes.py`
+    avait deja resolu ce cas ; cette route ne le reutilisait pas. Trouve en
+    revue le 31/08/2026.
+
+    Teste sur la fonction, pas via HTTP : le transport multipart peut
+    lui-meme transformer le nom, et un test qui passe grace a ca ne prouve
+    rien sur ce que fait la route."""
+    assert media.valider_nom_de_fichier(envoye) == attendu
+
+
+def test_un_chemin_windows_remontant_est_neutralise(client, dossier_media):
+    res = envoyer(client, "..\\..\\evade.mp4")
+
+    assert res.status_code == 200
+    assert (dossier_media / "evade.mp4").exists()
+
+
 # --- Taille --------------------------------------------------------------------
 
 def test_un_fichier_trop_gros_est_refuse(client, dossier_media, monkeypatch):
