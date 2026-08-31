@@ -137,11 +137,37 @@ QUESTION_OBJET_DEVIS = re.compile(
     r"prestations? souhait|type de travaux|travaux souhait|objet du devis",
     re.IGNORECASE)
 
+#: Une annonce EXPLICITE et LABELISEE — « le nom du client c'est X »,
+#: « lieu de chantier c'est Y » — jamais un nom propre mentionne en passant.
+#: Trouve le 31/08/2026, en direct avec le proprietaire : sa toute premiere
+#: question ("hauteur sous plafond ?") ne demandait ni le client ni le
+#: lieu, et pourtant il les a donnes de lui-meme dans la reponse suivante —
+#: destinataire_depuis_l_historique() ne capte que ce qui SUIT une question
+#: qui les demandait, donc rien n'etait capte alors qu'il l'avait clairement
+#: dit. Le label ("le nom du client", "lieu de chantier") est ce qui rend
+#: ceci sur : un nom propre seul, sans lui, n'est jamais capte.
+#: Les lookaheads negatifs arretent la capture au prochain label connu —
+#: ses phrases s'enchainent souvent sans ponctuation ("...cest Augustin
+#: lieux de chantier cest almadie").
+ANNONCE_NOM_CLIENT = re.compile(
+    r"(?:nom du client|le client)\s*(?:c'?est|c est|:|s'appelle)\s+"
+    r"((?:(?!lieu|chantier|objet|prestation).)+)",
+    re.IGNORECASE)
+ANNONCE_LIEU_CHANTIER = re.compile(
+    r"(?:lieux? du chantier|lieux? de chantier|l'adresse du chantier|adresse du chantier)"
+    r"\s*(?:c'?est|c est|:)\s+((?:(?!nom du client|le client|objet|prestation).)+)",
+    re.IGNORECASE)
+ANNONCE_OBJET_DEVIS = re.compile(
+    r"(?:l'objet(?: du devis)?|objet du devis|les? prestations?(?: souhaitees?)?)"
+    r"\s*(?:c'?est|c est|:)\s+((?:(?!nom du client|le client|lieu|chantier).)+)",
+    re.IGNORECASE)
+
 #: Tetes de phrase courantes a retirer d'une reponse captee — « C'est fann
-#: hock » doit devenir « fann hock ». Une tete non reconnue reste telle
-#: quelle : mieux vaut une reponse avec sa tete de phrase qu'une reponse
-#: coupee au mauvais endroit.
-_TETE_DE_REPONSE = re.compile(r"^(c'est|c est)\s+", re.IGNORECASE)
+#: hock » doit devenir « fann hock ». `c'?est` couvre aussi « cest », sans
+#: apostrophe — frappe au telephone, mesure le 31/08/2026. Une tete non
+#: reconnue reste telle quelle : mieux vaut une reponse avec sa tete de
+#: phrase qu'une reponse coupee au mauvais endroit.
+_TETE_DE_REPONSE = re.compile(r"^(c'?est|c est)\s+", re.IGNORECASE)
 
 
 def _nettoyer_reponse_captee(texte: str) -> str:
@@ -152,11 +178,22 @@ def _nettoyer_reponse_captee(texte: str) -> str:
 def destinataire_depuis_l_historique(
     historique: List[Dict[str, str]], message_actuel: str,
 ) -> Dict[str, str]:
-    """Le client/lieu/objet captes, uniquement quand ils repondent
-    DIRECTEMENT a une question posee par ARENA au tour precedent.
+    """Le client/lieu/objet captes, de deux facons complementaires, tour
+    apres tour dans l'ordre chronologique — un tour plus recent remplace
+    ce qu'un tour plus ancien avait capte :
 
-    `message_actuel` est ajoute comme le dernier tour utilisateur : c'est
-    generalement lui qui repond a la toute derniere question posee. Une
+    1. la reponse suit DIRECTEMENT une question posee par ARENA qui
+       demandait explicitement ce champ (QUESTION_NOM_CLIENT et les deux
+       autres) ;
+    2. le proprietaire l'annonce lui-meme, explicitement et de facon
+       labelisee, sans attendre une question — `destinataire_annonce()`,
+       verifiee sur CHAQUE tour utilisateur, pas seulement le dernier.
+       Trouve le 31/08/2026, en direct avec le proprietaire : sa toute
+       premiere reponse d'ARENA ne demandait ni le client ni le lieu, et il
+       les a donnes des ce tour-la — un controle qui ne regarderait que le
+       dernier message aurait rate cette annonce des qu'un tour la suit.
+
+    `message_actuel` est ajoute comme le dernier tour utilisateur. Une
     question qui demande plusieurs champs a la fois (« le lieu du chantier
     et les prestations souhaitees ? ») recoit la meme reponse pour chacun —
     imparfait, mais `produire` n'ecrit qu'un fichier local que le
@@ -165,19 +202,56 @@ def destinataire_depuis_l_historique(
     """
     tours = list(historique) + [{"role": "user", "content": message_actuel}]
     valeurs: Dict[str, str] = {}
-    for precedent, suivant in zip(tours, tours[1:], strict=False):
-        if precedent.get("role") != "assistant" or suivant.get("role") != "user":
+    for index, tour in enumerate(tours):
+        if tour.get("role") != "user":
             continue
-        question = precedent.get("content") or ""
-        reponse = _nettoyer_reponse_captee(suivant.get("content") or "")
-        if not reponse:
-            continue
-        if QUESTION_NOM_CLIENT.search(question):
-            valeurs["client"] = reponse
-        if QUESTION_LIEU_CHANTIER.search(question):
-            valeurs["lieu"] = reponse
-        if QUESTION_OBJET_DEVIS.search(question):
-            valeurs["objet"] = reponse
+        texte = tour.get("content") or ""
+        precedent = tours[index - 1] if index > 0 else {}
+        if precedent.get("role") == "assistant":
+            question = precedent.get("content") or ""
+            reponse = _nettoyer_reponse_captee(texte)
+            if reponse:
+                if QUESTION_NOM_CLIENT.search(question):
+                    valeurs["client"] = reponse
+                if QUESTION_LIEU_CHANTIER.search(question):
+                    valeurs["lieu"] = reponse
+                if QUESTION_OBJET_DEVIS.search(question):
+                    valeurs["objet"] = reponse
+        valeurs.update(destinataire_annonce(texte))
+    return valeurs
+
+
+def destinataire_annonce(message_actuel: str) -> Dict[str, str]:
+    """Le client/lieu/objet, quand le proprietaire les annonce lui-meme,
+    explicitement et de facon labelisee, sans attendre qu'ARENA les ait
+    demandes.
+
+    Complement de `destinataire_depuis_l_historique()` : trouve le
+    31/08/2026, en direct avec le proprietaire, dont la toute premiere
+    reponse d'ARENA ne demandait ni le client ni le lieu — il les a donnes
+    quand meme, spontanement, et rien ne les captait.
+
+    La difference avec « jamais devine dans une phrase libre » est le
+    label : « le client s'appelle Augustin » est capte, « j'ai vu Augustin
+    hier » ne l'est jamais — aucun nom propre seul ne declenche ceci.
+    """
+    valeurs: Dict[str, str] = {}
+    texte = message_actuel or ""
+    trouve_client = ANNONCE_NOM_CLIENT.search(texte)
+    if trouve_client:
+        nettoye = _nettoyer_reponse_captee(trouve_client.group(1))
+        if nettoye:
+            valeurs["client"] = nettoye
+    trouve_lieu = ANNONCE_LIEU_CHANTIER.search(texte)
+    if trouve_lieu:
+        nettoye = _nettoyer_reponse_captee(trouve_lieu.group(1))
+        if nettoye:
+            valeurs["lieu"] = nettoye
+    trouve_objet = ANNONCE_OBJET_DEVIS.search(texte)
+    if trouve_objet:
+        nettoye = _nettoyer_reponse_captee(trouve_objet.group(1))
+        if nettoye:
+            valeurs["objet"] = nettoye
     return valeurs
 
 #: Ce qui demande QUAND, et non combien. « planifie », « suis-je libre »,
@@ -308,8 +382,14 @@ def composer_instruction(metier: Dict[str, Any]) -> str:
         "",
         "LE CLIENT EST CELUI QU'ON TE DONNE.",
         "Tu n'inventes ni nom, ni adresse, ni chantier, et tu ne reprends jamais "
-        "ceux d'une affaire passee. S'il te manque le nom du client ou le lieu "
-        "du chantier, tu les demandes en une ligne au lieu de les supposer.",
+        "ceux d'une affaire passee. S'il te manque le nom du client, le lieu "
+        "du chantier ou les prestations souhaitees, tu les demandes EXACTEMENT "
+        "ainsi, une question par ligne, au lieu de les supposer : « Quel est "
+        "le nom du client ? », « Quel est le lieu du chantier ? », « Quelles "
+        "sont les prestations souhaitees ? ». Ces formulations exactes sont "
+        "lues par un systeme automatique qui associe ta prochaine reponse au "
+        "bon champ — une autre formulation ferait echouer cette association "
+        "et tout redemander.",
         "",
         "LE PDF N'EST PAS TON TRAVAIL — NE DIS JAMAIS QUE TU NE PEUX PAS EN CREER.",
         "Produire le fichier PDF est fait par un systeme separe, automatiquement, "
@@ -810,14 +890,17 @@ class PlaquisteAgent(BaseAgent):
         # declencheurs doivent lire.
         message_actuel = (context or {}).get("message_actuel") or user_input
 
-        # Le destinataire du devis (client/lieu/objet), captes UNIQUEMENT
-        # quand la reponse suit une question qui les demandait explicitement
-        # — voir destinataire_depuis_l_historique(). Un champ deja present
-        # dans `context` (une future saisie structuree, par exemple) gagne
-        # toujours sur ce qui est capte ici. Fait tot : `_retenir_la_mesure`,
-        # plus bas, tague le souvenir d'un plan mesure avec ce meme
-        # `contexte` — un plan mesure le tour ou le nom du client est
-        # justement donne doit pouvoir le retrouver.
+        # Le destinataire du devis (client/lieu/objet), capte de deux facons
+        # complementaires — jamais devine dans une phrase libre au sens ou
+        # « jamais un nom propre mentionne en passant sans etre labelise » :
+        # destinataire_depuis_l_historique() capte de deux facons, tour par
+        # tour : une reponse directe a une question, OU une annonce
+        # explicite du proprietaire, meme sans question. Un champ deja
+        # present dans `context` (une future saisie structuree, par
+        # exemple) gagne toujours sur ce qui est capte ici. Fait tot :
+        # `_retenir_la_mesure`, plus bas, tague le souvenir d'un plan
+        # mesure avec ce meme `contexte` — un plan mesure le tour ou le nom
+        # du client est justement donne doit pouvoir le retrouver.
         contexte = dict(context or {})
         capture = destinataire_depuis_l_historique(
             contexte.get("historique") or [], message_actuel)
