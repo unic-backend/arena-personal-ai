@@ -64,13 +64,16 @@ def verify_api_key(request: Request, authorization: Optional[str] = Header(None)
 
 
 def verify_media_access(request: Request, authorization: Optional[str] = Header(None)):
-    """Comme `verify_api_key`, avec un repli en parametre `cle` pour les medias.
+    """Comme `verify_api_key`, avec un repli en parametre `cle` — pour tout appel
+    qui ne part pas d'un `fetch()`/XHR et ne peut donc jamais poser d'en-tete
+    `Authorization`.
 
-    Un `<video src="...">` ou `<img src="...">` charge son URL directement
-    depuis le navigateur, sans jamais poser d'en-tete `Authorization` — seul un
-    `fetch()`/XHR le peut. `/media/rendered` accepte donc aussi la cle en
-    parametre de requete, pour ce seul usage (VOLET « ARENA en ligne »,
-    phase 4.2). Le reste de la passerelle garde `verify_api_key` tel quel.
+    Deux usages reels : un `<video src="...">` ou `<img src="...">` qui charge
+    son URL directement depuis le navigateur (`/media/rendered`, VOLET « ARENA
+    en ligne », phase 4.2), et la redirection `window.open()` vers
+    `/connectors/{fournisseur}/auth` (chapitre 8.2, connecteurs reels) — un
+    popup OAuth navigue vers l'URL, il ne l'appelle pas en `fetch()`. Le reste
+    de la passerelle garde `verify_api_key` tel quel.
     """
     if not USMAN_API_KEY:
         raise HTTPException(

@@ -54,13 +54,15 @@ BASE_URL = os.getenv("GMAIL_API_URL", "https://gmail.googleapis.com/gmail/v1")
 #: Ce qu'il faut fournir, et ou le prendre. Ce texte part avec `NOT_CONFIGURED` :
 #: une capacite absente se rapporte avec la commande qui l'obtient.
 CE_QUI_MANQUE = (
-    "trois valeurs dans .env, obtenues sur console.cloud.google.com "
-    "(API Gmail activee, ecran de consentement, identifiant OAuth « application "
-    "de bureau ») : GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET et "
-    "GOOGLE_REFRESH_TOKEN (les anciens noms GMAIL_* restent acceptes). "
-    "Portee gmail.readonly pour lire ; gmail.send en plus pour envoyer — sans "
-    "elle, Google refuse l'envoi et ARENA le rapporte. Aucune ne s'ecrit dans "
-    "le depot."
+    "GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET dans .env, obtenus sur "
+    "console.cloud.google.com (API Gmail activee, ecran de consentement, "
+    "identifiant OAuth « application web », URI de redirection "
+    "{PUBLIC_BASE_URL}/connectors/gmail/callback). Une fois les deux presents, "
+    "clique « Connecter » dans ARENA : GOOGLE_REFRESH_TOKEN s'obtient et "
+    "s'ecrit tout seul (apps/backend/routers/connectors.py) — plus besoin de "
+    "le copier a la main. Portee gmail.readonly pour lire ; gmail.send en "
+    "plus pour envoyer — sans elle, Google refuse l'envoi et ARENA le "
+    "rapporte. Aucune de ces valeurs ne s'ecrit dans le depot."
 )
 
 #: Plafond que **nous** nous imposons, pas un quota publie par Google : lire la

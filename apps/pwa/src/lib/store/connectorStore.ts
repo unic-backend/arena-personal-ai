@@ -1,25 +1,27 @@
 /* ─────────────────────────────────────────────────────────────
    Connector store — user-granted integrations.
 
-   · Security & Encryption: Secrets are encrypted with AES-GCM-256
-     when Usman's Master Key Vault is active.
-   · OAuth connectors: real popup flow against YOUR backend
-     ({backend}/connectors/{id}/auth) + status polling.
-   · API-key connectors: token stored locally/encrypted, verified
-     through the backend (POST /connectors/verify) when online.
+   Reconciled 31/08/2026 (chapitre 8.2, audit + owner decision) :
+   secrets now live ONLY on ARENA's own server (.env / process env,
+   never the browser) — consistent with the rest of ARENA
+   (core/security/trust.py, core/permissions/). The AES-256 browser
+   vault that used to encrypt tokens in localStorage is gone; there
+   is nothing left here for it to protect, since the only real
+   connector (Gmail) is OAuth against ARENA's own backend
+   (apps/backend/routers/connectors.py), which stores the resulting
+   token server-side.
+
+   OAuth flow: real popup against YOUR backend
+   ({backend}/connectors/{id}/auth) + postMessage / status polling.
    ───────────────────────────────────────────────────────────── */
 
 import { create } from 'zustand';
 import { getConnector } from '../connectors/catalog';
 import { activeRemoteCfg } from './backendStore';
-import { useVault } from './vaultStore';
-import { EncryptedPayload, encryptSecret, decryptSecret } from '../security/vault';
 
 export interface ConnectorState {
   status: 'disconnected' | 'connecting' | 'connected';
   account?: string;
-  token?: string; // Plaintext when no master key
-  encryptedToken?: EncryptedPayload; // AES-256-GCM ciphertext when vault is active
   /** allowed for use in prompts (per-user kill switch) */
   enabled: boolean;
   verified: boolean;
@@ -52,12 +54,9 @@ interface Store {
   connectors: Map;
   modalOpen: boolean;
   setModalOpen(open: boolean): void;
-  setToken(id: string, token: string): Promise<boolean>;
   disconnect(id: string): void;
   toggleEnabled(id: string): void;
   startOAuth(id: string): Promise<boolean>;
-  encryptAllTokens(passphrase: string): Promise<void>;
-  decryptAllTokens(passphrase: string): Promise<void>;
 }
 
 export const useConnectors = create<Store>((set, get) => {
@@ -75,64 +74,6 @@ export const useConnectors = create<Store>((set, get) => {
     modalOpen: false,
     setModalOpen: (modalOpen) => set({ modalOpen }),
 
-    /** API-key connector: store securely (AES-256 encrypted if master key is active) + verify */
-    async setToken(id, token) {
-      update(id, { status: 'connecting', verified: false });
-      const cfg = activeRemoteCfg();
-      let account = '';
-      let verified = false;
-
-      if (cfg) {
-        try {
-          const res = await fetch(`${cfg.url}/connectors/verify`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
-            },
-            body: JSON.stringify({ id, token }),
-          });
-          if (res.ok) {
-            const data = (await res.json()) as { ok?: boolean; account?: string };
-            if (data.ok !== false) {
-              verified = true;
-              account = data.account ?? '';
-            } else {
-              update(id, { status: 'disconnected' });
-              return false;
-            }
-          }
-        } catch {
-          /* backend unreachable — store unverified */
-        }
-      }
-
-      const tail = token.replace(/\s/g, '').slice(-4);
-      const vault = useVault.getState();
-
-      let encryptedPayload: EncryptedPayload | undefined;
-      let plaintextToStore: string | undefined = token;
-
-      // If Vault is active and unlocked, encrypt the token and do not store plaintext in storage
-      if (vault.hasMasterKey && vault.isUnlocked && vault.sessionPassphrase) {
-        const encrypted = await vault.encryptData(token);
-        if (encrypted) {
-          encryptedPayload = encrypted;
-          plaintextToStore = undefined;
-        }
-      }
-
-      update(id, {
-        status: 'connected',
-        verified,
-        token: plaintextToStore,
-        encryptedToken: encryptedPayload,
-        account: account || `••••${tail || 'token'}`,
-        connectedAt: Date.now(),
-      });
-      return true;
-    },
-
     /** OAuth connector: popup → consent on YOUR backend → postMessage / poll status */
     async startOAuth(id) {
       const cfg = activeRemoteCfg();
@@ -146,13 +87,19 @@ export const useConnectors = create<Store>((set, get) => {
         return false;
       }
 
-      const authUrl = `${cfg.url}/connectors/${id}/auth?key=${encodeURIComponent(cfg.apiKey ?? 'anon')}`;
+      const backendOrigin = new URL(cfg.url).origin;
+      // `cle`, pas `key` : c'est le nom que le backend d'ARENA attend
+      // (apps/backend/security.py, meme convention que /media/rendered).
+      const authUrl = `${cfg.url}/connectors/${id}/auth?cle=${encodeURIComponent(cfg.apiKey ?? 'anon')}`;
       const popup = window.open(authUrl, 'usman_oauth', 'width=620,height=760,menubar=no,toolbar=no');
       const deadline = Date.now() + 180_000;
 
       // Listen for instant postMessage notification from OAuth callback page
       let resolved = false;
       const messageHandler = (ev: MessageEvent) => {
+        // Le popup est servi par le meme backend qu'on vient d'appeler :
+        // n'importe quelle autre origine est ignoree, jamais fait confiance.
+        if (ev.origin !== backendOrigin) return;
         if (ev.data?.type === 'usman_oauth_success' && ev.data?.connector === id) {
           resolved = true;
           update(id, {
@@ -233,8 +180,6 @@ export const useConnectors = create<Store>((set, get) => {
       update(id, {
         status: 'disconnected',
         account: undefined,
-        token: undefined,
-        encryptedToken: undefined,
         verified: false,
       });
     },
@@ -243,79 +188,20 @@ export const useConnectors = create<Store>((set, get) => {
       const cur = get().connectors[id];
       update(id, { enabled: !(cur?.enabled ?? true) });
     },
-
-    /** Encrypt all existing plaintext tokens when setting up a Master Key */
-    async encryptAllTokens(passphrase: string) {
-      const current = get().connectors;
-      const updated: Map = { ...current };
-      for (const [id, st] of Object.entries(current)) {
-        if (st.token && !st.encryptedToken) {
-          try {
-            const encrypted = await encryptSecret(st.token, passphrase);
-            updated[id] = { ...st, token: undefined, encryptedToken: encrypted };
-          } catch {
-            /* ignore */
-          }
-        }
-      }
-      persist(updated);
-      set({ connectors: updated });
-    },
-
-    /** Decrypt all encrypted tokens when disabling Master Key */
-    async decryptAllTokens(passphrase: string) {
-      const current = get().connectors;
-      const updated: Map = { ...current };
-      for (const [id, st] of Object.entries(current)) {
-        if (st.encryptedToken) {
-          try {
-            const decrypted = await decryptSecret(st.encryptedToken, passphrase);
-            updated[id] = { ...st, token: decrypted, encryptedToken: undefined };
-          } catch {
-            /* ignore */
-          }
-        }
-      }
-      persist(updated);
-      set({ connectors: updated });
-    },
   };
 });
 
 /** payload attached to every agent request → your backend decides tool access */
 export async function resolveActiveConnectors(): Promise<
-  Array<{ id: string; token?: string; account?: string }>
+  Array<{ id: string; account?: string }>
 > {
-  const list = Object.entries(useConnectors.getState().connectors).filter(
-    ([, s]) => s.status === 'connected' && s.enabled,
-  );
-  const vault = useVault.getState();
-
-  const payload: Array<{ id: string; token?: string; account?: string }> = [];
-
-  for (const [id, s] of list) {
-    let resolvedToken = s.token;
-
-    // Decrypt on the fly if encrypted
-    if (!resolvedToken && s.encryptedToken && vault.isUnlocked && vault.sessionPassphrase) {
-      try {
-        resolvedToken = await decryptSecret(s.encryptedToken, vault.sessionPassphrase);
-      } catch {
-        /* ignore decryption errors */
-      }
-    }
-
-    payload.push({ id, token: resolvedToken, account: s.account });
-  }
-
-  return payload;
+  return activeConnectorPayload();
 }
 
-/** Synchronous fallback used for quick status counts */
-export function activeConnectorPayload(): Array<{ id: string; token?: string; account?: string }> {
+export function activeConnectorPayload(): Array<{ id: string; account?: string }> {
   return Object.entries(useConnectors.getState().connectors)
     .filter(([, s]) => s.status === 'connected' && s.enabled)
-    .map(([id, s]) => ({ id, token: s.token, account: s.account }));
+    .map(([id, s]) => ({ id, account: s.account }));
 }
 
 export function connectedCount(): number {

@@ -14,10 +14,12 @@ d'abord, de bout en bout). Un fournisseur qui n'est pas dans
 
 Trois regles :
 
-1. **`/auth` exige la cle d'ARENA.** Sans elle, n'importe qui pourrait relier
-   son propre compte Google au courrier du proprietaire — la cle est en
-   parametre `cle` en plus de l'en-tete, parce qu'une redirection de
-   navigateur (`window.open`) ne peut jamais poser d'en-tete `Authorization`.
+1. **`/auth` exige la cle d'ARENA — via `verify_media_access`, deja ecrite et
+   testee.** Sans elle, n'importe qui pourrait relier son propre compte
+   Google au courrier du proprietaire. Cette dependance accepte l'en-tete OU
+   le parametre `cle` : une redirection de navigateur (`window.open`) ne peut
+   jamais poser d'en-tete `Authorization`. `/status` et `/disconnect`
+   viennent d'un `fetch()`, qui le peut : ils gardent `verify_api_key`.
 2. **Le `state` est a usage unique et court.** Il protege le retour du
    consentement contre un lien rejoue ou force depuis un autre onglet — la
    seule chose qu'un attaquant pourrait manipuler sur `/callback`, qui est
@@ -26,6 +28,12 @@ Trois regles :
    `os.environ` pour un effet immediat ; `.env` pour survivre a un
    redemarrage quand ce fichier existe (deploiement hors plateforme
    Railway/Render, ou la variable vit dans leur panneau, pas dans un fichier).
+
+Les dependances d'authentification/debit sont declarees a cote de chaque
+route (`dependencies=[Depends(...)]`), jamais appelees a la main dans le
+corps : c'est ce que `tests/test_surface_api.py` fige et audite pour tout le
+reste de l'API — ce fichier suit la meme regle plutot que d'en inventer une
+seconde, invisible pour ce test.
 """
 import json
 import logging
@@ -34,13 +42,12 @@ import secrets
 import time
 from typing import Dict, Optional, Tuple
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from apps.backend import security as securite
 from apps.backend.config import BASE_DIR
 from apps.backend.runtime import registre
-from apps.backend.security import cle_presentee_valide, limiter_debit
+from apps.backend.security import limiter_debit, verify_api_key, verify_media_access
 from core.connectors.base import EtatSante
 from core.connectors.google_oauth import (
     PORTEE_GMAIL_ENVOI,
@@ -69,15 +76,6 @@ FOURNISSEURS_OAUTH = {
         "variable_env": "GOOGLE_REFRESH_TOKEN",
     },
 }
-
-
-def _cle_valide(request: Request) -> bool:
-    """En-tete `Authorization` OU parametre `cle` — la meme regle que
-    `verify_media_access` (`apps/backend/security.py`), pour la meme raison :
-    une redirection de navigateur ne pose jamais d'en-tete."""
-    if cle_presentee_valide(request.headers.get("authorization")):
-        return True
-    return bool(securite.USMAN_API_KEY) and request.query_params.get("cle") == securite.USMAN_API_KEY
 
 
 def _redirect_uri(fournisseur: str) -> str:
@@ -160,13 +158,10 @@ def _page_erreur(message: str) -> HTMLResponse:
 
 # --- CONNECT -> AUTHENTIFICATION -----------------------------------------------
 
-@router.get("/{fournisseur}/auth")
-async def demarrer_oauth(fournisseur: str, request: Request):
+@router.get("/{fournisseur}/auth",
+           dependencies=[Depends(verify_media_access), Depends(limiter_debit)])
+async def demarrer_oauth(fournisseur: str):
     """Redirige vers l'ecran de consentement du fournisseur. Rien n'est stocke ici."""
-    limiter_debit(request)
-    if not _cle_valide(request):
-        raise HTTPException(status_code=401, detail="Cle API invalide ou manquante.")
-
     config = FOURNISSEURS_OAUTH.get(fournisseur)
     if config is None:
         raise HTTPException(
@@ -248,13 +243,11 @@ async def recevoir_callback(
 
 # --- STATUT & DECONNEXION -------------------------------------------------------
 
-@router.get("/{fournisseur}/status")
-async def etat_connecteur(fournisseur: str, request: Request) -> Dict[str, object]:
+@router.get("/{fournisseur}/status",
+           dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
+async def etat_connecteur(fournisseur: str) -> Dict[str, object]:
     """Interroge (via `sonder()`, deja mis en cache 60 s cote connecteur) sans
     jamais rien affirmer de plausible : `connected` vient d'un vrai appel API."""
-    limiter_debit(request)
-    if not _cle_valide(request):
-        raise HTTPException(status_code=401, detail="Cle API invalide ou manquante.")
     if fournisseur not in FOURNISSEURS_OAUTH and not registre.est_declare(fournisseur):
         raise HTTPException(status_code=404, detail=f"Connecteur « {fournisseur} » inconnu.")
 
@@ -269,14 +262,11 @@ async def etat_connecteur(fournisseur: str, request: Request) -> Dict[str, objec
     }
 
 
-@router.post("/{fournisseur}/disconnect")
-async def deconnecter(fournisseur: str, request: Request) -> Dict[str, bool]:
+@router.post("/{fournisseur}/disconnect",
+            dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
+async def deconnecter(fournisseur: str) -> Dict[str, bool]:
     """Efface uniquement le jeton de rafraichissement — jamais l'identifiant OAuth
     (client_id/secret), qui reste utile pour se reconnecter ensuite."""
-    limiter_debit(request)
-    if not _cle_valide(request):
-        raise HTTPException(status_code=401, detail="Cle API invalide ou manquante.")
-
     config = FOURNISSEURS_OAUTH.get(fournisseur)
     if config is None:
         raise HTTPException(

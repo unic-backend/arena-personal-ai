@@ -53,6 +53,16 @@ SURFACE_ATTENDUE = {
     # reste : sans la cle, elles ne se lisent ni ne s'ecrivent.
     "/conversations": (["GET"], ["verify_api_key", "limiter_debit"]),
     "/conversations/sync": (["POST"], ["verify_api_key", "limiter_debit"]),
+    # CONNECT -> OAUTH -> CALLBACK -> jeton stocke, pour de vrai (Gmail
+    # d'abord). `/auth` vient d'une redirection de navigateur (`window.open`)
+    # qui ne peut jamais poser d'en-tete : `verify_media_access` accepte aussi
+    # `?cle=`. `/callback` n'a aucune dependance ici — Google l'appelle
+    # directement, jamais avec la cle d'ARENA ; le `state` CSRF a usage unique
+    # est sa propre protection.
+    "/connectors/{fournisseur}/auth": (["GET"], ["verify_media_access", "limiter_debit"]),
+    "/connectors/{fournisseur}/callback": (["GET"], []),
+    "/connectors/{fournisseur}/status": (["GET"], ["verify_api_key", "limiter_debit"]),
+    "/connectors/{fournisseur}/disconnect": (["POST"], ["verify_api_key", "limiter_debit"]),
 }
 
 

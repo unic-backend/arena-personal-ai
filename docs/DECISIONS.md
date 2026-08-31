@@ -1688,3 +1688,132 @@ propriétaire ne l'a pas fait tourner chez lui sur un vrai plan.
 Retour arrière : retirer le branchement de `run()` (deux blocs identifiés,
 `marques = ...` et `avis_visuel = ...`) restaure le comportement précédent sans
 toucher au reste de l'agent.
+
+---
+
+## DEC-0024 : Gmail — le bouton « Connecter » fait enfin ce qu'il affiche
+
+*Demandé par le propriétaire le 31/08/2026 : « CONNECTORS & REAL
+INTEGRATIONS — MAKE EVERY CONNECTOR ACTUALLY OPERATIONAL ». Signalé
+concrètement : cliquer sur Gmail dans l'interface ne terminait jamais la
+connexion. Après audit complet (tracé du bouton jusqu'à l'API Google, rien
+supposé) et deux choix qu'il a tranchés : Gmail d'abord, de bout en bout ;
+retirer le coffre chiffré côté navigateur plutôt que le garder à côté d'un
+modèle serveur-only.*
+
+### Ce que l'audit a trouvé, avant d'écrire une ligne
+
+Le module de connecteurs de la PWA (`ConnectorsModal.tsx`, `connectorStore.ts`,
+`catalog.ts`) est arrivé en un seul commit (`8ff90c2 feat(pwa): interface
+React du proprietaire`) — un gabarit générique, jamais câblé à ARENA. Deux
+causes cumulées faisaient que rien ne pouvait jamais fonctionner :
+
+1. **Aucune route `/connectors/*` n'existait côté serveur.**
+   `apps/backend/main.py` ne montait que 7 routeurs, jamais `connectors`.
+2. **Le catalogue affichait 17 connecteurs ; le backend réel en avait 8, et
+   un seul se recoupait (Gmail).** Notion, GitHub, GitLab, Jira, Linear, X,
+   WhatsApp, HTTP, RSS, Slack, Salesforce, HubSpot, Postgres n'avaient et
+   n'ont toujours **aucun** code backend — des boutons qui ne pouvaient
+   physiquement rien faire.
+
+Même avec la route, `core/connectors/google_oauth.py` ne savait qu'échanger
+un `refresh_token` déjà obtenu ailleurs (OAuth Playground, à la main) —
+aucun code n'initiait le consentement Google. Le clic ne pouvait donc rien
+faire non plus, même une fois la route posée.
+
+**Désaccord architectural trouvé au passage** : le frontend chiffrait les
+jetons `apikey` (AES-256) dans le navigateur et les envoyait à chaque
+requête — un modèle « bring-your-own-key côté client », l'inverse du reste
+d'ARENA (secrets uniquement côté serveur, `.env`, jamais le navigateur —
+`core/security/trust.py`, `core/permissions/`). Le propriétaire a tranché :
+le retirer.
+
+### Ce qui est construit
+
+**Le flux réel, CONNECT → OAUTH → CONSENTEMENT → CALLBACK → JETON STOCKÉ :**
+
+- `core/connectors/google_oauth.py` : `url_consentement()` (construit l'URL
+  vers l'écran Google, `access_type=offline&prompt=consent` pour garantir un
+  `refresh_token` à **chaque** connexion, pas seulement la première) et
+  `code_pour_jetons()` (échange `authorization_code` → jetons). L'échange
+  `refresh_token` existant (`echanger()`, chapitre 8/9 déjà en place) n'est
+  pas touché.
+- `apps/backend/routers/connectors.py` (nouveau) : `/connectors/{id}/auth`
+  (redirige vers Google, `state` CSRF à usage unique, 10 min), `/callback`
+  (échange le code, écrit le jeton dans `os.environ` **et** `.env` quand ce
+  fichier existe — silencieux sinon, pour un déploiement hébergé où les
+  variables vivent dans le panneau de la plateforme, jamais un fichier),
+  `/status` (interroge `registre.sante("gmail")`, jamais une affirmation
+  plausible), `/disconnect` (efface uniquement le `refresh_token`, jamais
+  `client_id`/`secret`). Seul `gmail` est déclaré dans
+  `FOURNISSEURS_OAUTH` : un autre identifiant reçoit une erreur qui le dit,
+  jamais un faux succès.
+- Authentification/débit **déclarés à côté de chaque route**
+  (`dependencies=[Depends(...)]`), jamais appelés à la main dans le corps —
+  suit la même règle que `tests/test_surface_api.py` fige et audite pour
+  tout le reste de l'API, plutôt que d'en inventer une seconde invisible
+  pour ce test. `/auth` réutilise `verify_media_access` (déjà écrite pour
+  `/media/rendered` : en-tête OU paramètre `cle`, parce qu'une redirection
+  de navigateur — `window.open()` — ne pose jamais d'en-tête) ; `/status` et
+  `/disconnect` gardent `verify_api_key`.
+
+**Le catalogue de la PWA reconcilié à la réalité** (`catalog.ts`) : les 16
+connecteurs sans code backend sont retirés, pas laissés en façade — un
+bouton qui ne peut rien faire est pire qu'aucun bouton. Seul Gmail reste.
+Le coffre AES-256 navigateur (`VaultSecurityCard`, `vaultStore.ts`,
+`security/vault.ts`) est supprimé : plus rien à protéger côté client, le
+jeton vit uniquement sur le serveur d'ARENA. `connectorStore.ts` corrigé au
+passage : le paramètre envoyé au backend était `?key=`, le backend attend
+`?cle=` (même bug que celui qui empêchait déjà la connexion) ; le
+`postMessage` de retour ne vérifiait aucune origine — corrigé pour
+n'accepter que l'origine du backend appelé.
+
+### Preuve par sabotage
+
+- Le `state` CSRF redevenu rejouable (`.pop()` → `.get()`, sans le
+  retirer) : `test_callback_echange_reussi_persiste_le_jeton` échoue —
+  restauré, revérifié vert.
+- La dépendance d'authentification retirée de `/auth` :
+  `test_surface_api.py::test_chaque_route_garde_ses_methodes_et_ses_dependances`
+  **et** deux tests locaux échouent — restauré, revérifié vert. Ce second
+  sabotage prouve que le filet de sécurité existant (`test_surface_api.py`,
+  qui fige toute la surface HTTP d'ARENA) couvre bien ce nouveau routeur, et
+  pas seulement mes propres tests.
+
+`python -m pytest tests/ -q` → 2253 passed, 1 skipped, 21 deselected.
+`python -m ruff check .` → All checks passed!
+`npm run build` (apps/pwa) → réussi. `npx tsc --noEmit` → aucune erreur.
+
+### Ce qui reste `NON VÉRIFIÉ`
+
+Rien de ce chantier n'a encore été essayé contre un vrai compte Google : la
+logique est testée hors ligne (doubles du transport HTTP), jamais bout en
+bout. Il manque **une seule chose côté propriétaire** : créer l'app OAuth
+sur console.cloud.google.com (identifiant « application web », URI de
+redirection `{PUBLIC_BASE_URL}/connectors/gmail/callback`), mettre
+`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` dans `.env`, puis cliquer
+« Connecter » dans ARENA. `GOOGLE_REFRESH_TOKEN` s'écrit alors tout seul.
+
+### Ce que ça coûte si c'est faux
+
+- **Le `state` CSRF est en mémoire, pas partagé entre plusieurs processus.**
+  ARENA est mono-processus aujourd'hui ; si un déploiement futur ajoute
+  plusieurs workers derrière un répartiteur de charge, une requête `/auth`
+  et son `/callback` pourraient atterrir sur deux processus différents et
+  échouer à tort. Rien ne casse silencieusement : l'échec dit « lien de
+  consentement expiré ou déjà utilisé », jamais un faux succès.
+- **`.env` réécrit à chaud** : `_persister_refresh_token` remplace la ligne
+  `GOOGLE_REFRESH_TOKEN=` ou l'ajoute. Une édition manuelle du fichier
+  pendant l'échange (fenêtre de quelques centaines de millisecondes) pourrait
+  perdre l'un des deux changements — improbable, jamais mesuré comme un
+  risque réel sur une machine mono-utilisateur.
+- **Les 16 autres connecteurs du catalogue restent à construire**, et
+  chacun exige que le propriétaire enregistre une app chez le fournisseur
+  concerné (Meta for Developers pour Instagram, LinkedIn Developer, TikTok
+  for Developers, Reddit, Google Business Profile API...) avant qu'une
+  ligne de code réelle puisse leur être écrite — aucune ne peut être
+  fabriquée à sa place. Détail complet : `docs/audits/connecteurs_audit.md`.
+
+Retour arrière : retirer `app.include_router(connectors.router)` de
+`apps/backend/main.py` restaure le comportement précédent (bouton mort) sans
+toucher au reste du backend.
