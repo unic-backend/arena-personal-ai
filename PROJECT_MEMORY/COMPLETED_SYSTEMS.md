@@ -21,6 +21,27 @@ OpenTakeoff a pu être construit et interrogé pour de vrai — voir sa ligne
 dans le tableau plus bas, et `PROJECT_MEMORY/ACTIVE_WORK.md` pour le rapport
 `doctor.py` complet, avant/après construction.
 
+Preuve du 2026-08-31 (revue generale : recherche de fautes, puis correction) :
+```
+python -m ruff check .      → All checks passed!
+python -m pytest tests/ -q  → 2342 passed, 22 deselected
+python scripts/orphelins.py → 138 modules, 109 atteints, 29 orphelins (tous des __init__.py)
+python scripts/doctor.py    → 22 verifications ; sur cette machine (cloud), 13 capacite(s) indisponible(s)
+```
+Trois defauts trouves et corriges dans cette revue (chacun sabote puis restaure) :
+1. `agents/plaquiste/plaquiste_agent.py` — depuis que le metre calcule part
+   directement dans le PDF (phase 7), des cotes lues dans un tour PRECEDENT du
+   fil pouvaient produire un devis aux quantites d'un AUTRE chantier, en
+   silence. Le fil reste lu (c'est voulu) ; l'origine des cotes est desormais
+   annoncee avant la confirmation.
+2. `tools/audio/transcription_tool.py` — une duree jamais mesuree valait `0.0`
+   (« video de zero seconde »), contre la regle « un champ absent n'est pas
+   zero ». Vaut `None`.
+3. `tools/audio/transcription_tool.py` + `agents/video_analyzer/` —
+   `faster_whisper` absent remontait une `ImportError` brute au milieu d'une
+   reponse. L'absence se rapporte maintenant (`ModeleAbsent`), comme la
+   marche ffmpeg juste au-dessus le faisait deja.
+
 Preuve du 2026-08-29 (fin de session, apres DEC-0020 — diagnostic/réparation) :
 ```
 python -m ruff check .      → All checks passed!

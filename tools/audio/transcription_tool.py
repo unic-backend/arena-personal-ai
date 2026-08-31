@@ -6,6 +6,10 @@ from typing import Any, Dict
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 logger = logging.getLogger("usman.tools.audio.transcription")
 
+
+class ModeleAbsent(RuntimeError):
+    """Le moteur de transcription n'est pas installe sur cette machine."""
+
 class TranscriptionTool:
     """Outil de transcription audio locale avec horodatage mot par mot (Faster-Whisper)."""
 
@@ -14,8 +18,21 @@ class TranscriptionTool:
         self.model = None
 
     def _load_model(self):
+        """Charge le modele, ou dit ce qui manque.
+
+        `faster_whisper` est une dependance lourde et optionnelle : elle peut
+        manquer sur une machine ou le reste d'ARENA tourne tres bien. Une
+        absence se rapporte (`ModeleAbsent`), elle ne remonte pas une
+        `ImportError` brute au milieu d'une reponse.
+        """
         if self.model is None:
-            from faster_whisper import WhisperModel
+            try:
+                from faster_whisper import WhisperModel
+            except ImportError as erreur:
+                raise ModeleAbsent(
+                    "faster-whisper n'est pas installe : pas de transcription. "
+                    "`pip install -r requirements.txt` le remet."
+                ) from erreur
             try:
                 logger.info(f"Chargement du modèle Whisper ({self.model_size}) sur CPU...")
                 self.model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
@@ -64,7 +81,9 @@ class TranscriptionTool:
 
         return {
             "language": info.language if info else language,
-            "duration": round(info.duration, 2) if info else 0.0,
+            # Jamais 0.0 : une duree absente n'est pas une video de zero
+            # seconde. Regle du projet — un champ absent n'est pas zero.
+            "duration": round(info.duration, 2) if info else None,
             "full_text": " ".join(full_text),
             "segments": segment_list,
             "words": words_list

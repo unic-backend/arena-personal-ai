@@ -1271,6 +1271,63 @@ class TestDocumentDepuisUnPlanMesure:
         assert "lignes" not in appels_devis[0]
 
 
+class TestCotesDUnTourPrecedent:
+    """Des cotes reprises d'un tour precedent se disent AVANT la confirmation.
+
+    Mesure du 31/08/2026, trouvee en revue : depuis que le metre calcule dans
+    `run()` part directement dans le PDF (lignes deja calculees, phase 7), le
+    fil aplati pouvait fournir les cotes d'un AUTRE chantier sans que rien ne
+    le signale. « finalement c'est un autre chantier, genere le devis »
+    produisait un devis aux quantites du chantier d'avant, en silence.
+
+    Le fil reste lu — il dicte souvent les cotes a un tour et demande le
+    document au suivant, et c'est voulu. Ce qui change : il le dit.
+    """
+
+    def _agent(self, registre):
+        return PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                              registre=registre)
+
+    @pytest.mark.asyncio
+    async def test_des_cotes_venues_du_fil_sont_annoncees(self):
+        registre = FauxRegistre()
+        fil = ("Utilisateur: chiffre-moi 18 parois de 5,40 x 2,50 m\n"
+               "Usman: voici le calcul\n"
+               "Utilisateur: finalement c'est un autre chantier, genere le devis")
+
+        resultat = await self._agent(registre).run(fil, context={
+            **DESTINATAIRE,
+            "message_actuel": "finalement c'est un autre chantier, genere le devis"})
+
+        document = resultat["document"]
+        assert document["cotes_reprises"], "l'origine des cotes n'est pas rapportee"
+        assert "18 parois" in document["cotes_reprises"]
+        assert "message precedent" in document["message"], (
+            "le proprietaire confirmerait des quantites d'un autre chantier sans le savoir")
+
+    @pytest.mark.asyncio
+    async def test_des_cotes_de_ce_message_ne_sont_pas_annoncees(self):
+        """Le cas courant ne doit pas se couvrir d'avertissements inutiles."""
+        registre = FauxRegistre()
+
+        resultat = await self._agent(registre).run(
+            "genere le devis, 18 parois de 5,40 x 2,50 m",
+            context={**DESTINATAIRE,
+                     "message_actuel": "genere le devis, 18 parois de 5,40 x 2,50 m"})
+
+        assert "cotes_reprises" not in resultat["document"]
+        assert "message precedent" not in resultat["document"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_sans_cote_nulle_part_rien_n_est_annonce(self):
+        registre = FauxRegistre()
+
+        resultat = await self._agent(registre).run(
+            "genere le devis", context={**DESTINATAIRE, "message_actuel": "genere le devis"})
+
+        assert "cotes_reprises" not in resultat["document"]
+
+
 def _pdf_valide() -> bytes:
     """Un vrai PDF, pas une chaine qui y ressemble — comme le reste du projet le fait."""
     from io import BytesIO
