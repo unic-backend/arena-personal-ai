@@ -50,7 +50,7 @@ Un module qu'aucun de ces quatre n'atteint est un orphelin :
 | `config/` | `permissions.yaml`, `permissions_services.yaml`, `unic_plaquiste.yaml` (ses prix) |
 | `scripts/` | `doctor.py`, `orphelins.py`, `mesurer_performances.py`, installateurs |
 | `docs/` | plan, décisions, reprise, règles de travail |
-| `tests/` | 2027 tests (2006 hors ligne + 21 marqués `integration`) |
+| `tests/` | 2364 tests (2342 hors ligne + 22 marqués `integration`) — mesuré le 31/08/2026 |
 
 ## Les trois documents historiques (autorité, pas mémoire)
 

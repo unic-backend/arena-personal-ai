@@ -38,7 +38,7 @@ from core.connectors.suivi_video import suivre_en_fond
 from core.execution.travaux import EtatTravail, FileDeTravaux, Travail
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
-from tools.audio.transcription_tool import TranscriptionTool
+from tools.audio.transcription_tool import ModeleAbsent, TranscriptionTool
 from tools.video.ffmpeg_tool import FFmpegTool
 from tools.video.prompt_audit import auditer_prompt
 
@@ -417,8 +417,19 @@ class VideoAnalyzerAgent(BaseAgent):
             }
 
         # 2. Transcription locale avec Whisper
+        # Meme discipline que l'extraction ffmpeg juste au-dessus : une
+        # capacite absente se RAPPORTE. Sans ce filet, `faster_whisper`
+        # manquant faisait remonter une ImportError brute au milieu d'une
+        # reponse, au lieu de dire ce qu'il faut installer.
         logger.info("Transcription audio via Whisper...")
-        transcription_res = self.transcriber.transcribe(str(audio_output))
+        try:
+            transcription_res = self.transcriber.transcribe(str(audio_output))
+        except ModeleAbsent as erreur:
+            return {
+                "status": "error",
+                "agent": self.name,
+                "response": f"❌ Transcription impossible : {erreur}",
+            }
         full_text = transcription_res.get("full_text", "")
 
         # 3. Analyse du contenu par Qwen 3.5

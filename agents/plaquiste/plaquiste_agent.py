@@ -1019,6 +1019,17 @@ class PlaquisteAgent(BaseAgent):
         # le calcul est fait ici et depose dans l'instruction comme un fait.
         # Quand rien n'est lu, rien n'est injecte : pas de chiffre fabrique.
         demande = lire_demande(user_input)
+        # D'ou viennent ces cotes : de CE message, ou d'un tour precedent du
+        # fil ? Les deux sont legitimes — il dicte souvent les dimensions a un
+        # tour, puis demande le document au suivant. Mais depuis que le metre
+        # calcule ici part directement dans le PDF (lignes deja calculees,
+        # `_proposer_le_document`), des cotes reprises d'un tour precedent
+        # peuvent etre celles d'un AUTRE chantier. Mesure du 31/08/2026 :
+        # « finalement c'est un autre chantier, genere le devis » produisait un
+        # devis aux quantites du chantier d'avant, sans rien dire. Le fil reste
+        # lu ; ce qui change, c'est qu'il le dit avant la confirmation.
+        cotes_d_un_tour_precedent = (
+            demande is not None and lire_demande(message_actuel) is None)
         metre = None
         source_lu = ""
         if demande is not None:
@@ -1177,6 +1188,15 @@ class PlaquisteAgent(BaseAgent):
                         compris_par_modele.append(champ)
 
         document = self._proposer_le_document(message_actuel, contexte, metre)
+        if document is not None and cotes_d_un_tour_precedent:
+            # Jamais silencieux, meme regle que le destinataire ci-dessous :
+            # un chiffre qui part chez un client se verifie avant, pas apres.
+            document["cotes_reprises"] = source_lu
+            document["message"] = (
+                f"Cotes reprises d'un message precedent, pas de celui-ci : "
+                f"{source_lu}. Verifie que c'est bien ce chantier avant de "
+                f"confirmer.\n{document['message']}"
+            )
         if document is not None and compris_par_modele:
             # Jamais silencieux : un champ devine par le modele doit se voir
             # avant qu'il confirme un document qui part chez un client.
