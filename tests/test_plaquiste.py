@@ -15,6 +15,7 @@ from agents.plaquiste.plaquiste_agent import (
     _rendre_premiere_page,
     charger_metier,
     composer_instruction,
+    destinataire_annonce,
     destinataire_depuis_l_historique,
 )
 from apps.backend.config import AGENTS_SPECIALISES
@@ -110,6 +111,17 @@ class TestInstructionSysteme:
 
         assert "NE DIS JAMAIS QUE TU NE PEUX PAS EN CREER" in instruction
         assert "copier-coller" in instruction
+
+    def test_les_questions_de_clarification_ont_une_formulation_fixe(self):
+        """Sans une formulation exacte, la question posee par le modele
+        (« hauteur sous plafond ? ») ne correspond a aucun des motifs
+        QUESTION_* — destinataire_depuis_l_historique() ne peut alors
+        jamais associer la reponse suivante au bon champ."""
+        instruction = composer_instruction(charger_metier(FICHIER))
+
+        assert "Quel est le nom du client ?" in instruction
+        assert "Quel est le lieu du chantier ?" in instruction
+        assert "Quelles sont les prestations souhaitees ?" in instruction
 
     def test_la_regle_de_surface_developpee_est_transmise(self):
         """Une cloison fermée double face se facture ×2. Règle de la maison."""
@@ -269,6 +281,51 @@ class TestDestinataireDepuisLHistorique:
         assert valeurs == {}
 
 
+class TestDestinataireAnnonce:
+    """Trouve en direct avec le proprietaire (31/08/2026), capture d'ecran
+    a l'appui : sa toute premiere question a ARENA ("hauteur sous plafond ?")
+    ne demandait ni le client ni le lieu — il les a donnes de lui-meme,
+    et destinataire_depuis_l_historique() ne les a jamais captes puisque
+    rien ne les avait demandes. Cette fonction complete l'autre : une
+    annonce EXPLICITE et LABELISEE, jamais un nom propre en passant."""
+
+    def test_la_phrase_exacte_du_proprietaire_est_captee(self):
+        """Reproduction exacte du signalement : « 3m le nom du client cest
+        Augustin lieux de chantier cest almadie » (sans ponctuation, "cest"
+        sans apostrophe — frappe au telephone)."""
+        valeurs = destinataire_annonce(
+            "3m le nom du client cest Augustin lieux de chantier cest almadie")
+
+        assert valeurs == {"client": "Augustin", "lieu": "almadie"}
+
+    def test_un_nom_propre_mentionne_en_passant_n_est_pas_capte(self):
+        """Meme garantie que la capture par question : sans label, rien
+        n'est devine."""
+        valeurs = destinataire_annonce("j'ai vu Augustin hier sur le chantier")
+
+        assert valeurs == {}
+
+    def test_le_client_seul_est_capte(self):
+        valeurs = destinataire_annonce("le client s'appelle Fast Group")
+
+        assert valeurs == {"client": "Fast Group"}
+
+    def test_le_lieu_seul_est_capte(self):
+        valeurs = destinataire_annonce("lieu de chantier c'est Medina")
+
+        assert valeurs == {"lieu": "Medina"}
+
+    def test_l_objet_annonce_est_capte(self):
+        valeurs = destinataire_annonce("l'objet c'est une cloison de 18 m2")
+
+        assert valeurs == {"objet": "une cloison de 18 m2"}
+
+    def test_une_phrase_sans_label_ne_capte_rien(self):
+        valeurs = destinataire_annonce("chiffre-moi 18 parois de 5,40 x 2,50 m")
+
+        assert valeurs == {}
+
+
 class TestDocumentPdf:
     """Le branchement de `devis_pdf.py` sur l'agent.
 
@@ -330,6 +387,40 @@ class TestDocumentPdf:
         assert (connecteur, capacite) == ("devis", "produire")
         assert parametres["client"] == "Seck"
         assert resultat["document"]["statut"] == "NEEDS_CONFIRMATION"
+
+    @pytest.mark.asyncio
+    async def test_une_annonce_spontanee_est_captee_meme_sans_question(self):
+        """Reproduction du signalement du 31/08/2026, capture d'ecran a
+        l'appui : sa toute premiere question ("hauteur sous plafond ?") ne
+        demandait ni le client ni le lieu — donnes de lui-meme au tour
+        suivant, sans qu'une demande de PDF n'accompagne cette phrase-la.
+        Un tour PLUS TARD demande enfin le PDF : l'annonce, faite plus tot
+        dans le fil, doit avoir ete retenue entre-temps. L'objet, jamais
+        annonce ni demande, reste honnetement manquant : ce n'est pas
+        devine a sa place."""
+        registre = FauxRegistre()
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+        historique = [
+            {"role": "user", "content": "Fais moi un devis chambre de 4 sur 4"},
+            {"role": "assistant",
+             "content": "Quelle est la hauteur sous plafond de la chambre (en metres) ?"},
+            {"role": "user",
+             "content": ("3m le nom du client cest Augustin lieux de chantier cest "
+                        "almadie")},
+            {"role": "assistant", "content": "Voici le devis..."},
+        ]
+
+        resultat = await agent.run(
+            "peu importe",
+            context={
+                "historique": historique,
+                "message_actuel": "fais le en pdf, 18 parois de 5,40 x 2,50 m",
+            })
+
+        assert resultat["document"]["statut"] == "INCOMPLET"
+        assert resultat["document"]["manquants"] == ["objet"]
+        assert registre.appels == []
 
     @pytest.mark.asyncio
     async def test_une_ancienne_demande_de_document_ne_reste_pas_collante(self):
