@@ -23,6 +23,34 @@ logger = logging.getLogger("usman.backend")
 # Compteur partage par toutes les routes limitees.
 limiteur = LimiteurDebit(requetes_max=REQUETES_MAX, fenetre_secondes=FENETRE_SECONDES)
 
+#: Au-dela de ce nombre de clients suivis, la table est purgee de ceux qui
+#: n'ont plus aucun passage dans la fenetre.
+#:
+#: `LimiteurDebit.nettoyer()` existait, etait teste, et **personne ne
+#: l'appelait** — mesure du 31/08/2026. Son propre module annonce pourtant la
+#: consequence : « sans cela, la table grandirait indefiniment au fil des
+#: adresses vues ». Une adresse vue une fois y restait pour la duree de vie du
+#: processus.
+#:
+#: Purger ici plutot que dans une tache de fond : le limiteur est deja sur le
+#: chemin de chaque requete limitee, et `nettoyer()` ne coute qu'un parcours
+#: de la table — sans nouveau fil ni nouvelle horloge a entretenir.
+CLIENTS_AVANT_PURGE = 512
+
+
+def purger_les_clients_inactifs() -> int:
+    """Purge la table du limiteur quand elle depasse le seuil. Rend le nombre efface.
+
+    Un client encore dans sa fenetre n'est jamais efface : `nettoyer()` ne
+    retire que ceux dont tous les passages sont sortis de la fenetre.
+    """
+    if limiteur.clients_suivis() <= CLIENTS_AVANT_PURGE:
+        return 0
+    efaces = limiteur.nettoyer()
+    if efaces:
+        logger.info("Limiteur de debit : %s client(s) inactif(s) oublie(s).", efaces)
+    return efaces
+
 
 def client_de(request: Request) -> str:
     """Identifie l'appelant pour la limitation de debit et les journaux."""
@@ -95,6 +123,7 @@ def verify_media_access(request: Request, authorization: Optional[str] = Header(
 
 def limiter_debit(request: Request):
     """Refuse une requete de trop et indique dans combien de temps reessayer."""
+    purger_les_clients_inactifs()
     client = client_de(request)
     attente = limiteur.secondes_a_attendre(client)
     if attente is None:

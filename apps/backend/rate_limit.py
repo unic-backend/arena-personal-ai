@@ -67,6 +67,10 @@ class LimiteurDebit:
         self._elaguer(passages, self._horloge())
         return max(0, self.requetes_max - len(passages))
 
+    def clients_suivis(self) -> int:
+        """Combien de clients la table garde en memoire, a cet instant."""
+        return len(self._passages)
+
     def oublier(self, cle: str) -> None:
         """Efface l'historique d'un client."""
         self._passages.pop(cle, None)
