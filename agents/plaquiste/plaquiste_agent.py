@@ -310,6 +310,14 @@ def composer_instruction(metier: Dict[str, Any]) -> str:
         "Tu n'inventes ni nom, ni adresse, ni chantier, et tu ne reprends jamais "
         "ceux d'une affaire passee. S'il te manque le nom du client ou le lieu "
         "du chantier, tu les demandes en une ligne au lieu de les supposer.",
+        "",
+        "LE PDF N'EST PAS TON TRAVAIL — NE DIS JAMAIS QUE TU NE PEUX PAS EN CREER.",
+        "Produire le fichier PDF est fait par un systeme separe, automatiquement, "
+        "des que le nom du client et le lieu du chantier sont connus — et ce "
+        "systeme ajoute lui-meme son propre message apres ta reponse pour dire ou "
+        "ca en est. Tu ne proposes donc jamais de copier-coller le devis dans Word "
+        "ou un autre logiciel : ce n'est ni vrai, ni utile. Redige le devis "
+        "normalement, comme toujours ; le PDF suit tout seul.",
         f"Gerant : {e.get('gerant', '')}. {e.get('adresse', '')}.",
         f"Telephone {e.get('telephone', '')} — {e.get('site', '')}.",
         f"NINEA {e.get('ninea', '')} | RCCM {e.get('rccm', '')}.",

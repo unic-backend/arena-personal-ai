@@ -100,6 +100,17 @@ class TestInstructionSysteme:
         assert "n'inventes jamais un prix" in instruction
         assert "prix a confirmer" in instruction
 
+    def test_le_modele_sait_que_le_pdf_n_est_pas_son_travail(self):
+        """Trouve en direct avec le proprietaire (31/08/2026) : sans cette
+        ligne, le modele repondait de lui-meme « je ne peux pas creer de PDF,
+        copiez ce texte dans Word » — alors que le systeme produit vraiment
+        le fichier des que le destinataire est connu, et le dit lui-meme
+        juste apres. Une reponse qui se contredit avec le systeme."""
+        instruction = composer_instruction(charger_metier(FICHIER))
+
+        assert "NE DIS JAMAIS QUE TU NE PEUX PAS EN CREER" in instruction
+        assert "copier-coller" in instruction
+
     def test_la_regle_de_surface_developpee_est_transmise(self):
         """Une cloison fermée double face se facture ×2. Règle de la maison."""
         instruction = composer_instruction(charger_metier(FICHIER))
