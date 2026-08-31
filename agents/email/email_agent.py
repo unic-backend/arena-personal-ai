@@ -182,8 +182,11 @@ class EmailAgent(BaseAgent):
             }
 
         if demande_d_envoi(user_input):
-            brouillon = ((await self.provider.generate(
-                prompt=user_input, system_prompt=INSTRUCTION_BROUILLON)) or "").strip()
+            try:
+                brouillon = ((await self.provider.generate(
+                    prompt=user_input, system_prompt=INSTRUCTION_BROUILLON)) or "").strip()
+            except Exception as erreur:  # noqa: BLE001 — un modele indisponible se rapporte
+                return self._reponse_sans_modele(erreur, messages=[])
             envoi = self._soumettre_l_envoi(brouillon, contexte)
             return {
                 "status": "success", "agent": self.name, "messages": [],
@@ -210,8 +213,19 @@ class EmailAgent(BaseAgent):
 
         prompt = ("Voici les messages recus.\n\n" + "\n\n".join(boite["textes"])
                   + "\n\nTrie-les selon tes regles.")
-        tri = ((await self.provider.generate(
-            prompt=prompt, system_prompt=INSTRUCTION_TRI)) or "").strip()
+        try:
+            tri = ((await self.provider.generate(
+                prompt=prompt, system_prompt=INSTRUCTION_TRI)) or "").strip()
+        except Exception as erreur:  # noqa: BLE001 — un modele indisponible se rapporte
+            # Trouve le 31/08/2026 : un courrier dont le contenu declenche
+            # TRES_SENSIBLE (core/models/confidentialite.py — « un secret ne
+            # sort jamais ») ne peut etre lu par AUCUN modele distant, et sans
+            # Ollama joignable (PC eteint), aucun modele du tout. Avant ce
+            # correctif, l'agent echouait entierement : ni tri, ni meme la
+            # liste des messages. Les en-tetes seuls ne violent aucune regle
+            # de confidentialite — ils sont deja rendus tels quels par
+            # `_lire_la_boite`, jamais envoyes a un modele.
+            return self._reponse_sans_modele(erreur, messages=boite["messages"])
 
         return {
             "status": "success",
@@ -221,4 +235,29 @@ class EmailAgent(BaseAgent):
             "messages": boite["messages"],
             "envoi": None,
             "response": tri,
+        }
+
+    def _reponse_sans_modele(self, erreur: Exception,
+                             messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Ce que l'agent rend quand aucun modele n'a pu repondre.
+
+        Jamais un echec sec : les en-tetes deja lus (s'il y en a) restent
+        utiles sans la moindre analyse par un modele, distant ou local.
+        """
+        lignes = [
+            f"- {m.get('sujet') or 'sans sujet'} (de {m.get('expediteur') or 'expediteur inconnu'}, "
+            f"{m.get('date') or 'date inconnue'})"
+            for m in messages if m.get("lu")
+        ]
+        detail_en_tetes = ("\n".join(lignes) if lignes
+                           else "Aucun message a lister sans analyse.")
+        return {
+            "status": "warning", "agent": self.name, "messages": messages, "envoi": None,
+            "response": (
+                f"Aucun modele n'a pu repondre ({type(erreur).__name__}). Si le contenu "
+                "est classe confidentiel et que ta machine est eteinte, ARENA refuse de "
+                "l'envoyer a un modele distant meme pour le trier ou rediger — c'est "
+                "voulu, ce n'est pas une panne a corriger en assouplissant la regle.\n\n"
+                f"{detail_en_tetes}"
+            ),
         }

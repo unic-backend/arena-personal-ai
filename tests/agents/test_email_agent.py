@@ -71,14 +71,17 @@ class FauxRegistre:
 
 
 class ModeleDouble:
-    def __init__(self, reponse="Tri du courrier."):
+    def __init__(self, reponse="Tri du courrier.", erreur=None):
         self.reponse = reponse
+        self.erreur = erreur
         self.prompts = []
         self.systemes = []
 
     async def generate(self, prompt, system_prompt=None, **kw):
         self.prompts.append(prompt)
         self.systemes.append(system_prompt)
+        if self.erreur is not None:
+            raise self.erreur
         return self.reponse
 
 
@@ -186,6 +189,55 @@ async def test_le_corps_des_messages_ne_repart_pas_dans_la_reponse():
     assert all(set(m) <= {"id", "lu", "expediteur", "sujet", "date", "raison"}
                for m in resultat["messages"])
     assert "18 parois" not in str(resultat["messages"])
+
+
+async def test_aucun_modele_disponible_rend_quand_meme_les_en_tetes():
+    """Trouve le 31/08/2026 : un courrier classe TRES_SENSIBLE (core/models/
+    confidentialite.py) ne peut partir vers aucun modele distant, et sans
+    Ollama joignable (PC eteint), vers aucun modele du tout. L'agent ne doit
+    pas echouer sec : les en-tetes deja lus restent utiles."""
+    registre = FauxRegistre()
+    modele = ModeleDouble(erreur=RuntimeError(
+        "Aucun fournisseur n'a pu repondre. Seule sa machine etait autorisee "
+        "(un secret ne sort jamais)."))
+    agent = EmailAgent(provider=modele, registre=registre)
+
+    resultat = await agent.run("ai-je du courrier ?")
+
+    assert resultat["status"] == "warning"
+    assert resultat["envoi"] is None
+    assert "RuntimeError" in resultat["response"]
+    assert "voulu" in resultat["response"]
+    # Les en-tetes, lus sans le moindre modele, restent visibles.
+    assert "Demande de devis" in resultat["response"]
+    assert "Fast Group" in resultat["response"]
+    # Mais jamais le corps, qui n'a jamais quitte l'invite du modele.
+    assert "18 parois" not in resultat["response"]
+    assert resultat["messages"] == boite_attendue(registre)
+
+
+def boite_attendue(registre):
+    return [
+        {"id": "m1", "lu": True, "expediteur": "Fast Group <contact@fastgroup.sn>",
+         "sujet": "Demande de devis", "date": "Thu, 28 Aug 2026 09:12:00 +0000"},
+        {"id": "m2", "lu": True, "expediteur": "SENELEC <info@senelec.sn>",
+         "sujet": "Facture", "date": "Thu, 28 Aug 2026 09:12:00 +0000"},
+    ]
+
+
+async def test_aucun_modele_disponible_pour_un_brouillon_le_dit_sans_planter():
+    registre = FauxRegistre()
+    modele = ModeleDouble(erreur=RuntimeError("Aucun fournisseur n'a pu repondre."))
+    agent = EmailAgent(provider=modele, registre=registre)
+
+    resultat = await agent.run(
+        "reponds a ce mail",
+        context={"destinataire": "contact@fastgroup.sn", "sujet": "Re: Devis"})
+
+    assert resultat["status"] == "warning"
+    assert resultat["envoi"] is None
+    # Rien n'a ete soumis a l'envoi puisque rien n'a pu etre redige.
+    assert [a for a in registre.appels if a[1] == "envoyer"] == []
 
 
 async def test_la_boite_se_lit_par_petites_quantites():
