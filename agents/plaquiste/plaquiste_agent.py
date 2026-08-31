@@ -68,10 +68,18 @@ DEMANDE_DE_DOCUMENT = re.compile(
 #: l'orchestration manquait. « Bon de commande »/« bon de livraison » avant
 #: « facture » : une phrase qui cite plusieurs mots doit garder le plus
 #: specifique.
+#:
+#: La meme phrase exacte que DEMANDE_DE_DOCUMENT pour chaque type, jamais le
+#: mot nu : un mot nu laissait « genere le devis, comme la facture de la
+#: semaine derniere » produire une FACTURE alors que le devis etait ce qui
+#: avait ete demande — l'anti-motif que DEMANDE_DE_DOCUMENT s'interdit deja,
+#: reintroduit ici par megarde une premiere fois puis corrige pour chaque type.
 TYPES_DE_DOCUMENT = (
-    (re.compile(r"bon de commande", re.IGNORECASE), "BON DE COMMANDE"),
-    (re.compile(r"bon de livraison", re.IGNORECASE), "BON DE LIVRAISON"),
-    (re.compile(r"facture", re.IGNORECASE), "FACTURE"),
+    (re.compile(r"genere le bon de commande|génère le bon de commande", re.IGNORECASE),
+     "BON DE COMMANDE"),
+    (re.compile(r"genere le bon de livraison|génère le bon de livraison", re.IGNORECASE),
+     "BON DE LIVRAISON"),
+    (re.compile(r"genere la facture|génère la facture", re.IGNORECASE), "FACTURE"),
 )
 
 
