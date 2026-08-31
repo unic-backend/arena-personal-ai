@@ -321,6 +321,25 @@ class TestDocumentPdf:
         assert resultat["document"]["statut"] == "NEEDS_CONFIRMATION"
 
     @pytest.mark.asyncio
+    async def test_une_ancienne_demande_de_document_ne_reste_pas_collante(self):
+        """Trouve au diagnostic du 31/08/2026 : DEMANDE_DE_DOCUMENT lisait
+        tout le fil aplati (PLAQUISTE, PR #83) — une fois « genere le pdf »
+        dit une fois, chaque tour SUIVANT du meme fil re-proposait un
+        document, meme sans le moindre rapport avec ce qui etait demande
+        ce tour-la."""
+        registre = FauxRegistre()
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+        fil = ("Ousmane: genere le pdf du devis, 18 parois de 5,40 x 2,50 m\n"
+              "Usman: Le voici.\nOusmane: merci beaucoup\nUsman:")
+        contexte = dict(DESTINATAIRE, message_actuel="merci beaucoup")
+
+        resultat = await agent.run(fil, context=contexte)
+
+        assert resultat["document"] is None
+        assert registre.appels == []
+
+    @pytest.mark.asyncio
     async def test_le_document_demande_passe_par_le_connecteur_devis(self):
         registre = FauxRegistre()
         agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
@@ -464,6 +483,25 @@ class TestMesurerLePlan:
                                registre=registre)
 
         resultat = await agent.run("chiffre-moi 18 parois de 5,40 x 2,50 m")
+
+        assert resultat["plan"] is None
+        assert registre.appels == []
+
+    @pytest.mark.asyncio
+    async def test_un_ancien_chemin_dans_le_fil_ne_declenche_plus_une_remesure(self):
+        """Trouve au diagnostic du 31/08/2026 : `chemin_dans()` fait un
+        `.search()`, qui rend le PREMIER match. Sur le fil aplati entier
+        (PLAQUISTE, PR #83), un chemin cite tot dans la conversation restait
+        le seul jamais mesure, meme des tours plus tard sans aucun rapport
+        avec un plan — et pire, meme si un AUTRE plan etait donne ensuite."""
+        registre = RegistreScripte({})
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+        fil = ("Ousmane: mesure /chantiers/ancien-plan.pdf\nUsman: Je mesure...\n"
+              "Ousmane: quel est le nom du client ?\nUsman:")
+
+        resultat = await agent.run(
+            fil, context={"message_actuel": "quel est le nom du client ?"})
 
         assert resultat["plan"] is None
         assert registre.appels == []
@@ -1049,6 +1087,31 @@ class TestMemoireDuPlan:
         assert souvenirs[0].projet == "Almadies"
         assert "A-101.pdf" in souvenirs[0].contenu
         assert "OpenTakeoff" in souvenirs[0].source
+
+    @pytest.mark.asyncio
+    async def test_le_lieu_capte_ce_meme_tour_tague_deja_le_souvenir(self, tmp_path):
+        """Trouve au diagnostic du 31/08/2026 : la capture du destinataire
+        devait avoir lieu AVANT que le plan mesure ce meme tour soit range
+        en memoire, sinon un plan mesure au tour ou le lieu est justement
+        donne partait sans projet associe — irretrouvable par la suite."""
+        memoire = self._memoire(tmp_path)
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="peu importe", **DETAIL_PLAN_UNE_PIECE)
+        registre = RegistreScripte({("opentakeoff", "mesurer"): resultat_mesure})
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre, memoire_personnelle=memoire)
+        historique = [{"role": "assistant", "content": "Quel est le lieu du chantier ?"}]
+
+        await agent.run(
+            "peu importe",
+            context={
+                "historique": historique,
+                "message_actuel": "Almadies, voici le plan : /chantiers/A-101.pdf",
+            })
+
+        souvenirs = memoire.souvenirs()
+        assert souvenirs[0].projet is not None
+        assert "Almadies" in souvenirs[0].projet
 
     @pytest.mark.asyncio
     async def test_une_mesure_qui_echoue_n_est_pas_retenue(self, tmp_path):

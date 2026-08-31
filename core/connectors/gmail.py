@@ -305,6 +305,21 @@ class GmailConnector(Connecteur):
 
     # --- Sante -----------------------------------------------------------------
 
+    def invalider_sonde(self) -> None:
+        """Force le prochain `sonder()` a mesurer, plutot que rendre le cache.
+
+        Trouve le 31/08/2026, en diagnostic apres coup : le flux OAuth
+        (`apps/backend/routers/connectors.py`) affiche l'adresse du compte
+        juste apres avoir obtenu un jeton, via `registre.sante("gmail")`. Si
+        `/connectors/gmail/status` avait ete interroge dans la minute
+        precedente (la PWA le fait pendant qu'elle attend le popup), la
+        sonde encore en cache rendait NON_CONFIGURE alors que la connexion
+        venait de reussir — la page de succes affichait « compte connecte »
+        au lieu de la vraie adresse. Purement cosmetique (la connexion
+        elle-meme etait deja bonne), corrige quand meme.
+        """
+        self._sante = None
+
     def sonder(self) -> Sante:
         """Demande le profil du compte. Une mesure recente est reutilisee une minute."""
         from core.connectors.base import _maintenant

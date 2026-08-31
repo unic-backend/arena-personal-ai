@@ -244,6 +244,27 @@ def test_la_sante_dit_le_compte_et_la_lecture_seule(connecteur):
     assert "lecture seule" in sante.message
 
 
+def test_invalider_sonde_force_une_nouvelle_mesure(configure):
+    """Trouve au diagnostic du 31/08/2026 : le flux OAuth
+    (`apps/backend/routers/connectors.py`) affiche l'adresse du compte
+    juste apres avoir obtenu un jeton — sans forcer une sonde fraiche, une
+    mesure faite dans la minute precedente (la PWA interroge /status
+    pendant qu'elle attend le popup) restait en cache."""
+    journal = []
+    connecteur = GmailConnector(
+        appel=faux_appel({"users/me/profile": PROFIL}, journal=journal),
+        appel_jeton=faux_jeton())
+
+    connecteur.sonder()
+    connecteur.sonder()  # dans la minute : le cache repond, aucun appel de plus
+    assert len(journal) == 1
+
+    connecteur.invalider_sonde()
+    connecteur.sonder()
+
+    assert len(journal) == 2
+
+
 def test_lister_rend_les_references_pas_la_boite_entiere(connecteur):
     resultat = connecteur.executer("lister", maxResults=2)
 

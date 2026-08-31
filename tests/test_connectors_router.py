@@ -19,17 +19,31 @@ from core.connectors.base import EtatSante, Sante
 CLE_DE_TEST = "cle-de-test"
 
 
+class ConnecteurDouble:
+    """Trace si le callback a bien force une sonde fraiche apres connexion."""
+
+    def __init__(self) -> None:
+        self.invalide = False
+
+    def invalider_sonde(self) -> None:
+        self.invalide = True
+
+
 class RegistreDouble:
     """Un registre minimal : seule `gmail` est declaree, sante configurable."""
 
     def __init__(self, sante: Sante) -> None:
         self._sante = sante
+        self.connecteur = ConnecteurDouble()
 
     def est_declare(self, nom: str) -> bool:
         return nom == "gmail"
 
     def sante(self, nom: str) -> Sante:
         return self._sante
+
+    def obtenir(self, nom: str):
+        return self.connecteur if nom == "gmail" else None
 
 
 @pytest.fixture
@@ -197,6 +211,29 @@ def test_callback_sans_env_sur_disque_persiste_quand_meme_en_base(
     assert routeur.stockage_jetons.charger_tout(str(tmp_path / "memoire.db")) == {
         "GOOGLE_REFRESH_TOKEN": "rt-999"
     }
+
+
+def test_callback_invalide_la_sonde_en_cache_avant_d_afficher_le_compte(
+    client, monkeypatch, tmp_path, registre_operationnel,
+):
+    """Trouve au diagnostic du 31/08/2026 : `GmailConnector.sonder()` garde
+    une mesure en cache jusqu'a 60 s (core/connectors/gmail.py). La PWA
+    interroge /status pendant qu'elle attend le popup — si cette mesure
+    avait ete faite juste avant que le consentement aboutisse, la page de
+    succes aurait affiche « compte connecte » au lieu de la vraie adresse.
+    Le callback doit forcer une sonde fraiche avant d'afficher le compte."""
+    monkeypatch.setattr(routeur, "identifiants", _identifiants_presents)
+    monkeypatch.setattr(routeur, "code_pour_jetons",
+                        lambda *a, **k: {"refresh_token": "rt-frais"})
+    monkeypatch.setattr(routeur, "BASE_DIR", tmp_path / "dossier-vide")
+    monkeypatch.setattr(routeur, "DB_PATH", tmp_path / "memoire.db")
+    monkeypatch.delenv("GOOGLE_REFRESH_TOKEN", raising=False)
+
+    routeur._ETATS_EN_ATTENTE["s4"] = ("gmail", routeur.time.monotonic() + 600)
+    r = client.get("/connectors/gmail/callback?code=abc&state=s4")
+
+    assert r.status_code == 200
+    assert routeur.registre.connecteur.invalide is True
 
 
 def test_callback_google_refuse_l_echange(client, monkeypatch):
