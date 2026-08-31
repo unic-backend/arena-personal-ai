@@ -14,7 +14,7 @@ import pytest
 from agents.plaquiste.plaquiste_agent import charger_metier
 from core.actions.resultat import Statut
 from core.connectors.base import EtatSante
-from core.connectors.devis import DevisConnector, lignes_depuis
+from core.connectors.devis import DevisConnector, lignes_depuis, lignes_depuis_parametres
 
 #: La demande de son devis de reference UC-2026-0804-FG2.
 DEMANDE = "18 parois de 5,40 x 2,50 m"
@@ -143,6 +143,45 @@ def test_sans_dimension_lue_aucun_document_n_est_produit(connecteur, dossier):
 
 def test_lignes_depuis_rend_une_liste_vide_quand_rien_n_est_lu():
     assert lignes_depuis("bonjour", {"prix_materiaux": {}}) == []
+
+
+# --- Des lignes deja calculees (metre d'un plan mesure) --------------------------
+# Mesure du 30/08/2026 : sans ce chemin, un devis demande apres la mesure d'un
+# PLAN (pas de chiffres tapes) echouait a la confirmation avec « aucune
+# dimension lue » — le calcul affiche dans la reponse ne rejoignait jamais le
+# PDF reellement ecrit. Voir tests/test_plaquiste_bout_en_bout.py pour la
+# chaine complete plan -> metre -> devis -> PDF.
+
+def test_lignes_depuis_parametres_construit_les_lignes_fournies():
+    lignes = lignes_depuis_parametres(
+        [{"designation": "Plaque standard BA13", "quantite": 23}])
+
+    assert lignes[0].designation == "Plaque standard BA13"
+    assert lignes[0].quantite == 23
+
+
+def test_des_lignes_fournies_evitent_de_relire_la_phrase(connecteur, dossier):
+    """Une phrase sans dimension reconnue produit quand meme un devis si les
+    lignes sont deja fournies — le cas d'un plan mesure, jamais dicte en texte."""
+    resultat = connecteur.executer_confirmee(
+        "produire", demande="fais le pdf du devis pour le plafond mesure",
+        lignes=[{"designation": "Plaque standard BA13", "quantite": 23}],
+        **DESTINATAIRE)
+
+    assert resultat.statut is Statut.SUCCES
+    assert fichiers(dossier), "aucun fichier ecrit alors que des lignes etaient fournies"
+
+
+def test_des_lignes_fournies_priment_sur_une_phrase_qui_en_dicterait_d_autres(connecteur, dossier):
+    """Le connecteur ne redevine rien depuis le texte quand l'appelant a deja
+    fait le calcul : ses lignes gagnent, meme si la phrase en dirait d'autres."""
+    resultat = connecteur.executer_confirmee(
+        "produire", demande=DEMANDE,  # "18 parois de 5,40 x 2,50 m"
+        lignes=[{"designation": "Plaque standard BA13", "quantite": 5}],
+        **DESTINATAIRE)
+
+    assert resultat.statut is Statut.SUCCES
+    assert resultat.detail["chiffrage"]["total"] == 5 * 4500
 
 
 # --- La sonde mesure, elle ne suppose pas ------------------------------------------

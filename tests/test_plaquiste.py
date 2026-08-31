@@ -227,6 +227,10 @@ class TestDocumentPdf:
         assert (connecteur, capacite) == ("devis", "produire")
         assert parametres["client"] == "Fast Group"
         assert parametres["type_document"] == "DEVIS"
+        # Le metre calcule ici (phase 7, 30/08/2026) voyage avec l'appel : le
+        # connecteur n'a plus a redeviner les lignes depuis la phrase.
+        assert {ligne["designation"] for ligne in parametres["lignes"]} \
+            == set(resultat["metre"]["quantites"])
         assert resultat["document"]["statut"] == "NEEDS_CONFIRMATION"
         assert resultat["document"]["message"] in resultat["response"]
 
@@ -479,6 +483,66 @@ class TestMesurerLePlan:
             "calcule le rampant, hauteur de 2,50 m, plan /chantiers/A-101.pdf")
 
         assert resultat["metre"] is None
+
+
+class TestDocumentDepuisUnPlanMesure:
+    """Le PDF produit depuis un plan mesure utilise les VRAIES quantites du
+    plan, pas une relecture de la phrase.
+
+    Trouve en testant la vraie chaine bout en bout (phase 7, 30/08/2026) :
+    sans ce branchement, confirmer la production d'un devis demande apres la
+    mesure d'un plafond echouait avec « aucune dimension lue » — le calcul
+    affiche dans la reponse ne rejoignait jamais le PDF reellement ecrit.
+    """
+
+    @pytest.mark.asyncio
+    async def test_les_lignes_transmises_viennent_du_metre_du_plan(self):
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="/chantiers/A-101.pdf", **DETAIL_PLAN_UNE_PIECE)
+        resultat_produire = a_confirmer(action="produire", cible="devis", message="Pret.")
+        resultat_exporter = a_confirmer(action="exporter", cible="opentakeoff", message="Pret.")
+        registre = RegistreScripte({
+            ("opentakeoff", "mesurer"): resultat_mesure,
+            ("opentakeoff", "exporter"): resultat_exporter,
+            ("devis", "produire"): resultat_produire,
+        })
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run(
+            "calcule le faux plafond du plan /chantiers/A-101.pdf et fais le pdf du devis",
+            context=DESTINATAIRE)
+
+        appels_devis = [p for c, cap, p in registre.appels if (c, cap) == ("devis", "produire")]
+        assert appels_devis, "aucun appel a devis.produire"
+        lignes = appels_devis[0]["lignes"]
+        assert lignes, "aucune ligne transmise : le PDF redevinerait depuis la phrase"
+        assert {ligne["designation"] for ligne in lignes} == set(resultat["metre"]["quantites"])
+        assert resultat["document"]["statut"] == "NEEDS_CONFIRMATION"
+
+    @pytest.mark.asyncio
+    async def test_sans_metre_calculable_aucune_ligne_n_est_forcee(self):
+        """Une cloison sans hauteur : rien n'est chiffre — le connecteur garde
+        son ancien chemin (relire la phrase), qui echouera proprement."""
+        resultat_mesure = succes(action="mesurer", cible="opentakeoff", message="ok",
+                                 preuve="/chantiers/A-101.pdf", **DETAIL_PLAN_UNE_PIECE)
+        resultat_produire = a_confirmer(action="produire", cible="devis", message="Pret.")
+        resultat_exporter = a_confirmer(action="exporter", cible="opentakeoff", message="Pret.")
+        registre = RegistreScripte({
+            ("opentakeoff", "mesurer"): resultat_mesure,
+            ("opentakeoff", "exporter"): resultat_exporter,
+            ("devis", "produire"): resultat_produire,
+        })
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+
+        resultat = await agent.run(
+            "calcule la surface de la cloison, plan /chantiers/A-101.pdf, fais le pdf du devis",
+            context=DESTINATAIRE)
+
+        assert resultat["metre"] is None
+        appels_devis = [p for c, cap, p in registre.appels if (c, cap) == ("devis", "produire")]
+        assert "lignes" not in appels_devis[0]
 
 
 def _pdf_valide() -> bytes:

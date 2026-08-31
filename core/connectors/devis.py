@@ -44,11 +44,27 @@ logger = logging.getLogger("usman.connecteurs.devis")
 DOSSIER_DEVIS = Path("data") / "devis"
 
 
+def lignes_depuis_parametres(brutes: List[Dict[str, Any]]) -> List[Ligne]:
+    """Des postes deja calcules ailleurs (metre d'un plan mesure, par exemple),
+    fournis tels quels par l'appelant.
+
+    Mesure du 30/08/2026 : sans ce chemin, `produire` ne savait relire une
+    demande QUE depuis la phrase tapee (`lignes_depuis` ci-dessous) — un devis
+    demande apres la mesure d'un PLAN echouait a la confirmation avec
+    « aucune dimension lue », alors que le plan en donnait une. L'appelant
+    (`PlaquisteAgent`) a deja le metre calcule ; il n'a plus a le faire
+    redire par une phrase.
+    """
+    return [Ligne(designation=str(brute["designation"]), quantite=brute["quantite"])
+            for brute in brutes]
+
+
 def lignes_depuis(demande_texte: str, metier: Dict[str, Any]) -> List[Ligne]:
     """Les postes du devis, calcules depuis les dimensions lues.
 
     Rend une liste vide quand aucune dimension n'est reconnue : un devis sans
-    metre ne s'invente pas.
+    metre ne s'invente pas. Reste le chemin de repli quand l'appelant n'a
+    fourni aucune ligne deja calculee (voir `lignes_depuis_parametres`).
     """
     dimensions = lire_demande(demande_texte)
     if dimensions is None:
@@ -106,7 +122,9 @@ class DevisConnector(Connecteur):
 
     def _executer(self, capacite: Capacite, **parametres: Any) -> ResultatAction:
         texte = str(parametres.get("demande") or "")
-        lignes = lignes_depuis(texte, self.metier)
+        lignes_brutes = parametres.get("lignes")
+        lignes = (lignes_depuis_parametres(lignes_brutes) if lignes_brutes
+                  else lignes_depuis(texte, self.metier))
         if not lignes:
             return echec(
                 action=capacite.nom, cible=self.nom,
