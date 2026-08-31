@@ -7,6 +7,13 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("usman.tools.repo_engineer")
 
+#: La suite complete met environ une minute sur la machine de l'assistant :
+#: 30 s garantissait une interruption meme quand tout allait bien.
+DELAI_TESTS_SECONDES = 600
+
+#: Code de sortie de pytest quand AUCUN test n'a ete collecte.
+CODE_AUCUN_TEST = 5
+
 class RepoEngineerTool:
     """Outil d'inspection, de modification multi-fichiers et de validation de dépôt (Inspiré d'Odysseus / Devin)."""
 
@@ -68,10 +75,22 @@ class RepoEngineerTool:
             "errors": errors
         }
 
-    def run_tests(self, test_path: Optional[str] = None) -> Dict[str, Any]:
-        """Exécute la suite de tests unitaires pour valider les modifications."""
+    def run_tests(self, test_path: Optional[str] = None,
+                  timeout: int = DELAI_TESTS_SECONDES) -> Dict[str, Any]:
+        """Exécute la vraie suite de tests du projet pour valider les modifications.
+
+        Mesuré le 31/08/2026 : cette méthode lançait `unittest discover`, qui
+        ne collecte AUCUN test de ce dépôt (ils sont écrits pour pytest —
+        fixtures, `parametrize`, aucune classe `unittest.TestCase`). Elle
+        rendait donc `success: True` après « Ran 0 tests », c'est-à-dire une
+        validation qui ne validait rien. Un agent qui modifie des fichiers et
+        lit ce `True` croit son changement vérifié.
+
+        Trois issues, jamais deux : les tests passent, ils échouent, ou
+        **aucun n'a été collecté** — ce dernier cas n'est pas un succès.
+        """
         target = test_path if test_path else "tests/"
-        cmd = [sys.executable, "-m", "unittest", "discover", "-s", target]
+        cmd = [sys.executable, "-m", "pytest", target, "-q"]
 
         try:
             res = subprocess.run(
@@ -80,19 +99,31 @@ class RepoEngineerTool:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=30
+                timeout=timeout
             )
+        except subprocess.TimeoutExpired:
             return {
-                "success": res.returncode == 0,
-                "stdout": res.stdout.strip(),
-                "stderr": res.stderr.strip()
+                "success": False, "tests_collectes": None, "stdout": "",
+                "stderr": f"Tests interrompus apres {timeout} s : rien n'est valide.",
             }
         except Exception as e:
+            return {"success": False, "tests_collectes": None, "stdout": "",
+                    "stderr": f"Erreur lancement tests: {e}"}
+
+        # `pytest` rend 5 quand il n'a collecte aucun test. Un depot ou rien
+        # ne tourne n'est pas un depot valide : c'est l'absence de mesure.
+        if res.returncode == CODE_AUCUN_TEST:
             return {
-                "success": False,
-                "stdout": "",
-                "stderr": f"Erreur lancement tests: {e}"
+                "success": False, "tests_collectes": 0,
+                "stdout": res.stdout.strip(), "stderr": res.stderr.strip(),
             }
+
+        return {
+            "success": res.returncode == 0,
+            "tests_collectes": None,
+            "stdout": res.stdout.strip(),
+            "stderr": res.stderr.strip(),
+        }
 
 if __name__ == "__main__":
     tool = RepoEngineerTool()
