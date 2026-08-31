@@ -1,243 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import {
-  AlertTriangle,
-  Check,
-  ChevronRight,
-  KeyRound,
-  Loader2,
-  Lock,
-  LockKeyhole,
-  LockOpen,
-  Plug,
-  ShieldCheck,
-  Trash2,
-  Unplug,
-  X,
-} from 'lucide-react';
+import { ChevronRight, Loader2, Lock, Plug, ShieldCheck, Unplug, X } from 'lucide-react';
 import { CONNECTOR_CATALOG, CONNECTOR_CATEGORIES, ConnectorDef } from '../../lib/connectors/catalog';
 import { useConnectors } from '../../lib/store/connectorStore';
 import { useBackend } from '../../lib/store/backendStore';
-import { useVault } from '../../lib/store/vaultStore';
 import { useI18n } from '../../lib/i18n';
 import { cn } from '../../utils/cn';
-
-/* ── Vault & Master Key Security Banner ── */
-function VaultSecurityCard() {
-  const { t } = useI18n();
-  const {
-    hasMasterKey,
-    isUnlocked,
-    error,
-    setupMasterKey,
-    unlockVault,
-    lockVault,
-    removeMasterKey,
-  } = useVault();
-  const { encryptAllTokens, decryptAllTokens } = useConnectors();
-
-  const [openControls, setOpenControls] = useState(false);
-  const [passphrase, setPassphrase] = useState('');
-  const [localErr, setLocalErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const handleUnlock = async () => {
-    if (!passphrase) return;
-    setBusy(true);
-    setLocalErr(null);
-    const ok = await unlockVault(passphrase);
-    setBusy(false);
-    if (ok) {
-      setPassphrase('');
-    } else {
-      setLocalErr(t('vault.wrongPassphrase'));
-    }
-  };
-
-  const handleSetup = async () => {
-    if (passphrase.length < 4) {
-      setLocalErr(t('vault.tooShort'));
-      return;
-    }
-    setBusy(true);
-    setLocalErr(null);
-    const ok = await setupMasterKey(passphrase);
-    if (ok) {
-      // Migrate all existing plaintext tokens to AES-GCM-256
-      await encryptAllTokens(passphrase);
-      setPassphrase('');
-      setOpenControls(false);
-    } else {
-      setLocalErr('Error setting up master key');
-    }
-    setBusy(false);
-  };
-
-  const handleRemove = async () => {
-    const vault = useVault.getState();
-    if (vault.sessionPassphrase) {
-      await decryptAllTokens(vault.sessionPassphrase);
-    }
-    removeMasterKey();
-    setOpenControls(false);
-    setPassphrase('');
-    setLocalErr(null);
-  };
-
-  return (
-    <div className="rounded-xl border border-white/8 bg-white/[0.025] overflow-hidden">
-      <div className="flex items-center justify-between p-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <span
-            className={cn(
-              'grid h-8 w-8 shrink-0 place-items-center rounded-lg border',
-              hasMasterKey && isUnlocked
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                : hasMasterKey && !isUnlocked
-                  ? 'border-amber-500/30 bg-amber-500/10 text-amber-400'
-                  : 'border-white/10 bg-white/5 text-zinc-400',
-            )}
-          >
-            {hasMasterKey ? isUnlocked ? <LockOpen size={14} /> : <LockKeyhole size={14} /> : <Lock size={14} />}
-          </span>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[12px] font-medium text-zinc-200">{t('vault.title')}</span>
-              <span
-                className={cn(
-                  'rounded px-1.5 py-0.2 font-mono text-[8.5px] uppercase tracking-wider',
-                  hasMasterKey && isUnlocked
-                    ? 'bg-emerald-500/15 text-emerald-300'
-                    : hasMasterKey && !isUnlocked
-                      ? 'bg-amber-500/15 text-amber-300'
-                      : 'bg-white/5 text-zinc-500',
-                )}
-              >
-                {hasMasterKey ? (isUnlocked ? t('vault.statusEncrypted') : t('vault.lockedDesc')) : t('vault.statusUnencrypted')}
-              </span>
-            </div>
-            <p className="truncate text-[10px] text-zinc-500">
-              {hasMasterKey
-                ? isUnlocked
-                  ? t('vault.unlockedDesc')
-                  : t('vault.lockedDesc')
-                : t('vault.noKeyDesc')}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5 shrink-0 ml-2">
-          {hasMasterKey && isUnlocked ? (
-            <button
-              type="button"
-              onClick={lockVault}
-              className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-medium text-zinc-300 transition hover:bg-white/10 active:scale-95"
-              title={t('vault.lock')}
-            >
-              <Lock size={10} />
-              {t('vault.lock')}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setOpenControls((v) => !v)}
-              className="inline-flex items-center gap-1 rounded-lg border border-accent-500/30 bg-accent-500/10 px-2.5 py-1 text-[10.5px] font-medium text-accent-300 transition hover:bg-accent-500/20 active:scale-95"
-            >
-              <KeyRound size={11} />
-              {hasMasterKey ? t('vault.unlock') : t('vault.setup')}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Expandable Vault Unlock / Setup Form */}
-      <AnimatePresence initial={false}>
-        {openControls && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="overflow-hidden border-t border-white/6 bg-ink-950/60 p-3"
-          >
-            <div className="space-y-2">
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={passphrase}
-                  onChange={(e) => {
-                    setPassphrase(e.target.value);
-                    setLocalErr(null);
-                  }}
-                  autoFocus
-                  placeholder={hasMasterKey ? t('vault.passphrasePh') : t('vault.setupPh')}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      hasMasterKey ? handleUnlock() : handleSetup();
-                    }
-                  }}
-                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-ink-950 px-2.5 py-1.5 font-mono text-[11px] text-zinc-100 outline-none focus:border-accent-500/50"
-                />
-                <button
-                  type="button"
-                  onClick={hasMasterKey ? handleUnlock : handleSetup}
-                  disabled={busy || !passphrase}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-accent-500 px-3 py-1.5 text-[11px] font-medium text-ink-950 transition hover:bg-accent-400 disabled:opacity-40"
-                >
-                  {busy ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} strokeWidth={2.5} />}
-                  {hasMasterKey ? t('vault.unlock') : t('vault.setup')}
-                </button>
-              </div>
-
-              {(localErr || error) && (
-                <div className="flex items-center gap-1.5 text-[10px] text-red-400">
-                  <AlertTriangle size={11} />
-                  <span>{localErr || error}</span>
-                </div>
-              )}
-
-              {hasMasterKey && isUnlocked && (
-                <div className="flex justify-end pt-1">
-                  <button
-                    type="button"
-                    onClick={handleRemove}
-                    className="inline-flex items-center gap-1 text-[9.5px] text-zinc-500 transition hover:text-red-400"
-                  >
-                    <Trash2 size={10} />
-                    {t('vault.remove')}
-                  </button>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
 
 /* ── single connector row ── */
 function ConnectorRow({ def }: { def: ConnectorDef }) {
   const { t, locale } = useI18n();
   const fr = locale === 'fr';
-  const { connectors, setToken, disconnect, toggleEnabled, startOAuth } = useConnectors();
+  const { connectors, disconnect, toggleEnabled, startOAuth } = useConnectors();
   const st = connectors[def.id] ?? { status: 'disconnected' as const, enabled: true, verified: false };
-  const [tokenOpen, setTokenOpen] = useState(false);
-  const [token, setTokenInput] = useState('');
 
   const Icon = def.icon;
   const connected = st.status === 'connected';
   const connecting = st.status === 'connecting';
-  const isEncrypted = Boolean(st.encryptedToken);
-
-  const save = async () => {
-    if (!token.trim()) return;
-    const ok = await setToken(def.id, token.trim());
-    if (ok) {
-      setTokenOpen(false);
-      setTokenInput('');
-    }
-  };
 
   return (
     <motion.div
@@ -264,16 +43,7 @@ function ConnectorRow({ def }: { def: ConnectorDef }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-[12.5px] font-medium text-zinc-100">{def.name}</span>
-            {def.auth === 'oauth' && <Lock size={9} className="shrink-0 text-zinc-600" />}
-            {isEncrypted && (
-              <span
-                className="inline-flex items-center gap-0.5 rounded bg-emerald-500/10 px-1 py-0.2 font-mono text-[8px] text-emerald-400"
-                title={t('conn.encrypted')}
-              >
-                <LockKeyhole size={8} />
-                AES-256
-              </span>
-            )}
+            <Lock size={9} className="shrink-0 text-zinc-600" />
             {connected && st.verified && (
               <span title={t('conn.verified')}>
                 <ShieldCheck size={11} className="shrink-0 text-emerald-400" />
@@ -318,7 +88,7 @@ function ConnectorRow({ def }: { def: ConnectorDef }) {
           </div>
         ) : (
           <button
-            onClick={() => (def.auth === 'apikey' ? setTokenOpen((o) => !o) : startOAuth(def.id))}
+            onClick={() => startOAuth(def.id)}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-[10.5px] font-medium text-zinc-200 transition hover:border-accent-500/40 hover:bg-accent-500/10 hover:text-accent-300 active:scale-95"
           >
             <Plug size={10} />
@@ -326,43 +96,6 @@ function ConnectorRow({ def }: { def: ConnectorDef }) {
           </button>
         )}
       </div>
-
-      {/* apikey inline form */}
-      <AnimatePresence initial={false}>
-        {tokenOpen && !connected && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="overflow-hidden"
-          >
-            <div className="space-y-1.5 border-t border-white/5 p-3 pt-2.5">
-              <p className="font-mono text-[9px] text-zinc-600">{fr ? def.secretLabelFr : def.secretLabel}</p>
-              <div className="flex gap-1.5">
-                <input
-                  value={token}
-                  onChange={(e) => setTokenInput(e.target.value)}
-                  type="password"
-                  autoFocus
-                  spellCheck={false}
-                  placeholder="••••••••••••••••"
-                  onKeyDown={(e) => e.key === 'Enter' && save()}
-                  className="min-w-0 flex-1 rounded-md border border-white/8 bg-ink-950/70 px-2 py-1.5 font-mono text-[10.5px] text-zinc-200 outline-none focus:border-accent-500/40"
-                />
-                <button
-                  onClick={save}
-                  disabled={!token.trim()}
-                  className="rounded-md bg-accent-500 px-2.5 text-[10.5px] font-medium text-ink-950 transition hover:bg-accent-400 disabled:opacity-40 active:scale-95"
-                >
-                  <Check size={12} />
-                </button>
-              </div>
-              <p className="text-[9px] leading-relaxed text-zinc-600">{t('conn.secretHint')}</p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 }
@@ -427,9 +160,6 @@ export function ConnectorsModal() {
             </div>
 
             <div className="flex-1 space-y-4 overflow-y-auto p-4 scroll-slim">
-              {/* Vault Card at top */}
-              <VaultSecurityCard />
-
               {CONNECTOR_CATEGORIES.map((cat) => {
                 const items = CONNECTOR_CATALOG.filter((c) => c.category === cat.id);
                 if (!items.length) return null;

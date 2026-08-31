@@ -2,7 +2,18 @@
 
 *Mise à jour : 2026-08-29, fin de session.*
 
-## État à l'instant
+## ⚠️ Ce fichier est périmé au-delà de PR #34
+
+Plus de 40 PR sont passées depuis (DEC-0020 à DEC-0024 au moins, jusqu'à
+`docs/DECISIONS.md`). Ce fichier n'a pas été réécrit à chaque fois — le
+faire correctement exige de relire chaque PR fusionnée depuis, hors
+périmètre d'une seule session. **Dernier chunk réellement documenté ici et
+à jour : DEC-0024 (31/08/2026), connecteurs Gmail réels — voir
+`docs/audits/connecteurs_audit.md` et l'entrée DEC-0024.** Pour tout le
+reste, `docs/DECISIONS.md` (toutes les entrées) reste la source exacte ; ce
+fichier est un index, pas l'autorité.
+
+## État à l'instant (2026-08-29 — voir l'avertissement ci-dessus)
 
 | | |
 |---|---|
