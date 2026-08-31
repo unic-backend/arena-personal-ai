@@ -62,7 +62,13 @@ DEMANDE_DE_DOCUMENT = re.compile(
 #: Distingue une facture d'un devis, une fois qu'un FICHIER est deja demande
 #: (DEMANDE_DE_DOCUMENT ci-dessus). Le renderer (`devis_pdf.py`) accepte deja
 #: `type_document` librement ; seule l'orchestration manquait.
-DEMANDE_DE_FACTURE = re.compile(r"facture", re.IGNORECASE)
+#:
+#: La meme phrase exacte que DEMANDE_DE_DOCUMENT, jamais le mot seul : un mot
+#: nu laissait « genere le devis, comme la facture de la semaine derniere »
+#: produire une FACTURE alors que le devis etait ce qui avait ete demande —
+#: exactement l'anti-motif que DEMANDE_DE_DOCUMENT s'interdit deja pour la
+#: meme raison, juste reintroduit ici par megarde.
+DEMANDE_DE_FACTURE = re.compile(r"genere la facture|génère la facture", re.IGNORECASE)
 
 #: Ce qu'il faut connaitre pour adresser un devis. Jamais devine dans la phrase.
 DESTINATAIRE = ("client", "lieu", "objet")
