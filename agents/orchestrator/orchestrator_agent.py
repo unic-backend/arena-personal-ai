@@ -82,6 +82,13 @@ COURRIER = (
     "reponds a ce mail", "réponds à ce mail", "reponds a ce message",
     "réponds à ce message", "j'ai recu un mail", "j'ai reçu un mail",
     "nouveaux messages", "mes messages recus", "mes messages reçus",
+    # Trouve le 31/08/2026 : « j'ai recu combien de mail aujourd'hui » ne
+    # correspondait a aucune de ces formulations exactes — la question
+    # atterrissait sur FRESH_INFO (voir `demande_de_courrier`, ci-dessous)
+    # au lieu du courrier.
+    "combien de mail", "combien de mails", "combien d'email", "combien d'emails",
+    "combien d'e-mail", "combien d'e-mails", "combien de courriel",
+    "combien de courriels",
 )
 
 #: Fabriquer une video sur un sujet. Teste AVANT le metier, pour la meme raison
@@ -300,6 +307,22 @@ class OrchestratorAgent(BaseAgent):
         texte = (user_input or "").strip().lower().rstrip("!.?").strip()
         return texte in SALUTATIONS_PURES
 
+    @staticmethod
+    def demande_de_courrier(user_input: str) -> bool:
+        """Dit si la phrase parle sans ambiguite de SA BOITE MAIL.
+
+        Evaluee avant `exige_verification()` : une question sur son propre
+        courrier n'est jamais une question de fraicheur d'information
+        mondiale, meme quand elle contient un mot comme « aujourd'hui ».
+        Trouve le 31/08/2026 : « j'ai recu combien de mail aujourd'hui »
+        contient « aujourd'hui » (`FORMULATIONS_COURANTES`), qui declenchait
+        `exige_verification()` en premier et envoyait la question sur
+        FRESH_INFO — une recherche web sur des sites d'actualite, sans
+        aucun rapport avec Gmail — avant meme que les mots-cles du courrier
+        (evalues seulement dans le repli, plus tard) aient leur mot a dire.
+        """
+        return any(motif in (user_input or "").lower() for motif in COURRIER)
+
     async def analyze_intent(self, user_input: str, espace: Optional[str] = None) -> str:
         """Détermine vers quel agent envoyer la demande.
 
@@ -308,11 +331,15 @@ class OrchestratorAgent(BaseAgent):
         son agent, sans appeler le modele classeur — l'utilisateur a deja dit
         ou il voulait aller en cliquant dessus.
 
-        Trois controles determinstes passent avant l'espace, dans cet ordre :
-        question personnelle, salutation pure, puis controle date. Aucun des
-        trois ne coute rien, et chacun rattrape ce que l'espace ne peut pas
-        savoir mieux qu'une phrase ordinaire — une salutation depuis « UniC
-        Plaquiste » ne doit pas faire rediger un devis fabrique.
+        Quatre controles determinstes passent avant l'espace, dans cet ordre :
+        question personnelle, salutation pure, demande de courrier, puis
+        controle date. Aucun des quatre ne coute rien, et chacun rattrape ce
+        que l'espace ne peut pas savoir mieux qu'une phrase ordinaire — une
+        salutation depuis « UniC Plaquiste » ne doit pas faire rediger un
+        devis fabrique. Le courrier passe AVANT le controle date : « combien
+        de mail aujourd'hui » contient « aujourd'hui »
+        (`FORMULATIONS_COURANTES`) et partirait sinon en recherche web plutot
+        que d'ouvrir Gmail (trouve le 31/08/2026).
 
         Ensuite seulement l'espace, puis le modele. S'ils sont indisponibles ou
         repondent autre chose qu'une etiquette connue, on retombe sur les
@@ -326,6 +353,10 @@ class OrchestratorAgent(BaseAgent):
         if self.salutation_pure(user_input):
             logger.info("Salutation pure : CHAT, quel que soit l'espace")
             return "CHAT"
+
+        if self.demande_de_courrier(user_input):
+            logger.info("Demande de courrier explicite -> EMAIL, avant le controle date")
+            return "EMAIL"
 
         if self.exige_verification(user_input):
             logger.info("Contrôle daté : la question demande une vérification -> FRESH_INFO")
