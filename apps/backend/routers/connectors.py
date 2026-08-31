@@ -24,10 +24,15 @@ Trois regles :
    consentement contre un lien rejoue ou force depuis un autre onglet — la
    seule chose qu'un attaquant pourrait manipuler sur `/callback`, qui est
    appele par Google lui-meme, jamais par la cle d'ARENA.
-3. **Le jeton obtenu est ecrit cote serveur, jamais renvoye au navigateur.**
-   `os.environ` pour un effet immediat ; `.env` pour survivre a un
-   redemarrage quand ce fichier existe (deploiement hors plateforme
-   Railway/Render, ou la variable vit dans leur panneau, pas dans un fichier).
+3. **Le jeton obtenu est ecrit cote serveur, jamais renvoye au navigateur,
+   et survit a un redemarrage.** `os.environ` pour un effet immediat ;
+   `.env` quand ce fichier existe (poste local) ; la meme base SQLite que
+   la memoire personnelle sinon (`core/connectors/stockage_jetons.py`) —
+   deja prouvee persistante sur un hebergement comme Railway (DEC-0021),
+   la ou aucun fichier `.env` n'existe sur le disque. Trouve le
+   31/08/2026 : sans cette troisieme voie, un redeploiement perdait le
+   jeton qui n'avait jamais vecu qu'en memoire, forcant a reconnecter
+   Gmail a chaque mise a jour du code.
 
 Les dependances d'authentification/debit sont declarees a cote de chaque
 route (`dependencies=[Depends(...)]`), jamais appelees a la main dans le
@@ -45,9 +50,10 @@ from typing import Dict, Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from apps.backend.config import BASE_DIR
+from apps.backend.config import BASE_DIR, DB_PATH
 from apps.backend.runtime import registre
 from apps.backend.security import limiter_debit, verify_api_key, verify_media_access
+from core.connectors import stockage_jetons
 from core.connectors.base import EtatSante
 from core.connectors.google_oauth import (
     PORTEE_GMAIL_ENVOI,
@@ -96,16 +102,22 @@ def _purger_etats_expires() -> None:
 
 
 def _persister_refresh_token(variable: str, valeur: str) -> None:
-    """Ecrit le jeton dans le processus courant ET, si possible, dans `.env`.
+    """Ecrit le jeton dans le processus courant, dans `.env` si possible, ET
+    dans la base persistante — pour qu'il survive a un vrai redemarrage.
 
     L'environnement du processus d'abord : le prochain appel Gmail marche
     sans redemarrer le serveur. `.env` ensuite, en best-effort — sur une
     plateforme hebergee (Railway et semblables), les variables vivent dans
     son panneau et aucun fichier `.env` n'existe sur le disque : l'ecriture
     fichier est alors sautee et journalisee, jamais une erreur qui casserait
-    la connexion pourtant reussie.
+    la connexion pourtant reussie. La base SQLite enfin
+    (`stockage_jetons.py`) : c'est elle, et seulement elle, qui survit a un
+    redeploiement sur un hebergement sans fichier `.env` — trouve le
+    31/08/2026 quand un redeploiement a fait disparaitre un jeton qui
+    n'avait jamais vecu qu'en memoire.
     """
     os.environ[variable] = valeur
+    stockage_jetons.enregistrer(str(DB_PATH), variable, valeur)
     chemin = BASE_DIR / ".env"
     if not chemin.exists():
         logger.info(

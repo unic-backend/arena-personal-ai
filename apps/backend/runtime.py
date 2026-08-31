@@ -6,6 +6,7 @@ Les regrouper ici évite que chaque routeur en fabrique sa propre copie — deux
 le modèle en VRAM.
 """
 import logging
+import os
 
 from agents.browser.browser_agent import BrowserAgent
 from agents.clip_selector.clip_selector_agent import ClipSelectorAgent
@@ -46,6 +47,7 @@ from core.connectors.gmail import GmailConnector
 from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
 from core.connectors.registre import RegistreConnecteurs
+from core.connectors.stockage_jetons import charger_tout as _charger_jetons_persistants
 from core.connectors.wan2gp import Wan2GPConnector
 from core.conversations.depot import DepotConversations
 from core.execution.disjoncteur import Disjoncteur
@@ -83,6 +85,15 @@ politique = PolitiqueDePermissions()
 acces = ControleAcces(permissions=permissions, politique=politique)
 
 # --- Connecteurs --------------------------------------------------------------
+# Jetons OAuth obtenus par /connectors/{id}/auth (chapitre 8.2, DEC-0024) :
+# une variable deja presente dans l'environnement (Railway, .env local) gagne
+# toujours ; ce qui est recharge ici ne fait que retrouver un jeton obtenu
+# lors d'un demarrage precedent, sur un hebergement sans fichier .env pour le
+# porter (trouve le 31/08/2026 : un redeploiement perdait un jeton qui
+# n'avait jamais vecu qu'en memoire du processus precedent).
+for _variable, _valeur in _charger_jetons_persistants(str(DB_PATH)).items():
+    os.environ.setdefault(_variable, _valeur)
+
 # On declare des fabriques, pas des objets : rien n'est construit tant que
 # personne ne s'en sert, et un connecteur qui echoue a naitre est mis hors
 # service tout seul, sans empecher le serveur de demarrer.

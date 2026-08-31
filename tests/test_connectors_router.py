@@ -154,6 +154,7 @@ def test_callback_echange_reussi_persiste_le_jeton(
     fichier_env = tmp_path / ".env"
     fichier_env.write_text("USMAN_API_KEY=x\n", encoding="utf-8")
     monkeypatch.setattr(routeur, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(routeur, "DB_PATH", tmp_path / "memoire.db")
     monkeypatch.delenv("GOOGLE_REFRESH_TOKEN", raising=False)
 
     routeur._ETATS_EN_ATTENTE["s1"] = ("gmail", routeur.time.monotonic() + 600)
@@ -168,15 +169,24 @@ def test_callback_echange_reussi_persiste_le_jeton(
     assert os.environ["GOOGLE_REFRESH_TOKEN"] == "rt-1234"
     # Et persiste sur disque pour survivre a un redemarrage.
     assert "GOOGLE_REFRESH_TOKEN=rt-1234" in fichier_env.read_text(encoding="utf-8")
+    # ET dans la base persistante (le seul des trois qui survit sur un
+    # hebergement sans fichier .env, comme Railway — trouve le 31/08/2026).
+    assert routeur.stockage_jetons.charger_tout(str(tmp_path / "memoire.db")) == {
+        "GOOGLE_REFRESH_TOKEN": "rt-1234"
+    }
 
 
-def test_callback_sans_env_sur_disque_ne_leve_pas(client, monkeypatch, tmp_path, registre_operationnel):
+def test_callback_sans_env_sur_disque_persiste_quand_meme_en_base(
+    client, monkeypatch, tmp_path, registre_operationnel,
+):
     """Deploiement hebergee (Railway...) : pas de fichier .env sur le disque —
-    persister doit rester silencieux, jamais casser une connexion reussie."""
+    persister doit rester silencieux pour ce point-la, ET quand meme ecrire
+    dans la base SQLite, seule a survivre a un redemarrage dans ce cas."""
     monkeypatch.setattr(routeur, "identifiants", _identifiants_presents)
     monkeypatch.setattr(routeur, "code_pour_jetons",
                         lambda *a, **k: {"refresh_token": "rt-999"})
     monkeypatch.setattr(routeur, "BASE_DIR", tmp_path / "dossier-vide")
+    monkeypatch.setattr(routeur, "DB_PATH", tmp_path / "memoire.db")
     monkeypatch.delenv("GOOGLE_REFRESH_TOKEN", raising=False)
 
     routeur._ETATS_EN_ATTENTE["s2"] = ("gmail", routeur.time.monotonic() + 600)
@@ -184,6 +194,9 @@ def test_callback_sans_env_sur_disque_ne_leve_pas(client, monkeypatch, tmp_path,
 
     assert r.status_code == 200
     assert os.environ["GOOGLE_REFRESH_TOKEN"] == "rt-999"
+    assert routeur.stockage_jetons.charger_tout(str(tmp_path / "memoire.db")) == {
+        "GOOGLE_REFRESH_TOKEN": "rt-999"
+    }
 
 
 def test_callback_google_refuse_l_echange(client, monkeypatch):
@@ -243,11 +256,14 @@ def test_disconnect_sans_cle_refuse(client):
 
 def test_disconnect_efface_uniquement_le_refresh_token(client, entetes, monkeypatch, tmp_path):
     monkeypatch.setattr(routeur, "BASE_DIR", tmp_path)
+    base = tmp_path / "memoire.db"
+    monkeypatch.setattr(routeur, "DB_PATH", base)
     (tmp_path / ".env").write_text(
         "GOOGLE_CLIENT_ID=id\nGOOGLE_CLIENT_SECRET=secret\nGOOGLE_REFRESH_TOKEN=ancien\n",
         encoding="utf-8",
     )
     os.environ["GOOGLE_REFRESH_TOKEN"] = "ancien"
+    routeur.stockage_jetons.enregistrer(str(base), "GOOGLE_REFRESH_TOKEN", "ancien")
 
     r = client.post("/connectors/gmail/disconnect", headers=entetes)
 
@@ -256,3 +272,6 @@ def test_disconnect_efface_uniquement_le_refresh_token(client, entetes, monkeypa
     contenu = (tmp_path / ".env").read_text(encoding="utf-8")
     assert "GOOGLE_REFRESH_TOKEN=\n" in contenu
     assert "GOOGLE_CLIENT_ID=id" in contenu  # le client OAuth reste : on ne le supprime pas
+    # Efface aussi la base persistante : sinon un redemarrage ressuscite le
+    # jeton qu'on vient de deconnecter.
+    assert routeur.stockage_jetons.charger_tout(str(base)) == {}
