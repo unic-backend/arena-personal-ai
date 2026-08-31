@@ -15,6 +15,7 @@ from agents.plaquiste.plaquiste_agent import (
     _rendre_premiere_page,
     charger_metier,
     composer_instruction,
+    destinataire_depuis_l_historique,
 )
 from apps.backend.config import AGENTS_SPECIALISES
 from core.actions.resultat import Statut, a_confirmer, non_configure, succes
@@ -195,6 +196,68 @@ class FauxRegistre:
 DESTINATAIRE = {"client": "Fast Group", "lieu": "Medina", "objet": "cloisons"}
 
 
+class TestDestinataireDepuisLHistorique:
+    """Trouve en direct avec le proprietaire (31/08/2026) : un devis se
+    negocie sur plusieurs tours, et rien ne captait jamais la reponse a
+    « quel est le nom du client ? » deux tours plus tard — DESTINATAIRE
+    restait vide pour toujours, quoi qu'il tape. Cette capture est
+    DETERMINISTE : elle ne se declenche que quand la reponse suit
+    IMMEDIATEMENT une question qui demandait explicitement ce champ."""
+
+    def test_une_reponse_directe_est_captee(self):
+        historique = [{"role": "assistant", "content": "Quel est le nom du client ?"}]
+
+        valeurs = destinataire_depuis_l_historique(historique, "C'est Fast Group")
+
+        assert valeurs == {"client": "Fast Group"}
+
+    def test_sans_question_prealable_rien_n_est_capte(self):
+        """Meme garantie que test_le_destinataire_n_est_jamais_devine_dans_la_phrase :
+        une phrase libre qui mentionne un nom ne suffit pas."""
+        valeurs = destinataire_depuis_l_historique([], "Fast Group, a Medina")
+
+        assert valeurs == {}
+
+    def test_une_question_combinee_repond_aux_deux_champs(self):
+        historique = [{"role": "assistant",
+                      "content": "Quel est le lieu du chantier et les prestations souhaitées ?"}]
+
+        valeurs = destinataire_depuis_l_historique(
+            historique, "Fann Hock, cloison 100m2 sans isolation")
+
+        assert valeurs == {"lieu": "Fann Hock, cloison 100m2 sans isolation",
+                           "objet": "Fann Hock, cloison 100m2 sans isolation"}
+
+    def test_plusieurs_tours_accumulent_les_champs(self):
+        historique = [
+            {"role": "assistant", "content": "Quel est le nom du client ?"},
+            {"role": "user", "content": "Seck"},
+            {"role": "assistant", "content": "Quel est le lieu du chantier ?"},
+        ]
+
+        valeurs = destinataire_depuis_l_historique(historique, "Fann Hock")
+
+        assert valeurs == {"client": "Seck", "lieu": "Fann Hock"}
+
+    def test_une_reponse_plus_recente_remplace_l_ancienne(self):
+        historique = [
+            {"role": "assistant", "content": "Quel est le nom du client ?"},
+            {"role": "user", "content": "Seck"},
+            {"role": "assistant", "content": "Peux-tu confirmer le nom du client ?"},
+        ]
+
+        valeurs = destinataire_depuis_l_historique(historique, "En fait c'est Fast Group")
+
+        assert valeurs["client"] == "En fait c'est Fast Group"
+
+    def test_une_reponse_vide_n_est_pas_captee(self):
+        historique = [{"role": "assistant", "content": "Quel est le nom du client ?"}]
+
+        valeurs = destinataire_depuis_l_historique(historique, "   ")
+
+        assert valeurs == {}
+
+
 class TestDocumentPdf:
     """Le branchement de `devis_pdf.py` sur l'agent.
 
@@ -229,6 +292,33 @@ class TestDocumentPdf:
         assert resultat["document"]["statut"] == "INCOMPLET"
         assert set(resultat["document"]["manquants"]) == {"client", "lieu", "objet"}
         assert registre.appels == [], "le connecteur a été appelé sans destinataire connu"
+
+    @pytest.mark.asyncio
+    async def test_le_destinataire_capte_sur_plusieurs_tours_suffit_a_produire(self):
+        """Le scenario exact rapporte par le proprietaire (31/08/2026) : le
+        destinataire donne au fil de la conversation, jamais dans un seul
+        `context` pose d'un coup, doit maintenant suffire."""
+        registre = FauxRegistre()
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
+                               registre=registre)
+        historique = [
+            {"role": "assistant", "content": "Quel est le nom du client ?"},
+            {"role": "user", "content": "Seck"},
+            {"role": "assistant",
+             "content": "Quel est le lieu du chantier et les prestations souhaitées ?"},
+            {"role": "user", "content": "Fann Hock, 18 parois de 5,40 x 2,50 m"},
+            {"role": "assistant", "content": "Souhaitez-vous que je genere le PDF ?"},
+        ]
+
+        resultat = await agent.run(
+            "le pdf du devis, 18 parois de 5,40 x 2,50 m",
+            context={"historique": historique, "message_actuel": "oui, fais le pdf du devis"})
+
+        assert registre.appels, "aucun appel : le destinataire capte n'a pas suffi"
+        connecteur, capacite, parametres = registre.appels[0]
+        assert (connecteur, capacite) == ("devis", "produire")
+        assert parametres["client"] == "Seck"
+        assert resultat["document"]["statut"] == "NEEDS_CONFIRMATION"
 
     @pytest.mark.asyncio
     async def test_le_document_demande_passe_par_le_connecteur_devis(self):
@@ -1153,3 +1243,32 @@ class TestAgenda:
         from agents.orchestrator.orchestrator_agent import OrchestratorAgent
 
         assert OrchestratorAgent._classer_par_mots_cles(None, phrase) == "PLAQUISTE"
+
+
+class TestLeRouteurTransmetLHistorique:
+    """Le dernier maillon non teste : `chat.py` doit transmettre
+    `ChatRequest.history`/`.message_actuel` a `PlaquisteAgent.run()` sous
+    les cles que `destinataire_depuis_l_historique()` lit — sans ce
+    branchement, la capture deterministe ne recevrait jamais rien de reel,
+    quel que soit ce qui est teste au niveau de l'agent seul."""
+
+    @pytest.mark.asyncio
+    async def test_l_historique_et_le_message_actuel_atteignent_l_agent(self, monkeypatch):
+        from apps.backend.routers import chat as routeur_chat
+        from apps.backend.routers.chat import ChatRequest, dispatch_request
+
+        recu: dict = {}
+
+        async def _double(user_input, context=None):
+            recu["context"] = context
+            return {"status": "success", "agent": "PlaquisteAgent", "response": "ok"}
+        monkeypatch.setattr(routeur_chat.plaquiste_agent, "run", _double)
+
+        historique = [{"role": "assistant", "content": "Quel est le nom du client ?"}]
+        await dispatch_request(
+            ChatRequest(prompt="peu importe", history=historique,
+                       message_actuel="C'est Fast Group"),
+            intent="PLAQUISTE")
+
+        assert recu["context"]["historique"] == historique
+        assert recu["context"]["message_actuel"] == "C'est Fast Group"

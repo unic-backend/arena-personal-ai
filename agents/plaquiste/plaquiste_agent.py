@@ -118,6 +118,68 @@ DEMANDE_VISUELLE_OUVERTURES = (
 #: Ce qu'il faut connaitre pour adresser un devis. Jamais devine dans la phrase.
 DESTINATAIRE = ("client", "lieu", "objet")
 
+#: Ce qui, dans une question posee par ARENA au tour precedent, designe
+#: CHACUN des trois champs du destinataire. Trouve le 31/08/2026, en direct
+#: avec le proprietaire : un devis se negocie sur plusieurs tours (« quel
+#: est le nom du client ? » -> « c'est fann hock » deux tours plus tard),
+#: et rien ne captait jamais cette reponse — DESTINATAIRE restait vide pour
+#: toujours, quoi qu'il tape, puisque `context` n'est rempli par personne.
+#:
+#: La regle reste « LE CLIENT EST CELUI QU'ON TE DONNE » : cette capture est
+#: DETERMINISTE (aucun modele n'intervient) et ne se declenche QUE quand la
+#: reponse suit IMMEDIATEMENT une question qui demandait explicitement ce
+#: champ precis — jamais devinee dans une phrase libre.
+QUESTION_NOM_CLIENT = re.compile(r"nom (complet )?du client", re.IGNORECASE)
+QUESTION_LIEU_CHANTIER = re.compile(
+    r"lieu du chantier|adresse (exacte )?du chantier|o[uù] (se trouve|est) le chantier",
+    re.IGNORECASE)
+QUESTION_OBJET_DEVIS = re.compile(
+    r"prestations? souhait|type de travaux|travaux souhait|objet du devis",
+    re.IGNORECASE)
+
+#: Tetes de phrase courantes a retirer d'une reponse captee — « C'est fann
+#: hock » doit devenir « fann hock ». Une tete non reconnue reste telle
+#: quelle : mieux vaut une reponse avec sa tete de phrase qu'une reponse
+#: coupee au mauvais endroit.
+_TETE_DE_REPONSE = re.compile(r"^(c'est|c est)\s+", re.IGNORECASE)
+
+
+def _nettoyer_reponse_captee(texte: str) -> str:
+    """Une reponse brute, debarrassee de sa tete de phrase la plus courante."""
+    return _TETE_DE_REPONSE.sub("", (texte or "").strip()).strip()
+
+
+def destinataire_depuis_l_historique(
+    historique: List[Dict[str, str]], message_actuel: str,
+) -> Dict[str, str]:
+    """Le client/lieu/objet captes, uniquement quand ils repondent
+    DIRECTEMENT a une question posee par ARENA au tour precedent.
+
+    `message_actuel` est ajoute comme le dernier tour utilisateur : c'est
+    generalement lui qui repond a la toute derniere question posee. Une
+    question qui demande plusieurs champs a la fois (« le lieu du chantier
+    et les prestations souhaitees ? ») recoit la meme reponse pour chacun —
+    imparfait, mais `produire` n'ecrit qu'un fichier local que le
+    proprietaire relit avant de l'envoyer : ce n'est jamais un envoi
+    automatique a un client.
+    """
+    tours = list(historique) + [{"role": "user", "content": message_actuel}]
+    valeurs: Dict[str, str] = {}
+    for precedent, suivant in zip(tours, tours[1:], strict=False):
+        if precedent.get("role") != "assistant" or suivant.get("role") != "user":
+            continue
+        question = precedent.get("content") or ""
+        reponse = _nettoyer_reponse_captee(suivant.get("content") or "")
+        if not reponse:
+            continue
+        if QUESTION_NOM_CLIENT.search(question):
+            valeurs["client"] = reponse
+        if QUESTION_LIEU_CHANTIER.search(question):
+            valeurs["lieu"] = reponse
+        if QUESTION_OBJET_DEVIS.search(question):
+            valeurs["objet"] = reponse
+    return valeurs
+
 #: Ce qui demande QUAND, et non combien. « planifie », « suis-je libre »,
 #: « quel creneau » : la reponse est dans son agenda, pas dans sa grille de prix.
 DEMANDE_D_AGENDA = re.compile(
@@ -900,9 +962,20 @@ class PlaquisteAgent(BaseAgent):
         # Le rendez-vous : soumis a confirmation, jamais pose d'autorite.
         rendez_vous = self._poser_le_rendez_vous(context or {})
 
+        # Le destinataire du devis (client/lieu/objet), captes UNIQUEMENT
+        # quand la reponse suit une question qui les demandait explicitement
+        # — voir destinataire_depuis_l_historique(). Un champ deja present
+        # dans `context` (une future saisie structuree, par exemple) gagne
+        # toujours sur ce qui est capte ici.
+        contexte = dict(context or {})
+        capture = destinataire_depuis_l_historique(
+            contexte.get("historique") or [], contexte.get("message_actuel") or user_input)
+        for champ, valeur in capture.items():
+            contexte.setdefault(champ, valeur)
+
         # Le document PDF : soumis a confirmation, jamais ecrit d'autorite.
         # Fait avant la generation pour que la reponse puisse le dire.
-        document = self._proposer_le_document(user_input, context or {}, metre)
+        document = self._proposer_le_document(user_input, contexte, metre)
 
         reponse = ((await self.provider.generate(prompt=user_input, system_prompt=instruction)) or "").strip()
 
