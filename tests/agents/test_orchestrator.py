@@ -108,6 +108,41 @@ def test_le_repli_reconnait_une_question_d_actualite(fake_provider, phrase):
     assert agent._classer_par_mots_cles(phrase) == "FRESH_INFO"
 
 
+@pytest.mark.parametrize("phrase", [
+    "j'ai recu combien de mail aujourd'hui",
+    "j'ai reçu combien de mails aujourd'hui",
+    "combien d'emails j'ai recu",
+])
+def test_demande_de_courrier_reconnait_les_variantes_avec_combien(fake_provider, phrase):
+    """Trouve le 31/08/2026 : ces formulations ne correspondaient a aucune
+    entree exacte de COURRIER — la question partait sur FRESH_INFO."""
+    agent = OrchestratorAgent(provider=fake_provider, memory=None)
+
+    assert agent.demande_de_courrier(phrase) is True
+
+
+async def test_le_courrier_l_emporte_sur_le_controle_date(provider_factory):
+    """« combien de mail aujourd'hui » contient « aujourd'hui »
+    (FORMULATIONS_COURANTES) : sans ce controle, la question partirait en
+    recherche web plutot que d'ouvrir Gmail. Le modele est scripte pour
+    repondre autre chose : s'il etait appele, le test le verrait."""
+    agent = OrchestratorAgent(provider=provider_factory("CHAT"), memory=None)
+
+    resultat = await agent.analyze_intent("j'ai recu combien de mail aujourd'hui")
+
+    assert resultat == "EMAIL"
+
+
+async def test_le_courrier_l_emporte_aussi_sur_l_espace(provider_factory):
+    """Meme depuis un espace different, verifier son courrier reste EMAIL."""
+    agent = OrchestratorAgent(provider=provider_factory("CODE_EXECUTION"), memory=None)
+
+    resultat = await agent.analyze_intent(
+        "j'ai recu combien de mail aujourd'hui", espace="code")
+
+    assert resultat == "EMAIL"
+
+
 def test_une_question_intemporelle_ne_part_pas_chercher_sur_le_web(fake_provider):
     agent = OrchestratorAgent(provider=fake_provider, memory=None)
 
