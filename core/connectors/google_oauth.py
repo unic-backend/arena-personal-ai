@@ -25,6 +25,7 @@ import logging
 import os
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from urllib.parse import urlencode
 
 import httpx
 
@@ -32,6 +33,17 @@ logger = logging.getLogger("usman.connecteurs.google")
 
 #: Ou s'echange un jeton de rafraichissement. Dans l'environnement, jamais en dur.
 URL_JETON = os.getenv("GOOGLE_TOKEN_URL", "https://oauth2.googleapis.com/token")
+
+#: Ou obtenir le tout premier consentement — le clic « Connecter » y redirige.
+URL_AUTORISATION = os.getenv(
+    "GOOGLE_AUTH_URL", "https://accounts.google.com/o/oauth2/v2/auth")
+
+#: Les deux portees du courrier (chapitre 8) : lecture toujours, envoi pour que
+#: `GmailConnector.envoyer` (deja verrouille derriere confirmation) ait de quoi
+#: fonctionner. L'agenda (chapitre 9) demande la sienne separement, au moment
+#: ou son propre flux sera cable — pas avant.
+PORTEE_GMAIL_LECTURE = "https://www.googleapis.com/auth/gmail.readonly"
+PORTEE_GMAIL_ENVOI = "https://www.googleapis.com/auth/gmail.send"
 
 #: Les trois valeurs, dans l'ordre : client, secret, rafraichissement.
 SUFFIXES = ("CLIENT_ID", "CLIENT_SECRET", "REFRESH_TOKEN")
@@ -79,6 +91,48 @@ def echanger(client_id: str, client_secret: str, refresh_token: str) -> Dict[str
             "client_secret": client_secret,
             "refresh_token": refresh_token,
             "grant_type": "refresh_token",
+        })
+        reponse.raise_for_status()
+        return reponse.json()
+
+
+def url_consentement(client_id: str, redirect_uri: str, state: str,
+                      portees: List[str]) -> str:
+    """L'URL vers laquelle rediriger pour l'ecran de consentement Google.
+
+    `access_type=offline` + `prompt=consent` : sans les deux, Google ne rend
+    un `refresh_token` qu'a la toute premiere autorisation d'un compte —
+    jamais aux suivantes. Les forcer a chaque fois evite de se retrouver avec
+    un jeton d'acces sans aucun moyen de le renouveler.
+    """
+    parametres = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": " ".join(portees),
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": state,
+        "include_granted_scopes": "true",
+    }
+    return f"{URL_AUTORISATION}?{urlencode(parametres)}"
+
+
+def code_pour_jetons(client_id: str, client_secret: str, code: str,
+                      redirect_uri: str) -> Dict[str, Any]:
+    """Echange le code d'autorisation (retour du consentement) contre les jetons.
+
+    Rend `access_token`, `refresh_token` (present grace a `prompt=consent` +
+    `access_type=offline` ci-dessus) et `expires_in`. Leve si Google refuse —
+    l'appelant decide comment le rapporter, comme `echanger()` deja voisin.
+    """
+    with httpx.Client(timeout=DELAI_SECONDES) as client:
+        reponse = client.post(URL_JETON, data={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
         })
         reponse.raise_for_status()
         return reponse.json()
