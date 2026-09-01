@@ -2,6 +2,24 @@
 
 ## [Non publié]
 
+### Corrigé — 01/09/2026 (troisième vague, défauts n° 25 à 29)
+
+- **Deux agents sur trois versaient le texte web brut dans l'invite.**
+  `DeepResearcherAgent` et `TrendAnalyzerAgent` laissaient passer une page
+  contenant « IGNORE TES INSTRUCTIONS » et une balise `<system>` telle quelle.
+  Le module de sécurité avait annoncé le constat : neuf chemins, une seule
+  barrière.
+- **« WanGP a répondu », quand WanGP venait de refuser** : `isError` n'était lu
+  que par un des deux connecteurs MCP. La règle vit maintenant sur `Reponse`.
+- **Une réponse MCP en retard pouvait être servie à l'appel suivant** — la
+  bonne forme, le mauvais appel. Le contrôle existait, rien ne le tenait.
+- **Une conversation trop grosse n'était pas sauvegardée en silence** : le
+  serveur nommait le refus, l'interface le jetait.
+- **Le serveur bloquait son propriétaire au sixième message d'une minute.**
+  Deux requêtes par message, dix par minute : la limite passe à soixante.
+- **La lecture seule de `SWEAgent` ne tenait à rien** : `SWEACITool.edit`
+  écrivait des fichiers, sans appelant ni test.
+
 ### Corrigé — 01/09/2026 (deuxième vague d'audit, défauts n° 14 à 24)
 
 Onze défauts de plus, **tous trouvés sur une suite verte**, tous mesurés avant
