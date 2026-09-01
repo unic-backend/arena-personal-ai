@@ -238,3 +238,51 @@ class TestSansFfmpeg:
         assert sante.utilisable, "sans ffmpeg le montage reste possible"
         assert "aucun rendu" in sante.message
         assert "ffmpeg" in sante.ce_qui_manque
+
+
+class TestPurgeAvantRendu:
+    """DEC-0037 : `data/montages/` ne doit plus accumuler indéfiniment.
+    `ffmpeg` et `rendre()` sont doublés — le sujet ici est l'appel a la
+    purge, deja teste en isolation dans tests/tools/test_nettoyage_video.py."""
+
+    def _plan_minimal(self):
+        return [
+            {"operation": "creer_projet", "nom": "x", "largeur": 1080, "hauteur": 1920},
+            {"operation": "ajouter_piste", "type": "texte", "nom": "titres"},
+            {"operation": "ajouter_texte", "piste_id": "titres", "texte": "UniC",
+             "debut_ms": 0, "duree_ms": 2_000},
+        ]
+
+    def test_la_purge_est_appelee_sur_le_dossier_de_rendu_avant_d_ecrire(
+        self, tmp_path, monkeypatch,
+    ):
+        from core.montage.rendu import Rendu
+
+        appels = []
+        monkeypatch.setattr("core.connectors.montage.shutil.which",
+                            lambda _: "/usr/bin/ffmpeg")
+        monkeypatch.setattr("core.connectors.montage.purger_artefacts_anciens",
+                            lambda dossier: appels.append(dossier) or [])
+        monkeypatch.setattr(
+            "core.connectors.montage.rendre",
+            lambda projet, sortie: Rendu(ok=True, message="ok", chemin=str(sortie),
+                                         octets=1, duree_ms=2000))
+
+        dossier = tmp_path / "rendus"
+        ConnecteurMontage(dossier=dossier).executer_confirmee(
+            "rendre", operations=self._plan_minimal())
+
+        assert appels == [dossier]
+
+    def test_sans_ffmpeg_la_purge_n_est_jamais_appelee(self, tmp_path, monkeypatch):
+        """Refuser tot (NOT_CONFIGURED) ne doit pas purger un dossier pour
+        un rendu qui ne partira pas."""
+        appels = []
+        monkeypatch.setattr("core.connectors.montage.shutil.which", lambda _: None)
+        monkeypatch.setattr("core.connectors.montage.purger_artefacts_anciens",
+                            lambda dossier: appels.append(dossier) or [])
+
+        ConnecteurMontage(dossier=tmp_path).executer_confirmee(
+            "rendre", operations=self._plan_minimal())
+
+        assert appels == []

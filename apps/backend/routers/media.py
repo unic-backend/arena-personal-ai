@@ -20,6 +20,7 @@ from apps.backend.config import (
 from apps.backend.pieces_jointes import nom_de_fichier_sur
 from apps.backend.runtime import clip_selector, editor_agent, permissions, subtitle_agent, video_agent
 from apps.backend.security import limiter_debit, verify_api_key
+from tools.video.nettoyage import purger_artefacts_anciens
 
 logger = logging.getLogger("usman.backend")
 
@@ -138,6 +139,9 @@ async def process_video_pipeline(video_path: str = Form(...)):
 
         rendered_file_path = clip_res.get("clip_path") if isinstance(clip_res, dict) else None
         if not rendered_file_path or not Path(rendered_file_path).exists():
+            # Purge paresseuse, avant d'ecrire : DEC-0037, aucun rendu ancien
+            # ne doit s'accumuler indefiniment dans RENDERED_DIR.
+            purger_artefacts_anciens(RENDERED_DIR)
             target_rendered = RENDERED_DIR / f"{p.stem}_vertical_9_16.mp4"
             editor_agent.crop_tool.convert_to_vertical_9_16(str(p), str(target_rendered))
             rendered_file_path = str(target_rendered)

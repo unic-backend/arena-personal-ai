@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from apps.backend.config import MEDIA_DIR, RENDERED_DIR
+from tools.video.nettoyage import purger_artefacts_anciens
 
 logger = logging.getLogger("usman.backend.studio")
 
@@ -88,6 +89,9 @@ async def lancer_studio(
         etapes["transcription"] = "PAS_D_AUDIO_EXTRAIT"
 
     dossier_rendu.mkdir(parents=True, exist_ok=True)
+    # Purge paresseuse, avant d'ecrire : DEC-0037, aucun rendu ancien ne doit
+    # s'accumuler indefiniment. Jamais bloquant.
+    purger_artefacts_anciens(dossier_rendu)
     vertical = dossier_rendu / f"{source.stem}_vertical_9_16.mp4"
     editor_agent.crop_tool.convert_to_vertical_9_16(str(source), str(vertical))
     etapes["recadrage"] = "OK" if vertical.exists() else "ECHEC"
