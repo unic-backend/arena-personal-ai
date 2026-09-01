@@ -154,6 +154,22 @@ La vérification interroge donc ses moteurs et nomme ce qui manque.
 
 ---
 
+## Une conséquence de mes propres correctifs, signalée plutôt que tue
+
+`/health` est **public** (l'interface s'en sert pour vérifier que le serveur
+répond, sans clé). En dérivant `agents_active`, je suis passé de 16 noms
+écrits à la main à **22 noms réels** — dont `PlaquisteAgent`, `EmailAgent`,
+`SocialAgent`.
+
+Ce n'est pas une nouvelle *classe* d'information : la liste figée annonçait
+déjà `CoderAgent`, `SWEAgent`, `BrowserAgent`, `DeepResearcher`, et la route
+rend aussi les noms de modèles. Mais elle en dit un peu plus long sur ce que
+le propriétaire fait de son ARENA.
+
+**Non modifié** : restreindre le champ aux appelants authentifiés casserait le
+contrat que `test_pwa_gateway` fige, et le gain est faible. `OPTIONAL — c'est
+sa décision.`
+
 ## Ce qui a été trouvé et **délibérément pas corrigé**
 
 **Le métré n'accepte pas « une paroi de 12 x 2,50 m ».** Il accepte
