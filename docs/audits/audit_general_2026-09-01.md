@@ -1092,12 +1092,22 @@ Chacune de ces réponses est un choix de produit **sur ses données à lui**, pa
 un réglage technique. La règle du dépôt est nette : quand l'ambiguïté change
 matériellement l'implémentation, on demande.
 
+**Un quatrième fait, qui change la réponse** : côté serveur, il n'y a
+**aucune limite de nombre**. `DepotConversations` plafonne la taille d'**une**
+conversation (2 Mo) et rien d'autre. Configurer la synchronisation suffit donc
+à supprimer entièrement le problème — le plafond de 30 redevient ce qu'il
+prétend être, un cache local.
+
 Ce que je propose, dans l'ordre de ce qui coûte le moins :
 
 1. **Dire l'éviction** — un avertissement quand il dépasse 30 conversations
-   sans serveur configuré, avec le même mécanisme que les n° 25 et 26.
+   *sans serveur configuré*, avec le même mécanisme que les n° 25 et 26. C'est
+   le seul cas où le plafond fait perdre quelque chose.
 2. **Dire l'échec d'écriture** — `persist()` rend un booléen, l'appelant le
    montre.
 3. **Monter le plafond**, ou passer à IndexedDB, qui n'a pas la même limite.
+
+Le 1 traite la cause réelle et coûte le moins ; le 3 traite le symptôme et
+coûte le plus.
 
 `OPTIONAL — NON IMPLÉMENTÉ.` C'est sa décision.
