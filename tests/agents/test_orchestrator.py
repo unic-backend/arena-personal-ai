@@ -397,3 +397,32 @@ class TestAiguillageDeLAudio:
     def test_l_audio_ne_capture_pas_les_voisins(self, fake_provider, phrase, attendu):
         agent = OrchestratorAgent(provider=fake_provider, memory=None)
         assert agent._classer_par_mots_cles(phrase) == attendu
+
+
+class TestAiguillageDuProjetVideo:
+    """DEC-0037 : une phrase composite (« analyse ces photos et fais-en une
+    vidéo avec narration ») porte aussi les mots de VISION/AUDIO — sans ce
+    contrôle testé en premier, elle capturait un seul de ses morceaux."""
+
+    @pytest.mark.parametrize("phrase", [
+        "un projet vidéo complet pour ce chantier",
+        "je veux un projet video de A à Z",
+        "une vidéo professionnelle avec narration pour ce chantier",
+        "vidéo promotionnelle complète du chantier de Ouakam",
+        "produis une vidéo complète avec les photos et une narration",
+    ])
+    def test_une_demande_de_projet_va_au_projet_video(self, fake_provider, phrase):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == "VIDEO_PROJET"
+
+    @pytest.mark.parametrize("phrase,attendu", [
+        ("analyse cette photo du chantier", "VISION"),
+        ("fais une voix off pour la vidéo du chantier", "AUDIO"),
+        ("monte une vidéo avec les photos du chantier", "MONTAGE"),
+        ("génère une vidéo sur la pose de placo", "VIDEO_ANALYSIS"),
+    ])
+    def test_le_projet_video_ne_capture_pas_les_demandes_d_une_seule_capacite(
+        self, fake_provider, phrase, attendu,
+    ):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == attendu

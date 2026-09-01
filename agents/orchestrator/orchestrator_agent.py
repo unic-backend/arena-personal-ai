@@ -66,6 +66,7 @@ INTENTIONS = {
     "VISION",
     "MONTAGE",
     "AUDIO",
+    "VIDEO_PROJET",
 }
 
 #: Ce qui parle de ses RESEAUX SOCIAUX. Teste avant le metier : « une
@@ -195,6 +196,24 @@ SUIVI_VIDEO = (
     "avancement de la video",
 )
 
+#: Un PROJET video qui doit faire collaborer PLUSIEURS capacites reelles sur
+#: UN MEME projet (DEC-0037 : vision, WanGP, MoneyPrinterTurbo, VoiceStudio,
+#: montage) — distinct de chaque capacite prise seule (VISION, AUDIO,
+#: MONTAGE, VIDEO_ANALYSIS). Teste EN PREMIER parmi les demandes video : une
+#: phrase composite comme « analyse ces photos et fais-en une video avec
+#: narration » porte aussi les mots de VISION/AUDIO, qui la capteraient
+#: sinon pour un seul de ses morceaux. Phrases exactes, jamais un mot nu
+#: (« projet » seul, ou « video » seul, ne suffit pas) — meme discipline que
+#: DEMANDE_DE_DOCUMENT dans agents/plaquiste/plaquiste_agent.py.
+VIDEO_PROJET = (
+    "projet video complet", "projet vidéo complet",
+    "projet video de a à z", "projet vidéo de a à z",
+    "video professionnelle avec narration", "vidéo professionnelle avec narration",
+    "video promotionnelle complete", "vidéo promotionnelle complète",
+    "video promotionnelle pour", "vidéo promotionnelle pour",
+    "produis une video complete", "produis une vidéo complète",
+)
+
 # --- Contrôle daté, évalué AVANT le modèle -------------------------------------
 # Le tri d'intention est fait par un modèle. Or un modèle dont les connaissances
 # s'arrêtent avant l'année en cours ne peut pas reconnaître qu'une question porte
@@ -280,6 +299,9 @@ DEEP_RESEARCH   : produire une étude, un rapport documenté, une recherche appr
 TREND_SEARCH    : chercher des tendances ou des idées de contenu vidéo.
 VIDEO_ANALYSIS  : analyser, découper ou reformater un fichier vidéo ; fabriquer
                   une vidéo ; suivre une génération ; préparer le prompt d'une scène.
+VIDEO_PROJET    : un projet vidéo complet qui doit faire collaborer PLUSIEURS
+                  capacités (analyse d'images, génération, narration, montage)
+                  sur un même résultat — pas une seule d'entre elles prise seule.
 EMAIL           : lire, trier ou répondre à son courrier.
 SOCIAL          : écrire, relire ou préparer une publication pour ses réseaux.
 PLAQUISTE       : metier du proprietaire — devis, facture, mail client,
@@ -508,6 +530,13 @@ class OrchestratorAgent(BaseAgent):
         # contient « client » sans etre une demande de devis.
         if any(k in text for k in COURRIER):
             return "EMAIL"
+
+        # Un projet video complet (DEC-0037) : plusieurs capacites doivent
+        # collaborer. Teste EN PREMIER parmi tout ce qui touche a la video —
+        # une phrase composite porte aussi les mots de VISION/AUDIO/MONTAGE,
+        # qui la capteraient sinon pour un seul de ses morceaux.
+        if any(k in text for k in VIDEO_PROJET):
+            return "VIDEO_PROJET"
 
         # Analyser une image. Teste AVANT le metier : le sujet d une photo est
         # souvent le chantier lui-meme, sans etre une demande de devis.

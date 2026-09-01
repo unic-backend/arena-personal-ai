@@ -42,6 +42,7 @@ from apps.backend.runtime import (
     swe_agent,
     trend_agent,
     video_agent,
+    video_production_agent,
     vision_agent,
 )
 from apps.backend.security import limiter_debit, validate_media_path, verify_api_key
@@ -360,6 +361,12 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         # chemin du tout (`core/montage/planificateur.py`).
         result = await montage_agent.run(
             request.prompt, context={"medias": medias_montables(request.video_path)})
+    elif intent == "VIDEO_PROJET":
+        # Meme inventaire que MONTAGE et AUDIO : ses fichiers reels, jamais
+        # un chemin cite par le modele (core/production/plan_video.py fait
+        # deja la meme substitution par index, cote serveur).
+        result = await video_production_agent.run(
+            request.prompt, context={"references": medias_montables(request.video_path)})
     elif intent == "DEEP_RESEARCH":
         result = await researcher_agent.run(request.prompt)
     elif intent == "CODE_EXECUTION":
