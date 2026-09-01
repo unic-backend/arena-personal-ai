@@ -8,6 +8,9 @@ permet à un calcul impossible de ne pas emporter la réponse avec lui.
 `test_une_etape_obligatoire_qui_echoue_arrete_et_dit_ou` — on ne rend pas un
 résultat partiel en le présentant comme complet.
 """
+import asyncio
+import time
+
 import pytest
 
 from core.execution.coordination import (
@@ -242,3 +245,130 @@ async def test_un_bac_a_sable_absent_n_emporte_pas_la_reponse(provider_factory, 
     assert etapes["synthese"] == "DONE"
     assert "Erreur calcul" in resultat["calculation_result"]
     assert resultat["final_response"] == "Solution sans calcul."
+
+
+# --- executer_parallele() : les etapes independantes tournent ensemble ------------------
+#
+# Construit pour l'orchestrateur Video (01/09/2026) : plusieurs capacites
+# reelles (WanGP, VoiceStudio, Vision...) doivent pouvoir travailler sur un
+# meme projet sans s'attendre l'une l'autre quand rien ne les y oblige, tout
+# en respectant les dependances reelles ET la contrainte materielle d'un
+# seul GPU physique (RTX A2000).
+
+async def _etape_qui_dort(nom, secondes, resultat="ok", **kw):
+    async def dormir(*_):
+        await asyncio.sleep(secondes)
+        return resultat
+    return Etape(nom, dormir, **kw)
+
+
+async def test_deux_etapes_independantes_tournent_en_parallele():
+    a = await _etape_qui_dort("a", 0.12)
+    b = await _etape_qui_dort("b", 0.12)
+
+    depart = time.perf_counter()
+    resultat = await Coordination("t", [a, b]).executer_parallele(parallelisme=4)
+    duree = time.perf_counter() - depart
+
+    assert resultat.aboutie is True
+    assert duree < 0.20, "deux etapes de 0.12s independantes ont pris comme en sequentiel"
+
+
+async def test_executer_parallele_respecte_les_dependances():
+    ordre = []
+
+    async def source(*_):
+        await asyncio.sleep(0.05)
+        ordre.append("source")
+        return "valeur source"
+
+    async def suite(acquis):
+        ordre.append(("suite", acquis.get("source")))
+        return "ok"
+
+    resultat = await Coordination("t", [
+        Etape("source", source),
+        Etape("suite", suite, depend_de=("source",)),
+    ]).executer_parallele(parallelisme=4)
+
+    assert resultat.aboutie is True
+    assert ordre == ["source", ("suite", "valeur source")]
+
+
+async def test_executer_parallele_une_etape_obligatoire_echouee_arrete_la_suite():
+    def tombe():
+        raise RuntimeError("panne")
+
+    resultat = await Coordination("t", [
+        Etape("obligatoire", tombe),
+        Etape("jamais", lambda acquis: "ne doit pas tourner",
+              depend_de=("obligatoire",)),
+    ]).executer_parallele(parallelisme=4)
+
+    assert resultat.aboutie is False
+    assert resultat.trace_de("obligatoire").etat is EtatEtape.ECHOUEE
+    assert resultat.trace_de("jamais").etat is EtatEtape.NON_ATTEINTE
+
+
+async def test_executer_parallele_une_etape_deja_lancee_va_jusqu_au_bout():
+    """Une generation WanGP deja engagee n'est jamais annulee parce qu'une
+    AUTRE etape independante a echoue — gaspiller le GPU deja engage serait
+    pire que la laisser finir."""
+    marque = {}
+
+    def tombe():
+        raise RuntimeError("panne")
+
+    async def longue(*_):
+        await asyncio.sleep(0.08)
+        marque["longue"] = "allee au bout"
+        return "ok"
+
+    resultat = await Coordination("t", [
+        Etape("obligatoire", tombe),
+        Etape("longue", longue),
+    ]).executer_parallele(parallelisme=4)
+
+    assert marque.get("longue") == "allee au bout"
+    assert resultat.trace_de("longue").etat is EtatEtape.REUSSIE
+    assert resultat.aboutie is False
+
+
+async def test_executer_parallele_respecte_la_limite_de_ressource_partagee():
+    """Deux etapes du meme groupe de ressource (GPU local) ne tournent
+    jamais en meme temps, meme independantes l'une de l'autre."""
+    a = await _etape_qui_dort("a", 0.10, ressource="gpu_local")
+    b = await _etape_qui_dort("b", 0.10, ressource="gpu_local")
+
+    depart = time.perf_counter()
+    resultat = await Coordination("t", [a, b]).executer_parallele(
+        parallelisme=4, limites_ressources={"gpu_local": 1})
+    duree = time.perf_counter() - depart
+
+    assert resultat.aboutie is True
+    assert duree >= 0.19, "les deux etapes GPU ont tourne en meme temps malgre la limite"
+
+
+async def test_executer_parallele_une_dependance_circulaire_est_detectee():
+    resultat = await asyncio.wait_for(
+        Coordination("t", [
+            Etape("a", lambda acquis: "a", depend_de=("b",)),
+            Etape("b", lambda acquis: "b", depend_de=("a",)),
+        ]).executer_parallele(parallelisme=4),
+        timeout=2.0)
+
+    assert resultat.aboutie is False
+    assert resultat.trace_de("a").etat is EtatEtape.ECHOUEE
+    assert resultat.trace_de("b").etat is EtatEtape.ECHOUEE
+    assert "circulaire" in resultat.trace_de("a").raison
+
+
+async def test_executer_parallele_une_etape_facultative_echouee_n_arrete_pas():
+    resultat = await Coordination("t", [
+        Etape("optionnelle", lambda: 1 / 0, facultative=True),
+        Etape("suite", lambda: "ok"),
+    ]).executer_parallele(parallelisme=4)
+
+    assert resultat.aboutie is True
+    assert resultat.trace_de("optionnelle").etat is EtatEtape.ABANDONNEE
+    assert resultat.trace_de("suite").etat is EtatEtape.REUSSIE
