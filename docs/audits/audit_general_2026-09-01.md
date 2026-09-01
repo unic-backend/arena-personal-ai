@@ -703,3 +703,51 @@ serveur et l'historique du navigateur. Le code dit pourquoi — un
 arbitrage écrit, pas un oubli ; le changer demande une autre mécanique
 (jeton court à usage unique) et c'est une décision du propriétaire.
 `OPTIONAL — NON IMPLÉMENTÉ`.
+
+---
+
+# Défaut n° 22 — ses prix modifiés n'étaient vus qu'au redémarrage
+
+**Le plus coûteux de la nuit**, parce qu'il touche l'argent qui part chez un
+client.
+
+`PlaquisteAgent` lit `config/unic_plaquiste.yaml` **une fois**, dans son
+constructeur — et l'agent est un singleton créé à l'import de
+`apps/backend/runtime.py`, donc au démarrage du serveur. `DevisConnector`
+faisait pareil.
+
+Mesuré avant correction :
+
+```
+1 AU DEMARRAGE        -> Plaque standard BA13 = 4500
+2 FICHIER             -> ecrit a 999999
+3 CE QUE L AGENT VOIT -> 4500
+```
+
+Le propriétaire change le prix de sa plaque, ARENA continue de chiffrer à
+l'ancien, et **rien ne le lui dit**. C'est exactement le mode d'échec que ce
+dépôt nomme ailleurs comme le pire : *un mauvais prix sur un document qui part
+chez un client*.
+
+Même famille que les défauts n° 14 (sonde Docker) et n° 19 (modèle
+d'embeddings) : **une valeur mesurée une fois, servie comme si elle était
+actuelle**. Trois occurrences en une nuit.
+
+**Correctif** — `MetierSuivi` relit le fichier quand sa **date de modification**
+a changé. Jamais sur une horloge : un fichier inchangé n'est pas relu, un
+fichier changé l'est au chiffrage suivant. Mesuré après correction : `999999`,
+puis `4500` de nouveau après restauration du fichier.
+
+Un fichier effacé **vide** la grille au lieu de figer l'ancienne : refuser de
+chiffrer est plus sûr que chiffrer sur une grille fantôme. Une grille injectée
+(les tests) n'est jamais écrasée par le disque.
+
+## Un piège attrapé en écrivant les tests
+
+`MetierSuivi(chemin: Path = FICHIER_METIER)` : le défaut d'argument est évalué
+**à l'import**, donc figé à la valeur qu'avait la constante au chargement du
+module. Deux de mes tests ont échoué là-dessus.
+
+C'est littéralement la même famille que le défaut réparé — une valeur figée
+trop tôt, servie comme si elle était actuelle. Le chemin est désormais résolu
+à l'appel.
