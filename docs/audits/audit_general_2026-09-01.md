@@ -1111,3 +1111,45 @@ Le 1 traite la cause réelle et coûte le moins ; le 3 traite le symptôme et
 coûte le plus.
 
 `OPTIONAL — NON IMPLÉMENTÉ.` C'est sa décision.
+
+---
+
+# Défaut n° 27 — une garantie de lecture seule que rien ne tenait
+
+Trouvé en cherchant systématiquement les **méthodes publiques sans aucun
+appelant** — la forme qui avait déjà piégé `LimiteurDebit.nettoyer()` le 31/08
+et `PolitiqueDePermissions.recharger()` cette nuit.
+
+Le balayage rend 56 candidats ; en écartant les propriétés (lues comme des
+attributs, pas appelées) et les rappels de bibliothèque, il en reste **cinq**.
+Deux sont appelées par `asyncio.to_thread`, que la syntaxe cache. Il en reste
+**trois** :
+
+| Méthode | Ce qu'elle fait | Appelée |
+|---|---|---|
+| `SWEACITool.edit` | **écrit** dans un fichier | nulle part |
+| `SWEACITool.view` | lit des lignes | nulle part |
+| `RepoEngineerTool.read_files` | lit des fichiers | nulle part |
+
+La première est celle qui compte. `SWEAgent` se déclare en lecture seule —
+dans sa docstring, et dans ce qu'il **dit au propriétaire** :
+
+> *Cet agent analyse et propose. Il ne modifie aucun fichier : c'est toi qui
+> décides d'appliquer la correction ou non.*
+
+Or `edit` est là, dans l'outil que cet agent possède, et **rien** ne l'empêche
+d'être branché : ni un test, ni une frontière, ni même une couverture. La
+garantie ne tenait qu'au fait que personne ne l'avait fait.
+
+**Correctif** : trois tests en font une frontière — l'agent n'appelle aucune
+écriture, **personne dans le dépôt** ne la branche, et la promesse reste écrite
+dans sa réponse. Brancher `edit` fait tomber deux d'entre eux, avec le message
+qui dit quoi faire d'abord : changer la garantie, pas la contourner.
+
+**Rien n'est supprimé.** Un orphelin est une question, pas un verdict — c'est
+la règle de `scripts/orphelins.py` et elle vaut ici. Les trois méthodes
+existent toujours ; ce qui change, c'est qu'on ne peut plus les brancher sans
+le décider.
+
+`view` et `read_files` sont en lecture seule : leur sort est une question
+ouverte, pas un risque. `OPTIONAL — NON IMPLÉMENTÉ.`
