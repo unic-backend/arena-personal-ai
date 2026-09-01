@@ -498,3 +498,37 @@ git fetch origin master && git diff --stat <derniere-tete> origin/master
 
 Rien en sortie = tout est passé. Règle écrite dans
 `docs/REGLES_DE_TRAVAIL.md`, § 3, pour ne pas la redécouvrir une quatrième fois.
+
+---
+
+# Défaut n° 17 — un flux vide était compté comme un succès
+
+`RouteurModeles.generate_stream` replie sur le fournisseur suivant tant que
+**rien n'est parti vers l'écran** — c'est sa règle, et elle est juste. Mais un
+fournisseur qui termine son flux **sans un seul morceau** ne lève aucune
+exception : la boucle sortait normalement et l'appel était noté `succès`.
+
+Mesuré :
+
+```
+avant : morceaux []          dernier_choix 'CHOIX-PRECEDENT'   repli local []
+après : morceaux ['reponse locale']   dernier_choix 'local'    repli local ['bonjour']
+```
+
+Deux conséquences, et la seconde est la plus sournoise :
+
+1. **Aucun repli.** L'écran du propriétaire reste vide alors qu'Ollama aurait
+   répondu.
+2. **`dernier_choix` gardait la valeur du tour précédent.** `moteur_utilise()`
+   annonçait donc à l'interface le **mauvais** moteur. ARENA lui dit qui a
+   répondu (DEC-0009, parce que le lui cacher serait lui mentir sur ce qui a vu
+   sa phrase) — et se trompait.
+
+Même défaut hors flux : `generate` renvoyait une réponse vide telle quelle.
+
+**Le repli se fait sans mettre le fournisseur au frais**, et c'est le point qui
+demandait de la mesure plutôt qu'un réflexe. `_echec(LOCAL)` aurait fait dire à
+`is_available()` « Ollama hors-ligne » pendant deux minutes **alors qu'Ollama
+répond** : ARENA aurait dit quelque chose de faux sur la machine du
+propriétaire. Un flux vide est une mauvaise réponse, pas une indisponibilité
+prouvée. Un test pin l'asymétrie ; ajouter `_echec` le fait tomber.

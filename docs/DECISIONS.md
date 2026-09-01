@@ -2191,3 +2191,20 @@ dans le protocole.
 la même phrase partagent une mémoire. Et un client qui envoie un fil très long
 fait un prompt très long — c'est lui qui décide de ce qu'il envoie, ARENA ne
 tronque pas en silence.
+
+## DEC-0032 — Un flux vide n'est pas une réponse, et n'est pas une panne
+
+**2026-09-01.** Un fournisseur qui termine son flux sans un seul morceau ne
+lève rien : l'appel était noté `succès`, aucun repli n'avait lieu, et
+`dernier_choix` gardait la valeur du tour précédent — l'interface nommait le
+mauvais moteur. Un flux vide déclenche désormais le repli, comme n'importe quel
+échec survenu avant le premier mot.
+
+Mais **sans** mettre le fournisseur au frais. `_echec(LOCAL)` ferait répondre
+`is_available()` « Ollama hors-ligne » pendant deux minutes alors qu'Ollama
+répond : ARENA dirait une chose fausse sur la machine du propriétaire. Un flux
+vide est une mauvaise réponse, pas une indisponibilité prouvée.
+
+**Ce que ça coûte si c'est faux** : un fournisseur réellement cassé qui rend du
+vide est ré-essayé à chaque phrase, au lieu d'être écarté pendant deux minutes.
+On paie une tentative vide par tour ; on ne dit rien de faux.

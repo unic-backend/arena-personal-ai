@@ -442,3 +442,97 @@ class TestQuandPersonneNePeutRepondre:
             "le message invite à un réglage qui ne débloquerait rien, et qui "
             "donnerait au propriétaire l'idée d'envoyer un secret au cloud")
         assert "Azerty123" not in message, "le secret est recopié dans l'erreur"
+
+
+# --- Un flux vide n'est pas une réponse ---------------------------------------
+
+class Muet:
+    """Un fournisseur joignable qui rend zéro morceau : `200`, rien dedans."""
+
+    model_name = "modele-muet"
+    configure = True
+
+    def __init__(self, nom="groq", texte=""):
+        self.nom = nom
+        self.texte = texte
+        self.appels = []
+        self.derniere_mesure = None
+
+    async def is_available(self):
+        return True
+
+    async def generate(self, prompt, system_prompt=None):
+        self.appels.append(prompt)
+        return self.texte
+
+    async def generate_stream(self, prompt, system_prompt=None):
+        self.appels.append(prompt)
+        return
+        yield  # pragma: no cover - rend la fonction asynchrone génératrice
+
+
+class TestFluxVide:
+    """Mesuré le 01/09/2026 : un flux vide était compté comme un succès.
+
+    Deux conséquences, et la seconde est la plus sournoise :
+
+    1. Aucun repli — l'écran du propriétaire restait vide alors qu'Ollama
+       aurait répondu.
+    2. `dernier_choix` gardait la valeur du **tour précédent**, donc
+       `moteur_utilise()` annonçait à l'interface le mauvais moteur. ARENA lui
+       aurait dit qui a répondu, et se serait trompé.
+
+    Le repli est permis ici parce que **rien n'est parti vers son écran** :
+    c'est exactement la fenêtre que `generate_stream` s'autorise déjà.
+    """
+
+    @staticmethod
+    def _routeur(muet, local):
+        return RouteurModeles(local=local, distants={"groq": muet}, mode="HYBRIDE")
+
+    async def test_un_flux_vide_replie_sur_la_machine(self):
+        muet = Muet()
+        local = FauxFournisseur(LOCAL, morceaux=["reponse locale"])
+        routeur = self._routeur(muet, local)
+
+        morceaux = [m async for m in routeur.generate_stream("bonjour")]
+
+        assert morceaux == ["reponse locale"]
+        assert local.appels == ["bonjour"], "le repli doit vraiment avoir lieu"
+
+    async def test_l_interface_ne_nomme_pas_le_moteur_du_tour_precedent(self):
+        muet = Muet()
+        local = FauxFournisseur(LOCAL, morceaux=["reponse locale"])
+        routeur = self._routeur(muet, local)
+        routeur.dernier_choix = "CHOIX-DU-TOUR-PRECEDENT"
+
+        async for _ in routeur.generate_stream("bonjour"):
+            pass
+
+        assert routeur.dernier_choix.fournisseur == LOCAL
+        assert "groq" in routeur.dernier_choix.replis
+
+    async def test_une_reponse_vide_hors_flux_replie_aussi(self):
+        muet = Muet(texte="   ")
+        local = FauxFournisseur(LOCAL, texte="reponse locale")
+        routeur = self._routeur(muet, local)
+
+        reponse = await routeur.generate("bonjour")
+
+        assert "reponse locale" in reponse
+
+    async def test_un_flux_vide_ne_met_pas_ollama_au_frais(self):
+        """Sinon `is_available()` dirait « Ollama hors-ligne » alors qu'il répond.
+
+        Un flux vide est une mauvaise réponse, pas une indisponibilité prouvée.
+        La différence se voit dans ce qu'ARENA dit ensuite au propriétaire.
+        """
+        muet_local = Muet(nom=LOCAL)
+        routeur = RouteurModeles(local=muet_local, distants={}, mode="HYBRIDE")
+
+        with pytest.raises(RuntimeError):
+            async for _ in routeur.generate_stream("bonjour"):
+                pass
+
+        assert await routeur.is_available() is True
+        assert routeur.etats[LOCAL].au_repos(0.0) is False
