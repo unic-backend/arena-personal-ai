@@ -15,6 +15,10 @@
 - **La passerelle compatible OpenAI sortait en `500` nu** quand Ollama tombait,
   sur la surface qu'utilisent les outils extérieurs. Elle rend désormais un
   objet d'erreur JSON en 503, et son flux ne meurt plus en silence.
+- **Les sous-titres ne s'inventent plus.** Sans transcription, deux phrases
+  écrites en dur produisaient un vrai fichier annoncé comme un succès — de la
+  réclame pouvait finir incrustée sur une vidéo de chantier. Et « corrigés »
+  était écrit même quand la relecture n'avait pas eu lieu.
 - **Le docteur ne connaissait pas la voix**, et ne se contente plus d'un port
   qui répond : il demande les moteurs.
 

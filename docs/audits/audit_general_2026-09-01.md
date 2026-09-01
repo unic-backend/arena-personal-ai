@@ -6,7 +6,7 @@ en cassant volontairement ce que son test protège.*
 
 Point de départ posé par le propriétaire : « Ne suppose pas qu'une suite de
 tests verte veut dire que le projet est sain. » Elle l'était : 2542 tests au
-vert. **Huit défauts réels ont été trouvés quand même.**
+vert. **Neuf défauts réels ont été trouvés quand même.**
 
 ---
 
@@ -30,7 +30,7 @@ vert. **Huit défauts réels ont été trouvés quand même.**
 
 ---
 
-## Les huit défauts trouvés, et ce qu'ils coûtaient
+## Les neuf défauts trouvés, et ce qu'ils coûtaient
 
 ### 1. `/health` taisait six agents — dont son assistant devis
 
@@ -112,7 +112,29 @@ lire, en **503** (le problème n'est pas la requête) ; le flux dit la panne et
 se ferme par `[DONE]`. Un refus d'authentification reste un `401` : une panne
 de service ne maquille pas un problème d'accès.
 
-### 8. Le docteur ne connaissait pas la voix
+### 8. Les sous-titres s'inventaient, et se disaient relus
+
+Trouvé en lançant **chaque agent** avec une phrase banale. `SubtitleAgent`
+répondait `success` — « ✅ Sous-titres CapCut **corrigés** et générés » — alors
+que rien ne lui avait été donné.
+
+Deux mensonges dans une seule réponse :
+
+1. **Sans transcription, il en inventait une.** Deux phrases écrites en dur
+   (« Bienvenue sur Usman », « Sous titres TikTok automatiques ») produisaient
+   un vrai fichier `.ass`. De la réclame pouvait finir **incrustée sur une
+   vidéo de chantier**. C'est précisément ce que les règles du dépôt appellent
+   « épingler une valeur fabriquée » : une capacité sans matière se rapporte,
+   elle ne se simule pas.
+2. **« corrigés » était écrit même quand la relecture n'avait pas eu lieu.**
+   L'exception partait dans un `logger.warning` que personne ne lit.
+
+Sans transcription : refus, aucun fichier. Avec, mais sans modèle : le message
+dit « générés SANS relecture ». Les deux appelants (studio et
+`/api/process-video`) vérifiaient déjà l'existence du fichier — la correction
+dégrade proprement.
+
+### 9. Le docteur ne connaissait pas la voix
 
 Une capacité que le diagnostic ignore est invisible au propriétaire. Et un port
 qui répond ne prouve rien : **VoiceStudio démarre très bien sans aucun moteur**.
@@ -152,8 +174,8 @@ correction de nuit, c'est une décision du propriétaire.
 
 ```
 python -m ruff check .                                   -> All checks passed!
-python -m pytest tests/ -q                               -> 2578 passed, 44 deselected
-OMNIVOICE_URL=http://127.0.0.1:9 python -m pytest tests/ -q -> 2578 passed  (conditions CI)
+python -m pytest tests/ -q                               -> 2582 passed, 44 deselected
+OMNIVOICE_URL=http://127.0.0.1:9 python -m pytest tests/ -q -> 2582 passed  (conditions CI)
 python scripts/orphelins.py                              -> aucun module réel endormi
 ```
 
