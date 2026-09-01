@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from agents.video_analyzer.video_analyzer_agent import demande_de_suivi
 from apps.backend.config import AGENTS_SPECIALISES, MEDIA_DIR
-from apps.backend.prompts import get_arena_system_prompt
+from apps.backend.prompts import prompt_avec_methode
 from apps.backend.runtime import (
     audio_agent,
     browser_agent,
@@ -380,7 +380,7 @@ async def chat_stream_endpoint(request: ChatRequest):
         history = memory.get_recent_history(session_id=session_id, limit=6)
         memory.add_chat_message(session_id=session_id, role="user", content=request.prompt)
 
-        system_prompt = get_arena_system_prompt()
+        system_prompt = prompt_avec_methode(request.prompt, intent)
 
         prompt_lines = []
         for msg in history:

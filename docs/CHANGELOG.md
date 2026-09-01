@@ -2,6 +2,16 @@
 
 ## [Non publié]
 
+### Ajouté — 01/09/2026 (spécialistes)
+- **ARENA applique la méthode du métier concerné.** Sécurité, tests,
+  architecture, référencement, contenu, données, produit… douze métiers, chacun
+  avec ses étapes, ses contrôles et sa définition de « fini » (DEC-0028).
+- **Toujours une seule intelligence** : aucun agent créé, aucune des 319
+  définitions du dépôt source copiée. Deux méthodes au maximum par demande, et
+  souvent aucune.
+- **Aucun spécialiste décoratif** : un test refuse un métier qu'ARENA ne sait
+  pas exécuter.
+
 ### Corrigé — 01/09/2026 (audit général)
 - **Un nom de fichier avec apostrophe cassait l'incrustation des sous-titres.**
   « chantier d'Ouakam » suffisait. Les trois échappements ffmpeg possibles

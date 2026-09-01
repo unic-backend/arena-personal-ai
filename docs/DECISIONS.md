@@ -2028,3 +2028,83 @@ parlé**, pour que le propriétaire voie qu'un moteur anglais a lu son texte.
 
 Retour arrière : retirer `"AUDIO"` de `AGENTS_SPECIALISES` rend l'intention
 inatteignable sans toucher au connecteur, qui reste appelable par le registre.
+
+
+---
+
+## DEC-0028 : des méthodes de spécialistes, pas des spécialistes
+
+*Décidé le 01/09/2026, mission « intégration Agency Agents ».*
+
+### Le problème
+
+`msitarzewski/agency-agents` (MIT, commit `3c958888`) contient **319
+définitions d'agents** répartis en 19 divisions. Chacune est un prompt de rôle
+d'environ 230 lignes : identité, personnalité, mission, métriques de succès.
+
+La demande du propriétaire était explicite : *« ARENA remains ONE AI. Do not
+create 150 disconnected AI personalities. »*
+
+### La décision
+
+**Aucun agent n'a été créé. Aucune définition n'a été copiée.**
+
+Ce qui entre dans ARENA est un **catalogue de méthodes** :
+`core/specialistes/catalogue.py`. Douze métiers, chacun tenant en un
+enregistrement compact — les étapes, les contrôles, la définition de « fini »,
+et **le chemin d'ARENA qui exécute**.
+
+Ce qui a été gardé de la source : les taxonomies, et la partie substantielle
+des listes de contrôle (STRIDE, OWASP, pyramide de tests, référencement
+local). Ce qui a été laissé : la prose de rôle. « Tu es stratégique et
+soucieux de la qualité » ne change rien à ce qui est produit et allonge chaque
+prompt.
+
+Quatre règles portent le catalogue :
+
+1. **Aucun spécialiste décoratif.** `capacite` nomme une intention que
+   l'aiguilleur sait router. Un test refuse l'ajout d'un métier qu'ARENA ne
+   sait pas exécuter — c'est précisément ainsi que ce genre de système
+   pourrit : on ajoute des noms, personne ne vérifie qu'ils mènent quelque
+   part.
+2. **Aucun doublon.** Quand ARENA sait déjà faire — recherche, réseaux
+   sociaux, devis, montage — la méthode **enrichit** l'agent existant.
+3. **Une méthode n'est pas un ton.** Des étapes et des contrôles, rien
+   d'autre.
+4. **Deux méthodes au maximum**, et souvent zéro. Le risque n'est pas d'en
+   manquer une : c'est d'en convoquer six pour une question qui n'en demandait
+   aucune.
+
+### Le branchement
+
+Un seul endroit compose les règles d'ARENA et la méthode
+(`apps/backend/prompts.prompt_avec_methode`), et les **trois** chemins de
+réponse y passent. Trois assemblages séparés auraient dérivé — c'est
+exactement ce qui était arrivé à la liste d'agents de `/health`.
+
+La méthode vient **après** les règles d'ARENA : elle précise comment
+travailler, elle ne peut rien effacer de ce que la plateforme s'interdit.
+
+### Ce que ça coûte si c'est faux
+
+Le choix se fait par mots-clés, pas par un modèle. C'est délibéré : un
+aiguillage qui dépend d'Ollama ne marche pas quand Ollama est éteint, et le
+propriétaire a besoin qu'ARENA reste utile sans son PC. Le prix : une demande
+formulée d'une façon que le catalogue ne prévoit pas n'obtient aucune méthode,
+et ARENA répond comme avant — dégradation silencieuse, mais dans le sens sûr.
+
+### Deux défauts trouvés par les tests de ce module
+
+- **« ci » était reconnu dans « merci »** : la recherche par sous-chaîne
+  convoquait un spécialiste DevOps sur un remerciement. Corrigé par une
+  reconnaissance aux frontières de mot.
+- **« devis » et « chantier » déclenchaient le chiffrage** — ce sont les mots
+  de tous les jours du propriétaire. « Corrige ce bug dans le module de
+  devis » et « monte une vidéo du chantier » convoquaient une méthode de
+  calcul de marge. Les déclencheurs portent maintenant sur l'argent et les
+  quantités ; pour le reste, l'intention `PLAQUISTE` de l'aiguilleur fait déjà
+  le renfort.
+
+Retour arrière : `bloc_de_methode` rend une chaîne vide si le catalogue est
+vidé, et les trois chemins de réponse retrouvent le prompt d'avant sans autre
+changement.
