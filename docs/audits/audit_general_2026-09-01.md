@@ -1282,3 +1282,31 @@ qui a dérivé fait échouer 19 tests d'un coup. Vécu. »*
 
 C'est la quatrième fois cette nuit qu'un test existant m'arrête — et à chaque
 fois il avait raison.
+
+## Deux chemins de plus, mesurés, et **pas corrigés** — c'est une décision
+
+Le balayage des neuf chemins continue. Deux autres versent dans une invite du
+texte que le propriétaire n'a pas écrit : la **transcription** d'un fichier
+audio ou vidéo, lue par `SubtitleAgent` et par `ClipSelectorAgent`.
+
+Mesuré : `transcription dans le prompt : True` · `enveloppée : False`.
+
+**Pourquoi je ne les corrige pas cette nuit.** Le cas du web était sans
+ambiguïté : `FreshInfoAgent` enveloppait, ses deux jumeaux non — une
+inconsistance à restaurer, pas une frontière à déplacer. Ici, **aucun agent ne
+le fait**, donc l'envelopper serait *étendre* la frontière de confiance sur ma
+seule lecture. C'est une décision d'architecture, et la règle du dépôt est
+nette : ce qui est possible ne devient pas requis.
+
+Ce qu'il faut savoir pour trancher :
+
+- Le texte vient d'un fichier du propriétaire — mais rien ne dit qu'il l'a
+  **produit** : une vidéo téléchargée ailleurs entre par le même dossier. Une
+  pièce jointe est déjà enveloppée au niveau `DOCUMENT` exactement pour cette
+  raison.
+- Le rayon d'action est **étroit** : le prompt de `SubtitleAgent` est très
+  contraint et sa sortie est redécoupée en mots recalés sur des minutages
+  existants. Mais ce dépôt a déjà eu un défaut où des sous-titres inventés
+  pouvaient finir incrustés sur une vidéo publiée.
+
+`OPTIONAL — NON IMPLÉMENTÉ.` Une ligne suffirait, sur le modèle du n° 29.
