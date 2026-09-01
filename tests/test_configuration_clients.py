@@ -296,3 +296,51 @@ class TestComparaisonDeCleATempsConstant:
         security.cle_presentee_valide("Bearer la-vraie-cle")
 
         assert appels, "la comparaison est repassee sur `==`"
+
+
+class TestLeDebitNeBloquePasUneConversation:
+    """Le limiteur existe pour arrêter une boucle emballée, pas le propriétaire.
+
+    Mesuré le 01/09/2026, sur de vrais appels HTTP : l'interface envoie **deux**
+    requêtes par message (`/agent/stream` puis `/conversations/sync`), et le
+    défaut était de dix par minute. Le **sixième** message d'une minute
+    recevait `429` :
+
+    ```
+    message  5 -> /agent/stream 200 | /conversations/sync 200
+    message  6 -> /agent/stream 429 | /conversations/sync 429
+    ```
+
+    Cinq messages par minute est un rythme de conversation ordinaire.
+    """
+
+    def test_la_limite_laisse_passer_une_conversation_rapide(self):
+        from apps.backend import config
+
+        messages = config.REQUETES_MAX // config.REQUETES_PAR_MESSAGE
+        par_minute = messages * 60 / config.FENETRE_SECONDES
+
+        assert par_minute >= 20, (
+            f"la limite n'autorise que {par_minute:.0f} message(s) par minute ; "
+            "quelqu'un qui tape vite serait bloque par son propre serveur"
+        )
+
+    def test_la_limite_arrete_quand_meme_une_boucle_emballee(self):
+        """Une boucle tape des centaines de fois par seconde, pas une."""
+        from apps.backend import config
+
+        par_seconde = config.REQUETES_MAX / config.FENETRE_SECONDES
+
+        assert par_seconde <= 5, (
+            f"{par_seconde:.0f} requetes/s laisse passer une boucle emballee"
+        )
+
+    def test_l_exemple_et_le_code_proposent_la_meme_limite(self):
+        """Une correction qui ne s'applique qu'à moitié est pire que rien."""
+        from apps.backend import config
+
+        for ligne in (RACINE / ".env.example").read_text(encoding="utf-8").splitlines():
+            if ligne.startswith("USMAN_RATE_LIMIT_REQUESTS="):
+                assert int(ligne.split("=", 1)[1]) == config.REQUETES_MAX
+                return
+        raise AssertionError("USMAN_RATE_LIMIT_REQUESTS absente de .env.example")

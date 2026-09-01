@@ -1016,3 +1016,47 @@ rien.
 Vérifié aussi que `npx tsc --noEmit` mesure vraiment, en cassant une propriété
 exprès :
 `error TS2551: Property 'lengthXX' does not exist on type 'string[]'`.
+
+---
+
+# Défaut n° 26 — le serveur bloquait son propriétaire au sixième message
+
+Trouvé en suivant le fil du n° 25 : la PWA avale `if (!reponse.ok) return null`.
+Quel `!ok` arrive vraiment ? Le `429` du limiteur de débit — et là, une mesure.
+
+L'interface envoie **deux** requêtes par message : `/agent/stream` puis
+`/conversations/sync`. Le défaut était **10 par minute**. Sur de vrais appels
+HTTP :
+
+```
+message  5 -> /agent/stream 200 | /conversations/sync 200
+message  6 -> /agent/stream 429 | /conversations/sync 429
+```
+
+**Cinq messages par minute est un rythme de conversation ordinaire.** Le
+limiteur existe pour arrêter une boucle emballée — qui tape des centaines de
+fois par seconde — pas le propriétaire qui tape vite.
+
+Défaut porté à **60 par minute** : une requête par seconde en moyenne, hors
+d'atteinte pour quelqu'un qui tape, et toujours cent fois sous une boucle. Après
+correction, mesuré de la même façon : **30 messages** passent avant le premier
+refus, contre 5.
+
+`.env.example` est corrigé aussi — une correction qui ne s'applique qu'à moitié
+est pire que rien, et un test vérifie que les deux valeurs restent égales.
+
+## Défaut n° 26 bis — et le refus était avalé
+
+`if (!reponse.ok) return null` traitait un `429` comme une coupure réseau. Or
+ce n'est pas la même chose : **le serveur répond, et il dit non**. Avalé en
+silence, il laissait croire que la conversation était sauvegardée.
+
+Le `429` remonte désormais distinctement (`DebitDepasse`) et l'interface le
+dit, avec la même mécanique que le n° 25 — rien d'inventé.
+
+Deux bornes tiennent la limite en place : elle doit laisser passer au moins
+20 messages par minute, **et** rester sous 5 requêtes par seconde. Baisser
+l'une ou monter l'autre fait tomber un test.
+
+Vérifié : `npx tsc --noEmit` → code 0, et il mesure vraiment (une propriété
+cassée exprès rend `error TS2551`).
