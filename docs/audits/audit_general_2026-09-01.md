@@ -6,7 +6,7 @@ en cassant volontairement ce que son test protège.*
 
 Point de départ posé par le propriétaire : « Ne suppose pas qu'une suite de
 tests verte veut dire que le projet est sain. » Elle l'était : 2542 tests au
-vert. **Six défauts réels ont été trouvés quand même.**
+vert. **Huit défauts réels ont été trouvés quand même.**
 
 ---
 
@@ -30,7 +30,7 @@ vert. **Six défauts réels ont été trouvés quand même.**
 
 ---
 
-## Les six défauts trouvés, et ce qu'ils coûtaient
+## Les huit défauts trouvés, et ce qu'ils coûtaient
 
 ### 1. `/health` taisait six agents — dont son assistant devis
 
@@ -99,7 +99,20 @@ VoiceStudio se tait aussi.
 Vérifié en vrai : un MP4 avec piste AAC, audio extrait par ffmpeg, modèle local
 levant `ModeleAbsent`, VoiceStudio rendant le texte.
 
-### 7. Le docteur ne connaissait pas la voix
+### 7. La passerelle compatible OpenAI sortait en `500` nu
+
+Ollama éteint, `/v1/chat/completions` rendait `500 Internal Server Error`,
+`text/plain`, **corps vide**. C'est la surface que les outils *extérieurs*
+utilisent : le client ne pouvait pas distinguer « le service est tombé » de
+« ta requête est invalide ». Et son flux mourait en silence, exactement comme
+`/api/chat/stream` (défaut 4) — le même défaut, à deux endroits.
+
+Elle rend maintenant l'objet d'erreur qu'un client compatible OpenAI sait
+lire, en **503** (le problème n'est pas la requête) ; le flux dit la panne et
+se ferme par `[DONE]`. Un refus d'authentification reste un `401` : une panne
+de service ne maquille pas un problème d'accès.
+
+### 8. Le docteur ne connaissait pas la voix
 
 Une capacité que le diagnostic ignore est invisible au propriétaire. Et un port
 qui répond ne prouve rien : **VoiceStudio démarre très bien sans aucun moteur**.
@@ -139,8 +152,8 @@ correction de nuit, c'est une décision du propriétaire.
 
 ```
 python -m ruff check .                                   -> All checks passed!
-python -m pytest tests/ -q                               -> 2573 passed, 44 deselected
-OMNIVOICE_URL=http://127.0.0.1:9 python -m pytest tests/ -q -> 2573 passed  (conditions CI)
+python -m pytest tests/ -q                               -> 2578 passed, 44 deselected
+OMNIVOICE_URL=http://127.0.0.1:9 python -m pytest tests/ -q -> 2578 passed  (conditions CI)
 python scripts/orphelins.py                              -> aucun module réel endormi
 ```
 

@@ -9,8 +9,8 @@ import json
 import logging
 import time
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from apps.backend.config import AGENTS_SPECIALISES
 from apps.backend.prompts import get_arena_system_prompt
@@ -104,6 +104,43 @@ def garantir_un_texte(contenu: str, modele: str) -> str:
     )
 
 
+#: 503 et non 500 : le probleme n'est pas la requete, et un client qui
+#: reessaie plus tard a raison de le faire.
+CODE_SERVICE_INDISPONIBLE = 503
+
+
+def _erreur_openai(souci: Exception, modele: str, stream: bool):
+    """L'erreur, dans la forme qu'un client compatible OpenAI sait lire.
+
+    Sans elle, une panne d'Ollama sortait en `500 Internal Server Error`,
+    `text/plain`, corps vide — sur la surface que les outils EXTERIEURS
+    utilisent. Le client ne pouvait pas distinguer « le service est tombe »
+    de « ta requete est invalide » (mesure du 01/09/2026). `/api/chat`
+    disait deja « Ollama hors-ligne » proprement ; cette passerelle non.
+    """
+    message = f"ARENA n'a pas pu repondre : {souci}"
+    logger.error("Passerelle OpenAI interrompue : %s", souci, exc_info=True)
+
+    if stream:
+        async def generateur():
+            cree = int(time.time())
+            yield "data: " + json.dumps({
+                "id": f"chatcmpl-{cree}", "object": "chat.completion.chunk",
+                "created": cree, "model": modele,
+                "choices": [{"index": 0, "delta": {"content": message},
+                             "finish_reason": "stop"}],
+                "error": {"message": message, "type": "service_unavailable"},
+            }) + "\n\n"
+            # `[DONE]` meme en erreur : sans lui, le client attend indefiniment.
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(generateur(), media_type="text/event-stream")
+
+    return JSONResponse(
+        status_code=CODE_SERVICE_INDISPONIBLE,
+        content={"error": {"message": message, "type": "service_unavailable",
+                           "code": "provider_unavailable"}})
+
+
 def _reponse_openai(contenu: str, modele: str, stream: bool):
     """Emballe une reponse au format attendu par OpenAI (streamee ou non)."""
     cree = int(time.time())
@@ -136,10 +173,26 @@ def _reponse_openai(contenu: str, modele: str, stream: bool):
 
 @router.post("/v1/chat/completions", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
 async def openai_chat_completions(request: Request):
+    """Point d'entree compatible OpenAI — il repond toujours quelque chose.
+
+    `HTTPException` traverse intacte : un refus d'authentification ou de
+    quota n'est pas une panne de service et ne doit pas etre maquille en
+    503.
+    """
     body = await request.json()
-    messages = body.get("messages", [])
-    stream = body.get("stream", False)
+    stream = bool(body.get("stream", False))
     model_requested = body.get("model", "usman-chat")
+    try:
+        return await _repondre(body, stream, model_requested)
+    except HTTPException:
+        raise
+    except Exception as souci:  # noqa: BLE001 - la passerelle repond toujours
+        return _erreur_openai(souci, model_requested, stream)
+
+
+async def _repondre(body: dict, stream: bool, model_requested: str):
+    """Le travail reel, sorti pour qu'un seul `try` le couvre en entier."""
+    messages = body.get("messages", [])
 
     last_user_msg = ""
     for msg in reversed(messages):
@@ -209,15 +262,30 @@ async def openai_chat_completions(request: Request):
         cree = int(time.time())
         system_prompt = get_arena_system_prompt()
 
-        async for jeton in fast_provider.generate_stream(last_user_msg, system_prompt):
-            morceau = {
-                "id": f"chatcmpl-{cree}",
-                "object": "chat.completion.chunk",
-                "created": cree,
-                "model": model_requested,
-                "choices": [{"index": 0, "delta": {"content": jeton}, "finish_reason": None}]
-            }
-            yield f"data: {json.dumps(morceau)}\n\n"
+        try:
+            async for jeton in fast_provider.generate_stream(last_user_msg, system_prompt):
+                morceau = {
+                    "id": f"chatcmpl-{cree}",
+                    "object": "chat.completion.chunk",
+                    "created": cree,
+                    "model": model_requested,
+                    "choices": [{"index": 0, "delta": {"content": jeton}, "finish_reason": None}]
+                }
+                yield f"data: {json.dumps(morceau)}\n\n"
+        except Exception as souci:  # noqa: BLE001 - le flux doit finir proprement
+            # Meme defaut que `/api/chat/stream` avant le 01/09/2026 : une
+            # panne en cours de flux rendait un `200` et zero ligne.
+            logger.error("Flux OpenAI interrompu : %s", souci, exc_info=True)
+            yield "data: " + json.dumps({
+                "id": f"chatcmpl-{cree}", "object": "chat.completion.chunk",
+                "created": cree, "model": model_requested,
+                "choices": [{"index": 0,
+                             "delta": {"content": f"ARENA n'a pas pu terminer : {souci}"},
+                             "finish_reason": "stop"}],
+                "error": {"message": str(souci), "type": "service_unavailable"},
+            }) + "\n\n"
+            yield "data: [DONE]\n\n"
+            return
 
         fin = {
             "id": f"chatcmpl-{cree}",

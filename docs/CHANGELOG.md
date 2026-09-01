@@ -12,6 +12,9 @@
   zéro ligne, et une question orpheline laissée dans l'historique.
 - **Une recherche documentaire en panne s'annonçait comme une réponse.** Le
   test qui gardait cet espace épinglait le mensonge ; il a été renforcé.
+- **La passerelle compatible OpenAI sortait en `500` nu** quand Ollama tombait,
+  sur la surface qu'utilisent les outils extérieurs. Elle rend désormais un
+  objet d'erreur JSON en 503, et son flux ne meurt plus en silence.
 - **Le docteur ne connaissait pas la voix**, et ne se contente plus d'un port
   qui répond : il demande les moteurs.
 
