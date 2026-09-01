@@ -52,6 +52,7 @@ from tools.documents.indexer import (
     Rapport,
     indexer_documents,
 )
+from tools.rag.lightrag_tool import est_un_echec as lightrag_echec
 
 logger = logging.getLogger("usman.backend")
 
@@ -292,8 +293,11 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         if demande_d_indexation(request.prompt):
             result = await indexer_ses_documents()
         else:
-            result = {"response": lightrag_tool.query(request.prompt, mode="hybrid"),
-                      "agent": "LightRAG"}
+            reponse_docs = lightrag_tool.query(request.prompt, mode="hybrid")
+            # Un moteur documentaire absent rend une phrase d'erreur, pas une
+            # reponse : l'annoncer sans statut la faisait lire comme un resultat.
+            result = {"response": reponse_docs, "agent": "LightRAG",
+                      "status": "error" if lightrag_echec(reponse_docs) else "success"}
     elif intent == "GRAPHRAG":
         result = graphrag_tool.query_global(request.prompt)
     elif intent == "VISION":

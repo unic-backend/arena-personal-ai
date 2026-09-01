@@ -11,6 +11,19 @@ RAG_RAW_DIR = BASE_DIR / "data" / "rag" / "raw"
 RAG_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 RAG_RAW_DIR.mkdir(parents=True, exist_ok=True)
 
+#: Ce par quoi commence une reponse qui n'en est pas une. Ecrit ICI, une
+#: fois : c'est l'outil qui sait a quoi ressemble son echec, pas ses
+#: appelants. Sans ce marqueur, `adaptateur_synchrone` annoncait
+#: `status: "success"` en portant « ❌ Erreur … No module named 'lightrag' » —
+#: un echec presente comme une reponse (mesure du 01/09/2026).
+PREFIXE_ECHEC = "❌ Erreur de recherche documentaire LightRAG"
+
+
+def est_un_echec(reponse: str) -> bool:
+    """Vrai si cette chaine est un echec de l'outil, pas une reponse."""
+    return (reponse or "").startswith(PREFIXE_ECHEC)
+
+
 class LightRAGTool:
     """Connecteur RAG documentaire local-first basé sur LightRAG + Ollama."""
 
@@ -78,7 +91,7 @@ class LightRAGTool:
             return result if isinstance(result, str) else str(result)
         except Exception as e:
             logger.error(f"Erreur requête LightRAG : {e}")
-            return f"❌ Erreur de recherche documentaire LightRAG : {str(e)}"
+            return f"{PREFIXE_ECHEC} : {str(e)}"
 
 if __name__ == "__main__":
     tool = LightRAGTool()

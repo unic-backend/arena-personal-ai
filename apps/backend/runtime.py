@@ -75,6 +75,7 @@ from core.reasoning.reasoning_engine import ReasoningEngine
 from social.tiktok.tiktok_connector import TikTokConnector
 from tools.rag.graphrag_tool import GraphRAGTool
 from tools.rag.lightrag_tool import LightRAGTool
+from tools.rag.lightrag_tool import est_un_echec as lightrag_echec
 
 logger = logging.getLogger("usman.backend")
 
@@ -339,6 +340,7 @@ capacites.enregistrer("web", fresh_agent)
 # structure que rendent les agents : adapte une fois ici, jamais a l'appel.
 capacites.enregistrer("documents", adaptateur_synchrone(
     lambda texte: lightrag_tool.query(texte, mode="hybrid"), "LightRAG",
+    est_un_echec=lightrag_echec,
 ))
 
 
