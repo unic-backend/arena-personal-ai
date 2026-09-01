@@ -859,3 +859,19 @@ ont été écartées.
 Les deux gardent leur intention et l'assertion est corrigée. Un test ajouté
 vérifie l'inverse : un plan entièrement valide reste `SUCCESS`, pour que
 `warning` ne devienne pas le statut par défaut du montage.
+
+## Le trou que le correctif du défaut n° 1 laissait ouvert
+
+`/health` a menti deux fois sur `agents_active` : d'abord en annonçant
+`ReasoningEngine` sans chemin pour l'atteindre, puis en taisant six agents bien
+vivants. Le correctif a rendu la liste **dérivée** de ce que `runtime`
+construit. Cela ferme le second sens et **pas le premier** : un agent construit
+et jamais câblé serait annoncé quand même.
+
+Un test ferme l'autre sens : aucun agent construit ne doit dormir.
+
+**Et une fausse alerte, la mienne.** Mon premier balayage ne lisait que trois
+fichiers et déclarait `ClipSelectorAgent` mort. Il ne l'est pas : il est atteint
+par `/api/process-video` (`routers/media.py`). Le test lit désormais **tous**
+les routeurs, et un second test vérifie qu'il a bien lu quelque chose — sans
+ça, un balayage vide passerait au vert en ne mesurant rien.

@@ -304,3 +304,53 @@ class TestChatNeMentPasSurUneReponseVide:
 
         assert charges and charges[-1]["type"] == "error"
         assert charges[-1]["message"].strip()
+
+
+class TestChaqueAgentConstruitEstAtteignable:
+    """Construire un agent ne suffit pas : il faut un chemin qui l'appelle.
+
+    `/health` a menti deux fois sur cette liste — d'abord en annonçant
+    `ReasoningEngine` sans chemin pour l'atteindre, puis en taisant six agents
+    bien vivants. Le correctif a rendu la liste **dérivée** de ce que `runtime`
+    construit, ce qui règle le second sens et **pas le premier** : un agent
+    construit et jamais câblé serait annoncé quand même.
+
+    Ce test ferme l'autre sens. Il balaie tous les routeurs, pas trois :
+    `ClipSelectorAgent` n'est atteint que par `/api/process-video`, et un
+    balayage partiel le déclarait mort à tort — mesuré le 01/09/2026, sur
+    moi-même.
+    """
+
+    @staticmethod
+    def _tout_le_code_qui_appelle() -> str:
+        """Les routeurs et le studio, lus en entier."""
+        from pathlib import Path
+
+        import apps.backend.runtime as runtime
+
+        racine = Path(runtime.__file__).resolve().parent
+        fichiers = sorted((racine / "routers").glob("*.py")) + [racine / "studio.py"]
+        return "\n".join(f.read_text(encoding="utf-8") for f in fichiers if f.exists())
+
+    def test_aucun_agent_construit_ne_dort(self):
+        import apps.backend.runtime as runtime
+        from core.agent.base_agent import BaseAgent
+
+        code = self._tout_le_code_qui_appelle()
+        endormis = sorted(
+            nom for nom, objet in vars(runtime).items()
+            if isinstance(objet, BaseAgent) and nom not in code
+        )
+
+        assert endormis == [], (
+            "ces agents sont construits au demarrage, annonces par /health, "
+            f"et aucun routeur ne les appelle : {endormis}"
+        )
+
+    def test_le_balayage_couvre_bien_plusieurs_routeurs(self):
+        """Sans ça, le test au-dessus pourrait passer en ne lisant rien."""
+        code = self._tout_le_code_qui_appelle()
+
+        assert "dispatch_request" in code, "chat.py n'a pas ete lu"
+        assert "clip_selector" in code, "media.py n'a pas ete lu"
+        assert len(code) > 20_000, "le balayage est trop court pour etre complet"
