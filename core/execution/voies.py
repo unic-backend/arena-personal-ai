@@ -112,6 +112,9 @@ VOIE_PAR_INTENTION: Dict[str, Voie] = {
     "STUDIO": Voie.PROFONDE,
     "VIDEO_ANALYSIS": Voie.PROFONDE,
     "VISION": Voie.PROFONDE,
+    # Un plan de montage est un JSON structure a produire d un coup et
+    # relu : plusieurs passes sur la machine, jamais un aller dehors.
+    "MONTAGE": Voie.PROFONDE,
     "SWE_FIX": Voie.PROFONDE,
     "REPO_ENGINEERING": Voie.PROFONDE,
     "DEEP_REASONING": Voie.PROFONDE,

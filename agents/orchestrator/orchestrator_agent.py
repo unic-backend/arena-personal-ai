@@ -64,6 +64,7 @@ INTENTIONS = {
     "EMAIL",
     "SOCIAL",
     "VISION",
+    "MONTAGE",
 }
 
 #: Ce qui parle de ses RESEAUX SOCIAUX. Teste avant le metier : « une
@@ -135,6 +136,21 @@ VISION = (
     "analyse ce dessin", "analyse ce schema", "analyse ce schéma",
     "decris cette image", "décris cette image", "decris cette photo",
     "décris cette photo", "analyse ce document scanne", "analyse ce document scanné",
+)
+
+#: MONTER une video a partir de fichiers qu il possede deja. Distinct de
+#: FABRIQUER_VIDEO (qui GENERE des images depuis un sujet) et de
+#: VIDEO_ANALYSIS : ici les rushes existent, il s agit de les assembler.
+#: Teste AVANT le metier : « monte la video du chantier » contient
+#: « chantier » sans etre une demande de devis.
+MONTAGE = (
+    "monte une video", "monte une vidéo", "monte moi", "monte-moi",
+    "assemble les", "assemble mes", "assemble la video", "assemble la vidéo",
+    "colle les clips", "colle mes clips", "plan de montage", "monte cette video",
+    "monte cette vidéo", "fais le montage", "fais-moi le montage",
+    "montage de la video", "montage de la vidéo", "ajoute mon logo sur la video",
+    "ajoute mon logo sur la vidéo", "mets un titre sur la video",
+    "mets un titre sur la vidéo", "timeline", "monte ces rushes", "mes rushes",
 )
 
 #: Preparer le prompt d une scene precise pour WanGP — distinct de FABRIQUER_VIDEO,
@@ -474,6 +490,12 @@ class OrchestratorAgent(BaseAgent):
         # souvent le chantier lui-meme, sans etre une demande de devis.
         if any(k in text for k in VISION):
             return "VISION"
+
+        # Monter une video a partir de ses propres fichiers. Teste AVANT
+        # PLANIFIER_SCENE et FABRIQUER_VIDEO : « monte la video du chantier »
+        # n est ni un prompt de generation, ni une demande de devis.
+        if any(k in text for k in MONTAGE):
+            return "MONTAGE"
 
         # Planifier une scene. Teste AVANT FABRIQUER_VIDEO : « prepare » est un
         # verbe partage, et celle-ci est la demande la plus specifique des deux.
