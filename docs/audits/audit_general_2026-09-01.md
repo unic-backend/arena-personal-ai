@@ -580,3 +580,53 @@ apprise sur une surface, jamais portée sur les autres** (n° 15, n° 16 ter,
 n° 18). Quand une règle est trouvée quelque part, la question suivante n'est
 pas « est-ce corrigé ? » mais « qui d'autre fait la même chose ? ». Posée
 quatre fois cette nuit, elle a répondu quatre fois oui.
+
+---
+
+# Défaut n° 19 — le diagnostic vérifiait un modèle que le code n'utilise plus
+
+La valeur par défaut de `EMBEDDINGS_LOCAL_MODEL` était écrite **deux fois** :
+
+| Fichier | Valeur |
+|---|---|
+| `core/memory/semantique.py:52` | `bge-m3` |
+| `scripts/doctor.py:586` | `nomic-embed-text` |
+
+Le passage à `bge-m3` date du 27/08/2026 et il est **mesuré**, pas choisi : le
+seuil sémantique de 0,45 lui appartient — avec `nomic-embed-text` les souvenirs
+pertinents et les autres se mélangeaient autour de 0,55, et aucun seuil n'était
+utilisable. Le diagnostic n'a pas suivi.
+
+Conséquence : le propriétaire installe le modèle que le diagnostic nomme, le
+diagnostic passe au vert, et la mémoire sémantique ne marche toujours pas —
+sans que rien ne le dise.
+
+Une seule source désormais (`modele_embeddings_du_code()`), et `None` quand
+elle est illisible : **nommer un modèle au hasard est exactement ce qui a
+produit le défaut**. La clé entre aussi dans `.env.example`, où elle n'avait
+jamais figuré, avec la raison du choix à côté.
+
+## Défaut n° 19 bis — deux outils ignoraient `OLLAMA_BASE_URL`
+
+`BrowserUseTool` et `LightRAGTool` écrivaient `http://127.0.0.1:11434` et
+`qwen2.5-coder:14b` en dur. Un Ollama déplacé, ou un modèle changé dans `.env`,
+laissait **tout** marcher sauf la navigation et les documents — avec une erreur
+nommant une adresse que le propriétaire n'avait jamais configurée.
+
+Mesuré après correction :
+
+```
+OLLAMA_BASE_URL=http://192.168.1.50:11434 CODER_LOCAL_MODEL=un-autre-modele
+  -> base_url http://192.168.1.50:11434   modele un-autre-modele
+```
+
+Un test balaie tout le dépôt : écrire le port est permis, l'écrire **sans lire
+la variable** ne l'est pas. Deux exceptions nommées, et ce ne sont pas des
+oublis — le défaut d'argument du fournisseur (que `runtime.py` remplace
+toujours) et `host.docker.internal`, qui est une autre adresse pour un autre
+réseau.
+
+**Laissé en place, délibérément** : le modèle d'embeddings de LightRAG reste
+écrit dans le code. Il est couplé à `embedding_dim=768` **et** à l'index déjà
+construit ; le changer sans reconstruire l'index rend des distances qui ne
+veulent rien dire. `OPTIONAL — NON IMPLÉMENTÉ`, décision du propriétaire.

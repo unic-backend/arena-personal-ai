@@ -199,6 +199,38 @@ def verifier_modele(nom_lisible: str, modele: str, installes: Optional[List[str]
     return Verification(nom_lisible, OK, modele, essentiel=essentiel)
 
 
+def modele_embeddings_du_code() -> Optional[str]:
+    """Le modele d'embeddings qu'ARENA demande **reellement**.
+
+    Ecrite deux fois, la valeur par defaut a diverge : ce diagnostic verifiait
+    `nomic-embed-text` pendant que `core/memory/semantique.py` demandait
+    `bge-m3` depuis le 27/08/2026 — un changement mesure, pas un gout : le
+    seuil semantique de 0,45 appartient a bge-m3, et nomic-embed-text melangeait
+    les souvenirs pertinents et les autres autour de 0,55.
+
+    Le proprietaire installait donc le modele que ce diagnostic nommait, le
+    diagnostic passait au vert, et la memoire semantique ne marchait toujours
+    pas. Une seule source desormais, et `None` quand elle est illisible :
+    nommer un modele au hasard est exactement ce qui a produit le defaut.
+    """
+    try:
+        from core.memory.semantique import MODELE_EMBEDDINGS
+        return MODELE_EMBEDDINGS
+    except Exception:  # noqa: BLE001 - un import qui echoue n'est pas une reponse
+        return None
+
+
+def verifier_modele_embeddings(installes: Optional[List[str]]) -> Verification:
+    """Le modele d'embeddings, nomme par le code lui-meme."""
+    modele = modele_embeddings_du_code()
+    if modele is None:
+        return Verification(
+            "Modele d'embeddings", ABSENT,
+            "indeterminable : core/memory/semantique.py n'est pas lisible d'ici",
+            "Lancer le diagnostic depuis la racine du depot")
+    return verifier_modele("Modele d'embeddings", modele, installes)
+
+
 # --- Les capacites qui dependent d'un outil ---------------------------------------
 
 def _commande_repond(binaire: str, arguments: List[str]) -> bool:
@@ -583,7 +615,6 @@ def diagnostiquer() -> Rapport:
         absentes_google = None
     rapide = os.getenv("CODER_LOCAL_MODEL", "qwen2.5-coder:14b")
     profond = os.getenv("DEFAULT_LOCAL_MODEL", "qwen3.5:9b")
-    embeddings = os.getenv("EMBEDDINGS_LOCAL_MODEL", "nomic-embed-text")
     vision = os.getenv("VISION_LOCAL_MODEL", "qwen3-vl:4b")
 
     return Rapport([
@@ -598,7 +629,7 @@ def diagnostiquer() -> Rapport:
         mesurer("Modele profond",
                 lambda: verifier_modele("Modele profond", profond, installes)),
         mesurer("Modele d'embeddings",
-                lambda: verifier_modele("Modele d'embeddings", embeddings, installes)),
+                lambda: verifier_modele_embeddings(installes)),
         mesurer("Modele de vision",
                 lambda: verifier_modele("Modele de vision", vision, installes)),
         mesurer("Carte graphique", verifier_gpu),
