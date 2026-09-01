@@ -408,3 +408,52 @@ class TestAucuneSondeNEmporteLeRapport:
         rapport = doctor.diagnostiquer()
 
         assert rapport.verifications, "le rapport est vide"
+
+
+class TestVoiceStudioEstDiagnostique:
+    """Une capacité que le diagnostic ignore est invisible au propriétaire.
+
+    Le connecteur audio est arrivé le 01/09/2026 ; `doctor.py` ne le
+    connaissait pas. Et un port qui répond ne prouve rien : VoiceStudio
+    démarre très bien **sans aucun moteur**, et une sonde qui s'arrêterait à
+    `/system/info` l'annoncerait « OK » alors qu'il ne peut ni parler ni
+    écouter.
+    """
+
+    def _lecteur(self, tts=(), asr=(), muet=False):
+        def lire(url):
+            if muet:
+                raise OSError("connexion refusee")
+            if url.endswith("/system/info"):
+                return {"app_version": "0.5.1", "device": "cpu"}
+            genre = url.rsplit("/", 1)[-1]
+            moteurs = tts if genre == "tts" else asr
+            return {"backends": [{"id": m, "available": True} for m in moteurs]}
+        return lire
+
+    def test_service_eteint_est_non_configure_avec_la_commande(self):
+        v = doctor.verifier_voicestudio(self._lecteur(muet=True))
+        assert v.etat is NON_CONFIGURE
+        assert "uvicorn" in v.remede
+
+    def test_un_port_qui_repond_sans_moteur_n_est_pas_OK(self):
+        """Le mensonge que ce test empêche."""
+        v = doctor.verifier_voicestudio(self._lecteur(tts=(), asr=()))
+        assert v.etat is NON_CONFIGURE
+        assert "aucun moteur" in v.detail
+
+    def test_transcription_seule_est_signalee_comme_incomplete(self):
+        v = doctor.verifier_voicestudio(self._lecteur(tts=(), asr=("faster-whisper",)))
+        assert v.etat is NON_CONFIGURE
+        assert "aucun moteur de voix" in v.detail
+
+    def test_les_moteurs_reels_sont_nommes(self):
+        v = doctor.verifier_voicestudio(
+            self._lecteur(tts=("kittentts",), asr=("faster-whisper",)))
+        assert v.etat is OK
+        assert "kittentts" in v.detail and "faster-whisper" in v.detail
+
+    def test_le_diagnostic_complet_porte_la_ligne(self):
+        """Sans ça, la vérification existe mais personne ne la voit."""
+        import inspect
+        assert 'mesurer("Voix (VoiceStudio)"' in inspect.getsource(doctor)
