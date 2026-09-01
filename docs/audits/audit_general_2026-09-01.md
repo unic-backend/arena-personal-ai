@@ -6,7 +6,7 @@ en cassant volontairement ce que son test protège.*
 
 Point de départ posé par le propriétaire : « Ne suppose pas qu'une suite de
 tests verte veut dire que le projet est sain. » Elle l'était : 2542 tests au
-vert. **Douze défauts réels ont été trouvés quand même — dont le plus grave dans mon propre code de la veille.**
+vert. **Treize défauts réels ont été trouvés quand même — dont le plus grave dans mon propre code de la veille.**
 
 ---
 
@@ -30,7 +30,7 @@ vert. **Douze défauts réels ont été trouvés quand même — dont le plus gr
 
 ---
 
-## Les douze défauts trouvés, et ce qu'ils coûtaient
+## Les treize défauts trouvés, et ce qu'ils coûtaient
 
 ### 1. `/health` taisait six agents — dont son assistant devis
 
@@ -204,6 +204,30 @@ fenêtre.
 écrit « le modèle ne cite jamais un chemin » et je l'avais vérifié sur un seul
 des deux chemins.
 
+### 13. Un nom de fichier ordinaire cassait l'incrustation des sous-titres
+
+Trouvé en cherchant si le défaut n°12 avait des frères. `burn_subtitles`
+échappait `\` et `:` dans le chemin des sous-titres — **pas l'apostrophe**.
+
+Mesuré : même vidéo, mêmes sous-titres, seul le nom change.
+
+```
+ECHEC  | chantier d'Ouakam
+ECHEC  | reunion d'equipe
+OK     | sans_apostrophe
+```
+
+Un nom avec apostrophe est on ne peut plus ordinaire en français.
+
+**Les trois échappements possibles ont été essayés contre le vrai ffmpeg**
+(`\'`, `\\'`, sans guillemets) : les trois **perdent l'apostrophe** — le
+parseur de filtergraph la mange. Le fichier devient
+`chantier dOuakam.ass`, qui n'existe pas.
+
+D'où le contournement : une **copie au nom sûr**, le temps de l'appel,
+supprimée ensuite même si ffmpeg échoue. Elle marche pour n'importe quel
+caractère — y compris celui qu'on n'aura pas prévu.
+
 ## Deux choses vérifiées, correctes, et laissées telles quelles
 
 **Une écriture sans confirmation** : `wan2gp.cancel` est déclarée
@@ -270,8 +294,8 @@ correction de nuit, c'est une décision du propriétaire.
 
 ```
 python -m ruff check .                                   -> All checks passed!
-python -m pytest tests/ -q                               -> 2599 passed, 44 deselected
-OMNIVOICE_URL=http://127.0.0.1:9 python -m pytest tests/ -q -> 2599 passed  (conditions CI)
+python -m pytest tests/ -q                               -> 2608 passed, 48 deselected
+OMNIVOICE_URL=http://127.0.0.1:9 python -m pytest tests/ -q -> 2608 passed  (conditions CI)
 python scripts/orphelins.py                              -> aucun module réel endormi
 ```
 

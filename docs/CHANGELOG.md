@@ -3,6 +3,10 @@
 ## [Non publié]
 
 ### Corrigé — 01/09/2026 (audit général)
+- **Un nom de fichier avec apostrophe cassait l'incrustation des sous-titres.**
+  « chantier d'Ouakam » suffisait. Les trois échappements ffmpeg possibles
+  perdent l'apostrophe : le fichier est désormais recopié sous un nom sûr
+  le temps de l'appel.
 - **Une propriété de texte pouvait ouvrir une option ffmpeg.** Un `couleur`
   choisi par le modèle injectait `fontfile=` dans le graphe de filtres ; avec
   `textfile=`, le contenu d'un fichier de la machine pouvait finir incrusté

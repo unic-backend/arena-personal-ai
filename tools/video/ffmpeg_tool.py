@@ -1,9 +1,38 @@
 import logging
 import shutil
 import subprocess
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 logger = logging.getLogger("usman.tools.video.ffmpeg")
+
+#: Ce qui a un sens dans la syntaxe d'un filtergraph ffmpeg. Un chemin qui en
+#: contient ne peut pas etre passe tel quel — ni echappe de facon fiable.
+CARACTERES_PIEGES = frozenset("'\\:,;[]")
+
+
+@contextmanager
+def _chemin_sans_piege(fichier: Path):
+    """Le fichier lui-meme s'il est sur, une copie a nom sur sinon.
+
+    La copie vit le temps de l'appel et disparait ensuite, y compris si
+    ffmpeg echoue.
+    """
+    if not (CARACTERES_PIEGES & set(fichier.name)):
+        yield fichier
+        return
+
+    dossier = Path(tempfile.mkdtemp(prefix="arena-sous-titres-"))
+    copie = dossier / f"sous-titres{fichier.suffix}"
+    try:
+        shutil.copy2(fichier, copie)
+        logger.info("Nom de sous-titres non citable dans un filtre (%s) : "
+                    "copie temporaire utilisee.", fichier.name)
+        yield copie
+    finally:
+        shutil.rmtree(dossier, ignore_errors=True)
+
 
 class FFmpegTool:
     """Wrapper complet pour le traitement vidéo et audio via FFmpeg."""
@@ -88,7 +117,25 @@ class FFmpegTool:
             logger.warning(f"Fichier sous-titres introuvable: {sub_path}")
             return False
 
-        clean_sub_path = str(sub_file).replace("\\", "/").replace(":", "\\:")
+        # Un nom de fichier « dangereux » pour la syntaxe des filtres ne
+        # s'echappe pas : il se contourne.
+        #
+        # `chantier d'Ouakam.ass` faisait echouer TOUTE l'incrustation —
+        # mesure du 01/09/2026, meme video, memes sous-titres, seul le nom
+        # change et le rendu passe de True a False. Un nom avec apostrophe
+        # est tout ce qu'il y a de plus ordinaire en francais.
+        #
+        # Les trois echappements possibles ont ete essayes contre le vrai
+        # ffmpeg (`\'`, `\\'`, sans guillemets) : les TROIS perdent
+        # l'apostrophe, le parseur de filtergraph la mange. Copier le fichier
+        # sous un nom sur, en revanche, marche pour n'importe quel caractere
+        # — et ne peut pas etre defait par le suivant qu'on n'aura pas prevu.
+        with _chemin_sans_piege(sub_file) as chemin_sur:
+            return self._incruster(video_path, sub_file, chemin_sur, output_path)
+
+    def _incruster(self, video_path: str, sub_file: Path,
+                   chemin_sur: Path, output_path: str) -> bool:
+        clean_sub_path = str(chemin_sur).replace("\\", "/").replace(":", "\\:")
 
         # Filtre ASS ou SRT
         if sub_file.suffix.lower() == ".ass":
