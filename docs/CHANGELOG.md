@@ -2,6 +2,46 @@
 
 ## [Non publié]
 
+### Corrigé — 01/09/2026 (deuxième vague d'audit, défauts n° 14 à 24)
+
+Onze défauts de plus, **tous trouvés sur une suite verte**, tous mesurés avant
+d'être corrigés, tous vérifiés par sabotage.
+
+- **Tes prix modifiés n'étaient vus qu'au redémarrage.** `unic_plaquiste.yaml`
+  était lu une seule fois, au démarrage du serveur. Le plus coûteux de la
+  série : un mauvais prix sur un document qui part chez un client (DEC-0034).
+- **Une règle de permission durcie n'était pas appliquée** — et la docstring
+  annonçait justement la capacité manquante (DEC-0035).
+- **« Espace de connaissances prêt », disait GraphRAG, Docker éteint.**
+  N'importe quel échec devenait cette phrase rassurante (DEC-0033).
+- **Un flux vide était compté comme un succès** : aucun repli, et l'interface
+  annonçait le moteur du tour précédent (DEC-0032).
+- **La passerelle OpenAI jetait la conversation** — seul le dernier message
+  arrivait au modèle — et toutes les conversations partageaient une mémoire
+  (DEC-0031).
+- **Un devis conduit depuis un client extérieur ne finissait jamais** : le
+  correctif du 31/08 n'avait été posé que sur la PWA.
+- **La bulle vide**, corrigée pour LibreChat le 26/08, était vivante sur les
+  **trois** autres surfaces — dont celle du propriétaire.
+- **Un flux PWA coupé laissait une question orpheline** dans la mémoire, relue
+  ensuite pour résoudre une question elliptique.
+- **Un Docker démarré après ARENA restait invisible** : la sonde datait du
+  démarrage du serveur (DEC-0029).
+- **Le diagnostic faisait installer `nomic-embed-text`** quand le code demande
+  `bge-m3` depuis le 27/08.
+- **Un plan de montage à moitié tombé était annoncé « réussi »** : timeline à
+  0 ms, statut `SUCCESS` (DEC-0036).
+
+### Ajouté — 01/09/2026
+- `core/fichier_suivi.py` — relecture d'un fichier de configuration sur sa date
+  de modification, écrite **une** fois après avoir trouvé la même forme de
+  défaut quatre fois dans la même nuit.
+- `tools/docker_local.py` — la sonde Docker, partagée par le bac à sable et le
+  moteur de graphe. Elle n'existait qu'au premier, et c'est pour ça que le
+  second ne la posait pas.
+- Comparaison de la clé API en temps constant (`secrets.compare_digest`).
+  Durcissement, pas défaut mesuré.
+
 ### Ajouté — 01/09/2026 (spécialistes)
 - **ARENA applique la méthode du métier concerné.** Sécurité, tests,
   architecture, référencement, contenu, données, produit… douze métiers, chacun

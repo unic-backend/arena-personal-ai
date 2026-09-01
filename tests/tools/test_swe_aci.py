@@ -58,3 +58,62 @@ class TestUneRechercheIncompleteLeDit:
         sortie = SWEACITool(root_dir=str(projet)).search_dir("zzz_inexistant")
         assert "Aucun résultat" in sortie
         assert "incomplète" not in sortie
+
+
+class TestLaLectureSeuleEstTenue:
+    """`SWEAgent` se déclare en lecture seule — et le dit au propriétaire.
+
+    Sa docstring : « Il LIT le depot et propose une correction. **Il ne modifie
+    aucun fichier.** » Sa réponse le répète : « Cet agent analyse et propose. Il
+    ne modifie aucun fichier : c'est toi qui décides d'appliquer la correction
+    ou non. »
+
+    Mesuré le 01/09/2026 : `SWEACITool.edit` **écrit** des fichiers, n'est
+    appelé nulle part dans le dépôt, et n'était couvert par aucun test. La
+    garantie ne tenait donc à rien d'autre qu'au fait que personne ne l'avait
+    branché. Ces tests en font une frontière.
+    """
+
+    @staticmethod
+    def _source_de(objet) -> str:
+        import inspect
+        return inspect.getsource(objet)
+
+    def test_l_agent_n_appelle_aucune_ecriture(self):
+        from agents.swe_agent.swe_agent import SWEAgent
+
+        source = self._source_de(SWEAgent)
+
+        assert ".edit(" not in source, (
+            "SWEAgent se declare en lecture seule et promet de ne modifier "
+            "aucun fichier : il ne peut pas appeler `edit`"
+        )
+
+    def test_personne_dans_le_depot_n_appelle_l_ecriture(self):
+        """Pas seulement l'agent : rien ne doit brancher `edit` sans le décider."""
+        from pathlib import Path
+
+        racine = Path(__file__).resolve().parent.parent.parent
+        coupables = []
+        for chemin in racine.rglob("*.py"):
+            relatif = chemin.relative_to(racine).as_posix()
+            if (relatif.startswith((".venv/", "tests/", "node_modules/"))
+                    or "__pycache__" in relatif
+                    or relatif == "tools/coder/swe_aci_tool.py"):
+                continue
+            if ".edit(" in chemin.read_text(encoding="utf-8", errors="ignore"):
+                coupables.append(relatif)
+
+        assert coupables == [], (
+            f"`SWEACITool.edit` ecrit des fichiers et est branche ici : {coupables}. "
+            "Si c'est voulu, la garantie de lecture seule de SWEAgent doit changer "
+            "d'abord — elle est ecrite dans sa reponse au proprietaire."
+        )
+
+    def test_la_reponse_de_l_agent_annonce_la_lecture_seule(self):
+        """Si la promesse disparaît du texte, ce test doit tomber avec elle."""
+        from agents.swe_agent.swe_agent import SWEAgent
+
+        source = self._source_de(SWEAgent)
+
+        assert "ne modifie aucun fichier" in source

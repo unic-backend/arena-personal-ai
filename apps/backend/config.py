@@ -79,9 +79,24 @@ ALLOWED_ORIGINS = [
 USMAN_API_KEY = reglage("API_KEY")
 
 # --- Limitation de debit ------------------------------------------------------
-# Un appel au modele occupe la carte graphique plusieurs secondes.
-REQUETES_MAX = int(reglage("RATE_LIMIT_REQUESTS", "10"))
+# Ce que le limiteur existe pour arreter : une boucle qui part et tape des
+# centaines de fois par seconde. Pas le proprietaire qui tape vite.
+#
+# Le defaut etait 10 par minute. Mesure le 01/09/2026 : l'interface envoie DEUX
+# requetes par message (`/agent/stream` puis `/conversations/sync`), donc le
+# SIXIEME message d'une minute recevait `429`. Cinq messages par minute est un
+# rythme de conversation ordinaire — le serveur bloquait son proprietaire.
+#
+# 60 par minute, soit une par seconde en moyenne : hors d'atteinte pour
+# quelqu'un qui tape, et toujours cent fois sous une boucle emballee.
+REQUETES_MAX = int(reglage("RATE_LIMIT_REQUESTS", "60"))
 FENETRE_SECONDES = float(reglage("RATE_LIMIT_WINDOW", "60"))
+
+#: Combien de requetes l'interface envoie par message. Ecrit ici parce qu'un
+#: test s'en sert pour verifier que la limite reste au-dessus d'un rythme de
+#: conversation reel — sinon le defaut redeviendrait trop bas sans que personne
+#: ne s'en apercoive.
+REQUETES_PAR_MESSAGE = 2
 
 # --- Envoi de fichiers --------------------------------------------------------
 # Regle metier : Usman ne traite que de l'audio et de la video.

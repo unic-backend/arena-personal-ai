@@ -43,6 +43,21 @@ export interface ResultatSync {
   supprimees: string[];
 }
 
+/**
+ * Le debit du serveur est depasse : la sauvegarde n'a pas eu lieu.
+ *
+ * Rendu a part de `null` (reseau coupe, route absente) parce que ce n'est pas
+ * la meme chose : ici le serveur repond, et il dit non. Avale en silence, il
+ * laissait croire que la conversation etait sauvegardee.
+ */
+export interface DebitDepasse {
+  debitDepasse: true;
+}
+
+export function estDebitDepasse(r: unknown): r is DebitDepasse {
+  return typeof r === 'object' && r !== null && 'debitDepasse' in r;
+}
+
 /** Vrai quand ce serveur ne connait pas encore la synchronisation. */
 let routeAbsente = false;
 
@@ -61,7 +76,7 @@ export async function pousserEtTirer(
   tombales: PierreTombale[],
   cfg: ConfigSync,
   signal?: AbortSignal,
-): Promise<ResultatSync | null> {
+): Promise<ResultatSync | DebitDepasse | null> {
   if (routeAbsente || !cfg.url) return null;
 
   const base = cfg.url.replace(/\/+$/, '');
@@ -86,6 +101,12 @@ export async function pousserEtTirer(
     // plutot que d'echouer a chaque message.
     routeAbsente = true;
     return null;
+  }
+  if (reponse.status === 429) {
+    // Le serveur repond et dit non : ce n'est pas un aleas reseau. Mesure du
+    // 01/09/2026 — l'interface envoie deux requetes par message, et le defaut
+    // etait de dix par minute : le sixieme message d'une minute etait refuse.
+    return { debitDepasse: true };
   }
   if (!reponse.ok) return null;
 

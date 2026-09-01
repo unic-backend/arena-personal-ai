@@ -10,7 +10,7 @@ import {
   ActivityNode, MessageMeta, StreamChunk, upsertNode, normalizeLoaded, findNode,
 } from '../activity/types';
 import { normaliserSources } from '../activity/sources';
-import { pousserEtTirer } from '../sync/conversations';
+import { estDebitDepasse, pousserEtTirer } from '../sync/conversations';
 import { useCapacite } from '../capacites';
 import { localTransport } from '../activity/transport';
 import { makeRemoteTransport } from '../activity/remoteTransport';
@@ -393,6 +393,10 @@ export const useChat = create<ChatState>((set, get) => {
     const tombes = lireTombes();
     const resultat = await pousserEtTirer(get().conversations, tombes, cfg);
     if (!resultat) return;
+    if (estDebitDepasse(resultat)) {
+      set({ attachmentError: useI18n.getState().t('sync.rateLimited') });
+      return;
+    }
 
     // Les pierres tombales que le serveur a prises en compte ont fini leur
     // travail : les garder ferait grossir le stockage sans rien protéger.
@@ -402,6 +406,14 @@ export const useChat = create<ChatState>((set, get) => {
     persist(resultat.conversations);
     set((s) => ({
       conversations: resultat.conversations,
+      // Le serveur nomme ce qu'il a refuse ; jusqu'ici la reponse etait jetee
+      // ici meme. Une conversation trop grosse restait sur l'appareil sans que
+      // personne ne sache qu'elle n'etait PAS sauvegardee — et le commentaire
+      // du serveur disait deja que l'appareil doit le dire a son proprietaire
+      // « plutot que de croire qu'elle est en surete ».
+      attachmentError: resultat.refusees.length
+        ? useI18n.getState().t('sync.refused', { n: resultat.refusees.length })
+        : s.attachmentError,
       // Ne jamais fermer sous ses yeux la conversation ouverte : si le serveur
       // ne la connait pas encore, elle reste affichee.
       activeId: resultat.conversations.some((c) => c.id === s.activeId) ? s.activeId : null,

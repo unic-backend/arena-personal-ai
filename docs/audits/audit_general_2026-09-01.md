@@ -859,3 +859,314 @@ ont été écartées.
 Les deux gardent leur intention et l'assertion est corrigée. Un test ajouté
 vérifie l'inverse : un plan entièrement valide reste `SUCCESS`, pour que
 `warning` ne devienne pas le statut par défaut du montage.
+
+## Le trou que le correctif du défaut n° 1 laissait ouvert
+
+`/health` a menti deux fois sur `agents_active` : d'abord en annonçant
+`ReasoningEngine` sans chemin pour l'atteindre, puis en taisant six agents bien
+vivants. Le correctif a rendu la liste **dérivée** de ce que `runtime`
+construit. Cela ferme le second sens et **pas le premier** : un agent construit
+et jamais câblé serait annoncé quand même.
+
+Un test ferme l'autre sens : aucun agent construit ne doit dormir.
+
+**Et une fausse alerte, la mienne.** Mon premier balayage ne lisait que trois
+fichiers et déclarait `ClipSelectorAgent` mort. Il ne l'est pas : il est atteint
+par `/api/process-video` (`routers/media.py`). Le test lit désormais **tous**
+les routeurs, et un second test vérifie qu'il a bien lu quelque chose — sans
+ça, un balayage vide passerait au vert en ne mesurant rien.
+
+## La fusion à une tête périmée, quatrième occurrence
+
+#110 aussi. La règle écrite plus tôt cette nuit
+(`docs/REGLES_DE_TRAVAIL.md`, § 3) l'a attrapée :
+
+```
+git diff --stat 74a83df origin/master
+ docs/audits/audit_general_2026-09-01.md | 16 -----
+ tests/test_api.py                       | 50 -----
+```
+
+Le commit a été rejoué sur une branche neuve. Quatre occurrences sur les six
+fusions de cette nuit : **ce n'est pas un incident**, c'est ce qui arrive
+normalement quand on pousse après avoir lu la PR. La vérification n'est pas une
+précaution, c'est une étape.
+
+---
+
+# Bilan de la nuit
+
+**24 défauts trouvés sur une suite verte**, tous mesurés avant d'être corrigés,
+tous vérifiés par sabotage. Six pull requests fusionnées : #105 à #110.
+
+## Les deux formes qui reviennent
+
+C'est le résultat le plus utile de cette nuit, parce qu'il dit où chercher la
+prochaine fois.
+
+**1. Une valeur lue une fois, servie comme si elle était actuelle.**
+Quatre occurrences, dans quatre sous-systèmes sans rapport : la sonde Docker du
+bac à sable, la grille de prix du plaquiste, et les deux couches de
+permissions. Le point commun : un objet construit à l'import de
+`apps/backend/runtime.py`, donc au démarrage du serveur, qui lit son état une
+fois et ne le revoit jamais. `core/fichier_suivi.py` existe maintenant pour ça.
+
+**2. Une règle apprise sur une surface, jamais portée sur les autres.**
+Quatre occurrences aussi : la question orpheline, le fil de conversation, le
+devis multi-tours, la bulle vide. ARENA a **quatre** surfaces de réponse — la
+PWA, `/api/chat`, `/api/chat/stream` et la passerelle OpenAI — et chacune a
+appris ses règles séparément, par une panne.
+
+Quand une règle est trouvée quelque part, la question suivante n'est pas
+« est-ce corrigé ? » mais **« qui d'autre fait la même chose ? »**. Posée cinq
+fois cette nuit, elle a répondu oui cinq fois.
+
+## Ce que j'ai appris sur mes propres tests
+
+**Trois tests épinglaient les mensonges corrigés**, dont deux que j'avais
+écrits moi-même quelques heures plus tôt :
+
+| Test | Ce qu'il épinglait |
+|---|---|
+| `test_une_erreur_n_arrete_pas_les_operations_suivantes` | une erreur rapportée comme une réussite |
+| `test_une_ligne_inventee_est_ecartee_sans_perdre_le_reste` | idem — le mien |
+| `test_l_espace_documents_est_appelable_avec_le_meme_contrat` | un `success` sur une machine sans `lightrag` |
+
+Et **deux fois** j'ai écrit un test qui appelait la fonction corrigée au lieu de
+traverser le vrai chemin. Retirer le correctif ne les faisait pas tomber. Le
+sabotage est la seule chose qui débusque ça — et il faut le faire à chaque
+fois, pas quand on y pense.
+
+## Ce qui a été vérifié et va bien
+
+Chaque ligne est une exécution réelle, pas une lecture de code :
+
+| Vérifié | Résultat |
+|---|---|
+| Chaîne d'approbation | écriture → `NEEDS_CONFIRMATION`, `401` sans clé, confirmation → vrai fichier audio de 137 678 octets, rejeu refusé |
+| Lecture de documents | PDF de 2 pages lu avec sa page d'origine ; `.zip`, fichier absent et fichier vide distingués |
+| Travaux de fond | s'exécutent, avancent leur progression, et un travail qui tombe est `FAILED` avec sa vraie exception |
+| 10 connecteurs, toutes capacités de lecture | appelées une par une : aucune ne lève |
+| Gardien | 0 constat — vérifié en cassant le dépôt exprès : il trouve alors 5 problèmes de qualité et le module mort |
+| Surface publique | 26 routes ; tout ce qui répond sans clé est délibérément public |
+| Chaîne de montage | plan par nom accepté, plan nommant un chemin refusé, timeline réelle bâtie |
+| Placeholders | aucun `TODO`, aucun `NotImplementedError`, aucun module réel endormi |
+
+## Ce qui reste ouvert, et n'est pas une tâche
+
+- **Le métré n'accepte pas « une paroi de 12 x 2,50 m »** (il faut « 1 paroi »).
+  Son échec est *sûr* ; une extension bâclée mettrait un mauvais prix sur un
+  document client. Décision du propriétaire.
+- **Les modèles nommés directement** (`usman-fix`, `usman-repo`, `usman-coder`,
+  `usman-research`, `usman-browser`) reçoivent le dernier message seul. Rien ne
+  dit qu'ils travaillent mieux avec une transcription ; le supposer serait la
+  même erreur en sens inverse.
+- **Le modèle d'embeddings de LightRAG** reste écrit dans le code : il est
+  couplé à `embedding_dim=768` et à l'index déjà construit.
+- **La clé API en paramètre d'URL** pour les médias : arbitrage écrit, pas un
+  oubli. En changer demande une autre mécanique.
+- **Ollama, Docker, GPU** : absents de cette machine. Tout ce qui en dépend le
+  **dit**, et c'est la règle qui fonctionne.
+
+## Hors code
+
+Quatre fusions sur six ont pris une **tête périmée**. Ce n'est pas un incident :
+c'est ce qui arrive quand on pousse après avoir lu la PR. La vérification par le
+contenu est une étape, écrite dans `docs/REGLES_DE_TRAVAIL.md`, § 3.
+
+---
+
+# Défaut n° 25 — le serveur nommait ce qu'il refusait, l'interface le jetait
+
+Trouvé en posant une dernière fois la question de la nuit : *qui d'autre fait
+la même chose ?* — cette fois de l'autre côté de la frontière HTTP.
+
+`POST /conversations/sync` rend `refusees` quand une conversation est trop
+grosse pour être enregistrée, et le commentaire du serveur dit pourquoi :
+
+> `refusees` n'est jamais tu : une conversation trop grosse est ecartee, et
+> l'appareil doit pouvoir le dire a son proprietaire **plutot que de croire
+> qu'elle est en sureté**.
+
+Côté PWA, `pousserEtTirer` lisait bien `refusees` et le portait jusqu'à
+`ResultatSync`. Puis `chatStore.synchroniser` le **jetait**. Vérifié : aucun
+composant du dépôt ne lisait ce champ.
+
+La conversation n'est pas perdue — la copie locale est gardée, c'est écrit et
+c'est juste. Mais elle n'est **pas** sauvegardée, et personne ne le disait.
+Changer d'appareil ou vider le navigateur suffisait à la perdre pour de bon.
+
+**Correctif** : le motif existait déjà (`attachmentError`, affiché dans
+`Composer.tsx` avec son icône d'alerte). Le refus le réutilise — aucune
+mécanique inventée. Le message est traduit dans les deux langues.
+
+## Défaut n° 25 bis — rien ne vérifiait les traductions
+
+En ajoutant la clé, j'ai constaté qu'**aucun test ne couvrait
+`apps/pwa/src/lib/i18n/index.ts`**. Or c'est le seul endroit du dépôt où une
+erreur est invisible à la compilation : TypeScript ne compare pas deux
+littéraux d'objet entre eux. Une clé posée en anglais seulement aurait affiché
+`sync.refused` en clair sur l'écran du propriétaire — à l'endroit précis où on
+lui dit que sa conversation n'est pas sauvegardée.
+
+Quatre tests ferment ça, dont un qui vérifie que le découpage a bien trouvé
+quelque chose : sans lui, un parseur cassé passerait au vert en ne mesurant
+rien.
+
+Vérifié aussi que `npx tsc --noEmit` mesure vraiment, en cassant une propriété
+exprès :
+`error TS2551: Property 'lengthXX' does not exist on type 'string[]'`.
+
+---
+
+# Défaut n° 26 — le serveur bloquait son propriétaire au sixième message
+
+Trouvé en suivant le fil du n° 25 : la PWA avale `if (!reponse.ok) return null`.
+Quel `!ok` arrive vraiment ? Le `429` du limiteur de débit — et là, une mesure.
+
+L'interface envoie **deux** requêtes par message : `/agent/stream` puis
+`/conversations/sync`. Le défaut était **10 par minute**. Sur de vrais appels
+HTTP :
+
+```
+message  5 -> /agent/stream 200 | /conversations/sync 200
+message  6 -> /agent/stream 429 | /conversations/sync 429
+```
+
+**Cinq messages par minute est un rythme de conversation ordinaire.** Le
+limiteur existe pour arrêter une boucle emballée — qui tape des centaines de
+fois par seconde — pas le propriétaire qui tape vite.
+
+Défaut porté à **60 par minute** : une requête par seconde en moyenne, hors
+d'atteinte pour quelqu'un qui tape, et toujours cent fois sous une boucle. Après
+correction, mesuré de la même façon : **30 messages** passent avant le premier
+refus, contre 5.
+
+`.env.example` est corrigé aussi — une correction qui ne s'applique qu'à moitié
+est pire que rien, et un test vérifie que les deux valeurs restent égales.
+
+## Défaut n° 26 bis — et le refus était avalé
+
+`if (!reponse.ok) return null` traitait un `429` comme une coupure réseau. Or
+ce n'est pas la même chose : **le serveur répond, et il dit non**. Avalé en
+silence, il laissait croire que la conversation était sauvegardée.
+
+Le `429` remonte désormais distinctement (`DebitDepasse`) et l'interface le
+dit, avec la même mécanique que le n° 25 — rien d'inventé.
+
+Deux bornes tiennent la limite en place : elle doit laisser passer au moins
+20 messages par minute, **et** rester sous 5 requêtes par seconde. Baisser
+l'une ou monter l'autre fait tomber un test.
+
+Vérifié : `npx tsc --noEmit` → code 0, et il mesure vraiment (une propriété
+cassée exprès rend `error TS2551`).
+
+---
+
+# Trouvé, mesuré, **délibérément pas corrigé** : la 31ᵉ conversation disparaît
+
+Le fil du n° 25 mène ici, et il faut le dire clairement au propriétaire plutôt
+que de trancher à sa place à deux heures du matin.
+
+**Trois faits, lus dans le code :**
+
+1. `chatStore.persist()` n'enregistre que `conversations.slice(0, 30)` — les
+   **30 plus récentes**. Le commentaire dit pourquoi : garder le stockage du
+   téléphone en bonne santé.
+2. `localStorage` est le **seul** stockage local. Aucun IndexedDB.
+3. `backendStore` démarre à `{ url: '', apiKey: '', enabled: false }`. **Par
+   défaut, il n'y a aucune synchronisation serveur.**
+
+Ensemble : dans la configuration par défaut, la 31ᵉ conversation évince la plus
+ancienne, définitivement, au prochain rechargement du navigateur. Rien ne le
+dit.
+
+Et `persist()` avale l'échec d'écriture : `catch { /* storage full — ignore */ }`.
+Stockage plein, la conversation n'est enregistrée **nulle part**, en silence.
+
+## Pourquoi je n'y touche pas cette nuit
+
+Le plafond de 30 existe pour une raison écrite, et le corriger demande de
+choisir : monter le plafond ? avertir ? pousser à configurer le serveur ?
+Chacune de ces réponses est un choix de produit **sur ses données à lui**, pas
+un réglage technique. La règle du dépôt est nette : quand l'ambiguïté change
+matériellement l'implémentation, on demande.
+
+**Un quatrième fait, qui change la réponse** : côté serveur, il n'y a
+**aucune limite de nombre**. `DepotConversations` plafonne la taille d'**une**
+conversation (2 Mo) et rien d'autre. Configurer la synchronisation suffit donc
+à supprimer entièrement le problème — le plafond de 30 redevient ce qu'il
+prétend être, un cache local.
+
+Ce que je propose, dans l'ordre de ce qui coûte le moins :
+
+1. **Dire l'éviction** — un avertissement quand il dépasse 30 conversations
+   *sans serveur configuré*, avec le même mécanisme que les n° 25 et 26. C'est
+   le seul cas où le plafond fait perdre quelque chose.
+2. **Dire l'échec d'écriture** — `persist()` rend un booléen, l'appelant le
+   montre.
+3. **Monter le plafond**, ou passer à IndexedDB, qui n'a pas la même limite.
+
+Le 1 traite la cause réelle et coûte le moins ; le 3 traite le symptôme et
+coûte le plus.
+
+`OPTIONAL — NON IMPLÉMENTÉ.` C'est sa décision.
+
+---
+
+# Défaut n° 27 — une garantie de lecture seule que rien ne tenait
+
+Trouvé en cherchant systématiquement les **méthodes publiques sans aucun
+appelant** — la forme qui avait déjà piégé `LimiteurDebit.nettoyer()` le 31/08
+et `PolitiqueDePermissions.recharger()` cette nuit.
+
+Le balayage rend 56 candidats ; en écartant les propriétés (lues comme des
+attributs, pas appelées) et les rappels de bibliothèque, il en reste **cinq**.
+Deux sont appelées par `asyncio.to_thread`, que la syntaxe cache. Il en reste
+**trois** :
+
+| Méthode | Ce qu'elle fait | Appelée |
+|---|---|---|
+| `SWEACITool.edit` | **écrit** dans un fichier | nulle part |
+| `SWEACITool.view` | lit des lignes | nulle part |
+| `RepoEngineerTool.read_files` | lit des fichiers | nulle part |
+
+La première est celle qui compte. `SWEAgent` se déclare en lecture seule —
+dans sa docstring, et dans ce qu'il **dit au propriétaire** :
+
+> *Cet agent analyse et propose. Il ne modifie aucun fichier : c'est toi qui
+> décides d'appliquer la correction ou non.*
+
+Or `edit` est là, dans l'outil que cet agent possède, et **rien** ne l'empêche
+d'être branché : ni un test, ni une frontière, ni même une couverture. La
+garantie ne tenait qu'au fait que personne ne l'avait fait.
+
+**Correctif** : trois tests en font une frontière — l'agent n'appelle aucune
+écriture, **personne dans le dépôt** ne la branche, et la promesse reste écrite
+dans sa réponse. Brancher `edit` fait tomber deux d'entre eux, avec le message
+qui dit quoi faire d'abord : changer la garantie, pas la contourner.
+
+**Rien n'est supprimé.** Un orphelin est une question, pas un verdict — c'est
+la règle de `scripts/orphelins.py` et elle vaut ici. Les trois méthodes
+existent toujours ; ce qui change, c'est qu'on ne peut plus les brancher sans
+le décider.
+
+`view` et `read_files` sont en lecture seule : leur sort est une question
+ouverte, pas un risque. `OPTIONAL — NON IMPLÉMENTÉ.`
+
+## Deux garanties vérifiées et **tenues**
+
+Pour être juste : la même question posée à deux autres frontières a répondu oui.
+
+- **Le contenu d'une pièce jointe est une donnée, jamais une consigne.** Le
+  texte passe par `core/security/trust.wrap()` et `tests/core/test_frontiere_de_confiance.py`
+  le tient, bloc par bloc.
+- **Une consigne écrite *sur une image* n'en est pas une non plus.**
+  `test_le_rappel_donnee_accompagne_toujours_le_prompt` le vérifie sur le
+  prompt réellement envoyé au modèle.
+
+Mon premier balayage avait déclaré la seconde non testée : je cherchais le nom
+de la constante, le test assertait sur son contenu. **Une recherche trop
+étroite est un faux positif, pas une trouvaille** — c'est la deuxième fois
+cette nuit (l'autre : `ClipSelectorAgent`), et les deux fois la vérification a
+tranché avant la conclusion.

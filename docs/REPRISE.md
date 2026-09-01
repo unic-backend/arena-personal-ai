@@ -1,6 +1,32 @@
 # ARENA — où on en est, pour reprendre sans rien redemander
 
-Dernière mise à jour : **2026-09-01**, après la nuit VoiceStudio + audit général.
+Dernière mise à jour : **2026-09-01**, après la nuit VoiceStudio + Agency Agents
++ deux vagues d'audit général (PR #96 à #110).
+
+## En une phrase
+
+**24 défauts trouvés sur une suite verte**, tous mesurés avant correction et
+vérifiés par sabotage. Le plus coûteux : tes prix modifiés dans
+`config/unic_plaquiste.yaml` n'étaient vus qu'après un redémarrage du serveur.
+
+Deux formes reviennent, et ce sont elles qu'il faut chercher en premier la
+prochaine fois :
+
+1. **Une valeur lue une fois, servie comme si elle était actuelle** — quatre
+   occurrences (sonde Docker, grille de prix, deux couches de permissions).
+   `core/fichier_suivi.py` existe maintenant pour ça.
+2. **Une règle apprise sur une surface, jamais portée sur les autres** —
+   quatre occurrences (question orpheline, fil de conversation, devis
+   multi-tours, bulle vide). ARENA a **quatre** surfaces de réponse : la PWA,
+   `/api/chat`, `/api/chat/stream` et la passerelle OpenAI. Quand une règle est
+   trouvée quelque part, la question suivante n'est pas « est-ce corrigé ? »
+   mais **« qui d'autre fait la même chose ? »**.
+
+Et une leçon sur les tests : **trois tests épinglaient les mensonges corrigés**,
+dont deux écrits par moi la même nuit. Un test qui appelle la fonction corrigée
+au lieu de traverser le vrai chemin passe même après qu'on a retiré le
+correctif. Le sabotage est la seule chose qui le débusque.
+
 
 ## Ce qui a changé cette nuit (PR #96 à #101)
 
