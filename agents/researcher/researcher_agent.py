@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from core.agent.base_agent import BaseAgent
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
+from core.security.trust import TrustLevel, wrap
 from tools.search.web_search_tool import WebSearchTool
 
 logger = logging.getLogger("usman.agent.researcher")
@@ -53,7 +54,18 @@ class DeepResearcherAgent(BaseAgent):
                 unique_sources.append(r)
 
         # 3. Synthèse d'intelligence de haut niveau
-        sources_text = "\n".join([f"[{i+1}] {s['title']} ({s['href']})\n{s['body']}\n" for i, s in enumerate(unique_sources)])
+        # Le texte vient de pages que personne ne controle : il entre
+        # **enveloppe**, au niveau EXTERNAL — origine annoncee, balises
+        # neutralisees, tournures suspectes relevees et transportees avec lui.
+        # `FreshInfoAgent` tenait deja cette regle ; celui-ci versait le corps
+        # de page tel quel, `<system>` compris (mesure du 01/09/2026). La
+        # numerotation reste DEHORS de l'enveloppe, sinon les citations [1] ne
+        # marcheraient plus.
+        sources_text = "\n".join(
+            f"[{i + 1}] {s['title']} ({s['href']})\n"
+            f"{wrap(s['body'], TrustLevel.EXTERNAL, s['href'] or 'page sans adresse').text}\n"
+            for i, s in enumerate(unique_sources)
+        )
 
         synthesis_prompt = (
             "Tu es DeepResearcherAgent d'Usman, un expert en analyse stratégique d'élite.\n"
