@@ -124,6 +124,24 @@ def ffmpeg_disponible():
 
 
 @pytest.fixture
+def modele_whisper_disponible():
+    """Ignore le test si `faster_whisper` est absent.
+
+    Meme convention que `ffmpeg_disponible` juste au-dessus. Sans elle, un
+    test `integration` **echouait** au lieu de se sauter quand la dependance
+    optionnelle manquait : lancer la suite d'integration sur une machine sans
+    Whisper produisait une fausse alerte (mesure du 01/09/2026).
+
+    Ce n'est pas un affaiblissement : le test echoue toujours si le modele
+    est LA et que la duree ne correspond pas.
+    """
+    try:
+        import faster_whisper  # noqa: F401
+    except ImportError:
+        pytest.skip("faster-whisper n'est pas installe sur cette machine.")
+
+
+@pytest.fixture
 def video_de_test(ffmpeg_disponible, tmp_path):
     """Vidéo synthétique de 5 s, générée hors du dépôt.
 

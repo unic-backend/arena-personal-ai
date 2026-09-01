@@ -116,7 +116,12 @@ def navigateur():
 
 @pytest.fixture
 def serveur_local():
-    import uvicorn
+    # Meme regle que `modele_whisper_disponible` : une dependance optionnelle
+    # absente se SAUTE, elle ne fait pas erreur au montage de la fixture.
+    try:
+        import uvicorn
+    except ImportError:
+        pytest.skip("uvicorn n'est pas installe sur cette machine.")
 
     port = 8937
     serveur = uvicorn.Server(uvicorn.Config(main.app, host="127.0.0.1", port=port, log_level="error"))

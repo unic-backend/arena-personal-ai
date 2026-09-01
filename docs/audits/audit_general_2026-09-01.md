@@ -6,7 +6,7 @@ en cassant volontairement ce que son test protège.*
 
 Point de départ posé par le propriétaire : « Ne suppose pas qu'une suite de
 tests verte veut dire que le projet est sain. » Elle l'était : 2542 tests au
-vert. **Dix défauts réels ont été trouvés quand même.**
+vert. **Onze défauts réels ont été trouvés quand même.**
 
 ---
 
@@ -30,7 +30,7 @@ vert. **Dix défauts réels ont été trouvés quand même.**
 
 ---
 
-## Les dix défauts trouvés, et ce qu'ils coûtaient
+## Les onze défauts trouvés, et ce qu'ils coûtaient
 
 ### 1. `/health` taisait six agents — dont son assistant devis
 
@@ -153,6 +153,24 @@ qui répond ne prouve rien : **VoiceStudio démarre très bien sans aucun moteur
 La vérification interroge donc ses moteurs et nomme ce qui manque.
 
 ---
+
+### 11. La suite d'intégration criait au loup
+
+Trouvé en lançant les 44 tests `integration`, que le CI ne lance pas :
+**1 échec et 1 erreur**, tous deux parce qu'une dépendance *optionnelle*
+manquait — `faster_whisper` et `uvicorn`.
+
+Le dépôt a déjà la bonne convention (`ffmpeg_disponible` saute avec un message
+clair) ; ces deux-là ne l'appliquaient pas. Résultat : lancer la suite
+d'intégration sur une machine ordinaire produisait une fausse alerte, et une
+vraie régression s'y serait noyée.
+
+**Ce n'est pas un affaiblissement**, et ça a été prouvé : avec un faux module
+`faster_whisper` présent, le test s'exécute et **échoue**. Le saut ne se
+déclenche que sur une absence réelle.
+
+Avant : `1 failed, 24 passed, 18 skipped, 1 error`.
+Après : `24 passed, 20 skipped`, **0 échec, 0 erreur**.
 
 ## Deux choses vérifiées, correctes, et laissées telles quelles
 
