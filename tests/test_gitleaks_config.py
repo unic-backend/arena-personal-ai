@@ -4,6 +4,7 @@ Ces tests existent parce que la valeur d'une clé a été réintroduite trois fo
 dans le dépôt en une seule journée — à chaque fois par inadvertance, à chaque
 fois attrapée par un contrôle et non par une relecture.
 """
+import re
 import shutil
 import subprocess
 import tomllib
@@ -160,3 +161,43 @@ def test_un_secret_introduit_est_bien_detecte(gitleaks, tmp_path):
     )
 
     assert resultat.returncode != 0, "un secret évident n'a pas été détecté"
+
+
+def test_les_exceptions_ajoutees_visent_une_valeur_et_pas_un_fichier(config):
+    """Une exception large laisserait passer un vrai secret sans qu'on le voie.
+
+    Mesuré le 01/09/2026, quand le budget CI est revenu et que le scan a pu
+    tourner : 4 fuites, toutes fausses — deux affectations à une variable
+    (`USMAN_API_KEY = CLE_DE_TEST`, `= originale`) et une fixture de 32 hex
+    qui sert à prouver que le classificateur repère une clé.
+
+    Ce test ne passe PAS par gitleaks : dans ces fichiers, un secret planté
+    est de toute façon rattrapé par les règles génériques, donc un test
+    « je plante, il détecte » passerait même avec une exception trop large —
+    mesuré aussi, en le sabotant. Il vérifie donc la seule chose qui compte
+    ici : que chaque motif ajouté reconnaît la valeur factice **et refuse**
+    une vraie affectation de clé.
+    """
+    regle = next(r for r in config["rules"] if r["id"] == "usman-compose-secret")
+    motifs = [re.compile(m) for m in regle["allowlist"]["regexes"]]
+
+    def ecarte(ligne: str) -> bool:
+        return any(m.search(ligne) for m in motifs)
+
+    # Les lignes d'exemple sont assemblées à l'exécution, comme le fait déjà
+    # `test_un_secret_introduit_est_bien_detecte` plus bas : écrites d'un seul
+    # tenant, elles feraient de ce fichier une cible du scanner qu'il teste.
+    # Mesuré en les écrivant entières : 5 faux positifs de plus.
+    champ = "USMAN_API" + "_KEY"
+    hexa = "4409dde4" + "2d4099b9" + "296b5cca" + "987b7c00"
+
+    # Ce qui DOIT être écarté : les faux positifs mesurés.
+    assert ecarte(f"{champ} = CLE_DE_TEST")
+    assert ecarte(f"{champ} = originale")
+    assert ecarte(f'{champ}={hexa}"')
+
+    # Ce qui ne doit JAMAIS l'être : une vraie clé, y compris à faible
+    # entropie, et y compris affectée à une variable au nom voisin.
+    assert not ecarte(f'{champ} = "arena-cle-de-prod-2026"')
+    assert not ecarte(f"{champ}={hexa[:-1]}1"), "une valeur voisine passe aussi"
+    assert not ecarte(f'{champ} = "CLE_DE_TEST-mais-vraie-2026"')

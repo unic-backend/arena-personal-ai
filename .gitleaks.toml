@@ -42,6 +42,23 @@ tags = ["usman", "secret"]
     # Valeurs de remplacement documentaires, jamais de vrais secrets.
     '''change_this_to_a_secure_random_key''',
     '''(?i)(exemple|example|placeholder|votre[_-]?cle|<[^>]+>)''',
+    # --- Faux positifs mesures le 01/09/2026, quand le budget CI est revenu
+    # et que le scan a pu tourner pour de vrai (4 fuites, toutes fausses).
+    #
+    # Deux sont des affectations a une VARIABLE, pas a un litteral :
+    # `security.USMAN_API_KEY = CLE_DE_TEST` et `= originale`, dans
+    # scripts/auditer_surface_publique.py, qui pose puis restitue une cle
+    # factice. `CLE_DE_TEST` vaut « audit-cle-de-test-non-secrete » et se
+    # nomme elle-meme. Vise par NOM de variable, jamais par fichier : un
+    # vrai secret ecrit dans ce meme script serait toujours detecte.
+    '''=\s*(CLE_DE_TEST|originale)\s*$''',
+    # La troisieme est une fixture de test : une chaine de 32 hex qui a la
+    # FORME d'une cle, utilisee par tests/core/test_confidentialite.py pour
+    # prouver que le classificateur la repere et ne la recopie pas dans son
+    # motif. Verifie dans tout l'historique (`git log --all -S`) : elle
+    # n'apparait que dans le commit qui l'a inventee (1098f3c), jamais dans
+    # un .env ni une configuration. Visee par valeur exacte.
+    '''4409dde42d4099b9296b5cca987b7c00''',
   ]
 
 [allowlist]
