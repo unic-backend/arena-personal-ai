@@ -1170,3 +1170,35 @@ de la constante, le test assertait sur son contenu. **Une recherche trop
 étroite est un faux positif, pas une trouvaille** — c'est la deuxième fois
 cette nuit (l'autre : `ClipSelectorAgent`), et les deux fois la vérification a
 tranché avant la conclusion.
+
+---
+
+# Le pire silence possible : la bonne forme, le mauvais appel
+
+Dernière zone examinée : `core/mcp/`, le code de frontière de processus —
+sous-processus, thread lecteur, délais. Le plus risqué de ce qui restait.
+
+**Il est solide, et bien testé** : 14 tests couvrant l'ouverture rejouable, la
+notification glissée avant la réponse, le thread qui ne survit pas à la
+fermeture, un processus mort qui répond sans attendre le délai. Vérifié
+indépendamment, à la main, contre un serveur MCP réel écrit pour l'occasion :
+poignée de main, liste d'outils, appel, erreur JSON-RPC, délai dépassé,
+commande absente — tout se comporte comme annoncé.
+
+**Un cas manquait.** Après un délai dépassé, la réponse de l'appel abandonné
+finit par arriver sur le flux. Elle a **la forme exacte d'une réponse valide**.
+Sans le contrôle de l'`id`, l'appel *suivant* la lirait et la rendrait comme
+étant la sienne : un résultat juste, pour la mauvaise question, sans aucune
+erreur nulle part.
+
+C'est le pire mode d'échec qu'on puisse avoir sur un transport, parce qu'il ne
+ressemble pas à un échec.
+
+Le contrôle existe dans `_poster`. **Rien ne le tenait.** Un test l'exerce
+maintenant sur un vrai retard : appel abandonné à 0,3 s, réponse tardive à
+1,5 s, puis un appel normal qui doit recevoir *sa* réponse. Neutraliser le
+contrôle de l'`id` fait tomber ce test **et** celui de la notification glissée.
+
+C'est la troisième garantie de la nuit qui existait dans le code sans que rien
+ne l'empêche de disparaître — après la lecture seule de `SWEAgent` et la
+relecture des permissions.
