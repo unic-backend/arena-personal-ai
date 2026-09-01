@@ -63,6 +63,10 @@ SURFACE_ATTENDUE = {
     "/connectors/{fournisseur}/callback": (["GET"], []),
     "/connectors/{fournisseur}/status": (["GET"], ["verify_api_key", "limiter_debit"]),
     "/connectors/{fournisseur}/disconnect": (["POST"], ["verify_api_key", "limiter_debit"]),
+    # L'orchestrateur Video (DEC-0037) : le premier point d'entree reel de
+    # VideoProductionAgent, construit et teste depuis le 01/09/2026 sans
+    # jamais avoir ete joignable avant cette route.
+    "/api/video/projet": (["POST"], ["verify_api_key", "limiter_debit"]),
 }
 
 

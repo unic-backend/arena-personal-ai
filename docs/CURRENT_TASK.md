@@ -12,13 +12,26 @@ un même projet — dépendances, parallélisme, reprise après échec — au li
 d'une liste de boutons. Le propriétaire a choisi de commencer par
 **l'orchestrateur d'abord**, avant l'interface.
 
-## Modules réels, pas encore atteints par un point d'entrée — et pourquoi
+## Ce qui est déjà fait
 
-| # | Module | Pourquoi il dort encore |
-|---|---|---|
-| 1 | `core/production/etat_projet.py` | L'état d'un projet Video (objectif, références, graphe, résultat) — une structure de données, câblée par les deux modules suivants, elle-même jamais appelée directement par un point d'entrée. |
-| 2 | `core/production/plan_video.py` | Traduit un objectif en graphe validé (liste fermée de capacités) — utilisé uniquement par `agents/video/production_agent.py`, ci-dessous, lui-même pas encore branché. |
-| 3 | `agents/video/production_agent.py` | `VideoProductionAgent` : compose vision, WanGP, MoneyPrinterTurbo, VoiceStudio et montage via `core/execution/coordination.py:executer_parallele()`. Testé en isolation (doubles pour chaque collaborateur), mais **pas encore câblé au démarrage du serveur ni routé depuis le chat** — c'est la prochaine étape, pas encore faite. Rien côté interface pour l'instant, sur décision du propriétaire (01/09/2026). |
+`core/production/etat_projet.py`, `core/production/plan_video.py` et
+`agents/video/production_agent.py` (`VideoProductionAgent` — compose vision,
+WanGP, MoneyPrinterTurbo, VoiceStudio et montage via
+`core/execution/coordination.py:executer_parallele()`) sont désormais
+**atteints pour de vrai** : construit dans `apps/backend/runtime.py`, routé
+par `POST /api/video/projet` (`apps/backend/routers/video_production.py`).
+Aucun de ces trois modules ne dort plus — `python scripts/orphelins.py`
+le mesure.
+
+Une écriture (génération WanGP/MoneyPrinterTurbo, narration VoiceStudio)
+reste soumise à la file de confirmation existante et ne s'exécute jamais
+d'autorité (question posée explicitement au propriétaire le 01/09/2026,
+réponse : « il attend ma confirmation a chaque etape d'ecriture »).
+
+**Ce qui reste à faire** : aucune route n'est encore appelée depuis le chat
+ou l'interface — `/api/video/projet` n'est atteignable aujourd'hui que par
+un appel HTTP direct (curl, ou un futur frontend). Rien côté interface pour
+l'instant, sur décision du propriétaire (01/09/2026).
 
 ---
 

@@ -25,6 +25,7 @@ from agents.social.social_agent import SocialAgent
 from agents.subtitle.subtitle_agent import SubtitleAgent
 from agents.swe_agent.swe_agent import SWEAgent
 from agents.trend_analyzer.trend_analyzer_agent import TrendAnalyzerAgent
+from agents.video.production_agent import VideoProductionAgent
 from agents.video_analyzer.video_analyzer_agent import VideoAnalyzerAgent
 from agents.vision.vision_agent import VisionAgent
 from apps.backend.config import (
@@ -316,6 +317,15 @@ plaquiste_agent = PlaquisteAgent(
     provider=deep_provider, memory=memory, registre=registre,
     pieces_jointes=pieces_jointes, memoire_personnelle=memoire_personnelle,
     provider_vision=ollama_vision)
+# Orchestrateur Video (DEC-0037) : compose les capacites deja construites
+# ci-dessus sur un meme projet, plutot que d'en reconstruire une equipe a
+# part. Le modele profond pour proposer un graphe (une redaction structuree,
+# comme le montage) ; `provider_vision` le meme `ollama_vision` que
+# VisionAgent et PlaquisteAgent, jamais un second modele pour ce seul agent.
+video_production_agent = VideoProductionAgent(
+    provider=deep_provider, memory=memory, provider_vision=ollama_vision,
+    video_analyzer_agent=video_agent, audio_agent=audio_agent,
+    montage_agent=montage_agent)
 
 memory.set_fact("user_profile", "owner", "Ousmane", {"role": "Propriétaire et créateur d'Usman"})
 
