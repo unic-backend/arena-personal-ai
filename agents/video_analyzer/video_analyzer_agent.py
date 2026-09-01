@@ -155,6 +155,23 @@ class VideoAnalyzerAgent(BaseAgent):
         self.travaux = travaux
         self.journal = journal
 
+    def _transcrire_par_le_connecteur(self, audio: Any) -> Optional[str]:
+        """Le texte rendu par VoiceStudio, ou `None` s'il ne repond pas.
+
+        Repli seulement : le chemin normal reste le modele local, qui ne
+        depend d'aucun autre programme. Ce secours n'existe que parce qu'une
+        capacite joignable vaut mieux qu'un echec — et il rend `None`, jamais
+        une transcription fabriquee.
+        """
+        if self.registre is None:
+            return None
+        resultat = self.registre.executer("audio", "transcrire", chemin=str(audio))
+        if resultat.statut.value != "SUCCESS":
+            logger.info("Repli VoiceStudio indisponible : %s", resultat.message[:120])
+            return None
+        logger.info("Transcription obtenue par le connecteur audio (repli).")
+        return resultat.detail.get("texte") or ""
+
     # --- Suivi d'une generation -------------------------------------------------
 
     def derniere_generation(self) -> Tuple[str, str]:
@@ -424,13 +441,25 @@ class VideoAnalyzerAgent(BaseAgent):
         logger.info("Transcription audio via Whisper...")
         try:
             transcription_res = self.transcriber.transcribe(str(audio_output))
+            full_text = transcription_res.get("full_text", "")
         except ModeleAbsent as erreur:
-            return {
-                "status": "error",
-                "agent": self.name,
-                "response": f"❌ Transcription impossible : {erreur}",
-            }
-        full_text = transcription_res.get("full_text", "")
+            # Le modele local manque. AVANT de renoncer, on demande au
+            # connecteur audio : VoiceStudio, s'il tourne, sait transcrire
+            # (DEC-0027). Mesure du 01/09/2026 : sur une machine sans
+            # `faster_whisper`, l'analyse video echouait pendant qu'un
+            # transcripteur en etat de marche attendait sur la boucle locale.
+            #
+            # Le repli est ANNONCE dans la reponse, jamais silencieux : le
+            # moteur qui a transcrit change ce que vaut le texte.
+            secours = self._transcrire_par_le_connecteur(audio_output)
+            if secours is None:
+                return {
+                    "status": "error",
+                    "agent": self.name,
+                    "response": (f"❌ Transcription impossible : {erreur} "
+                                 "VoiceStudio non plus ne repond pas."),
+                }
+            full_text = secours
 
         # 3. Analyse du contenu par Qwen 3.5
         prompt = f"""Tu es un expert en analyse vidéo. Analyse la transcription suivante et propose :
