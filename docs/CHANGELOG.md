@@ -2,6 +2,38 @@
 
 ## [Non publié]
 
+### Corrigé — 01/09/2026 (audit général)
+- **`/health` taisait six agents**, dont l'assistant devis. La liste écrite à
+  la main a dérivé ; elle est désormais dérivée de ce qui existe vraiment.
+- **Le bac à sable prenait une image manquante pour une erreur de code** :
+  un agent serait parti corriger du code correct.
+- **Une recherche qui n'avait rien pu lire répondait « aucun résultat ».**
+- **`/api/chat/stream` mourait en silence** quand Ollama tombait : `200` et
+  zéro ligne, et une question orpheline laissée dans l'historique.
+- **Une recherche documentaire en panne s'annonçait comme une réponse.** Le
+  test qui gardait cet espace épinglait le mensonge ; il a été renforcé.
+- **Le docteur ne connaissait pas la voix**, et ne se contente plus d'un port
+  qui répond : il demande les moteurs.
+
+Rapport complet → `docs/audits/audit_general_2026-09-01.md`.
+
+### Ajouté — 01/09/2026 (audio)
+- **ARENA parle et écoute.** « Lis-moi ce texte », « transcris cet
+  enregistrement » : la parole et l'écoute passent par VoiceStudio, piloté en
+  local par HTTP. Aucune de ses lignes n'entre dans ARENA — il est sous
+  AGPL-3.0 (DEC-0027, `docs/audits/voicestudio_audit.md`).
+- **Une voix off entre dans une vidéo montée.** Texte → voix → piste audio de
+  la timeline → MP4 final vérifié (`h264` + `aac`).
+- **Le moteur se choisit sur ce qui est réellement installé**, jamais sur le
+  défaut du service — qui pointait vers un moteur absent.
+- **Une voix ne sort pas de la machine** : toute adresse non locale pour
+  VoiceStudio est refusée.
+
+### Corrigé — 01/09/2026 (audio)
+- **Les sous-titres restaient au studio.** La nouvelle intention audio les lui
+  prenait ; ARENA les fabrique déjà de bout en bout. Régression trouvée par la
+  suite existante, corrigée, et un test la fixe.
+
 ### Ajouté — 01/09/2026
 - **ARENA sait monter une vidéo, et une phrase suffit.** « Monte-moi un short
   du chantier de Ouakam » devient un plan d'opérations validées, une timeline

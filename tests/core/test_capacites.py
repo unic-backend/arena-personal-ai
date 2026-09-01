@@ -125,3 +125,53 @@ class TestAdaptateurSynchrone:
 
         assert resultat["response"] == "trouve"
         assert appels == ["cherche le devis"]
+
+
+class TestUnEchecNeSeFaitPasPasserPourUneReponse:
+    """`adaptateur_synchrone` annonçait `success` quoi qu'il arrive.
+
+    Mesuré le 01/09/2026 : la capacité « documents » rendait
+    `status: "success"` en portant « ❌ Erreur de recherche documentaire
+    LightRAG : No module named 'lightrag' ». L'interface l'affichait comme
+    une réponse. Un outil qui rend une chaîne ne peut dire « j'ai échoué »
+    que par un prédicat — et ce prédicat appartient à l'outil.
+    """
+
+    @pytest.mark.asyncio
+    async def test_sans_predicat_le_comportement_ne_change_pas(self):
+        adaptateur = adaptateur_synchrone(lambda t: f"réponse à {t}", "Outil")
+        assert (await adaptateur.run("x"))["status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_une_reponse_reconnue_comme_echec_devient_error(self):
+        adaptateur = adaptateur_synchrone(
+            lambda t: "❌ panne", "Outil", est_un_echec=lambda r: r.startswith("❌"))
+        resultat = await adaptateur.run("x")
+        assert resultat["status"] == "error"
+        assert resultat["response"] == "❌ panne"
+
+    @pytest.mark.asyncio
+    async def test_une_vraie_reponse_reste_un_succes(self):
+        adaptateur = adaptateur_synchrone(
+            lambda t: "voici tes documents", "Outil",
+            est_un_echec=lambda r: r.startswith("❌"))
+        assert (await adaptateur.run("x"))["status"] == "success"
+
+    def test_le_predicat_de_lightrag_reconnait_son_propre_echec(self):
+        from tools.rag.lightrag_tool import PREFIXE_ECHEC, est_un_echec
+
+        assert est_un_echec(f"{PREFIXE_ECHEC} : No module named 'lightrag'")
+        assert not est_un_echec("Le devis du chantier de Ouakam est daté du 12 mai.")
+        assert not est_un_echec("")
+
+    @pytest.mark.asyncio
+    async def test_la_capacite_documents_reelle_ne_ment_pas(self):
+        """Le câblage, pas seulement l'adaptateur."""
+        from apps.backend.runtime import capacites
+
+        resultat = await capacites.demander("documents", "bonjour")
+        reponse = str(resultat["response"])
+        if reponse.startswith("❌"):
+            assert resultat["status"] == "error", (
+                "un échec du moteur documentaire s'annonce encore comme une réponse"
+            )

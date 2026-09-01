@@ -65,6 +65,7 @@ INTENTIONS = {
     "SOCIAL",
     "VISION",
     "MONTAGE",
+    "AUDIO",
 }
 
 #: Ce qui parle de ses RESEAUX SOCIAUX. Teste avant le metier : « une
@@ -136,6 +137,28 @@ VISION = (
     "analyse ce dessin", "analyse ce schema", "analyse ce schéma",
     "decris cette image", "décris cette image", "decris cette photo",
     "décris cette photo", "analyse ce document scanne", "analyse ce document scanné",
+)
+
+#: PARLER ou ECOUTER. **Les sous-titres n en font PAS partie** : STUDIO les
+#: fait deja de bout en bout (9:16 + incrustation, `apps/backend/studio.py`),
+#: et cette intention les lui prenait — mesure du 01/09/2026, le test
+#: `test_ces_demandes_vont_au_studio[sous-titre ma video]` est tombe. Une
+#: transcription rend du TEXTE ; incruster est un travail d image.
+#: Distinct de MONTAGE (assembler des images) et de
+#: VIDEO_ANALYSIS (comprendre une video) : ici c est le SON qui est produit
+#: ou lu. Teste AVANT le metier et AVANT le montage : « transcris la video du
+#: chantier » contient « chantier » et « video » sans etre ni un devis ni un
+#: montage.
+AUDIO = (
+    "transcris", "transcrire", "transcription", "retranscris",
+    "ecris ce qui est dit", "écris ce qui est dit",
+    "qu'est-ce qui est dit", "qu est ce qui est dit",
+    "lis ce", "lis-moi", "lis moi", "voix off", "voix-off",
+    "a voix haute", "à voix haute", "transforme ce texte en voix",
+    "genere une voix", "génère une voix", "synthese vocale", "synthèse vocale",
+    "narration", "en voix francaise", "en voix française",
+    "double cette video", "double cette vidéo", "doublage",
+    "quelles voix", "quels moteurs audio", "moteurs de voix",
 )
 
 #: MONTER une video a partir de fichiers qu il possede deja. Distinct de
@@ -490,6 +513,11 @@ class OrchestratorAgent(BaseAgent):
         # souvent le chantier lui-meme, sans etre une demande de devis.
         if any(k in text for k in VISION):
             return "VISION"
+
+        # Le son : parler ou ecouter. Teste AVANT le montage et le metier —
+        # « transcris la video du chantier » porte les mots des deux autres.
+        if any(k in text for k in AUDIO):
+            return "AUDIO"
 
         # Monter une video a partir de ses propres fichiers. Teste AVANT
         # PLANIFIER_SCENE et FABRIQUER_VIDEO : « monte la video du chantier »
