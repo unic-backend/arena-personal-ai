@@ -6,7 +6,7 @@ en cassant volontairement ce que son test protège.*
 
 Point de départ posé par le propriétaire : « Ne suppose pas qu'une suite de
 tests verte veut dire que le projet est sain. » Elle l'était : 2542 tests au
-vert. **Neuf défauts réels ont été trouvés quand même.**
+vert. **Dix défauts réels ont été trouvés quand même.**
 
 ---
 
@@ -30,7 +30,7 @@ vert. **Neuf défauts réels ont été trouvés quand même.**
 
 ---
 
-## Les neuf défauts trouvés, et ce qu'ils coûtaient
+## Les dix défauts trouvés, et ce qu'ils coûtaient
 
 ### 1. `/health` taisait six agents — dont son assistant devis
 
@@ -134,7 +134,19 @@ dit « générés SANS relecture ». Les deux appelants (studio et
 `/api/process-video`) vérifiaient déjà l'existence du fichier — la correction
 dégrade proprement.
 
-### 9. Le docteur ne connaissait pas la voix
+### 9. Le sélecteur d'extraits annonçait une détection qui n'avait pas eu lieu
+
+Même sweep, même famille. Sans segments — donc **sans aucune analyse** —
+`ClipSelectorAgent` répondait « 🔥 Extrait le plus viral détecté
+(0.0s → 15.0s) ». Sur une vidéo de **6,7 secondes**. Deux affirmations fausses
+dans une phrase : une détection qui n'a pas eu lieu, et une durée que la
+source n'a pas.
+
+Un JSON illisible rendu par le modèle retombait au même endroit, avec la même
+phrase. Le message dit maintenant ce qui s'est réellement passé : « Aucune
+analyse disponible : j'ai pris le début de la vidéo ».
+
+### 10. Le docteur ne connaissait pas la voix
 
 Une capacité que le diagnostic ignore est invisible au propriétaire. Et un port
 qui répond ne prouve rien : **VoiceStudio démarre très bien sans aucun moteur**.
@@ -174,8 +186,8 @@ correction de nuit, c'est une décision du propriétaire.
 
 ```
 python -m ruff check .                                   -> All checks passed!
-python -m pytest tests/ -q                               -> 2582 passed, 44 deselected
-OMNIVOICE_URL=http://127.0.0.1:9 python -m pytest tests/ -q -> 2582 passed  (conditions CI)
+python -m pytest tests/ -q                               -> 2586 passed, 44 deselected
+OMNIVOICE_URL=http://127.0.0.1:9 python -m pytest tests/ -q -> 2586 passed  (conditions CI)
 python scripts/orphelins.py                              -> aucun module réel endormi
 ```
 
