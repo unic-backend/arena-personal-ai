@@ -7,6 +7,7 @@ relance la requete jusqu'a trois fois si le flux se ferme sans `done` ni
 Aucun test ici n'appelle Ollama : le fournisseur est un double.
 """
 import json
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -1022,3 +1023,74 @@ class TestEnvoiBorne:
         assert "trop volumineux" in piece.raison
         assert "25 Mo" in piece.raison, "le refus ne dit pas quel est le plafond"
         assert piece.octets == 0
+
+
+# --- Un flux coupe ne laisse pas de question orpheline ------------------------
+
+class TestHistoriqueApresCoupure:
+    """Une question ecrite en memoire sans reponse fausse le tour suivant.
+
+    `memory.add_chat_message(role="user")` est ecrit AVANT la generation. Quand
+    le fournisseur tombait en cours de route, le gestionnaire d'erreur rendait
+    bien une trame `error` — mais n'ecrivait rien cote assistant. L'historique
+    gardait deux tours du proprietaire d'affilee, et `get_recent_history` est
+    lu par l'orchestrateur (`orchestrator_agent.py:608`) et par `fresh_info`
+    pour resoudre une question elliptique.
+
+    `/api/chat/stream` tenait deja cette regle (`routers/chat.py`) ; ce
+    chemin-ci, celui de la PWA, ne la tenait pas.
+    """
+
+    @staticmethod
+    def _session() -> str:
+        return f"test-coupure-{uuid4().hex}"
+
+    @staticmethod
+    def _historique(session: str) -> list:
+        return pwa_gateway.memory.get_recent_history(session_id=session, limit=10)
+
+    def test_la_coupure_laisse_un_tour_assistant(
+            self, client, entetes, fournisseur, chat_direct):
+        fournisseur(leve=True)
+        session = self._session()
+
+        demander(client, entetes, text="ma question", run_id=session)
+
+        historique = self._historique(session)
+        assert [t["role"] for t in historique] == ["user", "assistant"], (
+            "sans reponse, le tour suivant lit deux questions d'affilee"
+        )
+        assert "interrompu" in historique[-1]["content"]
+
+    def test_le_debut_reellement_genere_est_conserve(
+            self, client, entetes, monkeypatch, chat_direct):
+        """Ce que son ecran a affiche ne doit pas disparaitre de l'historique."""
+        class CoupeEnRoute(FauxFournisseur):
+            async def generate_stream(self, prompt, system_prompt=None):
+                yield "Le mur fait "
+                raise ConnectionError("le modele a coupe")
+
+        monkeypatch.setattr(pwa_gateway, "fast_provider", CoupeEnRoute())
+        session = self._session()
+
+        demander(client, entetes, text="combien fait ce mur ?", run_id=session)
+
+        reponse = self._historique(session)[-1]
+        assert reponse["role"] == "assistant"
+        assert reponse["content"].startswith("Le mur fait")
+        assert "interrompu" in reponse["content"]
+
+    def test_une_panne_avant_la_question_n_ecrit_rien(
+            self, client, entetes, fournisseur, monkeypatch):
+        """L'inverse est aussi faux : une reponse sans question est orpheline."""
+        async def _tombe(_demande, espace=None):
+            raise RuntimeError("le classement a echoue")
+
+        monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _tombe)
+        fournisseur()
+        session = self._session()
+
+        charges = trames(demander(client, entetes, text="salut", run_id=session).text)
+
+        assert charges[-1]["type"] == "error"
+        assert self._historique(session) == []

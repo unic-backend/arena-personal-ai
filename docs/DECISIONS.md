@@ -2155,3 +2155,20 @@ où le propriétaire lance Docker et celui où ARENA le voit. Le refus reste jus
 pendant ce délai, il n'exécute rien sur l'hôte.
 
 Trouvé par le diagnostic général, pas par un test : la suite était verte.
+
+## DEC-0030 — Un flux coupé écrit ce qui s'est passé, des deux côtés
+
+**2026-09-01.** `/agent/stream` écrivait le tour du propriétaire avant la
+génération et ne rendait rien côté assistant quand la génération tombait :
+l'historique gardait une question orpheline, relue ensuite par l'orchestrateur
+et par `fresh_info` pour résoudre une question elliptique. `/api/chat/stream`
+tenait déjà la règle ; la PWA, non.
+
+Ce qui est écrit est ce qui s'est réellement passé — le début effectivement
+généré, suivi de `[interrompu : X]` — jamais une réponse fabriquée. Une panne
+survenue avant l'écriture de la question n'écrit rien : sinon c'est la réponse
+qui devient orpheline.
+
+**Ce que ça coûte si c'est faux** : un tour d'historique porte un texte
+tronqué. Le tour suivant le lit comme un début de réponse coupé, ce qu'il est,
+au lieu de lire une question posée deux fois.

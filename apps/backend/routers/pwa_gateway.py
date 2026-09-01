@@ -361,6 +361,11 @@ async def flux_agent(demande: DemandeAgent):
     proprietaire = memory.get_fact("owner") or "Ousmane"
 
     async def flux():
+        # Portes hors du `try` : le gestionnaire d'erreur en bas a besoin
+        # de savoir si le tour du proprietaire a deja ete ecrit, et ce qui
+        # avait deja ete dit au moment de la coupure.
+        tour_du_proprietaire_ecrit = False
+        complet = ""
         try:
             # Pas de sonde a part : `fast_provider` est l'aiguilleur hybride
             # (cloud puis Ollama), et une sonde ici partagerait son propre
@@ -445,7 +450,7 @@ async def flux_agent(demande: DemandeAgent):
                 return
 
             memory.add_chat_message(session_id=session, role="user", content=demande.text)
-            complet = ""
+            tour_du_proprietaire_ecrit = True
             async for morceau in fast_provider.generate_stream(
                 _prompt_conversation(demande, proprietaire),
                 await prompt_systeme(
@@ -475,6 +480,20 @@ async def flux_agent(demande: DemandeAgent):
             noter_mesure(Mesure(nom="chat interrompu", voie=voie_pour(None),
                                 etat=ETAT_INDISPONIBLE,
                                 detail=f"{type(souci).__name__}: {souci}"[:120]))
+            # Sans reponse, l'historique garderait une question orpheline : la
+            # memoire montrerait deux tours du proprietaire d'affilee, et
+            # l'orchestrateur comme `fresh_info` lisent cet historique
+            # (`get_recent_history`) pour resoudre une question elliptique.
+            # `/api/chat/stream` tenait deja cette regle ; ce chemin-ci, celui
+            # de la PWA, ne la tenait pas. Ce qui est ecrit est ce qui s'est
+            # reellement passe — le debut reellement genere s'il y en a un,
+            # suivi de la coupure — jamais une reponse fabriquee.
+            if tour_du_proprietaire_ecrit:
+                debut = complet.strip()
+                coupure = f"[interrompu : {type(souci).__name__}]"
+                memory.add_chat_message(
+                    session_id=session, role="assistant",
+                    content=f"{debut}\n{coupure}" if debut else coupure)
             yield erreur(f"ARENA n'a pas pu terminer : {souci}")
 
     return StreamingResponse(flux(), media_type="text/event-stream")

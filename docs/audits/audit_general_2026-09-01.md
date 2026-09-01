@@ -372,3 +372,36 @@ d'exécution ne les faisait **pas** tomber : ils mesuraient une méthode, pas un
 comportement. Réécrits pour passer par `execute_python_code`, le sabotage en
 casse deux. C'est exactement le genre de test que cette mission demandait de
 chasser — et j'en avais écrit un.
+
+---
+
+# Défaut n° 15 — un correctif posé sur un seul des deux chemins
+
+`/api/chat/stream` (`apps/backend/routers/chat.py`) écrit, quand la génération
+tombe en cours de route, un tour assistant disant ce qui s'est passé. Le
+commentaire qui l'accompagne dit pourquoi : *« sans réponse, l'historique
+garderait une question orpheline »*.
+
+**`/agent/stream` — le chemin de la PWA, celui que le propriétaire utilise
+réellement — ne le faisait pas.** Le tour du propriétaire est écrit *avant* la
+génération ; en cas de coupure, la trame `error` partait bien, mais la mémoire
+gardait une question sans réponse.
+
+Ce n'est pas cosmétique : `get_recent_history` est relu par l'orchestrateur
+(`agents/orchestrator/orchestrator_agent.py:608`) et par `fresh_info`
+(`agents/fresh_info/fresh_info_agent.py:271`) pour résoudre une question
+elliptique. Un historique montrant deux questions d'affilée, sans la réponse
+entre les deux, fausse le tour suivant.
+
+**Correctif** — le gestionnaire d'erreur écrit ce qui s'est réellement passé :
+le début effectivement généré s'il y en a un, suivi de la coupure. Jamais une
+réponse fabriquée. Et l'inverse est tenu aussi : une panne survenue *avant*
+l'écriture de la question n'écrit rien du tout, sinon la réponse serait
+l'orpheline.
+
+Sabotage : `if False` à la place de la garde → deux tests tombent.
+
+**Ce que ce défaut apprend.** Les deux chemins de flux ont la même règle
+(« le flux finit toujours ») et l'ont chacun apprise séparément, par une panne.
+Quand une règle est trouvée sur un chemin, la question suivante n'est pas
+« est-ce corrigé ? » mais « qui d'autre fait la même chose ? ».
