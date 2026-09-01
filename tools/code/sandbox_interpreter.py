@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from tools.code.code_interpreter_tool import CodeInterpreterTool
+from tools.docker_local import demon_repond, image_construite
 
 logger = logging.getLogger("usman.tools.sandbox_interpreter")
 
@@ -44,17 +45,12 @@ class SandboxInterpreterTool:
         self._mesure_le = time.monotonic()
 
     def _check_docker(self) -> bool:
-        """Vérifie si le démon Docker est actif sur la machine."""
-        try:
-            res = subprocess.run(
-                ["docker", "info"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=3
-            )
-            return res.returncode == 0
-        except Exception:
-            return False
+        """Vérifie si le démon Docker est actif sur la machine.
+
+        La sonde vit dans `tools/docker_local.py` : le moteur de graphe pose
+        exactement la même question, et ne la posait pas du tout.
+        """
+        return demon_repond()
 
     def _check_image(self) -> bool:
         """L'image du bac a sable est-elle construite ?
@@ -66,13 +62,7 @@ class SandboxInterpreterTool:
         rapporte comme tel — c'est exactement ce que `_refuser` existe pour
         dire (« ce n'est pas le code qui a echoue »).
         """
-        try:
-            res = subprocess.run(
-                ["docker", "image", "inspect", IMAGE_BAC_A_SABLE],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
-            return res.returncode == 0
-        except Exception:
-            return False
+        return image_construite(IMAGE_BAC_A_SABLE)
 
     def _rafraichir_la_mesure(self) -> None:
         """Re-sonde Docker quand la derniere mesure disait « non ».

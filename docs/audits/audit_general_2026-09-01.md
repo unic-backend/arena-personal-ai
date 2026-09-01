@@ -630,3 +630,49 @@ réseau.
 écrit dans le code. Il est couplé à `embedding_dim=768` **et** à l'index déjà
 construit ; le changer sans reconstruire l'index rend des distances qui ne
 veulent rien dire. `OPTIONAL — NON IMPLÉMENTÉ`, décision du propriétaire.
+
+---
+
+# Défaut n° 20 — « Espace de connaissances prêt » disait ARENA, Docker éteint
+
+Le plus franc mensonge trouvé cette nuit, et il était en production.
+
+`GraphRAGTool.query_global` prenait **tout** code de sortie non nul de
+`docker run` pour la même chose, et répondait :
+
+```
+status : "info"
+texte  : 📊 [Microsoft GraphRAG] Espace de connaissances prêt.
+         Ajoutez vos documents dans data/rag/graphrag_workspace/input.
+```
+
+Démon Docker éteint, image jamais construite, requête plantée avec une
+traceback : la même phrase, confiante, avec un remède qui n'aurait rien changé.
+Le propriétaire aurait déposé des documents pendant que le démon dormait.
+
+Mesuré sur cette machine avant correction — c'est exactement ce que la sortie
+donnait.
+
+C'est le **défaut n° 2 de cet audit, dans un autre fichier** : `docker run`
+rend un code non nul **sans lever**, donc le chemin d'exception n'est jamais
+pris et l'échec se déguise en autre chose. Le bac à sable l'avait appris le
+matin même ; le moteur de graphe non.
+
+**Chaque cause est maintenant nommée séparément** — un démon éteint, une image
+absente, un espace vide et une requête plantée n'appellent pas le même geste :
+
+| Cause | Ce qu'ARENA dit |
+|---|---|
+| Démon inactif | « le démon Docker est inactif » + `Démarre Docker Desktop` |
+| Image absente | l'image nommée + `docker build -t usman-graphrag .` |
+| Espace vide | la **seule** réponse qui parle de déposer des documents |
+| Requête plantée | son code de sortie **et sa vraie sortie d'erreur** |
+| Sortie muette | `error`, jamais un succès vide |
+
+La sonde Docker vit désormais dans `tools/docker_local.py`, où les deux outils
+qui posent la question la partagent. Elle n'était écrite qu'au bac à sable, et
+c'est précisément pour ça que le moteur de graphe ne la posait pas.
+
+**Au passage** : `GRAPHRAG_OLLAMA_HOST` écrivait `http://host.docker.internal:11434`
+en entier. L'hôte est propre à Docker et doit le rester ; le **port**, lui, vient
+maintenant d'`OLLAMA_BASE_URL`. Un Ollama servi sur un autre port était ignoré.

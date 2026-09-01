@@ -2208,3 +2208,22 @@ vide est une mauvaise réponse, pas une indisponibilité prouvée.
 **Ce que ça coûte si c'est faux** : un fournisseur réellement cassé qui rend du
 vide est ré-essayé à chaque phrase, au lieu d'être écarté pendant deux minutes.
 On paie une tentative vide par tour ; on ne dit rien de faux.
+
+## DEC-0033 — Chaque cause d'indisponibilité porte son propre nom
+
+**2026-09-01.** `GraphRAGTool.query_global` traduisait tout code de sortie non
+nul de `docker run` par « Espace de connaissances prêt. Ajoutez vos
+documents… ». Démon éteint, image absente, requête plantée : la même phrase,
+et un remède qui n'aurait rien changé.
+
+Quatre causes, quatre réponses distinctes, parce qu'elles n'appellent pas le
+même geste. « Ajoutez vos documents » n'est dit que dans le seul cas où c'est
+vrai : l'espace est vide.
+
+La sonde Docker (`demon_repond`, `image_construite`) vit dans
+`tools/docker_local.py`. Elle n'existait qu'au bac à sable, et c'est pour ça
+que le moteur de graphe ne la posait pas.
+
+**Ce que ça coûte si c'est faux** : deux appels `docker` (~100 ms quand le
+démon répond) avant chaque requête de graphe. Une requête de graphe dure des
+secondes ; la sonde ne se voit pas.
