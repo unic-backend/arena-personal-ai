@@ -2172,3 +2172,22 @@ qui devient orpheline.
 **Ce que ça coûte si c'est faux** : un tour d'historique porte un texte
 tronqué. Le tour suivant le lit comme un début de réponse coupé, ce qu'il est,
 au lieu de lire une question posée deux fois.
+
+## DEC-0031 — Le tableau `messages` du client fait foi
+
+**2026-09-01.** La passerelle OpenAI ne transmettait au modèle que le dernier
+message utilisateur, et retombait sur `session_id="default"` pour toutes les
+conversations. Le protocole étant sans état, c'est le client qui porte le fil :
+son tableau `messages` est désormais reconstruit en conversation, exactement
+comme l'historique du navigateur fait foi côté PWA.
+
+Un message `system` du client reste **hors** du fil : un texte extérieur ne
+prend pas l'autorité des consignes d'ARENA.
+
+La clé de session vient du premier message utilisateur, faute d'identifiant
+dans le protocole.
+
+**Ce que ça coûte si c'est faux** : deux conversations ouvertes par exactement
+la même phrase partagent une mémoire. Et un client qui envoie un fil très long
+fait un prompt très long — c'est lui qui décide de ce qu'il envoie, ARENA ne
+tronque pas en silence.

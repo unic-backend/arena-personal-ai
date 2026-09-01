@@ -405,3 +405,53 @@ Sabotage : `if False` à la place de la garde → deux tests tombent.
 (« le flux finit toujours ») et l'ont chacun apprise séparément, par une panne.
 Quand une règle est trouvée sur un chemin, la question suivante n'est pas
 « est-ce corrigé ? » mais « qui d'autre fait la même chose ? ».
+
+---
+
+# Défaut n° 16 — la passerelle OpenAI jetait la conversation
+
+Trouvé en appliquant la leçon du n° 15 : *qui d'autre fait la même chose ?*
+
+Le protocole OpenAI est **sans état** — le client envoie tout le fil dans
+`messages` à chaque tour. La passerelle n'en gardait que le **dernier message
+utilisateur**.
+
+Mesuré, pas supposé, sur `/v1/chat/completions` avec le fil
+`[« qui a gagné la coupe du monde 1998 ? », « la France », « et celle de
+2006 ? »]` :
+
+```
+avant : ['Et celle de 2006 ?']
+après : ['Ousmane: Qui a gagne la coupe du monde 1998 ?
+          Usman: La France.
+          Ousmane: Et celle de 2006 ?
+          Usman:']
+```
+
+C'est la surface qu'utilisent les outils extérieurs. Le défaut se voyait à
+**chaque** conversation de plus d'un tour.
+
+**Un message `system` envoyé par le client n'entre pas dans le fil.** Un texte
+extérieur est une donnée, jamais une consigne d'ARENA — un client aurait sinon
+pu écraser les règles depuis l'extérieur. Un test le fixe.
+
+## Défaut n° 16 bis — toutes les conversations partageaient une mémoire
+
+`ChatRequest(prompt=...)` sans `session_id` retombait sur `"default"`. Toutes
+les conversations, de tous les clients extérieurs, écrivaient et relisaient la
+même mémoire. `fresh_info` relit justement cet historique
+(`get_recent_history`) pour résoudre une question elliptique : deux discussions
+distinctes se contaminaient.
+
+Le protocole ne porte aucun identifiant de conversation. Le **premier message
+utilisateur** en tient lieu : stable d'un tour à l'autre du même fil, différent
+d'un fil à l'autre. Deux conversations ouvertes par exactement la même phrase
+partagent une clé — c'est le prix, assumé.
+
+## Encore le même piège de test
+
+Mon premier test appelait `_cle_de_conversation` directement. Remettre
+`session_id="default"` dans la passerelle **ne le faisait pas tomber**. Deuxième
+fois dans la même session que j'écris un test qui mesure une fonction au lieu
+d'un chemin — c'est un réflexe, pas un accident, et le sabotage est la seule
+chose qui le débusque.
