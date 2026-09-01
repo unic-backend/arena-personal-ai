@@ -11,6 +11,10 @@ import json
 import sys
 import time
 
+#: Le retard de l'outil `tardif`, en secondes. Nomme pour que le test
+#: qui l'utilise puisse attendre exactement ce qu'il faut, sans deviner.
+RETARD_SECONDES = 1.5
+
 
 def _ecrire(message):
     sys.stdout.write(json.dumps(message) + "\n")
@@ -34,7 +38,8 @@ def main():
             continue  # aucune reponse attendue
         elif methode == "tools/list":
             _ecrire({"jsonrpc": "2.0", "id": id_,
-                     "result": {"tools": [{"name": "ping"}, {"name": "erreur"}, {"name": "lent"}]}})
+                     "result": {"tools": [{"name": "ping"}, {"name": "erreur"},
+                                          {"name": "lent"}, {"name": "tardif"}]}})
         elif methode == "tools/call":
             nom = (requete.get("params") or {}).get("name")
             if nom == "ping":
@@ -50,6 +55,14 @@ def main():
             elif nom == "lent":
                 time.sleep(5)
                 _ecrire({"jsonrpc": "2.0", "id": id_, "result": {"structuredContent": {}}})
+            elif nom == "tardif":
+                # Assez lent pour depasser un petit delai, assez court pour que
+                # la reponse arrive PENDANT que le test tourne encore : c'est
+                # ce qui permet de verifier qu'une reponse en retard n'est pas
+                # servie a l'appel suivant.
+                time.sleep(RETARD_SECONDES)
+                _ecrire({"jsonrpc": "2.0", "id": id_,
+                         "result": {"structuredContent": {"origine": "tardif"}}})
             else:
                 _ecrire({"jsonrpc": "2.0", "id": id_, "result": {
                     "content": [{"type": "text", "text": f"outil {nom} introuvable"}],

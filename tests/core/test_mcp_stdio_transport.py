@@ -6,11 +6,13 @@ protocole (poignee de main, notification glissee, `isError`, timeout,
 nettoyage du processus) sans dependre de Node ni du vrai OpenTakeoff.
 """
 import sys
+import time
 from pathlib import Path
 
 import pytest
 
 from core.mcp.stdio_transport import ClientMcpStdio
+from tests.core.faux_serveur_mcp_stdio import RETARD_SECONDES
 
 FAUX_SERVEUR = Path(__file__).parent / "faux_serveur_mcp_stdio.py"
 COMMANDE = [sys.executable, str(FAUX_SERVEUR)]
@@ -31,7 +33,7 @@ class TestPoigneeDeMainEtOutils:
             reponse = client.outils()
         assert reponse.ok
         noms = [outil["name"] for outil in reponse.resultat["tools"]]
-        assert noms == ["ping", "erreur", "lent"]
+        assert noms == ["ping", "erreur", "lent", "tardif"]
 
 
 class TestAppelDOutil:
@@ -65,6 +67,32 @@ class TestAppelDOutil:
             reponse = client.appeler("lent", {})
         assert reponse.ok is False
         assert "delai" in reponse.raison
+
+    def test_une_reponse_en_retard_n_est_pas_servie_a_l_appel_suivant(self):
+        """Le pire silence possible : la bonne forme, le mauvais appel.
+
+        Apres un delai depasse, la reponse de l'appel abandonne finit par
+        arriver sur le flux. Elle a la forme exacte d'une reponse valide. Sans
+        le controle de l'`id`, l'appel SUIVANT la lirait et la rendrait comme
+        etant la sienne — un resultat juste, pour la mauvaise question, sans
+        aucune erreur nulle part.
+
+        Le controle existe dans `_poster` ; rien ne le tenait avant le
+        01/09/2026. Verifie a la main ce jour-la, puis fixe ici.
+        """
+        with ClientMcpStdio(COMMANDE, dossier=DOSSIER, delai=0.3) as client:
+            abandonne = client.appeler("tardif", {})
+            assert abandonne.ok is False, "le delai devait etre depasse"
+
+            # On laisse la reponse en retard arriver dans la file du lecteur.
+            time.sleep(RETARD_SECONDES + 0.4)
+
+            suivant = client.appeler("ping", {"valeur": 7})
+
+        assert suivant.ok
+        assert suivant.donnees() == {"valeur": 7}, (
+            "l'appel suivant a recu la reponse de l'appel abandonne"
+        )
 
 
 class TestPanneDeLancement:
