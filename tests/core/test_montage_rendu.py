@@ -222,3 +222,86 @@ class TestRenduReel:
         r = rendre(m.projet, tmp_path / "texte.mp4")
 
         assert r.ok, f"une apostrophe a casse le rendu : {r.message}"
+
+
+class TestUneProprieteNOuvrePasUneOptionFfmpeg:
+    """La faille la plus sérieuse de la nuit du 01/09/2026, et elle était à moi.
+
+    `ajouter_texte(**proprietes)` accepte des propriétés libres — c'est voulu,
+    pour la taille et la couleur. Elles étaient interpolées **telles quelles**
+    dans `filter_complex`. Un `couleur` valant `white:fontfile=/etc/passwd`
+    ouvrait donc une option ffmpeg supplémentaire.
+
+    Ce n'est pas théorique : `drawtext` sait lire un fichier (`textfile=`), et
+    le contenu d'un fichier de la machine pouvait finir **incrusté dans une
+    vidéo que le propriétaire publie**. Le contenu du texte, lui, était déjà
+    échappé — la barrière de `planificateur.py` couvrait `importer_media` et
+    laissait passer les propriétés.
+    """
+
+    def _graphe(self, **proprietes):
+        from core.montage.operations import Montage
+        from core.montage.rendu import CompilateurFiltres
+
+        montage = Montage()
+        montage.creer_projet("x", 1080, 1920)
+        montage.ajouter_piste("texte", "t")
+        montage.ajouter_texte("t", "bonjour", 0, 2000, **proprietes)
+        graphe, _, _ = CompilateurFiltres(montage.projet).graphe()
+        return graphe
+
+    @pytest.mark.parametrize("propriete,valeur", [
+        ("couleur", "white:fontfile=/etc/passwd"),
+        ("couleur", "white':textfile='/etc/passwd"),
+        ("x", "0:textfile=/etc/passwd"),
+        ("y", "0,movie=/etc/passwd"),
+        ("taille", "48:fontfile=/etc/passwd"),
+        ("couleur", "white:drawbox=0:0:100:100:red"),
+    ])
+    def test_aucune_option_ne_se_glisse_par_une_propriete(self, propriete, valeur):
+        graphe = self._graphe(**{propriete: valeur})
+        for interdit in ("passwd", "textfile=", "movie=", "fontfile=", "drawbox"):
+            assert interdit not in graphe, (
+                f"« {valeur} » a ouvert une option ffmpeg via {propriete}"
+            )
+
+    def test_les_valeurs_legitimes_traversent_intactes(self):
+        """Fermer la porte ne doit pas fermer la fenêtre."""
+        graphe = self._graphe(couleur="#ffcc00", taille=72, x="(w-text_w)/2", y="h-th-80")
+        assert "fontcolor=#ffcc00" in graphe
+        assert "fontsize=72" in graphe
+        assert "x=(w-text_w)/2" in graphe
+
+    @pytest.mark.parametrize("couleur", ["white", "black@0.5", "#ffcc00", "0xFFCC00"])
+    def test_les_formes_de_couleur_admises(self, couleur):
+        assert f"fontcolor={couleur}" in self._graphe(couleur=couleur)
+
+    def test_une_taille_absurde_retombe_sur_le_defaut(self):
+        assert "fontsize=48" in self._graphe(taille=999999)
+        assert "fontsize=48" in self._graphe(taille="grande")
+
+    def test_la_propriete_d_une_image_est_gardee_pareil(self, tmp_path):
+        """Le même garde couvre l'overlay d'image, pas seulement le texte.
+
+        Le projet est bâti directement : ce test porte sur le compilateur de
+        filtres, et passer par `Montage` ferait dépendre le résultat de ce
+        que ffprobe lit dans un fichier factice.
+        """
+        from core.montage.projet import Element, Media, TypePiste, nouveau_projet
+        from core.montage.rendu import CompilateurFiltres
+
+        logo = tmp_path / "logo.png"
+        logo.write_bytes(b"x")
+
+        projet = nouveau_projet("x", 1080, 1920)
+        projet.ajouter_media(Media(identifiant="m1", chemin=str(logo),
+                                   genre="image", nom="logo"))
+        piste = projet.ajouter_piste(TypePiste.IMAGE, "marque")
+        piste.ajouter(Element(
+            identifiant="e1", genre="image", debut_ms=0, duree_ms=2000,
+            media_id="m1",
+            proprietes={"x": "0:textfile=/etc/passwd", "largeur": "1:movie=/x"}))
+
+        graphe, _, _ = CompilateurFiltres(projet).graphe()
+        assert "textfile=" not in graphe and "movie=" not in graphe
+        assert "passwd" not in graphe

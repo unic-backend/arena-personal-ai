@@ -25,6 +25,7 @@ non rendue serait une capacite annoncee absente.
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -78,6 +79,49 @@ def _texte_pour_ffmpeg(texte: str) -> str:
     return texte
 
 
+#: Les couleurs qu'un appelant peut nommer : un mot, un `#rrggbb`, un
+#: `0xrrggbb`, chacun avec une opacite `@0.5` optionnelle. Rien d'autre.
+_COULEUR = re.compile(r"^(?:[A-Za-z]{1,20}|#[0-9A-Fa-f]{6,8}|0x[0-9A-Fa-f]{6,8})"
+                      r"(?:@(?:0|1|0?\.\d{1,3}))?$")
+
+#: Les expressions de position que ffmpeg accepte, reduites a ce qui sert :
+#: des nombres, les variables de drawtext, et l'arithmetique. Pas de `:`,
+#: pas de `,`, pas de guillemet — donc aucun moyen d'ouvrir une autre option.
+_EXPRESSION = re.compile(r"^[0-9A-Za-z_+\-*/(). ]{1,80}$")
+
+
+def _propriete_sure(valeur: Any, motif: "re.Pattern[str]", defaut: Any) -> Any:
+    """La valeur si elle tient dans le motif, le defaut sinon.
+
+    **Sans ce filtre, les proprietes libres etaient interpolees telles quelles
+    dans `filter_complex`.** Un `couleur` valant `white:fontfile=/etc/passwd`
+    ouvrait une option ffmpeg supplementaire — et `drawtext` sait lire un
+    fichier (`textfile=`), donc le contenu d'un fichier de la machine pouvait
+    finir INCRUSTE dans une video que le proprietaire publie. Mesure du
+    01/09/2026, sur du code ecrit la veille : la barriere de
+    `core/montage/planificateur.py` couvrait `importer_media` et laissait
+    passer les proprietes de `ajouter_texte`.
+
+    Le contenu du texte, lui, etait deja echappe (`_texte_pour_ffmpeg`).
+    """
+    if isinstance(valeur, (int, float)) and not isinstance(valeur, bool):
+        return valeur
+    if isinstance(valeur, str) and motif.match(valeur):
+        return valeur
+    if valeur is not None:
+        logger.warning("Propriete refusee (hors motif) : %r — defaut applique.", valeur)
+    return defaut
+
+
+def _entier_sur(valeur: Any, defaut: int, minimum: int = 1, maximum: int = 4000) -> int:
+    """Un entier dans des bornes, ou le defaut. Jamais une chaine libre."""
+    try:
+        entier = int(valeur)
+    except (TypeError, ValueError):
+        return defaut
+    return entier if minimum <= entier <= maximum else defaut
+
+
 class CompilateurFiltres:
     """Traduit une timeline en un graphe de filtres ffmpeg.
 
@@ -127,10 +171,10 @@ class CompilateurFiltres:
             props = element.proprietes
             etapes.append(
                 f"[{source}]drawtext=text='{_texte_pour_ffmpeg(element.contenu)}'"
-                f":fontsize={props.get('taille', 48)}"
-                f":fontcolor={props.get('couleur', 'white')}"
-                f":x={props.get('x', '(w-text_w)/2')}"
-                f":y={props.get('y', 'h-th-80')}"
+                f":fontsize={_entier_sur(props.get('taille'), 48, 8, 400)}"
+                f":fontcolor={_propriete_sure(props.get('couleur'), _COULEUR, 'white')}"
+                f":x={_propriete_sure(props.get('x'), _EXPRESSION, '(w-text_w)/2')}"
+                f":y={_propriete_sure(props.get('y'), _EXPRESSION, 'h-th-80')}"
                 f":box=1:boxcolor=black@0.5:boxborderw=12"
                 f":enable='between(t,{debut:.3f},{fin:.3f})'[{cible}]")
             return etapes
@@ -151,10 +195,13 @@ class CompilateurFiltres:
                 f":enable='between(t,{debut:.3f},{fin:.3f})'[{cible}]")
         else:  # image — un logo, une photo de chantier
             props = element.proprietes
-            largeur = props.get("largeur", int(self.projet.largeur * 0.25))
+            largeur = _entier_sur(props.get("largeur"),
+                                  int(self.projet.largeur * 0.25), 1, 8000)
             etapes.append(f"[{entree}:v]scale={largeur}:-1[{prepare}]")
             etapes.append(
-                f"[{source}][{prepare}]overlay={props.get('x', 40)}:{props.get('y', 40)}"
+                f"[{source}][{prepare}]"
+                f"overlay={_propriete_sure(props.get('x'), _EXPRESSION, 40)}"
+                f":{_propriete_sure(props.get('y'), _EXPRESSION, 40)}"
                 f":enable='between(t,{debut:.3f},{fin:.3f})'[{cible}]")
         return etapes
 

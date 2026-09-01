@@ -3,6 +3,10 @@
 ## [Non publié]
 
 ### Corrigé — 01/09/2026 (audit général)
+- **Une propriété de texte pouvait ouvrir une option ffmpeg.** Un `couleur`
+  choisi par le modèle injectait `fontfile=` dans le graphe de filtres ; avec
+  `textfile=`, le contenu d'un fichier de la machine pouvait finir incrusté
+  dans une vidéo publiée. Les valeurs sont désormais contraintes à leur forme.
 - **`/health` taisait six agents**, dont l'assistant devis. La liste écrite à
   la main a dérivé ; elle est désormais dérivée de ce qui existe vraiment.
 - **Le bac à sable prenait une image manquante pour une erreur de code** :
