@@ -1153,3 +1153,20 @@ le décider.
 
 `view` et `read_files` sont en lecture seule : leur sort est une question
 ouverte, pas un risque. `OPTIONAL — NON IMPLÉMENTÉ.`
+
+## Deux garanties vérifiées et **tenues**
+
+Pour être juste : la même question posée à deux autres frontières a répondu oui.
+
+- **Le contenu d'une pièce jointe est une donnée, jamais une consigne.** Le
+  texte passe par `core/security/trust.wrap()` et `tests/core/test_frontiere_de_confiance.py`
+  le tient, bloc par bloc.
+- **Une consigne écrite *sur une image* n'en est pas une non plus.**
+  `test_le_rappel_donnee_accompagne_toujours_le_prompt` le vérifie sur le
+  prompt réellement envoyé au modèle.
+
+Mon premier balayage avait déclaré la seconde non testée : je cherchais le nom
+de la constante, le test assertait sur son contenu. **Une recherche trop
+étroite est un faux positif, pas une trouvaille** — c'est la deuxième fois
+cette nuit (l'autre : `ClipSelectorAgent`), et les deux fois la vérification a
+tranché avant la conclusion.
