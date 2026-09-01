@@ -477,3 +477,24 @@ reçoivent eux aussi le dernier message seul. Rien ne dit que ces agents-là
 travaillent mieux avec une transcription qu'avec une consigne propre — le
 supposer serait la même erreur en sens inverse. **Question ouverte, mesurable,
 pas un correctif spéculatif.**
+
+---
+
+# Hors code : une fusion sur trois n'emporte pas tout
+
+#106 a été fusionnée à une **tête périmée** — GitHub a repris le commit
+enregistré au moment de la lecture de la PR, pas le dernier poussé. La réponse
+disait `"merged": true` ; deux commits n'étaient pas dans `master`.
+
+Troisième occurrence : #98, #103, #106.
+
+`git merge-base --is-ancestor` ne détecte rien ici — un squash crée un commit
+neuf, l'ancêtre ne correspond jamais, et la vérification rend un faux positif
+qui ressemble exactement à une vraie alerte. Ce qui tranche est le contenu :
+
+```
+git fetch origin master && git diff --stat <derniere-tete> origin/master
+```
+
+Rien en sortie = tout est passé. Règle écrite dans
+`docs/REGLES_DE_TRAVAIL.md`, § 3, pour ne pas la redécouvrir une quatrième fois.

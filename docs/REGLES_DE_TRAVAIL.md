@@ -36,6 +36,24 @@ les siens.
 - Ne jamais lui demander de choisir entre deux branches sans lui dire ce que
   chacune change pour lui.
 
+### Une fusion se vérifie par le contenu, jamais par le message
+
+GitHub fusionne parfois la tête **enregistrée** quand la PR a été lue, pas la
+dernière poussée. La réponse dit `"merged": true` et les derniers commits ne
+sont pas dans `master`. C'est arrivé trois fois ici : #98, #103, #106.
+
+Après chaque fusion, une seule commande tranche :
+
+```
+git fetch origin master && git diff --stat <derniere-tete> origin/master
+```
+
+**Rien en sortie = le contenu est bien passé.** Des lignes en sortie = ce qui
+manque, et il faut rejouer ces commits sur une branche neuve.
+
+`git merge-base --is-ancestor` ne sert à rien ici : un squash crée un commit
+neuf, l'ancêtre ne correspond jamais. C'est le contenu qui fait foi.
+
 ## 4. Le déploiement va au fond
 
 > « les commit push doivent aller au fond car d'autres outils travaillent sur ce
