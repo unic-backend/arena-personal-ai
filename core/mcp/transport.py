@@ -59,6 +59,25 @@ class Reponse:
                 morceaux.append(str(bloc.get("text", "")))
         return "\n".join(morceaux)
 
+    @property
+    def erreur_applicative(self) -> Optional[str]:
+        """Le message d'une erreur APPLICATIVE (`isError`), ou `None`.
+
+        MCP distingue deux echecs, et `ok` n'en couvre qu'un : `ok=False` dit
+        que le transport n'a pas abouti ; `ok=True, isError=True` dit que
+        l'outil, lui, a refuse — et pourquoi. Mesure sur le serveur
+        OpenTakeoff reel : un outil inconnu et une feuille non chargee rendent
+        tous deux `ok=True, isError=True`.
+
+        Ecrit ici parce que **deux** connecteurs posent la question et qu'un
+        seul la posait. Mesure du 01/09/2026 : WanGP repondant « VRAM
+        insuffisante : modele non charge » faisait rendre `SUCCESS` a ARENA,
+        avec « WanGP a repondu » — le message reel jete.
+        """
+        if not isinstance(self.resultat, dict) or not self.resultat.get("isError"):
+            return None
+        return self.contenu_texte or "erreur non precisee"
+
     def donnees(self) -> Any:
         """Le JSON porte par la reponse, quand le serveur en renvoie un.
 
