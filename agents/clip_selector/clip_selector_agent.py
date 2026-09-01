@@ -33,9 +33,13 @@ class ClipSelectorAgent(BaseAgent):
 
         src_file = Path(video_path).resolve()
 
-        # Si pas de segments réels, on découpe les 15 premières secondes par défaut
+        # Sans segments, rien n'a ete ANALYSE : on prend le debut, et on le
+        # dit. Le message annoncait « extrait le plus viral detecte » dans ce
+        # cas aussi — une detection qui n'avait pas eu lieu (mesure du
+        # 01/09/2026, sur une video de 6,7 s ou il annoncait 15 s).
         start_sec = 0.0
         duration_sec = 15.0
+        detecte = False
 
         if segments:
             # Demande à Qwen 3.5 de trouver le meilleur moment
@@ -55,6 +59,7 @@ class ClipSelectorAgent(BaseAgent):
                     start_sec = float(data.get("start", 0.0))
                     end_sec = float(data.get("end", start_sec + 15.0))
                     duration_sec = max(5.0, end_sec - start_sec)
+                    detecte = True
             except Exception as e:
                 logger.warning(f"Impossible de parser le JSON du moment viral, découpe par défaut : {e}")
 
@@ -71,13 +76,20 @@ class ClipSelectorAgent(BaseAgent):
         crop_success = self.crop_tool.convert_to_vertical_9_16(str(clip_temp), str(rendered_clip))
 
         if crop_success:
+            # Ce qui est annonce depend de ce qui a REELLEMENT eu lieu : sans
+            # analyse, ce n'est pas une detection, c'est un debut de video.
+            quoi = ("🔥 Extrait le plus viral détecté"
+                    if detecte else
+                    "✂️ Aucune analyse disponible : j'ai pris le début de la vidéo")
             return {
                 "status": "success",
                 "agent": self.name,
+                "detecte": detecte,
                 "start_sec": start_sec,
                 "duration_sec": duration_sec,
                 "clip_path": str(rendered_clip),
-                "response": f"🔥 Extrait le plus viral détecté ({start_sec}s -> {start_sec + duration_sec}s) et reformaté en Short 9:16 avec succès : {rendered_clip.name}"
+                "response": (f"{quoi} ({start_sec}s -> {start_sec + duration_sec}s) "
+                             f"et reformaté en Short 9:16 : {rendered_clip.name}")
             }
         else:
             return {"status": "error", "agent": self.name, "response": "❌ Échec du reformatage 9:16 de l'extrait."}

@@ -6,7 +6,7 @@ en cassant volontairement ce que son test protège.*
 
 Point de départ posé par le propriétaire : « Ne suppose pas qu'une suite de
 tests verte veut dire que le projet est sain. » Elle l'était : 2542 tests au
-vert. **Huit défauts réels ont été trouvés quand même.**
+vert. **Dix défauts réels ont été trouvés quand même.**
 
 ---
 
@@ -30,7 +30,7 @@ vert. **Huit défauts réels ont été trouvés quand même.**
 
 ---
 
-## Les huit défauts trouvés, et ce qu'ils coûtaient
+## Les dix défauts trouvés, et ce qu'ils coûtaient
 
 ### 1. `/health` taisait six agents — dont son assistant devis
 
@@ -112,13 +112,81 @@ lire, en **503** (le problème n'est pas la requête) ; le flux dit la panne et
 se ferme par `[DONE]`. Un refus d'authentification reste un `401` : une panne
 de service ne maquille pas un problème d'accès.
 
-### 8. Le docteur ne connaissait pas la voix
+### 8. Les sous-titres s'inventaient, et se disaient relus
+
+Trouvé en lançant **chaque agent** avec une phrase banale. `SubtitleAgent`
+répondait `success` — « ✅ Sous-titres CapCut **corrigés** et générés » — alors
+que rien ne lui avait été donné.
+
+Deux mensonges dans une seule réponse :
+
+1. **Sans transcription, il en inventait une.** Deux phrases écrites en dur
+   (« Bienvenue sur Usman », « Sous titres TikTok automatiques ») produisaient
+   un vrai fichier `.ass`. De la réclame pouvait finir **incrustée sur une
+   vidéo de chantier**. C'est précisément ce que les règles du dépôt appellent
+   « épingler une valeur fabriquée » : une capacité sans matière se rapporte,
+   elle ne se simule pas.
+2. **« corrigés » était écrit même quand la relecture n'avait pas eu lieu.**
+   L'exception partait dans un `logger.warning` que personne ne lit.
+
+Sans transcription : refus, aucun fichier. Avec, mais sans modèle : le message
+dit « générés SANS relecture ». Les deux appelants (studio et
+`/api/process-video`) vérifiaient déjà l'existence du fichier — la correction
+dégrade proprement.
+
+### 9. Le sélecteur d'extraits annonçait une détection qui n'avait pas eu lieu
+
+Même sweep, même famille. Sans segments — donc **sans aucune analyse** —
+`ClipSelectorAgent` répondait « 🔥 Extrait le plus viral détecté
+(0.0s → 15.0s) ». Sur une vidéo de **6,7 secondes**. Deux affirmations fausses
+dans une phrase : une détection qui n'a pas eu lieu, et une durée que la
+source n'a pas.
+
+Un JSON illisible rendu par le modèle retombait au même endroit, avec la même
+phrase. Le message dit maintenant ce qui s'est réellement passé : « Aucune
+analyse disponible : j'ai pris le début de la vidéo ».
+
+### 10. Le docteur ne connaissait pas la voix
 
 Une capacité que le diagnostic ignore est invisible au propriétaire. Et un port
 qui répond ne prouve rien : **VoiceStudio démarre très bien sans aucun moteur**.
 La vérification interroge donc ses moteurs et nomme ce qui manque.
 
 ---
+
+## Deux choses vérifiées, correctes, et laissées telles quelles
+
+**Une écriture sans confirmation** : `wan2gp.cancel` est déclarée
+`ecriture=True` et autorisée sans confirmation. C'est **juste** — annuler
+réduit un effet, elle n'en émet aucun, et demander une confirmation pour
+arrêter une génération qui s'emballe sur la carte graphique serait nuisible au
+moment exact où il faut aller vite. La raison est maintenant écrite dans
+`config/permissions_services.yaml`, parce que l'audit la signale et qu'un
+futur lecteur la « corrigerait » à tort.
+
+**Trois services déclarés sans connecteur** : `website`, `business_profile`,
+`search_console`. Les deux premiers ne sont pas du config mort — ils sont le
+plancher de politique dans `core/permissions/controle.py` pour des connecteurs
+à venir, et leurs actions y sont déjà classées irréversibles. Le troisième
+n'est référencé nulle part. **Aucun n'est atteignable** (aucun connecteur ne
+porte ces services), donc aucun risque. Non retirés : ce n'est pas à
+l'assistant d'effacer du config que le propriétaire a peut-être prévu.
+
+## Une conséquence de mes propres correctifs, signalée plutôt que tue
+
+`/health` est **public** (l'interface s'en sert pour vérifier que le serveur
+répond, sans clé). En dérivant `agents_active`, je suis passé de 16 noms
+écrits à la main à **22 noms réels** — dont `PlaquisteAgent`, `EmailAgent`,
+`SocialAgent`.
+
+Ce n'est pas une nouvelle *classe* d'information : la liste figée annonçait
+déjà `CoderAgent`, `SWEAgent`, `BrowserAgent`, `DeepResearcher`, et la route
+rend aussi les noms de modèles. Mais elle en dit un peu plus long sur ce que
+le propriétaire fait de son ARENA.
+
+**Non modifié** : restreindre le champ aux appelants authentifiés casserait le
+contrat que `test_pwa_gateway` fige, et le gain est faible. `OPTIONAL — c'est
+sa décision.`
 
 ## Ce qui a été trouvé et **délibérément pas corrigé**
 
@@ -152,8 +220,8 @@ correction de nuit, c'est une décision du propriétaire.
 
 ```
 python -m ruff check .                                   -> All checks passed!
-python -m pytest tests/ -q                               -> 2578 passed, 44 deselected
-OMNIVOICE_URL=http://127.0.0.1:9 python -m pytest tests/ -q -> 2578 passed  (conditions CI)
+python -m pytest tests/ -q                               -> 2586 passed, 44 deselected
+OMNIVOICE_URL=http://127.0.0.1:9 python -m pytest tests/ -q -> 2586 passed  (conditions CI)
 python scripts/orphelins.py                              -> aucun module réel endormi
 ```
 

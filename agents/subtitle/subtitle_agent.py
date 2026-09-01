@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.agent.base_agent import BaseAgent
 from core.memory.memory_manager import MemoryManager
@@ -21,10 +21,20 @@ class SubtitleAgent(BaseAgent):
         )
         self.sub_tool = SubtitleTool()
 
-    async def correct_words_contextually(self, words_or_segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Utilise l'IA pour corriger les fautes d'homophones phonétiques (ex: 'de vie' -> 'devis')."""
+    async def correct_words_contextually(
+        self, words_or_segments: List[Dict[str, Any]]
+    ) -> Tuple[List[Dict[str, Any]], bool]:
+        """Corrige les homophones phonétiques (ex: 'de vie' -> 'devis').
+
+        Rend `(donnees, corrigee)`. Le second champ existe parce que le
+        message de sortie annonçait « corrigés » même quand le modèle était
+        injoignable : l'exception était avalée dans un `logger.warning` que
+        personne ne lit, et le propriétaire recevait des sous-titres
+        présentés comme relus alors qu'ils ne l'étaient pas (mesuré le
+        01/09/2026).
+        """
         if not words_or_segments:
-            return []
+            return [], False
 
         # Extraire le texte brut
         if "word" in words_or_segments[0]:
@@ -58,8 +68,9 @@ class SubtitleAgent(BaseAgent):
                     seg["text"] = self.sub_tool.clean_french_text(seg.get("text", ""))
         except Exception as e:
             logger.warning(f"Impossible d'effectuer la correction contextuelle : {e}")
+            return words_or_segments, False
 
-        return words_or_segments
+        return words_or_segments, True
 
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         words = context.get("words") if context else None
@@ -68,22 +79,32 @@ class SubtitleAgent(BaseAgent):
 
         data_to_use = words if words else segments
         if not data_to_use:
-            data_to_use = [
-                {"start": 0.0, "end": 2.5, "text": "Bienvenue sur Usman"},
-                {"start": 2.5, "end": 5.0, "text": "Sous titres TikTok automatiques"}
-            ]
+            # Sans transcription, il n'y a RIEN a sous-titrer. Deux phrases
+            # inventees (« Bienvenue sur Usman ») etaient posees ici et
+            # produisaient un vrai fichier .ass annonce comme un succes : de
+            # la reclame pouvait finir incrustee sur une video de chantier.
+            # Une capacite sans matiere se rapporte, elle ne se simule pas.
+            return {
+                "status": "error",
+                "agent": self.name,
+                "response": ("❌ Aucune transcription fournie : je n'invente pas "
+                             "de sous-titres. Transcris d'abord la vidéo."),
+            }
 
         # 1. Correction orthographique par l'IA (Qwen 3.5)
-        data_to_use = await self.correct_words_contextually(data_to_use)
+        data_to_use, corrigee = await self.correct_words_contextually(data_to_use)
 
         # 2. Génération des sous-titres .ass CapCut
         output_ass = Path("media/subtitles") / f"{video_name}.ass"
         ass_path = self.sub_tool.generate_capcut_ass(data_to_use, str(output_ass))
 
+        etat = "corrigés et générés" if corrigee else (
+            "générés SANS relecture (le modèle n'a pas répondu)")
         return {
             "status": "success",
             "agent": self.name,
             "ass_path": ass_path,
             "srt_path": ass_path,
-            "response": f"✅ Sous-titres CapCut corrigés et générés : {Path(ass_path).name}"
+            "corrigee": corrigee,
+            "response": f"✅ Sous-titres CapCut {etat} : {Path(ass_path).name}"
         }

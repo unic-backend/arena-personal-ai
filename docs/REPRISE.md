@@ -1,7 +1,35 @@
 # ARENA — où on en est, pour reprendre sans rien redemander
 
-Dernière mise à jour : 2026-08-27, après la mise en service de l'interface PWA
-et de l'accès téléphone.
+Dernière mise à jour : **2026-09-01**, après la nuit VoiceStudio + audit général.
+
+## Ce qui a changé cette nuit (PR #96 à #101)
+
+**ARENA parle et écoute.** VoiceStudio est piloté par HTTP en local — c'est un
+programme **séparé**, sous AGPL-3.0, dont aucune ligne n'entre ici (DEC-0027,
+`docs/audits/voicestudio_rapport_final.md`). Il faut le démarrer soi-même ;
+sans lui, ARENA répond `NOT_CONFIGURED` et dit ce qui manque.
+
+**ARENA monte des vidéos.** Une phrase devient un plan d'opérations validées,
+puis une timeline, puis un fichier vérifié (DEC-0026, `core/montage/`). Le
+modèle propose ; il ne pilote rien, et ne peut désigner aucun fichier hors des
+médias déposés.
+
+**Dix défauts corrigés sur une suite verte** —
+`docs/audits/audit_general_2026-09-01.md`. Les plus coûteux : `/health` taisait
+six agents dont l'assistant devis ; `/api/chat/stream` mourait en silence ; des
+sous-titres s'inventaient et pouvaient finir incrustés sur une vidéo.
+
+**Une chose trouvée et délibérément pas corrigée** : le métré refuse
+« une paroi de 12 x 2,50 m » (il accepte « 1 paroi de… »). Son échec est *sûr*
+— il refuse et dit quoi donner. Une extension bâclée mettrait un mauvais prix
+sur un document client. **C'est une décision du propriétaire.**
+
+**Pour démarrer VoiceStudio sur son PC :**
+
+```
+uv run uvicorn main:app --app-dir backend --host 127.0.0.1 --port 3900
+```
+
 
 **Lire d'abord `docs/REGLES_DE_TRAVAIL.md`** : le propriétaire n'écrit pas de
 code. Une commande à la fois, annoncée avec son terminal ; fichiers entiers,
