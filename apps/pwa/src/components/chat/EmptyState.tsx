@@ -6,9 +6,11 @@
    ───────────────────────────────────────────────────────────── */
 
 import { motion } from 'framer-motion';
+import { Clapperboard } from 'lucide-react';
 import { useI18n } from '../../lib/i18n';
 import { usePersona } from '../../lib/store/personaStore';
 import { capaciteActive, useCapacite } from '../../lib/capacites';
+import { useVideoProject } from '../../lib/store/videoProjectStore';
 import { Logo } from './Sidebar';
 
 /* Salutation selon l'heure locale de l'appareil. */
@@ -26,9 +28,10 @@ function salutation(locale: string): string {
 }
 
 export function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
-  const { locale } = useI18n();
+  const { t, locale } = useI18n();
   const { userName } = usePersona();
   const { active } = useCapacite();
+  const setVideoProjectOpen = useVideoProject((s) => s.setModalOpen);
 
   const capacite = capaciteActive(active);
   const nom = userName.trim();
@@ -93,6 +96,17 @@ export function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
               </button>
             ))}
           </div>
+
+          {capacite.id === 'video' && (
+            <button
+              type="button"
+              onClick={() => setVideoProjectOpen(true)}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-accent-500/25 bg-accent-500/[0.06] px-3.5 py-2.5 text-[12.5px] font-medium text-accent-300 transition hover:bg-accent-500/[0.1] active:scale-[0.99]"
+            >
+              <Clapperboard size={14} />
+              {t('vidproj.title')}
+            </button>
+          )}
         </motion.div>
       )}
     </div>

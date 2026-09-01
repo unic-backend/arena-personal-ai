@@ -11,6 +11,7 @@ import { Composer } from './components/chat/Composer';
 import { EmptyState } from './components/chat/EmptyState';
 import { EventLogDrawer } from './components/chat/EventLogDrawer';
 import { ConnectorsModal } from './components/chat/ConnectorsModal';
+import { VideoProjectModal } from './components/chat/VideoProjectModal';
 import { PersonaModal } from './components/chat/PersonaModal';
 import { MemoryModal } from './components/chat/MemoryModal';
 import { ExportModal } from './components/chat/ExportModal';
@@ -215,6 +216,7 @@ export default function App() {
 
       <EventLogDrawer />
       <ConnectorsModal />
+      <VideoProjectModal />
       <PersonaModal />
       <MemoryModal />
       <ExportModal />

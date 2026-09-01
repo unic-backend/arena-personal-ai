@@ -26,6 +26,7 @@ from apps.backend.routers import (
     media,
     openai_gateway,
     pwa_gateway,
+    video_production,
 )
 from apps.backend.runtime import (
     agents_actifs,
@@ -255,3 +256,4 @@ app.include_router(gardien.router)
 app.include_router(pwa_gateway.router)
 app.include_router(conversations.router)
 app.include_router(connectors.router)
+app.include_router(video_production.router)

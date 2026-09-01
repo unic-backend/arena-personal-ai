@@ -1,7 +1,39 @@
-# MISSION EN COURS — ARENA hybride : local, Groq, DeepInfra
+# MISSION EN COURS — Video : un vrai environnement de production
 
-*Ouverte le 28/08/2026 par le propriétaire. La décision qui la gouverne est
-**DEC-0009**, qui amende DEC-0002 — à lire avant toute chose.*
+*Ouverte le 01/09/2026, demande directe du propriétaire : « ARENA VIDEO — FULL
+AUDIT, INTEGRATION, ORCHESTRATION AND OPERATIONALIZATION ». La décision qui la
+gouverne est **DEC-0037** (`docs/DECISIONS.md`) — à lire avant toute chose.
+Elle **remplace** la mission « ARENA hybride » ci-dessous comme tâche active ;
+cette dernière est conservée telle quelle, achevée, comme historique.*
+
+Objectif : composer les capacités vidéo réelles qui existaient déjà chacune
+séparément (WanGP, MoneyPrinterTurbo, le montage, VoiceStudio, la vision) sur
+un même projet — dépendances, parallélisme, reprise après échec — au lieu
+d'une liste de boutons. Le propriétaire a choisi de commencer par
+**l'orchestrateur d'abord**, avant l'interface.
+
+## Ce qui est déjà fait
+
+`core/production/etat_projet.py`, `core/production/plan_video.py` et
+`agents/video/production_agent.py` (`VideoProductionAgent` — compose vision,
+WanGP, MoneyPrinterTurbo, VoiceStudio et montage via
+`core/execution/coordination.py:executer_parallele()`) sont désormais
+**atteints pour de vrai** : construit dans `apps/backend/runtime.py`, routé
+par `POST /api/video/projet` (`apps/backend/routers/video_production.py`).
+Aucun de ces trois modules ne dort plus — `python scripts/orphelins.py`
+le mesure.
+
+Une écriture (génération WanGP/MoneyPrinterTurbo, narration VoiceStudio)
+reste soumise à la file de confirmation existante et ne s'exécute jamais
+d'autorité (question posée explicitement au propriétaire le 01/09/2026,
+réponse : « il attend ma confirmation a chaque etape d'ecriture »).
+
+**Ce qui reste à faire** : aucune route n'est encore appelée depuis le chat
+ou l'interface — `/api/video/projet` n'est atteignable aujourd'hui que par
+un appel HTTP direct (curl, ou un futur frontend). Rien côté interface pour
+l'instant, sur décision du propriétaire (01/09/2026).
+
+---
 
 > « Transform ARENA into a HYBRID AI INFERENCE SYSTEM using local Ollama + Groq
 > + DeepInfra. Do NOT remove Ollama. Do NOT replace the local model. Do NOT

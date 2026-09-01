@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from apps.backend.studio import AUCUNE_VIDEO, derniere_video, lancer_studio
+from tools.video.nettoyage import AGE_MAX_SECONDES
 
 
 class AgentVideoDouble:
@@ -188,6 +189,45 @@ class TestChaineComplete:
         )
         assert resultat["etapes"]["transcription"] == "ECHEC"
         assert resultat["status"] == "OK"
+
+
+class TestPurgeDesAnciensRendus:
+    """DEC-0037 : `media/rendered/` ne doit plus accumuler indéfiniment."""
+
+    @pytest.mark.asyncio
+    async def test_un_ancien_rendu_est_retire_avant_le_nouveau(self, media, tmp_path):
+        import os
+
+        _video(media / "incoming")
+        rendu = tmp_path / "rendu"
+        rendu.mkdir()
+        ancien = rendu / "tres_vieux_rendu.mp4"
+        ancien.write_bytes(b"vieux contenu")
+        date_ancienne = __import__("time").time() - AGE_MAX_SECONDES - 3600
+        os.utime(ancien, (date_ancienne, date_ancienne))
+
+        resultat = await lancer_studio(
+            AgentVideoDouble(), AgentMontageDouble(), AgentSousTitresDouble(),
+            racine_media=media, dossier_rendu=rendu,
+        )
+
+        assert resultat["status"] == "OK"
+        assert not ancien.exists(), "l'ancien rendu aurait dû être purgé"
+
+    @pytest.mark.asyncio
+    async def test_un_rendu_recent_n_est_pas_touche(self, media, tmp_path):
+        _video(media / "incoming")
+        rendu = tmp_path / "rendu"
+        rendu.mkdir()
+        recent = rendu / "rendu_recent.mp4"
+        recent.write_bytes(b"contenu recent")
+
+        await lancer_studio(
+            AgentVideoDouble(), AgentMontageDouble(), AgentSousTitresDouble(),
+            racine_media=media, dossier_rendu=rendu,
+        )
+
+        assert recent.exists()
 
 
 class TestAiguillage:

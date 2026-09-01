@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Brain,
+  Clapperboard,
   Command,
   Globe,
   Languages,
@@ -23,6 +24,7 @@ import {
 import { useCommandPalette } from '../../lib/commands/commandStore';
 import { useChat } from '../../lib/store/chatStore';
 import { useConnectors } from '../../lib/store/connectorStore';
+import { useVideoProject } from '../../lib/store/videoProjectStore';
 import { usePersona } from '../../lib/store/personaStore';
 import { useMemory } from '../../lib/memory/memoryStore';
 import { useExport } from '../../lib/store/exportStore';
@@ -46,6 +48,7 @@ export function CommandPalette() {
   const { isOpen, search, closePalette, setSearch } = useCommandPalette();
   const { conversations, selectConversation, newChat, resetWorkspace, toggleLog, clearAllConversations } = useChat();
   const { setModalOpen: setConnectorsModalOpen } = useConnectors();
+  const { setModalOpen: setVideoProjectOpen } = useVideoProject();
   const { setAccent, accent, colorMode, setColorMode } = useTheme();
   const { locale, setLocale, t } = useI18n();
   const { installable, install } = usePWA();
@@ -112,6 +115,18 @@ export function CommandPalette() {
       onSelect: () => {
         closePalette();
         setConnectorsModalOpen(true);
+      },
+    });
+
+    list.push({
+      id: 'action-video-project',
+      category: 'actions',
+      title: t('vidproj.title'),
+      subtitle: 'Vision, WanGP, MoneyPrinterTurbo, VoiceStudio, montage',
+      icon: <Clapperboard size={14} className="text-accent-300" />,
+      onSelect: () => {
+        closePalette();
+        setVideoProjectOpen(true);
       },
     });
 

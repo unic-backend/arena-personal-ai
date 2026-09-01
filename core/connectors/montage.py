@@ -33,6 +33,7 @@ from core.connectors.base import Capacite, Connecteur, EtatSante, Sante
 from core.montage.operations import Montage
 from core.montage.projet import Projet
 from core.montage.rendu import rendre
+from tools.video.nettoyage import purger_artefacts_anciens
 
 logger = logging.getLogger("usman.connecteurs.montage")
 
@@ -161,6 +162,10 @@ class ConnecteurMontage(Connecteur):
                                  ce_qui_manque=CE_QUI_MANQUE)
 
         self.dossier.mkdir(parents=True, exist_ok=True)
+        # Purge paresseuse, avant d'ecrire : DEC-0037, aucun rendu ancien ne
+        # doit s'accumuler indefiniment sur le disque. Jamais bloquant — une
+        # purge en echec n'empeche jamais le nouveau rendu.
+        purger_artefacts_anciens(self.dossier)
         sortie = self.dossier / f"{montage.projet.identifiant}.mp4"
         rendu = rendre(montage.projet, sortie)
         # `to_dict()` porte deja `ok` et `message` : les splatter ici les
