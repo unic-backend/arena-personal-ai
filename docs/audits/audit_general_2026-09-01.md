@@ -154,6 +154,24 @@ La vérification interroge donc ses moteurs et nomme ce qui manque.
 
 ---
 
+## Deux choses vérifiées, correctes, et laissées telles quelles
+
+**Une écriture sans confirmation** : `wan2gp.cancel` est déclarée
+`ecriture=True` et autorisée sans confirmation. C'est **juste** — annuler
+réduit un effet, elle n'en émet aucun, et demander une confirmation pour
+arrêter une génération qui s'emballe sur la carte graphique serait nuisible au
+moment exact où il faut aller vite. La raison est maintenant écrite dans
+`config/permissions_services.yaml`, parce que l'audit la signale et qu'un
+futur lecteur la « corrigerait » à tort.
+
+**Trois services déclarés sans connecteur** : `website`, `business_profile`,
+`search_console`. Les deux premiers ne sont pas du config mort — ils sont le
+plancher de politique dans `core/permissions/controle.py` pour des connecteurs
+à venir, et leurs actions y sont déjà classées irréversibles. Le troisième
+n'est référencé nulle part. **Aucun n'est atteignable** (aucun connecteur ne
+porte ces services), donc aucun risque. Non retirés : ce n'est pas à
+l'assistant d'effacer du config que le propriétaire a peut-être prévu.
+
 ## Une conséquence de mes propres correctifs, signalée plutôt que tue
 
 `/health` est **public** (l'interface s'en sert pour vérifier que le serveur

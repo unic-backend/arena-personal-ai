@@ -94,6 +94,14 @@ services:
   # supprimer. Une video generee s'efface. Un test le dit
   # (test_les_trois_interrupteurs_bloquants_couvrent_les_actions_irreversibles),
   # il a refuse l'ajout, et il avait raison.
+  #
+  # `cancel` est ALLOWED alors que la capacite est declaree `ecriture=True` :
+  # c'est voulu. Annuler REDUIT un effet, elle n'en emet aucun, et demander une
+  # confirmation pour arreter une generation qui s'emballe sur la carte
+  # graphique serait nuisible au moment exact ou il faut aller vite. Ecrit ici
+  # parce qu'un audit automatique signale cette ligne comme une « ecriture sans
+  # confirmation » (mesure du 01/09/2026) et qu'un futur lecteur la corrigerait
+  # a tort.
   video_generation:
     read:        {decision: ALLOWED,      risque: LOW}
     generate:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
