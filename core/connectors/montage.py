@@ -28,7 +28,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from core.actions.resultat import ResultatAction, echec, non_configure, succes
+from core.actions.resultat import ResultatAction, echec, non_configure, partiel, succes
 from core.connectors.base import Capacite, Connecteur, EtatSante, Sante
 from core.montage.operations import Montage
 from core.montage.projet import Projet
@@ -133,9 +133,22 @@ class ConnecteurMontage(Connecteur):
 
         resume = montage.resumer()
         if capacite.nom == "composer":
+            preuve = (f"{montage.projet.duree_ms} ms sur "
+                      f"{len(montage.projet.pistes)} piste(s)")
+            if erreurs:
+                # Une partie du plan est tombee : `SUCCESS` le taisait. La
+                # timeline pouvait faire 0 ms, avec l'unique clip refuse dans
+                # `detail.erreurs`, et le statut disait quand meme « reussi ».
+                # Mesure du 01/09/2026. Le compte entre dans le MESSAGE, pas
+                # seulement dans le detail : c'est le message qui est lu.
+                return partiel(
+                    action=capacite.nom, cible=self.nom,
+                    message=f"{resume.message} {len(erreurs)} ligne(s) ecartee(s).",
+                    preuve=preuve, projet=montage.projet.to_dict(),
+                    erreurs=erreurs, **resume.detail)
             return succes(
                 action=capacite.nom, cible=self.nom, message=resume.message,
-                preuve=f"{montage.projet.duree_ms} ms sur {len(montage.projet.pistes)} piste(s)",
+                preuve=preuve,
                 projet=montage.projet.to_dict(), erreurs=erreurs, **resume.detail)
 
         # Rendre : le fichier part sur le disque, donc derriere confirmation.
@@ -163,6 +176,14 @@ class ConnecteurMontage(Connecteur):
         # relire, le modifier, et demander un nouveau rendu sans repartir de zero.
         chemin_projet = sortie.with_suffix(".json")
         montage.projet.ecrire(chemin_projet)
+        if erreurs:
+            # Le fichier existe, mais il ne contient pas tout ce qui etait
+            # demande : c'est exactement ce que `PARTIAL` veut dire.
+            return partiel(
+                action=capacite.nom, cible=self.nom,
+                message=f"{rendu.message} {len(erreurs)} ligne(s) ecartee(s).",
+                preuve=rendu.chemin, projet_json=str(chemin_projet),
+                erreurs=erreurs, **mesures)
         return succes(
             action=capacite.nom, cible=self.nom, message=rendu.message,
             preuve=rendu.chemin, projet_json=str(chemin_projet),

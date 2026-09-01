@@ -3,6 +3,8 @@ from pathlib import Path
 
 import yaml
 
+from core.fichier_suivi import date_de
+
 logger = logging.getLogger("usman.security.permissions")
 
 class PermissionManager:
@@ -24,6 +26,29 @@ class PermissionManager:
         self.config_path = Path(config_path).resolve()
         self.permissions = self.DEFAULT_PERMISSIONS.copy()
         self._load_config()
+        self._date = date_de(self.config_path)
+
+    def _relire_si_change(self):
+        """Relit le fichier quand sa date de modification a change.
+
+        Le fichier n'etait lu qu'a la construction, et cet objet est un
+        singleton cree au demarrage du serveur : un booleen modifie dans
+        `config/permissions.yaml` n'etait applique qu'au redemarrage suivant.
+        Mesure du 01/09/2026, meme defaut que `PolitiqueDePermissions`.
+
+        Les defauts de la classe sont remis avant la relecture : sans cela,
+        une cle retiree du fichier garderait la valeur qu'elle avait avant,
+        au lieu de revenir a son defaut — et les trois defauts qui comptent
+        (`EXECUTE_COMMANDS`, `PUBLISH`, `DELETE`) sont a `False`.
+        """
+        date = date_de(self.config_path)
+        if date == self._date:
+            return
+        self.permissions = self.DEFAULT_PERMISSIONS.copy()
+        self._load_config()
+        self._date = date
+        logger.info("Permissions relues (%s).",
+                    "fichier absent" if date is None else "fichier modifie")
 
     def _load_config(self):
         if self.config_path.exists():
@@ -48,6 +73,7 @@ class PermissionManager:
 
     def is_allowed(self, permission_name: str) -> bool:
         """Vérifie si une action est autorisée."""
+        self._relire_si_change()
         allowed = self.permissions.get(permission_name, False)
         if not allowed:
             logger.warning(f"🔒 Action refusée par le système de permissions : {permission_name}")

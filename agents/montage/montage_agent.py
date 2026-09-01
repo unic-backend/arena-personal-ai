@@ -126,7 +126,11 @@ class MontageAgent(BaseAgent):
         dit si les pistes, les durees et les chevauchements tiennent.
         """
         resultat = self.registre.executer(CONNECTEUR, "composer", operations=operations)
-        if resultat.statut.value != "SUCCESS":
+        # `PARTIAL` : la timeline tient, mais une partie du plan est tombee.
+        # Ce n'est ni un echec (il y a un projet) ni un succes (il est
+        # incomplet) — et l'annoncer `success` etait le defaut repare le
+        # 01/09/2026.
+        if resultat.statut.value not in ("SUCCESS", "PARTIAL"):
             return self._erreur(
                 f"La timeline n'a pas tenu : {resultat.message}",
                 operations=operations, refus=refus)
@@ -137,7 +141,7 @@ class MontageAgent(BaseAgent):
             message += "\n\nLignes ecartees :\n" + "\n".join(f"- {e}" for e in erreurs)
 
         return {
-            "status": "success",
+            "status": "warning" if erreurs else "success",
             "agent": self.name,
             "response": message,
             "operations": operations,

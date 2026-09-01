@@ -79,10 +79,15 @@ def est_reveillable(module: str) -> bool:
     """Un orphelin sur lequel il y a du travail a faire.
 
     Un `__init__.py` vide est un marqueur de paquet : il n y a rien a brancher.
-    `apps.pwa.server.*` est un second serveur, dont le sort est une question
-    posee au proprietaire (`docs/CURRENT_TASK.md`), pas une tache.
+
+    Une exemption pour `apps.pwa.server.*` vivait ici, avec pour raison « une
+    question posee au proprietaire ». Elle a ete tranchee le 29/08/2026 —
+    supprime — et l exemption est restee. Verifie le 01/09/2026 : elle ne
+    masquait plus rien, mais elle aurait masque en silence tout module futur
+    portant ce nom. Une exemption survit toujours a sa raison ; c est pour ca
+    qu elle doit partir avec elle.
     """
-    return not (module.endswith('__init__') or module.startswith('apps.pwa.server'))
+    return not module.endswith('__init__')
 
 
 def orphelins_reels() -> List[str]:

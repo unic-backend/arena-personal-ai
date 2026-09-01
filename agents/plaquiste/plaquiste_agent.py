@@ -41,6 +41,7 @@ from apps.backend.config import BASE_DIR
 from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.agent.base_agent import BaseAgent
 from core.connectors.registre import RegistreConnecteurs
+from core.fichier_suivi import FichierSuivi, date_de
 from core.memory.memory_manager import MemoryManager
 from core.memory.personnelle import MemoirePersonnelle, Nature, TypeSouvenir
 from core.memory.recuperation import formater as formater_souvenirs
@@ -360,19 +361,10 @@ def charger_metier(chemin: Path = FICHIER_METIER) -> Dict[str, Any]:
 def date_du_metier(chemin: Optional[Path] = None) -> Optional[float]:
     """Date de derniere modification du fichier metier, `None` s'il est absent.
 
-    `None` n'est pas `0` : un fichier absent n'a pas de date, il n'a pas la
-    date zero. La distinction compte, parce que c'est cette valeur qui decide
-    d'une relecture.
-
-    Le chemin par defaut est resolu **a l'appel**, pas a l'import : ecrit
-    `chemin: Path = FICHIER_METIER`, il serait fige a la valeur qu'avait la
-    constante au chargement du module — la meme famille de defaut que celui
-    que cette classe repare.
+    Garde comme point d'entree nomme : `core/fichier_suivi.date_de` fait le
+    travail, cette fonction porte le defaut du chemin metier.
     """
-    try:
-        return (chemin or FICHIER_METIER).stat().st_mtime
-    except OSError:
-        return None
+    return date_de(chemin or FICHIER_METIER)
 
 
 class MetierSuivi:
@@ -388,26 +380,24 @@ class MetierSuivi:
     memes fichiers : **un mauvais prix sur un document qui part chez un
     client**.
 
-    La relecture se declenche sur la date de modification, jamais sur une
-    horloge : un fichier inchange n'est pas relu, et un fichier change l'est
-    au premier chiffrage qui suit.
+    La mecanique de relecture vit dans `core/fichier_suivi.py` : la meme forme
+    de defaut a ete trouvee quatre fois dans la meme nuit.
     """
 
     def __init__(self, chemin: Optional[Path] = None):
-        # Resolu ici, pas dans la signature : voir `date_du_metier`.
-        self.chemin = chemin or FICHIER_METIER
-        self._donnees = charger_metier(self.chemin)
-        self._date = date_du_metier(self.chemin)
+        # Resolu ici, pas dans la signature : un defaut d'argument est evalue
+        # a l'import, donc fige a la valeur qu'avait la constante au chargement
+        # du module — la meme famille de defaut que celui repare ici.
+        self._suivi = FichierSuivi(chemin or FICHIER_METIER, charger_metier,
+                                   nom="Grille de prix")
+
+    @property
+    def chemin(self) -> Path:
+        return self._suivi.chemin
 
     def actuel(self) -> Dict[str, Any]:
         """Les connaissances a jour. Relit le fichier si sa date a change."""
-        date = date_du_metier(self.chemin)
-        if date != self._date:
-            self._donnees = charger_metier(self.chemin)
-            self._date = date
-            logger.info("Grille de prix relue : %s article(s).",
-                        len(_grille(self._donnees)))
-        return self._donnees
+        return self._suivi.actuel()
 
 
 def _grille(metier: Dict[str, Any]) -> Dict[str, int]:

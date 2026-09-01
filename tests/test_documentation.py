@@ -176,3 +176,38 @@ def test_les_noms_de_modules_sont_pointes_sur_les_deux_systemes():
     assert all("as_posix()" in ligne for ligne in retours), (
         "les noms de modules ne sont plus construits en POSIX : sous Windows "
         f"ils sortiront avec des antislashs et le parcours ne trouvera rien — {retours}")
+
+
+class TestLeDetecteurNeGardePasUneExemptionMorte:
+    """Une exemption survit toujours à sa raison. Elle doit partir avec elle.
+
+    `est_reveillable` exemptait `apps.pwa.server.*` parce que son sort était
+    « une question posée au propriétaire ». La question a été tranchée le
+    29/08/2026 — le dossier supprimé — et l'exemption est restée. Vérifié le
+    01/09/2026 : elle ne masquait plus rien, mais elle aurait masqué en silence
+    tout module futur portant ce nom.
+    """
+
+    def test_seuls_les_marqueurs_de_paquet_sont_exemptes(self):
+        from scripts.orphelins import est_reveillable
+
+        assert est_reveillable("apps.pwa.server.main") is True
+        assert est_reveillable("core.memory.__init__") is False
+        assert est_reveillable("core.memory.semantique") is True
+
+    def test_aucune_exemption_ne_nomme_un_chemin_disparu(self):
+        """Une exemption qui nomme un chemin absent du dépôt est morte."""
+        import inspect
+        from pathlib import Path
+
+        from scripts import orphelins
+
+        racine = Path(orphelins.__file__).resolve().parent.parent
+        source = inspect.getsource(orphelins.est_reveillable)
+        corps = source.split('"""')[-1]  # la docstring raconte l'histoire, pas la règle
+
+        for fragment in ("apps.pwa", "apps/pwa"):
+            assert fragment not in corps, (
+                f"{fragment} est encore exempté alors que "
+                f"{'existe' if (racine / 'apps' / 'pwa').exists() else 'le dossier a disparu'}"
+            )

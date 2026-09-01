@@ -92,7 +92,13 @@ class TestFrontiere:
             "composer", operations=[]).statut is Statut.ECHEC
 
     def test_une_erreur_n_arrete_pas_les_operations_suivantes(self, tmp_path):
-        """Un modèle qui se trompe d'une ligne doit voir laquelle, pas tout perdre."""
+        """Un modèle qui se trompe d'une ligne doit voir laquelle, pas tout perdre.
+
+        Ce test affirmait `SUCCES` jusqu'au 01/09/2026. Son intention — le
+        reste survit — était juste ; son assertion épinglait autre chose :
+        **une erreur rapportée comme une réussite**. `PARTIEL` dit les deux à
+        la fois, et c'est le seul statut qui le fait.
+        """
         c = ConnecteurMontage(dossier=tmp_path)
 
         r = c.executer("composer", operations=[
@@ -101,7 +107,7 @@ class TestFrontiere:
             {"operation": "ajouter_piste", "type": "video", "nom": "principale"},
         ])
 
-        assert r.statut is Statut.SUCCES
+        assert r.statut is Statut.PARTIEL
         assert len(r.detail["erreurs"]) == 1
         assert any(p["nom"] == "principale" for p in r.detail["pistes"]), (
             "l'operation suivant l'echec n'a pas ete jouee"

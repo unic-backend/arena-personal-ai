@@ -106,8 +106,25 @@ class TestLaChaine:
         r = await MontageAgent(provider=ModeleDouble(reponse),
                                registre=RegistreDouble()).run(
             "monte la vidéo", context={"medias": rushes})
-        assert r["status"] == "success"
+        # `success` jusqu'au 01/09/2026 — et c'etait faux : une partie du plan
+        # est tombee. Le reste tient toujours (ce n'est pas une erreur), la
+        # ligne ecartee est nommee, et le statut le dit maintenant aussi.
+        assert r["status"] == "warning"
         assert any("envoyer_par_mail" in e for e in r["lignes_ecartees"])
+        assert "envoyer_par_mail" in r["response"], (
+            "la ligne ecartee doit apparaitre dans le texte lu, pas seulement "
+            "dans un champ que l'interface n'affiche pas"
+        )
+
+    @pytest.mark.asyncio
+    async def test_un_plan_entierement_valide_reste_un_succes(self, rushes):
+        """`warning` ne doit pas devenir le statut par defaut du montage."""
+        r = await MontageAgent(provider=ModeleDouble(PLAN),
+                               registre=RegistreDouble()).run(
+            "monte la vidéo", context={"medias": rushes})
+
+        assert r["status"] == "success"
+        assert r["lignes_ecartees"] == []
 
     @pytest.mark.asyncio
     async def test_le_prompt_liste_ses_medias_par_leur_nom(self, rushes):
