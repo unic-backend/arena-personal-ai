@@ -2263,3 +2263,22 @@ la valeur vide, jamais l'ancienne.
 **Ce que ça coûte si c'est faux** : un `stat()` par vérification de permission.
 Si la date était instable, le fichier serait relu à chaque appel — un
 `yaml.safe_load` de quelques kilo-octets, sans effet sur la décision.
+
+## DEC-0036 — Un plan à moitié tombé est PARTIEL, jamais un succès
+
+**2026-09-01.** `composer` rendait `SUCCESS` quelles que soient les opérations
+tombées : mesuré sur une vraie vidéo, une timeline de 0 ms avec l'unique clip
+refusé était annoncée « réussie », l'erreur reléguée dans un champ que le
+message ne reprenait pas.
+
+`Statut.PARTIEL` existait pour ça. Il s'applique à `composer` et au rendu, et
+le compte de lignes écartées entre dans le **message** — c'est lui qui est lu.
+L'agent rend `warning` plutôt que `success` dans ce cas.
+
+Un projet jamais créé reste `ECHEC` : `PARTIEL` dit « une partie a eu lieu »,
+et sans projet rien n'a eu lieu.
+
+**Ce que ça coûte si c'est faux** : une interface qui traite `PARTIAL` comme un
+échec afficherait une alerte pour un plan très majoritairement appliqué. Le
+projet est dans la charge utile et reste utilisable ; l'inverse — un échec pris
+pour une réussite — laissait le propriétaire attendre une vidéo qui n'existait pas.

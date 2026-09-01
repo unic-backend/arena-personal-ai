@@ -820,3 +820,42 @@ qu'un détecteur ne doit pas faire.
 
 Une exemption survit toujours à sa raison. C'est pour ça qu'elle doit partir
 avec elle. Deux tests l'empêchent de revenir.
+
+---
+
+# Défaut n° 24 — un plan de montage à moitié tombé était annoncé « réussi »
+
+Trouvé en jouant une vraie chaîne de montage sur une vraie vidéo, pas en
+lisant du code.
+
+```
+STATUT  -> SUCCESS
+MESSAGE -> « Sonde » : 1 piste(s), 0 ms, 640x360.
+ERREURS -> ['#4 ajouter_clip : aucun media « 1 » importe dans ce projet']
+```
+
+La timeline faisait **zéro milliseconde**, l'unique clip avait été refusé — et
+le statut disait « réussi ». L'erreur existait bien, dans `detail.erreurs`, un
+champ que le message lu ne reprenait pas.
+
+Le cas est celui de tous les jours : le modèle invente un `media_id` et se
+trompe. C'est prévu, c'est même documenté (*« une opération qui échoue
+n'arrête pas les suivantes »*) — mais le résultat d'ensemble mentait.
+
+`Statut.PARTIEL` existe dans ce dépôt exactement pour ça, et n'était pas
+utilisé ici. Il l'est maintenant, sur `composer` **et** sur le rendu, et le
+**compte entre dans le message**, pas seulement dans le détail : c'est le
+message qui est lu. L'agent passe de `success` à `warning` quand des lignes
+ont été écartées.
+
+## Deux tests épinglaient le mensonge
+
+- `test_une_erreur_n_arrete_pas_les_operations_suivantes` — son nom dit
+  l'intention (le reste survit), son assertion disait `SUCCES`. Elle épinglait
+  donc **une erreur rapportée comme une réussite**.
+- `test_une_ligne_inventee_est_ecartee_sans_perdre_le_reste` — le mien, écrit
+  plus tôt dans cette même mission.
+
+Les deux gardent leur intention et l'assertion est corrigée. Un test ajouté
+vérifie l'inverse : un plan entièrement valide reste `SUCCESS`, pour que
+`warning` ne devienne pas le statut par défaut du montage.
