@@ -6,7 +6,7 @@ en cassant volontairement ce que son test protège.*
 
 Point de départ posé par le propriétaire : « Ne suppose pas qu'une suite de
 tests verte veut dire que le projet est sain. » Elle l'était : 2542 tests au
-vert. **Onze défauts réels ont été trouvés quand même.**
+vert. **Douze défauts réels ont été trouvés quand même — dont le plus grave dans mon propre code de la veille.**
 
 ---
 
@@ -30,7 +30,7 @@ vert. **Onze défauts réels ont été trouvés quand même.**
 
 ---
 
-## Les onze défauts trouvés, et ce qu'ils coûtaient
+## Les douze défauts trouvés, et ce qu'ils coûtaient
 
 ### 1. `/health` taisait six agents — dont son assistant devis
 
@@ -172,6 +172,38 @@ déclenche que sur une absence réelle.
 Avant : `1 failed, 24 passed, 18 skipped, 1 error`.
 Après : `24 passed, 20 skipped`, **0 échec, 0 erreur**.
 
+### 12. Une propriété de texte pouvait ouvrir une option ffmpeg — et c'était mon code
+
+**Le défaut le plus sérieux de la nuit, écrit la veille par moi.**
+
+`ajouter_texte(**proprietes)` accepte des propriétés libres — voulu, pour la
+taille et la couleur. Elles étaient interpolées **telles quelles** dans
+`filter_complex`. Un `couleur` valant `white:fontfile=/etc/passwd` ouvrait donc
+une option ffmpeg supplémentaire :
+
+```
+[0:v]drawtext=text='bonjour':fontsize=48:fontcolor=white:fontfile=/etc/passwd:…
+```
+
+Ce n'est pas théorique : `drawtext` sait lire un fichier (`textfile=`). Le
+contenu d'un fichier de la machine pouvait finir **incrusté dans une vidéo que
+le propriétaire publie** — une exfiltration par la vidéo.
+
+La barrière que j'avais écrite dans `planificateur.py` couvrait
+`importer_media` et **laissait passer les propriétés**. Le contenu du texte,
+lui, était déjà échappé.
+
+Les valeurs sont maintenant contraintes à leur forme : une couleur est un mot,
+un `#rrggbb` ou un `0xrrggbb` avec opacité optionnelle ; une position est une
+expression sans `:` ni `,` ni guillemet ; une taille est un entier borné. Hors
+motif → le défaut, et un avertissement au journal. Six attaques testées, un
+rendu réel refait après pour prouver que fermer la porte n'a pas fermé la
+fenêtre.
+
+**Ce que ça dit** : une barrière ne vaut que là où elle est posée. J'avais
+écrit « le modèle ne cite jamais un chemin » et je l'avais vérifié sur un seul
+des deux chemins.
+
 ## Deux choses vérifiées, correctes, et laissées telles quelles
 
 **Une écriture sans confirmation** : `wan2gp.cancel` est déclarée
@@ -238,8 +270,8 @@ correction de nuit, c'est une décision du propriétaire.
 
 ```
 python -m ruff check .                                   -> All checks passed!
-python -m pytest tests/ -q                               -> 2586 passed, 44 deselected
-OMNIVOICE_URL=http://127.0.0.1:9 python -m pytest tests/ -q -> 2586 passed  (conditions CI)
+python -m pytest tests/ -q                               -> 2599 passed, 44 deselected
+OMNIVOICE_URL=http://127.0.0.1:9 python -m pytest tests/ -q -> 2599 passed  (conditions CI)
 python scripts/orphelins.py                              -> aucun module réel endormi
 ```
 
