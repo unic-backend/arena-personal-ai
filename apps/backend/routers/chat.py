@@ -422,8 +422,11 @@ async def chat_stream_endpoint(request: ChatRequest):
 
     if intent in AGENTS_SPECIALISES:
         result = await dispatch_request(request, intent=intent)
+        # Quatrieme surface, meme trou : un agent muet envoyait un jeton vide
+        # suivi de `[DONE]`. Le garde est le meme partout depuis le 01/09/2026.
+        texte = garantir_un_texte(result.get("response"), intent)
         async def text_gen():
-            yield f"data: {json.dumps({'token': result['response'], 'intent': intent})}\n\n"
+            yield f"data: {json.dumps({'token': texte, 'intent': intent})}\n\n"
             yield "data: [DONE]\n\n"
         return StreamingResponse(text_gen(), media_type="text/event-stream")
     else:
@@ -466,6 +469,18 @@ async def chat_stream_endpoint(request: ChatRequest):
                 memory.add_chat_message(
                     session_id=session_id, role="assistant",
                     content=f"[interrompu : {type(souci).__name__}]")
+                yield "data: [DONE]\n\n"
+                return
+
+            if not a_produit_un_texte(full_reply):
+                # Un flux qui se ferme sans un mot : le client afficherait une
+                # bulle vide. Le routeur replie deja quand un fournisseur rend
+                # du vide (DEC-0032) ; s'il n'en restait aucun, on le dit.
+                texte_vide = garantir_un_texte(full_reply, intent)
+                yield "data: " + json.dumps(
+                    {"type": "error", "message": texte_vide}) + "\n\n"
+                memory.add_chat_message(session_id=session_id, role="assistant",
+                                        content="[aucune reponse produite]")
                 yield "data: [DONE]\n\n"
                 return
 

@@ -252,3 +252,55 @@ class TestChatNeMentPasSurUneReponseVide:
         assert corps["status"] == "error"
         assert corps["response"].strip()
         assert "DEEP_RESEARCH" in corps["response"]
+
+    def test_le_flux_specialise_ne_pousse_pas_un_jeton_vide(
+            self, client, entetes, monkeypatch):
+        """Quatrième surface, même trou : un jeton vide suivi de `[DONE]`."""
+        import json as _json
+
+        import apps.backend.routers.chat as chat
+
+        async def muet(demande, intent=None):
+            return {"response": "", "agent": "ResearcherAgent"}
+
+        async def recherche(*_a, **_k):
+            return "DEEP_RESEARCH"
+
+        monkeypatch.setattr(chat, "dispatch_request", muet)
+        monkeypatch.setattr(chat.orchestrator, "analyze_intent", recherche)
+
+        texte = client.post("/api/chat/stream", headers=entetes,
+                            json={"prompt": "cherche X"}).text
+        charges = [_json.loads(ligne[5:].strip())
+                   for ligne in texte.splitlines()
+                   if ligne.startswith("data:") and "[DONE]" not in ligne]
+
+        assert charges, "aucune trame reçue"
+        assert charges[0]["token"].strip(), "un jeton vide est parti"
+        assert "DEEP_RESEARCH" in charges[0]["token"]
+
+    def test_le_flux_de_conversation_signale_une_generation_muette(
+            self, client, entetes, monkeypatch):
+        """Le routeur replie déjà (DEC-0032) ; si personne ne répond, on le dit."""
+        import json as _json
+
+        import apps.backend.routers.chat as chat
+
+        async def rien(prompt, system_prompt=None):
+            return
+            yield  # pragma: no cover - rend la fonction asynchrone génératrice
+
+        async def conversation(*_a, **_k):
+            return "CHAT"
+
+        monkeypatch.setattr(chat.fast_provider, "generate_stream", rien)
+        monkeypatch.setattr(chat.orchestrator, "analyze_intent", conversation)
+
+        texte = client.post("/api/chat/stream", headers=entetes,
+                            json={"prompt": "bonjour"}).text
+        charges = [_json.loads(ligne[5:].strip())
+                   for ligne in texte.splitlines()
+                   if ligne.startswith("data:") and "[DONE]" not in ligne]
+
+        assert charges and charges[-1]["type"] == "error"
+        assert charges[-1]["message"].strip()

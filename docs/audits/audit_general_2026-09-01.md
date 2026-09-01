@@ -565,7 +565,18 @@ son message — « aucune reponse » au lieu de « aucune réponse ». C'est un 
 que le propriétaire lit. `tests/test_studio.py::TestJamaisDeReponseVide` a
 échoué sur exactement ce mot.
 
+## Et une quatrième surface
+
+La question posée une fois de plus a trouvé `/api/chat/stream` : la branche
+spécialisée poussait `{'token': ''}` puis `[DONE]`, et la branche conversation
+fermait le flux sans un mot quand la génération ne produisait rien.
+
+Les deux disent maintenant ce qui s'est passé. La mémoire y écrit
+`[aucune reponse produite]` plutôt qu'une chaîne vide — un tour d'historique
+vide se relit comme une réponse, pas comme une absence.
+
 C'est le troisième défaut de cette nuit qui a la même forme : **une règle
 apprise sur une surface, jamais portée sur les autres** (n° 15, n° 16 ter,
 n° 18). Quand une règle est trouvée quelque part, la question suivante n'est
-pas « est-ce corrigé ? » mais « qui d'autre fait la même chose ? ».
+pas « est-ce corrigé ? » mais « qui d'autre fait la même chose ? ». Posée
+quatre fois cette nuit, elle a répondu quatre fois oui.
