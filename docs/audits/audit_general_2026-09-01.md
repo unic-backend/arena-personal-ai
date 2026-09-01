@@ -875,3 +875,19 @@ fichiers et déclarait `ClipSelectorAgent` mort. Il ne l'est pas : il est attein
 par `/api/process-video` (`routers/media.py`). Le test lit désormais **tous**
 les routeurs, et un second test vérifie qu'il a bien lu quelque chose — sans
 ça, un balayage vide passerait au vert en ne mesurant rien.
+
+## La fusion à une tête périmée, quatrième occurrence
+
+#110 aussi. La règle écrite plus tôt cette nuit
+(`docs/REGLES_DE_TRAVAIL.md`, § 3) l'a attrapée :
+
+```
+git diff --stat 74a83df origin/master
+ docs/audits/audit_general_2026-09-01.md | 16 -----
+ tests/test_api.py                       | 50 -----
+```
+
+Le commit a été rejoué sur une branche neuve. Quatre occurrences sur les six
+fusions de cette nuit : **ce n'est pas un incident**, c'est ce qui arrive
+normalement quand on pousse après avoir lu la PR. La vérification n'est pas une
+précaution, c'est une étape.

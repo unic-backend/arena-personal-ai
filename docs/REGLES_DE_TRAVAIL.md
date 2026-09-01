@@ -40,7 +40,11 @@ les siens.
 
 GitHub fusionne parfois la tête **enregistrée** quand la PR a été lue, pas la
 dernière poussée. La réponse dit `"merged": true` et les derniers commits ne
-sont pas dans `master`. C'est arrivé trois fois ici : #98, #103, #106.
+sont pas dans `master`. C'est arrivé **quatre** fois : #98, #103, #106, #110.
+
+Ce n'est donc pas un incident, c'est le comportement normal quand on pousse
+après avoir lu la PR. La vérification ci-dessous n'est pas une précaution :
+c'est une étape.
 
 Après chaque fusion, une seule commande tranche :
 
