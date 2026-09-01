@@ -34,6 +34,10 @@ data/embeddings/*
 data/documents/*
 !data/documents/.gitkeep
 data/rag/*
+# Fichiers produits par ARENA : audio synthetise, videos montees.
+# Ce sont des sorties, pas du source — elles ne se versionnent pas.
+data/audio/*
+data/montages/*
 !data/rag/.gitkeep
 logs/*.log
 

@@ -111,3 +111,113 @@ def test_le_chat_repond_reellement(client, entetes, ollama_en_ligne):
 
     assert res.status_code == 200
     assert res.json()["status"] == "success"
+
+
+class TestSanteNAnnoncePasPlusQueCeQuiExiste:
+    """`/health` a menti deux fois, dans les deux sens.
+
+    D'abord en annonçant `ReasoningEngine` sans chemin pour l'atteindre
+    (corrigé en 08/2026). Puis, l'inverse : la même liste écrite à la main
+    taisait six agents bien vivants — `PlaquisteAgent` compris, l'assistant
+    devis du propriétaire (mesuré le 01/09/2026).
+
+    Une liste figée dérive toujours. Ces tests exigent qu'elle soit dérivée.
+    """
+
+    def test_chaque_agent_construit_est_annonce(self, client):
+        import apps.backend.runtime as runtime
+        from core.agent.base_agent import BaseAgent
+
+        construits = {o.name for o in vars(runtime).values() if isinstance(o, BaseAgent)}
+        annonces = set(client.get("/health").json()["agents_active"])
+
+        manquants = sorted(construits - annonces)
+        assert not manquants, f"agents construits mais tus par /health : {manquants}"
+
+    def test_aucun_nom_annonce_ne_sort_de_nulle_part(self, client):
+        """L'inverse : rien d'annoncé qui ne soit ni un agent ni un moteur connu."""
+        import apps.backend.runtime as runtime
+        from core.agent.base_agent import BaseAgent
+
+        construits = {o.name for o in vars(runtime).values() if isinstance(o, BaseAgent)}
+        connus = construits | set(runtime.MOTEURS_NON_AGENTS)
+        annonces = set(client.get("/health").json()["agents_active"])
+
+        inventes = sorted(annonces - connus)
+        assert not inventes, f"/health annonce ce qui n'existe pas : {inventes}"
+
+    def test_les_trois_moteurs_non_agents_sont_vraiment_atteignables(self):
+        """Ils n'ont pas de classe commune : leur présence se vérifie autrement."""
+        import inspect
+
+        import apps.backend.routers.chat as chat
+        import apps.backend.runtime as runtime
+
+        source = inspect.getsource(chat.dispatch_request)
+        for objet, marque in (("reasoning_engine", "reasoning_engine"),
+                              ("lightrag_tool", "lightrag_tool"),
+                              ("graphrag_tool", "graphrag_tool")):
+            assert hasattr(runtime, objet), f"{objet} n'existe plus dans runtime"
+            assert marque in source, (
+                f"{objet} est annoncé par /health mais plus aucun aiguillage ne l'atteint"
+            )
+
+
+class TestUnFluxNeMeurtPasEnSilence:
+    """`/api/chat/stream` rendait `200` et **zéro ligne** quand Ollama tombait.
+
+    L'exception remontait dans une réponse déjà commencée : le client
+    recevait un flux vide, indistinguable d'une réponse vide, sans `[DONE]`
+    et sans raison. `pwa_gateway.flux` tenait déjà la règle ; celui-ci non.
+    Mesuré le 01/09/2026.
+    """
+
+    @pytest.fixture
+    def fournisseur_en_panne(self, monkeypatch):
+        import apps.backend.routers.chat as chat
+
+        async def tombe(*_a, **_k):
+            raise RuntimeError("Ollama ne repond pas")
+            yield  # pragma: no cover - rend la fonction asynchrone génératrice
+
+        monkeypatch.setattr(chat.fast_provider, "generate_stream", tombe)
+
+        async def conversation(*_a, **_k):
+            return "CHAT"
+
+        monkeypatch.setattr(chat.orchestrator, "analyze_intent", conversation)
+
+    def _lignes(self, client, entetes):
+        with client.stream("POST", "/api/chat/stream", json={"prompt": "bonjour"},
+                           headers=entetes) as reponse:
+            return reponse.status_code, [ligne for ligne in reponse.iter_lines() if ligne]
+
+    def test_la_panne_est_dite_au_client(self, client, entetes, fournisseur_en_panne):
+        statut, lignes = self._lignes(client, entetes)
+        assert statut == 200
+        assert lignes, "flux vide : la panne est invisible pour le client"
+        assert any('"type": "error"' in ligne for ligne in lignes)
+        assert any("Ollama ne repond pas" in ligne for ligne in lignes)
+
+    def test_le_flux_se_ferme_proprement(self, client, entetes, fournisseur_en_panne):
+        """Sans `[DONE]`, l'interface attend indéfiniment."""
+        _, lignes = self._lignes(client, entetes)
+        assert lignes[-1].strip() == "data: [DONE]"
+
+    def test_l_historique_ne_garde_pas_une_question_orpheline(
+        self, client, entetes, fournisseur_en_panne, monkeypatch
+    ):
+        """Le tour du propriétaire est enregistré avant la génération."""
+        import apps.backend.routers.chat as chat
+
+        ecrits = []
+        monkeypatch.setattr(chat.memory, "add_chat_message",
+                            lambda **kw: ecrits.append((kw["role"], kw["content"])))
+        self._lignes(client, entetes)
+
+        roles = [role for role, _ in ecrits]
+        assert roles.count("user") == roles.count("assistant"), (
+            f"question sans réponse dans l'historique : {ecrits}"
+        )
+        reponse = [c for r, c in ecrits if r == "assistant"][0]
+        assert "interrompu" in reponse, "une réponse fabriquée a été écrite en mémoire"

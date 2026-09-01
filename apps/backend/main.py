@@ -27,7 +27,12 @@ from apps.backend.routers import (
     openai_gateway,
     pwa_gateway,
 )
-from apps.backend.runtime import deep_provider, fast_provider, ollama_vision
+from apps.backend.runtime import (
+    agents_actifs,
+    deep_provider,
+    fast_provider,
+    ollama_vision,
+)
 from apps.backend.security import cle_presentee_valide, validate_media_path, verify_media_access
 from apps.backend.verification_modeles import verifier_modeles
 
@@ -234,12 +239,10 @@ async def health_check(authorization: Optional[str] = Header(None)):
         "ollama_available": ollama_online,
         "interface": nom_interface(),
         "models": [fast_provider.model_name, deep_provider.model_name],
-        "agents_active": [
-            "Orchestrator", "ReasoningEngine", "CoderAgent", "RepoEngineerAgent",
-            "SWEAgent", "DeepResearcher", "TrendAnalyzer", "VideoAnalyzer",
-            "Editor", "Subtitle", "ClipSelector", "Publisher", "BrowserAgent",
-            "FreshInfoAgent", "LightRAG", "MicrosoftGraphRAG"
-        ]
+        # Derivee des agents que `runtime` construit vraiment, jamais ecrite
+        # a la main : la liste figee qui etait ici taisait six agents bien
+        # vivants, dont l'assistant devis. Voir `runtime.agents_actifs`.
+        "agents_active": agents_actifs()
     }
 
 

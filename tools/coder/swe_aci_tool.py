@@ -34,8 +34,16 @@ class SWEACITool:
             return f"❌ Erreur de lecture ACI: {e}"
 
     def search_dir(self, term: str, max_matches: int = 10) -> str:
-        """Cherche un terme/fonction dans tout le projet (Commande ACI)."""
+        """Cherche un terme/fonction dans tout le projet (Commande ACI).
+
+        Un fichier illisible est COMPTE, jamais avale : sans ce compte, une
+        recherche qui n'avait rien pu ouvrir repondait « Aucun resultat », et
+        l'agent qui la lisait en concluait que le terme n'existe pas. Une
+        absence de resultat et une absence de lecture ne sont pas la meme
+        reponse.
+        """
         matches = []
+        illisibles = []
         ignore_dirs = {".git", ".venv", "__pycache__", "node_modules"}
 
         for root, dirs, files in os.walk(self.root_dir):
@@ -51,14 +59,22 @@ class SWEACITool:
                                 matches.append(f"{rel_p}:{idx} | {line.strip()}")
                                 if len(matches) >= max_matches:
                                     break
-                    except Exception:
-                        pass
+                    except OSError as erreur:
+                        illisibles.append(f"{file_path.name} ({erreur.strerror or erreur})")
                 if len(matches) >= max_matches:
                     break
 
+        reserve = ""
+        if illisibles:
+            apercu = ", ".join(illisibles[:3])
+            suite = f" (+{len(illisibles) - 3})" if len(illisibles) > 3 else ""
+            reserve = (f"\n⚠️ {len(illisibles)} fichier(s) n'ont pas pu être lus, "
+                       f"la recherche est incomplète : {apercu}{suite}")
+
         if not matches:
-            return f"🔍 Aucun résultat pour '{term}'."
-        return f"🔍 Résultats pour '{term}' ({len(matches)} occurrences) :\n" + "\n".join(matches)
+            return f"🔍 Aucun résultat pour '{term}'.{reserve}"
+        return (f"🔍 Résultats pour '{term}' ({len(matches)} occurrences) :\n"
+                + "\n".join(matches) + reserve)
 
     def edit(self, file_path: str, start_line: int, end_line: int, new_code: str) -> str:
         """Remplacement chirurgical de lignes de code (Commande ACI)."""

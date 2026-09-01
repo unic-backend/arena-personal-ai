@@ -20,6 +20,7 @@ from agents.video_analyzer.video_analyzer_agent import demande_de_suivi
 from apps.backend.config import AGENTS_SPECIALISES, MEDIA_DIR
 from apps.backend.prompts import get_arena_system_prompt
 from apps.backend.runtime import (
+    audio_agent,
     browser_agent,
     coder_agent,
     editor_agent,
@@ -51,6 +52,7 @@ from tools.documents.indexer import (
     Rapport,
     indexer_documents,
 )
+from tools.rag.lightrag_tool import est_un_echec as lightrag_echec
 
 logger = logging.getLogger("usman.backend")
 
@@ -291,12 +293,21 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         if demande_d_indexation(request.prompt):
             result = await indexer_ses_documents()
         else:
-            result = {"response": lightrag_tool.query(request.prompt, mode="hybrid"),
-                      "agent": "LightRAG"}
+            reponse_docs = lightrag_tool.query(request.prompt, mode="hybrid")
+            # Un moteur documentaire absent rend une phrase d'erreur, pas une
+            # reponse : l'annoncer sans statut la faisait lire comme un resultat.
+            result = {"response": reponse_docs, "agent": "LightRAG",
+                      "status": "error" if lightrag_echec(reponse_docs) else "success"}
     elif intent == "GRAPHRAG":
         result = graphrag_tool.query_global(request.prompt)
     elif intent == "VISION":
         result = await vision_agent.run(request.prompt, context={"attachments": request.attachments})
+    elif intent == "AUDIO":
+        # Meme inventaire que le montage : ses fichiers, et rien d autre.
+        # `medias_montables` couvre deja l audio (mp3, wav, m4a...) en plus
+        # de la video, et la transcription lit les deux.
+        result = await audio_agent.run(
+            request.prompt, context={"medias": medias_montables(request.video_path)})
     elif intent == "MONTAGE":
         # L inventaire ouvert au modele : ses propres fichiers, et rien
         # d autre. `validate_media_path` tient deja la frontiere du dossier
@@ -380,10 +391,33 @@ async def chat_stream_endpoint(request: ChatRequest):
         full_prompt = "\n".join(prompt_lines)
 
         async def token_generator():
+            """Le flux finit toujours, meme quand la generation tombe.
+
+            Sans le `try`, une panne du fournisseur (Ollama eteint) faisait
+            remonter l'exception DANS la reponse deja commencee : le client
+            recevait un `200` et **zero ligne** — un flux vide indistinguable
+            d'une reponse vide. Mesure du 01/09/2026. `pwa_gateway.flux` tient
+            deja cette regle ; celui-ci ne la tenait pas.
+            """
             full_reply = ""
-            async for token in fast_provider.generate_stream(full_prompt, system_prompt):
-                full_reply += token
-                yield f"data: {json.dumps({'token': token, 'intent': intent})}\n\n"
+            try:
+                async for token in fast_provider.generate_stream(full_prompt, system_prompt):
+                    full_reply += token
+                    yield f"data: {json.dumps({'token': token, 'intent': intent})}\n\n"
+            except Exception as souci:  # noqa: BLE001 - le flux doit finir proprement
+                logger.error("Flux /api/chat/stream interrompu : %s", souci, exc_info=True)
+                yield "data: " + json.dumps(
+                    {"type": "error",
+                     "message": f"ARENA n'a pas pu terminer : {souci}"}) + "\n\n"
+                # Le tour du proprietaire est deja en memoire (ligne au-dessus) :
+                # sans reponse, l'historique garderait une question orpheline.
+                # On y ecrit ce qui s'est reellement passe, jamais une reponse
+                # fabriquee.
+                memory.add_chat_message(
+                    session_id=session_id, role="assistant",
+                    content=f"[interrompu : {type(souci).__name__}]")
+                yield "data: [DONE]\n\n"
+                return
 
             memory.add_chat_message(session_id=session_id, role="assistant", content=full_reply.strip())
             yield "data: [DONE]\n\n"

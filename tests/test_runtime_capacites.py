@@ -28,8 +28,21 @@ def test_chaque_espace_pointe_vers_l_agent_reellement_utilise_ailleurs():
 
 
 async def test_l_espace_documents_est_appelable_avec_le_meme_contrat():
-    """L'adaptateur autour de LightRAGTool.query() doit rendre {status, agent, response}."""
+    """L'adaptateur autour de LightRAGTool.query() doit rendre {status, agent, response}.
+
+    Ce test exigeait `status == "success"`. Sur une machine sans `lightrag`
+    — celle du CI, entre autres — il **epinglait un mensonge** : la reponse
+    portait « ❌ Erreur … No module named 'lightrag' » et s'annoncait quand
+    meme comme une reussite. Corrige le 01/09/2026 : le contrat teste est la
+    FORME du resultat, et la coherence entre le statut et ce qu'il porte.
+    """
+    from tools.rag.lightrag_tool import est_un_echec
+
     resultat = await capacites.demander("documents", "question de test")
 
-    assert resultat["status"] == "success"
-    assert "response" in resultat
+    assert {"status", "agent", "response"} <= set(resultat)
+    assert resultat["status"] in {"success", "error"}
+    assert resultat["status"] == ("error" if est_un_echec(resultat["response"])
+                                 else "success"), (
+        "le statut ne correspond pas a ce que la reponse dit vraiment"
+    )

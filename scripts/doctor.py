@@ -271,6 +271,50 @@ def verifier_wangp(lecteur: Optional[Callable[[str], Any]] = None) -> Verificati
     return Verification("WanGP (generation video)", OK, f"repond sur {url}")
 
 
+def verifier_voicestudio(lecteur: Optional[Callable[[str], Any]] = None) -> Verification:
+    """VoiceStudio, interroge pour de vrai — et ce qu'il sait REELLEMENT faire.
+
+    Un port qui repond ne dit pas si un moteur est installe : VoiceStudio
+    demarre tres bien sans aucun moteur de voix, et repondrait « operationnel »
+    a une sonde qui s'arreterait la. On lui demande donc ses moteurs, et le
+    rapport nomme ce qui manque.
+
+    C'est un programme SEPARE, sous AGPL-3.0 : ARENA ne l'installe pas et ne
+    le demarre pas (`docs/audits/voicestudio_audit.md`).
+    """
+    lire = lecteur or _lire_json
+    url = os.getenv("OMNIVOICE_URL", "http://127.0.0.1:3900").rstrip("/")
+    try:
+        lire(f"{url}/system/info")
+    except Exception:  # noqa: BLE001
+        return Verification(
+            "Voix (VoiceStudio)", NON_CONFIGURE, f"ne repond pas sur {url}",
+            "Lancer VoiceStudio : uv run uvicorn main:app --app-dir backend "
+            "--host 127.0.0.1 --port 3900")
+
+    def _disponibles(genre: str) -> list:
+        try:
+            donnees = lire(f"{url}/engines/{genre}") or {}
+        except Exception:  # noqa: BLE001
+            return []
+        return [b.get("id") for b in donnees.get("backends", []) if b.get("available")]
+
+    voix, ecoute = _disponibles("tts"), _disponibles("asr")
+    if not voix and not ecoute:
+        return Verification(
+            "Voix (VoiceStudio)", NON_CONFIGURE,
+            f"repond sur {url}, mais aucun moteur installe : ni voix, ni transcription",
+            "Installer un moteur cote VoiceStudio (ex. kittentts, faster-whisper).")
+    if not voix:
+        return Verification(
+            "Voix (VoiceStudio)", NON_CONFIGURE,
+            f"transcription possible ({', '.join(ecoute)}), mais aucun moteur de voix",
+            "Installer un moteur TTS cote VoiceStudio.")
+    return Verification(
+        "Voix (VoiceStudio)", OK,
+        f"voix : {', '.join(voix)} | transcription : {', '.join(ecoute) or 'aucune'}")
+
+
 def verifier_moneyprinter(lecteur: Optional[Callable[[str], Any]] = None) -> Verification:
     """Le service de video courte, interroge pour de vrai.
 
@@ -563,6 +607,7 @@ def diagnostiquer() -> Rapport:
         mesurer("Docker (bac a sable)", verifier_docker),
         mesurer("WanGP (generation video)", verifier_wangp),
         mesurer("Video courte (MPT)", verifier_moneyprinter),
+        mesurer("Voix (VoiceStudio)", verifier_voicestudio),
         mesurer("Metre de plan (OpenTakeoff)", verifier_opentakeoff),
         mesurer("Gardien (maintenance)", verifier_gardien),
         mesurer("Courrier (Gmail)", lambda: verifier_google(

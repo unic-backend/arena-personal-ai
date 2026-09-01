@@ -110,3 +110,54 @@ def test_docker_bloque_l_acces_a_internet(bac_docker):
     )
 
     assert res["success"] is False
+
+
+class TestImageAbsente:
+    """Une image non construite est un problème d'installation, pas de code.
+
+    Sans ce garde, `docker run` rendait un code de sortie non nul **sans
+    lever** : « Unable to find image » remontait à l'appelant comme une
+    erreur de code, et un agent essayait de corriger du code correct.
+    Mesuré par lecture le 01/09/2026 ; Docker n'existe pas sur cette
+    machine, donc le chemin est reproduit ici avec des doubles.
+    """
+
+    @pytest.fixture
+    def docker_sans_image(self, monkeypatch):
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_docker", lambda self: True)
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_image", lambda self: False)
+        monkeypatch.delenv("ALLOW_UNSAFE_EXEC", raising=False)
+
+    def test_l_execution_est_refusee_et_nomme_l_image(self, docker_sans_image):
+        resultat = SandboxInterpreterTool().execute_python_code("print(1)")
+        assert resultat["refused"] is True
+        assert "usman-sandbox" in resultat["stderr"]
+        assert "docker build" in resultat["stderr"], (
+            "le refus doit dire comment le réparer"
+        )
+
+    def test_le_refus_ne_se_confond_pas_avec_un_echec_de_code(self, docker_sans_image):
+        resultat = SandboxInterpreterTool().execute_python_code("print(1)")
+        assert resultat["sandbox_mode"] == "REFUSED"
+        assert resultat["success"] is False
+
+    def test_le_repli_reste_derriere_le_meme_interrupteur(self, monkeypatch):
+        """Image absente ne doit pas ouvrir une porte que Docker absent ferme."""
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_docker", lambda self: True)
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_image", lambda self: False)
+        monkeypatch.setenv("ALLOW_UNSAFE_EXEC", "true")
+
+        outil = SandboxInterpreterTool()
+        outil.fallback_tool.execute_python_code = lambda code: {
+            "success": True, "stdout": "2", "stderr": "", "executed_code": code}
+        resultat = outil.execute_python_code("print(1+1)")
+        assert resultat["sandbox_mode"] == "⚠️ LOCAL FALLBACK (image absente)"
+
+    def test_l_image_n_est_pas_sondee_quand_docker_dort(self, monkeypatch):
+        """`docker image inspect` sans démon coûte une seconde pour rien."""
+        appels = []
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_docker", lambda self: False)
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_image",
+                            lambda self: appels.append("sondee") or False)
+        SandboxInterpreterTool()
+        assert appels == []

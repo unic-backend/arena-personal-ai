@@ -91,7 +91,9 @@ class RegistreCapacites:
 
 
 def adaptateur_synchrone(
-    fonction: Callable[[str], str], nom_agent: str
+    fonction: Callable[[str], str],
+    nom_agent: str,
+    est_un_echec: Optional[Callable[[str], bool]] = None,
 ) -> Capacite:
     """Enveloppe un outil synchrone (`fn(texte) -> str`) dans le contrat `run`.
 
@@ -99,10 +101,19 @@ def adaptateur_synchrone(
     dictionnaire structure `{status, agent, response, ...}` que tous les
     agents rendent. Plutot que de faire porter cette difference a chaque
     appelant, elle est absorbee ici, une seule fois.
+
+    `est_un_echec` : un outil qui rend une chaine ne peut pas dire « j'ai
+    echoue » autrement. Sans ce predicat, l'adaptateur annoncait
+    `status: "success"` en portant « ❌ Erreur … No module named 'lightrag' » —
+    un echec presente comme une reponse (mesure du 01/09/2026). Le predicat
+    appartient a l'outil, jamais a l'appelant.
     """
 
     class _Adaptateur:
         async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-            return {"status": "success", "agent": nom_agent, "response": fonction(user_input)}
+            reponse = fonction(user_input)
+            rate = bool(est_un_echec and est_un_echec(reponse))
+            return {"status": "error" if rate else "success",
+                    "agent": nom_agent, "response": reponse}
 
     return _Adaptateur()

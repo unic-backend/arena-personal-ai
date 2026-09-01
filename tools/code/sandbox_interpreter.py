@@ -12,6 +12,10 @@ logger = logging.getLogger("usman.tools.sandbox_interpreter")
 # Le repli hors bac a sable execute le code directement sur la machine, sans
 # isolation ni limite memoire. Il n'est permis que derriere ce flag explicite.
 FLAG_EXECUTION_NON_ISOLEE = "ALLOW_UNSAFE_EXEC"
+
+#: L'image du bac a sable. Nommee ici parce que deux endroits la verifient :
+#: la sonde de demarrage et la commande d'execution.
+IMAGE_BAC_A_SABLE = "usman-sandbox"
 VALEURS_VRAIES = {"1", "true", "yes", "oui"}
 
 class SandboxInterpreterTool:
@@ -27,6 +31,10 @@ class SandboxInterpreterTool:
         self.memory_limit = memory_limit
         self.fallback_tool = CodeInterpreterTool(timeout_seconds=timeout_seconds)
         self.docker_available = self._check_docker()
+        # Mesuree seulement si Docker repond : `docker image inspect`
+        # sans demon coute une seconde pour rien.
+        self.image_disponible = (
+            self._check_image() if self.docker_available else False)
 
     def _check_docker(self) -> bool:
         """Vérifie si le démon Docker est actif sur la machine."""
@@ -37,6 +45,24 @@ class SandboxInterpreterTool:
                 stderr=subprocess.PIPE,
                 timeout=3
             )
+            return res.returncode == 0
+        except Exception:
+            return False
+
+    def _check_image(self) -> bool:
+        """L'image du bac a sable est-elle construite ?
+
+        Sans elle, `docker run` rend un code de sortie NON NUL sans lever :
+        le chemin d'exception n'est jamais pris, et « Unable to find image »
+        remontait a l'appelant comme une erreur DE CODE. Un agent essayait
+        alors de corriger du code correct. Un probleme d'installation se
+        rapporte comme tel — c'est exactement ce que `_refuser` existe pour
+        dire (« ce n'est pas le code qui a echoue »).
+        """
+        try:
+            res = subprocess.run(
+                ["docker", "image", "inspect", IMAGE_BAC_A_SABLE],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
             return res.returncode == 0
         except Exception:
             return False
@@ -87,6 +113,20 @@ class SandboxInterpreterTool:
             res["sandbox_mode"] = "⚠️ LOCAL FALLBACK (Docker inactif)"
             return res
 
+        # Image absente : c'est un probleme d'installation, pas de code.
+        if not self.image_disponible:
+            if not self._repli_non_isole_autorise():
+                return self._refuser(
+                    clean_code,
+                    f"l'image « {IMAGE_BAC_A_SABLE} » n'est pas construite "
+                    f"(`docker build -t {IMAGE_BAC_A_SABLE} .`).")
+            logger.warning(
+                "⚠️ Image %s absente et %s actif : exécution sur la machine hôte.",
+                IMAGE_BAC_A_SABLE, FLAG_EXECUTION_NON_ISOLEE)
+            res = self.fallback_tool.execute_python_code(clean_code)
+            res["sandbox_mode"] = "⚠️ LOCAL FALLBACK (image absente)"
+            return res
+
         # Exécution dans le Bac à sable Docker
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as tmp_file:
             tmp_file.write(clean_code)
@@ -100,7 +140,7 @@ class SandboxInterpreterTool:
                 "--network", "none",
                 "--memory", self.memory_limit,
                 "-v", f"{tmp_file_path}:/app/script.py:ro",
-                "usman-sandbox",
+                IMAGE_BAC_A_SABLE,
                 "python", "/app/script.py"
             ]
 
@@ -145,8 +185,12 @@ class SandboxInterpreterTool:
             if tmp_file_path.exists():
                 try:
                     tmp_file_path.unlink()
-                except Exception:
-                    pass
+                except OSError as erreur:
+                    # Un temporaire qui ne part pas n'est pas une raison de
+                    # casser l'execution — mais un `pass` muet le rendait
+                    # invisible, et le dossier se remplissait sans temoin.
+                    logger.warning("Temporaire non supprime (%s) : %s",
+                                   tmp_file_path, erreur)
 
 if __name__ == "__main__":
     sandbox = SandboxInterpreterTool()

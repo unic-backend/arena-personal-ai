@@ -119,6 +119,15 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     document:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
 
+  # Audio et voix (VoiceStudio, pilote par HTTP en local). Ecouter un fichier
+  # deja sur la machine ne cree rien ; produire de la parole ecrit un fichier
+  # WAV, donc confirmation et coupe-circuit WRITE_FILES, comme le devis PDF.
+  # Une voix est une donnee sensible : le connecteur refuse deja toute adresse
+  # non locale (`core/connectors/audio_voix.py`).
+  audio_voix:
+    read:        {decision: ALLOWED,      risque: LOW}
+    document:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+
   # OpenTakeoff : mesurer un plan PDF ne touche a rien hors du processus qui
   # le lit. Exporter ecrit le rapport et le plan marque a cote du plan source
   # — meme logique que le devis PDF : confirmation, coupe-circuit WRITE_FILES.
