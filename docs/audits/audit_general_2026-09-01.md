@@ -1202,3 +1202,34 @@ contrôle de l'`id` fait tomber ce test **et** celui de la notification glissée
 C'est la troisième garantie de la nuit qui existait dans le code sans que rien
 ne l'empêche de disparaître — après la lecture seule de `SWEAgent` et la
 relecture des permissions.
+
+---
+
+# Défaut n° 28 — « WanGP a répondu », quand WanGP venait de refuser
+
+Trouvé en poursuivant l'examen de `core/mcp/` : le transport ne lit
+délibérément pas `isError`, parce que `ok` parle du **transport**, pas de
+l'application. La question suivante est donc : *qui le lit, alors ?*
+
+`opentakeoff` le lit, avec un helper nommé et des tests, après une mesure sur
+le serveur réel. **`wan2gp` ne le lisait pas.**
+
+Mesuré avec un double, sur les trois capacités de lecture :
+
+```
+avant : modeles -> SUCCESS | WanGP a repondu pour modeles.
+après : modeles -> FAILED  | WanGP a refuse : VRAM insuffisante : modele non charge
+```
+
+WanGP disait exactement ce qui n'allait pas, et ARENA rendait « a répondu » en
+jetant le message. Sur `generer`, l'échec finissait bien par sortir — mais sous
+une fausse cause : « WanGP a accepté l'appel sans rendre d'identifiant de
+tâche », alors que WanGP n'avait rien accepté du tout.
+
+**La règle vit désormais sur `Reponse.erreur_applicative`**, où les deux
+connecteurs l'atteignent — écrite une fois. `opentakeoff` y délègue et ses
+vingt tests passent inchangés.
+
+C'est la **quatrième** fois cette nuit qu'une règle apprise sur une frontière
+n'avait pas été portée sur l'autre. La question reste la plus rentable de
+toutes : *qui d'autre fait la même chose ?*

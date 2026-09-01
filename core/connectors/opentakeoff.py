@@ -94,13 +94,12 @@ def _commande() -> Optional[List[str]]:
 
 
 def _erreur_outil(reponse: Reponse) -> Optional[str]:
-    """Le message d'une erreur APPLICATIVE (`isError`), distincte d'une panne
-    de transport. Une reponse `ok=True` peut porter un echec de l'outil :
-    mesure sur le serveur reel — un outil inconnu et une feuille non chargee
-    rendent tous deux `ok=True, isError=True`."""
-    if not isinstance(reponse.resultat, dict) or not reponse.resultat.get("isError"):
-        return None
-    return reponse.contenu_texte or "erreur non precisee"
+    """Le message d'une erreur applicative (`isError`), ou `None`.
+
+    La regle vit sur `Reponse` depuis le 01/09/2026 : le connecteur WanGP pose
+    la meme question et ne la posait pas. Ce nom reste, il est lu ici.
+    """
+    return reponse.erreur_applicative
 
 
 class ConnecteurOpenTakeoff(Connecteur):

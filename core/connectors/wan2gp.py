@@ -166,6 +166,16 @@ class Wan2GPConnector(Connecteur):
             return echec(action=capacite.nom, cible=self.nom,
                          message=f"WanGP a refuse l'appel : {reponse.raison}.", outil=outil)
 
+        # `ok=True` ne dit que « le transport a abouti ». WanGP peut avoir
+        # refuse l'appel et dire pourquoi — mesure du 01/09/2026 : sur
+        # « VRAM insuffisante : modele non charge », ce connecteur rendait
+        # `SUCCESS` et « WanGP a repondu », en jetant le message reel. Le
+        # connecteur OpenTakeoff posait deja cette question ; celui-ci non.
+        erreur = reponse.erreur_applicative
+        if erreur is not None:
+            return echec(action=capacite.nom, cible=self.nom,
+                         message=f"WanGP a refuse : {erreur}", outil=outil)
+
         donnees = reponse.donnees()
         identifiant = self._identifiant_de_tache(donnees)
 
