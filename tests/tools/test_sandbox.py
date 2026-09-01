@@ -3,8 +3,11 @@
 Les tests d'isolation exigent un démon Docker actif : ils portent le marqueur
 `integration` et sont désélectionnés par défaut. Le refus, lui, se vérifie partout.
 """
+import subprocess
+
 import pytest
 
+from tools.code import sandbox_interpreter
 from tools.code.sandbox_interpreter import SandboxInterpreterTool
 
 CODE_TEMOIN = "print('ce code ne devrait pas s executer')"
@@ -60,6 +63,7 @@ def test_un_echec_du_conteneur_ne_bascule_pas_sur_l_hote(monkeypatch, tmp_path):
     monkeypatch.delenv("ALLOW_UNSAFE_EXEC", raising=False)
     bac = SandboxInterpreterTool()
     monkeypatch.setattr(bac, "docker_available", True)
+    monkeypatch.setattr(bac, "image_disponible", True)  # sinon le refus vient de l'image
     monkeypatch.setenv("PATH", str(tmp_path))  # plus aucun binaire `docker` atteignable
 
     res = bac.execute_python_code(CODE_TEMOIN)
@@ -160,4 +164,90 @@ class TestImageAbsente:
         monkeypatch.setattr(SandboxInterpreterTool, "_check_image",
                             lambda self: appels.append("sondee") or False)
         SandboxInterpreterTool()
+        assert appels == []
+
+
+class TestMesurePerimee:
+    """Une mesure negative se re-sonde ; une mesure positive non.
+
+    Le defaut repare : `docker_available` etait mesure une seule fois, dans
+    `__init__`. `CoderAgent` et `ReasoningEngine` etant construits au demarrage
+    du serveur, un Docker lance APRES ARENA n'etait jamais revu — le refus
+    disait « demarre Docker » a quelqu'un qui venait de le demarrer, et seul
+    un redemarrage du serveur le debloquait.
+
+    Ces tests passent par `execute_python_code`, jamais par
+    `_rafraichir_la_mesure` directement : une premiere version les avait ecrits
+    sur la methode, et retirer l'appel du chemin d'execution ne les faisait pas
+    tomber. Un test qui ne traverse pas le chemin reel ne prouve rien.
+    """
+
+    @staticmethod
+    def _conteneur_qui_repond(monkeypatch):
+        """Neutralise `docker run` : ici on mesure l'aiguillage, pas Docker."""
+        faux = subprocess.CompletedProcess(args=[], returncode=0, stdout="1\n", stderr="")
+        monkeypatch.setattr(sandbox_interpreter.subprocess, "run", lambda *a, **k: faux)
+
+    def test_un_docker_demarre_apres_arena_est_vu_sans_redemarrage(self, monkeypatch):
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_docker", lambda self: False)
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_image", lambda self: False)
+        monkeypatch.delenv("ALLOW_UNSAFE_EXEC", raising=False)
+        outil = SandboxInterpreterTool()
+        assert outil.execute_python_code("print(1)")["sandbox_mode"] == "REFUSED"
+
+        # Le proprietaire lance Docker et construit l'image, puis attend.
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_docker", lambda self: True)
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_image", lambda self: True)
+        outil._mesure_le -= sandbox_interpreter.DUREE_DE_LA_MESURE + 1
+        self._conteneur_qui_repond(monkeypatch)
+
+        resultat = outil.execute_python_code("print(1)")
+
+        assert resultat["sandbox_mode"] == "🛡️ Docker Isolated Sandbox", (
+            "un Docker demarre apres ARENA doit etre vu sans redemarrer le serveur"
+        )
+        assert resultat["success"] is True
+
+    def test_une_image_construite_apres_arena_est_vue_aussi(self, monkeypatch):
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_docker", lambda self: True)
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_image", lambda self: False)
+        monkeypatch.delenv("ALLOW_UNSAFE_EXEC", raising=False)
+        outil = SandboxInterpreterTool()
+        assert outil.execute_python_code("print(1)")["refused"] is True
+
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_image", lambda self: True)
+        outil._mesure_le -= sandbox_interpreter.DUREE_DE_LA_MESURE + 1
+        self._conteneur_qui_repond(monkeypatch)
+
+        assert outil.execute_python_code("print(1)")["sandbox_mode"] == (
+            "🛡️ Docker Isolated Sandbox")
+
+    def test_la_mesure_negative_n_est_pas_resondee_a_chaque_appel(self, monkeypatch):
+        """`docker info` coute jusqu'a trois secondes : pas a chaque bloc de code."""
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_docker", lambda self: False)
+        monkeypatch.delenv("ALLOW_UNSAFE_EXEC", raising=False)
+        outil = SandboxInterpreterTool()
+        appels = []
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_docker",
+                            lambda self: appels.append(1) or False)
+
+        for _ in range(5):
+            outil.execute_python_code("print(1)")
+
+        assert appels == [], "une mesure fraiche doit etre reutilisee"
+
+    def test_une_mesure_positive_perimee_n_est_pas_resondee(self, monkeypatch):
+        """L'execution est sa propre sonde : un demon disparu echoue et refuse."""
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_docker", lambda self: True)
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_image", lambda self: True)
+        monkeypatch.delenv("ALLOW_UNSAFE_EXEC", raising=False)
+        outil = SandboxInterpreterTool()
+        outil._mesure_le -= sandbox_interpreter.DUREE_DE_LA_MESURE + 1
+        appels = []
+        monkeypatch.setattr(SandboxInterpreterTool, "_check_docker",
+                            lambda self: appels.append(1) or True)
+        self._conteneur_qui_repond(monkeypatch)
+
+        outil.execute_python_code("print(1)")
+
         assert appels == []

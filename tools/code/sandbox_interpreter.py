@@ -2,6 +2,7 @@ import logging
 import os
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Dict
 
@@ -17,6 +18,11 @@ FLAG_EXECUTION_NON_ISOLEE = "ALLOW_UNSAFE_EXEC"
 #: la sonde de demarrage et la commande d'execution.
 IMAGE_BAC_A_SABLE = "usman-sandbox"
 VALEURS_VRAIES = {"1", "true", "yes", "oui"}
+
+#: Duree pendant laquelle une mesure NEGATIVE est reutilisee sans re-sonder.
+#: Assez courte pour qu'un Docker demarre apres ARENA soit vu tout seul,
+#: assez longue pour ne pas payer `docker info` a chaque bloc de code.
+DUREE_DE_LA_MESURE = 30.0
 
 class SandboxInterpreterTool:
     """Interpréteur de code exécuté dans un bac à sable Docker étanche.
@@ -35,6 +41,7 @@ class SandboxInterpreterTool:
         # sans demon coute une seconde pour rien.
         self.image_disponible = (
             self._check_image() if self.docker_available else False)
+        self._mesure_le = time.monotonic()
 
     def _check_docker(self) -> bool:
         """Vérifie si le démon Docker est actif sur la machine."""
@@ -66,6 +73,31 @@ class SandboxInterpreterTool:
             return res.returncode == 0
         except Exception:
             return False
+
+    def _rafraichir_la_mesure(self) -> None:
+        """Re-sonde Docker quand la derniere mesure disait « non ».
+
+        La mesure etait prise une seule fois, dans `__init__`. Or `CoderAgent`
+        et `ReasoningEngine` sont construits au demarrage du serveur
+        (`apps/backend/runtime.py`) : un Docker lance APRES ARENA n'etait jamais
+        revu, et le refus repetait « demarre Docker » a quelqu'un qui venait de
+        le demarrer. Seul un redemarrage du serveur le debloquait.
+
+        L'asymetrie est voulue. Une mesure NEGATIVE se re-sonde : l'absence
+        peut cesser sans que personne ne previenne. Une mesure POSITIVE ne se
+        re-sonde pas : si le demon a disparu entre-temps, `docker run` echoue
+        et le chemin d'exception refuse deja — l'execution est sa propre sonde.
+        C'est la convention des connecteurs (`core/connectors/base.py` mesure
+        avant chaque capacite), au cout d'appel pres.
+        """
+        if self.docker_available and self.image_disponible:
+            return
+        if time.monotonic() - self._mesure_le < DUREE_DE_LA_MESURE:
+            return
+        self.docker_available = self._check_docker()
+        self.image_disponible = (
+            self._check_image() if self.docker_available else False)
+        self._mesure_le = time.monotonic()
 
     @staticmethod
     def _repli_non_isole_autorise() -> bool:
@@ -100,6 +132,7 @@ class SandboxInterpreterTool:
     def execute_python_code(self, code_str: str) -> Dict[str, Any]:
         """Exécute le code dans un conteneur Docker isolé ou bascule sur l'interpréteur local avec avertissement explicite."""
         clean_code = code_str.replace("```python", "").replace("```", "").strip()
+        self._rafraichir_la_mesure()
 
         # Docker inactif : aucun bac à sable, donc aucune exécution.
         if not self.docker_available:
