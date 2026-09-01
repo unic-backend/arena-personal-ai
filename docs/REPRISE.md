@@ -1,26 +1,35 @@
 # ARENA — où on en est, pour reprendre sans rien redemander
 
 Dernière mise à jour : **2026-09-01**, après la nuit VoiceStudio + Agency Agents
-+ deux vagues d'audit général (PR #96 à #110).
++ deux vagues d'audit général (PR #96 à #114).
 
 ## En une phrase
 
-**24 défauts trouvés sur une suite verte**, tous mesurés avant correction et
-vérifiés par sabotage. Le plus coûteux : tes prix modifiés dans
-`config/unic_plaquiste.yaml` n'étaient vus qu'après un redémarrage du serveur.
+**29 défauts trouvés sur une suite verte**, tous mesurés avant correction et
+vérifiés par sabotage. Les deux plus coûteux : tes prix modifiés dans
+`config/unic_plaquiste.yaml` n'étaient vus qu'après un redémarrage du serveur,
+et **deux agents sur trois versaient le texte web brut dans l'invite** — une
+page pouvait parler à ARENA comme si c'était toi.
 
-Deux formes reviennent, et ce sont elles qu'il faut chercher en premier la
+**Trois** formes reviennent, et ce sont elles qu'il faut chercher en premier la
 prochaine fois :
 
 1. **Une valeur lue une fois, servie comme si elle était actuelle** — quatre
    occurrences (sonde Docker, grille de prix, deux couches de permissions).
    `core/fichier_suivi.py` existe maintenant pour ça.
-2. **Une règle apprise sur une surface, jamais portée sur les autres** —
-   quatre occurrences (question orpheline, fil de conversation, devis
-   multi-tours, bulle vide). ARENA a **quatre** surfaces de réponse : la PWA,
-   `/api/chat`, `/api/chat/stream` et la passerelle OpenAI. Quand une règle est
-   trouvée quelque part, la question suivante n'est pas « est-ce corrigé ? »
-   mais **« qui d'autre fait la même chose ? »**.
+2. **Une règle apprise sur un endroit, jamais portée sur les autres** —
+   **sept** occurrences. Quatre entre les quatre surfaces de réponse (PWA,
+   `/api/chat`, `/api/chat/stream`, passerelle OpenAI) ; une entre les deux
+   connecteurs MCP ; deux entre les trois agents qui lisent le web. Quand une
+   règle est trouvée quelque part, la question suivante n'est pas « est-ce
+   corrigé ? » mais **« qui d'autre fait la même chose ? »**.
+
+3. **Une garantie écrite dans le code que rien ne tenait** — trois
+   occurrences : la lecture seule de `SWEAgent`, la relecture des permissions,
+   et le contrôle d'identifiant du transport MCP. La question qui les trouve :
+   **« cette promesse, qu'est-ce qui la tient ? »**. Une garantie qu'aucun test
+   ne fixe est une garantie qui tiendra jusqu'au jour où quelqu'un la
+   contredira sans le savoir.
 
 Et une leçon sur les tests : **trois tests épinglaient les mensonges corrigés**,
 dont deux écrits par moi la même nuit. Un test qui appelle la fonction corrigée
