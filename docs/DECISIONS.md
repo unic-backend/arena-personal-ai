@@ -2105,6 +2105,30 @@ et ARENA répond comme avant — dégradation silencieuse, mais dans le sens sû
   quantités ; pour le reste, l'intention `PLAQUISTE` de l'aiguilleur fait déjà
   le renfort.
 
+### L'audit d'après intégration, et ce qu'il a trouvé
+
+La mission demandait de ne pas s'arrêter à l'implémentation. L'audit a compté
+**onze intentions qu'ARENA sait router et qu'aucune méthode n'atteignait**.
+Chacune est désormais dans l'une de trois cases, et un test l'exige :
+
+- **couverte par une méthode** — sécurité, tests, architecture, données, SEO…
+- **couverte par le renfort** — `SWE_FIX` → tests, `AUDIO`/`STUDIO` → média,
+  `TREND_SEARCH`/`BROWSER` → recherche.
+- **laissée de côté, avec la raison écrite** — `EMAIL` et `VISION`. Leurs
+  agents portent déjà une discipline plus forte que ce qu'on écrirait ici :
+  le courrier ne part jamais sans confirmation et ne quitte pas la machine
+  quand il est sensible ; une image est une donnée, jamais une instruction.
+
+Une vraie lacune est apparue : **lire ses propres documents** n'avait aucune
+méthode. `RAG_DOCS` interrogeait l'index et rendait du texte, sans exiger de
+citer le passage ni de dire quand les documents ne répondent pas. Le
+spécialiste `documents` comble ça.
+
+Et une leçon déjà apprise cette nuit a resservi : le test qui vérifiait les
+outils portait une **liste écrite à la main**. Elle est maintenant dérivée du
+registre des connecteurs et vérifiée par import — un test qui dérive finit par
+autoriser n'importe quoi.
+
 Retour arrière : `bloc_de_methode` rend une chaîne vide si le catalogue est
 vidé, et les trois chemins de réponse retrouvent le prompt d'avant sans autre
 changement.

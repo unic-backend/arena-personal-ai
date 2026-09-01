@@ -250,6 +250,31 @@ CATALOGUE: Tuple[Specialiste, ...] = (
         outils=("recherche_web",),
     ),
     Specialiste(
+        identifiant="documents",
+        domaine="Lecture de ses propres documents",
+        quand=("dans mes documents", "mes fichiers", "le contrat", "le devis de",
+               "le pdf", "d'apres le document", "d'après le document",
+               "ce que dit le document", "retrouve dans", "mes archives"),
+        methode=(
+            "Chercher le passage, pas le sujet — une réponse sans passage n'est "
+            "pas une lecture.",
+            "Citer ce que le document dit, avant d'expliquer ce que ça veut dire.",
+            "Dire quel document et quel endroit, pour qu'il puisse vérifier.",
+            "Quand les documents ne répondent pas, le dire — au lieu de combler "
+            "avec ce que le modèle croit savoir.",
+        ),
+        controles=(
+            "La réponse s'appuie-t-elle sur un passage réel, ou sur une impression ?",
+            "Le document est-il nommé ?",
+            "Ce qui n'est pas dans les documents est-il signalé comme tel ?",
+            "Deux documents se contredisent-ils ? Alors les deux se citent.",
+        ),
+        fini_quand=("chaque affirmation renvoie à un passage nommé, et ce qui manque "
+                    "est dit manquant"),
+        capacite="RAG_DOCS",
+        outils=("lightrag", "graphrag"),
+    ),
+    Specialiste(
         identifiant="seo",
         domaine="Référencement",
         quand=("seo", "referencement", "référencement", "google", "mots-cles",

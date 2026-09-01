@@ -220,15 +220,92 @@ class TestLesHuitScenariosDuProprietaire:
         choisis = choisir("écris une publication sur le référencement de mon site")
         assert 1 < len(choisis) <= MAXIMUM
 
-    def test_chaque_scenario_mobilise_des_outils_qui_existent(self):
-        """Un outil nommé mais absent d'ARENA serait décoratif lui aussi."""
-        connus = {
-            "gitleaks", "ruff", "pytest", "bac_a_sable", "recherche_web",
-            "navigateur", "devis", "opentakeoff", "montage", "audio", "ffmpeg",
+    def test_chaque_outil_nomme_existe_vraiment_dans_arena(self):
+        """Un outil nommé mais absent serait décoratif lui aussi.
+
+        La liste des outils connus est **dérivée**, pas écrite ici : les
+        connecteurs viennent du registre, les autres sont vérifiés par
+        import. Une liste figée dans un test dérive exactement comme celle
+        de `/health` (mesure du 01/09/2026) — et un test qui dérive finit
+        par autoriser n'importe quoi.
+        """
+        import importlib
+
+        from apps.backend.runtime import registre
+
+        #: Les outils qui ne sont pas des connecteurs : chacun doit répondre
+        #: à un import réel. Le nom court -> ce qu'il faut pouvoir importer.
+        HORS_REGISTRE = {
+            "pytest": "pytest",
+            "ruff": None,          # binaire, vérifié par le CI lui-même
+            "gitleaks": None,      # binaire, vérifié par tests/test_gitleaks_config.py
+            "ffmpeg": "tools.video.ffmpeg_tool",
+            "bac_a_sable": "tools.code.sandbox_interpreter",
+            "recherche_web": "tools.search.source_fetcher",
+            "navigateur": "tools.browser.browser_use_tool",
+            "lightrag": "tools.rag.lightrag_tool",
+            "graphrag": "tools.rag.graphrag_tool",
         }
+
+        connus = set(registre.noms()) | set(HORS_REGISTRE)
         for specialiste in CATALOGUE:
             inconnus = set(specialiste.outils) - connus
             assert not inconnus, (
                 f"« {specialiste.identifiant} » nomme des outils qu'ARENA n'a pas : "
                 f"{sorted(inconnus)}"
             )
+
+        # Et les modules nommés ci-dessus existent bien.
+        for nom, module in HORS_REGISTRE.items():
+            if module and module != nom:
+                importlib.import_module(module)
+
+
+class TestAucuneIntentionOubliee:
+    """L'audit d'après intégration, figé en test.
+
+    Il avait trouvé onze intentions qu'ARENA sait router et qu'aucune méthode
+    n'atteignait. Certaines étaient couvertes par le renfort, deux étaient de
+    vraies lacunes (la lecture des documents), deux sont volontairement
+    laissées de côté. Ce test exige que chaque cas soit dans l'une de ces
+    trois cases — jamais oublié.
+    """
+
+    #: Les intentions où une méthode de métier a un sens. `CHAT` n'en est pas :
+    #: une conversation ordinaire n'a pas de métier.
+    UTILES = {
+        "CODE_EXECUTION", "SWE_FIX", "REPO_ENGINEERING", "DEEP_RESEARCH",
+        "DEEP_REASONING", "SOCIAL", "PLAQUISTE", "MONTAGE", "AUDIO",
+        "VIDEO_ANALYSIS", "EMAIL", "STUDIO", "RAG_DOCS", "GRAPHRAG",
+        "BROWSER", "FRESH_INFO", "TREND_SEARCH", "VISION",
+    }
+
+    def test_chaque_intention_utile_mene_a_une_methode_ou_a_une_raison(self):
+        from core.specialistes.selection import SANS_METHODE_DELIBEREMENT
+
+        couvertes = ({s.capacite for s in CATALOGUE}
+                     | set(RENFORT_PAR_INTENTION)
+                     | set(SANS_METHODE_DELIBEREMENT))
+        oubliees = sorted(self.UTILES - couvertes)
+        assert not oubliees, (
+            f"intentions sans méthode et sans raison écrite : {oubliees}"
+        )
+
+    def test_ce_qui_est_laisse_de_cote_l_est_pour_une_raison_ecrite(self):
+        """`EMAIL` et `VISION` portent déjà une discipline plus forte."""
+        import inspect
+
+        from core.specialistes import selection
+
+        source = inspect.getsource(selection)
+        for intention in selection.SANS_METHODE_DELIBEREMENT:
+            assert intention in source
+        assert "confirmation" in source and "donnee" in source, (
+            "la raison de les laisser de côté doit être écrite, pas supposée"
+        )
+
+    def test_lire_ses_documents_a_bien_une_methode(self):
+        """La lacune que l'audit a trouvée."""
+        choisis = [s.identifiant for s in choisir(
+            "que dit le contrat dans mes documents", "RAG_DOCS")]
+        assert "documents" in choisis

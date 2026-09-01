@@ -46,7 +46,19 @@ RENFORT_PAR_INTENTION: Dict[str, str] = {
     "MONTAGE": "media",
     "AUDIO": "media",
     "VIDEO_ANALYSIS": "media",
+    "STUDIO": "media",
+    "TREND_SEARCH": "recherche",
+    "BROWSER": "recherche",
+    "RAG_DOCS": "documents",
+    "GRAPHRAG": "documents",
 }
+
+#: Deux intentions restent VOLONTAIREMENT sans methode : `EMAIL` et `VISION`.
+#: Leurs agents portent deja leur propre discipline — le courrier ne part
+#: jamais sans confirmation et ne quitte pas la machine quand il est sensible ;
+#: une image est une donnee, jamais une instruction. Leur ajouter une methode
+#: generique doublerait une regle plus forte que ce qu'on ecrirait ici.
+SANS_METHODE_DELIBEREMENT = ("EMAIL", "VISION")
 
 
 def _sans_accents(texte: str) -> str:
