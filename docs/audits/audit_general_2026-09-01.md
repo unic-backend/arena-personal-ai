@@ -1060,3 +1060,44 @@ l'une ou monter l'autre fait tomber un test.
 
 Vérifié : `npx tsc --noEmit` → code 0, et il mesure vraiment (une propriété
 cassée exprès rend `error TS2551`).
+
+---
+
+# Trouvé, mesuré, **délibérément pas corrigé** : la 31ᵉ conversation disparaît
+
+Le fil du n° 25 mène ici, et il faut le dire clairement au propriétaire plutôt
+que de trancher à sa place à deux heures du matin.
+
+**Trois faits, lus dans le code :**
+
+1. `chatStore.persist()` n'enregistre que `conversations.slice(0, 30)` — les
+   **30 plus récentes**. Le commentaire dit pourquoi : garder le stockage du
+   téléphone en bonne santé.
+2. `localStorage` est le **seul** stockage local. Aucun IndexedDB.
+3. `backendStore` démarre à `{ url: '', apiKey: '', enabled: false }`. **Par
+   défaut, il n'y a aucune synchronisation serveur.**
+
+Ensemble : dans la configuration par défaut, la 31ᵉ conversation évince la plus
+ancienne, définitivement, au prochain rechargement du navigateur. Rien ne le
+dit.
+
+Et `persist()` avale l'échec d'écriture : `catch { /* storage full — ignore */ }`.
+Stockage plein, la conversation n'est enregistrée **nulle part**, en silence.
+
+## Pourquoi je n'y touche pas cette nuit
+
+Le plafond de 30 existe pour une raison écrite, et le corriger demande de
+choisir : monter le plafond ? avertir ? pousser à configurer le serveur ?
+Chacune de ces réponses est un choix de produit **sur ses données à lui**, pas
+un réglage technique. La règle du dépôt est nette : quand l'ambiguïté change
+matériellement l'implémentation, on demande.
+
+Ce que je propose, dans l'ordre de ce qui coûte le moins :
+
+1. **Dire l'éviction** — un avertissement quand il dépasse 30 conversations
+   sans serveur configuré, avec le même mécanisme que les n° 25 et 26.
+2. **Dire l'échec d'écriture** — `persist()` rend un booléen, l'appelant le
+   montre.
+3. **Monter le plafond**, ou passer à IndexedDB, qui n'a pas la même limite.
+
+`OPTIONAL — NON IMPLÉMENTÉ.` C'est sa décision.
