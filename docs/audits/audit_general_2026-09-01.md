@@ -973,3 +973,46 @@ Chaque ligne est une exécution réelle, pas une lecture de code :
 Quatre fusions sur six ont pris une **tête périmée**. Ce n'est pas un incident :
 c'est ce qui arrive quand on pousse après avoir lu la PR. La vérification par le
 contenu est une étape, écrite dans `docs/REGLES_DE_TRAVAIL.md`, § 3.
+
+---
+
+# Défaut n° 25 — le serveur nommait ce qu'il refusait, l'interface le jetait
+
+Trouvé en posant une dernière fois la question de la nuit : *qui d'autre fait
+la même chose ?* — cette fois de l'autre côté de la frontière HTTP.
+
+`POST /conversations/sync` rend `refusees` quand une conversation est trop
+grosse pour être enregistrée, et le commentaire du serveur dit pourquoi :
+
+> `refusees` n'est jamais tu : une conversation trop grosse est ecartee, et
+> l'appareil doit pouvoir le dire a son proprietaire **plutot que de croire
+> qu'elle est en sureté**.
+
+Côté PWA, `pousserEtTirer` lisait bien `refusees` et le portait jusqu'à
+`ResultatSync`. Puis `chatStore.synchroniser` le **jetait**. Vérifié : aucun
+composant du dépôt ne lisait ce champ.
+
+La conversation n'est pas perdue — la copie locale est gardée, c'est écrit et
+c'est juste. Mais elle n'est **pas** sauvegardée, et personne ne le disait.
+Changer d'appareil ou vider le navigateur suffisait à la perdre pour de bon.
+
+**Correctif** : le motif existait déjà (`attachmentError`, affiché dans
+`Composer.tsx` avec son icône d'alerte). Le refus le réutilise — aucune
+mécanique inventée. Le message est traduit dans les deux langues.
+
+## Défaut n° 25 bis — rien ne vérifiait les traductions
+
+En ajoutant la clé, j'ai constaté qu'**aucun test ne couvrait
+`apps/pwa/src/lib/i18n/index.ts`**. Or c'est le seul endroit du dépôt où une
+erreur est invisible à la compilation : TypeScript ne compare pas deux
+littéraux d'objet entre eux. Une clé posée en anglais seulement aurait affiché
+`sync.refused` en clair sur l'écran du propriétaire — à l'endroit précis où on
+lui dit que sa conversation n'est pas sauvegardée.
+
+Quatre tests ferment ça, dont un qui vérifie que le découpage a bien trouvé
+quelque chose : sans lui, un parseur cassé passerait au vert en ne mesurant
+rien.
+
+Vérifié aussi que `npx tsc --noEmit` mesure vraiment, en cassant une propriété
+exprès :
+`error TS2551: Property 'lengthXX' does not exist on type 'string[]'`.
