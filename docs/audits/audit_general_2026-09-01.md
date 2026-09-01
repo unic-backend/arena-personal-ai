@@ -751,3 +751,56 @@ module. Deux de mes tests ont échoué là-dessus.
 C'est littéralement la même famille que le défaut réparé — une valeur figée
 trop tôt, servie comme si elle était actuelle. Le chemin est désormais résolu
 à l'appel.
+
+---
+
+# Défaut n° 23 — une règle de permission durcie n'était pas appliquée
+
+Quatrième occurrence de la même forme en une nuit, et la plus gênante : elle
+est dans les **permissions**, et la docstring **annonçait la capacité qui
+manquait**.
+
+```python
+# core/permissions/politique.py, avant
+"""Le fichier est lu une fois a la construction. `recharger()` existe pour que
+le proprietaire puisse modifier ses regles sans redemarrer le serveur."""
+```
+
+`recharger()` existait, était testée, et **personne ne l'appelait** — ni une
+route, ni un ordonnanceur, ni la classe elle-même. Exactement comme
+`LimiteurDebit.nettoyer()` le 31/08.
+
+Mesuré :
+
+```
+1 AU DEMARRAGE  -> email/read = {'decision': 'ALLOWED', 'risque': 'LOW'}
+2 FICHIER DURCI -> {'decision': 'NEEDS_CONFIRMATION', 'risque': 'HIGH'}
+3 APPLIQUE      -> {'decision': 'ALLOWED', 'risque': 'LOW'}
+```
+
+**Le sens du risque compte.** Une règle *assouplie* qui n'est pas vue ne fait
+rien de dangereux : ARENA reste plus strict que demandé. Une règle *durcie* qui
+n'est pas vue laisse passer ce que le propriétaire venait d'interdire. C'est le
+seul des deux sens qui compte, et c'est celui qui était cassé.
+
+`PermissionManager` — les neuf booléens, deuxième couche — avait le même défaut.
+Mesuré et corrigé de même. Une clé **retirée** du fichier revient désormais à
+son défaut de classe au lieu de garder sa dernière valeur : trois de ces
+défauts (`EXECUTE_COMMANDS`, `PUBLISH`, `DELETE`) sont à `False`, et les
+oublier serait exactement le mauvais sens.
+
+## Ce que quatre occurrences justifiaient
+
+`core/fichier_suivi.py` — la relecture sur date de modification, écrite une
+fois. `MetierSuivi` s'y ramène, les deux couches de permissions l'utilisent.
+
+| Où | Ce que ça donnait |
+|---|---|
+| Sonde Docker du bac à sable (n° 14) | un Docker lancé après ARENA restait invisible |
+| Grille de prix (n° 22) | un prix modifié n'était vu qu'au redémarrage |
+| Politique de permissions (n° 23) | une règle **durcie** n'était pas appliquée |
+| `PermissionManager` (n° 23) | idem, sur les neuf booléens |
+
+La règle partagée : **un fichier absent rend la valeur vide, jamais l'ancienne**.
+Servir une configuration disparue est plus dangereux que servir du vide, parce
+que la disparition ne se remarque pas.

@@ -2243,3 +2243,23 @@ refuser de chiffrer est plus sûr que chiffrer sur une grille fantôme.
 fichiers rendait une date instable, la grille serait relue à chaque appel — un
 `yaml.safe_load` d'un fichier de quelques kilo-octets, sans conséquence sur le
 résultat.
+
+## DEC-0035 — Les règles de permission suivent leur fichier
+
+**2026-09-01.** `PolitiqueDePermissions` et `PermissionManager` lisaient leur
+fichier une seule fois, à la construction — et les deux sont des singletons
+créés au démarrage du serveur. Une règle durcie dans le fichier n'était pas
+appliquée jusqu'au redémarrage suivant, et la docstring de la première
+annonçait pourtant que `recharger()` évitait exactement cela.
+
+Le sens du risque décide : une règle assouplie non vue laisse ARENA plus
+strict que demandé, une règle durcie non vue laisse passer ce qui vient d'être
+interdit. Seul le second sens compte.
+
+La mécanique vit dans `core/fichier_suivi.py`, écrite après avoir trouvé la
+même forme de défaut **quatre** fois dans la même nuit. Un fichier absent rend
+la valeur vide, jamais l'ancienne.
+
+**Ce que ça coûte si c'est faux** : un `stat()` par vérification de permission.
+Si la date était instable, le fichier serait relu à chaque appel — un
+`yaml.safe_load` de quelques kilo-octets, sans effet sur la décision.

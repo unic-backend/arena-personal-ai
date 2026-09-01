@@ -32,6 +32,8 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from core.fichier_suivi import date_de
+
 logger = logging.getLogger("usman.security.politique")
 
 FICHIER_POLITIQUE = Path(__file__).resolve().parents[2] / "config" / "permissions_services.yaml"
@@ -142,15 +144,38 @@ def _lire_risque(valeur: Any, ou: str) -> Risque:
 class PolitiqueDePermissions:
     """Repond a « ce compte peut-il faire cette action sur ce service ? ».
 
-    Le fichier est lu une fois a la construction. `recharger()` existe pour que
-    le proprietaire puisse modifier ses regles sans redemarrer le serveur.
+    Le fichier est relu quand sa date de modification change.
+
+    Il ne l'etait pas. Mesure du 01/09/2026 : le proprietaire durcissait
+    `email/read` en `HIGH` + confirmation obligatoire dans le fichier, et la
+    politique continuait d'appliquer `ALLOWED / LOW` jusqu'au redemarrage du
+    serveur — `PolitiqueDePermissions` etant un singleton cree a l'import de
+    `apps/backend/runtime.py`.
+
+    Le sens du risque compte : une regle **assouplie** qui n'est pas vue ne
+    fait rien de dangereux. Une regle **durcie** qui n'est pas vue laisse
+    passer ce que le proprietaire venait d'interdire. Et cette docstring
+    annoncait exactement la capacite qui manquait — `recharger()` existait,
+    etait testee, et personne ne l'appelait.
     """
 
-    def __init__(self, chemin: Path = FICHIER_POLITIQUE) -> None:
-        self.chemin = Path(chemin)
+    def __init__(self, chemin: Optional[Path] = None) -> None:
+        # Resolu ici, pas dans la signature : un defaut d'argument est fige a
+        # l'import.
+        self.chemin = Path(chemin) if chemin is not None else FICHIER_POLITIQUE
         self._services: Dict[str, Dict[str, Dict[str, Any]]] = {}
         self._comptes: Dict[str, Dict[str, Dict[str, Any]]] = {}
         self.recharger()
+        self._date = date_de(self.chemin)
+
+    def _relire_si_change(self) -> None:
+        """Relit la politique quand le fichier a change. Jamais sur une horloge."""
+        date = date_de(self.chemin)
+        if date != self._date:
+            self.recharger()
+            self._date = date
+            logger.info("Politique de permissions relue (%s).",
+                        "fichier absent" if date is None else "fichier modifie")
 
     # --- Lecture du fichier ---------------------------------------------------
 
@@ -187,6 +212,7 @@ class PolitiqueDePermissions:
         associe. Passer par l'attribut prive marcherait aussi, et se casserait
         au premier remaniement.
         """
+        self._relire_si_change()
         regle = (self._services.get(service) or {}).get(action)
         return regle if isinstance(regle, dict) else None
 
@@ -195,6 +221,7 @@ class PolitiqueDePermissions:
     ) -> Optional[Decision]:
         if not compte:
             return None
+        self._relire_si_change()
         brute = ((self._comptes.get(compte) or {}).get(service) or {}).get(action)
         if brute is None:
             return None
