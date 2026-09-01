@@ -2356,9 +2356,77 @@ projet interdit). Les deux restaurées, revérifiées vertes.
 `python -m pytest tests/ -q` → 2786 passed (2779 → 2786, +7 tests).
 `python -m ruff check .` → All checks passed!
 
+### Deuxième incrément : `VideoProductionAgent` compose les capacités réelles
+
+`core/production/etat_projet.py` (l'état d'un projet, sérialisable) et
+`core/production/plan_video.py` (un objectif → un graphe validé, même
+discipline que `core/montage/planificateur.py` : capacité hors liste fermée
+refusée et nommée, jamais devinée). Avant d'écrire l'agent, question posée
+explicitement au propriétaire : une étape d'écriture (génération, narration)
+doit-elle attendre sa confirmation comme partout ailleurs dans ARENA, ou
+l'orchestrateur peut-il la confirmer lui-même puisqu'il a demandé le projet
+entier ? **Réponse : « il attend ma confirmation a chaque etape
+d'ecriture »** — `core/actions/attente.py` (verrouillé, DEC-0013) n'est pas
+contourné. Conséquence directe dans `plan_video.py` : un montage qui
+dépendrait **directement** d'une génération ou d'une narration est refusé
+au moment du plan — leur fichier réel (WanGP/MoneyPrinterTurbo génèrent en
+fond ; `preuve` à la soumission est un identifiant de tâche, jamais un
+chemin) n'existe qu'après confirmation, jamais dans le même passage.
+
+`agents/video/production_agent.py` — `VideoProductionAgent` : le modèle
+propose le graphe, chaque étape est soumise au vrai collaborateur injecté
+(vision → `provider_vision` direct ; wangp/moneyprinter →
+`VideoAnalyzerAgent.planifier_scene()`/`fabriquer()` ; narration/
+transcription → `AudioAgent.run()` ; montage → `MontageAgent.run()`) via
+`executer_parallele()`. Une écriture réussie devient `NEEDS_CONFIRMATION`
+dans l'état du projet, jamais un succès inventé.
+
+### Troisième incrément : joignable pour de vrai
+
+L'agent existait et testait vert contre des doubles, mais restait
+**inatteignable** — aucun point d'entrée réel. `apps/backend/runtime.py`
+le construit ; `POST /api/video/projet`
+(`apps/backend/routers/video_production.py`, même contrôle `MEDIA_DIR` que
+`/api/process-video`) le rend joignable en HTTP direct. Nouvelle intention
+`VIDEO_PROJET` (`agents/orchestrator/orchestrator_agent.py`) — phrases
+exactes, testée avant VISION/AUDIO/MONTAGE/VIDEO_ANALYSIS pour qu'une
+phrase composite ne se fasse pas capturer par un seul de ses morceaux —
+le rend enfin atteignable **depuis le chat**.
+
+### Quatrième incrément : les vidéos générées ne s'accumulent plus
+
+Manque trouvé à l'audit initial : `data/montages/` et `media/rendered/`
+n'avaient aucun TTL, contrairement aux pièces jointes entrantes.
+`tools/video/nettoyage.py` purge paresseusement (30 jours), câblé aux
+trois vrais points d'écriture (`core/connectors/montage.py`,
+`apps/backend/studio.py`, `apps/backend/routers/media.py`).
+
+### Cinquième incrément : le workspace Video, côté interface
+
+Demandé explicitement ensuite (« continue »). L'interface (`apps/pwa/`)
+n'est **jamais regardée à l'aveugle** (`PROJECT_MEMORY/LOCKED_ZONES.md`) :
+la modale a été vérifiée pour de vrai, dev server + Chromium headless
+(`chromium.launch` sur le binaire déjà présent, pas de `playwright
+install`), captures d'écran à l'appui — état sans backend, formulaire
+complet, mode TEAM, et un résultat avec ses étapes réelles (`DONE`/
+`FAILED`/`NOT_REACHED`), en mockant la réponse serveur.
+
+Repris l'unique patron déjà existant pour une intégration ouverte par
+modale (`ConnectorsModal.tsx`/`connectorStore.ts`, DEC-0024) plutôt qu'un
+nouveau paradigme d'interface : `VideoProjectModal.tsx` +
+`videoProjectStore.ts` (nouveaux), déclenchés depuis l'espace « Vidéo »
+existant (bouton dans `EmptyState.tsx`) et depuis la palette de commandes.
+La liste de capacités affichée (`CAPACITES_VIDEO` côté TypeScript) reprend
+exactement la liste fermée du serveur (`plan_video.py`) — jamais une
+capacité de plus. Aucun progrès simulé : chaque étape affichée vient
+telle quelle de `Coordination.executer_parallele()`, y compris sa raison
+d'échec réelle. `npx tsc --noEmit` et `npm run build` propres.
+
 ### Ce qui suit (pas encore fait)
 
-Un état de projet Video structuré (objectif, assets, étapes, statut), puis
-un agent qui compose les capacités réelles au-dessus de ce nouvel
-exécuteur parallèle, en utilisant enfin `capacites.py` pour de vrai. Rien
-côté interface tant que le propriétaire ne le redemande pas.
+Rien côté interface au-delà de cette modale (pas de tableau de bord
+persistant, pas de suivi en direct d'un projet après fermeture de la
+modale) — sur ce qui a été explicitement demandé jusqu'ici. Le canal
+`core/agent/capacites.py` reste construit et testé mais toujours pas
+appelé en production par `VideoProductionAgent` : aucune étape de ce
+premier graphe n'a encore eu besoin d'un autre espace (code/documents/web).
