@@ -66,13 +66,23 @@ class ConnecteurMontage(Connecteur):
         }
 
     def sonder(self) -> Sante:
-        """ffmpeg est-il la ? Sans lui, aucun rendu — et on le dit."""
+        """ffmpeg est-il la ? Sans lui le rendu tombe, le montage non.
+
+        Ce connecteur reste OPERATIONNEL sans ffmpeg, et ce n'est pas une
+        complaisance : `sante()` est lue par la base AVANT toute capacite
+        (`core/connectors/base.py`, etape 3), et un `NON_CONFIGURE` ici
+        coupait aussi `composer` — qui ne touche a aucun binaire. Le CI, ou
+        ffmpeg n'existe pas, a montre le defaut que cette machine cachait.
+
+        Ce qui manque est dit dans le message et refuse a l'endroit exact ou
+        il compte : `rendre` rend `NON_CONFIGURE` avec `ce_qui_manque`.
+        """
         from core.connectors.base import _maintenant
 
         binaire = shutil.which("ffmpeg")
         if not binaire:
-            return Sante(etat=EtatSante.NON_CONFIGURE,
-                         message="ffmpeg absent : la timeline se bâtit, rien ne se rend.",
+            return Sante(etat=EtatSante.OPERATIONNEL,
+                         message="ffmpeg absent : la timeline se bâtit, aucun rendu n'est possible.",
                          ce_qui_manque=CE_QUI_MANQUE, mesure_le=_maintenant())
         return Sante(etat=EtatSante.OPERATIONNEL,
                      message=f"ffmpeg présent ({binaire}) : montage et rendu possibles.",

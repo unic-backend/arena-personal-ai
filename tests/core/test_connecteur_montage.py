@@ -189,3 +189,46 @@ class TestChaineComplete:
         assert Projet.depuis_dict(projet).duree_ms == 5_000, (
             "le projet ecrit ne se relit pas dans le modele"
         )
+
+
+class TestSansFfmpeg:
+    """Le défaut que cette machine cachait, et que le CI a montré.
+
+    `sonder()` rendait `NON_CONFIGURE` sans ffmpeg. La base lit la santé
+    AVANT toute capacité, donc `composer` — du Python pur, aucun binaire —
+    était refusé lui aussi. Ici ffmpeg est rendu introuvable de force, sur
+    la machine qui l'a comme sur celle qui ne l'a pas.
+    """
+
+    @pytest.fixture
+    def sans_ffmpeg(self, monkeypatch):
+        monkeypatch.setattr("core.connectors.montage.shutil.which", lambda _: None)
+
+    def test_composer_marche_sans_ffmpeg(self, sans_ffmpeg, tmp_path):
+        r = ConnecteurMontage(dossier=tmp_path).executer("composer", operations=[
+            {"operation": "creer_projet", "nom": "x", "largeur": 1080, "hauteur": 1920},
+            {"operation": "ajouter_piste", "type": "texte", "nom": "titres"},
+            {"operation": "ajouter_texte", "piste_id": "titres", "texte": "UniC",
+             "debut_ms": 0, "duree_ms": 2_000},
+        ])
+        assert r.statut is Statut.SUCCES, r.message
+
+        # La timeline composée sans ffmpeg est une vraie timeline, relisible.
+        from core.montage.projet import Projet
+        assert Projet.depuis_dict(r.detail["projet"]).duree_ms == 2_000
+
+    def test_rendre_refuse_et_nomme_ce_qui_manque(self, sans_ffmpeg, tmp_path):
+        r = ConnecteurMontage(dossier=tmp_path).executer_confirmee("rendre", operations=[
+            {"operation": "creer_projet", "nom": "x", "largeur": 1080, "hauteur": 1920},
+            {"operation": "ajouter_piste", "type": "texte", "nom": "titres"},
+            {"operation": "ajouter_texte", "piste_id": "titres", "texte": "UniC",
+             "debut_ms": 0, "duree_ms": 2_000},
+        ])
+        assert r.statut is Statut.NON_CONFIGURE
+        assert "ffmpeg" in r.message
+
+    def test_la_sante_dit_ce_qui_est_perdu(self, sans_ffmpeg, tmp_path):
+        sante = ConnecteurMontage(dossier=tmp_path).sante()
+        assert sante.utilisable, "sans ffmpeg le montage reste possible"
+        assert "aucun rendu" in sante.message
+        assert "ffmpeg" in sante.ce_qui_manque
