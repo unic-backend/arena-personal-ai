@@ -86,6 +86,13 @@ class Etape:
     verifier: Optional[Verification] = None
     #: Ce qu'elle attend du resultat des etapes precedentes.
     depend_de: Tuple[str, ...] = ()
+    #: Un groupe de ressource partagee (ex: "gpu_local") pour
+    #: `executer_parallele()` : deux etapes du meme groupe ne tournent
+    #: jamais en meme temps, meme si `depend_de` le permettrait. `None` =
+    #: seule la limite globale de parallelisme s'applique. Sert a coder une
+    #: contrainte materielle reelle (un seul GPU physique), jamais devinee
+    #: par l'executeur lui-meme.
+    ressource: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.essais_max < 1:
@@ -243,19 +250,144 @@ class Coordination:
             trace.etat = EtatEtape.EN_COURS
             self._signaler(trace)
 
-            if await self._tenter(etape, trace, acquis):
-                trace.etat = EtatEtape.REUSSIE
-                acquis[etape.nom] = trace.resultat
-                self._signaler(trace)
+            await self._executer_avec_etat(etape, trace, acquis)
+            if trace.etat is EtatEtape.REUSSIE:
                 continue
-
-            trace.etat = (EtatEtape.ABANDONNEE if etape.facultative
-                          else EtatEtape.ECHOUEE)
-            self._signaler(trace)
             if not etape.facultative:
                 return self._arreter(etape.nom)
 
         self.resultat.aboutie = True
+        return self.resultat
+
+    async def _executer_avec_etat(self, etape: Etape, trace: Trace,
+                                  acquis: Dict[str, Any]) -> None:
+        """Fait tourner une etape et pose son etat final — partage entre
+        `executer()` (sequentiel) et `executer_parallele()` (par vagues),
+        pour qu'aucune des deux voies n'ait sa propre logique d'etat."""
+        if await self._tenter(etape, trace, acquis):
+            trace.etat = EtatEtape.REUSSIE
+            acquis[etape.nom] = trace.resultat
+        else:
+            trace.etat = (EtatEtape.ABANDONNEE if etape.facultative
+                          else EtatEtape.ECHOUEE)
+        self._signaler(trace)
+
+    async def executer_parallele(self, parallelisme: int = 4,
+                                 limites_ressources: Optional[Dict[str, int]] = None
+                                 ) -> Resultat:
+        """Comme `executer()`, mais lance en parallele (borne) les etapes
+        dont les dependances sont deja satisfaites, au lieu de les attendre
+        une par une dans l'ordre de la liste.
+
+        Memes six regles que `executer()` — seul l'ORDRE D'EXECUTION change,
+        jamais la signification d'un etat. Une etape dont une dependance
+        echoue est ABANDONNEE/ECHOUEE exactement comme dans `executer()`,
+        au moment ou cette dependance se resout plutot qu'a une position fixe
+        dans une liste.
+
+        `limites_ressources` borne en plus, PAR NOM (`Etape.ressource`), le
+        nombre d'etapes d'un meme groupe qui tournent en meme temps — une
+        generation WanGP et une analyse Vision locale partagent le meme GPU
+        physique (RTX A2000, une seule carte) et ne doivent jamais tourner
+        ensemble, meme si rien d'autre ne les en empeche. Une etape deja
+        lancee n'est jamais annulee si une autre echoue : arreter un rendu
+        WanGP a mi-chemin gaspillerait le temps GPU deja engage pour rien.
+
+        Une dependance circulaire (ou vers un nom qui ne correspond a
+        aucune etape) ne fait jamais boucler l'executeur : les etapes
+        concernees sont marquees ECHOUEE avec la raison, explicitement.
+        """
+        limites_ressources = dict(limites_ressources or {})
+        acquis: Dict[str, Any] = {}
+        global_sem = asyncio.Semaphore(max(1, parallelisme))
+        semaphores_ressource = {nom: asyncio.Semaphore(max(1, limite))
+                                for nom, limite in limites_ressources.items()}
+        par_nom = {etape.nom: (etape, trace) for etape, trace in
+                   zip(self.etapes, self.resultat.traces, strict=True)}
+        lancees: set = set()
+        arretee = False
+
+        async def executer_une(etape: Etape, trace: Trace) -> None:
+            sem_ressource = (semaphores_ressource.get(etape.ressource)
+                             if etape.ressource else None)
+            async with global_sem:
+                if sem_ressource is not None:
+                    async with sem_ressource:
+                        await self._executer_avec_etat(etape, trace, acquis)
+                else:
+                    await self._executer_avec_etat(etape, trace, acquis)
+
+        while len(lancees) < len(self.etapes) and not arretee:
+            pretes: List[Tuple[Etape, Trace]] = []
+            for etape, trace in par_nom.values():
+                if etape.nom in lancees:
+                    continue
+                en_attente = False
+                manquantes: List[str] = []
+                for nom_dep in etape.depend_de:
+                    paire = par_nom.get(nom_dep)
+                    if paire is None:
+                        manquantes.append(nom_dep)
+                        continue
+                    etat_dep = paire[1].etat
+                    if etat_dep in (EtatEtape.EN_ATTENTE, EtatEtape.EN_COURS):
+                        en_attente = True
+                        break
+                    if etat_dep is not EtatEtape.REUSSIE:
+                        manquantes.append(nom_dep)
+                if en_attente:
+                    continue
+                if manquantes:
+                    trace.etat = (EtatEtape.ABANDONNEE if etape.facultative
+                                  else EtatEtape.ECHOUEE)
+                    trace.raison = (f"depend de {', '.join(manquantes)}, "
+                                    "qui n'a rien produit")
+                    self._signaler(trace)
+                    lancees.add(etape.nom)
+                    if not etape.facultative:
+                        arretee = True
+                        self.resultat.arretee_a = etape.nom
+                    continue
+                pretes.append((etape, trace))
+
+            if not pretes:
+                if arretee:
+                    break
+                # Aucune etape prete, aucune EN_COURS, et pas encore arretee :
+                # une dependance ne se resoudra jamais (cycle, ou nom
+                # inconnu qui n'a pas ete detecte ci-dessus faute d'etre
+                # deja "manquante" pour un etat non-final). On ne boucle
+                # jamais en silence.
+                for etape, trace in par_nom.values():
+                    if etape.nom not in lancees:
+                        trace.etat = EtatEtape.ECHOUEE
+                        trace.raison = "dependance circulaire ou jamais resolue"
+                        self._signaler(trace)
+                        lancees.add(etape.nom)
+                        if not self.resultat.arretee_a:
+                            self.resultat.arretee_a = etape.nom
+                arretee = True
+                break
+
+            for etape, trace in pretes:
+                trace.etat = EtatEtape.EN_COURS
+                self._signaler(trace)
+                lancees.add(etape.nom)
+
+            await asyncio.gather(*(executer_une(etape, trace) for etape, trace in pretes))
+
+            for etape, trace in pretes:
+                if trace.etat is not EtatEtape.REUSSIE and not etape.facultative:
+                    arretee = True
+                    if not self.resultat.arretee_a:
+                        self.resultat.arretee_a = etape.nom
+
+        if arretee:
+            for trace in self.resultat.traces:
+                if trace.etat is EtatEtape.EN_ATTENTE:
+                    trace.etat = EtatEtape.NON_ATTEINTE
+        else:
+            self.resultat.aboutie = True
         return self.resultat
 
     def _arreter(self, nom: str) -> Resultat:

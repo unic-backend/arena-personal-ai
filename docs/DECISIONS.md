@@ -2282,3 +2282,83 @@ et sans projet rien n'a eu lieu.
 échec afficherait une alerte pour un plan très majoritairement appliqué. Le
 projet est dans la charge utile et reste utilisable ; l'inverse — un échec pris
 pour une réussite — laissait le propriétaire attendre une vidéo qui n'existait pas.
+
+## DEC-0037 — Le workspace Video : orchestrer ce qui existe déjà, pas le refaire
+
+**2026-09-01.** Demande directe du propriétaire : « ARENA VIDEO — FULL AUDIT,
+INTEGRATION, ORCHESTRATION AND OPERATIONALIZATION » — transformer Video en un
+véritable environnement de production où plusieurs capacités collaborent sur
+un même projet (dépendances, parallélisme, reprise après échec partiel), au
+lieu d'une liste de boutons.
+
+### Audit d'abord (trois audits ciblés, jamais supposé)
+
+Le checkout de travail était **90 commits en retard sur `origin/master`** —
+resynchronisé avant tout audit, sinon toute conclusion aurait porté sur un
+état vieux de plusieurs jours. Une fois à jour :
+
+- **Beaucoup plus existe déjà que prévu**, et c'est réel, pas décoratif :
+  génération de scène (WanGP, DEC-0008/0015), production automatisée
+  complète (MoneyPrinterTurbo, DEC-0008), montage (`core/montage/*`,
+  DEC-0026 — timeline/pistes/éléments inspirés d'OpenCut **sans copier une
+  ligne**, rendu ffmpeg vérifié par ffprobe, une faille d'injection trouvée
+  et corrigée), voix (VoiceStudio piloté par HTTP, jamais absorbé en code —
+  AGPL vs propriétaire ARENA, DEC-0027), vision (Qwen3-VL). Chacune testée
+  isolément (~150 tests entre ces zones), mais **rien ne les compose** :
+  une intention de chat = un agent, jamais une collaboration.
+- **« OpenCut »** : aucune ligne de code n'a jamais été copiée — le dépôt
+  Rust annoncé n'a pas les fonctions promises, le dépôt classic est archivé
+  et dépend d'une brique MPL-2.0 non compatible MIT. Le modèle de données
+  seul a inspiré le montage. Rien à faire de plus ici.
+- **« Xaar Kaname »** : zéro occurrence dans tout le dépôt, sous aucune
+  forme, et inconnu par ailleurs. Demandé au propriétaire — **retiré du
+  périmètre** de sa propre décision, faute de savoir ce que c'est.
+- **Ce qui manque réellement** : aucun workspace Video côté interface
+  (zéro composant, zéro store) ; aucune orchestration multi-capacités ; un
+  canal d'appel inter-espaces déjà câblé et testé mais **jamais utilisé en
+  production** (`core/agent/capacites.py`) ; aucun état de projet structuré ;
+  aucun nettoyage des vidéos générées (`data/montages/`, `media/rendered/`
+  s'accumulent sans fin, contrairement aux pièces jointes entrantes).
+- **Matériel réel** : RTX A2000, 12 Go de VRAM, un seul GPU physique —
+  `core/execution/travaux.py` limitait déjà son parallélisme à 1 pour cette
+  raison. Toute exécution parallèle doit la respecter, pas la contourner.
+
+### Priorité tranchée par le propriétaire
+
+Vu l'ampleur réelle (plusieurs semaines), trois découpages possibles lui ont
+été soumis : l'orchestrateur d'abord, l'interface d'abord, ou le nettoyage
+des artefacts d'abord. **Il a choisi l'orchestrateur d'abord** — composer ce
+qui existe déjà, sans encore rien montrer côté interface.
+
+### Premier incrément : `core/execution/coordination.py` sait paralléliser
+
+L'audit avait identifié deux briques à combiner plutôt qu'une troisième à
+inventer : `coordination.py` (dépendances, reprise, vérification — mais
+strictement séquentiel) et `travaux.py` (parallèle borné, mais sans
+dépendances). `Coordination.executer_parallele()` (nouvelle méthode,
+`executer()` intact et tous ses tests inchangés) combine les deux : les
+étapes dont les dépendances sont déjà résolues tournent ensemble, bornées
+par un parallélisme global **et** par groupe de ressource partagée
+(`Etape.ressource`) — une génération WanGP et une analyse Vision locale, qui
+se disputent le même GPU physique, ne tournent jamais ensemble même si rien
+d'autre ne les en empêcherait. Une étape déjà lancée n'est jamais annulée
+parce qu'une autre a échoué (couper un rendu WanGP à mi-chemin gaspillerait
+le temps GPU déjà engagé). Une dépendance circulaire est détectée
+explicitement, jamais une boucle silencieuse.
+
+Preuve par sabotage (2 gardes) : la limite de ressource partagée retirée →
+`test_executer_parallele_respecte_la_limite_de_ressource_partagee` échoue
+(deux étapes GPU tournent en 0,10 s au lieu de 0,19 s) ; la détection de
+cycle retirée → `test_executer_parallele_une_dependance_circulaire_est_detectee`
+échoue (`aboutie=True` au lieu de `False`, exactement le faux-succès que le
+projet interdit). Les deux restaurées, revérifiées vertes.
+
+`python -m pytest tests/ -q` → 2786 passed (2779 → 2786, +7 tests).
+`python -m ruff check .` → All checks passed!
+
+### Ce qui suit (pas encore fait)
+
+Un état de projet Video structuré (objectif, assets, étapes, statut), puis
+un agent qui compose les capacités réelles au-dessus de ce nouvel
+exécuteur parallèle, en utilisant enfin `capacites.py` pour de vrai. Rien
+côté interface tant que le propriétaire ne le redemande pas.
