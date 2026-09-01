@@ -221,3 +221,34 @@ class TestUnFluxNeMeurtPasEnSilence:
         )
         reponse = [c for r, c in ecrits if r == "assistant"][0]
         assert "interrompu" in reponse, "une réponse fabriquée a été écrite en mémoire"
+
+
+class TestChatNeMentPasSurUneReponseVide:
+    """`status: success` avec une réponse vide est un mensonge indétectable.
+
+    Mesuré le 01/09/2026 : `/api/chat` rendait
+    `{"status": "success", ..., "response": ""}` quand l'agent s'arrêtait sans
+    rien produire. Le client affichait une bulle vide et n'avait rien à dire au
+    propriétaire.
+    """
+
+    def test_le_statut_suit_ce_qui_s_est_reellement_passe(
+            self, client, entetes, monkeypatch):
+        import apps.backend.routers.chat as chat
+
+        async def muet(demande, intent=None):
+            return {"response": "", "agent": "ResearcherAgent",
+                    "intent": "DEEP_RESEARCH"}
+
+        async def dispo():
+            return True
+
+        monkeypatch.setattr(chat, "dispatch_request", muet)
+        monkeypatch.setattr(chat.fast_provider, "is_available", dispo)
+
+        corps = client.post("/api/chat", headers=entetes,
+                            json={"prompt": "cherche X"}).json()
+
+        assert corps["status"] == "error"
+        assert corps["response"].strip()
+        assert "DEEP_RESEARCH" in corps["response"]

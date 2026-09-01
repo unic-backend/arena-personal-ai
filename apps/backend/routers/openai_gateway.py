@@ -15,7 +15,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from apps.backend.config import AGENTS_SPECIALISES
 from apps.backend.prompts import prompt_avec_methode
-from apps.backend.routers.chat import ChatRequest, dispatch_request, formater_sources
+from apps.backend.routers.chat import (
+    ChatRequest,
+    dispatch_request,
+    formater_sources,
+    garantir_un_texte,
+)
 from apps.backend.runtime import (
     browser_agent,
     coder_agent,
@@ -83,28 +88,9 @@ async def list_openai_models():
         ]
     }
 
-def garantir_un_texte(contenu: str, modele: str) -> str:
-    """Empêche qu'une réponse vide parte comme si c'était une réponse.
-
-    Chaque branche d'aiguillage lit `.get("response", "")`. Un agent qui échoue
-    renvoie un dictionnaire sans cette clé, donc la chaîne vide — et `"" is not
-    None` est vrai. LibreChat affichait alors **une bulle entièrement vide**,
-    sans texte ni erreur. Observé le 2026-08-26 sur `usman-research`.
-
-    Une capacité qui n'a rien produit dit qu'elle n'a rien produit. C'est la
-    règle appliquée partout ailleurs dans ce dépôt ; elle manquait ici.
-    """
-    if contenu and contenu.strip():
-        return contenu
-
-    logger.warning(f"Modele '{modele}' n'a produit aucun texte")
-    return (
-        f"`{modele}` n'a produit aucune réponse.\n\n"
-        "Ce n'est pas un refus : l'agent s'est arrêté sans rien renvoyer. "
-        "Les journaux du serveur Usman disent à quelle étape. "
-        "Reformule la demande, ou choisis `usman-chat`."
-    )
-
+#: Le menu de modeles de LibreChat & co. : la seule surface ou
+#: « choisis usman-chat » veut dire quelque chose.
+ALTERNATIVE_MENU = ", ou choisis `usman-chat`"
 
 #: 503 et non 500 : le probleme n'est pas la requete, et un client qui
 #: reessaie plus tard a raison de le faire.
@@ -299,7 +285,7 @@ async def _repondre(body: dict, stream: bool, model_requested: str):
 
     if contenu is not None:
         logger.info(f"Modele '{model_requested}' -> agent dedie")
-        return _reponse_openai(garantir_un_texte(contenu, model_requested), model_requested, stream)
+        return _reponse_openai(garantir_un_texte(contenu, model_requested, ALTERNATIVE_MENU), model_requested, stream)
 
     # ---- usman-chat : aiguillage automatique selon la question ----
     intent = await orchestrator.analyze_intent(last_user_msg)
@@ -323,12 +309,12 @@ async def _repondre(body: dict, stream: bool, model_requested: str):
             })
         res = await dispatch_request(chat_req, intent=intent)
         contenu = res.get("response", "") + formater_sources(res.get("sources", []), last_user_msg)
-        return _reponse_openai(garantir_un_texte(contenu, intent), model_requested, stream)
+        return _reponse_openai(garantir_un_texte(contenu, intent, ALTERNATIVE_MENU), model_requested, stream)
 
     # ---- Discussion simple : reponse mot par mot ----
     if not stream:
         res = await dispatch_request(chat_req, intent=intent)
-        return _reponse_openai(garantir_un_texte(res.get("response", ""), intent), model_requested, stream)
+        return _reponse_openai(garantir_un_texte(res.get("response", ""), intent, ALTERNATIVE_MENU), model_requested, stream)
 
     fil = _fil_de_la_conversation(messages, proprietaire_actuel())
 

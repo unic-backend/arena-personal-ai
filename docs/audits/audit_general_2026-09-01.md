@@ -532,3 +532,40 @@ demandait de la mesure plutôt qu'un réflexe. `_echec(LOCAL)` aurait fait dire 
 répond** : ARENA aurait dit quelque chose de faux sur la machine du
 propriétaire. Un flux vide est une mauvaise réponse, pas une indisponibilité
 prouvée. Un test pin l'asymétrie ; ajouter `_echec` le fait tomber.
+
+---
+
+# Défaut n° 18 — la bulle vide, corrigée sur une surface, vivante sur les deux autres
+
+Le 26/08/2026, `garantir_un_texte` est né parce que LibreChat affichait **une
+bulle entièrement vide**, sans texte ni erreur, quand un agent s'arrêtait sans
+rien produire (`usman-research`). Le garde a été posé sur la passerelle OpenAI.
+
+Mesuré le 01/09/2026 sur les deux autres surfaces :
+
+```
+PWA       -> {"type": "token", "text": ""}  puis  {"type": "done", ...}
+/api/chat -> {"status": "success", ..., "response": ""}
+```
+
+La PWA est **la surface que le propriétaire utilise**. Et `/api/chat` fait pire
+que la laisser passer : il l'annonce `success`. Un client n'a aucun moyen de
+distinguer « l'agent s'est arrêté » de « ARENA n'avait rien à dire ».
+
+`garantir_un_texte` vit désormais dans `routers/chat.py`, où les trois surfaces
+l'atteignent, accompagné de `a_produit_un_texte` — parce que l'appelant a
+besoin des deux réponses : le texte à montrer, **et** de quoi choisir le bon
+statut.
+
+La suggestion « ou choisis `usman-chat` » reste sur la passerelle OpenAI :
+elle ne veut rien dire sur une interface sans menu de modèles.
+
+**Un test existant m'a rattrapé.** En déplaçant la fonction j'avais désaccentué
+son message — « aucune reponse » au lieu de « aucune réponse ». C'est un texte
+que le propriétaire lit. `tests/test_studio.py::TestJamaisDeReponseVide` a
+échoué sur exactement ce mot.
+
+C'est le troisième défaut de cette nuit qui a la même forme : **une règle
+apprise sur une surface, jamais portée sur les autres** (n° 15, n° 16 ter,
+n° 18). Quand une règle est trouvée quelque part, la question suivante n'est
+pas « est-ce corrigé ? » mais « qui d'autre fait la même chose ? ».
