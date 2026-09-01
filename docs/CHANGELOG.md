@@ -2,6 +2,21 @@
 
 ## [Non publié]
 
+### Corrigé — 01/09/2026 (audit général)
+- **`/health` taisait six agents**, dont l'assistant devis. La liste écrite à
+  la main a dérivé ; elle est désormais dérivée de ce qui existe vraiment.
+- **Le bac à sable prenait une image manquante pour une erreur de code** :
+  un agent serait parti corriger du code correct.
+- **Une recherche qui n'avait rien pu lire répondait « aucun résultat ».**
+- **`/api/chat/stream` mourait en silence** quand Ollama tombait : `200` et
+  zéro ligne, et une question orpheline laissée dans l'historique.
+- **Une recherche documentaire en panne s'annonçait comme une réponse.** Le
+  test qui gardait cet espace épinglait le mensonge ; il a été renforcé.
+- **Le docteur ne connaissait pas la voix**, et ne se contente plus d'un port
+  qui répond : il demande les moteurs.
+
+Rapport complet → `docs/audits/audit_general_2026-09-01.md`.
+
 ### Ajouté — 01/09/2026 (audio)
 - **ARENA parle et écoute.** « Lis-moi ce texte », « transcris cet
   enregistrement » : la parole et l'écoute passent par VoiceStudio, piloté en
