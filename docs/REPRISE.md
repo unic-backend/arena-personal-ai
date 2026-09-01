@@ -27,8 +27,14 @@ sur un document client. **C'est une décision du propriétaire.**
 **Pour démarrer VoiceStudio sur son PC :**
 
 ```
+git clone https://github.com/debpalash/VoiceStudio
+cd VoiceStudio && uv sync
 uv run uvicorn main:app --app-dir backend --host 127.0.0.1 --port 3900
 ```
+
+**`uv sync`, jamais `pip install`** : avec pip, VoiceStudio ne démarre même pas
+(torchaudio trop récent) et son moteur de voix échoue. Détail mesuré →
+`docs/audits/voicestudio_audit.md`, §7.
 
 
 **Lire d'abord `docs/REGLES_DE_TRAVAIL.md`** : le propriétaire n'écrit pas de
