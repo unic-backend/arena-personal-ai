@@ -213,5 +213,20 @@ cd VoiceStudio && uv sync
 uv run uvicorn main:app --app-dir backend --host 127.0.0.1 --port 3900
 ```
 
+**`uv sync`, et pas `pip install`** — c'est important, et vérifié : deux des
+trois défauts du §2 viennent de là.
+
+| | `uv sync` (lit `uv.lock`) | `pip` (lit `pyproject.toml`) |
+|---|---|---|
+| torch / torchaudio | `==2.8.0` — **démarre** | `>=2.4` — la 2.11 **ne démarre pas** |
+| kittentts | roue GitHub `0.8.1` — **fonctionne** | PyPI `0.1.3` — échoue à la synthèse |
+
+Le troisième défaut (sherpa-onnx + modèle Piper) ne dépend pas de la méthode
+d'installation : ce moteur-là est à éviter tant que VoiceStudio ne passe pas
+`data_dir`.
+
+`uv.lock` tire aussi la variante **CUDA** de torch sur une machine qui en a
+une — donc la bonne pour la RTX A2000, sans rien faire de plus.
+
 Sans lui, ARENA répond `NOT_CONFIGURED` et dit ce qui manque. Il ne simule
 rien.
