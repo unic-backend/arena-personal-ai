@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from apps.backend.config import AGENTS_SPECIALISES
-from apps.backend.prompts import get_arena_system_prompt
+from apps.backend.prompts import prompt_avec_methode
 from apps.backend.routers.chat import ChatRequest, dispatch_request, formater_sources
 from apps.backend.runtime import (
     browser_agent,
@@ -260,7 +260,7 @@ async def _repondre(body: dict, stream: bool, model_requested: str):
 
     async def generateur_discussion():
         cree = int(time.time())
-        system_prompt = get_arena_system_prompt()
+        system_prompt = prompt_avec_methode(last_user_msg, intent)
 
         try:
             async for jeton in fast_provider.generate_stream(last_user_msg, system_prompt):

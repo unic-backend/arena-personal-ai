@@ -32,7 +32,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from apps.backend.config import AGENTS_SPECIALISES
-from apps.backend.prompts import get_arena_system_prompt
+from apps.backend.prompts import prompt_avec_methode
 from apps.backend.routers.chat import ChatRequest, dispatch_request
 from apps.backend.runtime import (
     fast_provider,
@@ -280,7 +280,10 @@ async def prompt_systeme(
     ensuite, annoncees comme des preferences. Un reglage de ton ne doit pas
     pouvoir effacer ce que la plateforme s'interdit.
     """
-    blocs = [get_arena_system_prompt()]
+    # Regles d'ARENA + methode du metier, composees en UN seul endroit
+    # (`apps/backend/prompts.prompt_avec_methode`) pour que les trois chemins
+    # de reponse ne divergent pas.
+    blocs = [prompt_avec_methode(question or "", intention)]
 
     preferences = instructions_persona(persona)
     if preferences:

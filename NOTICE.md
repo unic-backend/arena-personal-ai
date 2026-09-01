@@ -55,3 +55,27 @@ ni modifié, ni importé. Raisonnement complet →
 Les modèles réellement utilisés à travers lui portent leurs propres licences :
 `kittentts` 0.8.1 (Apache-2.0, KittenML), `faster-whisper` (MIT) et
 `Systran/faster-whisper-base` (MIT). Aucun n'est redistribué ici.
+
+
+---
+
+## Agency Agents — taxonomie et listes de contrôle par métier
+
+`core/specialistes/catalogue.py` reprend la **méthode** de plusieurs métiers
+telle que ce dépôt la formule : les taxonomies de spécialités, les listes de
+contrôle par domaine (STRIDE et OWASP pour la sécurité, la pyramide de tests,
+les contrôles de référencement local), et l'idée qu'un spécialiste porte sa
+propre définition de « fini ».
+
+- Projet : Agency Agents — https://github.com/msitarzewski/agency-agents
+- Licence : **MIT**, « Copyright (c) 2025 AgentLand Contributors »
+- Version auditée : commit `3c958888` (26/08/2026)
+
+**Aucune de ses 319 définitions n'a été copiée.** Ce sont des prompts de rôle
+d'environ 230 lignes chacun (« tu es X, stratégique et rigoureux ») ; ARENA
+reste UNE intelligence et n'avait aucun besoin de 319 personnalités. Ce qui a
+été repris est la substance : les étapes et les contrôles, réécrits en
+français, réduits à ce qui se vérifie, et reliés à des chemins d'exécution qui
+existaient déjà dans ARENA.
+
+Raisonnement complet → `docs/DECISIONS.md`, DEC-0028.

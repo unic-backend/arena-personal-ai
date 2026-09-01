@@ -5,8 +5,10 @@ Aucun fait daté n'est écrit en dur ici — voir la docstring de
 vérifiable sur un fichier court plutôt que noyée dans le point d'entrée.
 """
 from datetime import date
+from typing import Optional
 
 from apps.backend.runtime import memory
+from core.specialistes.selection import bloc_de_methode, choisir
 
 # Faits que le proprietaire peut enregistrer lui-meme en memoire longue. Rien
 # n'est ecrit en dur : une valeur absente n'apparait tout simplement pas.
@@ -69,3 +71,22 @@ def get_arena_system_prompt() -> str:
 
     lignes += ["", "Reponds en francais, de maniere exacte, claire et directe."]
     return "\n".join(lignes)
+
+
+def prompt_avec_methode(question: str = "", intention: Optional[str] = None) -> str:
+    """L'instruction systeme d'ARENA, plus la methode du metier concerne.
+
+    **Un seul endroit compose les deux**, et les trois chemins de reponse
+    (PWA, `/api/chat`, passerelle OpenAI) passent par ici. Trois assemblages
+    separes auraient derive — c'est exactement ce qui est arrive a la liste
+    d'agents de `/health`, ecrite a trois endroits et fausse au premier
+    changement (mesure du 01/09/2026).
+
+    La methode vient APRES les regles d'ARENA : elle precise comment
+    travailler, elle ne peut rien effacer de ce que la plateforme s'interdit.
+    Elle est vide la plupart du temps — la majorite des demandes n'appellent
+    aucun specialiste (`core/specialistes/selection.py`).
+    """
+    base = get_arena_system_prompt()
+    methode = bloc_de_methode(choisir(question, intention))
+    return f"{base}\n\n{methode}" if methode else base
