@@ -1,7 +1,26 @@
-# MISSION EN COURS — ARENA hybride : local, Groq, DeepInfra
+# MISSION EN COURS — Video : un vrai environnement de production
 
-*Ouverte le 28/08/2026 par le propriétaire. La décision qui la gouverne est
-**DEC-0009**, qui amende DEC-0002 — à lire avant toute chose.*
+*Ouverte le 01/09/2026, demande directe du propriétaire : « ARENA VIDEO — FULL
+AUDIT, INTEGRATION, ORCHESTRATION AND OPERATIONALIZATION ». La décision qui la
+gouverne est **DEC-0037** (`docs/DECISIONS.md`) — à lire avant toute chose.
+Elle **remplace** la mission « ARENA hybride » ci-dessous comme tâche active ;
+cette dernière est conservée telle quelle, achevée, comme historique.*
+
+Objectif : composer les capacités vidéo réelles qui existaient déjà chacune
+séparément (WanGP, MoneyPrinterTurbo, le montage, VoiceStudio, la vision) sur
+un même projet — dépendances, parallélisme, reprise après échec — au lieu
+d'une liste de boutons. Le propriétaire a choisi de commencer par
+**l'orchestrateur d'abord**, avant l'interface.
+
+## Modules réels, pas encore atteints par un point d'entrée — et pourquoi
+
+| # | Module | Pourquoi il dort encore |
+|---|---|---|
+| 1 | `core/production/etat_projet.py` | L'état d'un projet Video (objectif, références, graphe, résultat) — une structure de données, câblée par les deux modules suivants, elle-même jamais appelée directement par un point d'entrée. |
+| 2 | `core/production/plan_video.py` | Traduit un objectif en graphe validé (liste fermée de capacités) — utilisé uniquement par `agents/video/production_agent.py`, ci-dessous, lui-même pas encore branché. |
+| 3 | `agents/video/production_agent.py` | `VideoProductionAgent` : compose vision, WanGP, MoneyPrinterTurbo, VoiceStudio et montage via `core/execution/coordination.py:executer_parallele()`. Testé en isolation (doubles pour chaque collaborateur), mais **pas encore câblé au démarrage du serveur ni routé depuis le chat** — c'est la prochaine étape, pas encore faite. Rien côté interface pour l'instant, sur décision du propriétaire (01/09/2026). |
+
+---
 
 > « Transform ARENA into a HYBRID AI INFERENCE SYSTEM using local Ollama + Groq
 > + DeepInfra. Do NOT remove Ollama. Do NOT replace the local model. Do NOT
