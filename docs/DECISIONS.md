@@ -2227,3 +2227,19 @@ que le moteur de graphe ne la posait pas.
 **Ce que ça coûte si c'est faux** : deux appels `docker` (~100 ms quand le
 démon répond) avant chaque requête de graphe. Une requête de graphe dure des
 secondes ; la sonde ne se voit pas.
+
+## DEC-0034 — La grille de prix suit le fichier, pas le démarrage du serveur
+
+**2026-09-01.** `PlaquisteAgent` et `DevisConnector` lisaient
+`config/unic_plaquiste.yaml` une seule fois, dans leur constructeur — donc au
+démarrage du serveur. Un prix modifié n'était vu qu'au redémarrage suivant, et
+rien ne le disait. Mesuré : fichier à 999 999, agent toujours à 4 500.
+
+La relecture se déclenche sur la **date de modification** du fichier, jamais
+sur une horloge. Un fichier effacé vide la grille au lieu de figer l'ancienne :
+refuser de chiffrer est plus sûr que chiffrer sur une grille fantôme.
+
+**Ce que ça coûte si c'est faux** : un `stat()` par chiffrage. Si le système de
+fichiers rendait une date instable, la grille serait relue à chaque appel — un
+`yaml.safe_load` d'un fichier de quelques kilo-octets, sans conséquence sur le
+résultat.

@@ -357,6 +357,59 @@ def charger_metier(chemin: Path = FICHIER_METIER) -> Dict[str, Any]:
         return {}
 
 
+def date_du_metier(chemin: Optional[Path] = None) -> Optional[float]:
+    """Date de derniere modification du fichier metier, `None` s'il est absent.
+
+    `None` n'est pas `0` : un fichier absent n'a pas de date, il n'a pas la
+    date zero. La distinction compte, parce que c'est cette valeur qui decide
+    d'une relecture.
+
+    Le chemin par defaut est resolu **a l'appel**, pas a l'import : ecrit
+    `chemin: Path = FICHIER_METIER`, il serait fige a la valeur qu'avait la
+    constante au chargement du module — la meme famille de defaut que celui
+    que cette classe repare.
+    """
+    try:
+        return (chemin or FICHIER_METIER).stat().st_mtime
+    except OSError:
+        return None
+
+
+class MetierSuivi:
+    """Les connaissances metier, relues quand le fichier change.
+
+    Le defaut repare, mesure le 01/09/2026 : la grille etait lue **une fois**,
+    a la construction de l'agent — lui-meme un singleton cree au demarrage du
+    serveur (`apps/backend/runtime.py`). Le proprietaire changeait le prix de
+    la plaque BA13 dans `config/unic_plaquiste.yaml`, et ARENA continuait de
+    chiffrer a l'ancien prix jusqu'au prochain redemarrage. Rien ne le disait.
+
+    C'est le pire mode d'echec de ce depot, et il est ecrit ailleurs dans ces
+    memes fichiers : **un mauvais prix sur un document qui part chez un
+    client**.
+
+    La relecture se declenche sur la date de modification, jamais sur une
+    horloge : un fichier inchange n'est pas relu, et un fichier change l'est
+    au premier chiffrage qui suit.
+    """
+
+    def __init__(self, chemin: Optional[Path] = None):
+        # Resolu ici, pas dans la signature : voir `date_du_metier`.
+        self.chemin = chemin or FICHIER_METIER
+        self._donnees = charger_metier(self.chemin)
+        self._date = date_du_metier(self.chemin)
+
+    def actuel(self) -> Dict[str, Any]:
+        """Les connaissances a jour. Relit le fichier si sa date a change."""
+        date = date_du_metier(self.chemin)
+        if date != self._date:
+            self._donnees = charger_metier(self.chemin)
+            self._date = date
+            logger.info("Grille de prix relue : %s article(s).",
+                        len(_grille(self._donnees)))
+        return self._donnees
+
+
 def _grille(metier: Dict[str, Any]) -> Dict[str, int]:
     """Reunit materiaux et portes en une seule grille de prix."""
     grille = dict(metier.get("prix_materiaux") or {})
@@ -534,8 +587,10 @@ class PlaquisteAgent(BaseAgent):
             provider=provider,
             memory=memory,
         )
-        # Injectable pour les tests ; lu au demarrage sinon.
-        self.metier = metier if metier is not None else charger_metier()
+        # Injectable pour les tests ; suivi sur disque sinon, pour qu'un prix
+        # change dans `config/unic_plaquiste.yaml` soit vu sans redemarrer.
+        self._metier_injecte = metier
+        self._metier_suivi = None if metier is not None else MetierSuivi()
         # Sans registre, l'agent redige mais ne produit aucun fichier. C'est un
         # etat annonce dans la reponse, pas un silence.
         self.registre = registre
@@ -550,6 +605,13 @@ class PlaquisteAgent(BaseAgent):
         # image. Sans lui, l'avis visuel (DEC-0022) est simplement absent —
         # le decompte deterministe (`compter_marques`) continue seul.
         self.provider_vision = provider_vision
+
+    @property
+    def metier(self) -> Dict[str, Any]:
+        """Les connaissances metier, relues si le fichier a change sur le disque."""
+        if self._metier_injecte is not None:
+            return self._metier_injecte
+        return self._metier_suivi.actuel()
 
     def _lire_l_agenda(self, texte: str) -> Optional[Dict[str, Any]]:
         """Les creneaux libres, quand la demande porte sur QUAND.

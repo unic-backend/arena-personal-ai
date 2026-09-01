@@ -34,7 +34,7 @@ from typing import Any, Dict, List, Optional
 from agents.plaquiste.calcul_materiaux import quantites_pour
 from agents.plaquiste.devis_pdf import Devis, Ligne, chiffrer, construire
 from agents.plaquiste.metre import lire_demande
-from agents.plaquiste.plaquiste_agent import charger_metier
+from agents.plaquiste.plaquiste_agent import MetierSuivi
 from core.actions.resultat import ResultatAction, echec, succes
 from core.connectors.base import Capacite, Connecteur, EtatSante, Sante
 
@@ -85,8 +85,19 @@ class DevisConnector(Connecteur):
     def __init__(self, metier: Optional[Dict[str, Any]] = None,
                  dossier: Optional[Path] = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.metier = metier if metier is not None else charger_metier()
+        # Meme suivi que l'agent : un prix change dans le fichier metier est
+        # vu au chiffrage suivant, pas au prochain redemarrage du serveur.
+        self._metier_injecte = metier
+        self._metier_suivi = None if metier is not None else MetierSuivi()
+
         self.dossier = Path(dossier) if dossier else DOSSIER_DEVIS
+
+    @property
+    def metier(self) -> Dict[str, Any]:
+        """Les connaissances metier, relues si le fichier a change."""
+        if self._metier_injecte is not None:
+            return self._metier_injecte
+        return self._metier_suivi.actuel()
 
     def capacites(self) -> Dict[str, Capacite]:
         return {
