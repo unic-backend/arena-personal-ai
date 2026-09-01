@@ -891,3 +891,85 @@ Le commit a été rejoué sur une branche neuve. Quatre occurrences sur les six
 fusions de cette nuit : **ce n'est pas un incident**, c'est ce qui arrive
 normalement quand on pousse après avoir lu la PR. La vérification n'est pas une
 précaution, c'est une étape.
+
+---
+
+# Bilan de la nuit
+
+**24 défauts trouvés sur une suite verte**, tous mesurés avant d'être corrigés,
+tous vérifiés par sabotage. Six pull requests fusionnées : #105 à #110.
+
+## Les deux formes qui reviennent
+
+C'est le résultat le plus utile de cette nuit, parce qu'il dit où chercher la
+prochaine fois.
+
+**1. Une valeur lue une fois, servie comme si elle était actuelle.**
+Quatre occurrences, dans quatre sous-systèmes sans rapport : la sonde Docker du
+bac à sable, la grille de prix du plaquiste, et les deux couches de
+permissions. Le point commun : un objet construit à l'import de
+`apps/backend/runtime.py`, donc au démarrage du serveur, qui lit son état une
+fois et ne le revoit jamais. `core/fichier_suivi.py` existe maintenant pour ça.
+
+**2. Une règle apprise sur une surface, jamais portée sur les autres.**
+Quatre occurrences aussi : la question orpheline, le fil de conversation, le
+devis multi-tours, la bulle vide. ARENA a **quatre** surfaces de réponse — la
+PWA, `/api/chat`, `/api/chat/stream` et la passerelle OpenAI — et chacune a
+appris ses règles séparément, par une panne.
+
+Quand une règle est trouvée quelque part, la question suivante n'est pas
+« est-ce corrigé ? » mais **« qui d'autre fait la même chose ? »**. Posée cinq
+fois cette nuit, elle a répondu oui cinq fois.
+
+## Ce que j'ai appris sur mes propres tests
+
+**Trois tests épinglaient les mensonges corrigés**, dont deux que j'avais
+écrits moi-même quelques heures plus tôt :
+
+| Test | Ce qu'il épinglait |
+|---|---|
+| `test_une_erreur_n_arrete_pas_les_operations_suivantes` | une erreur rapportée comme une réussite |
+| `test_une_ligne_inventee_est_ecartee_sans_perdre_le_reste` | idem — le mien |
+| `test_l_espace_documents_est_appelable_avec_le_meme_contrat` | un `success` sur une machine sans `lightrag` |
+
+Et **deux fois** j'ai écrit un test qui appelait la fonction corrigée au lieu de
+traverser le vrai chemin. Retirer le correctif ne les faisait pas tomber. Le
+sabotage est la seule chose qui débusque ça — et il faut le faire à chaque
+fois, pas quand on y pense.
+
+## Ce qui a été vérifié et va bien
+
+Chaque ligne est une exécution réelle, pas une lecture de code :
+
+| Vérifié | Résultat |
+|---|---|
+| Chaîne d'approbation | écriture → `NEEDS_CONFIRMATION`, `401` sans clé, confirmation → vrai fichier audio de 137 678 octets, rejeu refusé |
+| Lecture de documents | PDF de 2 pages lu avec sa page d'origine ; `.zip`, fichier absent et fichier vide distingués |
+| Travaux de fond | s'exécutent, avancent leur progression, et un travail qui tombe est `FAILED` avec sa vraie exception |
+| 10 connecteurs, toutes capacités de lecture | appelées une par une : aucune ne lève |
+| Gardien | 0 constat — vérifié en cassant le dépôt exprès : il trouve alors 5 problèmes de qualité et le module mort |
+| Surface publique | 26 routes ; tout ce qui répond sans clé est délibérément public |
+| Chaîne de montage | plan par nom accepté, plan nommant un chemin refusé, timeline réelle bâtie |
+| Placeholders | aucun `TODO`, aucun `NotImplementedError`, aucun module réel endormi |
+
+## Ce qui reste ouvert, et n'est pas une tâche
+
+- **Le métré n'accepte pas « une paroi de 12 x 2,50 m »** (il faut « 1 paroi »).
+  Son échec est *sûr* ; une extension bâclée mettrait un mauvais prix sur un
+  document client. Décision du propriétaire.
+- **Les modèles nommés directement** (`usman-fix`, `usman-repo`, `usman-coder`,
+  `usman-research`, `usman-browser`) reçoivent le dernier message seul. Rien ne
+  dit qu'ils travaillent mieux avec une transcription ; le supposer serait la
+  même erreur en sens inverse.
+- **Le modèle d'embeddings de LightRAG** reste écrit dans le code : il est
+  couplé à `embedding_dim=768` et à l'index déjà construit.
+- **La clé API en paramètre d'URL** pour les médias : arbitrage écrit, pas un
+  oubli. En changer demande une autre mécanique.
+- **Ollama, Docker, GPU** : absents de cette machine. Tout ce qui en dépend le
+  **dit**, et c'est la règle qui fonctionne.
+
+## Hors code
+
+Quatre fusions sur six ont pris une **tête périmée**. Ce n'est pas un incident :
+c'est ce qui arrive quand on pousse après avoir lu la PR. La vérification par le
+contenu est une étape, écrite dans `docs/REGLES_DE_TRAVAIL.md`, § 3.
