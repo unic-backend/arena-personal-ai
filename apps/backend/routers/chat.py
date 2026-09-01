@@ -20,6 +20,7 @@ from agents.video_analyzer.video_analyzer_agent import demande_de_suivi
 from apps.backend.config import AGENTS_SPECIALISES, MEDIA_DIR
 from apps.backend.prompts import get_arena_system_prompt
 from apps.backend.runtime import (
+    audio_agent,
     browser_agent,
     coder_agent,
     editor_agent,
@@ -297,6 +298,12 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         result = graphrag_tool.query_global(request.prompt)
     elif intent == "VISION":
         result = await vision_agent.run(request.prompt, context={"attachments": request.attachments})
+    elif intent == "AUDIO":
+        # Meme inventaire que le montage : ses fichiers, et rien d autre.
+        # `medias_montables` couvre deja l audio (mp3, wav, m4a...) en plus
+        # de la video, et la transcription lit les deux.
+        result = await audio_agent.run(
+            request.prompt, context={"medias": medias_montables(request.video_path)})
     elif intent == "MONTAGE":
         # L inventaire ouvert au modele : ses propres fichiers, et rien
         # d autre. `validate_media_path` tient deja la frontiere du dossier

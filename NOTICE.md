@@ -31,3 +31,27 @@ remplaçable (`core/montage/rendu.py`). Détail mesuré →
 au fichier, et le dépôt principal d'OpenCut laisse croire qu'elle est MIT. Si
 elle entre un jour ici, ce sera telle quelle : modifier ses fichiers
 obligerait à publier ces modifications.
+
+
+---
+
+## VoiceStudio — capacités audio, pilotées à distance
+
+ARENA sait parler et transcrire en pilotant **VoiceStudio** par HTTP sur la
+boucle locale (`core/connectors/audio_voix.py`).
+
+- Projet : VoiceStudio — https://github.com/debpalash/VoiceStudio
+- Licence : **AGPL-3.0-only**, « Copyright 2024-present Palash Debnath and
+  VoiceStudio contributors »
+- Version auditée : `0.5.1`, commit `a30b7166` (30/08/2026)
+
+**Aucune ligne de VoiceStudio n'est présente dans ce dépôt**, et c'est une
+décision juridique : `LICENSE` d'ARENA est « All rights reserved », l'AGPL
+imposerait à toute œuvre dérivée d'être publiée sous AGPL. VoiceStudio tourne
+comme **processus séparé**, dans son propre environnement, et n'est ni copié,
+ni modifié, ni importé. Raisonnement complet →
+`docs/audits/voicestudio_audit.md`.
+
+Les modèles réellement utilisés à travers lui portent leurs propres licences :
+`kittentts` 0.8.1 (Apache-2.0, KittenML), `faster-whisper` (MIT) et
+`Systran/faster-whisper-base` (MIT). Aucun n'est redistribué ici.

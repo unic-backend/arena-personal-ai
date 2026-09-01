@@ -368,3 +368,32 @@ class TestAiguillageDuMontage:
         demandes distinctes que « vidéo » et « chantier » rapprochent."""
         agent = OrchestratorAgent(provider=fake_provider, memory=None)
         assert agent._classer_par_mots_cles(phrase) == attendu
+
+
+class TestAiguillageDeLAudio:
+    """Le son porte les mots des deux voisins : « transcris la vidéo du
+    chantier » contient « chantier » (métier) et « vidéo » (montage)."""
+
+    @pytest.mark.parametrize("phrase", [
+        "transcris la vidéo du chantier de Ouakam",
+        "qu'est-ce qui est dit dans cet enregistrement ?",
+        "lis-moi ce texte à voix haute",
+        "fais une voix off pour la vidéo du chantier",
+        "génère une voix pour la narration",
+        "quelles voix sont disponibles ?",
+    ])
+    def test_une_demande_de_son_va_a_l_audio(self, fake_provider, phrase):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == "AUDIO"
+
+    @pytest.mark.parametrize("phrase,attendu", [
+        ("monte une vidéo avec les photos du chantier", "MONTAGE"),
+        ("fais-moi un devis pour le chantier de Ouakam", "PLAQUISTE"),
+        ("génère une vidéo sur la pose de placo", "VIDEO_ANALYSIS"),
+        # ARENA fabrique déjà les sous-titres de bout en bout : l'audio les
+        # lui prenait, et le test du studio est tombé le 01/09/2026.
+        ("sous-titre ma vidéo", "STUDIO"),
+    ])
+    def test_l_audio_ne_capture_pas_les_voisins(self, fake_provider, phrase, attendu):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == attendu

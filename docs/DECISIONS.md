@@ -1951,3 +1951,80 @@ une machine qui l'a.
 Retour arrière : retirer `"MONTAGE"` de `AGENTS_SPECIALISES`
 (`apps/backend/config.py`) et de l'aiguilleur rend l'intention inatteignable
 sans toucher à `core/montage/`, qui reste appelable par le registre.
+
+---
+
+## DEC-0027 : l'audio d'ARENA — VoiceStudio piloté, jamais absorbé
+
+*Décidé le 01/09/2026, mission « intégration VoiceStudio ». Audit complet →
+`docs/audits/voicestudio_audit.md`.*
+
+### Le problème
+
+ARENA savait transcrire (faster-whisper `tiny`, CPU) et incruster des
+sous-titres. Il **ne savait pas parler** : `tools/social/voix.py` traite de son
+style d'écriture, pas de parole. Une voix off pour une vidéo de chantier était
+hors de portée.
+
+VoiceStudio apporte exactement ça — et il est sous **AGPL-3.0-only**, quand
+`LICENSE` d'ARENA dit « All rights reserved ».
+
+### La décision
+
+**VoiceStudio tourne comme processus séparé, joint par HTTP sur `127.0.0.1`.
+Aucune de ses lignes n'entre dans ARENA, aucune n'est modifiée.**
+
+Ce n'est pas une préférence de style. Copier son source, ou l'importer comme
+bibliothèque, ferait d'ARENA une œuvre dérivée : ARENA devrait être publié en
+entier sous AGPL-3.0. Le couplage est donc délibérément large — HTTP, API
+OpenAI-compatible, aucune structure de données partagée.
+
+Trois conséquences dans le code :
+
+1. **`core/connectors/audio_voix.py`** parle l'API et rien d'autre. Il refuse
+   toute adresse qui n'est pas la boucle locale (`AdresseNonLocale`) : une voix
+   est une donnée personnelle, et un `OMNIVOICE_URL` mal réglé enverrait les
+   enregistrements du propriétaire chez un tiers.
+2. **Parler est une écriture.** `transcrire` lit un fichier déjà là ; `parler`
+   écrit un WAV et passe par la file de confirmation, comme le devis PDF.
+3. **Le succès est le fichier.** Un `200` ne suffit pas : le WAV est re-sondé
+   avec ffprobe, et une durée illisible efface le fichier et rend un échec.
+
+### Ce que ça coûte si c'est faux
+
+Si un couplage HTTP suffisait à créer une œuvre dérivée — lecture minoritaire,
+mais elle existe —, ARENA devrait passer en AGPL ou acheter la licence
+commerciale que VoiceStudio propose. Et si le propriétaire n'a pas démarré
+VoiceStudio, ARENA ne parle pas du tout : il le dit
+(`NOT_CONFIGURED`) au lieu de se rabattre sur autre chose.
+
+### Ce qui n'a PAS été dupliqué
+
+**Les sous-titres restent au studio.** L'intention `AUDIO` les lui prenait —
+`test_ces_demandes_vont_au_studio[sous-titre ma vidéo]` est tombé le 01/09/2026.
+ARENA fabrique déjà les sous-titres de bout en bout (transcription +
+incrustation 9:16) ; une transcription rend du texte, incruster est un travail
+d'image. La règle « ne pas dupliquer » a tranché, et un test la fixe.
+
+`tools/audio/transcription_tool.py` n'est pas touché non plus.
+
+### Ce qui a été mesuré, et ce qui reste inconnu
+
+Vérifié : santé, liste des moteurs, transcription, synthèse (5742 ms, 275678
+octets, amplitude max 26029 — pas du silence), et le tour complet texte → voix
+→ texte. Puis la voix off posée dans une timeline et rendue : MP4 `h264` +
+`aac`, audio extrait à 25892 d'amplitude.
+
+`UNKNOWN` — **la VRAM**. Cette machine n'a pas de GPU (`vram_total_gb: 0.0`).
+Rien n'a été mesuré sur la RTX A2000, et rien n'a été inventé. ARENA n'ajoute
+aucune politique VRAM : VoiceStudio a la sienne (`min_vram_gb`,
+`/model/unload/{id}`, éviction), et deux politiques concurrentes valent moins
+qu'une seule qui marche.
+
+`UNKNOWN` — **une voix française**. Le seul moteur TTS installable ici est
+anglais, et `/engines/tts` n'expose aucune information de langue : ARENA ne
+peut donc pas router par langue. Le message de succès **nomme le moteur qui a
+parlé**, pour que le propriétaire voie qu'un moteur anglais a lu son texte.
+
+Retour arrière : retirer `"AUDIO"` de `AGENTS_SPECIALISES` rend l'intention
+inatteignable sans toucher au connecteur, qui reste appelable par le registre.

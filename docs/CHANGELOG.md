@@ -2,6 +2,23 @@
 
 ## [Non publié]
 
+### Ajouté — 01/09/2026 (audio)
+- **ARENA parle et écoute.** « Lis-moi ce texte », « transcris cet
+  enregistrement » : la parole et l'écoute passent par VoiceStudio, piloté en
+  local par HTTP. Aucune de ses lignes n'entre dans ARENA — il est sous
+  AGPL-3.0 (DEC-0027, `docs/audits/voicestudio_audit.md`).
+- **Une voix off entre dans une vidéo montée.** Texte → voix → piste audio de
+  la timeline → MP4 final vérifié (`h264` + `aac`).
+- **Le moteur se choisit sur ce qui est réellement installé**, jamais sur le
+  défaut du service — qui pointait vers un moteur absent.
+- **Une voix ne sort pas de la machine** : toute adresse non locale pour
+  VoiceStudio est refusée.
+
+### Corrigé — 01/09/2026 (audio)
+- **Les sous-titres restaient au studio.** La nouvelle intention audio les lui
+  prenait ; ARENA les fabrique déjà de bout en bout. Régression trouvée par la
+  suite existante, corrigée, et un test la fixe.
+
 ### Ajouté — 01/09/2026
 - **ARENA sait monter une vidéo, et une phrase suffit.** « Monte-moi un short
   du chantier de Ouakam » devient un plan d'opérations validées, une timeline

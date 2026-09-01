@@ -8,6 +8,7 @@ le modèle en VRAM.
 import logging
 import os
 
+from agents.audio.audio_agent import AudioAgent
 from agents.browser.browser_agent import BrowserAgent
 from agents.clip_selector.clip_selector_agent import ClipSelectorAgent
 from agents.coder.coder_agent import CoderAgent
@@ -41,6 +42,7 @@ from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
 from core.agent.capacites import RegistreCapacites, adaptateur_synchrone
+from core.connectors.audio_voix import ConnecteurAudioVoix
 from core.connectors.calendrier import CalendrierConnector
 from core.connectors.devis import DevisConnector
 from core.connectors.galsen import GalsenConnector
@@ -152,6 +154,14 @@ registre.declarer(
 # confirmation). Le moteur de rendu est ffmpeg, deja local et compatible avec
 # sa RTX A2000 — voir docs/audits/opencut_audit.md pour pourquoi ce n'est pas
 # celui d'OpenCut, dont le rendu est natif navigateur et le depot archive.
+# Audio et voix : VoiceStudio, pilote par HTTP sur la boucle locale. C'est un
+# programme SEPARE (AGPL-3.0) — aucune de ses lignes n'entre dans ARENA, dont
+# la licence est proprietaire. Detail -> docs/audits/voicestudio_audit.md.
+registre.declarer(
+    "audio",
+    lambda: ConnecteurAudioVoix(acces=acces, journal=journal,
+                                file_attente=file_attente, crochets=crochets),
+)
 registre.declarer(
     "montage",
     lambda: ConnecteurMontage(acces=acces, journal=journal, file_attente=file_attente,
@@ -264,6 +274,10 @@ vision_agent = VisionAgent(provider=ollama_vision, memory=memory, pieces_jointes
 # Le modele profond, parce que produire un JSON structure et coherent est une
 # redaction, pas une classification. Le registre lui donne le connecteur
 # `montage` — donc la meme confirmation que le devis PDF avant tout rendu.
+# Audio : sa phrase choisit la capacite (lire, transcrire, lister). Le modele
+# rapide suffit — le classement se fait par mots-cles, et c'est la MACHINE qui
+# parle et qui ecoute, pas le modele de langue.
+audio_agent = AudioAgent(provider=fast_provider, memory=memory, registre=registre)
 montage_agent = MontageAgent(provider=deep_provider, memory=memory, registre=registre)
 editor_agent = EditorAgent(provider=deep_provider, memory=memory)
 subtitle_agent = SubtitleAgent(provider=deep_provider, memory=memory)
