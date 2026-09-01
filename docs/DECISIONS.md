@@ -2132,3 +2132,26 @@ autoriser n'importe quoi.
 Retour arrière : `bloc_de_methode` rend une chaîne vide si le catalogue est
 vidé, et les trois chemins de réponse retrouvent le prompt d'avant sans autre
 changement.
+
+## DEC-0029 — Le bac à sable re-sonde Docker quand la réponse était « non »
+
+**2026-09-01.** `SandboxInterpreterTool` mesurait la présence de Docker une seule
+fois, dans `__init__`. `CoderAgent` et `ReasoningEngine` étant construits au
+démarrage du serveur (`apps/backend/runtime.py`), la mesure datait du lancement
+d'ARENA et n'était jamais revue : un Docker démarré **après** le serveur restait
+invisible, et le refus répétait « démarre Docker » à quelqu'un qui venait de le
+démarrer. Seul un redémarrage du serveur le débloquait.
+
+Une mesure **négative** se re-sonde donc, au plus une fois toutes les 30 s.
+Une mesure **positive** ne se re-sonde pas : si le démon a disparu entre-temps,
+`docker run` échoue et le chemin d'exception refuse déjà — l'exécution est sa
+propre sonde. C'est la convention des connecteurs
+(`core/connectors/base.py` mesure la santé avant chaque capacité), au coût
+d'appel près : `docker info` prend jusqu'à trois secondes, ce qui serait payé à
+chaque bloc de code.
+
+**Ce que ça coûte si c'est faux** : jusqu'à 30 secondes d'écart entre le moment
+où le propriétaire lance Docker et celui où ARENA le voit. Le refus reste juste
+pendant ce délai, il n'exécute rien sur l'hôte.
+
+Trouvé par le diagnostic général, pas par un test : la suite était verte.
