@@ -405,3 +405,228 @@ Sabotage : `if False` à la place de la garde → deux tests tombent.
 (« le flux finit toujours ») et l'ont chacun apprise séparément, par une panne.
 Quand une règle est trouvée sur un chemin, la question suivante n'est pas
 « est-ce corrigé ? » mais « qui d'autre fait la même chose ? ».
+
+---
+
+# Défaut n° 16 — la passerelle OpenAI jetait la conversation
+
+Trouvé en appliquant la leçon du n° 15 : *qui d'autre fait la même chose ?*
+
+Le protocole OpenAI est **sans état** — le client envoie tout le fil dans
+`messages` à chaque tour. La passerelle n'en gardait que le **dernier message
+utilisateur**.
+
+Mesuré, pas supposé, sur `/v1/chat/completions` avec le fil
+`[« qui a gagné la coupe du monde 1998 ? », « la France », « et celle de
+2006 ? »]` :
+
+```
+avant : ['Et celle de 2006 ?']
+après : ['Ousmane: Qui a gagne la coupe du monde 1998 ?
+          Usman: La France.
+          Ousmane: Et celle de 2006 ?
+          Usman:']
+```
+
+C'est la surface qu'utilisent les outils extérieurs. Le défaut se voyait à
+**chaque** conversation de plus d'un tour.
+
+**Un message `system` envoyé par le client n'entre pas dans le fil.** Un texte
+extérieur est une donnée, jamais une consigne d'ARENA — un client aurait sinon
+pu écraser les règles depuis l'extérieur. Un test le fixe.
+
+## Défaut n° 16 bis — toutes les conversations partageaient une mémoire
+
+`ChatRequest(prompt=...)` sans `session_id` retombait sur `"default"`. Toutes
+les conversations, de tous les clients extérieurs, écrivaient et relisaient la
+même mémoire. `fresh_info` relit justement cet historique
+(`get_recent_history`) pour résoudre une question elliptique : deux discussions
+distinctes se contaminaient.
+
+Le protocole ne porte aucun identifiant de conversation. Le **premier message
+utilisateur** en tient lieu : stable d'un tour à l'autre du même fil, différent
+d'un fil à l'autre. Deux conversations ouvertes par exactement la même phrase
+partagent une clé — c'est le prix, assumé.
+
+## Encore le même piège de test
+
+Mon premier test appelait `_cle_de_conversation` directement. Remettre
+`session_id="default"` dans la passerelle **ne le faisait pas tomber**. Deuxième
+fois dans la même session que j'écris un test qui mesure une fonction au lieu
+d'un chemin — c'est un réflexe, pas un accident, et le sabotage est la seule
+chose qui le débusque.
+
+## Défaut n° 16 ter — le même devis, depuis un client extérieur, ne finissait jamais
+
+Le 31/08/2026, en direct avec le propriétaire, `pwa_gateway` a appris à
+transmettre le fil entier à PLAQUISTE : un devis se négocie sur plusieurs tours
+(« c'est fann hock » répond à « quel est le nom du client ? » d'un tour plus
+tôt), et sans l'historique l'agent redemandait les mêmes informations en
+boucle, sans jamais pouvoir finaliser.
+
+**La passerelle OpenAI n'a pas reçu ce correctif.** Un devis conduit depuis un
+client extérieur reproduisait exactement la boucle d'avant le 31/08.
+
+Corrigé avec la même répartition qu'ailleurs : `prompt` porte le fil aplati,
+`history` et `message_actuel` gardent les tours séparés pour la capture
+déterministe du destinataire.
+
+**Non corrigé, et pas une tâche.** Les modèles nommés directement
+(`usman-fix`, `usman-repo`, `usman-coder`, `usman-research`, `usman-browser`)
+reçoivent eux aussi le dernier message seul. Rien ne dit que ces agents-là
+travaillent mieux avec une transcription qu'avec une consigne propre — le
+supposer serait la même erreur en sens inverse. **Question ouverte, mesurable,
+pas un correctif spéculatif.**
+
+---
+
+# Hors code : une fusion sur trois n'emporte pas tout
+
+#106 a été fusionnée à une **tête périmée** — GitHub a repris le commit
+enregistré au moment de la lecture de la PR, pas le dernier poussé. La réponse
+disait `"merged": true` ; deux commits n'étaient pas dans `master`.
+
+Troisième occurrence : #98, #103, #106.
+
+`git merge-base --is-ancestor` ne détecte rien ici — un squash crée un commit
+neuf, l'ancêtre ne correspond jamais, et la vérification rend un faux positif
+qui ressemble exactement à une vraie alerte. Ce qui tranche est le contenu :
+
+```
+git fetch origin master && git diff --stat <derniere-tete> origin/master
+```
+
+Rien en sortie = tout est passé. Règle écrite dans
+`docs/REGLES_DE_TRAVAIL.md`, § 3, pour ne pas la redécouvrir une quatrième fois.
+
+---
+
+# Défaut n° 17 — un flux vide était compté comme un succès
+
+`RouteurModeles.generate_stream` replie sur le fournisseur suivant tant que
+**rien n'est parti vers l'écran** — c'est sa règle, et elle est juste. Mais un
+fournisseur qui termine son flux **sans un seul morceau** ne lève aucune
+exception : la boucle sortait normalement et l'appel était noté `succès`.
+
+Mesuré :
+
+```
+avant : morceaux []          dernier_choix 'CHOIX-PRECEDENT'   repli local []
+après : morceaux ['reponse locale']   dernier_choix 'local'    repli local ['bonjour']
+```
+
+Deux conséquences, et la seconde est la plus sournoise :
+
+1. **Aucun repli.** L'écran du propriétaire reste vide alors qu'Ollama aurait
+   répondu.
+2. **`dernier_choix` gardait la valeur du tour précédent.** `moteur_utilise()`
+   annonçait donc à l'interface le **mauvais** moteur. ARENA lui dit qui a
+   répondu (DEC-0009, parce que le lui cacher serait lui mentir sur ce qui a vu
+   sa phrase) — et se trompait.
+
+Même défaut hors flux : `generate` renvoyait une réponse vide telle quelle.
+
+**Le repli se fait sans mettre le fournisseur au frais**, et c'est le point qui
+demandait de la mesure plutôt qu'un réflexe. `_echec(LOCAL)` aurait fait dire à
+`is_available()` « Ollama hors-ligne » pendant deux minutes **alors qu'Ollama
+répond** : ARENA aurait dit quelque chose de faux sur la machine du
+propriétaire. Un flux vide est une mauvaise réponse, pas une indisponibilité
+prouvée. Un test pin l'asymétrie ; ajouter `_echec` le fait tomber.
+
+---
+
+# Défaut n° 18 — la bulle vide, corrigée sur une surface, vivante sur les deux autres
+
+Le 26/08/2026, `garantir_un_texte` est né parce que LibreChat affichait **une
+bulle entièrement vide**, sans texte ni erreur, quand un agent s'arrêtait sans
+rien produire (`usman-research`). Le garde a été posé sur la passerelle OpenAI.
+
+Mesuré le 01/09/2026 sur les deux autres surfaces :
+
+```
+PWA       -> {"type": "token", "text": ""}  puis  {"type": "done", ...}
+/api/chat -> {"status": "success", ..., "response": ""}
+```
+
+La PWA est **la surface que le propriétaire utilise**. Et `/api/chat` fait pire
+que la laisser passer : il l'annonce `success`. Un client n'a aucun moyen de
+distinguer « l'agent s'est arrêté » de « ARENA n'avait rien à dire ».
+
+`garantir_un_texte` vit désormais dans `routers/chat.py`, où les trois surfaces
+l'atteignent, accompagné de `a_produit_un_texte` — parce que l'appelant a
+besoin des deux réponses : le texte à montrer, **et** de quoi choisir le bon
+statut.
+
+La suggestion « ou choisis `usman-chat` » reste sur la passerelle OpenAI :
+elle ne veut rien dire sur une interface sans menu de modèles.
+
+**Un test existant m'a rattrapé.** En déplaçant la fonction j'avais désaccentué
+son message — « aucune reponse » au lieu de « aucune réponse ». C'est un texte
+que le propriétaire lit. `tests/test_studio.py::TestJamaisDeReponseVide` a
+échoué sur exactement ce mot.
+
+## Et une quatrième surface
+
+La question posée une fois de plus a trouvé `/api/chat/stream` : la branche
+spécialisée poussait `{'token': ''}` puis `[DONE]`, et la branche conversation
+fermait le flux sans un mot quand la génération ne produisait rien.
+
+Les deux disent maintenant ce qui s'est passé. La mémoire y écrit
+`[aucune reponse produite]` plutôt qu'une chaîne vide — un tour d'historique
+vide se relit comme une réponse, pas comme une absence.
+
+C'est le troisième défaut de cette nuit qui a la même forme : **une règle
+apprise sur une surface, jamais portée sur les autres** (n° 15, n° 16 ter,
+n° 18). Quand une règle est trouvée quelque part, la question suivante n'est
+pas « est-ce corrigé ? » mais « qui d'autre fait la même chose ? ». Posée
+quatre fois cette nuit, elle a répondu quatre fois oui.
+
+---
+
+# Défaut n° 19 — le diagnostic vérifiait un modèle que le code n'utilise plus
+
+La valeur par défaut de `EMBEDDINGS_LOCAL_MODEL` était écrite **deux fois** :
+
+| Fichier | Valeur |
+|---|---|
+| `core/memory/semantique.py:52` | `bge-m3` |
+| `scripts/doctor.py:586` | `nomic-embed-text` |
+
+Le passage à `bge-m3` date du 27/08/2026 et il est **mesuré**, pas choisi : le
+seuil sémantique de 0,45 lui appartient — avec `nomic-embed-text` les souvenirs
+pertinents et les autres se mélangeaient autour de 0,55, et aucun seuil n'était
+utilisable. Le diagnostic n'a pas suivi.
+
+Conséquence : le propriétaire installe le modèle que le diagnostic nomme, le
+diagnostic passe au vert, et la mémoire sémantique ne marche toujours pas —
+sans que rien ne le dise.
+
+Une seule source désormais (`modele_embeddings_du_code()`), et `None` quand
+elle est illisible : **nommer un modèle au hasard est exactement ce qui a
+produit le défaut**. La clé entre aussi dans `.env.example`, où elle n'avait
+jamais figuré, avec la raison du choix à côté.
+
+## Défaut n° 19 bis — deux outils ignoraient `OLLAMA_BASE_URL`
+
+`BrowserUseTool` et `LightRAGTool` écrivaient `http://127.0.0.1:11434` et
+`qwen2.5-coder:14b` en dur. Un Ollama déplacé, ou un modèle changé dans `.env`,
+laissait **tout** marcher sauf la navigation et les documents — avec une erreur
+nommant une adresse que le propriétaire n'avait jamais configurée.
+
+Mesuré après correction :
+
+```
+OLLAMA_BASE_URL=http://192.168.1.50:11434 CODER_LOCAL_MODEL=un-autre-modele
+  -> base_url http://192.168.1.50:11434   modele un-autre-modele
+```
+
+Un test balaie tout le dépôt : écrire le port est permis, l'écrire **sans lire
+la variable** ne l'est pas. Deux exceptions nommées, et ce ne sont pas des
+oublis — le défaut d'argument du fournisseur (que `runtime.py` remplace
+toujours) et `host.docker.internal`, qui est une autre adresse pour un autre
+réseau.
+
+**Laissé en place, délibérément** : le modèle d'embeddings de LightRAG reste
+écrit dans le code. Il est couplé à `embedding_dim=768` **et** à l'index déjà
+construit ; le changer sans reconstruire l'index rend des distances qui ne
+veulent rien dire. `OPTIONAL — NON IMPLÉMENTÉ`, décision du propriétaire.

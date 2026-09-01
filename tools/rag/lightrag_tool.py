@@ -2,6 +2,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from apps.backend.config import MODELE_RAPIDE, OLLAMA_URL
+
 logger = logging.getLogger("usman.tools.rag")
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -46,16 +48,21 @@ class LightRAGTool:
             self.rag = LightRAG(
                 working_dir=str(self.working_dir),
                 llm_model_func=ollama_model_complete,
-                llm_model_name="qwen2.5-coder:14b",
+                llm_model_name=MODELE_RAPIDE,
                 llm_model_max_async=4,
-                llm_model_kwargs={"host": "http://127.0.0.1:11434", "options": {"num_ctx": 4096}},
+                llm_model_kwargs={"host": OLLAMA_URL, "options": {"num_ctx": 4096}},
+                # Le modele d'embeddings reste ecrit ici, et c'est
+                # delibere : il est couple a `embedding_dim` ci-dessous ET a
+                # l'index deja construit dans `working_dir`. Le changer sans
+                # reconstruire l'index rend des distances qui ne veulent rien
+                # dire. C'est une decision du proprietaire, pas un reglage.
                 embedding_func=EmbeddingFunc(
                     embedding_dim=768,
                     max_token_size=8192,
                     func=lambda texts: ollama_embed(
                         texts,
                         embed_model="nomic-embed-text",
-                        host="http://127.0.0.1:11434"
+                        host=OLLAMA_URL,
                     )
                 )
             )

@@ -1094,3 +1094,33 @@ class TestHistoriqueApresCoupure:
 
         assert charges[-1]["type"] == "error"
         assert self._historique(session) == []
+
+
+class TestReponseVide:
+    """Un agent qui ne rend rien ne doit pas produire une bulle vide.
+
+    Le garde existe pour LibreChat depuis le 26/08/2026 (`garantir_un_texte`,
+    observé sur `usman-research`). Mesuré le 01/09/2026 : cette surface-ci —
+    celle du propriétaire — rendait `{"type": "token", "text": ""}` puis
+    `done`. Aucun texte, aucune erreur : le client n'a aucun moyen de
+    distinguer « l'agent s'est arrêté » de « ARENA n'avait rien à dire ».
+    """
+
+    @pytest.fixture
+    def agent_muet(self, monkeypatch):
+        async def muet(demande, intent=None):
+            return {"response": "", "agent": "ResearcherAgent", "sources": []}
+
+        async def recherche(*_a, **_k):
+            return "DEEP_RESEARCH"
+
+        monkeypatch.setattr(pwa_gateway, "dispatch_request", muet)
+        monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", recherche)
+
+    def test_le_vide_devient_une_erreur_nommee(self, client, entetes, agent_muet):
+        charges = trames(demander(client, entetes, text="cherche X").text)
+
+        assert charges[-1]["type"] == "error"
+        assert "DEEP_RESEARCH" in charges[-1]["message"]
+        assert not any(c.get("type") == "token" and not c.get("text", "").strip()
+                       for c in charges), "aucune bulle vide ne doit partir"

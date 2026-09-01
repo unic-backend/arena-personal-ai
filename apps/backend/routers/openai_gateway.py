@@ -5,6 +5,7 @@ client concu pour parler a ChatGPT parle a Usman en changeant l'adresse du
 serveur. Chaque « modele » expose ici est en realite un agent.
 """
 
+import hashlib
 import json
 import logging
 import time
@@ -14,7 +15,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from apps.backend.config import AGENTS_SPECIALISES
 from apps.backend.prompts import prompt_avec_methode
-from apps.backend.routers.chat import ChatRequest, dispatch_request, formater_sources
+from apps.backend.routers.chat import (
+    ChatRequest,
+    dispatch_request,
+    formater_sources,
+    garantir_un_texte,
+)
 from apps.backend.runtime import (
     browser_agent,
     coder_agent,
@@ -23,6 +29,7 @@ from apps.backend.runtime import (
     fresh_agent,
     graphrag_tool,
     lightrag_tool,
+    memory,
     orchestrator,
     plaquiste_agent,
     repo_engineer,
@@ -81,28 +88,9 @@ async def list_openai_models():
         ]
     }
 
-def garantir_un_texte(contenu: str, modele: str) -> str:
-    """Empêche qu'une réponse vide parte comme si c'était une réponse.
-
-    Chaque branche d'aiguillage lit `.get("response", "")`. Un agent qui échoue
-    renvoie un dictionnaire sans cette clé, donc la chaîne vide — et `"" is not
-    None` est vrai. LibreChat affichait alors **une bulle entièrement vide**,
-    sans texte ni erreur. Observé le 2026-08-26 sur `usman-research`.
-
-    Une capacité qui n'a rien produit dit qu'elle n'a rien produit. C'est la
-    règle appliquée partout ailleurs dans ce dépôt ; elle manquait ici.
-    """
-    if contenu and contenu.strip():
-        return contenu
-
-    logger.warning(f"Modele '{modele}' n'a produit aucun texte")
-    return (
-        f"`{modele}` n'a produit aucune réponse.\n\n"
-        "Ce n'est pas un refus : l'agent s'est arrêté sans rien renvoyer. "
-        "Les journaux du serveur Usman disent à quelle étape. "
-        "Reformule la demande, ou choisis `usman-chat`."
-    )
-
+#: Le menu de modeles de LibreChat & co. : la seule surface ou
+#: « choisis usman-chat » veut dire quelque chose.
+ALTERNATIVE_MENU = ", ou choisis `usman-chat`"
 
 #: 503 et non 500 : le probleme n'est pas la requete, et un client qui
 #: reessaie plus tard a raison de le faire.
@@ -190,6 +178,60 @@ async def openai_chat_completions(request: Request):
         return _erreur_openai(souci, model_requested, stream)
 
 
+#: Les roles dont un tour entre dans le fil. `system` en est absent
+#: deliberement : un message systeme envoye par un client exterieur ne prend
+#: pas l'autorite des consignes d'ARENA (`.claude/rules` — un texte exterieur
+#: est une donnee, jamais une instruction).
+ROLES_DU_FIL = ("user", "assistant")
+
+
+def _fil_de_la_conversation(messages: list, proprietaire: str) -> str:
+    """Reconstruit le fil a partir des `messages` envoyes par le client.
+
+    Le protocole OpenAI est sans etat : c'est le client qui porte la
+    conversation, et son tableau `messages` fait foi — exactement comme
+    l'historique du navigateur fait foi cote PWA
+    (`pwa_gateway._prompt_conversation`).
+
+    Avant le 01/09/2026 la passerelle ne transmettait que le DERNIER message
+    utilisateur. Mesure : sur `[« qui a gagne la coupe 1998 ? », « la France »,
+    « et celle de 2006 ? »]`, le modele ne voyait que
+    `'Et celle de 2006 ?'` — une question elliptique sans son sujet.
+    """
+    lignes = [
+        f"{proprietaire if tour.get('role') == 'user' else 'Usman'}: "
+        f"{tour.get('content', '')}"
+        for tour in messages if tour.get("role") in ROLES_DU_FIL
+    ]
+    lignes.append("Usman:")
+    return "\n".join(lignes)
+
+
+def proprietaire_actuel() -> str:
+    """Le nom sous lequel ses propres tours apparaissent dans le fil."""
+    return memory.get_fact("owner") or "Ousmane"
+
+
+def _cle_de_conversation(messages: list) -> str:
+    """Une cle de session propre a CETTE conversation.
+
+    Sans elle, `ChatRequest` retombait sur `session_id="default"` : toutes les
+    conversations de tous les clients exterieurs ecrivaient et relisaient la
+    meme memoire. Deux discussions distinctes dans un meme client se
+    contaminaient — et `fresh_info` relit justement cet historique pour
+    resoudre une question elliptique.
+
+    Le protocole ne porte aucun identifiant de conversation. Le premier
+    message utilisateur en tient lieu : stable d'un tour a l'autre du meme fil,
+    different d'un fil a l'autre. Deux conversations ouvertes par exactement la
+    meme phrase partagent une cle — c'est le prix, et il est assume.
+    """
+    premier = next(
+        (m.get("content", "") for m in messages if m.get("role") == "user"), "")
+    empreinte = hashlib.sha256(premier.encode("utf-8")).hexdigest()[:16]
+    return f"openai-{empreinte}"
+
+
 async def _repondre(body: dict, stream: bool, model_requested: str):
     """Le travail reel, sorti pour qu'un seul `try` le couvre en entier."""
     messages = body.get("messages", [])
@@ -202,7 +244,8 @@ async def _repondre(body: dict, stream: bool, model_requested: str):
     if not last_user_msg:
         last_user_msg = "Bonjour"
 
-    chat_req = ChatRequest(prompt=last_user_msg)
+    chat_req = ChatRequest(prompt=last_user_msg,
+                           session_id=_cle_de_conversation(messages))
 
     # ---- Agents joignables directement par leur nom dans le menu ----
     contenu = None
@@ -242,28 +285,45 @@ async def _repondre(body: dict, stream: bool, model_requested: str):
 
     if contenu is not None:
         logger.info(f"Modele '{model_requested}' -> agent dedie")
-        return _reponse_openai(garantir_un_texte(contenu, model_requested), model_requested, stream)
+        return _reponse_openai(garantir_un_texte(contenu, model_requested, ALTERNATIVE_MENU), model_requested, stream)
 
     # ---- usman-chat : aiguillage automatique selon la question ----
     intent = await orchestrator.analyze_intent(last_user_msg)
     logger.info(f"Modele 'usman-chat' -> intention detectee : {intent}")
 
     if intent in AGENTS_SPECIALISES:
+        if intent == "PLAQUISTE":
+            # Un devis se negocie sur plusieurs tours (« c'est fann hock »
+            # repond a « quel est le nom du client ? » d'un tour plus tot).
+            # `pwa_gateway` transmet deja le fil pour cette seule intention,
+            # depuis le 31/08/2026 — decouvert en direct avec le proprietaire,
+            # qui tournait en boucle sur les memes questions. Cette passerelle
+            # ne le faisait pas : le meme devis, depuis un client exterieur,
+            # ne se terminait jamais. Meme repartition qu'ailleurs : `prompt`
+            # porte le fil aplati, `history`/`message_actuel` gardent les tours
+            # separes pour la capture deterministe du destinataire.
+            chat_req = chat_req.model_copy(update={
+                "prompt": _fil_de_la_conversation(messages, proprietaire_actuel()),
+                "history": [m for m in messages if m.get("role") in ROLES_DU_FIL][:-1],
+                "message_actuel": last_user_msg,
+            })
         res = await dispatch_request(chat_req, intent=intent)
         contenu = res.get("response", "") + formater_sources(res.get("sources", []), last_user_msg)
-        return _reponse_openai(garantir_un_texte(contenu, intent), model_requested, stream)
+        return _reponse_openai(garantir_un_texte(contenu, intent, ALTERNATIVE_MENU), model_requested, stream)
 
     # ---- Discussion simple : reponse mot par mot ----
     if not stream:
         res = await dispatch_request(chat_req, intent=intent)
-        return _reponse_openai(garantir_un_texte(res.get("response", ""), intent), model_requested, stream)
+        return _reponse_openai(garantir_un_texte(res.get("response", ""), intent, ALTERNATIVE_MENU), model_requested, stream)
+
+    fil = _fil_de_la_conversation(messages, proprietaire_actuel())
 
     async def generateur_discussion():
         cree = int(time.time())
         system_prompt = prompt_avec_methode(last_user_msg, intent)
 
         try:
-            async for jeton in fast_provider.generate_stream(last_user_msg, system_prompt):
+            async for jeton in fast_provider.generate_stream(fil, system_prompt):
                 morceau = {
                     "id": f"chatcmpl-{cree}",
                     "object": "chat.completion.chunk",

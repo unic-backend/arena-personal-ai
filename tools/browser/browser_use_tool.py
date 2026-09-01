@@ -9,6 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+from apps.backend.config import MODELE_RAPIDE, OLLAMA_URL
 from core.models.ollama_provider import OllamaProvider
 
 
@@ -16,7 +17,12 @@ class BrowserUseTool:
     """Outil de navigation Web autonome basé sur Browser-Use et Playwright."""
 
     def __init__(self, provider: Optional[OllamaProvider] = None):
-        self.provider = provider or OllamaProvider(base_url="http://127.0.0.1:11434", model_name="qwen2.5-coder:14b")
+        # L'adresse et le modele viennent de la configuration, jamais du code :
+        # ecrits en dur ici, un Ollama deplace ou un modele change dans `.env`
+        # laissait TOUT marcher sauf la navigation, avec une erreur nommant
+        # une adresse que le proprietaire n'avait pas configuree.
+        self.provider = provider or OllamaProvider(
+            base_url=OLLAMA_URL, model_name=MODELE_RAPIDE)
 
     async def run_task(self, task_instruction: str) -> Dict[str, Any]:
         """Ouvre Chromium de façon autonome, exécute la tâche et renvoie le résultat."""

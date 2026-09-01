@@ -33,7 +33,12 @@ from pydantic import BaseModel, Field
 
 from apps.backend.config import AGENTS_SPECIALISES
 from apps.backend.prompts import prompt_avec_methode
-from apps.backend.routers.chat import ChatRequest, dispatch_request
+from apps.backend.routers.chat import (
+    ChatRequest,
+    a_produit_un_texte,
+    dispatch_request,
+    garantir_un_texte,
+)
 from apps.backend.runtime import (
     fast_provider,
     index_semantique,
@@ -441,6 +446,15 @@ async def flux_agent(demande: DemandeAgent):
                         f"{mesure.detail or 'raison inconnue'}.")
                     return
                 resultat = rendu["resultat"]
+                if not a_produit_un_texte(resultat.get("response")):
+                    # Une bulle vide, sans texte ni erreur : le client n'a
+                    # aucun moyen de distinguer « l'agent s'est arrete » de
+                    # « ARENA n'avait rien a dire ». Le garde existait pour
+                    # LibreChat depuis le 26/08/2026 ; cette surface-ci, celle
+                    # du proprietaire, ne l'avait pas.
+                    yield erreur(garantir_un_texte(
+                        resultat.get("response"), intention))
+                    return
                 yield jeton(resultat["response"])
                 yield fin({
                     **moteur_utilise(),

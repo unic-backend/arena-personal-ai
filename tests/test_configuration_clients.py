@@ -177,3 +177,58 @@ class TestLesModelesParDefautNeDiverguentPas:
         assert "llama-3.3-70b-versatile" not in (
             RACINE / ".env.example").read_text(encoding="utf-8").replace(
                 "# ", "").split("GROQ_MODEL=")[-1].splitlines()[0]
+
+
+class TestAucuneAdresseOllamaEcriteEnDur:
+    """`OLLAMA_BASE_URL` doit gouverner **tout** ce qui parle à Ollama.
+
+    Mesuré le 01/09/2026 : `BrowserUseTool` et `LightRAGTool` écrivaient
+    `http://127.0.0.1:11434` et `qwen2.5-coder:14b` en dur. Un Ollama déplacé,
+    ou un modèle changé dans `.env`, laissait tout marcher **sauf** la
+    navigation et les documents — avec une erreur nommant une adresse que le
+    propriétaire n'avait jamais configurée.
+    """
+
+    #: Deux exceptions, et elles ne sont pas des oublis :
+    #: - `ollama_provider.py` : le défaut d'un argument, que l'appelant remplace
+    #:   toujours par la valeur configurée (`runtime.py`).
+    #: - `graphrag_tool.py` : `host.docker.internal`, une autre adresse pour un
+    #:   autre réseau — celle de l'hôte vue depuis un conteneur.
+    AUTORISES = {
+        "core/models/ollama_provider.py",
+        "tools/rag/graphrag_tool.py",
+    }
+
+    def test_personne_d_autre_n_ecrit_l_adresse_en_dur(self):
+        """Écrire le port est permis — l'écrire sans lire la variable ne l'est pas."""
+        coupables = []
+        for chemin in RACINE.rglob("*.py"):
+            relatif = chemin.relative_to(RACINE).as_posix()
+            if relatif.startswith(("tests/", ".venv/")) or "__pycache__" in relatif:
+                continue
+            if relatif in self.AUTORISES:
+                continue
+            source = chemin.read_text(encoding="utf-8")
+            if "11434" in source and "OLLAMA_BASE_URL" not in source:
+                coupables.append(relatif)
+
+        assert coupables == [], (
+            "ces fichiers ignorent OLLAMA_BASE_URL : " + ", ".join(coupables))
+
+    def test_le_navigateur_suit_la_configuration(self, monkeypatch):
+        import importlib
+
+        monkeypatch.setenv("OLLAMA_BASE_URL", "http://ailleurs:11500")
+        monkeypatch.setenv("CODER_LOCAL_MODEL", "un-autre-modele")
+        import apps.backend.config as config
+        import tools.browser.browser_use_tool as navigateur
+        importlib.reload(config)
+        importlib.reload(navigateur)
+        try:
+            outil = navigateur.BrowserUseTool()
+            assert outil.provider.base_url == "http://ailleurs:11500"
+            assert outil.provider.model_name == "un-autre-modele"
+        finally:
+            monkeypatch.undo()
+            importlib.reload(config)
+            importlib.reload(navigateur)

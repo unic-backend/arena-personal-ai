@@ -258,6 +258,13 @@ class RouteurModeles(ModelProvider):
                 self._noter(nom, classement, repli=index > 0, succes=False)
                 essayes.append(nom)
                 continue
+            if not (reponse or "").strip():
+                # Meme regle que pour le flux : une reponse vide laisse son
+                # ecran vide. On replie, sans mettre le fournisseur au frais.
+                logger.info("%s a rendu une reponse vide, repli.", nom)
+                self._noter(nom, classement, repli=index > 0, succes=False)
+                essayes.append(nom)
+                continue
             self.dernier_choix = Choix(nom, raison, classement, essayes)
             self._noter(nom, classement, repli=index > 0, succes=True)
             return reponse
@@ -310,6 +317,22 @@ class RouteurModeles(ModelProvider):
                 logger.info("%s a echoue avant le premier mot (%s), repli.",
                             nom, type(erreur).__name__)
                 self._echec(nom)
+                self._noter(nom, classement, repli=index > 0, succes=False)
+                essayes.append(nom)
+                continue
+            if not commence:
+                # Un flux qui se termine sans un seul morceau n'est pas une
+                # reponse : l'ecran reste vide, et `dernier_choix` gardait la
+                # valeur du TOUR PRECEDENT — l'interface nommait alors le
+                # mauvais moteur. Rien n'etant parti vers son ecran, le repli
+                # est encore permis, et c'est exactement le moment ou il l'est.
+                #
+                # Sans `_echec` toutefois : un flux vide est une mauvaise
+                # reponse, pas une indisponibilite prouvee. Mettre LOCAL au
+                # frais ferait dire a `is_available()` « Ollama hors-ligne »
+                # pendant deux minutes alors qu'Ollama repond — ARENA dirait
+                # quelque chose de faux sur sa propre machine.
+                logger.info("%s a rendu un flux vide, repli.", nom)
                 self._noter(nom, classement, repli=index > 0, succes=False)
                 essayes.append(nom)
                 continue

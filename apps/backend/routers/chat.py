@@ -225,6 +225,51 @@ async def indexer_ses_documents(
             "indexation": rapport.resume()}
 
 
+def a_produit_un_texte(contenu: Optional[str]) -> bool:
+    """Un agent a-t-il reellement rendu quelque chose ?
+
+    Separe de `garantir_un_texte` parce que l'appelant a besoin des deux
+    reponses : le texte a montrer, et de quoi choisir le bon statut. Une
+    reponse vide annoncee `success` est un mensonge que le client ne peut pas
+    detecter.
+    """
+    return bool(contenu and contenu.strip())
+
+
+def garantir_un_texte(contenu: Optional[str], source: str,
+                      alternative: str = "") -> str:
+    """Empeche qu'une reponse vide parte comme si c'etait une reponse.
+
+    Chaque branche d'aiguillage lit `.get("response", "")`. Un agent qui
+    echoue renvoie un dictionnaire sans cette cle, donc la chaine vide — et
+    `"" is not None` est vrai. LibreChat affichait alors **une bulle
+    entierement vide**, sans texte ni erreur. Observe le 2026-08-26 sur
+    `usman-research`.
+
+    Le garde n'existait que sur la passerelle OpenAI. Mesure du 01/09/2026 :
+    la PWA rendait `{"type": "token", "text": ""}` puis `done`, et
+    `/api/chat` rendait `{"status": "success", "response": ""}` — la meme
+    bulle vide, sur les deux autres surfaces, dont celle que le proprietaire
+    utilise. D'ou son deplacement ici, ou les trois surfaces l'atteignent.
+
+    Args:
+        source: ce qui n'a rien produit — un agent, une intention, un modele.
+        alternative: quoi essayer a la place, quand l'appelant en connait une.
+            Vide par defaut : « choisis usman-chat » ne veut rien dire sur une
+            interface sans menu de modeles.
+    """
+    if a_produit_un_texte(contenu):
+        return contenu
+
+    logger.warning("« %s » n'a produit aucun texte", source)
+    return (
+        f"`{source}` n'a produit aucune réponse.\n\n"
+        "Ce n'est pas un refus : l'agent s'est arrêté sans rien renvoyer. "
+        "Les journaux du serveur disent à quelle étape. "
+        f"Reformule la demande{alternative}."
+    )
+
+
 async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -> Dict[str, Any]:
     """Aiguille la demande vers l'agent choisi.
 
@@ -353,13 +398,18 @@ async def chat_endpoint(request: ChatRequest):
             return {"status": "error", "model": fast_provider.model_name, "response": "❌ Ollama hors-ligne."}
 
         result = await dispatch_request(request)
+        intention = result.get("intent", "CHAT")
+        # Une reponse vide annoncee `success` est un mensonge que le client ne
+        # peut pas detecter : il affiche une bulle vide et n'a rien a dire au
+        # proprietaire. Le statut suit ce qui s'est reellement passe.
+        vide = not a_produit_un_texte(result.get("response"))
         return {
-            "status": "success",
+            "status": "error" if vide else "success",
             "model": fast_provider.model_name,
-            "intent": result.get("intent", "CHAT"),
+            "intent": intention,
             "agent": result.get("agent", "OrchestratorAgent"),
             "sources": result.get("sources", []),
-            "response": result["response"]
+            "response": garantir_un_texte(result.get("response"), intention),
         }
     except Exception as e:
         logger.error(f"Erreur endpoint chat: {e}", exc_info=True)
@@ -372,8 +422,11 @@ async def chat_stream_endpoint(request: ChatRequest):
 
     if intent in AGENTS_SPECIALISES:
         result = await dispatch_request(request, intent=intent)
+        # Quatrieme surface, meme trou : un agent muet envoyait un jeton vide
+        # suivi de `[DONE]`. Le garde est le meme partout depuis le 01/09/2026.
+        texte = garantir_un_texte(result.get("response"), intent)
         async def text_gen():
-            yield f"data: {json.dumps({'token': result['response'], 'intent': intent})}\n\n"
+            yield f"data: {json.dumps({'token': texte, 'intent': intent})}\n\n"
             yield "data: [DONE]\n\n"
         return StreamingResponse(text_gen(), media_type="text/event-stream")
     else:
@@ -416,6 +469,18 @@ async def chat_stream_endpoint(request: ChatRequest):
                 memory.add_chat_message(
                     session_id=session_id, role="assistant",
                     content=f"[interrompu : {type(souci).__name__}]")
+                yield "data: [DONE]\n\n"
+                return
+
+            if not a_produit_un_texte(full_reply):
+                # Un flux qui se ferme sans un mot : le client afficherait une
+                # bulle vide. Le routeur replie deja quand un fournisseur rend
+                # du vide (DEC-0032) ; s'il n'en restait aucun, on le dit.
+                texte_vide = garantir_un_texte(full_reply, intent)
+                yield "data: " + json.dumps(
+                    {"type": "error", "message": texte_vide}) + "\n\n"
+                memory.add_chat_message(session_id=session_id, role="assistant",
+                                        content="[aucune reponse produite]")
                 yield "data: [DONE]\n\n"
                 return
 

@@ -457,3 +457,46 @@ class TestVoiceStudioEstDiagnostique:
         """Sans ça, la vérification existe mais personne ne la voit."""
         import inspect
         assert 'mesurer("Voix (VoiceStudio)"' in inspect.getsource(doctor)
+
+
+class TestModeleEmbeddings:
+    """Le diagnostic doit nommer le modèle qu'ARENA demande, pas un autre.
+
+    Défaut mesuré le 01/09/2026 : la valeur par défaut était écrite deux fois
+    et avait divergé. `scripts/doctor.py` vérifiait `nomic-embed-text` pendant
+    que `core/memory/semantique.py` demandait `bge-m3` depuis le 27/08/2026 —
+    un changement mesuré, pas un goût : le seuil sémantique de 0,45 appartient
+    à bge-m3.
+
+    Conséquence : le propriétaire installait le modèle que le diagnostic
+    nommait, le diagnostic passait au vert, et la mémoire sémantique ne
+    marchait toujours pas.
+    """
+
+    def test_le_diagnostic_nomme_le_modele_du_code(self):
+        from core.memory.semantique import MODELE_EMBEDDINGS
+
+        assert doctor.modele_embeddings_du_code() == MODELE_EMBEDDINGS
+
+    def test_la_variable_d_environnement_est_respectee(self, monkeypatch):
+        """Une seule source, mais toujours réglable par `.env`."""
+        import importlib
+
+        import core.memory.semantique as semantique
+
+        monkeypatch.setenv("EMBEDDINGS_LOCAL_MODEL", "un-modele-a-lui")
+        importlib.reload(semantique)
+        try:
+            assert doctor.modele_embeddings_du_code() == "un-modele-a-lui"
+        finally:
+            monkeypatch.delenv("EMBEDDINGS_LOCAL_MODEL", raising=False)
+            importlib.reload(semantique)
+
+    def test_un_modele_illisible_ne_se_devine_pas(self, monkeypatch):
+        """Nommer un modèle au hasard est exactement ce qui a produit le défaut."""
+        monkeypatch.setattr(doctor, "modele_embeddings_du_code", lambda: None)
+
+        resultat = doctor.verifier_modele_embeddings(["bge-m3"])
+
+        assert resultat.etat == doctor.ABSENT
+        assert "indeterminable" in resultat.detail
