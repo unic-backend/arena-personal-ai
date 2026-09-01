@@ -21,7 +21,7 @@ def echantillon_audio(ffmpeg_disponible, tmp_path):
 
 
 @pytest.mark.integration
-def test_la_duree_detectee_correspond_a_l_audio(echantillon_audio):
+def test_la_duree_detectee_correspond_a_l_audio(modele_whisper_disponible, echantillon_audio):
     res = TranscriptionTool(model_size="tiny").transcribe(str(echantillon_audio))
 
     assert res["duration"] == pytest.approx(2.0, abs=0.5)
