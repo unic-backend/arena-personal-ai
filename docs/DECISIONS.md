@@ -1869,3 +1869,85 @@ Accepté explicitement par lui, pas une régression passée inaperçue.
 Retour arrière : ne plus appeler `_destinataire_par_modele()` dans `run()`
 restaure la capture strictement déterministe de DEC-0024, sans toucher au
 reste de l'agent.
+
+---
+
+## DEC-0026 : le montage — le modèle propose un plan, il ne pilote pas la timeline
+
+*Décidé le 01/09/2026, mission « intégration OpenCut ». Suite directe de
+l'audit `docs/audits/opencut_audit.md`, qui n'intégrait rien.*
+
+### Le problème
+
+L'audit a conclu qu'OpenCut apporte un **modèle de projet** (timeline, pistes,
+éléments) et non un moteur de rendu utilisable ici : sa version classique rend
+dans le navigateur, la réécriture Rust n'a ni API headless ni couche MCP. ARENA
+a donc repris le modèle et gardé `ffmpeg` comme rendu, derrière une frontière
+remplaçable (`core/montage/`).
+
+Restait la question que le modèle de projet ne répond pas : **par où une phrase
+du propriétaire devient-elle une timeline ?** La mission le posait comme une
+contrainte, pas comme une option : *« Do not let the LLM directly manipulate
+arbitrary internal state without validation. Use a structured operation layer. »*
+
+### La décision
+
+Trois barrières, dans cet ordre, et la deuxième est la seule qui soit une
+frontière de sécurité :
+
+1. **La liste des opérations est fermée** (`OPERATIONS_OUVERTES`,
+   `core/connectors/montage.py`). Un nom hors liste ou commençant par `_` est
+   refusé et nommé.
+
+2. **Le modèle ne cite jamais un chemin de fichier.** Il travaille sur un
+   inventaire `{nom: chemin}` bâti côté serveur (`medias_montables()` dans
+   `apps/backend/routers/chat.py`, limité aux dossiers de rushes et aux
+   extensions montables) et ne nomme que des noms. `core/montage/planificateur.py`
+   substitue le vrai chemin ; un `chemin` cité dans un plan est refusé même
+   s'il est exact, et le prompt ne montre aucune arborescence.
+
+3. **Les paramètres sont lus sur `Montage` par introspection**, jamais recopiés
+   — une liste écrite à la main aurait divergé en silence à la première
+   signature changée.
+
+Et une règle qui n'est pas une barrière mais la même discipline que partout
+ailleurs ici : **un plan refusé ne devient jamais un plan de repli.** Ni coupe
+de quinze secondes, ni timeline vide qui rendrait un fichier noir. Ollama
+éteint, JSON illisible, plan vide : l'agent le rapporte.
+
+### Ce que ça coûte si c'est faux
+
+Le modèle ne peut monter que ce que le propriétaire a téléversé. S'il veut
+assembler un fichier rangé ailleurs sur son disque, ARENA refusera de le
+trouver — il devra le déposer dans `media/`. C'est le prix accepté : sans
+l'inventaire, un texte injecté dans une transcription qu'ARENA vient de lire
+pourrait faire entrer n'importe quel fichier de la machine dans une vidéo.
+
+### Ce qui a été mesuré, et ce qui ne l'a pas été
+
+La chaîne a tourné en entier le 01/09/2026, **sauf l'appel au modèle** :
+Ollama n'est pas sur la machine de l'assistant (`docs/REGLES_DE_TRAVAIL.md`).
+Le plan utilisé était la réponse qu'un modèle rend réellement — de la prose
+autour d'un bloc ```json, une opération inventée (`publier_sur_instagram`) et
+un chemin cité (`/etc/passwd`). Les deux ont été refusées et nommées ; les
+neuf autres opérations ont composé, puis rendu
+`1080x1920`, `h264`, `6.000000 s`, 180 images, logo et titre incrustés
+vérifiés à l'image extraite. Le cadrage a été mesuré et non estimé : la
+source 16:9 occupe 1080 × 608, soit 1.776 — l'aspect est préservé.
+
+**`MONTAGE` avec un vrai modèle reste `UNKNOWN` jusqu'à ce que le PC du
+propriétaire soit rallumé.** L'aiguillage, la validation, la composition et le
+rendu sont mesurés ; la qualité du plan que Qwen produit ne l'est pas.
+
+### Un défaut trouvé par le CI, pas par cette machine
+
+`ConnecteurMontage.sonder()` rendait `NON_CONFIGURE` sans ffmpeg. La base lit
+la santé **avant toute capacité**, donc ce refus coupait aussi `composer`, qui
+est du Python pur. La machine de l'assistant a ffmpeg : la suite locale ne
+pouvait pas voir le défaut. Le CI, qui ne l'a pas, a fait tomber quatre tests.
+Trois tests cachent désormais ffmpeg de force, pour que la garantie tienne sur
+une machine qui l'a.
+
+Retour arrière : retirer `"MONTAGE"` de `AGENTS_SPECIALISES`
+(`apps/backend/config.py`) et de l'aiguilleur rend l'intention inatteignable
+sans toucher à `core/montage/`, qui reste appelable par le registre.

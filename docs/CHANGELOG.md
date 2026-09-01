@@ -2,6 +2,17 @@
 
 ## [Non publié]
 
+### Ajouté — 01/09/2026
+- **ARENA sait monter une vidéo, et une phrase suffit.** « Monte-moi un short
+  du chantier de Ouakam » devient un plan d'opérations validées, une timeline
+  composée, puis un fichier vérifié. Le modèle propose ; il ne pilote rien
+  (DEC-0026, `core/montage/`, `agents/montage/`).
+- **Le modèle ne peut désigner aucun fichier.** Il choisit parmi les rushes que
+  le propriétaire a téléversés, par leur nom seul. Un chemin cité dans un plan
+  est refusé même s'il est exact.
+- **Une opération inventée n'arrête pas le reste.** Les lignes écartées sont
+  nommées une par une ; les autres montent.
+
 ### Ajouté — 30/08/2026
 - **Les conversations sont les mêmes sur tous ses appareils.** Coffre côté
   serveur (`core/conversations/depot.py`), deux routes authentifiées

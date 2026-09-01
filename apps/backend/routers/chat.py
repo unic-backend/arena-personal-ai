@@ -29,6 +29,7 @@ from apps.backend.runtime import (
     graphrag_tool,
     lightrag_tool,
     memory,
+    montage_agent,
     orchestrator,
     plaquiste_agent,
     publisher_agent,
@@ -84,6 +85,45 @@ DEMANDES_DE_SOURCES = (
     "source", "sources", "référence", "reference", "d'où", "d ou", "d'ou",
     "lien", "liens", "url", "prouve", "preuve", "vérifiable", "verifiable",
 )
+
+
+#: Ou ARENA va chercher les rushes du proprietaire. Ses fichiers a lui : ce
+#: qu il a televerse, ce qui est arrive, et les extraits deja decoupes.
+#: `media/rendered` n en est pas : remonter ses propres rendus dans
+#: l inventaire ferait boucler un montage sur lui-meme.
+DOSSIERS_MONTABLES = ("source", "incoming", "clips", "downloads")
+
+#: Ce qu une timeline sait poser. Une extension absente d ici n entre pas dans
+#: l inventaire : le modele ne doit pas apprendre le nom d un fichier que le
+#: montage refuserait ensuite.
+EXTENSIONS_MONTABLES = frozenset({
+    ".mp4", ".mov", ".mkv", ".webm", ".avi",
+    ".jpg", ".jpeg", ".png", ".webp",
+    ".mp3", ".wav", ".m4a", ".aac",
+})
+
+
+def medias_montables(video_path: Optional[str] = None) -> List[str]:
+    """Les fichiers que le modele a le droit de monter, et eux seuls.
+
+    L inventaire est construit ICI, cote serveur, jamais depuis la reponse du
+    modele : c est la moitie backend de la garantie que
+    `core/montage/planificateur.py` tient de son cote.
+    """
+    chemins: List[str] = []
+    for dossier in DOSSIERS_MONTABLES:
+        racine = MEDIA_DIR / dossier
+        if not racine.is_dir():
+            continue
+        for fichier in sorted(racine.iterdir()):
+            if fichier.is_file() and fichier.suffix.lower() in EXTENSIONS_MONTABLES:
+                chemins.append(str(fichier))
+
+    # Un fichier explicitement designe par le proprietaire entre aussi, a
+    # condition de rester dans media/ — `validate_media_path` leve sinon.
+    if video_path:
+        chemins.append(str(validate_media_path(video_path)))
+    return chemins
 
 
 def sources_demandees(question: str) -> bool:
@@ -257,6 +297,13 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         result = graphrag_tool.query_global(request.prompt)
     elif intent == "VISION":
         result = await vision_agent.run(request.prompt, context={"attachments": request.attachments})
+    elif intent == "MONTAGE":
+        # L inventaire ouvert au modele : ses propres fichiers, et rien
+        # d autre. `validate_media_path` tient deja la frontiere du dossier
+        # media/ — le planificateur, lui, empeche le modele de nommer un
+        # chemin du tout (`core/montage/planificateur.py`).
+        result = await montage_agent.run(
+            request.prompt, context={"medias": medias_montables(request.video_path)})
     elif intent == "DEEP_RESEARCH":
         result = await researcher_agent.run(request.prompt)
     elif intent == "CODE_EXECUTION":

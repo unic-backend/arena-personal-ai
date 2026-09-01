@@ -14,6 +14,7 @@ from agents.coder.coder_agent import CoderAgent
 from agents.editor.editor_agent import EditorAgent
 from agents.email.email_agent import EmailAgent
 from agents.fresh_info.fresh_info_agent import FreshInfoAgent
+from agents.montage.montage_agent import MontageAgent
 from agents.orchestrator.orchestrator_agent import OrchestratorAgent
 from agents.plaquiste.plaquiste_agent import PlaquisteAgent
 from agents.publisher.publisher_agent import PublisherAgent
@@ -258,6 +259,12 @@ trend_agent = TrendAnalyzerAgent(provider=deep_provider, memory=memory)
 video_agent = VideoAnalyzerAgent(provider=deep_provider, memory=memory,
                                  registre=registre, travaux=travaux, journal=journal)
 vision_agent = VisionAgent(provider=ollama_vision, memory=memory, pieces_jointes=pieces_jointes)
+# Montage : la phrase du proprietaire devient un plan d operations validees
+# (`core/montage/planificateur.py`), jamais un pilotage direct de la timeline.
+# Le modele profond, parce que produire un JSON structure et coherent est une
+# redaction, pas une classification. Le registre lui donne le connecteur
+# `montage` — donc la meme confirmation que le devis PDF avant tout rendu.
+montage_agent = MontageAgent(provider=deep_provider, memory=memory, registre=registre)
 editor_agent = EditorAgent(provider=deep_provider, memory=memory)
 subtitle_agent = SubtitleAgent(provider=deep_provider, memory=memory)
 coder_agent = CoderAgent(provider=fast_provider, memory=memory)

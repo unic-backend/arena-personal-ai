@@ -340,3 +340,31 @@ class TestSalutationPure:
         agent = OrchestratorAgent(provider=provider_factory(), memory=None)
 
         assert await agent.analyze_intent("bonjour") == "CHAT"
+
+
+class TestAiguillageDuMontage:
+    """« monte la vidéo du chantier » contient « chantier » : sans cette
+    intention, elle partait chez l'assistant devis, qui n'a jamais su monter."""
+
+    @pytest.mark.parametrize("phrase", [
+        "monte une vidéo avec les photos du chantier",
+        "monte-moi un short avec mes rushes",
+        "fais le montage de la vidéo de Ouakam",
+        "assemble les clips et ajoute mon logo sur la vidéo",
+        "mets un titre sur la vidéo du chantier",
+        "prépare-moi un plan de montage",
+    ])
+    def test_une_demande_de_montage_va_au_montage(self, fake_provider, phrase):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == "MONTAGE"
+
+    @pytest.mark.parametrize("phrase,attendu", [
+        ("génère une vidéo sur la pose de placo", "VIDEO_ANALYSIS"),
+        ("où en est ma vidéo ?", "VIDEO_ANALYSIS"),
+        ("fais-moi un devis pour le chantier de Ouakam", "PLAQUISTE"),
+    ])
+    def test_le_montage_ne_capture_pas_les_voisins(self, fake_provider, phrase, attendu):
+        """Générer une vidéo, en suivre une, ou chiffrer un chantier : trois
+        demandes distinctes que « vidéo » et « chantier » rapprochent."""
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == attendu
