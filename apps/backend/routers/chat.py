@@ -387,10 +387,33 @@ async def chat_stream_endpoint(request: ChatRequest):
         full_prompt = "\n".join(prompt_lines)
 
         async def token_generator():
+            """Le flux finit toujours, meme quand la generation tombe.
+
+            Sans le `try`, une panne du fournisseur (Ollama eteint) faisait
+            remonter l'exception DANS la reponse deja commencee : le client
+            recevait un `200` et **zero ligne** — un flux vide indistinguable
+            d'une reponse vide. Mesure du 01/09/2026. `pwa_gateway.flux` tient
+            deja cette regle ; celui-ci ne la tenait pas.
+            """
             full_reply = ""
-            async for token in fast_provider.generate_stream(full_prompt, system_prompt):
-                full_reply += token
-                yield f"data: {json.dumps({'token': token, 'intent': intent})}\n\n"
+            try:
+                async for token in fast_provider.generate_stream(full_prompt, system_prompt):
+                    full_reply += token
+                    yield f"data: {json.dumps({'token': token, 'intent': intent})}\n\n"
+            except Exception as souci:  # noqa: BLE001 - le flux doit finir proprement
+                logger.error("Flux /api/chat/stream interrompu : %s", souci, exc_info=True)
+                yield "data: " + json.dumps(
+                    {"type": "error",
+                     "message": f"ARENA n'a pas pu terminer : {souci}"}) + "\n\n"
+                # Le tour du proprietaire est deja en memoire (ligne au-dessus) :
+                # sans reponse, l'historique garderait une question orpheline.
+                # On y ecrit ce qui s'est reellement passe, jamais une reponse
+                # fabriquee.
+                memory.add_chat_message(
+                    session_id=session_id, role="assistant",
+                    content=f"[interrompu : {type(souci).__name__}]")
+                yield "data: [DONE]\n\n"
+                return
 
             memory.add_chat_message(session_id=session_id, role="assistant", content=full_reply.strip())
             yield "data: [DONE]\n\n"
