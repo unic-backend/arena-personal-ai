@@ -676,3 +676,30 @@ c'est précisément pour ça que le moteur de graphe ne la posait pas.
 **Au passage** : `GRAPHRAG_OLLAMA_HOST` écrivait `http://host.docker.internal:11434`
 en entier. L'hôte est propre à Docker et doit le rester ; le **port**, lui, vient
 maintenant d'`OLLAMA_BASE_URL`. Un Ollama servi sur un autre port était ignoré.
+
+---
+
+# Durcissement n° 21 — un secret se compare avec `compare_digest`
+
+**Ce n'est pas un défaut mesuré**, et le dire autrement serait exactement le
+genre d'exagération que cet audit s'interdit. Le canal est étroit, le serveur
+est personnel, et aucune exploitation n'a été démontrée ici.
+
+`cle_presentee_valide` comparait la clé avec `==`. Une comparaison de chaînes
+s'arrête au premier caractère qui diffère : le temps de réponse dépend du
+nombre de caractères devinés juste. `secrets.compare_digest` est la façon
+standard de comparer un secret et ne coûte rien. Le paramètre `cle` de
+`verify_media_access` passe par le même chemin.
+
+Un test vérifie le **branchement**, pas seulement le comportement : remettre
+`==` le fait tomber. Sept cas de refus sont fixés au passage, dont un en-tête
+non-ASCII — `compare_digest` lève sur ce cas, et une exception non attrapée
+aurait rendu `500` là où la réponse est `401`.
+
+**Non corrigé, et documenté comme une décision** : `verify_media_access`
+accepte la clé en **paramètre d'URL**. Elle atterrit donc dans les journaux du
+serveur et l'historique du navigateur. Le code dit pourquoi — un
+`<video src="...">` et un popup OAuth ne peuvent pas poser d'en-tête. C'est un
+arbitrage écrit, pas un oubli ; le changer demande une autre mécanique
+(jeton court à usage unique) et c'est une décision du propriétaire.
+`OPTIONAL — NON IMPLÉMENTÉ`.

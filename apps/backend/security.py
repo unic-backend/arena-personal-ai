@@ -5,6 +5,7 @@ regrouper les rend lisibles d'un seul coup d'œil — et rend visible ce qui n'y
 figure pas.
 """
 import logging
+import secrets
 from pathlib import Path
 from typing import Optional
 
@@ -57,6 +58,23 @@ def client_de(request: Request) -> str:
     return request.client.host if request.client else "inconnu"
 
 
+def _egales(presente: str, attendue: str) -> bool:
+    """Compare deux secrets sans que la duree de la comparaison en dise long.
+
+    `==` sur des chaines s'arrete au premier caractere qui differe : le temps
+    de reponse depend alors du nombre de caracteres devines juste. Ce n'est pas
+    un defaut mesure ici — le canal est etroit et le serveur est personnel —
+    c'est la facon standard de comparer un secret, et elle ne coute rien.
+
+    `compare_digest` exige des octets comparables : un en-tete non-ASCII leve
+    plutot que de repondre, et une clé n'est jamais non-ASCII.
+    """
+    try:
+        return secrets.compare_digest(presente, attendue)
+    except TypeError:  # en-tete non-ASCII : ce n'est pas la cle
+        return False
+
+
 def cle_presentee_valide(authorization: Optional[str]) -> bool:
     """Dit si l'en-tete presente la bonne cle. **Ne leve jamais.**
 
@@ -66,7 +84,9 @@ def cle_presentee_valide(authorization: Optional[str]) -> bool:
     verifiait rien. Mesure le 2026-08-27 : « BACKEND · ARENA · 544MS » en vert,
     et chaque message refuse en 401.
     """
-    return bool(USMAN_API_KEY) and authorization == f"Bearer {USMAN_API_KEY}"
+    if not USMAN_API_KEY or not authorization:
+        return False
+    return _egales(authorization, f"Bearer {USMAN_API_KEY}")
 
 
 def verify_api_key(request: Request, authorization: Optional[str] = Header(None)):
@@ -110,7 +130,8 @@ def verify_media_access(request: Request, authorization: Optional[str] = Header(
         )
     if cle_presentee_valide(authorization):
         return True
-    if request.query_params.get("cle") == USMAN_API_KEY:
+    cle_en_parametre = request.query_params.get("cle")
+    if cle_en_parametre and _egales(cle_en_parametre, USMAN_API_KEY):
         return True
 
     motif = "cle absente" if not authorization and "cle" not in request.query_params else "cle invalide"

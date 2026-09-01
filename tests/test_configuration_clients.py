@@ -232,3 +232,67 @@ class TestAucuneAdresseOllamaEcriteEnDur:
             monkeypatch.undo()
             importlib.reload(config)
             importlib.reload(navigateur)
+
+
+class TestComparaisonDeCleATempsConstant:
+    """Un secret se compare avec `compare_digest`, jamais avec `==`.
+
+    Ce n'est pas un défaut mesuré — le canal est étroit et le serveur est
+    personnel. C'est la façon standard de comparer un secret, et elle ne coûte
+    rien. `==` s'arrête au premier caractère qui diffère : le temps de réponse
+    dépend alors du nombre de caractères devinés juste.
+
+    Ces tests fixent le **comportement**, qui ne change pas, et le fait que la
+    comparaison passe bien par `compare_digest`.
+    """
+
+    def test_la_bonne_cle_est_acceptee(self, monkeypatch):
+        from apps.backend import security
+
+        monkeypatch.setattr(security, "USMAN_API_KEY", "la-vraie-cle")
+
+        assert security.cle_presentee_valide("Bearer la-vraie-cle") is True
+
+    @pytest.mark.parametrize("presentee", [
+        None, "", "la-vraie-cle", "Bearer ", "Bearer la-vraie-cl",
+        "Bearer la-vraie-clef", "bearer la-vraie-cle",
+    ])
+    def test_tout_le_reste_est_refuse(self, monkeypatch, presentee):
+        from apps.backend import security
+
+        monkeypatch.setattr(security, "USMAN_API_KEY", "la-vraie-cle")
+
+        assert security.cle_presentee_valide(presentee) is False
+
+    def test_sans_cle_configuree_rien_n_est_valide(self, monkeypatch):
+        from apps.backend import security
+
+        monkeypatch.setattr(security, "USMAN_API_KEY", "")
+
+        assert security.cle_presentee_valide("Bearer ") is False
+        assert security.cle_presentee_valide("Bearer nimporte") is False
+
+    def test_un_en_tete_non_ascii_ne_fait_pas_tomber_la_passerelle(self, monkeypatch):
+        """`compare_digest` lève sur du non-ASCII : ce n'est pas la clé, c'est tout."""
+        from apps.backend import security
+
+        monkeypatch.setattr(security, "USMAN_API_KEY", "la-vraie-cle")
+
+        assert security.cle_presentee_valide("Bearer clé-accentuée") is False
+
+    def test_la_comparaison_passe_par_compare_digest(self, monkeypatch):
+        """Le branchement, pas seulement le comportement."""
+        import secrets
+
+        from apps.backend import security
+
+        appels = []
+        vrai = secrets.compare_digest
+        monkeypatch.setattr(
+            security.secrets, "compare_digest",
+            lambda a, b: appels.append(1) or vrai(a, b))
+        monkeypatch.setattr(security, "USMAN_API_KEY", "la-vraie-cle")
+
+        security.cle_presentee_valide("Bearer la-vraie-cle")
+
+        assert appels, "la comparaison est repassee sur `==`"
