@@ -8,10 +8,26 @@ import pytest
 from agents.orchestrator.orchestrator_agent import INTENTIONS, OrchestratorAgent
 
 # Les faux positifs relevés par l'audit : le mot est là, la demande ne l'est pas.
+#: Des phrases ordinaires que les mots-cles generiques attrapaient a tort.
+#: Celles qui restent ici n'ont AUCUN mot de son metier : le repli n'a rien
+#: pour les distinguer, et c'est la limite assumee du repli.
 PIEGES_DE_L_AUDIT = [
     "Explique-moi le code de la route",
-    "Calcule mon devis",
     "Quelle erreur j'ai faite hier ?",
+]
+
+#: Les memes pieges, mais qui parlent de SON metier. Ceux-la ne sont plus des
+#: pieges : mesure du 31/08/2026, « Calcule mon devis » partait a l'execution
+#: de code, comme « calcule le faux plafond du plan… » et « chiffre-moi 18
+#: parois de 5,40 x 2,50 m » (celle-ci partait meme en CHAT, donc sans sa
+#: grille de prix). Le repli consulte desormais les mots du metier AVANT les
+#: listes generiques.
+PIEGES_QUI_PARLENT_DU_METIER = [
+    "Calcule mon devis",
+    "calcule le faux plafond du plan /chantiers/A-101.pdf",
+    "calcule combien de plaques BA13 pour 40 m2",
+    "chiffre-moi 18 parois de 5,40 x 2,50 m",
+    "il y a une erreur dans le devis de Fast Group",
 ]
 
 
@@ -50,12 +66,28 @@ async def test_les_pieges_de_l_audit_ne_partent_plus_vers_le_coder(provider_fact
 def test_le_repli_par_mots_cles_garde_ses_faux_positifs(fake_provider, phrase):
     """Le repli est moins fin, et ce test le dit au lieu de le cacher.
 
-    Sans modèle, « code », « calcule » et « erreur » renvoient toujours vers le
-    CoderAgent. C'est la limite connue du repli, pas une régression.
+    Sans modèle, « code » et « erreur » dans une phrase qui ne parle pas de son
+    métier renvoient toujours vers le CoderAgent. C'est la limite assumée du
+    repli, pas une régression : rien dans « explique-moi le code de la route »
+    ne permet de le distinguer d'une question de programmation.
     """
     agent = OrchestratorAgent(provider=fake_provider, memory=None)
 
     assert agent._classer_par_mots_cles(phrase) == "CODE_EXECUTION"
+
+
+@pytest.mark.parametrize("phrase", PIEGES_QUI_PARLENT_DU_METIER)
+def test_une_phrase_de_son_metier_ne_part_jamais_a_l_execution_de_code(
+    fake_provider, phrase
+):
+    """Là où aucun modèle n'est joignable, ce repli est le SEUL classificateur.
+
+    Une demande de devis qui part au bac à sable Python ne reçoit ni sa grille
+    de prix, ni son calcul de matériaux — elle reçoit une réponse hors sujet.
+    """
+    agent = OrchestratorAgent(provider=fake_provider, memory=None)
+
+    assert agent._classer_par_mots_cles(phrase) == "PLAQUISTE"
 
 
 async def test_une_reponse_hors_liste_declenche_le_repli(provider_factory):

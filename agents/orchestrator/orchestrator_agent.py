@@ -29,6 +29,23 @@ INTENTION_PAR_ESPACE = {
 }
 
 # Liste fermée : toute réponse du modèle hors de cet ensemble est rejetée.
+#: Les mots qui, chez lui, designent son metier sans ambiguite. Consultes a
+#: deux endroits : pour aiguiller vers PLAQUISTE, et pour empecher une phrase
+#: du metier de tomber dans une liste generique (code, raisonnement).
+#:
+#: « chiffre » et « paroi » manquaient : « chiffre-moi 18 parois de 5,40 x
+#: 2,50 m » — la demande de devis la plus courante, celle de son devis de
+#: reference — partait en CHAT, donc sans sa grille de prix.
+METIER = (
+    "devis", "facture", "chantier", "ba13", "ba 13", "placo",
+    "cloison", "faux plafond", "plafond", "plaquiste", "client",
+    "metre carre", "m2", "chiffre", "chiffrer", "paroi", "plaque",
+    "doublage", "enduit",
+    # Planifier un chantier est du metier ; les formulations d agenda
+    # sans ambiguite sont deja traitees plus haut (AGENDA).
+    "planifie", "planifier", "disponibilite", "disponibilité",
+)
+
 INTENTIONS = {
     "CHAT",
     "CODE_EXECUTION",
@@ -396,6 +413,11 @@ class OrchestratorAgent(BaseAgent):
     def _classer_par_mots_cles(self, user_input: str) -> str:
         """Repli hors ligne : aiguillage par mots-clés, instantané mais approximatif."""
         text = user_input.lower()
+        # Ce repli ne sert que quand le modele ne peut pas classer — mais la ou
+        # aucun modele n'est joignable, il est le SEUL classificateur. Une
+        # phrase de son metier ne doit donc pas tomber dans une liste
+        # generique : « calcule mon devis » partait a l'execution de code.
+        dit_le_metier = any(k in text for k in METIER)
 
         # Son agenda. Teste en premier : ces formulations ne veulent jamais dire
         # autre chose, et plusieurs contiennent des mots de temps qui les
@@ -421,12 +443,16 @@ class OrchestratorAgent(BaseAgent):
 
         # Raisonnement profond & Maths complexes
         reasoning_keywords = ["équation", "equation", "résous", "resous", "matrice", "intégrale", "dérivée", "démontre", "démontrer", "calcul complexe", "preuve"]
-        if any(k in text for k in reasoning_keywords):
+        if any(k in text for k in reasoning_keywords) and not dit_le_metier:
             return "DEEP_REASONING"
 
-        # Code & Programmation
+        # Code & Programmation. « calcule », « erreur » et « bug » sont des mots
+        # partages : chez lui, « calcule le faux plafond du plan » et « il y a
+        # une erreur dans le devis » sont du metier, pas de la programmation.
+        # D'ou la garde METIER — meme raison que les « Teste AVANT le metier »
+        # plus bas, en sens inverse.
         code_keywords = ["code", "python", "script", "fonction", "programme", "calcule", "factorielle", "fibonacci", "algorithme", "bug", "erreur", "écris un"]
-        if any(k in text for k in code_keywords):
+        if any(k in text for k in code_keywords) and not dit_le_metier:
             return "CODE_EXECUTION"
 
         # Recherche Profonde
@@ -468,13 +494,7 @@ class OrchestratorAgent(BaseAgent):
         # Metier du proprietaire. Teste tot : « devis » et « chantier » sont
         # sans ambiguite chez lui, et ces demandes ne doivent jamais partir sur
         # le web ni chez un agent generaliste.
-        if any(k in text for k in [
-            "devis", "facture", "chantier", "ba13", "ba 13", "placo",
-            "cloison", "faux plafond", "plaquiste", "client", "metre carre", "m2",
-            # Planifier un chantier est du metier ; les formulations d agenda
-            # sans ambiguite sont deja traitees plus haut (AGENDA).
-            "planifie", "planifier", "disponibilite", "disponibilité",
-        ]):
+        if any(k in text for k in METIER):
             return "PLAQUISTE"
 
         # Capacites autrefois joignables uniquement en choisissant leur nom
