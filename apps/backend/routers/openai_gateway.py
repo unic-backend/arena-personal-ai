@@ -221,6 +221,11 @@ def _fil_de_la_conversation(messages: list, proprietaire: str) -> str:
     return "\n".join(lignes)
 
 
+def proprietaire_actuel() -> str:
+    """Le nom sous lequel ses propres tours apparaissent dans le fil."""
+    return memory.get_fact("owner") or "Ousmane"
+
+
 def _cle_de_conversation(messages: list) -> str:
     """Une cle de session propre a CETTE conversation.
 
@@ -301,6 +306,21 @@ async def _repondre(body: dict, stream: bool, model_requested: str):
     logger.info(f"Modele 'usman-chat' -> intention detectee : {intent}")
 
     if intent in AGENTS_SPECIALISES:
+        if intent == "PLAQUISTE":
+            # Un devis se negocie sur plusieurs tours (« c'est fann hock »
+            # repond a « quel est le nom du client ? » d'un tour plus tot).
+            # `pwa_gateway` transmet deja le fil pour cette seule intention,
+            # depuis le 31/08/2026 — decouvert en direct avec le proprietaire,
+            # qui tournait en boucle sur les memes questions. Cette passerelle
+            # ne le faisait pas : le meme devis, depuis un client exterieur,
+            # ne se terminait jamais. Meme repartition qu'ailleurs : `prompt`
+            # porte le fil aplati, `history`/`message_actuel` gardent les tours
+            # separes pour la capture deterministe du destinataire.
+            chat_req = chat_req.model_copy(update={
+                "prompt": _fil_de_la_conversation(messages, proprietaire_actuel()),
+                "history": [m for m in messages if m.get("role") in ROLES_DU_FIL][:-1],
+                "message_actuel": last_user_msg,
+            })
         res = await dispatch_request(chat_req, intent=intent)
         contenu = res.get("response", "") + formater_sources(res.get("sources", []), last_user_msg)
         return _reponse_openai(garantir_un_texte(contenu, intent), model_requested, stream)
@@ -310,8 +330,7 @@ async def _repondre(body: dict, stream: bool, model_requested: str):
         res = await dispatch_request(chat_req, intent=intent)
         return _reponse_openai(garantir_un_texte(res.get("response", ""), intent), model_requested, stream)
 
-    proprietaire = memory.get_fact("owner") or "Ousmane"
-    fil = _fil_de_la_conversation(messages, proprietaire)
+    fil = _fil_de_la_conversation(messages, proprietaire_actuel())
 
     async def generateur_discussion():
         cree = int(time.time())

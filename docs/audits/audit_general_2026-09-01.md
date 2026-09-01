@@ -455,3 +455,25 @@ Mon premier test appelait `_cle_de_conversation` directement. Remettre
 fois dans la même session que j'écris un test qui mesure une fonction au lieu
 d'un chemin — c'est un réflexe, pas un accident, et le sabotage est la seule
 chose qui le débusque.
+
+## Défaut n° 16 ter — le même devis, depuis un client extérieur, ne finissait jamais
+
+Le 31/08/2026, en direct avec le propriétaire, `pwa_gateway` a appris à
+transmettre le fil entier à PLAQUISTE : un devis se négocie sur plusieurs tours
+(« c'est fann hock » répond à « quel est le nom du client ? » d'un tour plus
+tôt), et sans l'historique l'agent redemandait les mêmes informations en
+boucle, sans jamais pouvoir finaliser.
+
+**La passerelle OpenAI n'a pas reçu ce correctif.** Un devis conduit depuis un
+client extérieur reproduisait exactement la boucle d'avant le 31/08.
+
+Corrigé avec la même répartition qu'ailleurs : `prompt` porte le fil aplati,
+`history` et `message_actuel` gardent les tours séparés pour la capture
+déterministe du destinataire.
+
+**Non corrigé, et pas une tâche.** Les modèles nommés directement
+(`usman-fix`, `usman-repo`, `usman-coder`, `usman-research`, `usman-browser`)
+reçoivent eux aussi le dernier message seul. Rien ne dit que ces agents-là
+travaillent mieux avec une transcription qu'avec une consigne propre — le
+supposer serait la même erreur en sens inverse. **Question ouverte, mesurable,
+pas un correctif spéculatif.**

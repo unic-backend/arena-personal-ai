@@ -220,3 +220,40 @@ class TestFilDeLaConversation:
 
         assert vues == [_cle_de_conversation(self.FIL)]
         assert vues[0] != "default"
+
+    def test_un_devis_recoit_le_fil_comme_du_cote_pwa(
+            self, client, entetes, monkeypatch):
+        """Un devis se négocie sur plusieurs tours ; sans le fil il boucle.
+
+        `pwa_gateway` transmet le fil à PLAQUISTE depuis le 31/08/2026 —
+        découvert en direct avec le propriétaire, qui reçevait deux fois les
+        mêmes questions. Cette passerelle-ci ne le faisait pas.
+        """
+        import apps.backend.routers.openai_gateway as passerelle
+
+        vues = []
+
+        async def espion(demande, intent=None):
+            vues.append(demande)
+            return {"response": "ok", "sources": []}
+
+        async def plaquiste(*_a, **_k):
+            return "PLAQUISTE"
+
+        monkeypatch.setattr(passerelle, "dispatch_request", espion)
+        monkeypatch.setattr(passerelle.orchestrator, "analyze_intent", plaquiste)
+
+        fil = [
+            {"role": "user", "content": "Fais-moi un devis pour 30 m2"},
+            {"role": "assistant", "content": "Quel est le nom du client ?"},
+            {"role": "user", "content": "C'est fann hock"},
+        ]
+        client.post("/v1/chat/completions", headers=entetes, json={
+            "model": "usman-chat", "stream": False, "messages": fil})
+
+        demande = vues[0]
+        assert "30 m2" in demande.prompt, "le fil aplati doit porter les tours"
+        assert demande.message_actuel == "C'est fann hock"
+        assert demande.history == fil[:-1], (
+            "les tours separes servent a la capture deterministe du destinataire"
+        )
