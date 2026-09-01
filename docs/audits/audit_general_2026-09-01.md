@@ -804,3 +804,19 @@ fois. `MetierSuivi` s'y ramène, les deux couches de permissions l'utilisent.
 La règle partagée : **un fichier absent rend la valeur vide, jamais l'ancienne**.
 Servir une configuration disparue est plus dangereux que servir du vide, parce
 que la disparition ne se remarque pas.
+
+## Défaut n° 23 bis — une exemption qui a survécu à sa raison
+
+`scripts/orphelins.py` exemptait `apps.pwa.server.*` du contrôle des modules
+endormis. La raison écrite : *« un second serveur, dont le sort est une
+question posée au propriétaire »*.
+
+**La question a été tranchée le 29/08/2026 — le dossier supprimé, depuis son
+téléphone** (`docs/CURRENT_TASK.md`). L'exemption, elle, est restée.
+
+Vérifié le 01/09 : elle ne masquait plus rien aujourd'hui. Mais elle aurait
+masqué **en silence** tout module futur portant ce nom, et c'est exactement ce
+qu'un détecteur ne doit pas faire.
+
+Une exemption survit toujours à sa raison. C'est pour ça qu'elle doit partir
+avec elle. Deux tests l'empêchent de revenir.
