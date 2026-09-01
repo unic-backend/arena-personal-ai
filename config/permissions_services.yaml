@@ -107,6 +107,18 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     document:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
 
+  # Montage video. Batir une timeline et la relire ne touche a rien : c'est
+  # une structure en memoire, pas un fichier. Rendre ecrit une video sur le
+  # disque et monopolise le processeur — meme logique que le devis PDF et
+  # l'export OpenTakeoff : confirmation, coupe-circuit WRITE_FILES.
+  #
+  # Pas dans INTERRUPTEURS_OBLIGATOIRES pour la meme raison que la generation
+  # video : un fichier rendu s'efface, ce n'est pas irreversible. Le plancher
+  # du code reste reserve a envoyer, publier, supprimer.
+  video_montage:
+    read:        {decision: ALLOWED,      risque: LOW}
+    document:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+
   # OpenTakeoff : mesurer un plan PDF ne touche a rien hors du processus qui
   # le lit. Exporter ecrit le rapport et le plan marque a cote du plan source
   # — meme logique que le devis PDF : confirmation, coupe-circuit WRITE_FILES.

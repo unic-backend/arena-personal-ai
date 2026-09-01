@@ -45,6 +45,7 @@ from core.connectors.devis import DevisConnector
 from core.connectors.galsen import GalsenConnector
 from core.connectors.gmail import GmailConnector
 from core.connectors.moneyprinter import MoneyPrinterConnector
+from core.connectors.montage import ConnecteurMontage
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.stockage_jetons import charger_tout as _charger_jetons_persistants
@@ -145,6 +146,15 @@ registre.declarer(
     "opentakeoff",
     lambda: ConnecteurOpenTakeoff(acces=acces, journal=journal, file_attente=file_attente,
                                   crochets=crochets),
+)
+# Montage video : batir une timeline (lecture) et la rendre (ecriture, donc
+# confirmation). Le moteur de rendu est ffmpeg, deja local et compatible avec
+# sa RTX A2000 — voir docs/audits/opencut_audit.md pour pourquoi ce n'est pas
+# celui d'OpenCut, dont le rendu est natif navigateur et le depot archive.
+registre.declarer(
+    "montage",
+    lambda: ConnecteurMontage(acces=acces, journal=journal, file_attente=file_attente,
+                              crochets=crochets),
 )
 registre.declarer(
     "galsen",
