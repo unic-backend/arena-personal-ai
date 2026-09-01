@@ -340,3 +340,28 @@ capacites.enregistrer("web", fresh_agent)
 capacites.enregistrer("documents", adaptateur_synchrone(
     lambda texte: lightrag_tool.query(texte, mode="hybrid"), "LightRAG",
 ))
+
+
+#: Les moteurs qui repondent a une intention sans etre des `BaseAgent` :
+#: `DEEP_REASONING`, `RAG_DOCS` et `GRAPHRAG` les atteignent depuis
+#: `apps/backend/routers/chat.py`. Ecrits ici parce qu'ils n'ont aucune
+#: classe commune a interroger — mais chacun est verifie par un test.
+MOTEURS_NON_AGENTS = ("ReasoningEngine", "LightRAG", "MicrosoftGraphRAG")
+
+
+def agents_actifs() -> list:
+    """Les agents reellement construits par ce module, plus les trois moteurs.
+
+    **Derivee, jamais ecrite a la main.** `/health` portait une liste figee
+    qui avait derive : elle annoncait `ReasoningEngine` sans chemin pour
+    l'atteindre (corrige en 2026-08), puis, l'inverse, elle taisait six
+    agents bien vivants — `PlaquisteAgent`, `EmailAgent`, `SocialAgent`,
+    `VisionAgent`, `MontageAgent`, `AudioAgent` (mesure du 01/09/2026).
+
+    Une liste ecrite a la main derive toujours ; celle-ci ne peut pas.
+    """
+    from core.agent.base_agent import BaseAgent
+
+    trouves = {objet.name for objet in globals().values()
+               if isinstance(objet, BaseAgent)}
+    return sorted(trouves) + list(MOTEURS_NON_AGENTS)
