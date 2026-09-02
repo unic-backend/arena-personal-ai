@@ -12,6 +12,7 @@ from pypdf import PdfReader
 from reportlab.pdfbase.pdfmetrics import stringWidth
 
 from agents.plaquiste.devis_pdf import (
+    LOGO_PAR_DEFAUT,
     Devis,
     Ligne,
     chiffrer,
@@ -245,3 +246,59 @@ class TestSignature:
         construire(_devis(signe=True), METIER, sortie, signature=tmp_path / "absent.png")
 
         assert sortie.exists()
+
+
+class TestLeLogoSortSurLeDocument:
+    """Le logo du proprietaire doit etre SUR le devis, pas seulement sur le disque.
+
+    Mesure du 02/09/2026, sur l'appel exact du connecteur
+    (`core/connectors/devis.py` : `construire(devis, self.metier, sortie)`) :
+    **0 image dans le PDF produit**. Le fichier
+    `documents/unic_plaquiste/logo_unic_plaquiste.png` etait la depuis le
+    27/08/2026, byte pour byte celui que le proprietaire a renvoye le
+    02/09/2026 — et personne ne le passait. `construire()` avait `logo=None`
+    par defaut, l'appelant ne renseignait rien, et tous ses devis sortaient
+    sans sa marque.
+
+    Le reste de la mise en page etait deja conforme a son template de
+    reference (marges 15/15/9/10, en-tete 32/97/51 mm, filet jaune 180x2,
+    tableau 78/34/28/40, zebre #F4F6FB, bandeau TTC 130/50). Le logo etait le
+    seul ecart visuel.
+    """
+
+    @staticmethod
+    def _images(sortie) -> int:
+        return sum(len(page.images or []) for page in PdfReader(str(sortie)).pages)
+
+    def test_l_appel_sans_logo_porte_quand_meme_le_logo(self, tmp_path):
+        """Le test qui porte la correction : l'appel du connecteur, inchange."""
+        sortie = tmp_path / "devis.pdf"
+
+        construire(_devis(), METIER, sortie)
+
+        assert self._images(sortie) == 1, "le devis sort sans le logo du proprietaire"
+
+    def test_le_fichier_par_defaut_est_bien_celui_de_la_marque(self):
+        assert LOGO_PAR_DEFAUT.exists(), (
+            f"le logo de la marque a disparu de {LOGO_PAR_DEFAUT}")
+        assert LOGO_PAR_DEFAUT.name == "logo_unic_plaquiste.png"
+
+    def test_un_chemin_explicite_l_emporte_sur_le_defaut(self, tmp_path):
+        """Sans quoi un test ne pourrait plus verifier le cas du logo absent."""
+        sortie = tmp_path / "devis.pdf"
+
+        construire(_devis(), METIER, sortie, logo=tmp_path / "rien.png")
+
+        assert sortie.exists()
+        assert self._images(sortie) == 0
+
+    def test_la_signature_du_gerant_suit_la_meme_regle(self, tmp_path):
+        """Elle ne s'imprime que sur un document explicitement signe."""
+        signe = tmp_path / "signe.pdf"
+        non_signe = tmp_path / "non_signe.pdf"
+
+        construire(_devis(signe=True), METIER, signe)
+        construire(_devis(), METIER, non_signe)
+
+        assert self._images(signe) == 2, "logo + signature attendus sur un document signe"
+        assert self._images(non_signe) == 1, "un devis non signe ne porte que le logo"

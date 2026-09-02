@@ -197,10 +197,31 @@ def chiffrer(devis: Devis, metier: Dict[str, Any]) -> Dict[str, Any]:
 
 # --- Rendu --------------------------------------------------------------------
 
+#: Les fichiers de la marque, deposes par le proprietaire. Ils etaient la
+#: depuis le 27/08/2026 et **personne ne les passait** : `construire()` avait
+#: `logo=None` par defaut, et son unique appelant
+#: (`core/connectors/devis.py`) ne le renseignait pas. Tous les devis sortaient
+#: donc sans le logo — mesure du 02/09/2026, 0 image dans le PDF produit.
+#:
+#: Le defaut vit ici plutot que chez l'appelant : un devis sans logo est un
+#: defaut, pas un choix, et chaque nouvel appelant le reproduirait.
+DOSSIER_MARQUE = Path(__file__).resolve().parents[2] / "documents" / "unic_plaquiste"
+LOGO_PAR_DEFAUT = DOSSIER_MARQUE / "logo_unic_plaquiste.png"
+SIGNATURE_PAR_DEFAUT = DOSSIER_MARQUE / "signature_uthman.png"
+
+
 def construire(devis: Devis, metier: Dict[str, Any], sortie: Path,
                logo: Optional[Path] = None,
                signature: Optional[Path] = None) -> Dict[str, Any]:
-    """Ecrit le PDF et rend le chiffrage. Le fichier existe, ou la fonction leve."""
+    """Ecrit le PDF et rend le chiffrage. Le fichier existe, ou la fonction leve.
+
+    `logo` et `signature` retombent sur les fichiers de la marque quand
+    l'appelant ne dit rien. Un chemin explicite l'emporte toujours — c'est ce
+    qui permet aux tests de passer un fichier absent et de verifier qu'un
+    devis sort quand meme.
+    """
+    logo = logo if logo is not None else LOGO_PAR_DEFAUT
+    signature = signature if signature is not None else SIGNATURE_PAR_DEFAUT
     c = _couleurs(metier)
     e = metier.get("entreprise", {})
     calcul = chiffrer(devis, metier)
