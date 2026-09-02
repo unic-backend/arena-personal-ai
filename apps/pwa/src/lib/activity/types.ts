@@ -102,9 +102,15 @@ export type StreamChunk =
   | { type: 'done'; meta?: MessageMeta }
   | { type: 'error'; message: string };
 
+import type { ActionEnAttente } from '../actions/confirmer';
+
 export interface MessageMeta {
   sources?: SourceMeta[];
   query?: string;
+  /** Ce qui attend un accord : l'interface pose un bouton dessus. */
+  en_attente?: ActionEnAttente[];
+  /** Identifiant confirmé par une phrase (« c'est bon ») pendant ce tour. */
+  confirme?: string;
   provider?: string;
   model?: string;
   attachments?: AttachmentSummary[];

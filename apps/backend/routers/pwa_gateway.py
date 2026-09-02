@@ -41,14 +41,20 @@ from apps.backend.routers.chat import (
 )
 from apps.backend.runtime import (
     fast_provider,
+    file_attente,
     index_semantique,
     memoire_personnelle,
     memory,
     mesures_execution,
     orchestrator,
     pieces_jointes,
+    registre,
 )
 from apps.backend.security import limiter_debit, verify_api_key
+from core.actions.confirmation_parlee import (
+    a_confirmer_par_phrase,
+    est_une_confirmation,
+)
 from core.execution.mesures import ETAT_INDISPONIBLE, ETAT_MESURE, Mesure, chronometrer
 from core.execution.voies import budget_de, voie_pour
 from core.memory.consolidation import grouper
@@ -354,6 +360,54 @@ def noter_mesure(mesure: Mesure) -> Mesure:
     return mesure
 
 
+def _actions_en_attente() -> List[Dict[str, Any]]:
+    """Ce qui attend un accord, en clair, pour l'interface.
+
+    Volontairement maigre : de quoi afficher un bouton et dire ce qu'il
+    valide. Les parametres n'y sont pas — le corps d'un mail n'a rien a faire
+    dans la charge utile d'un evenement de fin de flux.
+    """
+    try:
+        return [
+            {
+                "id": a.identifiant,
+                "action": a.action,
+                "cible": a.cible,
+                "risque": a.risque,
+                "expire_le": a.expire_le,
+            }
+            for a in file_attente.en_attente(limite=5)
+        ]
+    except Exception as erreur:  # noqa: BLE001 — pas de bouton vaut mieux qu'une panne
+        logger.warning("Actions en attente illisibles : %s", erreur)
+        return []
+
+
+def _confirmer_par_la_phrase(texte: str) -> Optional[Dict[str, Any]]:
+    """Confirme l'action en attente quand la phrase dit « oui », sinon None.
+
+    Rend `None` des qu'un doute existe — phrase qui n'est pas un accord franc,
+    aucune action en attente, plusieurs en attente, ou action dont l'effet
+    quitte la machine. Dans tous ces cas la demande poursuit son chemin normal
+    et rien n'est confirme.
+    """
+    if not est_une_confirmation(texte):
+        return None
+    try:
+        en_attente = file_attente.en_attente(limite=10)
+    except Exception as erreur:  # noqa: BLE001 — une file illisible ne confirme rien
+        logger.warning("File d'attente illisible : %s", erreur)
+        return None
+
+    action = a_confirmer_par_phrase(en_attente, registre)
+    if action is None:
+        return None
+
+    resultat = file_attente.confirmer(action.identifiant)
+    logger.info("Confirme a la voix : %s (%s)", action.identifiant, resultat.statut.value)
+    return {"id": action.identifiant, "texte": resultat.message}
+
+
 @router.post("/agent/stream", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
 async def flux_agent(demande: DemandeAgent):
     """Repond a l'interface PWA, en direct, dans son protocole.
@@ -377,6 +431,27 @@ async def flux_agent(demande: DemandeAgent):
             # repos de 120 s avec celle que `generate_stream` refait plus bas.
             # Le rater une fois ne doit pas coller a la reponse un message qui
             # ne parle que d'Ollama alors que le cloud, lui, marche peut-etre.
+            # « oui » sur un document prepare : on confirme, on n'aiguille pas.
+            #
+            # Avant le 02/09/2026, ce chemin n'existait pas : un devis PDF
+            # attendait un identifiant de 32 caracteres que rien ne permettait
+            # de saisir depuis le telephone. Le proprietaire repondait « c'est
+            # bon », sa phrase repartait chez l'agent metier, et le document
+            # attendait indefiniment.
+            #
+            # `a_confirmer_par_phrase` ne rend jamais une action dont l'effet
+            # quitte la machine (envoi, publication, suppression) : celles-la
+            # gardent le bouton, qui nomme ce qu'il valide.
+            confirme = _confirmer_par_la_phrase(demande.text)
+            if confirme is not None:
+                memory.add_chat_message(session_id=session, role="user",
+                                        content=demande.text)
+                yield jeton(confirme["texte"])
+                yield fin({**moteur_utilise(), "confirme": confirme["id"]})
+                memory.add_chat_message(session_id=session, role="assistant",
+                                        content=confirme["texte"])
+                return
+
             intention = await orchestrator.analyze_intent(demande.text, espace=demande.espace)
             voie = voie_pour(intention)
             # Ce que ce tour aura reellement coute. La cible vient de la voie ;
@@ -460,6 +535,11 @@ async def flux_agent(demande: DemandeAgent):
                     **moteur_utilise(),
                     "sources": resultat.get("sources", []),
                     "query": intention,
+                    # Ce qui attend un accord, pour que l'interface pose un
+                    # bouton dessus. Sans cela l'identifiant n'existait que
+                    # dans le texte de la reponse, et rien ne pouvait le
+                    # confirmer (defaut du 02/09/2026).
+                    "en_attente": _actions_en_attente(),
                 })
                 return
 

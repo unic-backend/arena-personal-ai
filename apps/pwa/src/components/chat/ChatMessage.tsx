@@ -2,10 +2,11 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Check, ChevronLeft, ChevronRight, Clapperboard, Copy, FileText, Headphones, Image as ImageIcon,
-  Pause, Pencil, Play, RotateCw, Square, Volume2, X,
+  Pause, Pencil, Play, RotateCw, ShieldCheck, Square, Volume2, X,
 } from 'lucide-react';
 import type { ChatMessage as Msg } from '../../lib/store/chatStore';
 import type { AttachmentSummary } from '../../lib/attachments';
+import { annulerAction, confirmerAction } from '../../lib/actions/confirmer';
 import { formatDuration } from '../../lib/activity/types';
 import { fmtBytes, fmtTime } from '../../lib/agent/video';
 import { AIActivity } from '../activity/ActivityTimeline';
@@ -17,6 +18,77 @@ import { useChat } from '../../lib/store/chatStore';
 import { triggerHaptic } from '../../lib/theme';
 import type { ItemCtx } from '../activity/ActivityItem';
 import { cn } from '../../utils/cn';
+
+/* Ce qui attend un accord, avec de quoi le donner.
+ *
+ * Avant le 02/09/2026, rien ici : le serveur preparait le document, affichait
+ * un identifiant de 32 caracteres dans le texte, et aucun element de
+ * l'interface n'appelait `/api/actions/{id}/confirm`. Le proprietaire ne
+ * pouvait donc obtenir aucun PDF, quoi qu'il ecrive.
+ *
+ * Le bouton nomme ce qu'il valide : c'est ce qui le rend sur la ou une phrase
+ * ne suffit pas (envoi d'un mail, publication, suppression). */
+function ActionsEnAttente({ msg }: { msg: Msg }) {
+  const { t } = useI18n();
+  const [etat, setEtat] = useState<Record<string, string>>({});
+  const [enCours, setEnCours] = useState<string | null>(null);
+  const attente = msg.meta?.en_attente ?? [];
+  if (!attente.length) return null;
+
+  const agir = async (id: string, quoi: 'confirmer' | 'annuler') => {
+    setEnCours(id);
+    triggerHaptic('medium');
+    const r = quoi === 'confirmer' ? await confirmerAction(id) : await annulerAction(id);
+    setEtat((e) => ({ ...e, [id]: r.message }));
+    setEnCours(null);
+    triggerHaptic(r.ok ? 'success' : 'warning');
+  };
+
+  return (
+    <div className="space-y-2 pt-1">
+      {attente.map((a) => (
+        <div
+          key={a.id}
+          className="rounded-lg border border-accent-500/25 bg-accent-500/[0.06] px-3 py-2.5"
+        >
+          <div className="flex items-start gap-2">
+            <ShieldCheck size={13} className="mt-0.5 shrink-0 text-accent-300" />
+            <div className="min-w-0 flex-1">
+              <div className="text-[12px] text-zinc-200">{a.action}</div>
+              <div className="truncate text-[11px] text-zinc-500">{a.cible}</div>
+            </div>
+            <span className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-zinc-500">
+              {a.risque}
+            </span>
+          </div>
+
+          {etat[a.id] ? (
+            <div className="pt-2 text-[11.5px] text-zinc-300">{etat[a.id]}</div>
+          ) : (
+            <div className="flex gap-2 pt-2.5">
+              <button
+                type="button"
+                onClick={() => agir(a.id, 'confirmer')}
+                disabled={enCours === a.id}
+                className="rounded-md bg-accent-500/90 px-3 py-1.5 text-[11.5px] font-medium text-ink-950 transition hover:bg-accent-400 disabled:opacity-50"
+              >
+                {t('action.confirm')}
+              </button>
+              <button
+                type="button"
+                onClick={() => agir(a.id, 'annuler')}
+                disabled={enCours === a.id}
+                className="rounded-md border border-white/10 px-3 py-1.5 text-[11.5px] text-zinc-400 transition hover:bg-white/5 hover:text-zinc-200 disabled:opacity-50"
+              >
+                {t('action.cancel')}
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function SourcesStrip({ msg }: { msg: Msg }) {
   const sources = msg.meta?.sources;
@@ -399,6 +471,8 @@ export const ChatMessage = memo(function ChatMessage({
         )}
 
         <SourcesStrip msg={msg} />
+
+        <ActionsEnAttente msg={msg} />
 
         {msg.status === 'done' && bodyText && (
           <div className="flex flex-wrap items-center gap-1 pt-1 opacity-90 transition-opacity sm:opacity-0 sm:group-hover/msg:opacity-100">
