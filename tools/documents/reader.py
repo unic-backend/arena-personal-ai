@@ -136,13 +136,25 @@ def _ocr_page(chemin: Path, index: int) -> str:
         import pytesseract
     except ImportError:
         return ""
+    document = None
     try:
-        page = pdfium.PdfDocument(str(chemin))[index]
+        document = pdfium.PdfDocument(str(chemin))
+        page = document[index]
         image = page.render(scale=ECHELLE_RENDU_OCR).to_pil()
         return pytesseract.image_to_string(image, lang=LANGUE_OCR)
     except Exception as e:  # noqa: BLE001 — tesseract absent, page corrompue : un etat, pas un crash
         logger.debug(f"OCR impossible sur la page {index + 1} de {chemin.name} : {e}")
         return ""
+    finally:
+        # Sans cette fermeture explicite, le fichier restait ouvert jusqu'au
+        # passage du ramasse-miettes — un moment indetermine. Sur Linux ca ne
+        # genait personne : `unlink()` efface un fichier meme ouvert. Sous
+        # Windows, l'appelant (`DepotPiecesJointes.deposer`) essaie d'effacer
+        # ce meme fichier juste apres et recoit
+        # `PermissionError: [WinError 32]` — mesure le 01/09/2026 sur la
+        # machine du proprietaire, invisible sur Linux.
+        if document is not None:
+            document.close()
 
 
 def _lire_pdf(chemin: Path) -> List[Passage]:
@@ -155,21 +167,29 @@ def _lire_pdf(chemin: Path) -> List[Passage]:
     """
     from pypdf import PdfReader
 
-    lecteur = PdfReader(str(chemin))
     passages = []
-    for numero, page in enumerate(lecteur.pages, 1):
-        try:
-            contenu = _nettoyer(page.extract_text() or "")
-        except Exception as e:
-            # Une page illisible ne doit pas faire perdre tout le document.
-            logger.debug(f"Page {numero} illisible dans {chemin.name} : {e}")
-            continue
-        via_ocr = False
-        if not contenu:
-            contenu = _nettoyer(_ocr_page(chemin, numero - 1))
-            via_ocr = bool(contenu)
-        if contenu:
-            passages.append(Passage(texte=contenu, fichier=chemin.name, page=numero, via_ocr=via_ocr))
+    # Ouvert explicitement, pour fermer le fichier avant de rendre la main —
+    # `PdfReader(str(chemin))` ouvre le fichier lui-meme et ne le referme
+    # qu'au passage du ramasse-miettes, a un moment indetermine. L'appelant
+    # (`DepotPiecesJointes.deposer`) efface ce meme fichier juste apres :
+    # sous Windows, l'effacement echouait tant que ce handle restait ouvert
+    # (`PermissionError: [WinError 32]`, mesure le 01/09/2026, invisible sur
+    # Linux ou `unlink()` efface un fichier meme ouvert).
+    with open(chemin, "rb") as flux:
+        lecteur = PdfReader(flux)
+        for numero, page in enumerate(lecteur.pages, 1):
+            try:
+                contenu = _nettoyer(page.extract_text() or "")
+            except Exception as e:
+                # Une page illisible ne doit pas faire perdre tout le document.
+                logger.debug(f"Page {numero} illisible dans {chemin.name} : {e}")
+                continue
+            via_ocr = False
+            if not contenu:
+                contenu = _nettoyer(_ocr_page(chemin, numero - 1))
+                via_ocr = bool(contenu)
+            if contenu:
+                passages.append(Passage(texte=contenu, fichier=chemin.name, page=numero, via_ocr=via_ocr))
     return passages
 
 

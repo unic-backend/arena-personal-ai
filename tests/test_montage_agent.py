@@ -4,6 +4,8 @@ Ollama n'est pas sur cette machine (`docs/REGLES_DE_TRAVAIL.md`). Le modèle
 est donc un double ici — mais un double qui rend ce qu'un vrai modèle rend :
 de la prose autour du JSON, une opération inventée, parfois rien du tout.
 """
+from pathlib import Path
+
 import pytest
 
 from agents.montage.montage_agent import MontageAgent
@@ -149,7 +151,12 @@ class TestInventaireDuServeur:
         (tmp_path / "source" / "notes.txt").write_bytes(b"x")
         monkeypatch.setattr(chat, "MEDIA_DIR", tmp_path)
 
-        trouves = [p.rsplit("/", 1)[-1] for p in chat.medias_montables()]
+        # `Path(...).name`, pas `.rsplit("/", 1)` : `medias_montables()` rend
+        # des chemins au format natif de l'OS — des antislashs sous Windows,
+        # ou ce split ne coupait jamais rien et rendait le chemin entier.
+        # Mesure le 01/09/2026 sur la machine du proprietaire, invisible sur
+        # Linux.
+        trouves = [Path(p).name for p in chat.medias_montables()]
         assert trouves == ["source.mp4"], (
             "un rendu remonté dans l'inventaire ferait boucler le montage sur lui-même"
         )

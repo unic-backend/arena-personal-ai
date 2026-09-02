@@ -90,19 +90,27 @@ class TestLaLectureSeuleEstTenue:
         )
 
     def test_personne_dans_le_depot_n_appelle_l_ecriture(self):
-        """Pas seulement l'agent : rien ne doit brancher `edit` sans le décider."""
+        """Pas seulement l'agent : rien ne doit brancher `edit` sans le décider.
+
+        Le balayage se limite aux paquets sources, jamais à toute la racine du
+        dépôt. Mesuré le 01/09/2026 sur la machine du propriétaire : un
+        `rglob` depuis la racine descend dans `data/`, ignoré par
+        `.gitignore` mais bien présent sur le disque — un cache d'embeddings
+        y écrit des chemins que Windows refuse de lire
+        (`OSError: [Errno 22] Invalid argument`).
+        """
         from pathlib import Path
 
         racine = Path(__file__).resolve().parent.parent.parent
+        paquets_source = ("apps", "core", "agents", "tools", "social")
         coupables = []
-        for chemin in racine.rglob("*.py"):
-            relatif = chemin.relative_to(racine).as_posix()
-            if (relatif.startswith((".venv/", "tests/", "node_modules/"))
-                    or "__pycache__" in relatif
-                    or relatif == "tools/coder/swe_aci_tool.py"):
-                continue
-            if ".edit(" in chemin.read_text(encoding="utf-8", errors="ignore"):
-                coupables.append(relatif)
+        for paquet in paquets_source:
+            for chemin in (racine / paquet).rglob("*.py"):
+                relatif = chemin.relative_to(racine).as_posix()
+                if "__pycache__" in relatif or relatif == "tools/coder/swe_aci_tool.py":
+                    continue
+                if ".edit(" in chemin.read_text(encoding="utf-8", errors="ignore"):
+                    coupables.append(relatif)
 
         assert coupables == [], (
             f"`SWEACITool.edit` ecrit des fichiers et est branche ici : {coupables}. "
