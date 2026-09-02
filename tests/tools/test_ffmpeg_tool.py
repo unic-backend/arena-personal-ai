@@ -12,10 +12,20 @@ sûr — qui marche pour n'importe quel caractère, y compris celui qu'on
 n'aura pas prévu.
 """
 import subprocess
+import sys
 
 import pytest
 
 from tools.video.ffmpeg_tool import CARACTERES_PIEGES, FFmpegTool, _chemin_sans_piege
+
+#: `:` piège le parseur de filtergraph ffmpeg (Linux/macOS) mais Windows
+#: refuse d'écrire un nom qui le contient — il le lit comme une lettre de
+#: lecteur. Ce n'est pas un défaut d'ARENA : un tel fichier ne peut pas
+#: exister sur cet OS, donc rien à recopier. Mesuré le 01/09/2026.
+_DEUX_POINTS_IMPOSSIBLE_SOUS_WINDOWS = pytest.mark.skipif(
+    sys.platform.startswith("win"),
+    reason="':' est un caractere de nom de fichier interdit sous Windows",
+)
 
 ASS = """[Script Info]
 ScriptType: v4.00+
@@ -39,7 +49,8 @@ class TestLeContournementDuNom:
 
     @pytest.mark.parametrize("nom", [
         "chantier d'Ouakam.ass", "reunion d'equipe.ass",
-        "a:b.ass", "a,b.ass", "a[b].ass", "a;b.ass",
+        pytest.param("a:b.ass", marks=_DEUX_POINTS_IMPOSSIBLE_SOUS_WINDOWS),
+        "a,b.ass", "a[b].ass", "a;b.ass",
     ])
     def test_un_nom_piege_est_recopie_ailleurs(self, tmp_path, nom):
         fichier = tmp_path / nom

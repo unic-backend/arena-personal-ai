@@ -24,6 +24,12 @@ from apps.backend.routers.chat import ChatRequest, dispatch_request
 
 RACINE = Path(__file__).resolve().parent.parent
 
+#: Les paquets qui portent du code source ARENA — même liste que
+#: `scripts/orphelins.py`. Un balayage doit s'y limiter, jamais partir de la
+#: racine du dépôt : au-delà vivent `data/`, `.venv/` et d'autres dossiers
+#: générés à l'exécution, pas toujours vides, pas toujours lisibles.
+PAQUETS_SOURCE = ("apps", "core", "agents", "tools", "social")
+
 #: Les quatre clés qui n'ouvrent plus rien. Les remettre dans un fichier lu par
 #: le système, c'est redonner de la valeur a des valeurs publiquement connues.
 CLES_MORTES = ("CREDS_KEY", "JWT_SECRET", "JWT_REFRESH_SECRET", "WEBUI_SECRET_KEY")
@@ -200,17 +206,25 @@ class TestAucuneAdresseOllamaEcriteEnDur:
     }
 
     def test_personne_d_autre_n_ecrit_l_adresse_en_dur(self):
-        """Écrire le port est permis — l'écrire sans lire la variable ne l'est pas."""
+        """Écrire le port est permis — l'écrire sans lire la variable ne l'est pas.
+
+        Le balayage se limite aux paquets sources (`scripts/orphelins.py` tient
+        déjà cette liste) au lieu de parcourir tout le dépôt depuis sa racine.
+        Mesuré le 01/09/2026 sur la machine du propriétaire : un `rglob` depuis
+        la racine descend dans `data/`, ignoré par `.gitignore` mais bien
+        présent sur le disque — un cache d'embeddings y écrit des chemins que
+        Windows refuse de lire (`OSError: [Errno 22] Invalid argument`). Cette
+        machine n'a pas ce dossier, donc le défaut n'y était pas visible.
+        """
         coupables = []
-        for chemin in RACINE.rglob("*.py"):
-            relatif = chemin.relative_to(RACINE).as_posix()
-            if relatif.startswith(("tests/", ".venv/")) or "__pycache__" in relatif:
-                continue
-            if relatif in self.AUTORISES:
-                continue
-            source = chemin.read_text(encoding="utf-8")
-            if "11434" in source and "OLLAMA_BASE_URL" not in source:
-                coupables.append(relatif)
+        for paquet in PAQUETS_SOURCE:
+            for chemin in (RACINE / paquet).rglob("*.py"):
+                relatif = chemin.relative_to(RACINE).as_posix()
+                if "__pycache__" in relatif or relatif in self.AUTORISES:
+                    continue
+                source = chemin.read_text(encoding="utf-8")
+                if "11434" in source and "OLLAMA_BASE_URL" not in source:
+                    coupables.append(relatif)
 
         assert coupables == [], (
             "ces fichiers ignorent OLLAMA_BASE_URL : " + ", ".join(coupables))

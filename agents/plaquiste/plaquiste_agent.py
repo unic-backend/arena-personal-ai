@@ -551,8 +551,10 @@ def _rendre_premiere_page(chemin: str) -> Optional[str]:
         import pypdfium2 as pdfium
     except ImportError:
         return None
+    document = None
     try:
-        page = pdfium.PdfDocument(chemin)[0]
+        document = pdfium.PdfDocument(chemin)
+        page = document[0]
         image = page.render(scale=200 / 72).to_pil()
         tampon = io.BytesIO()
         image.save(tampon, format="PNG")
@@ -560,6 +562,14 @@ def _rendre_premiere_page(chemin: str) -> Optional[str]:
     except Exception as erreur:  # noqa: BLE001 — un rendu rate est un etat, pas un crash
         logger.debug("Rendu de page impossible (%s) : %s", chemin, erreur)
         return None
+    finally:
+        # Meme defaut que `tools/documents/reader._ocr_page` (mesure le
+        # 01/09/2026) : sans fermeture explicite, le fichier reste ouvert
+        # jusqu'au ramasse-miettes — indetermine — et l'effacement qui suit
+        # dans l'appelant echoue sous Windows (`PermissionError: [WinError
+        # 32]`), invisible sur Linux ou `unlink()` efface un fichier ouvert.
+        if document is not None:
+            document.close()
 
 
 class PlaquisteAgent(BaseAgent):

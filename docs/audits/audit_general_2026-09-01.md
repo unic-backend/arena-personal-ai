@@ -1310,3 +1310,72 @@ Ce qu'il faut savoir pour trancher :
   pouvaient finir incrustés sur une vidéo publiée.
 
 `OPTIONAL — NON IMPLÉMENTÉ.` Une ligne suffirait, sur le modèle du n° 29.
+
+---
+
+# Cinq défauts trouvés en testant pour la première fois sur Windows
+
+Le propriétaire a lancé la suite sur sa propre machine — jamais fait pendant
+la nuit, où tout tournait sur Linux. Douze échecs sont apparus. Trois étaient
+des attentes de configuration locale (`APP_ENV`, `USMAN_RATE_LIMIT_REQUESTS`
+pas encore alignés sur les correctifs de la nuit — rien à corriger dans le
+code). Les neuf autres étaient de vrais défauts, invisibles sur Linux.
+
+## Deux balayages qui sortaient du dépôt
+
+`test_personne_d_autre_n_ecrit_l_adresse_en_dur` et
+`test_personne_dans_le_depot_n_appelle_l_ecriture` (défauts n° 19 bis et 27)
+parcouraient `RACINE.rglob("*.py")` — toute la racine du dépôt, pas seulement
+le code source. Sur la machine du propriétaire, ce balayage descend dans
+`data/database/open-webui/cache/embedding/...`, un dossier ignoré par
+`.gitignore` mais bien présent sur le disque, où un cache d'embeddings écrit
+des chemins que Windows refuse de lire (`OSError: [Errno 22] Invalid
+argument`).
+
+Corrigé en limitant les deux balayages aux paquets sources
+(`apps`, `core`, `agents`, `tools`, `social`) — la liste que
+`scripts/orphelins.py` tient déjà. Le défaut ne peut plus revenir avec un
+nouveau dossier généré à l'exécution, quel que soit son nom.
+
+## Trois fichiers PDF jamais refermés
+
+`tools/documents/reader._lire_pdf` (pypdf), `tools/documents/reader._ocr_page`
+(pypdfium2) et `agents/plaquiste/plaquiste_agent._rendre_premiere_page`
+(pypdfium2) ouvrent un PDF sans jamais fermer le handle. `DepotPiecesJointes.
+deposer()` efface ensuite ce même fichier dans son `finally`.
+
+Sur Linux, `unlink()` efface un fichier même ouvert (l'inode survit tant qu'un
+descripteur le tient, le nom disparaît). **Sous Windows, l'effacement est
+refusé tant qu'un handle reste ouvert** — `PermissionError: [WinError 32]`.
+Le moment où Python collecte l'objet et referme le fichier n'est pas
+déterministe ; sur la machine du propriétaire, il arrivait après l'effacement.
+
+Corrigé par une fermeture explicite dans les trois cas — `with open(...)`
+pour pypdf, `.close()` en `finally` pour pypdfium2 — au lieu de compter sur le
+ramasse-miettes. Prouvé après coup : un vrai PDF minimal se lit, puis s'efface
+immédiatement, sans laisser de handle.
+
+## Un test qui suppose des chemins Unix
+
+`test_seuls_les_dossiers_de_rushes_sont_lus` coupait un chemin avec
+`p.rsplit("/", 1)[-1]` pour en garder le nom de fichier. `medias_montables()`
+rend des chemins au format natif de l'OS — des antislashs sous Windows, où ce
+split ne coupe jamais rien et rend le chemin entier. Corrigé avec
+`Path(p).name`, qui ne suppose aucun format.
+
+## Un caractère que Windows interdit dans un nom de fichier
+
+`test_un_nom_piege_est_recopie_ailleurs` créait un fichier nommé `a:b.ass`
+pour vérifier que `:` — qui piège le parseur de filtergraph ffmpeg — est bien
+recopié sous un nom sûr. **Windows interdit `:` dans un nom de fichier** (il
+le lit comme une lettre de lecteur) : le fichier ne peut pas exister sur cet
+OS, donc rien à recopier. Ce n'est pas un défaut d'ARENA — `CARACTERES_PIEGES`
+reste inchangé, toujours nécessaire pour les utilisateurs Linux/macOS. Le seul
+cas `:` est ignoré sous Windows (`pytest.mark.skipif`), avec la raison écrite.
+
+## Ce que ça dit
+
+Aucun de ces neuf défauts n'était visible sur Linux, ni détecté par la CI —
+qui tourne elle aussi sur Linux. Le premier lancement sur la machine réelle du
+propriétaire, celle qui compte, en a trouvé neuf d'un coup. Tester sur la
+machine cible n'est pas redondant avec la CI ; c'est une machine différente.
