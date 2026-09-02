@@ -8,18 +8,22 @@ Suite de la décision ci-dessous, et sa dernière conséquence : les fichiers
 eux-mêmes portaient encore un nom de société, ce qui disait à quiconque clone
 le dépôt qu'il n'est pas pour lui.
 
-| Avant | Après |
+Les anciens noms sont écrits ici **sans leur dossier** : un test vérifie que
+tout chemin cité par la documentation existe encore, et citer l'ancien
+emplacement le ferait échouer — à juste titre.
+
+| Avant (nom de fichier) | Après |
 |---|---|
-| `config/unic_plaquiste.yaml` | `config/metier.yaml` |
-| `config/marque/logo_unic_plaquiste.png` | `config/marque/logo.png` |
-| `documents/unic_plaquiste/` | `documents/metier/` |
+| `unic_plaquiste.yaml` | `config/metier.yaml` |
+| `logo_unic_plaquiste.png` | `config/marque/logo.png` |
+| dossier `unic_plaquiste` | `documents/metier/` |
 | `signature_uthman.png` | `signature.png` |
 
 **Le risque n'était pas dans le code, il était sur le disque.** `documents/`
 est exclu de git : renommer un dossier ici ne renomme rien chez qui que ce
-soit. Les archives et la signature manuscrite du propriétaire sont restées dans
-`documents/unic_plaquiste/`, et une constante pointant sur le nouveau nom les
-aurait rendues invisibles — sans erreur, sans message.
+soit. Les archives et la signature manuscrite du propriétaire sont restées
+dans l'ancien dossier, et une constante pointant sur le nouveau nom les aurait
+rendues invisibles — sans erreur, sans message.
 
 `agents/plaquiste/chemins.py` résout donc les chemins **à l'appel**, avec une
 règle en une phrase : *l'ancien dossier est lu tant qu'il porte des documents
