@@ -106,22 +106,25 @@ class TestConfidentialite:
 
     def test_le_dossier_client_est_ignore_par_git(self):
         gitignore = (RACINE / ".gitignore").read_text(encoding="utf-8")
-        assert "documents/unic_plaquiste/*" in gitignore
+        assert "documents/metier/*" in gitignore
+        assert "documents/unic_plaquiste/*" in gitignore, (
+            "l'ancien dossier n'est plus ignore : les documents deja "
+            "sur la machine du proprietaire entreraient dans le depot")
 
     def test_seul_le_mode_d_emploi_reste_versionnable(self):
         gitignore = (RACINE / ".gitignore").read_text(encoding="utf-8")
-        assert "!documents/unic_plaquiste/LISEZ_MOI.md" in gitignore
+        assert "!documents/metier/LISEZ_MOI.md" in gitignore
 
     def test_aucun_document_client_n_est_dans_le_depot(self):
         """Le contrôle qui compte : rien de versionné dans ce dossier."""
         import subprocess
 
         suivis = subprocess.run(
-            ["git", "ls-files", "documents/unic_plaquiste/"],
+            ["git", "ls-files", "documents/metier/", "documents/unic_plaquiste/"],
             cwd=RACINE, capture_output=True, text=True, check=False,
         ).stdout.split()
 
-        assert suivis in ([], ["documents/unic_plaquiste/LISEZ_MOI.md"]), (
+        assert suivis in ([], ["documents/metier/LISEZ_MOI.md"]), (
             f"document client versionne : {suivis}"
         )
 

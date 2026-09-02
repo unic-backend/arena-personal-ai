@@ -2,6 +2,40 @@
 
 ## [Non publié]
 
+### Changé — 02/09/2026 — Les chemins ne nomment plus aucune entreprise
+
+Suite de la décision ci-dessous, et sa dernière conséquence : les fichiers
+eux-mêmes portaient encore un nom de société, ce qui disait à quiconque clone
+le dépôt qu'il n'est pas pour lui.
+
+Les anciens noms sont écrits ici **sans leur dossier** : un test vérifie que
+tout chemin cité par la documentation existe encore, et citer l'ancien
+emplacement le ferait échouer — à juste titre.
+
+| Avant (nom de fichier) | Après |
+|---|---|
+| `unic_plaquiste.yaml` | `config/metier.yaml` |
+| `logo_unic_plaquiste.png` | `config/marque/logo.png` |
+| dossier `unic_plaquiste` | `documents/metier/` |
+| `signature_uthman.png` | `signature.png` |
+
+**Le risque n'était pas dans le code, il était sur le disque.** `documents/`
+est exclu de git : renommer un dossier ici ne renomme rien chez qui que ce
+soit. Les archives et la signature manuscrite du propriétaire sont restées
+dans l'ancien dossier, et une constante pointant sur le nouveau nom les aurait
+rendues invisibles — sans erreur, sans message.
+
+`agents/plaquiste/chemins.py` résout donc les chemins **à l'appel**, avec une
+règle en une phrase : *l'ancien dossier est lu tant qu'il porte des documents
+que le nouveau n'a pas.* Le mode d'emploi livré par git ne compte pas comme un
+document — sinon la bascule masquerait les vrais. Dès qu'un fichier entre dans
+le nouveau dossier, elle se fait seule.
+
+Vérifié après renommage, sur le vrai dépôt : diagnostic `31 article(s)
+tarifés`, et un devis réel de 198 000 FCFA sorti avec **2 images** (logo +
+signature), aucun article sans prix. 14 tests ajoutés
+(`tests/agents/test_chemins_metier.py`), dont ceux qui tiennent la bascule.
+
 ### Changé — 02/09/2026 — L'instruction générale ne porte plus aucune entreprise
 
 Décision du propriétaire, qui **remplace** la sienne du même jour : « ce projet
@@ -23,7 +57,7 @@ Mesuré après le changement : instruction générale 986 caractères, **aucun**
 UniC, le mot « plaquiste » absent ; instruction UniC Plaquiste 4766 caractères,
 **4 liens sur 4**.
 
-Mesuré aussi, en retirant `config/unic_plaquiste.yaml` : le chat, la vidéo, les
+Mesuré aussi, en retirant `config/metier.yaml` : le chat, la vidéo, les
 documents, le code et Dioumtoukay s'importent et fonctionnent sans lui, et 152
 des 153 tests qui tombent sont des tests du métier. La plateforme était déjà
 générale ; ce changement retire le dernier endroit où elle ne l'était pas.

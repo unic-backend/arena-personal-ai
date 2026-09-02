@@ -190,7 +190,7 @@ def test_sans_grille_de_prix_la_sonde_dit_ce_qui_manque():
     sante = DevisConnector(metier={}).sonder()
 
     assert sante.etat is EtatSante.NON_CONFIGURE
-    assert "unic_plaquiste.yaml" in sante.ce_qui_manque
+    assert "metier.yaml" in sante.ce_qui_manque
     assert sante.mesure_le, "une sante sans date n'est pas une mesure"
 
 

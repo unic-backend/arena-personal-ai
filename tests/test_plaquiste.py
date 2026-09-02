@@ -2,7 +2,7 @@
 
 Ce qui est tenu ici n'est pas du style, c'est de l'argent : **aucun prix n'est
 inventé**. Les tarifs viennent des devis réels du propriétaire, versés dans
-`config/unic_plaquiste.yaml` le 27/08/2026. Un devis faux part chez un client
+`config/metier.yaml` le 27/08/2026. Un devis faux part chez un client
 et engage l'entreprise.
 """
 from pathlib import Path
@@ -25,7 +25,7 @@ from apps.backend.config import AGENTS_SPECIALISES
 from core.actions.resultat import Statut, a_confirmer, non_configure, succes
 
 RACINE = Path(__file__).resolve().parent.parent
-FICHIER = RACINE / "config" / "unic_plaquiste.yaml"
+FICHIER = RACINE / "config" / "metier.yaml"
 
 
 class ModeleDouble:
@@ -873,14 +873,14 @@ class TestMesurerLePlan:
     @pytest.mark.asyncio
     async def test_un_chemin_dans_le_depot_d_arena_est_refuse(self):
         """`chemin_dans` lit n'importe quel chemin absolu ecrit dans la phrase —
-        y compris `.env` ou `config/unic_plaquiste.yaml`, les seuls endroits ou
+        y compris `.env` ou `config/metier.yaml`, les seuls endroits ou
         ARENA garde ses propres secrets. Rien ne doit atteindre OpenTakeoff."""
         from apps.backend.config import BASE_DIR
 
         registre = RegistreScripte({})
         agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
                                registre=registre)
-        chemin_secret = str(BASE_DIR / "config" / "unic_plaquiste.yaml.pdf")
+        chemin_secret = str(BASE_DIR / "config" / "metier.yaml.pdf")
 
         resultat = await agent.run(f"analyse le plan {chemin_secret}")
 
@@ -1058,7 +1058,7 @@ class TestCompterLesMarquesDuPlan:
         registre = RegistreScripte({})
         agent = PlaquisteAgent(provider=ModeleDouble(), metier=charger_metier(FICHIER),
                                registre=registre)
-        chemin_secret = str(BASE_DIR / "config" / "unic_plaquiste.yaml.pdf")
+        chemin_secret = str(BASE_DIR / "config" / "metier.yaml.pdf")
 
         resultat = await agent.run(f"combien de portes sur le plan {chemin_secret} ?")
 

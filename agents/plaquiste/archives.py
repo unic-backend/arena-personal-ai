@@ -30,11 +30,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
+from agents.plaquiste.chemins import dossier_des_documents
 from tools.documents.reader import lire_document
 
 logger = logging.getLogger("usman.agent.plaquiste.archives")
 
-DOSSIER_ARCHIVES = Path(__file__).resolve().parents[2] / "documents" / "unic_plaquiste"
+# Le dossier des archives vient de `chemins.py` et se resout **a l'appel**,
+# jamais a l'import : il est hors de git, donc renommer une constante ici ne
+# renomme rien la ou les documents vivent vraiment.
 
 EXTENSIONS = (".pdf", ".docx", ".txt", ".md")
 
@@ -87,8 +90,9 @@ class Extrait:
     score: int
 
 
-def documents_disponibles(dossier: Path = DOSSIER_ARCHIVES) -> List[Path]:
+def documents_disponibles(dossier: Optional[Path] = None) -> List[Path]:
     """Liste les fichiers lisibles du dossier d'archives. Vide si absent."""
+    dossier = dossier if dossier is not None else dossier_des_documents()
     if not dossier.is_dir():
         return []
     return sorted(
@@ -106,7 +110,7 @@ def _pertinence(passage: str, attendus: set) -> int:
 
 def extraits_pour(
     demande: str,
-    dossier: Path = DOSSIER_ARCHIVES,
+    dossier: Optional[Path] = None,
     maximum: int = 4,
     taille_max: int = 900,
 ) -> List[Extrait]:

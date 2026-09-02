@@ -35,7 +35,7 @@ def ecrire(chemin, donnees):
 class TestLaGrilleSuitLeFichier:
 
     def test_un_prix_change_est_vu_au_chiffrage_suivant(self, tmp_path):
-        fichier = tmp_path / "unic_plaquiste.yaml"
+        fichier = tmp_path / "metier.yaml"
         ecrire(fichier, GRILLE_DE_DEPART)
         suivi = MetierSuivi(fichier)
         assert _grille(suivi.actuel())["Plaque BA13"] == 4500
@@ -45,7 +45,7 @@ class TestLaGrilleSuitLeFichier:
         assert _grille(suivi.actuel())["Plaque BA13"] == 5200
 
     def test_un_article_ajoute_apparait(self, tmp_path):
-        fichier = tmp_path / "unic_plaquiste.yaml"
+        fichier = tmp_path / "metier.yaml"
         ecrire(fichier, GRILLE_DE_DEPART)
         suivi = MetierSuivi(fichier)
 
@@ -58,7 +58,7 @@ class TestLaGrilleSuitLeFichier:
         """La relecture suit la date de modification, jamais une horloge."""
         import agents.plaquiste.plaquiste_agent as module
 
-        fichier = tmp_path / "unic_plaquiste.yaml"
+        fichier = tmp_path / "metier.yaml"
         ecrire(fichier, GRILLE_DE_DEPART)
         suivi = MetierSuivi(fichier)
 
@@ -80,7 +80,7 @@ class TestLaGrilleSuitLeFichier:
 
     def test_un_fichier_efface_vide_la_grille_au_lieu_de_la_figer(self, tmp_path):
         """Refuser de chiffrer est plus sûr que chiffrer sur une grille fantôme."""
-        fichier = tmp_path / "unic_plaquiste.yaml"
+        fichier = tmp_path / "metier.yaml"
         ecrire(fichier, GRILLE_DE_DEPART)
         suivi = MetierSuivi(fichier)
         assert _grille(suivi.actuel())
@@ -96,7 +96,7 @@ class TestLesDeuxPointsDEntreeSuivent:
     def test_l_agent_suit_le_fichier(self, tmp_path, monkeypatch):
         import agents.plaquiste.plaquiste_agent as module
 
-        fichier = tmp_path / "unic_plaquiste.yaml"
+        fichier = tmp_path / "metier.yaml"
         ecrire(fichier, GRILLE_DE_DEPART)
         monkeypatch.setattr(module, "FICHIER_METIER", fichier)
         agent = PlaquisteAgent(provider=None)
@@ -108,7 +108,7 @@ class TestLesDeuxPointsDEntreeSuivent:
     def test_le_connecteur_suit_le_fichier(self, tmp_path, monkeypatch):
         import agents.plaquiste.plaquiste_agent as module
 
-        fichier = tmp_path / "unic_plaquiste.yaml"
+        fichier = tmp_path / "metier.yaml"
         ecrire(fichier, GRILLE_DE_DEPART)
         monkeypatch.setattr(module, "FICHIER_METIER", fichier)
         connecteur = DevisConnector()
@@ -121,7 +121,7 @@ class TestLesDeuxPointsDEntreeSuivent:
         """Les tests injectent leur grille : le disque ne doit pas la remplacer."""
         import agents.plaquiste.plaquiste_agent as module
 
-        fichier = tmp_path / "unic_plaquiste.yaml"
+        fichier = tmp_path / "metier.yaml"
         ecrire(fichier, GRILLE_DE_DEPART)
         monkeypatch.setattr(module, "FICHIER_METIER", fichier)
         injectee = {"prix_materiaux": {"Plaque BA13": 1}}

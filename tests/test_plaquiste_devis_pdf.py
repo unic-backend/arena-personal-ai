@@ -258,7 +258,7 @@ class TestLeLogoSortSurLeDocument:
     Mesure du 02/09/2026, sur l'appel exact du connecteur
     (`core/connectors/devis.py` : `construire(devis, self.metier, sortie)`) :
     **0 image dans le PDF produit**. Le fichier
-    `documents/unic_plaquiste/logo_unic_plaquiste.png` etait la depuis le
+    `documents/<metier>/logo_unic_plaquiste.png` etait la depuis le
     27/08/2026, byte pour byte celui que le proprietaire a renvoye le
     02/09/2026 — et personne ne le passait. `construire()` avait `logo=None`
     par defaut, l'appelant ne renseignait rien, et tous ses devis sortaient
@@ -285,7 +285,8 @@ class TestLeLogoSortSurLeDocument:
     def test_le_fichier_par_defaut_est_bien_celui_de_la_marque(self):
         assert LOGO_PAR_DEFAUT.exists(), (
             f"le logo de la marque a disparu de {LOGO_PAR_DEFAUT}")
-        assert LOGO_PAR_DEFAUT.name == "logo_unic_plaquiste.png"
+        assert LOGO_PAR_DEFAUT.name == "logo.png", (
+            "le chemin du logo nomme encore une entreprise")
         assert LOGO_PAR_DEFAUT.parent.name == "marque"
 
     def test_un_chemin_explicite_l_emporte_sur_le_defaut(self, tmp_path):

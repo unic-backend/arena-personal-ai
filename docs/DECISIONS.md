@@ -1337,7 +1337,7 @@ terminé par `.pdf` **écrit dans la phrase**, sans autre contrôle — par
 conception (DEC-0012), pour que le propriétaire désigne un plan posé
 n'importe où sur sa machine. Mais rien n'empêchait alors une phrase de
 désigner un fichier du dépôt lui-même — le seul endroit où ARENA garde ses
-propres secrets (`.env`, `config/unic_plaquiste.yaml`) — avant de le
+propres secrets (`.env`, `config/metier.yaml`) — avant de le
 transmettre à `core/connectors/opentakeoff.py`, qui ne fait lui-même
 qu'une vérification d'existence, aucune contention. Portée aujourd'hui :
 narrow (serveur lié à `127.0.0.1`) ; deviendrait P1 si le serveur était un
@@ -1447,7 +1447,7 @@ sa base. Un serveur modeste suffit, et c'est ce qui rend la chose finançable.
 | Ce qui monte | Ce qui reste chez lui |
 |---|---|
 | la mémoire (conversations, faits retenus) | `data/documents/` — contrats, plans, pièces jointes |
-| `config/unic_plaquiste.yaml` — sa grille de prix | |
+| `config/metier.yaml` — sa grille de prix | |
 | `data/devis/` — les devis produits | |
 
 Il a tranché en connaissant les trois niveaux de visibilité, qui lui ont été
@@ -2231,7 +2231,7 @@ secondes ; la sonde ne se voit pas.
 ## DEC-0034 — La grille de prix suit le fichier, pas le démarrage du serveur
 
 **2026-09-01.** `PlaquisteAgent` et `DevisConnector` lisaient
-`config/unic_plaquiste.yaml` une seule fois, dans leur constructeur — donc au
+`config/metier.yaml` une seule fois, dans leur constructeur — donc au
 démarrage du serveur. Un prix modifié n'était vu qu'au redémarrage suivant, et
 rien ne le disait. Mesuré : fichier à 999 999, agent toujours à 4 500.
 

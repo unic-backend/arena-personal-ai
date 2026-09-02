@@ -7,7 +7,7 @@ Dernière mise à jour : **2026-09-01**, après la nuit VoiceStudio + Agency Age
 
 **29 défauts trouvés sur une suite verte**, tous mesurés avant correction et
 vérifiés par sabotage. Les deux plus coûteux : tes prix modifiés dans
-`config/unic_plaquiste.yaml` n'étaient vus qu'après un redémarrage du serveur,
+`config/metier.yaml` n'étaient vus qu'après un redémarrage du serveur,
 et **deux agents sur trois versaient le texte web brut dans l'invite** — une
 page pouvait parler à ARENA comme si c'était toi.
 
