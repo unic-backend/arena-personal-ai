@@ -16,6 +16,7 @@ from agents.plaquiste.plaquiste_agent import (
     _rendre_premiere_page,
     charger_metier,
     composer_instruction,
+    demande_de_demonstration,
     destinataire_annonce,
     destinataire_depuis_l_historique,
     lignes_presence_en_ligne,
@@ -1732,3 +1733,125 @@ class TestLeRouteurTransmetLHistorique:
 
         assert recu["context"]["historique"] == historique
         assert recu["context"]["message_actuel"] == "C'est Fast Group"
+
+
+class TestDevisDeDemonstration:
+    """Un devis qu'il demande pour VOIR ne doit pas subir l'interrogatoire.
+
+    Demande du proprietaire le 02/09/2026 : « si je lui demande juste un devis
+    demonstration il me pose des tas de questions [...] il faut enlever ses
+    menottes sur lui ».
+
+    Il a raison, et c'est un vrai defaut de conception : les trois questions
+    (client, lieu, prestations) existent pour proteger un document **qui part
+    chez un client**. Un exemple ne part chez personne — les poser la ne
+    protegeait rien, elles bloquaient seulement.
+
+    Ce qui reste protege, et ce qui rend la levee sure : le document se NOMME
+    demonstration, a l'emplacement meme du nom du client sur le PDF. Le danger
+    n'a jamais ete de fabriquer un exemple ; il a toujours ete qu'un exemple
+    soit pris pour un vrai devis.
+    """
+
+    @pytest.mark.parametrize("phrase", [
+        "fais-moi un devis demonstration",
+        "fais moi un devis démonstration en pdf",
+        "un exemple de devis",
+        "devis test en pdf",
+        "fais une demo de devis",
+        "un modele de devis",
+        "montre-moi pour voir a quoi ca ressemble",
+    ])
+    def test_ces_phrases_demandent_une_demonstration(self, phrase):
+        assert demande_de_demonstration(phrase) is True
+
+    @pytest.mark.parametrize("phrase", [
+        "fais un devis pour Fast Group a Diamniadio",
+        # « exemple » seul est trop courant pour declencher quoi que ce soit.
+        "donne-moi un exemple de finition pour le plafond",
+        "chiffre-moi 18 parois de 5,40 x 2,50 m",
+    ])
+    def test_une_vraie_demande_n_est_pas_une_demonstration(self, phrase):
+        assert demande_de_demonstration(phrase) is False
+
+    def test_l_instruction_de_demonstration_interdit_les_questions(self):
+        instruction = composer_instruction(charger_metier(FICHIER),
+                                           "fais-moi un devis demonstration")
+
+        assert "TU NE POSES AUCUNE QUESTION" in instruction
+        assert "Quel est le nom du client ?" not in instruction
+
+    def test_une_vraie_demande_garde_les_trois_questions(self):
+        """La protection ne bouge pas quand le devis part vraiment chez quelqu'un."""
+        instruction = composer_instruction(charger_metier(FICHIER),
+                                           "fais un devis pour Fast Group")
+
+        assert "Quel est le nom du client ?" in instruction
+        assert "TU NE POSES AUCUNE QUESTION" not in instruction
+
+    def test_sans_demande_l_instruction_reste_la_plus_prudente(self):
+        """Le defaut est le regime protege, jamais la demonstration."""
+        instruction = composer_instruction(charger_metier(FICHIER))
+
+        assert "Quel est le nom du client ?" in instruction
+
+    def test_une_demonstration_garde_les_vrais_prix(self):
+        """Le destinataire est fictif ; les tarifs, jamais."""
+        instruction = composer_instruction(charger_metier(FICHIER),
+                                           "fais-moi un devis demonstration")
+
+        assert "4500" in instruction
+        assert "Plaque standard BA13" in instruction
+        assert "n'inventes JAMAIS un nom" in instruction
+
+    def test_un_faux_nom_plausible_reste_interdit_en_demonstration(self):
+        """Ce qui rend un exemple dangereux, c'est de ressembler a un vrai."""
+        instruction = composer_instruction(charger_metier(FICHIER),
+                                           "fais-moi un devis demonstration")
+
+        assert "DEVIS DE DEMONSTRATION" in instruction
+        assert "non contractuel" in instruction
+
+
+class TestLePdfDeDemonstrationPasseSansQuestion:
+    """Le correctif porte : le PDF se lance, et il s'annonce comme un exemple."""
+
+    class RegistreEspion:
+        def __init__(self):
+            self.recu = {}
+
+        def executer(self, connecteur, capacite, **parametres):
+            self.recu = parametres
+            return a_confirmer("produire", parametres.get("client", "?"),
+                               "Pret : le PDF sera ecrit.")
+
+    async def _document(self, phrase):
+        registre = self.RegistreEspion()
+        agent = PlaquisteAgent(provider=ModeleDouble(),
+                               metier=charger_metier(FICHIER), registre=registre)
+        resultat = await agent.run(phrase)
+        return resultat.get("document") or {}, registre.recu
+
+    async def test_une_demonstration_ne_reclame_plus_le_destinataire(self):
+        document, recu = await self._document("genere le devis, un devis demonstration en pdf")
+
+        assert document.get("statut") == "NEEDS_CONFIRMATION"
+        assert document.get("manquants") is None
+        assert recu, "le connecteur devis doit avoir ete appele"
+
+    async def test_le_document_de_demonstration_se_nomme_ainsi(self):
+        """Sur le PDF, ces valeurs s'impriment a la place du client et du lieu."""
+        _, recu = await self._document("genere le devis, un devis demonstration en pdf")
+
+        assert "DEMONSTRATION" in recu["client"]
+        assert "DEMONSTRATION" in recu["lieu"]
+        assert "non contractuel" in recu["objet"]
+        assert "ne pas envoyer" in recu["objet"]
+
+    async def test_un_vrai_devis_sans_client_est_toujours_bloque(self):
+        """La menotte retiree est celle de la demonstration, pas celle du client."""
+        document, recu = await self._document("genere le devis en pdf")
+
+        assert document.get("statut") == "INCOMPLET"
+        assert sorted(document["manquants"]) == ["client", "lieu", "objet"]
+        assert recu == {}, "rien ne doit partir au connecteur sans destinataire"
