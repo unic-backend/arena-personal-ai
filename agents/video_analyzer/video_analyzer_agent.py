@@ -148,7 +148,15 @@ class VideoAnalyzerAgent(BaseAgent):
             memory=memory
         )
         self.ffmpeg = FFmpegTool()
-        self.transcriber = TranscriptionTool(model_size="tiny")
+        # "tiny" -> "small" le 02/09/2026 : mesure reelle (pas supposee) sur une
+        # phrase francaise synthetisee, comparant les deux tailles sur le meme
+        # audio. "tiny" inventait des mots ("bout de l'epauir" pour "dix-huit
+        # parois") ; "small" rendait la premiere moitie de la phrase mot pour
+        # mot. Cout mesure sur un clip de ~5s, CPU int8, modele deja en
+        # memoire : 0,70s (tiny) contre 2,87s (small) — ce partage sert aussi
+        # `apps/backend/routers/speech.py` (dictee), ou ce delai reste sous le
+        # "Transcription…" deja affiche pendant l'attente.
+        self.transcriber = TranscriptionTool(model_size="small")
         # Sans registre, sans file ou sans journal, l'agent analyse encore mais
         # ne suit rien. C'est un etat annonce dans la reponse, pas un silence.
         self.registre = registre
