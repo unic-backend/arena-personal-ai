@@ -120,6 +120,48 @@ DEMANDE_VISUELLE_OUVERTURES = (
 #: Ce qu'il faut connaitre pour adresser un devis. Jamais devine dans la phrase.
 DESTINATAIRE = ("client", "lieu", "objet")
 
+#: Une demande de DEMONSTRATION. Demande du proprietaire le 02/09/2026 : « si
+#: je lui demande juste un devis demonstration il me pose des tas de questions
+#: [...] il faut enlever ses menottes ».
+#:
+#: Il avait raison, et le defaut est reel : les trois questions (client, lieu,
+#: objet) existent pour proteger un document qui PART CHEZ UN CLIENT. Un devis
+#: qu'il demande pour VOIR a quoi ca ressemble ne part chez personne — les
+#: poser la ne protege rien, elles ne font que barrer la route.
+#:
+#: Ce qui reste protege, et ce n'est pas negociable : le document produit se
+#: NOMME demonstration, sur le PDF, a la place meme du nom du client. Le
+#: danger n'a jamais ete de fabriquer un exemple ; il a toujours ete qu'un
+#: exemple soit pris pour un vrai. Un document qui annonce ce qu'il est ne
+#: peut pas etre confondu.
+#:
+#: « exemple » seul n'est pas un declencheur : le mot est trop courant («
+#: donne-moi un exemple de finition »). Il faut qu'il accompagne le document.
+DEMANDE_DE_DEMONSTRATION = re.compile(
+    r"\b(d[ée]monstration|d[ée]mo\b"
+    r"|(devis|facture|document|bon de commande|bon de livraison)\s+"
+    r"(de\s+)?(test|exemple|fictif|type|mod[èe]le)"
+    r"|(exemple|mod[èe]le|test)\s+(de\s+)?(devis|facture)"
+    r"|pour\s+voir\s+(a\s+quoi|à\s+quoi|ce\s+que)"
+    r")",
+    re.IGNORECASE)
+
+#: Ce qui remplit les trois champs quand c'est une demonstration. Aucun n'est
+#: un nom plausible : chacun DIT qu'il est fictif, et ces valeurs sont
+#: imprimees telles quelles sur le PDF, a l'emplacement du client et du
+#: chantier (`devis_pdf.py`). Un lecteur ne peut pas se tromper.
+DESTINATAIRE_DEMONSTRATION = {
+    "client": "DEMONSTRATION — client fictif",
+    "lieu": "DEMONSTRATION — chantier fictif",
+    "objet": ("DEVIS DE DEMONSTRATION — document non contractuel, "
+              "aucun client reel, ne pas envoyer."),
+}
+
+
+def demande_de_demonstration(texte: str) -> bool:
+    """Dit si la phrase demande un document d'exemple, pas un vrai document."""
+    return bool(DEMANDE_DE_DEMONSTRATION.search(texte or ""))
+
 #: Ce qui, dans une question posee par ARENA au tour precedent, designe
 #: CHACUN des trois champs du destinataire. Trouve le 31/08/2026, en direct
 #: avec le proprietaire : un devis se negocie sur plusieurs tours (« quel
@@ -454,11 +496,60 @@ def lignes_presence_en_ligne(entreprise: Dict[str, Any]) -> List[str]:
     return lignes
 
 
-def composer_instruction(metier: Dict[str, Any]) -> str:
+#: Le regime NORMAL : un devis part chez quelqu'un, donc on ne devine personne.
+#: Inchange depuis le 31/08/2026 — les formulations exactes des trois questions
+#: sont lues par `destinataire_depuis_l_historique`, les reecrire casserait
+#: l'association entre la question posee et la reponse suivante.
+BLOC_VRAI_CLIENT = (
+    "LE CLIENT EST CELUI QU'ON TE DONNE.",
+    "Tu n'inventes ni nom, ni adresse, ni chantier, et tu ne reprends jamais "
+    "ceux d'une affaire passee. S'il te manque le nom du client, le lieu "
+    "du chantier ou les prestations souhaitees, tu les demandes EXACTEMENT "
+    "ainsi, une question par ligne, au lieu de les supposer : « Quel est "
+    "le nom du client ? », « Quel est le lieu du chantier ? », « Quelles "
+    "sont les prestations souhaitees ? ». Ces formulations exactes sont "
+    "lues par un systeme automatique qui associe ta prochaine reponse au "
+    "bon champ — une autre formulation ferait echouer cette association "
+    "et tout redemander.",
+)
+
+#: Le regime DEMONSTRATION. Le proprietaire veut VOIR un devis, pas en envoyer
+#: un : les trois questions ne protegent alors plus rien et ne font que barrer
+#: la route (demande du 02/09/2026, « enleve ses menottes »).
+#:
+#: Ce qui ne bouge pas d'un pouce : les PRIX. Ils viennent de la grille, comme
+#: toujours. C'est le destinataire qui est fictif, jamais les chiffres — un
+#: exemple qui montrerait de faux tarifs n'apprendrait rien de vrai sur ce que
+#: l'entreprise facture.
+BLOC_DEMONSTRATION = (
+    "CETTE DEMANDE EST UNE DEMONSTRATION. TU NE POSES AUCUNE QUESTION.",
+    "Le gerant veut voir a quoi ressemble un devis, il n'en envoie aucun. Tu "
+    "produis donc le document TOUT DE SUITE, complet, sans demander le nom du "
+    "client, le lieu du chantier ni les prestations : tu choisis toi-meme un "
+    "cas realiste (par exemple des cloisons ou un faux plafond avec des "
+    "surfaces plausibles) et tu le chiffres entierement.",
+    "Tu ecris en tete du devis : « DEVIS DE DEMONSTRATION — document non "
+    "contractuel, aucun client reel ». Le destinataire porte le meme mot : tu "
+    "n'inventes JAMAIS un nom de personne ou d'entreprise, meme en "
+    "demonstration — un faux nom plausible est exactement ce qui ferait "
+    "prendre l'exemple pour un vrai devis.",
+    "Les PRIX, eux, restent ceux de la grille ci-dessous, sans exception. Une "
+    "demonstration montre les vrais tarifs de l'entreprise sur un cas invente, "
+    "jamais l'inverse.",
+)
+
+
+def composer_instruction(metier: Dict[str, Any], demande: str = "") -> str:
     """Compose l'instruction systeme a partir des seules donnees du fichier.
 
     Rien n'est ecrit en dur ici : changer un prix se fait dans le YAML, et la
     prochaine reponse en tient compte.
+
+    `demande` est la phrase du tour. Elle ne sert qu'a une chose : reconnaitre
+    une demande de DEMONSTRATION, et lever alors les trois questions
+    (client, lieu, prestations) qui n'ont aucun sens pour un document qui ne
+    part chez personne. Vide par defaut — l'instruction reste celle d'un vrai
+    devis, la plus prudente des deux.
     """
     if not metier:
         return (
@@ -485,16 +576,7 @@ def composer_instruction(metier: Dict[str, Any]) -> str:
         "Tu n'ecris jamais une autre date : un devis mal date est un devis "
         "juridiquement fragile.",
         "",
-        "LE CLIENT EST CELUI QU'ON TE DONNE.",
-        "Tu n'inventes ni nom, ni adresse, ni chantier, et tu ne reprends jamais "
-        "ceux d'une affaire passee. S'il te manque le nom du client, le lieu "
-        "du chantier ou les prestations souhaitees, tu les demandes EXACTEMENT "
-        "ainsi, une question par ligne, au lieu de les supposer : « Quel est "
-        "le nom du client ? », « Quel est le lieu du chantier ? », « Quelles "
-        "sont les prestations souhaitees ? ». Ces formulations exactes sont "
-        "lues par un systeme automatique qui associe ta prochaine reponse au "
-        "bon champ — une autre formulation ferait echouer cette association "
-        "et tout redemander.",
+        *(BLOC_DEMONSTRATION if demande_de_demonstration(demande) else BLOC_VRAI_CLIENT),
         "",
         "LE PDF N'EST PAS TON TRAVAIL — NE DIS JAMAIS QUE TU NE PEUX PAS EN CREER.",
         "Produire le fichier PDF est fait par un systeme separe, automatiquement, "
@@ -722,6 +804,13 @@ class PlaquisteAgent(BaseAgent):
 
         destinataire = {nom: str(context.get(nom) or "").strip() for nom in DESTINATAIRE}
         manquants = [nom for nom, valeur in destinataire.items() if not valeur]
+        if manquants and demande_de_demonstration(texte):
+            # Demonstration : ce qui manque est REMPLI, pas demande. Les valeurs
+            # disent elles-memes qu'elles sont fictives et s'impriment a la
+            # place du nom du client — le document ne peut pas passer pour vrai.
+            for champ in manquants:
+                destinataire[champ] = DESTINATAIRE_DEMONSTRATION[champ]
+            manquants = []
         if manquants:
             return {"statut": "INCOMPLET", "manquants": manquants,
                     "message": ("Le PDF n'est pas lance : il manque "
@@ -1075,7 +1164,7 @@ class PlaquisteAgent(BaseAgent):
                 ),
             }
 
-        instruction = composer_instruction(self.metier)
+        instruction = composer_instruction(self.metier, user_input)
 
         # Les archives ne s'ouvrent que si on les demande. Injectees a chaque
         # reponse, elles ramenaient le nom d'un ancien client et les details d'un
@@ -1260,7 +1349,8 @@ class PlaquisteAgent(BaseAgent):
         # message serait du gaspillage pour un champ qui ne sert a rien
         # tant qu'aucun document n'est demande.
         compris_par_modele: List[str] = []
-        if DEMANDE_DE_DOCUMENT.search(message_actuel or ""):
+        if (DEMANDE_DE_DOCUMENT.search(message_actuel or "")
+                and not demande_de_demonstration(message_actuel or "")):
             manquants_avant_modele = [
                 champ for champ in DESTINATAIRE if not contexte.get(champ)]
             if manquants_avant_modele:
