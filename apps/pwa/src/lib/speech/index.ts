@@ -1,10 +1,17 @@
 /* ─────────────────────────────────────────────────────────────
    Speech Module for Usman:
-   1. Speech-to-Text (Dictation / STT): Web Speech API (Chrome, Safari, Edge)
+   1. Speech-to-Text (Dictation / STT): POST /api/speech/transcribe
+      (Faster-Whisper, apps/backend/routers/speech.py) when a backend is
+      connected — the browser's free Web Speech API otherwise, as a
+      fallback. Demande explicite du proprietaire le 02/09/2026, apres
+      avoir signale que la dictee "ecrit n'importe quoi" : le Web Speech
+      API ne connait pas du tout le wolof, et gere mal l'accent — un vrai
+      modele deja present dans le depot corrige les deux.
    2. Text-to-Speech (Audio readback / TTS): SpeechSynthesis API
    ───────────────────────────────────────────────────────────── */
 
 import { create } from 'zustand';
+import { activeRemoteCfg } from '../store/backendStore';
 
 /* ── Web Speech API Type Shims ── */
 interface SpeechRecognitionEventLike extends Event {
@@ -60,9 +67,21 @@ export function isSpeechRecognitionSupported(): boolean {
   return typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
 }
 
+export function isMediaRecorderSupported(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof MediaRecorder !== 'undefined' &&
+    Boolean(navigator.mediaDevices?.getUserMedia)
+  );
+}
+
 interface DictationState {
   isListening: boolean;
   isSupported: boolean;
+  /** Entre la fin de l'enregistrement et le texte final du serveur — pas
+   *  d'"interim" avec Whisper, il transcrit apres coup, jamais au fil de la
+   *  parole. Sans cet etat, l'ecran ne montrerait rien pendant ce delai. */
+  isTranscribing: boolean;
   interimTranscript: string;
   error: string | null;
   startDictation(
@@ -74,14 +93,86 @@ interface DictationState {
 }
 
 let activeRecognition: SpeechRecognitionLike | null = null;
+let activeRecorder: MediaRecorder | null = null;
+
+/* Enregistre le micro, puis envoie l'audio complet a POST /api/speech/transcribe
+   des l'arret — jamais au fil de la parole, Whisper transcrit apres coup.
+   Pris en branche uniquement quand un backend est connecte : sans lui, il
+   n'y a personne pour faire tourner Whisper, et `startDictation` retombe sur
+   le Web Speech API du navigateur. */
+async function demarrerDictationServeur(
+  cfg: { url: string; apiKey?: string },
+  lang: string,
+  onResult: (finalText: string, interimText: string) => void,
+  onError: ((errCode: string) => void) | undefined,
+  set: (partial: Partial<DictationState>) => void,
+) {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const type = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/ogg']
+      .find((candidat) => MediaRecorder.isTypeSupported(candidat));
+    const recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    const morceaux: Blob[] = [];
+
+    recorder.ondataavailable = (ev) => {
+      if (ev.data.size > 0) morceaux.push(ev.data);
+    };
+
+    recorder.onstop = () => {
+      stream.getTracks().forEach((piste) => piste.stop());
+      activeRecorder = null;
+      set({ isListening: false, isTranscribing: true });
+
+      void (async () => {
+        try {
+          const blob = new Blob(morceaux, { type: recorder.mimeType || 'audio/webm' });
+          const form = new FormData();
+          form.append('file', blob, 'dictee.webm');
+          form.append('langue', lang.startsWith('fr') ? 'fr' : 'en');
+
+          const res = await fetch(`${cfg.url}/api/speech/transcribe`, {
+            method: 'POST',
+            headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
+            body: form,
+          });
+          if (!res.ok) {
+            const detail = await res.json().catch(() => null);
+            throw new Error((detail && detail.detail) || `HTTP ${res.status}`);
+          }
+          const data = (await res.json()) as { text: string };
+          set({ isTranscribing: false });
+          onResult(data.text ?? '', '');
+        } catch {
+          set({ isTranscribing: false, error: 'transcription-failed' });
+          onError?.('transcription-failed');
+        }
+      })();
+    };
+
+    activeRecorder = recorder;
+    set({ isListening: true, isTranscribing: false, error: null, interimTranscript: '' });
+    recorder.start();
+  } catch (err) {
+    const code = err instanceof DOMException && err.name === 'NotAllowedError' ? 'not-allowed' : 'mic-failed';
+    set({ error: code, isListening: false });
+    onError?.(code);
+  }
+}
 
 export const useDictation = create<DictationState>((set) => ({
   isListening: false,
-  isSupported: isSpeechRecognitionSupported(),
+  isSupported: isSpeechRecognitionSupported() || isMediaRecorderSupported(),
+  isTranscribing: false,
   interimTranscript: '',
   error: null,
 
   startDictation: (lang, onResult, onError) => {
+    const cfg = activeRemoteCfg();
+    if (cfg && isMediaRecorderSupported()) {
+      void demarrerDictationServeur(cfg, lang, onResult, onError, set);
+      return;
+    }
+
     if (!isSpeechRecognitionSupported()) {
       set({ error: 'unsupported', isListening: false });
       onError?.('unsupported');
@@ -153,6 +244,16 @@ export const useDictation = create<DictationState>((set) => ({
   },
 
   stopDictation: () => {
+    if (activeRecorder) {
+      // Le reste (upload + transcription) se fait dans `onstop`, qui pose
+      // lui-meme `isTranscribing` — rien d'autre a faire ici que declencher.
+      try {
+        activeRecorder.stop();
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
     if (activeRecognition) {
       try {
         activeRecognition.stop();
