@@ -34,6 +34,7 @@ from apps.backend.config import (
     DB_PATH,
     FOURNISSEUR_DEMANDE,
     MODE_IA,
+    MODELE_CODEUR,
     MODELE_PROFOND,
     MODELE_RAPIDE,
     MODELE_VISION,
@@ -233,6 +234,11 @@ gardien = Gardien(file_maintenance=file_maintenance)
 # (DEC-0009). Les deux fournisseurs distants n'existent que s'ils ont une cle :
 # sans elle, l'aiguilleur ne les compte meme pas comme une option.
 ollama_rapide = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_RAPIDE)
+# Le modele de code, rendu aux deux agents dont c'est le metier. Avant le
+# 02/09/2026 il n'existait pas separement : `fast_provider` portait
+# `qwen2.5-coder` et repondait AUSSI a la conversation, aux devis et au
+# courrier. Le proprietaire ne programme pas.
+ollama_codeur = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_CODEUR)
 ollama_profond = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_PROFOND)
 # La vision reste locale, sans aiguilleur hybride (DEC-0019) : Groq et
 # DeepInfra ne servent aucun modele de vision dans ce projet — les faire
@@ -261,6 +267,8 @@ def _aiguilleur(local: OllamaProvider) -> RouteurModeles:
 # comme il implemente `ModelProvider`, rien d'autre n'a eu a changer.
 fast_provider = _aiguilleur(ollama_rapide)
 deep_provider = _aiguilleur(ollama_profond)
+#: Reserve a ce qui ecrit du code. Le reste d'ARENA ne doit pas le voir.
+coder_provider = _aiguilleur(ollama_codeur)
 
 # --- Equipe complete d'agents -------------------------------------------------
 orchestrator = OrchestratorAgent(provider=fast_provider, memory=memory)
@@ -283,7 +291,7 @@ audio_agent = AudioAgent(provider=fast_provider, memory=memory, registre=registr
 montage_agent = MontageAgent(provider=deep_provider, memory=memory, registre=registre)
 editor_agent = EditorAgent(provider=deep_provider, memory=memory)
 subtitle_agent = SubtitleAgent(provider=deep_provider, memory=memory)
-coder_agent = CoderAgent(provider=fast_provider, memory=memory)
+coder_agent = CoderAgent(provider=coder_provider, memory=memory)
 researcher_agent = DeepResearcherAgent(provider=deep_provider, memory=memory)
 clip_selector = ClipSelectorAgent(provider=deep_provider, memory=memory)
 publisher_agent = PublisherAgent(
@@ -293,7 +301,7 @@ browser_agent = BrowserAgent(provider=fast_provider, memory=memory)
 # Agent d'information fraiche : il lit le web avant de repondre.
 fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)
 repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory)
-swe_agent = SWEAgent(provider=fast_provider, memory=memory)
+swe_agent = SWEAgent(provider=coder_provider, memory=memory)
 # Raisonnement profond : plan, calcul reellement execute en bac a sable, puis
 # synthese. Le modele profond, parce que c'est la voie PROFONDE qui l'emprunte.
 # `/health` annoncait « ReasoningEngine » parmi les agents actifs alors qu'aucun

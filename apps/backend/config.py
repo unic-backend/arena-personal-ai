@@ -117,7 +117,31 @@ TAILLE_BLOC_ENVOI = 1024 * 1024
 
 # --- Modeles locaux -----------------------------------------------------------
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
-MODELE_RAPIDE = os.getenv("CODER_LOCAL_MODEL", "qwen2.5-coder:14b")
+#: Le modele qui PARLE : conversation, devis, courrier, tout ce qui n'est pas
+#: du code. Defaut : le modele general.
+#:
+#: Defaut mesure le 02/09/2026 : ce modele-ci valait `qwen2.5-coder:14b`, un
+#: modele **specialise dans l'ecriture de code**, et il repondait a tout —
+#: `fast_provider` sert la conversation (`pwa_gateway.py`), les devis, le
+#: courrier, et aussi `coder_agent`/`swe_agent`. Le proprietaire, qui ne
+#: programme pas, avait donc un modele de programmation pour rediger ses devis
+#: et discuter en francais. Il l'a senti sans pouvoir le nommer : « il faut
+#: qu'il soit intelligent ».
+#:
+#: Ce qui n'est PAS affirme ici : qu'un modele soit meilleur que l'autre en
+#: general. Aucune mesure comparee n'a ete faite sur sa machine — elle n'est
+#: pas joignable d'ici. Ce qui est affirme est plus simple : un modele de code
+#: n'est pas fait pour tenir une conversation, et c'est ecrit dans son nom.
+MODELE_CONVERSATION = os.getenv("CHAT_LOCAL_MODEL") or os.getenv(
+    "DEFAULT_LOCAL_MODEL", "qwen3.5:9b")
+
+#: Le modele qui CODE. Il garde `qwen2.5-coder` : c'est son metier, et le
+#: retirer de `coder_agent`/`swe_agent` remplacerait une erreur par l'autre.
+MODELE_CODEUR = os.getenv("CODER_LOCAL_MODEL", "qwen2.5-coder:14b")
+
+#: Ancien nom de la voie rapide. Conserve parce que tout le projet l'importe ;
+#: il designe desormais le modele de conversation.
+MODELE_RAPIDE = MODELE_CONVERSATION
 MODELE_PROFOND = os.getenv("DEFAULT_LOCAL_MODEL", "qwen3.5:9b")
 # Qwen3-VL 4B (Q4_K_M, ~3,3 Go) : le plus petit variant qui voit encore une
 # image, choisi pour laisser de la place aux deux autres modeles sur 12 Go de
