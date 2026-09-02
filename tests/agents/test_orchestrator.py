@@ -426,3 +426,79 @@ class TestAiguillageDuProjetVideo:
     ):
         agent = OrchestratorAgent(provider=fake_provider, memory=None)
         assert agent._classer_par_mots_cles(phrase) == attendu
+
+
+class TestNommerUnConnecteurLOuvre:
+    """Nommer le service doit atteindre le connecteur qui le porte.
+
+    Signale par le proprietaire le 02/09/2026 : « dans mon gmail il ne
+    maitrise rien, quand je lui demande d'entrer dans mes discussions il
+    refuse de travailler ». Mesure faite avant tout correctif :
+    « entre dans mon gmail », « ouvre ma messagerie », « lis mes courriels »,
+    « ouvre mon calendrier », « regarde mon tiktok » rendaient TOUS `CHAT`.
+
+    Le connecteur Gmail fonctionnait. Le connecteur agenda fonctionnait.
+    Aucune phrase ordinaire ne les appelait : la demande partait au modele
+    generaliste, qui n'a aucun acces a la boite et repond donc qu'il ne peut
+    pas. **Le refus venait de l'aiguillage, jamais du connecteur.**
+
+    TikTok, lui, n'etait dans aucune liste — alors que c'est l'un des deux
+    reseaux de l'entreprise (`config/unic_plaquiste.yaml`).
+    """
+
+    @pytest.mark.parametrize("phrase", [
+        "entre dans mon gmail",
+        "ouvre mon gmail",
+        "verifie mon gmail",
+        "regarde dans mes discussions gmail",
+        "ouvre ma messagerie",
+        "y a quoi dans ma messagerie",
+        "lis mes courriels",
+    ])
+    def test_nommer_gmail_ouvre_le_courrier(self, fake_provider, phrase):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+
+        assert agent._classer_par_mots_cles(phrase) == "EMAIL"
+        # Le controle deterministe passe avant le modele : il doit reconnaitre
+        # ces phrases sans qu'aucun modele soit joignable.
+        assert agent.demande_de_courrier(phrase) is True
+
+    @pytest.mark.parametrize("phrase", [
+        "ouvre mon calendrier",
+        "regarde dans mon calendrier",
+        "mes rendez-vous",
+        "mes rdv de la semaine",
+        "mon planning",
+        "mon emploi du temps",
+    ])
+    def test_nommer_son_calendrier_atteint_l_agenda(self, fake_provider, phrase):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+
+        assert agent._classer_par_mots_cles(phrase) == "PLAQUISTE"
+
+    @pytest.mark.parametrize("phrase", [
+        "regarde mon tiktok",
+        "va sur mon instagram",
+        "poste sur tiktok",
+        "mon compte instagram",
+        "combien j'ai de mes abonnes",
+    ])
+    def test_nommer_son_reseau_atteint_le_social(self, fake_provider, phrase):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+
+        assert agent._classer_par_mots_cles(phrase) == "SOCIAL"
+
+    @pytest.mark.parametrize("phrase,attendu", [
+        # Le garde-fou ecrit dans le code depuis le 27/08 : ecrire au client
+        # appartient a l'assistant metier, qui connait la grille de prix.
+        ("ecris un mail au client pour le chantier", "PLAQUISTE"),
+        # « pour tiktok » designe la destination d'un fichier, pas le compte.
+        # Sans cette distinction, elargir RESEAUX volait les demandes de video.
+        ("fais-moi une video pour tiktok", "VIDEO_ANALYSIS"),
+        ("Donne-moi une idée de vidéo pour TikTok", "TREND_SEARCH"),
+        ("fais un devis pour le chantier de Diamniadio", "PLAQUISTE"),
+    ])
+    def test_l_elargissement_ne_vole_pas_les_voisins(self, fake_provider, phrase, attendu):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+
+        assert agent._classer_par_mots_cles(phrase) == attendu

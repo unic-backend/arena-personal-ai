@@ -78,6 +78,16 @@ RESEAUX = (
     "réseaux sociaux", "mon profil linkedin", "accroche", "accroches",
     "idees de contenu", "idées de contenu", "ma voix", "mon style d'ecriture",
     "carrousel", "un reel", "miniature youtube",
+    # 02/09/2026 : TikTok n'etait dans AUCUNE liste, alors que c'est l'un des
+    # deux reseaux du proprietaire (config/unic_plaquiste.yaml). « regarde mon
+    # tiktok » rendait CHAT.
+    #
+    # Formes POSSESSIVES seulement — « mon tiktok », « sur tiktok » — jamais le
+    # mot seul : « fais-moi une video POUR tiktok » est une demande de video,
+    # et ce test passe avant ceux de la video. Le possessif dit qu'on parle du
+    # compte, pas de la destination d'un fichier.
+    "mon tiktok", "sur tiktok", "mon compte tiktok", "mon instagram",
+    "mon compte instagram", "mes abonnes", "mes abonnés",
 )
 
 #: Ce qui parle de SON AGENDA, sans ambiguite possible. Teste avant tout le
@@ -89,6 +99,12 @@ AGENDA = (
     "suis-je libre", "suis je libre", "mon agenda", "dans mon agenda",
     "quand puis-je", "quand est-ce que je peux", "creneau", "créneau",
     "creneaux", "créneaux", "mes disponibilites", "mes disponibilités",
+    # Meme mesure du 02/09/2026 que pour le courrier : le connecteur agenda
+    # existe et fonctionne, mais « ouvre mon calendrier » ou « mes rendez-vous »
+    # rendaient CHAT. Un connecteur qu'aucune phrase ordinaire n'atteint est un
+    # connecteur eteint, quelle que soit la qualite de son code.
+    "mon calendrier", "dans mon calendrier", "mes rendez-vous", "mes rendez vous",
+    "mes rdv", "mon planning", "mon emploi du temps",
 )
 
 #: Ce qui parle de SA BOITE, et non d une lettre a ecrire. La difference n est
@@ -109,6 +125,17 @@ COURRIER = (
     "combien de mail", "combien de mails", "combien d'email", "combien d'emails",
     "combien d'e-mail", "combien d'e-mails", "combien de courriel",
     "combien de courriels",
+    # Mesure du 02/09/2026, signalee par le proprietaire (« dans mon gmail il
+    # ne maitrise rien... il refuse de travailler ») : NOMMER le service ne
+    # l'ouvrait pas. « entre dans mon gmail », « ouvre ma messagerie »,
+    # « lis mes courriels » rendaient tous CHAT — donc un modele generaliste
+    # sans acces a la boite, qui repond qu'il ne peut pas. Le connecteur
+    # marchait ; personne ne l'appelait.
+    #
+    # Le nom du service est le mot le moins ambigu qui existe : on ne dit pas
+    # « gmail » pour parler d'autre chose que de sa boite.
+    "gmail", "ma messagerie", "dans ma messagerie", "mes courriels",
+    "boite mail", "boîte mail", "boite de réception", "boîte de reception",
 )
 
 #: Fabriquer une video sur un sujet. Teste AVANT le metier, pour la meme raison
