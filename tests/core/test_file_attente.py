@@ -353,3 +353,87 @@ def test_les_actions_en_attente_reviennent_de_la_plus_recente(file):
     cibles = [a.cible for a in file.en_attente()]
 
     assert cibles[0] == "client-2@exemple.sn"
+
+
+# --- 5. Une suggestion non validee ne survit pas -------------------------------
+
+class TestUneSuggestionNonValideeNeSurvitPas:
+    """Refusee ou perimee, l'action perd son contenu.
+
+    Demande du proprietaire le 02/09/2026 : « il peut suggerer des reponses
+    mais si je valide pas il supprime sa suggestion ».
+
+    Mesure faite avant le correctif : `annuler()` marquait bien l'action
+    `CANCELLED`, et le corps du message restait ecrit **en entier** dans
+    `data/database/memory.db`, indefiniment. Un message que le proprietaire a
+    explicitement refuse d'envoyer n'a aucune raison de rester quelque part.
+
+    Ce qui reste volontairement : la trace (quoi, vers qui, quand, refuse).
+    Elle ne contient pas le texte, et elle est ce qui permet a la garantie 2
+    (« confirmer deux fois n'execute qu'une fois ») de continuer a repondre
+    « deja annulee » plutot que « action inconnue ».
+    """
+
+    BROUILLON = {"objet": "Votre devis",
+                 "corps": "Bonjour, voici notre proposition a 850000 FCFA."}
+
+    def _contenu_sur_le_disque(self, file, identifiant) -> str:
+        """Lit la colonne brute : ce qui est VRAIMENT ecrit, pas ce que l'objet rend."""
+        import sqlite3
+        with sqlite3.connect(file.db_path) as connexion:
+            ligne = connexion.execute(
+                f"SELECT parametres FROM {file.TABLE} WHERE identifiant = ?",
+                (identifiant,)).fetchone()
+        return ligne[0]
+
+    def test_un_refus_efface_le_brouillon_du_disque(self, file):
+        action = _deposer(file, parametres=self.BROUILLON)
+        assert "850000" in self._contenu_sur_le_disque(file, action.identifiant)
+
+        file.annuler(action.identifiant)
+
+        assert self._contenu_sur_le_disque(file, action.identifiant) == "{}"
+
+    def test_une_action_perimee_efface_aussi_son_brouillon(self, tmp_path, executeur):
+        """Ne pas repondre est un refus, plus lent. Le contenu part pareil."""
+        file = FileDAttente(db_path=str(tmp_path / "perime.db"),
+                            executeur=executeur, delai_heures=0)
+        action = _deposer(file, parametres=self.BROUILLON)
+
+        file.en_attente()  # le passage qui marque les perimees
+
+        assert file.lire(action.identifiant).etat is EtatAttente.EXPIREE
+        assert self._contenu_sur_le_disque(file, action.identifiant) == "{}"
+
+    def test_la_trace_reste_apres_un_refus(self, file):
+        """Ce qui a ete propose et refuse reste lisible — sans le texte."""
+        action = _deposer(file, parametres=self.BROUILLON)
+
+        file.annuler(action.identifiant)
+        relue = file.lire(action.identifiant)
+
+        assert relue.etat is EtatAttente.ANNULEE
+        assert relue.action == "Envoie le devis UC-2026-0827"
+        assert relue.cible == "client@exemple.sn"
+        assert relue.cree_le
+        assert relue.parametres == {}
+
+    def test_confirmer_apres_un_refus_reste_sans_effet(self, file, executeur):
+        """L'effacement ne doit pas transformer un refus en action inconnue."""
+        action = _deposer(file, parametres=self.BROUILLON)
+        file.annuler(action.identifiant)
+
+        resultat = file.confirmer(action.identifiant)
+
+        assert resultat.statut is Statut.ECHEC
+        assert "CANCELLED" in resultat.message
+        assert executeur.appels == [], "rien ne doit partir apres un refus"
+
+    def test_une_action_confirmee_garde_ses_parametres(self, file, executeur):
+        """Le contraire de la garantie : ce qui est parti sur son ordre reste tracable."""
+        action = _deposer(file, parametres=self.BROUILLON)
+
+        file.confirmer(action.identifiant)
+
+        assert file.lire(action.identifiant).parametres == self.BROUILLON
+        assert executeur.appels, "l'action confirmee doit bien avoir ete executee"

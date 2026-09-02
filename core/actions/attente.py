@@ -24,6 +24,21 @@ chose qui ne peut pas arriver :
    identifiant fait **refuser le depot**, avec son motif. Les identifiants
    viennent de la configuration du connecteur, jamais de l'appelant — donc les
    perdre en route ne casse rien, et les ecrire sur le disque casserait tout.
+
+5. **Une suggestion non validee ne survit pas.** Refusee ou perimee, l'action
+   perd son contenu : le corps du message, le destinataire, l'objet sont
+   effaces de la base. Demande du proprietaire le 02/09/2026 — « il peut
+   suggerer des reponses, mais si je valide pas il supprime sa suggestion ».
+
+   Mesure faite avant ce correctif : un brouillon refuse gardait son corps
+   entier dans `data/database/memory.db`, indefiniment. Un message que le
+   proprietaire a explicitement refuse d'envoyer n'a aucune raison de rester
+   ecrit quelque part.
+
+   Ce qui reste : QUE quelque chose a ete propose vers QUI, quand, et que ce
+   fut refuse. La trace, jamais le texte. C'est ce qui permet a une seconde
+   confirmation de rester sans effet (garantie 2) — une ligne supprimee
+   repondrait « action inconnue » au lieu de « deja annulee ».
 """
 import json
 import logging
@@ -59,6 +74,12 @@ class EtatAttente(str, Enum):
     CONFIRMEE = "CONFIRMED"
     ANNULEE = "CANCELLED"
     EXPIREE = "EXPIRED"
+
+
+#: Les deux fins SANS accord du proprietaire : il a refuse, ou il n'a pas
+#: repondu. Dans les deux cas la suggestion perd son contenu (garantie 5).
+#: `CONFIRMEE` n'y est pas : ce qui est parti sur son ordre reste tracable.
+ETATS_SANS_VALIDATION = frozenset({EtatAttente.ANNULEE, EtatAttente.EXPIREE})
 
 
 def _maintenant() -> datetime:
@@ -329,12 +350,20 @@ class FileDAttente:
 
         Rend False si aucune ligne n'a change : c'est ce qui rend une double
         confirmation inoffensive.
+
+        Vers un etat NON VALIDE (`ANNULEE`, `EXPIREE`), le contenu part avec :
+        garantie 5. Un seul endroit change l'etat, donc un seul endroit efface —
+        aucun chemin ne peut abandonner une action en gardant son brouillon.
         """
+        efface = etat in ETATS_SANS_VALIDATION
         with closing(self._connexion()) as connexion:
             curseur = connexion.execute(
-                f"UPDATE {self.TABLE} SET etat = ?, resultat_final = ? "
-                f"WHERE identifiant = ? AND etat = ?",
-                (etat.value, resultat_final, identifiant, EtatAttente.EN_ATTENTE.value),
+                f"UPDATE {self.TABLE} SET etat = ?, resultat_final = ?"
+                + (", parametres = ?" if efface else "")
+                + " WHERE identifiant = ? AND etat = ?",
+                ((etat.value, resultat_final, "{}", identifiant, EtatAttente.EN_ATTENTE.value)
+                 if efface else
+                 (etat.value, resultat_final, identifiant, EtatAttente.EN_ATTENTE.value)),
             )
             connexion.commit()
             return curseur.rowcount == 1
