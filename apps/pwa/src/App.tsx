@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Menu, PanelLeftClose } from 'lucide-react';
+import { ArrowDown, Menu, PanelLeftClose } from 'lucide-react';
 import { useChat } from './lib/store/chatStore';
 import { useI18n } from './lib/i18n';
 import { useBackend } from './lib/store/backendStore';
@@ -53,6 +53,12 @@ export default function App() {
   const [desktopNav, setDesktopNav] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
+  // Miroir de `pinned` en state : la ref pilote deja le defilement
+  // automatique sans re-rendu, mais la fleche "aller en bas" a besoin d'un
+  // re-rendu pour apparaitre/disparaitre. Demande le 02/09/2026 : remonter
+  // dans une longue conversation doit faire apparaitre la fleche, un petit
+  // defilement vers le bas doit suffire a la faire revenir.
+  const [enBas, setEnBas] = useState(true);
 
   const conv = conversations.find((c) => c.id === activeId) ?? null;
   const messages = conv?.messages ?? [];
@@ -70,7 +76,17 @@ export default function App() {
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
-    pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    const proche = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    pinned.current = proche;
+    setEnBas(proche);
+  };
+
+  const allerEnBas = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    pinned.current = true;
+    setEnBas(true);
   };
 
   /* Raccourcis : ⌘K palette · ⌘J journal · Échap ferme le menu mobile. */
@@ -204,6 +220,30 @@ export default function App() {
           ) : (
             <EmptyState onPick={(p) => send(p)} />
           )}
+
+          {/* Fleche "aller au dernier message" — a l'interieur du conteneur
+              defilant (deja `relative`) : elle flotte au-dessus du contenu qui
+              defile sans bouger avec lui, ancree pres de son bord bas, donc
+              pres de la zone de saisie sans calcul de hauteur fragile.
+              Apparait des qu'on remonte, disparait pres du bas (meme seuil que
+              le defilement automatique, 120px). Demande le 02/09/2026. */}
+          <AnimatePresence>
+            {hasMessages && !enBas && (
+              <motion.button
+                type="button"
+                onClick={allerEnBas}
+                title={t('a11y.scrollToBottom')}
+                aria-label={t('a11y.scrollToBottom')}
+                initial={{ opacity: 0, y: 8, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 8, scale: 0.9 }}
+                transition={{ duration: 0.16 }}
+                className="absolute bottom-3 left-1/2 z-20 grid h-9 w-9 -translate-x-1/2 place-items-center rounded-full border border-white/10 bg-ink-800/95 text-zinc-300 shadow-[0_8px_24px_-6px_rgba(0,0,0,0.6)] backdrop-blur transition hover:bg-ink-700 hover:text-zinc-100 active:scale-95"
+              >
+                <ArrowDown size={16} strokeWidth={2.4} />
+              </motion.button>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* zone de saisie */}

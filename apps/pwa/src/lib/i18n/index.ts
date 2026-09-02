@@ -155,6 +155,7 @@ const en: Dict = {
   'a11y.toggleActivity': 'Toggle activity timeline',
   'a11y.activityStatus': 'AI activity status: {status}',
   'a11y.eventLogTitle': 'Live event stream log',
+  'a11y.scrollToBottom': 'Scroll to latest message',
 
   'header.newConversation': 'New conversation',
   'header.working': 'working',
@@ -472,6 +473,7 @@ const fr: Dict = {
   'a11y.toggleActivity': 'Afficher ou masquer la chronologie d’activité',
   'a11y.activityStatus': 'Statut d’activité IA : {status}',
   'a11y.eventLogTitle': 'Journal du flux d’événements en direct',
+  'a11y.scrollToBottom': 'Aller au dernier message',
 
   'header.newConversation': 'Nouvelle conversation',
   'header.working': 'en cours',
