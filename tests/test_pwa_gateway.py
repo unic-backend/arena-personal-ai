@@ -384,7 +384,20 @@ async def test_le_persona_complete_les_regles_d_arena_sans_les_remplacer(
     assert await prompt_systeme(None) in faux.systemes[0]
 
 
-async def test_sans_persona_le_prompt_systeme_est_inchange(client, entetes, fournisseur, chat_direct):
+async def test_sans_persona_le_prompt_systeme_est_inchange(
+        client, entetes, fournisseur, chat_direct, tmp_path, monkeypatch):
+    """Ce que ce test tient : sans persona, RIEN n'est ajoute au prompt.
+
+    Memoire vide exigee, depuis le 02/09/2026 : la conversation retient
+    desormais ce qui se dit (`core/memory/conversation.py`), et le bloc
+    « ce dont je me souviens » fait partie du prompt systeme. Sur une memoire
+    peuplee par les tests precedents, cette egalite comparerait la memoire au
+    lieu du persona. L'assertion, elle, n'a pas bouge d'un caractere.
+    """
+    from core.memory.personnelle import MemoirePersonnelle
+
+    monkeypatch.setattr(pwa_gateway, "memoire_personnelle",
+                        MemoirePersonnelle(db_path=str(tmp_path / "vide.db")))
     faux = fournisseur()
 
     demander(client, entetes)
