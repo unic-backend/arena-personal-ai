@@ -80,27 +80,72 @@ def test_le_proprietaire_est_nomme(sans_fait_enregistre):
     assert "Usman" in prompts.get_arena_system_prompt()
 
 
-def test_la_presence_en_ligne_de_l_entreprise_est_connue_partout(sans_fait_enregistre):
-    """Demande du 02/09/2026 : un client peut demander le site ou les reseaux
-    sans parler de devis — cette info doit etre dans le prompt GENERAL, pas
-    seulement dans celui de l'agent metier."""
-    prompt = prompts.get_arena_system_prompt()
+class TestLInstructionGeneraleNePorteAucuneEntreprise:
+    """Décision du propriétaire, 02/09/2026 — elle **remplace** la sienne du
+    même jour, et cette classe remplace le test qui tenait la précédente.
 
-    assert "www.unicplaquiste.com" in prompt
-    assert "app.unicplaquiste.com" in prompt
-    assert "expert.unicplaquiste.com" in prompt
-    assert "maps.app.goo.gl" in prompt
-    assert "tiktok.com/@unic_plaquiste" in prompt
-    assert "instagram.com/unic_plaquiste" in prompt
+    Il avait d'abord demandé que sa présence en ligne soit connue partout : un
+    client peut demander le site sans parler de devis. Il a ensuite tranché
+    l'inverse, en des termes plus larges : « ce projet est libre comme bonjour,
+    tout le monde peut s'en servir […] rien n'est aligné à UniC Plaquiste, que
+    seulement le modèle UniC Plaquiste ».
 
+    Ce n'est donc pas un test affaibli, c'est une décision retournée — et le
+    dire ici est ce qui empêche de le relire un jour comme un relâchement.
 
-def test_sans_connaissances_metier_aucune_section_presence(sans_fait_enregistre, monkeypatch):
-    """Un fichier metier absent ou vide ne doit pas laisser une section vide."""
-    monkeypatch.setattr(prompts, "charger_metier", lambda: {})
+    Ce qui ne change pas : l'agent métier porte toujours la présence en ligne
+    dans SON espace, donc l'information n'est perdue nulle part ; elle n'est
+    plus imposée à la vidéo, aux documents et au code.
+    """
 
-    prompt = prompts.get_arena_system_prompt()
+    ADRESSES = ("unicplaquiste.com", "maps.app.goo.gl",
+                "tiktok.com/@unic_plaquiste", "instagram.com/unic_plaquiste")
 
-    assert "Presence en ligne" not in prompt
+    def test_aucun_lien_de_l_entreprise_dans_le_prompt_general(self, sans_fait_enregistre):
+        prompt = prompts.get_arena_system_prompt()
+
+        presents = [adresse for adresse in self.ADRESSES if adresse in prompt]
+        assert presents == [], f"l'instruction generale porte encore : {presents}"
+
+    def test_aucune_entreprise_nommee_dans_le_prompt_general(self, sans_fait_enregistre):
+        prompt = prompts.get_arena_system_prompt().lower()
+
+        assert "plaquiste" not in prompt
+        assert "presence en ligne" not in prompt
+
+    def test_le_prompt_general_ne_depend_plus_du_module_metier(self):
+        """La règle est vérifiable, pas déclarée : si ce module importait
+        encore `agents.plaquiste`, un métier pourrait y revenir sans qu'on le
+        voie passer."""
+        import ast
+        import inspect
+
+        arbre = ast.parse(inspect.getsource(prompts))
+        importes = {
+            noeud.module or ""
+            for noeud in ast.walk(arbre) if isinstance(noeud, ast.ImportFrom)
+        } | {
+            alias.name
+            for noeud in ast.walk(arbre) if isinstance(noeud, ast.Import)
+            for alias in noeud.names
+        }
+
+        metier = [module for module in importes if module.startswith("agents.plaquiste")]
+        assert metier == [], f"le prompt general importe encore : {metier}"
+
+    def test_l_espace_metier_lui_connait_toujours_la_presence(self):
+        """Ce que la décision ne doit pas abîmer : dans SON espace, l'agent
+        UniC Plaquiste connaît toujours le site, l'appli et les réseaux."""
+        from agents.plaquiste.plaquiste_agent import (
+            FICHIER_METIER,
+            charger_metier,
+            composer_instruction,
+        )
+
+        instruction = composer_instruction(charger_metier(FICHIER_METIER))
+
+        assert "unicplaquiste.com" in instruction
+        assert "tiktok.com/@unic_plaquiste" in instruction
 
 
 def test_le_ton_demande_est_naturel_pas_robotique(sans_fait_enregistre):

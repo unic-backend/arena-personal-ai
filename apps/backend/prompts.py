@@ -3,11 +3,22 @@
 Aucun fait daté n'est écrit en dur ici — voir la docstring de
 `get_arena_system_prompt`. Le module est séparé pour que cette règle soit
 vérifiable sur un fichier court plutôt que noyée dans le point d'entrée.
+
+**Aucune entreprise non plus.** L'instruction générale ne porte le métier de
+personne : ARENA sert la conversation, la vidéo, les documents et le code pour
+qui l'installe, et seul l'espace UniC Plaquiste connaît UniC Plaquiste. Ce
+module n'importe donc rien de `agents.plaquiste` — c'est la façon la plus
+simple de rendre la règle vérifiable plutôt que déclarée.
+
+Décision du propriétaire, 02/09/2026 : « ce projet est libre comme bonjour,
+tout le monde peut s'en servir […] rien n'est aligné à UniC Plaquiste, que
+seulement le modèle UniC Plaquiste ». Elle **remplace** sa demande du même jour
+de faire connaître sa présence en ligne partout ; l'agent métier la porte
+toujours (`agents/plaquiste/plaquiste_agent.py`, `composer_instruction`).
 """
 from datetime import date
 from typing import Optional
 
-from agents.plaquiste.plaquiste_agent import charger_metier, lignes_presence_en_ligne
 from apps.backend.runtime import memory
 from core.specialistes.selection import bloc_de_methode, choisir
 
@@ -68,21 +79,6 @@ def get_arena_system_prompt() -> str:
             f"Faits enregistres par {owner_name} en memoire longue "
             "(ils peuvent avoir change depuis : verifie si la question porte dessus) :",
             *enregistres,
-        ]
-
-    # Presence en ligne d'UniC Plaquiste (config/unic_plaquiste.yaml, seule
-    # source) : un client peut demander le site, l'appli ou les reseaux sans
-    # parler de devis — cette info doit etre connue partout, pas seulement
-    # quand l'agent metier est convoque. Demande du proprietaire, 02/09/2026.
-    entreprise = charger_metier().get("entreprise", {})
-    presence = lignes_presence_en_ligne(entreprise)
-    if entreprise.get("site"):
-        presence = [f"Site : {entreprise['site']}.", *presence]
-    if presence:
-        lignes += [
-            "",
-            f"Presence en ligne de {entreprise.get('nom', 'l entreprise')} :",
-            *presence,
         ]
 
     lignes += [

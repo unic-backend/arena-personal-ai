@@ -2,6 +2,32 @@
 
 ## [Non publié]
 
+### Changé — 02/09/2026 — L'instruction générale ne porte plus aucune entreprise
+
+Décision du propriétaire, qui **remplace** la sienne du même jour : « ce projet
+est libre comme bonjour, tout le monde peut s'en servir […] rien n'est aligné à
+UniC Plaquiste, que seulement le modèle UniC Plaquiste ».
+
+Il avait d'abord demandé que sa présence en ligne soit connue partout, et elle
+l'était : le site, l'application, la fiche Google Maps, TikTok et Instagram
+d'UniC Plaquiste entraient dans l'instruction de **toutes** les conversations —
+vidéo, documents et code compris.
+
+- Le bloc quitte `apps/backend/prompts.py`, qui **n'importe plus rien** de
+  `agents.plaquiste`. La règle devient vérifiable plutôt que déclarée, et un
+  test lit les imports du module (pas son texte) pour la tenir.
+- Rien n'est perdu : `composer_instruction` porte toujours les quatre adresses
+  dans l'espace UniC Plaquiste.
+
+Mesuré après le changement : instruction générale 986 caractères, **aucun** lien
+UniC, le mot « plaquiste » absent ; instruction UniC Plaquiste 4766 caractères,
+**4 liens sur 4**.
+
+Mesuré aussi, en retirant `config/unic_plaquiste.yaml` : le chat, la vidéo, les
+documents, le code et Dioumtoukay s'importent et fonctionnent sans lui, et 152
+des 153 tests qui tombent sont des tests du métier. La plateforme était déjà
+générale ; ce changement retire le dernier endroit où elle ne l'était pas.
+
 ### Corrigé — 02/09/2026 — Audit de la vidéo et de la voix
 
 Demande du propriétaire : « va dans vidéo tous ce qui est là-bas verify et
