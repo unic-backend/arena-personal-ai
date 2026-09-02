@@ -25,6 +25,9 @@ from agents.dioumtoukay.dioumtoukay_agent import (
     DioumtoukayAgent,
     analyser_action,
 )
+from core.actions.journal import JournalDesActions
+from core.memory.personnelle import MemoirePersonnelle
+from core.memory.recuperation import recuperer
 from tools.atelier import Atelier
 
 
@@ -233,3 +236,165 @@ def test_une_phrase_de_son_metier_ne_part_pas_a_l_atelier():
 
     assert classe._classer_par_mots_cles("fais-moi un devis pour 40 m2 de cloison") \
         == "PLAQUISTE"
+
+
+# --- Ce que la version du 02/09/2026 (après-midi) ajoute ----------------------------
+#
+# Le propriétaire : « bien améliorer dioumtoukay pour qu'il soit fort dans ses
+# travail […] savoir corriger des fail des bug des erreur ». Quatre manques
+# mesurés sur la version précédente, un test chacun.
+
+class TestIlCorrigeSansToutReecrire:
+    """Le manque le plus coûteux : `ecrire` remplaçait TOUT le fichier."""
+
+    @pytest.mark.asyncio
+    async def test_il_corrige_une_ligne_sans_toucher_au_reste(self, bac):
+        (bac / "code.py").write_text("def f():\n    return FAUX\n\ndef g():\n    return 2\n")
+
+        await agent(
+            bac,
+            "ACTION: remplacer\nCHEMIN: code.py\nANCIEN:\n    return FAUX\nFIN\n"
+            "NOUVEAU:\n    return 1\nFIN",
+            "ACTION: terminer\nCONTENU:\ncorrige\nFIN",
+        ).run("corrige le bug")
+
+        assert (bac / "code.py").read_text() == (
+            "def f():\n    return 1\n\ndef g():\n    return 2\n")
+
+    @pytest.mark.asyncio
+    async def test_un_remplacement_sans_ancien_ne_reecrit_rien(self, bac):
+        """Sans le passage visé, écrire reviendrait à écrire au hasard."""
+        (bac / "code.py").write_text("intact\n")
+
+        rendu = await agent(
+            bac,
+            "ACTION: remplacer\nCHEMIN: code.py\nNOUVEAU:\nn'importe quoi\nFIN",
+            "ACTION: terminer\nCONTENU:\nfini\nFIN",
+        ).run("corrige")
+
+        assert rendu["actions"][0]["ok"] is False
+        assert (bac / "code.py").read_text() == "intact\n"
+
+    def test_les_deux_blocs_sont_lus_separement(self):
+        action = analyser_action(
+            "ACTION: remplacer\nCHEMIN: a.py\nANCIEN:\nvieux\nFIN\nNOUVEAU:\nneuf\nFIN")
+
+        assert action.blocs["ANCIEN"] == "vieux"
+        assert action.blocs["NOUVEAU"] == "neuf"
+
+    def test_l_indentation_d_un_bloc_est_du_code_pas_de_la_mise_en_page(self):
+        action = analyser_action(
+            "ACTION: ecrire\nCHEMIN: a.py\nCONTENU:\ndef f():\n    return 1\nFIN")
+
+        assert action.contenu == "def f():\n    return 1"
+
+
+class TestIlTrouveAvantDeCorriger:
+    @pytest.mark.asyncio
+    async def test_il_peut_chercher_dans_les_fichiers(self, bac):
+        (bac / "un.py").write_text("def calculer_total():\n    pass\n")
+
+        rendu = await agent(
+            bac,
+            "ACTION: chercher\nTEXTE: def calculer_total\nCHEMIN: .",
+            "ACTION: terminer\nCONTENU:\ntrouve\nFIN",
+        ).run("ou est calculer_total ?")
+
+        assert "un.py" in rendu["actions"][0]["sortie"]
+
+
+class TestIlSaitOuIlEst:
+    """Sans repères, le premier tour partait à l'aveugle et dépensait deux ou
+    trois actions à découvrir un dossier qu'une seule mesure donne."""
+
+    @pytest.mark.asyncio
+    async def test_il_voit_le_contenu_du_dossier_des_le_premier_tour(self, bac):
+        (bac / "mon_projet").mkdir()
+        moteur = ModeleScripte("ACTION: terminer\nCONTENU:\nvu\nFIN")
+
+        await DioumtoukayAgent(provider=moteur, atelier=Atelier(racine=bac)).run("regarde")
+
+        assert "mon_projet" in moteur.vues[0]
+
+    @pytest.mark.asyncio
+    async def test_les_reperes_sont_pris_une_seule_fois(self, bac):
+        """Les refaire à chaque tour coûterait trois commandes réelles par tour
+        pour redire ce que le journal du travail raconte déjà mieux."""
+        journal = JournalDesActions(db_path=str(bac / "j.db"))
+        moteur = ModeleScripte(
+            "ACTION: lister\nCHEMIN: .",
+            "ACTION: lister\nCHEMIN: .",
+            "ACTION: terminer\nCONTENU:\nfini\nFIN",
+        )
+        await DioumtoukayAgent(provider=moteur,
+                               atelier=Atelier(racine=bac, journal=journal)).run("vas-y")
+
+        listers = [e for e in journal.dernieres(limite=50) if e.action == "lister"]
+        assert len(listers) == 3, "un repere par tour au lieu d'un seul au depart"
+
+
+class TestLeRapportNommeCeQuiAChange:
+    @pytest.mark.asyncio
+    async def test_les_fichiers_modifies_sont_nommes(self, bac):
+        rendu = await agent(
+            bac,
+            "ACTION: ecrire\nCHEMIN: note.txt\nCONTENU:\nx\nFIN",
+            "ACTION: terminer\nCONTENU:\nfait\nFIN",
+        ).run("ecris")
+
+        assert rendu["fichiers_modifies"] == ["note.txt"]
+        assert "note.txt" in rendu["response"]
+
+    def test_une_lecture_n_est_pas_une_modification(self):
+        touches = DioumtoukayAgent.fichiers_touches([
+            {"action": "lire", "ok": True, "champs": {"CHEMIN": "a.py"}}])
+
+        assert touches == []
+
+    def test_une_ecriture_ratee_n_est_pas_une_modification(self):
+        """Dire « fichier modifié » d'un fichier intact serait la pire ligne du
+        rapport."""
+        touches = DioumtoukayAgent.fichiers_touches([
+            {"action": "ecrire", "ok": False, "champs": {"CHEMIN": "a.py"}}])
+
+        assert touches == []
+
+
+class TestIlSeSouvientDeSonTravail:
+    @pytest.mark.asyncio
+    async def test_un_travail_qui_modifie_est_retenu(self, bac):
+        memoire = MemoirePersonnelle(db_path=str(bac / "m.db"))
+        await DioumtoukayAgent(
+            provider=ModeleScripte("ACTION: ecrire\nCHEMIN: a.py\nCONTENU:\nx\nFIN",
+                                   "ACTION: terminer\nCONTENU:\nfait\nFIN"),
+            atelier=Atelier(racine=bac), memoire_longue=memoire,
+        ).run("ecris a.py")
+
+        assert recuperer(memoire, "Dioumtoukay a.py"), "aucun souvenir du travail"
+
+    @pytest.mark.asyncio
+    async def test_une_simple_lecture_ne_remplit_pas_la_memoire(self, bac):
+        """Se souvenir d'une lecture ne sert personne."""
+        memoire = MemoirePersonnelle(db_path=str(bac / "m.db"))
+        (bac / "a.py").write_text("x")
+        await DioumtoukayAgent(
+            provider=ModeleScripte("ACTION: lire\nCHEMIN: a.py",
+                                   "ACTION: terminer\nCONTENU:\nlu\nFIN"),
+            atelier=Atelier(racine=bac), memoire_longue=memoire,
+        ).run("lis a.py")
+
+        assert recuperer(memoire, "Dioumtoukay") == []
+
+    @pytest.mark.asyncio
+    async def test_une_memoire_en_panne_n_emporte_pas_le_rapport(self, bac):
+        class MemoireCassee:
+            def retenir(self, **kw):
+                raise RuntimeError("disque plein")
+
+        rendu = await DioumtoukayAgent(
+            provider=ModeleScripte("ACTION: ecrire\nCHEMIN: a.py\nCONTENU:\nx\nFIN",
+                                   "ACTION: terminer\nCONTENU:\nfait\nFIN"),
+            atelier=Atelier(racine=bac), memoire_longue=MemoireCassee(),
+        ).run("ecris")
+
+        assert rendu["status"] == "success"

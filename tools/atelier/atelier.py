@@ -47,6 +47,14 @@ DELAI_PAR_DEFAUT = 120.0
 #: bas.
 SORTIE_MAX = 20_000
 
+#: Quelle part du plafond va à la **fin** de la sortie. Ne garder que le début
+#: était un vrai défaut, et c'est celui qui coûtait le plus cher ici : `pytest`
+#: écrit son verdict — « 3 failed » et le nom des tests tombés — sur ses toutes
+#: dernières lignes. Une suite bavarde remplissait les 20 000 caractères avec
+#: des points, et la seule information qui comptait disparaissait dans la coupe.
+#: Dioumtoukay concluait alors « les tests passent » sur une sortie amputée.
+PART_DE_LA_FIN = 0.6
+
 
 @dataclass
 class Resultat:
@@ -72,11 +80,22 @@ class Resultat:
 
 
 def _couper(texte: str) -> str:
-    """Coupe une sortie trop longue, et le dit."""
+    """Coupe une sortie trop longue en gardant **le début et la fin**.
+
+    Le milieu est ce qu'on peut perdre ; la fin, non. Un `pytest` rend son
+    verdict sur ses dernières lignes, un `git log` son commit le plus ancien,
+    une compilation son résumé d'erreurs. Ne garder que le début revenait à
+    couper systématiquement la réponse à la question posée.
+    """
     texte = texte or ""
     if len(texte) <= SORTIE_MAX:
         return texte
-    return texte[:SORTIE_MAX] + f"\n[... coupé, {len(texte) - SORTIE_MAX} caractères de plus]"
+    fin = int(SORTIE_MAX * PART_DE_LA_FIN)
+    debut = SORTIE_MAX - fin
+    manque = len(texte) - SORTIE_MAX
+    return (texte[:debut]
+            + f"\n[... coupé, {manque} caractères au milieu ...]\n"
+            + texte[-fin:])
 
 
 class Atelier:
@@ -139,6 +158,123 @@ class Atelier:
             r = Resultat(True, f"{p} ecrit ({len(contenu)} caracteres).")
         self._noter("ecrire", str(p), r)
         return r
+
+    def remplacer(self, chemin: str, ancien: str, nouveau: str) -> Resultat:
+        """Remplace un passage précis d'un fichier, sans toucher au reste.
+
+        **C'est la correction la plus importante de cette version.** Avant, la
+        seule façon de modifier un fichier était `ecrire`, qui remplace TOUT :
+        pour changer une ligne dans un fichier de six cents, le modèle devait
+        les réécrire toutes de mémoire. Un modèle local de 14 milliards de
+        paramètres ne restitue pas six cents lignes sans en abîmer une — et
+        l'abîmée passait pour une correction.
+
+        Deux refus, et ce ne sont pas des garde-fous mais des mesures :
+
+        - **le passage est introuvable** : le modèle a cité de mémoire un texte
+          qui n'est pas dans le fichier. Écrire quand même mettrait la
+          correction au mauvais endroit ;
+        - **le passage apparaît plusieurs fois** : rien ne dit lequel il visait.
+          En choisir un serait deviner, et le rapport annoncerait une réussite.
+
+        Dans les deux cas, l'échec dit **ce qu'il faut faire** : relire le
+        fichier, ou citer un passage plus long.
+        """
+        p = self._chemin(chemin)
+        try:
+            contenu = p.read_text(encoding="utf-8")
+        except Exception as erreur:  # noqa: BLE001
+            r = Resultat(False, f"Lecture impossible ({type(erreur).__name__}) : {p}")
+            self._noter("remplacer", str(p), r)
+            return r
+
+        vus = contenu.count(ancien)
+        if not ancien:
+            r = Resultat(False, "Aucun passage a remplacer n'a ete donne.")
+        elif vus == 0:
+            r = Resultat(False, f"Passage introuvable dans {p} : relis le fichier, "
+                                "le texte cite n'y est pas tel quel.")
+        elif vus > 1:
+            r = Resultat(False, f"Passage present {vus} fois dans {p} : cite un "
+                                "extrait plus long, qui n'apparaisse qu'une fois.")
+        else:
+            try:
+                p.write_text(contenu.replace(ancien, nouveau, 1), encoding="utf-8")
+            except Exception as erreur:  # noqa: BLE001
+                r = Resultat(False, f"Ecriture impossible ({type(erreur).__name__}) : {p}")
+            else:
+                r = Resultat(True, f"{p} modifie ({len(ancien)} caracteres remplaces "
+                                   f"par {len(nouveau)}).")
+        self._noter("remplacer", str(p), r)
+        return r
+
+    def chercher(self, motif: str, chemin: str = ".", limite: int = 100) -> Resultat:
+        """Cherche un texte dans les fichiers, et rend les lignes trouvées.
+
+        Sans ça, corriger un bug commence par deviner dans quel fichier il est.
+        `grep` fait le travail quand il existe ; sinon la recherche se fait ici
+        même, parce qu'une machine sans `grep` ne doit pas rendre Dioumtoukay
+        aveugle.
+
+        La recherche est **littérale**, pas une expression régulière : un nom de
+        fonction contient des points et des parenthèses, et les traiter comme
+        des motifs ferait trouver n'importe quoi.
+        """
+        p = self._chemin(chemin)
+        if not motif:
+            r = Resultat(False, "Aucun texte a chercher n'a ete donne.")
+            self._noter("chercher", str(p), r)
+            return r
+
+        lignes = self._chercher_avec_grep(motif, p, limite)
+        if lignes is None:
+            lignes = self._chercher_ici_meme(motif, p, limite)
+
+        if lignes is None:
+            r = Resultat(False, f"Recherche impossible dans {p}.")
+        elif not lignes:
+            # Zero resultat est une reponse, pas un echec : « ce mot n'est nulle
+            # part » est exactement ce qu'il fallait savoir.
+            r = Resultat(True, f"« {motif} » : aucune ligne dans {p}.")
+        else:
+            atteinte = " (limite atteinte)" if len(lignes) >= limite else ""
+            r = Resultat(True, f"« {motif} » : {len(lignes)} ligne(s){atteinte}.",
+                         sortie=_couper("\n".join(lignes)))
+        self._noter("chercher", f"{motif} dans {p}", r)
+        return r
+
+    @staticmethod
+    def _chercher_avec_grep(motif: str, ou: Path, limite: int) -> Optional[List[str]]:
+        """Les lignes trouvées par `grep`, ou `None` s'il n'a pas pu répondre."""
+        try:
+            fini = subprocess.run(  # noqa: S603 — c'est le but du module
+                ["grep", "-rnF", "--", motif, str(ou)],
+                capture_output=True, text=True, timeout=30, check=False)
+        except Exception:  # noqa: BLE001 — absent, trop lent : on cherchera ici
+            return None
+        # `grep` rend 1 quand il n'a rien trouve : ce n'est pas une panne.
+        if fini.returncode not in (0, 1):
+            return None
+        return [ligne for ligne in fini.stdout.splitlines() if ligne][:limite]
+
+    @staticmethod
+    def _chercher_ici_meme(motif: str, ou: Path, limite: int) -> Optional[List[str]]:
+        """Le repli, quand `grep` manque. Les binaires sont sautés en silence."""
+        fichiers = [ou] if ou.is_file() else sorted(ou.rglob("*"))
+        trouvees: List[str] = []
+        for fichier in fichiers:
+            if not fichier.is_file():
+                continue
+            try:
+                contenu = fichier.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            for numero, ligne in enumerate(contenu.splitlines(), start=1):
+                if motif in ligne:
+                    trouvees.append(f"{fichier}:{numero}:{ligne}")
+                    if len(trouvees) >= limite:
+                        return trouvees
+        return trouvees
 
     def lister(self, chemin: str = ".") -> Resultat:
         """Ce que contient un dossier."""

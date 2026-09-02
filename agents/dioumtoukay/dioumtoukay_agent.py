@@ -35,10 +35,13 @@ import logging
 import re
 import shlex
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 from core.agent.base_agent import BaseAgent
+from core.memory.conversation import retenir_l_echange
 from core.memory.memory_manager import MemoryManager
+from core.memory.personnelle import MemoirePersonnelle
 from core.models.base import ModelProvider
 from tools.atelier.atelier import Atelier, Resultat
 
@@ -52,13 +55,23 @@ TOURS_MAX = 12
 #: Les actions qu'il sait faire. Toute autre étiquette est refusée et lui est
 #: renvoyée telle quelle — corriger sa faute à sa place lui apprendrait à
 #: écrire n'importe quoi.
-ACTIONS = ("lire", "ecrire", "lister", "deplacer", "executer", "terminer")
+ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
+           "executer", "terminer")
+
+#: Les actions qui modifient quelque chose. Elles sont comptées à part dans le
+#: rapport : « j'ai lu quatre fichiers » et « j'ai modifié quatre fichiers » ne
+#: se lisent pas pareil, et c'est la seconde phrase qui demande une vérification.
+ACTIONS_QUI_MODIFIENT = frozenset({"ecrire", "remplacer", "deplacer"})
 
 _ETIQUETTE = re.compile(r"^\s*ACTION\s*:\s*(\w+)", re.IGNORECASE | re.MULTILINE)
-_CHAMP = re.compile(r"^\s*(CHEMIN|SOURCE|DESTINATION|COMMANDE|DOSSIER)\s*:\s*(.+)$",
-                    re.IGNORECASE | re.MULTILINE)
-_CONTENU = re.compile(r"^\s*CONTENU\s*:\s*\n(.*?)(?:\n\s*FIN\s*$|\Z)",
-                      re.IGNORECASE | re.MULTILINE | re.DOTALL)
+_CHAMP = re.compile(
+    r"^\s*(CHEMIN|SOURCE|DESTINATION|COMMANDE|DOSSIER|TEXTE)\s*:\s*(.+)$",
+    re.IGNORECASE | re.MULTILINE)
+
+#: Les blocs multilignes, chacun fermé par une ligne `FIN`. `remplacer` en
+#: demande deux — l'ancien passage et le nouveau — ce qu'un bloc unique ne
+#: pouvait pas porter.
+BLOCS = ("CONTENU", "ANCIEN", "NOUVEAU")
 
 CONSIGNE = """Tu es Dioumtoukay. Tu travailles sur la machine du proprietaire :
 ses fichiers, son terminal, ses depots git. Tu n'expliques pas ce que tu ferais,
@@ -69,8 +82,21 @@ Tu reponds par UNE SEULE action, dans ce format exact, et rien d'autre :
 ACTION: lister
 CHEMIN: .
 
+ACTION: chercher
+TEXTE: def calculer_total
+CHEMIN: .
+
 ACTION: lire
 CHEMIN: apps/backend/config.py
+
+ACTION: remplacer
+CHEMIN: apps/backend/config.py
+ANCIEN:
+le passage exact, copie du fichier que tu viens de lire
+FIN
+NOUVEAU:
+ce qui prend sa place
+FIN
 
 ACTION: ecrire
 CHEMIN: apps/backend/config.py
@@ -91,13 +117,34 @@ CONTENU:
 ce que tu as fait, en francais simple, pour le proprietaire
 FIN
 
-Regles :
-- `ecrire` remplace TOUT le fichier : lis-le avant de le reecrire.
+COMMENT TRAVAILLER
+
+1. TROUVER avant de corriger. `chercher` te dit dans quel fichier est le
+   probleme ; deviner le fichier fait perdre des tours.
+2. LIRE avant de modifier. Tu ne modifies jamais un fichier que tu n'as pas lu
+   dans cette conversation.
+3. `remplacer` est la BONNE facon de corriger : tu cites le passage exact et il
+   change, le reste du fichier ne bouge pas. `ecrire` remplace TOUT le fichier
+   et sert a en creer un nouveau — l'utiliser pour corriger une ligne t'oblige
+   a reecrire tout le reste de memoire, et c'est ainsi qu'on casse un fichier
+   qui marchait.
+4. VERIFIER. Apres avoir touche du code, lance ce qui le prouve : les tests, le
+   linter, ou la commande qui echouait. Un travail non verifie n'est pas fini,
+   et tu ne dis jamais que ca marche sans l'avoir lance.
+5. Une erreur se comprend avant de se corriger. Lis le message en entier,
+   trouve la cause, corrige la cause. Ne contourne pas, ne desactive pas un
+   test, n'attrape pas une exception pour la faire taire.
+
+REGLES
+
 - Le resultat reel de chaque action t'est rendu ; travaille sur ce resultat,
   jamais sur ce que tu supposes.
-- Une commande qui echoue se corrige, elle ne se contourne pas.
+- Pour du code venu de GitHub : clone, installe, lance. Tout est permis, rien
+  n'est bloque — mais lis avant de lancer, et dis-lui ce que tu as vu.
+- Quand tu changes le code d'un depot, travaille sur une branche a toi.
 - Quand le travail est fait, ou quand tu es bloque, reponds `ACTION: terminer`
-  et dis la verite sur ce qui a marche et ce qui n'a pas marche."""
+  et dis la verite sur ce qui a marche et ce qui n'a pas marche. Un travail a
+  moitie fait se dit ; il ne se presente pas comme fini."""
 
 
 @dataclass
@@ -106,7 +153,24 @@ class Action:
 
     nom: str
     champs: Dict[str, str] = field(default_factory=dict)
-    contenu: str = ""
+    blocs: Dict[str, str] = field(default_factory=dict)
+
+    @property
+    def contenu(self) -> str:
+        """Le bloc `CONTENU:`, celui qu'écrivent `ecrire` et `terminer`."""
+        return self.blocs.get("CONTENU", "")
+
+
+def _lire_bloc(nom: str, texte: str) -> Optional[str]:
+    """Le contenu d'un bloc `NOM:` … `FIN`, tel qu'il a été écrit.
+
+    Rien n'est nettoyé au-delà du saut de ligne d'ouverture : l'indentation
+    d'un bloc de code EST le code, et la retirer casserait un fichier Python.
+    """
+    motif = re.compile(rf"^\s*{nom}\s*:[ \t]*\n(.*?)(?:\n[ \t]*FIN[ \t]*$|\Z)",
+                       re.IGNORECASE | re.MULTILINE | re.DOTALL)
+    trouve = motif.search(texte)
+    return trouve.group(1) if trouve else None
 
 
 def analyser_action(texte: str) -> Optional[Action]:
@@ -125,15 +189,20 @@ def analyser_action(texte: str) -> Optional[Action]:
 
     champs = {cle.upper(): valeur.strip()
               for cle, valeur in _CHAMP.findall(texte)}
-    bloc = _CONTENU.search(texte)
-    return Action(nom=nom, champs=champs, contenu=bloc.group(1) if bloc else "")
+    blocs = {}
+    for bloc in BLOCS:
+        lu = _lire_bloc(bloc, texte)
+        if lu is not None:
+            blocs[bloc] = lu
+    return Action(nom=nom, champs=champs, blocs=blocs)
 
 
 class DioumtoukayAgent(BaseAgent):
     """Il entre dans les fichiers, le terminal et le dépôt, et il agit."""
 
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
-                 atelier: Optional[Atelier] = None):
+                 atelier: Optional[Atelier] = None,
+                 memoire_longue: Optional[MemoirePersonnelle] = None):
         super().__init__(
             name="DioumtoukayAgent",
             description="Agent qui travaille reellement sur les fichiers, "
@@ -142,6 +211,11 @@ class DioumtoukayAgent(BaseAgent):
             memory=memory,
         )
         self.atelier = atelier or Atelier()
+        # `memory` est le fil de la conversation ; `memoire_longue` est ce dont
+        # on se souvient d'une semaine sur l'autre. Ce sont deux objets
+        # differents dans ce projet, et les confondre reviendrait a n'ecrire
+        # nulle part.
+        self.memoire_longue = memoire_longue
 
     # --- Exécution d'une action ---------------------------------------------------
 
@@ -152,6 +226,18 @@ class DioumtoukayAgent(BaseAgent):
             return self.atelier.lire(champs.get("CHEMIN", ""))
         if action.nom == "ecrire":
             return self.atelier.ecrire(champs.get("CHEMIN", ""), action.contenu)
+        if action.nom == "remplacer":
+            # Un remplacement sans `ANCIEN:` reecrirait au hasard. L'absence du
+            # bloc est dite ; elle n'est pas comblee par une supposition.
+            if "ANCIEN" not in action.blocs:
+                return Resultat(False, "Il manque le bloc ANCIEN: … FIN, "
+                                       "le passage exact a remplacer.")
+            return self.atelier.remplacer(champs.get("CHEMIN", ""),
+                                          action.blocs["ANCIEN"],
+                                          action.blocs.get("NOUVEAU", ""))
+        if action.nom == "chercher":
+            return self.atelier.chercher(champs.get("TEXTE", ""),
+                                         champs.get("CHEMIN", "."))
         if action.nom == "lister":
             return self.atelier.lister(champs.get("CHEMIN", "."))
         if action.nom == "deplacer":
@@ -187,13 +273,18 @@ class DioumtoukayAgent(BaseAgent):
                 ),
             }
 
+        # Les reperes sont pris UNE fois : ils decrivent le point de depart, et
+        # les refaire a chaque tour couterait trois commandes reelles par tour
+        # pour redire ce que le journal du travail raconte deja mieux.
+        reperes = self._reperes()
+
         journal_du_travail: List[str] = []
         rendu: List[Dict[str, Any]] = []
         conclusion = ""
         arrete_par_lui_meme = False
 
         for tour in range(1, TOURS_MAX + 1):
-            invite = self._invite(user_input, journal_du_travail)
+            invite = self._invite(reperes, user_input, journal_du_travail)
             try:
                 reponse = await self.provider.generate(prompt=invite, system_prompt=CONSIGNE)
             except Exception as erreur:  # noqa: BLE001 — l'echec se nomme
@@ -225,19 +316,48 @@ class DioumtoukayAgent(BaseAgent):
                 "Ce qui a ete fait est ci-dessous ; la suite reste a faire."
             )
 
+        self._retenir(user_input, conclusion, rendu)
+
         return {
             "status": "success" if arrete_par_lui_meme else "partial",
             "agent": self.name,
             "actions": rendu,
+            "fichiers_modifies": self.fichiers_touches(rendu),
             "response": self._rapport(conclusion, rendu),
         }
 
     # --- Ce qu'il voit, et ce qu'il rend ---------------------------------------------
 
-    def _invite(self, demande: str, journal_du_travail: List[str]) -> str:
+    def _reperes(self) -> str:
+        """Où il est, et ce qu'il y a autour. Mesuré, jamais supposé.
+
+        Sans ça, le premier tour partait à l'aveugle : le modèle dépensait deux
+        ou trois actions à découvrir un dossier qu'une seule mesure lui donne.
+        Sur douze tours, deux tours perdus au départ comptent.
+
+        Rien n'est inventé ici : un dépôt git absent ne produit aucune ligne,
+        et l'absence se lit comme une absence.
+        """
+        lignes = [f"Racine du travail : {self.atelier.racine}"]
+
+        branche = self.atelier.executer(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+        if branche.ok:
+            lignes.append(f"Depot git, sur la branche : {branche.sortie.strip()}")
+            etat = self.atelier.executer(["git", "status", "--short"])
+            if etat.ok:
+                modifies = etat.sortie.strip()
+                lignes.append("Fichiers modifies non commites :\n" + modifies
+                              if modifies else "Aucun fichier modifie.")
+
+        autour = self.atelier.lister(".")
+        if autour.ok:
+            lignes.append("Ce que contient la racine :\n" + autour.sortie)
+        return "\n".join(lignes)
+
+    @staticmethod
+    def _invite(reperes: str, demande: str, journal_du_travail: List[str]) -> str:
         """La demande, plus ce qui s'est réellement passé jusqu'ici."""
-        blocs = [f"Racine du travail : {self.atelier.racine}",
-                 f"Demande du proprietaire : {demande}"]
+        blocs = [reperes, f"Demande du proprietaire : {demande}"]
         if journal_du_travail:
             blocs.append("Ce qui s'est passe jusqu'ici :\n" + "\n\n".join(journal_du_travail))
         blocs.append("Action suivante :")
@@ -254,11 +374,32 @@ class DioumtoukayAgent(BaseAgent):
         return "\n".join(lignes)
 
     @staticmethod
-    def _rapport(conclusion: str, rendu: List[Dict[str, Any]]) -> str:
+    def fichiers_touches(rendu: List[Dict[str, Any]]) -> List[str]:
+        """Les fichiers réellement modifiés — ceux qui ont changé sur le disque.
+
+        Une action tentée puis échouée ne compte pas : dire « fichier modifié »
+        d'un fichier intact serait la pire ligne du rapport.
+        """
+        touches = []
+        for acte in rendu:
+            if not acte["ok"] or acte["action"] not in ACTIONS_QUI_MODIFIENT:
+                continue
+            champs = acte.get("champs") or {}
+            ou = champs.get("CHEMIN") or champs.get("DESTINATION")
+            if ou and ou not in touches:
+                touches.append(ou)
+        return touches
+
+    @classmethod
+    def _rapport(cls, conclusion: str, rendu: List[Dict[str, Any]]) -> str:
         """Le compte-rendu pour le propriétaire : ce qui a tourné, et son sort.
 
         Les echecs ne sont pas fondus dans la conclusion : ils sont comptes a
         part, parce que c'est la seule ligne qui lui dit s'il doit aller voir.
+
+        Les fichiers modifies sont nommes a part pour la meme raison : « il a
+        fait quelque chose » et « il a change ces trois fichiers-la » ne
+        demandent pas la meme attention.
         """
         echecs = [a for a in rendu if not a["ok"]]
         entete = f"**Dioumtoukay — {len(rendu)} action(s)"
@@ -268,4 +409,31 @@ class DioumtoukayAgent(BaseAgent):
             f"- {'OK ' if a['ok'] else 'ECHEC'} `{a['action']}` — {a['message']}"
             for a in rendu) or "- aucune action executee"
 
-        return f"{entete}\n\n{detail}\n\n{conclusion}".strip()
+        touches = cls.fichiers_touches(rendu)
+        modifies = ("\n\n**Fichiers modifies :** "
+                    + ", ".join(f"`{f}`" for f in touches)) if touches else ""
+
+        return f"{entete}\n\n{detail}{modifies}\n\n{conclusion}".strip()
+
+    def _retenir(self, demande: str, conclusion: str, rendu: List[Dict[str, Any]]) -> None:
+        """Garde une trace de ce travail dans la mémoire longue.
+
+        Le journal dit ce qui a tourné, action par action ; la mémoire retient
+        ce qui a été fait et pourquoi, pour que « reprends ce que tu faisais
+        hier sur mon site » veuille dire quelque chose. Elle ne retient un
+        travail que s'il a **modifié** quelque chose : se souvenir d'une lecture
+        ne sert personne.
+
+        Ne lève jamais : une mémoire en panne ne doit pas emporter le rapport.
+        """
+        touches = self.fichiers_touches(rendu)
+        if self.memoire_longue is None or not touches:
+            return
+        try:
+            retenir_l_echange(
+                self.memoire_longue,
+                f"[Dioumtoukay] {demande}",
+                f"Fichiers modifies : {', '.join(touches)}. {conclusion}".strip(),
+                source=f"travail de Dioumtoukay du {date.today().isoformat()}")
+        except Exception as erreur:  # noqa: BLE001 — le rapport passe avant la memoire
+            logger.warning("Travail non retenu en memoire : %s", erreur)

@@ -226,3 +226,125 @@ def test_le_resultat_par_defaut_ne_pretend_rien():
 
 def test_la_racine_par_defaut_est_le_dossier_courant():
     assert Atelier().racine == Path.cwd()
+
+
+# --- Corriger sans tout réécrire -------------------------------------------------------
+#
+# La correction la plus importante de cette version. Avant, `ecrire` était la
+# seule façon de modifier un fichier, et elle remplace TOUT : pour changer une
+# ligne dans un fichier de six cents, le modèle devait les réécrire toutes de
+# mémoire — et un modèle local de 14 milliards de paramètres ne restitue pas six
+# cents lignes sans en abîmer une.
+
+class TestRemplacerUnPassage:
+    def test_seul_le_passage_vise_change(self, atelier, bac):
+        atelier.ecrire("code.py", "avant\nLA LIGNE FAUSSE\napres\n")
+
+        atelier.remplacer("code.py", "LA LIGNE FAUSSE", "la ligne juste")
+
+        assert (bac / "code.py").read_text() == "avant\nla ligne juste\napres\n"
+
+    def test_un_passage_introuvable_ne_touche_a_rien(self, atelier, bac):
+        """Le modèle a cité de mémoire un texte absent du fichier. Écrire quand
+        même mettrait la correction au mauvais endroit."""
+        atelier.ecrire("code.py", "le vrai contenu\n")
+
+        resultat = atelier.remplacer("code.py", "un texte qui n'y est pas", "x")
+
+        assert resultat.ok is False
+        assert "introuvable" in resultat.message
+        assert (bac / "code.py").read_text() == "le vrai contenu\n"
+
+    def test_un_passage_ambigu_est_refuse_avec_ce_qu_il_faut_faire(self, atelier, bac):
+        """Rien ne dit lequel il visait. En choisir un serait deviner, et le
+        rapport annoncerait une réussite."""
+        atelier.ecrire("code.py", "total = 0\ntotal = 0\n")
+
+        resultat = atelier.remplacer("code.py", "total = 0", "total = 1")
+
+        assert resultat.ok is False
+        assert "2 fois" in resultat.message
+        assert (bac / "code.py").read_text() == "total = 0\ntotal = 0\n"
+
+    def test_l_indentation_du_code_est_preservee(self, atelier, bac):
+        atelier.ecrire("code.py", "def f():\n    return 1\n")
+
+        atelier.remplacer("code.py", "    return 1", "    return 2")
+
+        assert (bac / "code.py").read_text() == "def f():\n    return 2\n"
+
+    def test_un_fichier_absent_se_dit(self, atelier):
+        assert atelier.remplacer("nexiste-pas.py", "a", "b").ok is False
+
+    def test_remplacer_laisse_une_trace(self, atelier, journal):
+        atelier.ecrire("code.py", "a")
+        atelier.remplacer("code.py", "a", "b")
+
+        assert journal.dernieres(limite=1)[0].action == "remplacer"
+
+
+# --- Trouver avant de corriger ---------------------------------------------------------
+
+class TestChercher:
+    def test_il_trouve_le_fichier_et_la_ligne(self, atelier):
+        atelier.ecrire("un/deux.py", "x = 1\ndef calculer_total():\n    pass\n")
+
+        sortie = atelier.chercher("def calculer_total").sortie
+
+        assert "deux.py" in sortie
+        assert ":2:" in sortie
+
+    def test_rien_trouve_est_une_reponse_pas_un_echec(self, atelier):
+        """« ce mot n'est nulle part » est exactement ce qu'il fallait savoir."""
+        atelier.ecrire("un.py", "rien de special")
+
+        resultat = atelier.chercher("introuvable_nulle_part")
+
+        assert resultat.ok is True
+        assert "aucune ligne" in resultat.message
+
+    def test_la_recherche_est_litterale(self, atelier):
+        """Un nom de fonction contient des points et des parenthèses ; les
+        traiter comme un motif ferait trouver n'importe quoi."""
+        atelier.ecrire("un.py", "a.b(c)\naxbyc\n")
+
+        assert len(atelier.chercher("a.b(c)").sortie.splitlines()) == 1
+
+    def test_sans_texte_il_ne_cherche_rien(self, atelier):
+        assert atelier.chercher("").ok is False
+
+    def test_le_repli_trouve_la_meme_chose_que_grep(self, atelier, bac):
+        """Une machine sans `grep` ne doit pas rendre Dioumtoukay aveugle."""
+        atelier.ecrire("un/deux.py", "x = 1\nle motif cherche\n")
+
+        lignes = Atelier._chercher_ici_meme("le motif cherche", bac, 100)
+
+        assert len(lignes) == 1
+        assert lignes[0].endswith(":2:le motif cherche")
+
+    def test_le_repli_saute_les_binaires_sans_tomber(self, atelier, bac):
+        (bac / "image.png").write_bytes(b"\x89PNG\x00\x01\x02")
+        atelier.ecrire("un.py", "le motif cherche")
+
+        assert len(Atelier._chercher_ici_meme("le motif cherche", bac, 100)) == 1
+
+    def test_chercher_laisse_une_trace(self, atelier, journal):
+        atelier.chercher("quoi que ce soit")
+
+        assert journal.dernieres(limite=1)[0].action == "chercher"
+
+
+# --- La coupe garde la fin -------------------------------------------------------------
+
+def test_une_sortie_coupee_garde_le_debut_ET_la_fin(atelier):
+    """`pytest` écrit son verdict sur ses DERNIÈRES lignes. Ne garder que le
+    début revenait à couper systématiquement la réponse à la question posée."""
+    from tools.atelier.atelier import SORTIE_MAX
+
+    programme = (f"print('DEBUT'); print('.' * {SORTIE_MAX + 5000}); "
+                 "print('3 failed, 12 passed')")
+
+    sortie = atelier.executer(["python", "-c", programme]).sortie
+
+    assert "DEBUT" in sortie
+    assert "3 failed, 12 passed" in sortie, "le verdict a ete coupe"
