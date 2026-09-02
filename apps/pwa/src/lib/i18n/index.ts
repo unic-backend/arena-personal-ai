@@ -279,6 +279,8 @@ const en: Dict = {
   'composer.micStop': 'Stop dictation',
   'composer.micUnsupported': 'Voice dictation is not supported by your browser (Chrome/Edge/Safari recommended).',
   'composer.micDenied': 'Microphone access was denied. Please allow microphone permissions in your browser.',
+  'composer.micTranscribing': 'Transcribing…',
+  'composer.micTranscriptionFailed': 'Transcription failed — check your backend connection and try again.',
 
   'format.bold': 'Bold (Ctrl+B)',
   'format.italic': 'Italic (Ctrl+I)',
@@ -594,6 +596,8 @@ const fr: Dict = {
   'composer.micStop': 'Arrêter la dictée',
   'composer.micUnsupported': 'La dictée vocale n’est pas supportée par votre navigateur (Chrome/Edge/Safari conseillés).',
   'composer.micDenied': 'L’accès au microphone a été refusé dans les paramètres du navigateur.',
+  'composer.micTranscribing': 'Transcription…',
+  'composer.micTranscriptionFailed': 'La transcription a échoué — vérifie la connexion au backend et réessaie.',
 
   'format.bold': 'Gras (Ctrl+B)',
   'format.italic': 'Italique (Ctrl+I)',

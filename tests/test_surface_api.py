@@ -67,6 +67,9 @@ SURFACE_ATTENDUE = {
     # VideoProductionAgent, construit et teste depuis le 01/09/2026 sans
     # jamais avoir ete joignable avant cette route.
     "/api/video/projet": (["POST"], ["verify_api_key", "limiter_debit"]),
+    # Dictee vocale reelle (Faster-Whisper), a la place de la reconnaissance
+    # gratuite et sans wolof du navigateur — demande le 02/09/2026.
+    "/api/speech/transcribe": (["POST"], ["verify_api_key", "limiter_debit"]),
 }
 
 

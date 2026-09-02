@@ -39,7 +39,7 @@ export function Composer({
     pendingAttachments, attachmentError, addPendingFiles, removePendingAttachment,
   } = useChat();
   const {
-    isListening, isSupported: micSupported, interimTranscript, startDictation, stopDictation,
+    isListening, isSupported: micSupported, isTranscribing, interimTranscript, startDictation, stopDictation,
   } = useDictation();
   const { stop: stopSpeech } = useSpeech();
 
@@ -84,6 +84,8 @@ export function Composer({
       (errCode) => {
         if (errCode === 'not-allowed' || errCode === 'permission-denied') {
           setDictationNotice(t('composer.micDenied'));
+        } else if (errCode === 'transcription-failed') {
+          setDictationNotice(t('composer.micTranscriptionFailed'));
         } else if (errCode !== 'no-speech') {
           setDictationNotice(t('composer.micUnsupported'));
         }
@@ -229,6 +231,27 @@ export function Composer({
           )}
         </AnimatePresence>
 
+        {/* Transcription en cours — entre l'arret de l'enregistrement et le
+            texte final du serveur (Whisper) ; pas d'"interim" possible ici. */}
+        <AnimatePresence initial={false}>
+          {isTranscribing && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="overflow-hidden"
+            >
+              <div className="flex items-center gap-2 border-b border-accent-500/20 bg-accent-500/[0.08] px-3.5 py-1.5">
+                <Loader2 size={11} className="animate-spin text-accent-400" />
+                <span className="font-mono text-[10px] font-medium text-accent-300">
+                  {t('composer.micTranscribing')}
+                </span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Notice for mic permission / unsupported browser */}
         <AnimatePresence initial={false}>
           {dictationNotice && (
@@ -305,7 +328,7 @@ export function Composer({
           <button
             type="button"
             onClick={toggleDictation}
-            disabled={running}
+            disabled={running || isTranscribing}
             title={isListening ? t('composer.micStop') : t('composer.mic')}
             className={cn(
               'relative grid h-9 w-9 shrink-0 place-items-center rounded-xl transition active:scale-95 disabled:opacity-40',
@@ -314,7 +337,13 @@ export function Composer({
                 : 'text-zinc-500 hover:bg-white/5 hover:text-accent-300',
             )}
           >
-            {isListening ? <Radio size={16} className="animate-pulse" /> : <Mic size={16} />}
+            {isTranscribing ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : isListening ? (
+              <Radio size={16} className="animate-pulse" />
+            ) : (
+              <Mic size={16} />
+            )}
           </button>
 
           <div className="relative min-w-0 flex-1">
