@@ -37,6 +37,7 @@ export function Composer({
   const { t, locale } = useI18n();
   const {
     pendingAttachments, attachmentError, addPendingFiles, removePendingAttachment,
+    revealActif, sauterReveal,
   } = useChat();
   const {
     isListening, isSupported: micSupported, isTranscribing, interimTranscript, startDictation, stopDictation,
@@ -374,9 +375,17 @@ export function Composer({
             )}
           </div>
 
-          {running ? (
+          {running || revealActif ? (
             <button
-              onClick={onStop}
+              onClick={() => {
+                // Le reseau peut deja avoir tout envoye (agent specialise) :
+                // l'y a rien a annuler, juste finir d'afficher ce qui est
+                // arrive. `onStop` sur un flux deja termine ne fait rien de
+                // plus qu'un `abort()` sans effet — les deux sont surs a
+                // appeler ensemble, dans tous les cas.
+                onStop();
+                sauterReveal();
+              }}
               title={t('composer.stop')}
               className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-accent-500/40 bg-accent-500/15 text-accent-300 transition hover:bg-accent-500/25 active:scale-95"
             >

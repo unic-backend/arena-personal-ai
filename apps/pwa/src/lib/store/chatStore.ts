@@ -204,6 +204,20 @@ interface ChatState {
   conversations: Conversation[];
   activeId: string | null;
   isRunning: boolean;
+  /** Vrai pendant que la reponse se revele encore a l'ecran (StreamingResponse),
+   *  meme apres que le reseau a fini d'envoyer — un agent specialise renvoie
+   *  tout son texte d'un coup, et la marche continue plusieurs secondes de
+   *  plus. Sans cet etat, le bouton stop disparaissait avant que la reponse
+   *  ait fini d'apparaitre : signale le 02/09/2026 ("je peux pas arreter la
+   *  reponse"). */
+  revealActif: boolean;
+  commencerReveal(): void;
+  terminerReveal(): void;
+  /** Incremente a chaque demande de "sauter a la fin" — la marche en cours
+   *  l'observe et affiche d'un coup ce qui est deja arrive. Il n'y a rien a
+   *  annuler cote reseau dans ce cas : le texte est deja recu en entier. */
+  revealSauterSignal: number;
+  sauterReveal(): void;
   eventLog: LogEntry[];
   logOpen: boolean;
   pendingAttachments: PendingAttachment[];
@@ -256,6 +270,11 @@ export const useChat = create<ChatState>((set, get) => {
   conversations: conversationsInitiales,
   activeId: activeIdInitial,
   isRunning: false,
+  revealActif: false,
+  commencerReveal: () => set({ revealActif: true }),
+  terminerReveal: () => set({ revealActif: false }),
+  revealSauterSignal: 0,
+  sauterReveal: () => set((s) => ({ revealSauterSignal: s.revealSauterSignal + 1 })),
   eventLog: [],
   logOpen: false,
   pendingAttachments: [],
