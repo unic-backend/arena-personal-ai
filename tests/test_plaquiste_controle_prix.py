@@ -128,3 +128,57 @@ def test_la_limite_du_multiple_est_connue():
     c'est ainsi qu'on saura que la limite est levée.
     """
     assert verifier_prix("Plaque standard BA13 | 9 000 | 1 | 9 000", METIER) == []
+
+
+class TestLEspaceInsecableEstUnSeparateurDeMilliers:
+    """« 4 500 » ecrit correctement en francais ne doit pas devenir « 500 ».
+
+    Defaut mesure le 02/09/2026 sur une capture d'ecran du proprietaire :
+    **quatre avertissements « prix a verifier » sur quatre prix justes**.
+    `MONTANT` n'admettait que l'espace clavier (U+0020) et le point. Avec une
+    espace insecable — celle du francais correct, donc celle qu'un modele
+    ecrit spontanement — « 4 500 » etait lu `500`, le vrai prix devenait
+    invisible au controle, et le controle criait a l'alteration.
+
+    La docstring du module dit pourquoi c'est grave : « Un controle qui crie a
+    tort est un controle qu'on eteint ». Sur ce qui protege ses prix devant un
+    client, c'est le pire des defauts.
+    """
+
+    #: Les quatre espaces qui separent des milliers en francais.
+    ESPACES = [
+        ("ordinaire", " "),
+        ("insecable", " "),
+        ("insecable etroite", " "),
+        ("fine", " "),
+    ]
+
+    @pytest.mark.parametrize("nom,espace", ESPACES)
+    def test_un_prix_juste_ne_declenche_rien(self, nom, espace):
+        ligne = (f"| 1 | Plaque standard BA13 (2,5 m x 1,2 m) | 10 | pcs | "
+                 f"4{espace}500 | 45{espace}000 |")
+
+        assert verifier_prix(ligne, METIER) == [], (
+            f"espace {nom} : le controle crie sur un prix juste")
+
+    @pytest.mark.parametrize("nom,espace", ESPACES)
+    def test_le_montant_est_lu_en_entier(self, nom, espace):
+        """La cause exacte : 4 500 lu « 500 » au lieu de 4500."""
+        from agents.plaquiste.controle_prix import _montants
+
+        assert _montants(f"prix : 4{espace}500 FCFA") == [4500], (
+            f"espace {nom} : le montant est tronque")
+
+    @pytest.mark.parametrize("nom,espace", ESPACES)
+    def test_un_prix_vraiment_altere_reste_detecte(self, nom, espace):
+        """Elargir les separateurs ne doit pas rendre le controle aveugle.
+
+        5 200 n'est pas un multiple de 4 500 — la limite du multiple, elle,
+        reste connue et figee par `test_la_limite_du_multiple_est_connue`.
+        """
+        ligne = f"| Plaque standard BA13 | 10 | 5{espace}200 | 52{espace}000 |"
+
+        anomalies = verifier_prix(ligne, METIER)
+
+        assert len(anomalies) == 1, f"espace {nom} : le prix altere passe inapercu"
+        assert anomalies[0].prix_attendu == 4500
