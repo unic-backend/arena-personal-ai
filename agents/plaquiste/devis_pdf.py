@@ -197,17 +197,25 @@ def chiffrer(devis: Devis, metier: Dict[str, Any]) -> Dict[str, Any]:
 
 # --- Rendu --------------------------------------------------------------------
 
-#: Les fichiers de la marque, deposes par le proprietaire. Ils etaient la
-#: depuis le 27/08/2026 et **personne ne les passait** : `construire()` avait
-#: `logo=None` par defaut, et son unique appelant
-#: (`core/connectors/devis.py`) ne le renseignait pas. Tous les devis sortaient
-#: donc sans le logo — mesure du 02/09/2026, 0 image dans le PDF produit.
+RACINE = Path(__file__).resolve().parents[2]
+
+#: Le logo, suivi par git. Il etait dans `documents/unic_plaquiste/`, un
+#: dossier **volontairement exclu** (`.gitignore` : « Documents clients [...]
+#: noms, montants, chantiers »), et il n'existait donc sur aucun clone ni
+#: aucun deploiement — la CI l'a montre le 02/09/2026, 0 image sur le runner
+#: la ou la machine du proprietaire en avait une.
 #:
-#: Le defaut vit ici plutot que chez l'appelant : un devis sans logo est un
-#: defaut, pas un choix, et chaque nouvel appelant le reproduirait.
-DOSSIER_MARQUE = Path(__file__).resolve().parents[2] / "documents" / "unic_plaquiste"
-LOGO_PAR_DEFAUT = DOSSIER_MARQUE / "logo_unic_plaquiste.png"
-SIGNATURE_PAR_DEFAUT = DOSSIER_MARQUE / "signature_uthman.png"
+#: Un logo n'est pas une donnee client : il est sur son site, ses reseaux,
+#: chacun de ses devis. Sa place est a cote de la charte de couleurs que
+#: `config/unic_plaquiste.yaml` porte deja.
+LOGO_PAR_DEFAUT = RACINE / "config" / "marque" / "logo_unic_plaquiste.png"
+
+#: La signature manuscrite, elle, **reste hors de git** et doit le rester :
+#: versionnee, n'importe qui disposant du depot pourrait l'apposer sur
+#: n'importe quel document. Le code vit donc avec son absence — un document
+#: marque signe sans fichier de signature rend une ligne vide et un
+#: avertissement, jamais une erreur.
+SIGNATURE_PAR_DEFAUT = RACINE / "documents" / "unic_plaquiste" / "signature_uthman.png"
 
 
 def construire(devis: Devis, metier: Dict[str, Any], sortie: Path,
