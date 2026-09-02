@@ -270,16 +270,19 @@ button, textarea { touch-action: manipulation; }
   animation: shimmer 2.4s linear infinite;
 }
 
-/* streaming caret */
+/* streaming caret — un trait fin comme chez Claude ou GPT, pas un pave
+   plein : `currentColor` reprend la couleur du texte au lieu de l'accent
+   orange, pour se fondre dans la phrase plutot que de sauter aux yeux.
+   Signale le 02/09/2026 (« c'est pas jolie »). */
 .stream-caret::after {
   content: "";
   display: inline-block;
-  width: 8px;
-  height: 1.05em;
-  margin-left: 3px;
-  vertical-align: -0.15em;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.1em;
   border-radius: 1px;
-  background: var(--color-accent-400);
+  background: currentColor;
   animation: caret 1s step-end infinite;
 }
 

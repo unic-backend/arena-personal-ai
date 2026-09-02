@@ -1,5 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import type { SourceMeta } from '../../lib/activity/types';
+import { useChat } from '../../lib/store/chatStore';
+import { triggerHaptic } from '../../lib/theme';
 import { cn } from '../../utils/cn';
 
 /* ── inline: **bold**, *italic*, ~~strike~~, `code`, [n] citations ── */
@@ -135,6 +137,15 @@ export const MarkdownLite = memo(function MarkdownLite({
    lents, la marche les lisse egalement. */
 const CARACTERES_PAR_SECONDE = 200;
 
+/* Une petite vibration pendant que le texte marche, comme GPT — demande le
+   02/09/2026 ("je sens un petit vibration qu'il ecrit"). Une seule par
+   caractere serait imperceptible (200/s se fond en un bourdonnement continu,
+   use la batterie pour rien) : ~14/s donne la texture d'une frappe sans
+   noyer le telephone de vibrations. `triggerHaptic` respecte deja le
+   reglage haptique du proprietaire (theme.ts) — rien a ajouter ici pour
+   qu'il puisse le couper. */
+const INTERVALLE_HAPTIQUE_MS = 70;
+
 /** Revele `texte` progressivement plutot que d'un bloc, que le texte soit
  *  arrive au fil de l'eau (plusieurs petits morceaux) ou d'un coup (un
  *  agent specialise qui compose sa reponse entiere avant de l'envoyer) —
@@ -163,17 +174,40 @@ function useTexteRevele(texte: string, streaming: boolean): string {
 
   const [longueur, setLongueur] = useState(() => (streaming ? 0 : texte.length));
   const dernierTsRef = useRef<number | undefined>(undefined);
+  const dernierHapticRef = useRef(0);
+
+  // Le bouton stop du composer doit rester visible tant que la marche
+  // n'a pas rattrape le texte — meme apres que le reseau a dit "termine"
+  // (agent specialise : tout arrive d'un coup, puis la marche continue
+  // seule pendant plusieurs secondes). Sans ceci, le bouton disparaissait
+  // avant la fin de l'affichage : signale le 02/09/2026 ("je peux pas
+  // arreter la reponse").
+  const commencerReveal = useChat((s) => s.commencerReveal);
+  const terminerReveal = useChat((s) => s.terminerReveal);
+  const revealSauterSignal = useChat((s) => s.revealSauterSignal);
+
+  // "Sauter a la fin" (le stop du composer, quand il ne reste plus qu'a finir
+  // d'afficher un texte deja recu en entier) : rien a annuler cote reseau,
+  // juste rattraper `texte` tout de suite.
+  useEffect(() => {
+    if (revealSauterSignal === 0) return;
+    setLongueur(texteRef.current.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne reagit qu'au
+    // signal ; `texteRef` est deja a jour au moment ou l'effet se declenche.
+  }, [revealSauterSignal]);
 
   useEffect(() => {
     if (!dejaEnMarcheRef.current) {
       setLongueur(texteRef.current.length);
       return;
     }
+    commencerReveal();
     let cadre: number | undefined;
     dernierTsRef.current = undefined;
     const marcher = (ts: number) => {
       const cible = texteRef.current.length;
       let arrete = false;
+      let progresse = false;
       setLongueur((n) => {
         if (n >= cible) {
           // Rattrape ET plus rien n'arrivera : la marche s'arrete d'elle-meme.
@@ -182,16 +216,30 @@ function useTexteRevele(texte: string, streaming: boolean): string {
         }
         const dt = dernierTsRef.current ? ts - dernierTsRef.current : 16;
         const pas = Math.max(1, Math.round((CARACTERES_PAR_SECONDE * dt) / 1000));
+        progresse = true;
         return Math.min(cible, n + pas);
       });
       dernierTsRef.current = ts;
-      if (!arrete) cadre = requestAnimationFrame(marcher);
+      if (progresse && ts - dernierHapticRef.current >= INTERVALLE_HAPTIQUE_MS) {
+        dernierHapticRef.current = ts;
+        triggerHaptic('light');
+      }
+      if (!arrete) {
+        cadre = requestAnimationFrame(marcher);
+      } else {
+        terminerReveal();
+      }
     };
     cadre = requestAnimationFrame(marcher);
     return () => {
       if (cadre !== undefined) cancelAnimationFrame(cadre);
     };
-  }, [streaming]);
+  }, [streaming, commencerReveal, terminerReveal]);
+
+  // Filet de securite : si ce message quitte l'ecran pendant que sa marche
+  // tourne encore (conversation changee en cours de reponse), le bouton
+  // stop du composer ne doit pas rester coince affiche pour toujours.
+  useEffect(() => () => terminerReveal(), [terminerReveal]);
 
   return texte.slice(0, Math.min(longueur, texte.length));
 }

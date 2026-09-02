@@ -178,6 +178,17 @@ export const ChatMessage = memo(function ChatMessage({
     void editUserMessage(msg.id, editText.trim());
   };
 
+  // Meme geste que sur la reponse d'Usman (copy(), plus bas) — mais son propre
+  // texte, jamais `bodyText` : celui-ci n'existe que pour une bulle assistant.
+  const copyUserText = async () => {
+    try {
+      await navigator.clipboard.writeText(msg.text);
+      triggerHaptic('success');
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch { /* noop */ }
+  };
+
   if (msg.role === 'user') {
     return (
       <motion.div
@@ -248,6 +259,14 @@ export const ChatMessage = memo(function ChatMessage({
                 className="grid h-6 w-6 place-items-center rounded-md text-zinc-500 transition hover:bg-white/5 hover:text-zinc-200 disabled:opacity-40"
               >
                 <Pencil size={11} />
+              </button>
+              <button
+                type="button"
+                onClick={copyUserText}
+                title={copied ? t('msg.copied') : t('msg.copy')}
+                className="grid h-6 w-6 place-items-center rounded-md text-zinc-500 transition hover:bg-white/5 hover:text-zinc-200"
+              >
+                {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
               </button>
             </div>
 
