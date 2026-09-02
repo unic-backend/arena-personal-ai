@@ -29,9 +29,25 @@ from typing import Any, Dict, List
 
 logger = logging.getLogger("usman.agent.plaquiste.controle")
 
-# Un montant est un nombre d'au moins trois chiffres, espaces ou points de
-# milliers admis : « 4 500 », « 3 667 500 », « 4.500 ».
-MONTANT = re.compile(r"\b\d{1,3}(?:[  .]\d{3})+\b|\b\d{3,}\b")
+# Les separateurs de milliers admis. L'espace INSECABLE compte autant que
+# l'espace clavier : c'est celui du francais correct, et c'est donc celui
+# qu'un modele ecrit spontanement.
+#
+# Defaut mesure le 02/09/2026, sur une capture du proprietaire : quatre lignes
+# « prix a verifier » sur quatre prix JUSTES. « 4 500 » ecrit avec une espace
+# insecable etait lu « 500 » — le vrai prix devenait invisible au controle,
+# qui criait donc a l'alteration. La docstring de ce module dit exactement
+# pourquoi c'est grave : « Un controle qui crie a tort est un controle qu'on
+# eteint ». Sur ce qui protege ses prix, c'est le pire des defauts.
+#
+#   U+00A0 espace insecable        U+202F espace insecable etroite
+#   U+2009 espace fine             U+0020 espace ordinaire      « . »
+SEPARATEURS_MILLIERS = " \u00a0\u202f\u2009."
+
+# Un montant est un nombre d'au moins trois chiffres, separateurs de milliers
+# admis : « 4 500 », « 4 500 », « 3 667 500 », « 4.500 ».
+MONTANT = re.compile(
+    rf"\b\d{{1,3}}(?:[{SEPARATEURS_MILLIERS}]\d{{3}})+\b|\b\d{{3,}}\b")
 
 # En dessous, ce sont des quantites, des dimensions ou des dates, pas des prix.
 MONTANT_MINIMUM = 100
@@ -54,7 +70,7 @@ def _montants(ligne: str) -> List[int]:
     valeurs = []
     for trouve in MONTANT.findall(ligne):
         try:
-            valeur = int(re.sub(r"[  .]", "", trouve))
+            valeur = int(re.sub(rf"[{SEPARATEURS_MILLIERS}]", "", trouve))
         except ValueError:
             continue
         if valeur >= MONTANT_MINIMUM:
