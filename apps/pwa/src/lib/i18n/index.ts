@@ -257,7 +257,7 @@ const en: Dict = {
   'drop.subtitle': 'Images, PDFs, documents, audio, video or code files (up to 5 files)',
   'drop.hint': 'Release anywhere to attach',
 
-  'composer.placeholder': 'Ask, or give it a task — watch every step run live',
+  'composer.placeholder': 'Message Usman…',
   'composer.running': 'Usman is working…',
   'composer.stop': 'Stop the run',
   'composer.attach': 'Attach images, PDF, documents, audio or video',
@@ -574,7 +574,7 @@ const fr: Dict = {
   'drop.subtitle': 'Images, PDF, documents, audios, vidéos ou code (jusqu’à 5 fichiers)',
   'drop.hint': 'Relâchez n’importe où pour joindre',
 
-  'composer.placeholder': 'Demandez ou confiez une tâche — chaque étape s’affiche en direct',
+  'composer.placeholder': 'Écris à Usman…',
   'composer.running': 'Usman travaille…',
   'composer.stop': 'Arrêter l’exécution',
   'composer.attach': 'Joindre des images, PDF, documents, audios ou vidéos',
