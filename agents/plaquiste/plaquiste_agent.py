@@ -433,6 +433,27 @@ def articles_sans_prix(demande: str, metier: Dict[str, Any]) -> List[str]:
     return sorted(nom for nom in connus if nom not in mots)
 
 
+def lignes_presence_en_ligne(entreprise: Dict[str, Any]) -> List[str]:
+    """Application, reseaux sociaux et fiche Google Maps — s'ils sont renseignes.
+
+    Partagee avec `apps.backend.prompts` : un seul endroit decide du format,
+    pour que le devis et la conversation generale disent la meme chose.
+    Chaque ligne est absente plutot que vide si l'information ne l'est pas
+    dans `config/unic_plaquiste.yaml` — jamais un lien invente.
+    """
+    lignes: List[str] = []
+    applications = entreprise.get("applications") or []
+    if applications:
+        lignes.append(f"Application(s) : {', '.join(applications)}.")
+    if fiche := entreprise.get("fiche_google_maps"):
+        lignes.append(f"Fiche Google Maps : {fiche}.")
+    reseaux = entreprise.get("reseaux_sociaux") or {}
+    if reseaux:
+        detail = " · ".join(f"{nom.capitalize()} {lien}" for nom, lien in reseaux.items())
+        lignes.append(f"Reseaux sociaux : {detail}.")
+    return lignes
+
+
 def composer_instruction(metier: Dict[str, Any]) -> str:
     """Compose l'instruction systeme a partir des seules donnees du fichier.
 
@@ -485,6 +506,7 @@ def composer_instruction(metier: Dict[str, Any]) -> str:
         f"Gerant : {e.get('gerant', '')}. {e.get('adresse', '')}.",
         f"Telephone {e.get('telephone', '')} — {e.get('site', '')}.",
         f"NINEA {e.get('ninea', '')} | RCCM {e.get('rccm', '')}.",
+        *lignes_presence_en_ligne(e),
         "",
         "REGLE ABSOLUE — LES PRIX :",
         "Tu n'inventes jamais un prix. Tu utilises uniquement la grille ci-dessous.",

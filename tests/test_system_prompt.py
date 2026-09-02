@@ -80,6 +80,29 @@ def test_le_proprietaire_est_nomme(sans_fait_enregistre):
     assert "Usman" in prompts.get_arena_system_prompt()
 
 
+def test_la_presence_en_ligne_de_l_entreprise_est_connue_partout(sans_fait_enregistre):
+    """Demande du 02/09/2026 : un client peut demander le site ou les reseaux
+    sans parler de devis — cette info doit etre dans le prompt GENERAL, pas
+    seulement dans celui de l'agent metier."""
+    prompt = prompts.get_arena_system_prompt()
+
+    assert "www.unicplaquiste.com" in prompt
+    assert "app.unicplaquiste.com" in prompt
+    assert "expert.unicplaquiste.com" in prompt
+    assert "maps.app.goo.gl" in prompt
+    assert "tiktok.com/@unic_plaquiste" in prompt
+    assert "instagram.com/unic_plaquiste" in prompt
+
+
+def test_sans_connaissances_metier_aucune_section_presence(sans_fait_enregistre, monkeypatch):
+    """Un fichier metier absent ou vide ne doit pas laisser une section vide."""
+    monkeypatch.setattr(prompts, "charger_metier", lambda: {})
+
+    prompt = prompts.get_arena_system_prompt()
+
+    assert "Presence en ligne" not in prompt
+
+
 def test_le_ton_demande_est_naturel_pas_robotique(sans_fait_enregistre):
     """Demande du 02/09/2026 : le proprietaire trouvait les reponses trop
     hautes en langage, robotiques. Le prompt doit explicitement demander un

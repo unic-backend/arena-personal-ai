@@ -18,6 +18,7 @@ from agents.plaquiste.plaquiste_agent import (
     composer_instruction,
     destinataire_annonce,
     destinataire_depuis_l_historique,
+    lignes_presence_en_ligne,
 )
 from apps.backend.config import AGENTS_SPECIALISES
 from core.actions.resultat import Statut, a_confirmer, non_configure, succes
@@ -98,6 +99,15 @@ class TestConnaissancesMetier:
         assert e["telephone"] == "+221 77 708 50 92"
         assert e["gerant"] == "Uthman"
 
+    def test_la_presence_en_ligne_est_celle_du_proprietaire(self):
+        """Liens fournis le 02/09/2026 : site, appli, reseaux, fiche Google Maps."""
+        e = charger_metier(FICHIER)["entreprise"]
+
+        assert e["applications"] == ["app.unicplaquiste.com", "expert.unicplaquiste.com"]
+        assert e["fiche_google_maps"] == "https://maps.app.goo.gl/fKvNLhN1r3U88gsv9"
+        assert e["reseaux_sociaux"]["tiktok"] == "https://www.tiktok.com/@unic_plaquiste"
+        assert e["reseaux_sociaux"]["instagram"] == "https://www.instagram.com/unic_plaquiste"
+
     def test_un_fichier_absent_ne_leve_pas(self):
         """Le serveur doit démarrer même sans les connaissances métier."""
         assert charger_metier(RACINE / "config" / "inexistant.yaml") == {}
@@ -121,6 +131,15 @@ class TestInstructionSysteme:
 
         assert "n'inventes jamais un prix" in instruction
         assert "prix a confirmer" in instruction
+
+    def test_la_presence_en_ligne_est_transmise_au_modele(self):
+        instruction = composer_instruction(charger_metier(FICHIER))
+
+        assert "app.unicplaquiste.com" in instruction
+        assert "expert.unicplaquiste.com" in instruction
+        assert "maps.app.goo.gl" in instruction
+        assert "tiktok.com/@unic_plaquiste" in instruction
+        assert "instagram.com/unic_plaquiste" in instruction
 
     def test_le_modele_sait_que_le_pdf_n_est_pas_son_travail(self):
         """Trouve en direct avec le proprietaire (31/08/2026) : sans cette
@@ -165,6 +184,33 @@ class TestInstructionSysteme:
         metier["prix_materiaux"]["Plaque standard BA13"] = 9999
 
         assert "9999" in composer_instruction(metier)
+
+
+class TestLignesPresenceEnLigne:
+    """Le formatage partage entre le devis et la conversation generale."""
+
+    def test_rien_de_renseigne_ne_rend_aucune_ligne(self):
+        assert lignes_presence_en_ligne({}) == []
+
+    def test_seuls_les_champs_renseignes_apparaissent(self):
+        lignes = lignes_presence_en_ligne({"applications": ["expert.unicplaquiste.com"]})
+
+        assert lignes == ["Application(s) : expert.unicplaquiste.com."]
+
+    def test_plusieurs_applications_sont_toutes_listees(self):
+        lignes = lignes_presence_en_ligne(
+            {"applications": ["app.unicplaquiste.com", "expert.unicplaquiste.com"]})
+
+        assert lignes == ["Application(s) : app.unicplaquiste.com, expert.unicplaquiste.com."]
+
+    def test_les_reseaux_sociaux_sont_tous_listes(self):
+        lignes = lignes_presence_en_ligne({
+            "reseaux_sociaux": {"tiktok": "https://tiktok.com/@x", "instagram": "https://instagram.com/x"},
+        })
+
+        assert len(lignes) == 1
+        assert "Tiktok https://tiktok.com/@x" in lignes[0]
+        assert "Instagram https://instagram.com/x" in lignes[0]
 
 
 class TestAgent:
