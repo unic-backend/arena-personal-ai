@@ -28,6 +28,24 @@ export const CAPACITES_VIDEO = [
 
 export type CapaciteVideo = (typeof CAPACITES_VIDEO)[number];
 
+/** Un fichier source envoye au serveur (POST /api/upload), pour devenir une
+ *  reference du projet. Sans ceci, `vision`, `transcription` et `montage`
+ *  echouaient TOUJOURS : le formulaire n'avait aucun moyen de fournir le
+ *  fichier qu'elles exigent — mesure le 02/09/2026, signale par le
+ *  proprietaire ("ici aussi rien ne marche"). */
+export interface ReferenceFile {
+  id: string;
+  name: string;
+  /** Chemin sous MEDIA_DIR renvoye par le serveur — `null` tant que l'envoi n'a pas abouti. */
+  path: string | null;
+  status: 'uploading' | 'ready' | 'failed';
+  error?: string;
+}
+
+function idReference() {
+  return `ref_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
 export interface EtapeProjetResultat {
   etape: string;
   etat: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED' | 'SKIPPED' | 'NOT_REACHED';
@@ -61,6 +79,9 @@ interface Store {
   /** empty set = mode AUTO (server picks from the full closed list) */
   capacitesChoisies: Set<CapaciteVideo>;
   toggleCapacite(c: CapaciteVideo): void;
+  references: ReferenceFile[];
+  addReferenceFiles(files: FileList | File[]): Promise<void>;
+  removeReference(id: string): void;
   submitting: boolean;
   result: ProjetVideoResultat | null;
   error: string | null;
@@ -81,13 +102,60 @@ export const useVideoProject = create<Store>((set, get) => ({
       else next.add(c);
       return { capacitesChoisies: next };
     }),
+  references: [],
+
+  /* Envoie chaque fichier a POST /api/upload (le meme point d'entree que la
+     pipeline /api/process-video) et garde son chemin MEDIA_DIR une fois pret.
+     Un echec reste local a ce fichier — les autres continuent. */
+  async addReferenceFiles(files) {
+    const cfg = activeRemoteCfg();
+    const liste = Array.from(files);
+    if (!cfg || !liste.length) return;
+
+    const attentes: ReferenceFile[] = liste.map((f) => ({
+      id: idReference(), name: f.name, path: null, status: 'uploading' as const,
+    }));
+    set((s) => ({ references: [...s.references, ...attentes] }));
+
+    await Promise.all(liste.map(async (file, i) => {
+      const attente = attentes[i];
+      try {
+        const form = new FormData();
+        form.append('file', file);
+        const res = await fetch(`${cfg.url}/api/upload`, {
+          method: 'POST',
+          headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
+          body: form,
+        });
+        if (!res.ok) {
+          const detail = await res.json().catch(() => null);
+          throw new Error((detail && detail.detail) || `HTTP ${res.status}`);
+        }
+        const data = (await res.json()) as { path: string };
+        set((s) => ({
+          references: s.references.map((r) =>
+            r.id === attente.id ? { ...r, path: data.path, status: 'ready' as const } : r),
+        }));
+      } catch (e) {
+        set((s) => ({
+          references: s.references.map((r) =>
+            r.id === attente.id
+              ? { ...r, status: 'failed' as const, error: e instanceof Error ? e.message : String(e) }
+              : r),
+        }));
+      }
+    }));
+  },
+
+  removeReference: (id) => set((s) => ({ references: s.references.filter((r) => r.id !== id) })),
+
   submitting: false,
   result: null,
   error: null,
 
   async submit() {
     const cfg = activeRemoteCfg();
-    const { objectif, capacitesChoisies } = get();
+    const { objectif, capacitesChoisies, references } = get();
     if (!cfg) {
       set({ error: 'no-backend' });
       return;
@@ -98,6 +166,8 @@ export const useVideoProject = create<Store>((set, get) => ({
     try {
       const body: Record<string, unknown> = { objectif: objectif.trim() };
       if (capacitesChoisies.size > 0) body.capacites = Array.from(capacitesChoisies);
+      const pretes = references.filter((r) => r.status === 'ready' && r.path);
+      if (pretes.length) body.references = pretes.map((r) => r.path);
 
       const res = await fetch(`${cfg.url}/api/video/projet`, {
         method: 'POST',
@@ -121,5 +191,5 @@ export const useVideoProject = create<Store>((set, get) => ({
     }
   },
 
-  reset: () => set({ objectif: '', capacitesChoisies: new Set(), result: null, error: null }),
+  reset: () => set({ objectif: '', capacitesChoisies: new Set(), references: [], result: null, error: null }),
 }));
