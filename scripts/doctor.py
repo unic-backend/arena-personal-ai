@@ -551,11 +551,11 @@ def verifier_google(nom: str, capacite: str, portees: str,
 
 def verifier_connaissances_metier(chemin: Optional[Path] = None) -> Verification:
     """Le fichier des prix. Sans lui, l'assistant refuse de chiffrer."""
-    fichier = chemin or RACINE / "config" / "unic_plaquiste.yaml"
+    fichier = chemin or RACINE / "config" / "metier.yaml"
     if not fichier.is_file():
         return Verification(
             "Connaissances metier", ABSENT,
-            "config/unic_plaquiste.yaml introuvable : aucun devis ne sera chiffre",
+            "config/metier.yaml introuvable : aucun devis ne sera chiffre",
             "Retablir le fichier depuis Git.")
     try:
         import yaml
@@ -567,7 +567,7 @@ def verifier_connaissances_metier(chemin: Optional[Path] = None) -> Verification
     articles = len(metier.get("prix_materiaux") or {}) + len(metier.get("prix_portes") or {})
     if not articles:
         return Verification("Connaissances metier", EN_PANNE,
-                            "aucun prix dans le fichier", "Verifier config/unic_plaquiste.yaml.")
+                            "aucun prix dans le fichier", "Verifier config/metier.yaml.")
     return Verification("Connaissances metier", OK, f"{articles} article(s) tarifes")
 
 

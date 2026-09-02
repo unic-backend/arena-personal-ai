@@ -9,7 +9,7 @@ quantites, Python calcule l'argent.** Aucun total n'est repris d'un texte
 genere. Un modele qui se trompe d'article se voit ; un modele qui se trompe
 d'addition passe inapercu jusqu'au client.
 
-Les prix viennent de `config/unic_plaquiste.yaml`. Une ligne dont l'article n'y
+Les prix viennent de `config/metier.yaml`. Une ligne dont l'article n'y
 figure pas est rendue avec la mention « a confirmer » et un total vide — jamais
 un chiffre invente.
 """
@@ -36,6 +36,8 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+
+from agents.plaquiste import chemins
 
 logger = logging.getLogger("usman.agent.plaquiste.pdf")
 
@@ -199,23 +201,26 @@ def chiffrer(devis: Devis, metier: Dict[str, Any]) -> Dict[str, Any]:
 
 RACINE = Path(__file__).resolve().parents[2]
 
-#: Le logo, suivi par git. Il etait dans `documents/unic_plaquiste/`, un
-#: dossier **volontairement exclu** (`.gitignore` : « Documents clients [...]
-#: noms, montants, chantiers »), et il n'existait donc sur aucun clone ni
-#: aucun deploiement — la CI l'a montre le 02/09/2026, 0 image sur le runner
-#: la ou la machine du proprietaire en avait une.
+#: Le logo, suivi par git. Il etait dans le dossier des documents, **exclu
+#: volontairement** (`.gitignore` : « Documents clients [...] noms, montants,
+#: chantiers »), et il n'existait donc sur aucun clone ni aucun deploiement —
+#: la CI l'a montre le 02/09/2026, 0 image sur le runner la ou la machine du
+#: proprietaire en avait une.
 #:
-#: Un logo n'est pas une donnee client : il est sur son site, ses reseaux,
-#: chacun de ses devis. Sa place est a cote de la charte de couleurs que
-#: `config/unic_plaquiste.yaml` porte deja.
-LOGO_PAR_DEFAUT = RACINE / "config" / "marque" / "logo_unic_plaquiste.png"
+#: Un logo n'est pas une donnee client : il est sur le site, les reseaux,
+#: chaque devis. Sa place est a cote de la charte de couleurs que
+#: `config/metier.yaml` porte deja.
+#:
+#: Le chemin vient de `chemins.py` : depuis le 02/09/2026 il ne nomme plus
+#: aucune entreprise, et l'ancien nom reste lu tant qu'il existe.
+LOGO_PAR_DEFAUT = chemins.logo()
 
 #: La signature manuscrite, elle, **reste hors de git** et doit le rester :
 #: versionnee, n'importe qui disposant du depot pourrait l'apposer sur
 #: n'importe quel document. Le code vit donc avec son absence — un document
 #: marque signe sans fichier de signature rend une ligne vide et un
 #: avertissement, jamais une erreur.
-SIGNATURE_PAR_DEFAUT = RACINE / "documents" / "unic_plaquiste" / "signature_uthman.png"
+SIGNATURE_PAR_DEFAUT = chemins.signature()
 
 
 def construire(devis: Devis, metier: Dict[str, Any], sortie: Path,

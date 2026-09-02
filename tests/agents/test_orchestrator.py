@@ -443,7 +443,7 @@ class TestNommerUnConnecteurLOuvre:
     pas. **Le refus venait de l'aiguillage, jamais du connecteur.**
 
     TikTok, lui, n'etait dans aucune liste — alors que c'est l'un des deux
-    reseaux de l'entreprise (`config/unic_plaquiste.yaml`).
+    reseaux de l'entreprise (`config/metier.yaml`).
     """
 
     @pytest.mark.parametrize("phrase", [

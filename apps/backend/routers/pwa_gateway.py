@@ -345,7 +345,7 @@ def metier_pour_relecture() -> Dict[str, Any]:
     """La grille de prix, a jour. `{}` si elle est illisible.
 
     Passe par `MetierSuivi` comme partout ailleurs : un prix change dans
-    `config/unic_plaquiste.yaml` doit etre vu au tour suivant, pas au prochain
+    `config/metier.yaml` doit etre vu au tour suivant, pas au prochain
     redemarrage — c'est le defaut repare le 01/09/2026.
     """
     try:

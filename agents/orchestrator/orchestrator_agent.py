@@ -81,7 +81,7 @@ RESEAUX = (
     "idees de contenu", "idées de contenu", "ma voix", "mon style d'ecriture",
     "carrousel", "un reel", "miniature youtube",
     # 02/09/2026 : TikTok n'etait dans AUCUNE liste, alors que c'est l'un des
-    # deux reseaux du proprietaire (config/unic_plaquiste.yaml). « regarde mon
+    # deux reseaux du proprietaire (config/metier.yaml). « regarde mon
     # tiktok » rendait CHAT.
     #
     # Formes POSSESSIVES seulement — « mon tiktok », « sur tiktok » — jamais le

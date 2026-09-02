@@ -50,10 +50,16 @@ build/
 data/database/mongo/*
 data/database/open-webui/*
 
-# Documents clients d UniC Plaquiste : noms, montants, chantiers.
-# Ils restent sur la machine du proprietaire.
+# Documents clients du metier : noms, montants, chantiers, signature
+# manuscrite. Ils restent sur la machine de qui installe ARENA.
+documents/metier/*
+!documents/metier/LISEZ_MOI.md
+
+# L ancien nom du meme dossier. Il reste ignore : ce dossier est hors de git,
+# donc le renommage du 02/09/2026 n a rien deplace sur les machines. Les
+# documents deja la y sont restes, et ils ne doivent pas se mettre a entrer
+# dans le depot parce qu on a change un nom ici.
 documents/unic_plaquiste/*
-!documents/unic_plaquiste/LISEZ_MOI.md
 
 # Le zip de la PWA : on versionne le code source, jamais l archive.
 *.zip

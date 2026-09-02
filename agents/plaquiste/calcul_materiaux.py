@@ -3,7 +3,7 @@
 Trois choses distinguent ce module d'une regle de trois :
 
 1. **Les ratios sont les siens.** Ils viennent d'un chantier reel
-   (`ratios_materiaux` dans `config/unic_plaquiste.yaml`), pas d'un manuel :
+   (`ratios_materiaux` dans `config/metier.yaml`), pas d'un manuel :
    chutes, habitudes de pose et casse comprises. Le fichier garde les quantites
    commandees ; c'est Python qui divise.
 
@@ -189,7 +189,7 @@ def formater(calcul: Calcul) -> str:
     if not calcul.besoins:
         return (
             f"{calcul.convention}\n"
-            "Aucun ratio materiaux exploitable dans config/unic_plaquiste.yaml : "
+            "Aucun ratio materiaux exploitable dans config/metier.yaml : "
             "je ne chiffre pas de quantites plutot que d'en inventer."
         )
 

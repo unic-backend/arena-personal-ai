@@ -33,7 +33,7 @@ entre composants, sécurité) et **réparer**, pas ajouter. Détail complet :
 Trois défauts confirmés et corrigés, chacun sabote-puis-restauré :
 1. `agents/plaquiste/plaquiste_agent.py` — un chemin de plan pouvait
    désigner un fichier du dépôt d'ARENA lui-même (`.env`,
-   `config/unic_plaquiste.yaml`) avant d'atteindre OpenTakeoff. Corrigé par
+   `config/metier.yaml`) avant d'atteindre OpenTakeoff. Corrigé par
    `chemin_hors_du_depot()`, un contrôle de contention.
 2. `core/execution/travaux.py` — l'historique des travaux **finis**
    grossissait sans fin (seul le parallélisme était borné). Corrigé par

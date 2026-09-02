@@ -47,7 +47,7 @@ Un module qu'aucun de ces quatre n'atteint est un orphelin :
 | `apps/pwa/` | son interface (compilée) — `apps/pwa/server/` (second serveur mort) supprimé le 29/08/2026, sur sa décision |
 | `.claude/skills/design-language/` | *skill* de développement (pas une capacité runtime) : 224 styles UI/UX documentés, jetons CSS/Tailwind, vérification WCAG — `docs/audits/claude_artisan_audit.md` |
 | `tools/` | documents, recherche, vidéo (ffmpeg, sous-titres, audit de prompt DEC-0015), audio, code, rag, navigateur |
-| `config/` | `permissions.yaml`, `permissions_services.yaml`, `unic_plaquiste.yaml` (ses prix) |
+| `config/` | `permissions.yaml`, `permissions_services.yaml`, `metier.yaml` (ses prix) |
 | `scripts/` | `doctor.py`, `orphelins.py`, `mesurer_performances.py`, installateurs |
 | `docs/` | plan, décisions, reprise, règles de travail |
 | `tests/` | 2364 tests (2342 hors ligne + 22 marqués `integration`) — mesuré le 31/08/2026 |

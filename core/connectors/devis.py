@@ -133,8 +133,8 @@ class DevisConnector(Connecteur):
         if not grille:
             return Sante(
                 etat=EtatSante.NON_CONFIGURE,
-                message="Aucune grille de prix : config/unic_plaquiste.yaml est vide ou absent.",
-                ce_qui_manque="config/unic_plaquiste.yaml avec sa section prix_materiaux",
+                message="Aucune grille de prix : config/metier.yaml est vide ou absent.",
+                ce_qui_manque="config/metier.yaml avec sa section prix_materiaux",
                 mesure_le=_maintenant())
         return Sante(
             etat=EtatSante.OPERATIONNEL,

@@ -2,7 +2,7 @@
 
 Ce que cet agent a de particulier, et qui n'est pas une precaution de style :
 **il ne fabrique jamais un prix**. Les tarifs viennent de
-`config/unic_plaquiste.yaml`, tire des devis reels du proprietaire. Un article
+`config/metier.yaml`, tire des devis reels du proprietaire. Un article
 absent de cette grille n'a pas de prix — l'assistant le dit et demande, au lieu
 d'ecrire un chiffre plausible dans un document qui part chez un client.
 
@@ -23,6 +23,7 @@ import yaml
 from agents.plaquiste.archives import exemple_demande, extraits_pour, formater
 from agents.plaquiste.calcul_materiaux import Calcul, quantites_pour
 from agents.plaquiste.calcul_materiaux import formater as formater_calcul
+from agents.plaquiste.chemins import fichier_metier
 from agents.plaquiste.controle_prix import avertissement, verifier_prix
 from agents.plaquiste.metre import lire_demande
 from agents.plaquiste.metre_plan import (
@@ -50,7 +51,10 @@ from core.models.base import ModelProvider
 
 logger = logging.getLogger("usman.agent.plaquiste")
 
-FICHIER_METIER = Path(__file__).resolve().parents[2] / "config" / "unic_plaquiste.yaml"
+# Le fichier de configuration du metier. Son chemin ne nomme plus aucune
+# entreprise depuis le 02/09/2026 (`chemins.py`) : ce projet sert a qui
+# l'installe, et un fichier appele d'apres une societe disait le contraire.
+FICHIER_METIER = fichier_metier()
 
 MOIS = ("janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet",
         "aout", "septembre", "octobre", "novembre", "decembre")
@@ -375,7 +379,7 @@ def chemin_hors_du_depot(chemin: str) -> bool:
     `chemin_dans()` lit un chemin absolu **ecrit dans la phrase**, sans autre
     controle : le proprietaire designe ainsi un plan pose n'importe ou sur sa
     machine, par conception (DEC-0012). Mais rien n'empechait alors une phrase
-    de designer `.env`, `config/unic_plaquiste.yaml` ou tout autre fichier du
+    de designer `.env`, `config/metier.yaml` ou tout autre fichier du
     depot lui-meme — le seul endroit ou ARENA garde ses propres secrets. Ce
     n'est pas un chemin qu'un plan de chantier a une seule raison de designer.
     """
@@ -415,7 +419,7 @@ class MetierSuivi:
     Le defaut repare, mesure le 01/09/2026 : la grille etait lue **une fois**,
     a la construction de l'agent — lui-meme un singleton cree au demarrage du
     serveur (`apps/backend/runtime.py`). Le proprietaire changeait le prix de
-    la plaque BA13 dans `config/unic_plaquiste.yaml`, et ARENA continuait de
+    la plaque BA13 dans `config/metier.yaml`, et ARENA continuait de
     chiffrer a l'ancien prix jusqu'au prochain redemarrage. Rien ne le disait.
 
     C'est le pire mode d'echec de ce depot, et il est ecrit ailleurs dans ces
@@ -481,7 +485,7 @@ def lignes_presence_en_ligne(entreprise: Dict[str, Any]) -> List[str]:
     Partagee avec `apps.backend.prompts` : un seul endroit decide du format,
     pour que le devis et la conversation generale disent la meme chose.
     Chaque ligne est absente plutot que vide si l'information ne l'est pas
-    dans `config/unic_plaquiste.yaml` — jamais un lien invente.
+    dans `config/metier.yaml` — jamais un lien invente.
     """
     lignes: List[str] = []
     applications = entreprise.get("applications") or []
@@ -556,7 +560,7 @@ def composer_instruction(metier: Dict[str, Any], demande: str = "") -> str:
             "Tu es l'assistant d'UniC Plaquiste. Les connaissances metier sont "
             "introuvables : tu ne dois chiffrer aucun devis ni annoncer aucun "
             "prix. Dis-le clairement et demande a ce que le fichier "
-            "config/unic_plaquiste.yaml soit retabli."
+            "config/metier.yaml soit retabli."
         )
 
     e = metier.get("entreprise", {})
@@ -692,7 +696,7 @@ class PlaquisteAgent(BaseAgent):
             memory=memory,
         )
         # Injectable pour les tests ; suivi sur disque sinon, pour qu'un prix
-        # change dans `config/unic_plaquiste.yaml` soit vu sans redemarrer.
+        # change dans `config/metier.yaml` soit vu sans redemarrer.
         self._metier_injecte = metier
         self._metier_suivi = None if metier is not None else MetierSuivi()
         # Sans registre, l'agent redige mais ne produit aucun fichier. C'est un
@@ -1158,7 +1162,7 @@ class PlaquisteAgent(BaseAgent):
                 "agent": self.name,
                 "response": (
                     "Les connaissances metier d'UniC Plaquiste sont introuvables "
-                    "(`config/unic_plaquiste.yaml`). Je ne chiffre rien tant qu'elles "
+                    "(`config/metier.yaml`). Je ne chiffre rien tant qu'elles "
                     "ne sont pas retablies : un prix invente dans un devis client "
                     "coute plus cher qu'un devis en retard."
                 ),
