@@ -23,6 +23,7 @@ from apps.backend.runtime import (
     audio_agent,
     browser_agent,
     coder_agent,
+    dioumtoukay_agent,
     editor_agent,
     email_agent,
     fast_provider,
@@ -332,6 +333,13 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         result = await swe_agent.run(request.prompt)
     elif intent == "REPO_ENGINEERING":
         result = await repo_engineer.run(request.prompt)
+    elif intent == "ATELIER":
+        # Dioumtoukay AGIT : il ouvre les fichiers, lance les commandes, touche
+        # au depot. C'est ce qui le separe de `repo_engineer` juste au-dessus,
+        # qui lit et propose sans jamais rien modifier. DEC-0038.
+        result = await dioumtoukay_agent.run(request.prompt, context={
+            "session_id": session_id,
+        })
     elif intent == "RAG_DOCS":
         # Ses documents restent hors de l index tant que personne ne les y met.
         # Jusqu ici, aucune phrase ne declenchait l indexation : le moteur ne

@@ -123,6 +123,11 @@ VOIE_PAR_INTENTION: Dict[str, Voie] = {
     "SWE_FIX": Voie.PROFONDE,
     "REPO_ENGINEERING": Voie.PROFONDE,
     "DEEP_REASONING": Voie.PROFONDE,
+    # Dioumtoukay enchaine plusieurs actions reelles, chacune suivie d'un
+    # retour a lire avant la suivante (DEC-0038) : par construction, plusieurs
+    # passes sur la machine. Il ne sort pas chercher dehors — ce qu'il lit vient
+    # des fichiers et du terminal du proprietaire, pas du web.
+    "ATELIER": Voie.PROFONDE,
     # Ce qui doit aller chercher dehors. Le courrier en fait partie : la boite
     # n'est pas sur la machine, et RECHERCHE est la seule voie qui autorise a
     # en sortir. Lire cinq messages est aussi, reellement, plusieurs etapes.

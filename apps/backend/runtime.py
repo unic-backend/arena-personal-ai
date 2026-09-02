@@ -12,6 +12,7 @@ from agents.audio.audio_agent import AudioAgent
 from agents.browser.browser_agent import BrowserAgent
 from agents.clip_selector.clip_selector_agent import ClipSelectorAgent
 from agents.coder.coder_agent import CoderAgent
+from agents.dioumtoukay.dioumtoukay_agent import DioumtoukayAgent
 from agents.editor.editor_agent import EditorAgent
 from agents.email.email_agent import EmailAgent
 from agents.fresh_info.fresh_info_agent import FreshInfoAgent
@@ -75,6 +76,7 @@ from core.permissions.permission_manager import PermissionManager
 from core.permissions.politique import PolitiqueDePermissions
 from core.reasoning.reasoning_engine import ReasoningEngine
 from social.tiktok.tiktok_connector import TikTokConnector
+from tools.atelier import Atelier
 from tools.rag.graphrag_tool import GraphRAGTool
 from tools.rag.lightrag_tool import LightRAGTool
 from tools.rag.lightrag_tool import est_un_echec as lightrag_echec
@@ -302,6 +304,12 @@ browser_agent = BrowserAgent(provider=fast_provider, memory=memory)
 fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)
 repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory)
 swe_agent = SWEAgent(provider=coder_provider, memory=memory)
+# Dioumtoukay : celui qui AGIT sur la machine (DEC-0038). Il recoit le
+# modele de code, et le journal — chacune de ses actions y laisse une trace,
+# qui est ce que le proprietaire relit apres coup.
+dioumtoukay_agent = DioumtoukayAgent(
+    provider=coder_provider, memory=memory,
+    atelier=Atelier(journal=journal))
 # Raisonnement profond : plan, calcul reellement execute en bac a sable, puis
 # synthese. Le modele profond, parce que c'est la voie PROFONDE qui l'emprunte.
 # `/health` annoncait « ReasoningEngine » parmi les agents actifs alors qu'aucun

@@ -26,6 +26,7 @@ INTENTION_PAR_ESPACE = {
     "video": "VIDEO_ANALYSIS",
     "web": "FRESH_INFO",
     "documents": "RAG_DOCS",
+    "dioumtoukay": "ATELIER",
 }
 
 # Liste fermée : toute réponse du modèle hors de cet ensemble est rejetée.
@@ -67,6 +68,7 @@ INTENTIONS = {
     "MONTAGE",
     "AUDIO",
     "VIDEO_PROJET",
+    "ATELIER",
 }
 
 #: Ce qui parle de ses RESEAUX SOCIAUX. Teste avant le metier : « une
@@ -95,6 +97,31 @@ RESEAUX = (
 #: un mot d actualite — la question porte pourtant sur ses chantiers, pas sur
 #: les nouvelles du monde. Son agenda est son metier : il va a l assistant
 #: metier, qui connait ses chantiers.
+#: Les phrases qui demandent d AGIR sur sa machine, pas d en parler. Elles
+#: passent AVANT tout le reste dans le repli : « corrige le bug dans le projet »
+#: contient « bug », qui l envoyait ecrire un script dans un bac a sable — donc
+#: nulle part. Ici, le mot qui compte n est pas le sujet, c est le POSSESSIF :
+#: « mon terminal », « mes fichiers », « mon depot ». Un mot generique comme
+#: « fichier » ou « commande » n y figure pas : il parlerait aussi bien d un
+#: fichier qu il vient de joindre.
+ATELIER = (
+    "dioumtoukay",
+    "mon terminal", "dans le terminal", "en ligne de commande",
+    "mes fichiers", "mes dossiers", "mon pc", "sur mon ordinateur",
+    "range mon", "ranger mon", "organise mon", "organiser mon",
+    "mon depot", "mon dépôt", "mon github", "sur github",
+    # Un VERBE d'action, jamais le sujet seul : « parle-moi de mon projet »
+    # est une conversation, pas une demande de travail. Le test
+    # `test_le_repli_aiguille_toujours_les_cas_explicites` tient cette
+    # frontiere, et « mon projet » tout court la franchissait.
+    "travaille sur le projet", "travailler sur le projet",
+    "travaille sur mon projet", "travailler sur mon projet",
+    "lance les tests", "lancer les tests", "fais tourner les tests",
+    "corrige-toi", "corrige toi", "corrige tes", "repare-toi", "repare toi",
+    "lance la commande", "execute la commande", "exécute la commande",
+    "fais un git", "commit", "pousse le code",
+)
+
 AGENDA = (
     "suis-je libre", "suis je libre", "mon agenda", "dans mon agenda",
     "quand puis-je", "quand est-ce que je peux", "creneau", "créneau",
@@ -338,6 +365,10 @@ STUDIO          : traiter une vidéo de bout en bout — vertical 9:16 et
 BROWSER         : ouvrir un site, naviguer, remplir un formulaire.
 SWE_FIX         : corriger un bug dans un fichier existant.
 REPO_ENGINEERING: travailler sur plusieurs fichiers d'un dépôt à la fois.
+ATELIER         : agir vraiment sur la machine — ouvrir, ranger ou corriger SES
+                  fichiers, lancer une commande dans SON terminal, travailler
+                  sur SON depot git. La difference avec REPO_ENGINEERING tient
+                  en un mot : ici on execute au lieu de proposer.
 RAG_DOCS        : répondre à partir des documents de l'utilisateur.
 GRAPHRAG        : question sur les liens entre les documents.
 VISION          : comprendre une image, une photo, un plan ou une capture
@@ -506,6 +537,13 @@ class OrchestratorAgent(BaseAgent):
         # phrase de son metier ne doit donc pas tomber dans une liste
         # generique : « calcule mon devis » partait a l'execution de code.
         dit_le_metier = any(k in text for k in METIER)
+
+        # Agir sur sa machine (DEC-0038). Teste en tout premier : ces phrases
+        # portent un possessif qui ne laisse aucun doute, et plusieurs
+        # contiennent des mots — « bug », « projet », « commande » — qui les
+        # enverraient ailleurs, vers un agent qui ne touche rien.
+        if any(k in text for k in ATELIER):
+            return "ATELIER"
 
         # Son agenda. Teste en premier : ces formulations ne veulent jamais dire
         # autre chose, et plusieurs contiennent des mots de temps qui les
