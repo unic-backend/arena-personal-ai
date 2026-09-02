@@ -32,6 +32,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from agents.plaquiste.plaquiste_agent import MetierSuivi
 from apps.backend.config import AGENTS_SPECIALISES
 from apps.backend.prompts import prompt_avec_methode
 from apps.backend.routers.chat import (
@@ -62,6 +63,7 @@ from core.memory.consolidation import grouper
 from core.memory.conversation import retenir_l_echange
 from core.memory.recuperation import recuperer
 from core.memory.semantique import recuperer_semantique
+from core.relecture import relire
 from core.security.trust import TrustLevel, wrap
 
 logger = logging.getLogger("usman.backend.pwa")
@@ -334,6 +336,25 @@ def _prompt_conversation(demande: DemandeAgent, proprietaire: str) -> str:
     return "\n".join(lignes)
 
 
+#: La grille suivie, construite une fois. Meme mecanique que l'agent devis
+#: et le connecteur : le fichier est relu quand sa date change.
+_metier_suivi = MetierSuivi()
+
+
+def metier_pour_relecture() -> Dict[str, Any]:
+    """La grille de prix, a jour. `{}` si elle est illisible.
+
+    Passe par `MetierSuivi` comme partout ailleurs : un prix change dans
+    `config/unic_plaquiste.yaml` doit etre vu au tour suivant, pas au prochain
+    redemarrage — c'est le defaut repare le 01/09/2026.
+    """
+    try:
+        return _metier_suivi.actuel()
+    except Exception as erreur:  # noqa: BLE001 — sans grille, pas de relecture
+        logger.warning("Grille de prix illisible pour la relecture : %s", erreur)
+        return {}
+
+
 def moteur_utilise() -> Dict[str, Any]:
     """Qui a reellement repondu, et avec quel modele.
 
@@ -556,6 +577,20 @@ async def flux_agent(demande: DemandeAgent):
             ):
                 complet += morceau
                 yield jeton(morceau)
+
+            # Il se relit avant de rendre — sans faire attendre.
+            #
+            # Deterministe, ~1 ms, aucun appel de modele : sa demande du
+            # 02/09/2026 etait « qu'il se relise » ET « qu'il soit rapide »,
+            # et une seconde passe par le modele aurait double l'attente.
+            #
+            # `controle_prix` existait depuis le 27/08 et ne tournait QUE dans
+            # l'agent devis. La conversation generale cite ses tarifs tout
+            # aussi bien et n'etait verifiee par rien.
+            note = relire(complet.strip(), metier_pour_relecture()).note
+            if note:
+                yield jeton(note)
+                complet += note
 
             memory.add_chat_message(
                 session_id=session, role="assistant", content=complet.strip()
