@@ -7,11 +7,16 @@ voit ; un modèle qui se trompe d'addition passe inaperçu jusqu'au client.
 Ces tests écrivent de vrais PDF dans un dossier temporaire et relisent leur
 contenu. Aucun n'affirme qu'un fichier existe sans l'avoir ouvert.
 """
+import subprocess
+
 import pytest
 from pypdf import PdfReader
 from reportlab.pdfbase.pdfmetrics import stringWidth
 
 from agents.plaquiste.devis_pdf import (
+    LOGO_PAR_DEFAUT,
+    RACINE,
+    SIGNATURE_PAR_DEFAUT,
     Devis,
     Ligne,
     chiffrer,
@@ -245,3 +250,86 @@ class TestSignature:
         construire(_devis(signe=True), METIER, sortie, signature=tmp_path / "absent.png")
 
         assert sortie.exists()
+
+
+class TestLeLogoSortSurLeDocument:
+    """Le logo du proprietaire doit etre SUR le devis, pas seulement sur le disque.
+
+    Mesure du 02/09/2026, sur l'appel exact du connecteur
+    (`core/connectors/devis.py` : `construire(devis, self.metier, sortie)`) :
+    **0 image dans le PDF produit**. Le fichier
+    `documents/unic_plaquiste/logo_unic_plaquiste.png` etait la depuis le
+    27/08/2026, byte pour byte celui que le proprietaire a renvoye le
+    02/09/2026 — et personne ne le passait. `construire()` avait `logo=None`
+    par defaut, l'appelant ne renseignait rien, et tous ses devis sortaient
+    sans sa marque.
+
+    Le reste de la mise en page etait deja conforme a son template de
+    reference (marges 15/15/9/10, en-tete 32/97/51 mm, filet jaune 180x2,
+    tableau 78/34/28/40, zebre #F4F6FB, bandeau TTC 130/50). Le logo etait le
+    seul ecart visuel.
+    """
+
+    @staticmethod
+    def _images(sortie) -> int:
+        return sum(len(page.images or []) for page in PdfReader(str(sortie)).pages)
+
+    def test_l_appel_sans_logo_porte_quand_meme_le_logo(self, tmp_path):
+        """Le test qui porte la correction : l'appel du connecteur, inchange."""
+        sortie = tmp_path / "devis.pdf"
+
+        construire(_devis(), METIER, sortie)
+
+        assert self._images(sortie) == 1, "le devis sort sans le logo du proprietaire"
+
+    def test_le_fichier_par_defaut_est_bien_celui_de_la_marque(self):
+        assert LOGO_PAR_DEFAUT.exists(), (
+            f"le logo de la marque a disparu de {LOGO_PAR_DEFAUT}")
+        assert LOGO_PAR_DEFAUT.name == "logo_unic_plaquiste.png"
+        assert LOGO_PAR_DEFAUT.parent.name == "marque"
+
+    def test_un_chemin_explicite_l_emporte_sur_le_defaut(self, tmp_path):
+        """Sans quoi un test ne pourrait plus verifier le cas du logo absent."""
+        sortie = tmp_path / "devis.pdf"
+
+        construire(_devis(), METIER, sortie, logo=tmp_path / "rien.png")
+
+        assert sortie.exists()
+        assert self._images(sortie) == 0
+
+    def test_la_signature_s_ajoute_au_logo_sur_un_document_signe(self, tmp_path):
+        """La signature est passee explicitement : le fichier reel n'est PAS
+        dans git, et ce test ne doit pas dependre de sa presence."""
+        from PIL import Image
+
+        signature = tmp_path / "signature.png"
+        Image.new("RGB", (300, 120), "white").save(signature)
+        signe = tmp_path / "signe.pdf"
+        non_signe = tmp_path / "non_signe.pdf"
+
+        construire(_devis(signe=True), METIER, signe, signature=signature)
+        construire(_devis(), METIER, non_signe, signature=signature)
+
+        assert self._images(signe) == 2, "logo + signature attendus sur un document signe"
+        assert self._images(non_signe) == 1, "un devis non signe ne porte que le logo"
+
+    def test_la_signature_manuscrite_reste_hors_de_git(self):
+        """Versionnee, n'importe qui disposant du depot pourrait l'apposer.
+
+        Le logo, lui, DOIT etre suivi : c'est une marque publique, et son
+        absence des clones est exactement le defaut que la CI a trouve.
+        """
+        suivis = subprocess.run(
+            ["git", "ls-files", str(SIGNATURE_PAR_DEFAUT.relative_to(RACINE))],
+            cwd=RACINE, capture_output=True, text=True, check=False).stdout.strip()
+
+        assert suivis == "", (
+            f"la signature manuscrite est versionnee : {SIGNATURE_PAR_DEFAUT}")
+
+    def test_le_logo_lui_est_bien_suivi_par_git(self):
+        suivis = subprocess.run(
+            ["git", "ls-files", str(LOGO_PAR_DEFAUT.relative_to(RACINE))],
+            cwd=RACINE, capture_output=True, text=True, check=False).stdout.strip()
+
+        assert suivis != "", (
+            f"le logo n'est pas dans git : absent de tout clone ({LOGO_PAR_DEFAUT})")

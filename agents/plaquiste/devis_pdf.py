@@ -197,10 +197,39 @@ def chiffrer(devis: Devis, metier: Dict[str, Any]) -> Dict[str, Any]:
 
 # --- Rendu --------------------------------------------------------------------
 
+RACINE = Path(__file__).resolve().parents[2]
+
+#: Le logo, suivi par git. Il etait dans `documents/unic_plaquiste/`, un
+#: dossier **volontairement exclu** (`.gitignore` : « Documents clients [...]
+#: noms, montants, chantiers »), et il n'existait donc sur aucun clone ni
+#: aucun deploiement — la CI l'a montre le 02/09/2026, 0 image sur le runner
+#: la ou la machine du proprietaire en avait une.
+#:
+#: Un logo n'est pas une donnee client : il est sur son site, ses reseaux,
+#: chacun de ses devis. Sa place est a cote de la charte de couleurs que
+#: `config/unic_plaquiste.yaml` porte deja.
+LOGO_PAR_DEFAUT = RACINE / "config" / "marque" / "logo_unic_plaquiste.png"
+
+#: La signature manuscrite, elle, **reste hors de git** et doit le rester :
+#: versionnee, n'importe qui disposant du depot pourrait l'apposer sur
+#: n'importe quel document. Le code vit donc avec son absence — un document
+#: marque signe sans fichier de signature rend une ligne vide et un
+#: avertissement, jamais une erreur.
+SIGNATURE_PAR_DEFAUT = RACINE / "documents" / "unic_plaquiste" / "signature_uthman.png"
+
+
 def construire(devis: Devis, metier: Dict[str, Any], sortie: Path,
                logo: Optional[Path] = None,
                signature: Optional[Path] = None) -> Dict[str, Any]:
-    """Ecrit le PDF et rend le chiffrage. Le fichier existe, ou la fonction leve."""
+    """Ecrit le PDF et rend le chiffrage. Le fichier existe, ou la fonction leve.
+
+    `logo` et `signature` retombent sur les fichiers de la marque quand
+    l'appelant ne dit rien. Un chemin explicite l'emporte toujours — c'est ce
+    qui permet aux tests de passer un fichier absent et de verifier qu'un
+    devis sort quand meme.
+    """
+    logo = logo if logo is not None else LOGO_PAR_DEFAUT
+    signature = signature if signature is not None else SIGNATURE_PAR_DEFAUT
     c = _couleurs(metier)
     e = metier.get("entreprise", {})
     calcul = chiffrer(devis, metier)
