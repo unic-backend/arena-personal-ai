@@ -14,7 +14,7 @@ import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle, Ban, Check, Clapperboard, Eye, FileVideo2, Film, Loader2,
-  Mic2, Scissors, Sparkles, Subtitles, Video, X,
+  Mic2, Paperclip, Scissors, Sparkles, Subtitles, Video, X,
 } from 'lucide-react';
 import {
   CapaciteVideo, CAPACITES_VIDEO, EtapeProjetResultat, useVideoProject,
@@ -106,7 +106,8 @@ export function VideoProjectModal() {
   const backend = useBackend();
   const {
     modalOpen, setModalOpen, objectif, setObjectif,
-    capacitesChoisies, toggleCapacite, submitting, result, error, submit, reset,
+    capacitesChoisies, toggleCapacite, references, addReferenceFiles, removeReference,
+    submitting, result, error, submit, reset,
   } = useVideoProject();
 
   useEffect(() => {
@@ -192,6 +193,59 @@ export function VideoProjectModal() {
 
                   <div>
                     <div className="mb-1.5 flex items-center justify-between">
+                      <span className="text-[10.5px] font-medium text-zinc-400">{t('vidproj.referencesLabel')}</span>
+                      <label className="inline-flex cursor-pointer items-center gap-1 text-[10.5px] font-medium text-accent-300 hover:text-accent-200">
+                        <Paperclip size={11} />
+                        {t('vidproj.addReference')}
+                        <input
+                          type="file"
+                          // Le serveur (POST /api/upload, EXTENSIONS_MEDIA_AUTORISEES)
+                          // n'accepte que l'audio et la video — jamais une image — par
+                          // regle metier explicite. Proposer "image/*" ici promettrait
+                          // un envoi que le serveur refuse systematiquement ensuite.
+                          accept="video/*,audio/*"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files?.length) void addReferenceFiles(e.target.files);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                    </div>
+                    {references.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {references.map((r) => (
+                          <span
+                            key={r.id}
+                            title={r.status === 'failed' ? r.error : r.name}
+                            className={cn(
+                              'inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10.5px]',
+                              r.status === 'failed'
+                                ? 'border-red-500/25 bg-red-500/[0.05] text-red-300'
+                                : 'border-white/10 bg-white/[0.03] text-zinc-300',
+                            )}
+                          >
+                            {r.status === 'uploading' && <Loader2 size={10} className="animate-spin" />}
+                            <span className="max-w-[140px] truncate">{r.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeReference(r.id)}
+                              aria-label="Remove"
+                              className="text-zinc-500 transition hover:text-zinc-200"
+                            >
+                              <X size={10} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[9.5px] leading-relaxed text-zinc-600">{t('vidproj.referencesHint')}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between">
                       <span className="text-[10.5px] font-medium text-zinc-400">{t('vidproj.modeLabel')}</span>
                       <span className="font-mono text-[9px] uppercase tracking-wide text-zinc-600">
                         {mode === 'auto' ? t('vidproj.modeAuto') : t('vidproj.modeTeam')}
@@ -226,7 +280,7 @@ export function VideoProjectModal() {
 
                   <button
                     type="button"
-                    disabled={submitting || !objectif.trim()}
+                    disabled={submitting || !objectif.trim() || references.some((r) => r.status === 'uploading')}
                     onClick={() => void submit()}
                     className="flex w-full items-center justify-center gap-2 rounded-xl border border-accent-500/30 bg-accent-500/10 px-3 py-2.5 text-[12.5px] font-medium text-accent-300 transition hover:bg-accent-500/15 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
                   >
