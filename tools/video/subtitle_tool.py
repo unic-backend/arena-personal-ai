@@ -5,8 +5,34 @@ from typing import Any, Dict, List
 
 logger = logging.getLogger("usman.tools.video.subtitle")
 
+#: Ce qu'on donne à un mot quand le segment n'a **aucune** durée mesurable
+#: (`fin <= debut`). On avance d'un pas plutôt que de perdre le texte : des
+#: sous-titres un peu décalés valent mieux que pas de sous-titres du tout.
+DUREE_PAR_MOT_PAR_DEFAUT = 0.4
+
+#: Le minimum qu'on laisse à une ligne dont les temps mesurés sont inversés ou
+#: nuls. Sans ce plancher, la ligne est écrite avec une fin **avant** son
+#: début, et libass ne l'affiche jamais.
+DUREE_MINIMALE_VISIBLE = 0.2
+
+
 class SubtitleTool:
-    """Générateur de sous-titres dynamiques CapCut/TikTok avec protection des apostrophes françaises."""
+    """Générateur de sous-titres dynamiques CapCut/TikTok avec protection des apostrophes françaises.
+
+    **Défaut mesuré le 02/09/2026, sur un segment ordinaire :** « on pose le
+    BA13 sur les rails puis on visse tout », 10 mots en 1 seconde — un débit
+    normal à l'oral. Sur les 6 lignes produites, **4 avaient leur fin avant
+    leur début** et n'étaient donc jamais affichées.
+
+    La cause : un plancher de 0,4 s par mot était appliqué **avant** de vérifier
+    qu'il tenait dans le segment. Au troisième mot, le départ dépassait déjà la
+    fin du segment. Les mots sont maintenant répartis sur la durée **réelle**,
+    et aucune ligne ne peut sortir avec une fin antérieure à son début.
+
+    Ce fichier n'avait aucun test jusqu'au 02/09/2026, avec `CropTool` : les
+    deux outils qui font le résultat visible étaient les deux seuls sans
+    mesure. C'est ce qui a permis au défaut de tenir.
+    """
 
     @staticmethod
     def format_ass_time(seconds: float) -> str:
@@ -20,6 +46,25 @@ class SubtitleTool:
         """Nettoie les erreurs de ponctuations et recolle les contractions (c', d', l')."""
         text = re.sub(r"\b([cCdDlLjJmMnNsStT])\s*['’]\s*", r"\1'", text)
         return text.strip()
+
+    @staticmethod
+    def repartir_les_mots(mots: List[str], debut: float, fin: float) -> List[Dict[str, Any]]:
+        """Répartit les mots sur la durée **réelle** du segment.
+
+        Chaque mot reçoit une part égale de ce que dure vraiment le segment.
+        Aucun plancher n'est appliqué ici : un plancher fait déborder les mots
+        hors du segment, et un mot qui commence après la fin de son segment ne
+        s'affiche jamais. Un sous-titre rapide reste lisible ; un sous-titre
+        absent, non.
+
+        Un segment sans durée mesurable (`fin <= debut`, ce que rend un
+        transcripteur qui n'a pas su chronométrer) avance d'un pas par défaut :
+        des temps approximatifs valent mieux qu'un texte perdu.
+        """
+        duree = fin - debut
+        pas = duree / len(mots) if duree > 0 else DUREE_PAR_MOT_PAR_DEFAUT
+        return [{"start": debut + i * pas, "end": debut + (i + 1) * pas, "word": mot}
+                for i, mot in enumerate(mots)]
 
     def generate_capcut_ass(self, words_or_segments: List[Dict[str, Any]], output_path: str) -> str:
         out_file = Path(output_path).resolve()
@@ -52,13 +97,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             for seg in words_or_segments:
                 cleaned_seg = self.clean_french_text(seg.get("text", ""))
                 words = cleaned_seg.split()
-                start = seg.get("start", 0.0)
-                end = seg.get("end", 0.0)
-                dur = max(0.4, (end - start) / max(1, len(words)))
-                for i, w in enumerate(words):
-                    w_start = start + (i * dur)
-                    w_end = min(end, w_start + dur)
-                    raw_words.append({"start": w_start, "end": w_end, "word": w})
+                if not words:
+                    continue
+                raw_words.extend(self.repartir_les_mots(
+                    words, float(seg.get("start", 0.0)), float(seg.get("end", 0.0))))
 
         # Regroupement par 2 à 3 mots max
         chunks = []
@@ -76,8 +118,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         for chunk in chunks:
             if not chunk:
                 continue
-            start_t = self.format_ass_time(chunk[0]["start"])
-            end_t = self.format_ass_time(chunk[-1]["end"])
+            # La garantie de sortie : une ligne dont la fin precede le debut
+            # n'est pas affichee par libass — elle disparait en silence, ce qui
+            # se lit comme un sous-titre oublie. Les temps viennent parfois du
+            # transcripteur et pas de nous : le plancher est pose ICI, au
+            # dernier endroit par lequel toutes les lignes passent.
+            debut = chunk[0]["start"]
+            fin = chunk[-1]["end"]
+            if fin <= debut:
+                fin = debut + DUREE_MINIMALE_VISIBLE
+            start_t = self.format_ass_time(debut)
+            end_t = self.format_ass_time(fin)
 
             words_str = [w["word"] for w in chunk]
             if len(words_str) > 1:

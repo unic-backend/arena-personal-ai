@@ -2,6 +2,42 @@
 
 ## [Non publié]
 
+### Corrigé — 02/09/2026 — Audit de la vidéo et de la voix
+
+Demande du propriétaire : « va dans vidéo tous ce qui est là-bas verify et
+améliorer […] la voix la vidéo si ça crée des vidéos bien […] corrige les
+erreurs et verify bien ». Trois défauts mesurés, aucun supposé.
+
+- **Deux tiers des sous-titres ne s'affichaient pas.** Sur « on pose le BA13
+  sur les rails puis on visse tout » — 10 mots en 1 seconde, un débit d'oral
+  ordinaire — 4 des 6 lignes produites avaient leur **fin avant leur début**.
+  libass ne les affiche jamais et ne le signale pas. Cause : un plancher de
+  0,4 s par mot appliqué **avant** de vérifier qu'il tenait dans le segment ;
+  au troisième mot, le départ dépassait déjà la fin. Les mots sont répartis sur
+  la durée réelle, et aucune ligne ne peut plus sortir avec une fin antérieure
+  à son début.
+- **La voix jetait un son valide quand `ffprobe` manquait.** `duree_ms = None`
+  voulait dire deux choses — « le fichier est mauvais » et « rien n'a pu le
+  mesurer » — et le connecteur ne retenait que la première : un WAV réel de 2 s
+  et 176 478 octets était supprimé et rapporté en échec. La règle 2 du module
+  tient toujours (l'en-tête du conteneur est vérifiée, donc une erreur JSON
+  renvoyée avec un code 200 reste refusée), mais la durée non mesurée n'est
+  plus annoncée.
+- **`format` n'était jamais mesuré** : `ffprobe` rend `format_name` **avant**
+  `duration`, et le code lisait « la dernière ligne ».
+- **Le diagnostic pouvait dire ffmpeg « absent » alors qu'il est installé**, et
+  conseiller de l'installer. Trois états maintenant, pas deux : absent, installé
+  mais muet, ou il répond.
+
+**Les deux outils qui font le résultat visible n'avaient aucun test** —
+`SubtitleTool` et `CropTool`, les seuls de la vidéo dans ce cas. C'est ce qui a
+permis au premier défaut de tenir. 14 tests ajoutés
+(`tests/tools/test_sous_titres_et_recadrage.py`).
+
+Vérifié sur un rendu réel : 1280×720 → 1080×1920 avec fond flouté, sous-titres
+incrustés au style CapCut, dernier mot en jaune. La chaîne vidéo produit bien
+ce qu'elle annonce.
+
 ### Corrigé et amélioré — 02/09/2026 — Dioumtoukay travaille mieux
 
 Demande du propriétaire, le jour même de la première version : « bien améliorer

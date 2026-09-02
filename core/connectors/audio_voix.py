@@ -90,13 +90,35 @@ def url_de_voicestudio() -> str:
     return url
 
 
+def ressemble_a_du_wav(chemin: Path) -> bool:
+    """Le fichier porte-t-il l'en-tête d'un WAV : « RIFF » … « WAVE » ?
+
+    Ce n'est **pas** une mesure de durée et ne la remplace pas. C'est le seul
+    contrôle possible quand `ffprobe` manque, et il suffit à distinguer un son
+    d'un message d'erreur que VoiceStudio aurait renvoyé avec un code 200 —
+    ce que la règle 2 cherche précisément à attraper.
+    """
+    try:
+        with chemin.open("rb") as flux:
+            entete = flux.read(12)
+    except OSError:
+        return False
+    return entete[:4] == b"RIFF" and entete[8:12] == b"WAVE"
+
+
 def sonder_le_fichier(chemin: Path, ffprobe: str = "ffprobe") -> Dict[str, Any]:
     """Ce que ffprobe mesure sur un fichier audio. Rien n'est suppose.
 
     Un champ que la sonde ne donne pas reste `None` — jamais `0`, qui se
     lirait comme une mesure.
+
+    `sonde_disponible` dit si `ffprobe` a pu repondre. **Sans lui, `duree_ms`
+    vaut `None` pour une raison qui ne concerne pas le fichier**, et confondre
+    les deux revenait a jeter un son valide : mesure du 02/09/2026, un WAV
+    reel de 2 s et 176 478 octets supprime parce que `ffprobe` manquait.
     """
-    inconnu: Dict[str, Any] = {"duree_ms": None, "octets": None, "format": None}
+    inconnu: Dict[str, Any] = {"duree_ms": None, "octets": None, "format": None,
+                               "sonde_disponible": None}
     if not chemin.is_file():
         return inconnu
     inconnu["octets"] = chemin.stat().st_size
@@ -107,16 +129,27 @@ def sonder_le_fichier(chemin: Path, ffprobe: str = "ffprobe") -> Dict[str, Any]:
             capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError) as erreur:
         logger.warning("ffprobe indisponible pour %s : %s", chemin, erreur)
+        inconnu["sonde_disponible"] = False
         return inconnu
-    lignes = [ligne.strip() for ligne in sortie.stdout.splitlines() if ligne.strip()]
-    for ligne in lignes:
-        try:
-            inconnu["duree_ms"] = int(round(float(ligne) * 1000))
-            break
-        except ValueError:
+
+    inconnu["sonde_disponible"] = True
+    # L'ordre des lignes n'est PAS celui demande a `-show_entries` : ffprobe
+    # rend `format_name` d'abord, `duration` ensuite. Lire « la derniere
+    # ligne » comme le format laissait donc ce champ toujours `None`, sur des
+    # fichiers parfaitement mesurables (mesure du 02/09/2026). Chaque ligne est
+    # maintenant reconnue pour ce qu'elle est, jamais pour sa position.
+    for brute in sortie.stdout.splitlines():
+        ligne = brute.strip()
+        if not ligne:
             continue
-    if lignes:
-        inconnu["format"] = lignes[-1] if not lignes[-1].replace(".", "").isdigit() else None
+        try:
+            duree = float(ligne)
+        except ValueError:
+            if inconnu["format"] is None:
+                inconnu["format"] = ligne
+        else:
+            if inconnu["duree_ms"] is None:
+                inconnu["duree_ms"] = int(round(duree * 1000))
     return inconnu
 
 
@@ -328,14 +361,29 @@ class ConnecteurAudioVoix(Connecteur):
         # resterait un echec, et c'est exactement ce qui arrive quand le
         # moteur renvoie du JSON d'erreur avec le bon code.
         mesures = sonder_le_fichier(sortie)
-        if not mesures["duree_ms"]:
-            sortie.unlink(missing_ok=True)
-            return echec(
+        if mesures["duree_ms"]:
+            return succes(action="parler", cible=self.nom,
+                          message=(f"Voix produite par « {choisi} » : "
+                                   f"{mesures['duree_ms']} ms, {mesures['octets']} octets."),
+                          preuve=str(sortie), moteur=choisi, **mesures)
+
+        # `ffprobe` absent n'est PAS le fichier en cause. Confondre les deux
+        # supprimait un son valide et annoncait un echec : mesure du
+        # 02/09/2026, un WAV reel de 2 s et 176 478 octets jete parce que la
+        # sonde manquait. La regle 2 tient quand meme — l'en-tete du conteneur
+        # est verifiee — mais la duree n'est PAS annoncee, puisqu'elle n'a pas
+        # ete mesuree.
+        if mesures["sonde_disponible"] is False and ressemble_a_du_wav(sortie):
+            return succes(
                 action="parler", cible=self.nom,
-                message="VoiceStudio a repondu, mais le fichier n'a aucune duree "
-                        "lisible : rien n'a ete garde.",
-                **mesures)
-        return succes(action="parler", cible=self.nom,
-                      message=(f"Voix produite par « {choisi} » : "
-                               f"{mesures['duree_ms']} ms, {mesures['octets']} octets."),
-                      preuve=str(sortie), moteur=choisi, **mesures)
+                message=(f"Voix produite par « {choisi} » : {mesures['octets']} octets. "
+                         "Duree non verifiee — ffprobe n'est pas installe sur cette "
+                         "machine, donc rien ne l'a mesuree."),
+                preuve=str(sortie), moteur=choisi, **mesures)
+
+        sortie.unlink(missing_ok=True)
+        return echec(
+            action="parler", cible=self.nom,
+            message="VoiceStudio a repondu, mais le fichier n'a aucune duree "
+                    "lisible : rien n'a ete garde.",
+            **mesures)
