@@ -430,6 +430,21 @@ export const ChatMessage = memo(function ChatMessage({
           <span className="font-mono text-[9.5px] text-zinc-700">{formatDuration(msg.meta.durationMs)}</span>
         )}
 
+        {/* QUEL moteur a repondu, et avec quel modele.
+            Le serveur l'envoyait depuis DEC-0009 (`moteur_utilise`, « lui
+            cacher serait lui mentir sur ce qui vient de voir sa phrase ») et
+            l'interface ne l'affichait nulle part. Demande du proprietaire le
+            02/09/2026 : voir le moteur sous le texte. Il compte d'autant plus
+            que la reponse peut venir de sa machine ou du reseau. */}
+        {msg.status === 'done' && msg.meta?.model && (
+          <span
+            className="font-mono text-[9.5px] text-zinc-700"
+            title={msg.meta.provider ? `${msg.meta.provider} · ${msg.meta.model}` : msg.meta.model}
+          >
+            {msg.meta.provider ? `${msg.meta.provider} · ` : ''}{msg.meta.model}
+          </span>
+        )}
+
         {/* Live speech indicator on message header */}
         {isSpeakingThis && (
           <span className="inline-flex items-center gap-1 rounded-full bg-accent-500/15 px-2 py-0.5 font-mono text-[9px] text-accent-300">

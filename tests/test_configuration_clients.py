@@ -233,7 +233,13 @@ class TestAucuneAdresseOllamaEcriteEnDur:
         import importlib
 
         monkeypatch.setenv("OLLAMA_BASE_URL", "http://ailleurs:11500")
-        monkeypatch.setenv("CODER_LOCAL_MODEL", "un-autre-modele")
+        # `CHAT_LOCAL_MODEL` depuis le 02/09/2026, `CODER_LOCAL_MODEL` avant.
+        # Le navigateur LIT et raisonne, il n'ecrit pas de code : il suit donc
+        # le modele de conversation, comme le moteur documentaire. Ce que ce
+        # test tient n'a pas bouge d'un pouce — un modele change dans `.env`
+        # doit etre suivi par l'outil ; seule la variable qui le gouverne a
+        # change, avec la separation conversation/code.
+        monkeypatch.setenv("CHAT_LOCAL_MODEL", "un-autre-modele")
         import apps.backend.config as config
         import tools.browser.browser_use_tool as navigateur
         importlib.reload(config)
@@ -358,3 +364,61 @@ class TestLeDebitNeBloquePasUneConversation:
                 assert int(ligne.split("=", 1)[1]) == config.REQUETES_MAX
                 return
         raise AssertionError("USMAN_RATE_LIMIT_REQUESTS absente de .env.example")
+
+
+class TestUnModeleDeCodeNeTientPasUneConversation:
+    """Le propriétaire ne programme pas. Ses devis non plus.
+
+    Mesuré le 02/09/2026 : `fast_provider` portait `qwen2.5-coder:14b` — un
+    modèle **spécialisé dans l'écriture de code** — et répondait à **tout** :
+    la conversation (`pwa_gateway.py`), les devis, le courrier, et aussi
+    `coder_agent`/`swe_agent`. Un seul modèle de programmation rédigeait donc
+    ses devis clients et discutait en français avec lui.
+
+    Il l'a signalé sans pouvoir le nommer : « il faut qu'il soit intelligent ».
+
+    Ce que ces tests n'affirment PAS : qu'un modèle soit meilleur que l'autre.
+    Aucune mesure comparée n'a été faite — sa machine n'est pas joignable
+    d'ici. Ce qu'ils tiennent est plus simple, et c'est écrit dans le nom du
+    modèle : un modèle de code n'est pas fait pour parler.
+    """
+
+    def test_la_conversation_n_est_pas_servie_par_le_modele_de_code(self):
+        from apps.backend.config import MODELE_CODEUR, MODELE_CONVERSATION
+
+        assert MODELE_CONVERSATION != MODELE_CODEUR
+        assert "coder" not in MODELE_CONVERSATION.lower(), (
+            f"le modèle qui parle est un modèle de code : {MODELE_CONVERSATION}")
+
+    def test_le_modele_de_code_reste_celui_des_agents_qui_codent(self):
+        """Le retirer remplacerait une erreur par l'autre."""
+        from apps.backend.config import MODELE_CODEUR
+
+        assert "coder" in MODELE_CODEUR.lower()
+
+    def test_les_agents_recoivent_chacun_le_leur(self):
+        from apps.backend.runtime import coder_agent, coder_provider, fast_provider, swe_agent
+
+        assert coder_agent.provider is coder_provider
+        assert swe_agent.provider is coder_provider
+        assert coder_provider.model_name != fast_provider.model_name
+
+    def test_l_ancien_nom_designe_bien_la_conversation(self):
+        """Tout le projet importe `MODELE_RAPIDE` : il ne doit pas mentir."""
+        from apps.backend.config import MODELE_CONVERSATION, MODELE_RAPIDE
+
+        assert MODELE_RAPIDE == MODELE_CONVERSATION
+
+    def test_le_proprietaire_garde_la_main_par_env(self, monkeypatch):
+        """Un réglage qui ne se règle plus n'est pas un réglage."""
+        import importlib
+
+        monkeypatch.setenv("CHAT_LOCAL_MODEL", "un-modele-a-lui:7b")
+        import apps.backend.config as config
+
+        importlib.reload(config)
+        try:
+            assert config.MODELE_CONVERSATION == "un-modele-a-lui:7b"
+        finally:
+            monkeypatch.delenv("CHAT_LOCAL_MODEL", raising=False)
+            importlib.reload(config)
