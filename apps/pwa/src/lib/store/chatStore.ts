@@ -74,12 +74,20 @@ export interface LogEntry {
 
 const CHAT_KEY = 'usman.chats.v1';
 
-/* La conversation ouverte doit survivre a un F5.
+/* La conversation ouverte doit survivre a un F5 ou un changement d'appli —
+   mais PAS a une fermeture complete de l'appli.
 
    `conversations` etait sauvegarde, `activeId` non : recharger la page pendant
    une conversation retombait toujours sur l'ecran vide (« Bonjour »), meme si
    la conversation existait encore dans la liste juste a cote. Mesure le
-   30/08/2026, signale par le proprietaire. */
+   30/08/2026, signale par le proprietaire.
+
+   `sessionStorage`, pas `localStorage` : il survit a un F5 et a un aller-retour
+   vers une autre appli (l'onglet reste ouvert), mais s'efface quand l'appli
+   est vraiment fermee (l'onglet/le contexte de navigation est detruit) — la
+   reouverture retombe alors sur l'ecran d'accueil et sa salutation, comme
+   demande le 02/09/2026 : ouvrir une nouvelle conversation, pas reprendre
+   l'ancienne. */
 const ACTIVE_KEY = 'usman.chats.active.v1';
 
 /** L'identifiant memorise, seulement s'il designe encore une conversation reelle.
@@ -88,7 +96,7 @@ const ACTIVE_KEY = 'usman.chats.active.v1';
     la synchronisation) ne doit pas rouvrir un ecran vide sur un fantome. */
 function lireActiveId(conversations: Conversation[]): string | null {
   try {
-    const id = localStorage.getItem(ACTIVE_KEY);
+    const id = sessionStorage.getItem(ACTIVE_KEY);
     return id && conversations.some((c) => c.id === id) ? id : null;
   } catch {
     return null;
@@ -97,8 +105,8 @@ function lireActiveId(conversations: Conversation[]): string | null {
 
 function ecrireActiveId(id: string | null) {
   try {
-    if (id) localStorage.setItem(ACTIVE_KEY, id);
-    else localStorage.removeItem(ACTIVE_KEY);
+    if (id) sessionStorage.setItem(ACTIVE_KEY, id);
+    else sessionStorage.removeItem(ACTIVE_KEY);
   } catch { /* stockage plein — ignore */ }
 }
 
