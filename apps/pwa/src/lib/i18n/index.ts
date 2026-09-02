@@ -331,6 +331,7 @@ const en: Dict = {
   'act.failsFixed.many': '{n} failures fixed',
 
   'action.confirm': 'Confirm',
+  'action.openDocument': 'Open the document',
   'action.cancel': 'Cancel',
   'msg.copy': 'Copy',
   'msg.copied': 'Copied',
@@ -651,6 +652,7 @@ const fr: Dict = {
   'act.failsFixed.many': '{n} échecs corrigés',
 
   'action.confirm': 'Confirmer',
+  'action.openDocument': 'Ouvrir le document',
   'action.cancel': 'Annuler',
   'msg.copy': 'Copier',
   'msg.copied': 'Copié',

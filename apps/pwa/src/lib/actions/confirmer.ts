@@ -26,6 +26,25 @@ export interface ResultatConfirmation {
   ok: boolean;
   /** Ce qu'il faut afficher : le compte-rendu du serveur, ou la panne. */
   message: string;
+  /** Adresse ouvrable du document produit, clé comprise. Absente s'il n'y en a pas. */
+  document?: string;
+}
+
+/* Le PDF produit doit s'ouvrir DEPUIS SON TELEPHONE.
+ *
+ * Jusqu'au 02/09/2026 les devis atterrissaient dans `data/devis/`, qu'aucune
+ * route ne sert : le fichier existait sur le disque du PC et nulle part
+ * ailleurs. Ils sortent desormais dans `media/rendered/`, servi par
+ * `GET /media/rendered/{nom}`.
+ *
+ * La cle voyage en parametre `cle` et non en en-tete : un lien qu'on tape
+ * navigue, il n'est pas appele en `fetch()` et ne peut donc poser aucun
+ * en-tete. `verify_media_access` existe exactement pour ce cas. */
+function adresseOuvrable(url: string | undefined, base: string, cle?: string): string | undefined {
+  if (!url) return undefined;
+  const complet = url.startsWith('http') ? url : `${base}${url}`;
+  if (!cle) return complet;
+  return `${complet}${complet.includes('?') ? '&' : '?'}cle=${encodeURIComponent(cle)}`;
 }
 
 async function appeler(id: string, quoi: 'confirm' | 'cancel'): Promise<ResultatConfirmation> {
@@ -45,7 +64,11 @@ async function appeler(id: string, quoi: 'confirm' | 'cancel'): Promise<Resultat
       // code HTTP, que le proprietaire n'a aucune raison de savoir lire.
       return { ok: false, message: corps?.detail || `Le serveur a refusé (${res.status}).` };
     }
-    return { ok: true, message: corps?.message || 'C’est fait.' };
+    return {
+      ok: true,
+      message: corps?.response || corps?.message || 'C’est fait.',
+      document: adresseOuvrable(corps?.detail?.url, base, cfg.apiKey),
+    };
   } catch {
     return { ok: false, message: 'Le serveur n’a pas répondu.' };
   }

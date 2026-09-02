@@ -31,6 +31,7 @@ import { cn } from '../../utils/cn';
 function ActionsEnAttente({ msg }: { msg: Msg }) {
   const { t } = useI18n();
   const [etat, setEtat] = useState<Record<string, string>>({});
+  const [documents, setDocuments] = useState<Record<string, string>>({});
   const [enCours, setEnCours] = useState<string | null>(null);
   const attente = msg.meta?.en_attente ?? [];
   if (!attente.length) return null;
@@ -40,6 +41,7 @@ function ActionsEnAttente({ msg }: { msg: Msg }) {
     triggerHaptic('medium');
     const r = quoi === 'confirmer' ? await confirmerAction(id) : await annulerAction(id);
     setEtat((e) => ({ ...e, [id]: r.message }));
+    if (r.document) setDocuments((d) => ({ ...d, [id]: r.document! }));
     setEnCours(null);
     triggerHaptic(r.ok ? 'success' : 'warning');
   };
@@ -63,7 +65,24 @@ function ActionsEnAttente({ msg }: { msg: Msg }) {
           </div>
 
           {etat[a.id] ? (
-            <div className="pt-2 text-[11.5px] text-zinc-300">{etat[a.id]}</div>
+            <div className="space-y-2 pt-2">
+              <div className="text-[11.5px] text-zinc-300">{etat[a.id]}</div>
+              {/* Le document produit s'ouvre depuis le telephone. Sans ce lien
+                  le PDF existe sur le disque du serveur et nulle part
+                  ailleurs — c'est exactement ce qui manquait avant le
+                  02/09/2026. */}
+              {documents[a.id] && (
+                <a
+                  href={documents[a.id]}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-white/[0.06] px-3 py-1.5 text-[11.5px] text-zinc-200 transition hover:bg-white/10"
+                >
+                  <FileText size={12} />
+                  {t('action.openDocument')}
+                </a>
+              )}
+            </div>
           ) : (
             <div className="flex gap-2 pt-2.5">
               <button
