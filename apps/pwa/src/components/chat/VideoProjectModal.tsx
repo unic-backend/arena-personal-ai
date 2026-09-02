@@ -199,11 +199,11 @@ export function VideoProjectModal() {
                         {t('vidproj.addReference')}
                         <input
                           type="file"
-                          // Le serveur (POST /api/upload, EXTENSIONS_MEDIA_AUTORISEES)
-                          // n'accepte que l'audio et la video — jamais une image — par
-                          // regle metier explicite. Proposer "image/*" ici promettrait
-                          // un envoi que le serveur refuse systematiquement ensuite.
-                          accept="video/*,audio/*"
+                          // Doit rester le miroir exact de ce que le serveur accepte
+                          // (apps/backend/config.py:EXTENSIONS_MEDIA_AUTORISEES) — image
+                          // comprise depuis le 02/09/2026, pour que « vision » reçoive
+                          // enfin la photo qu'elle lit.
+                          accept="image/*,video/*,audio/*"
                           multiple
                           className="hidden"
                           onChange={(e) => {

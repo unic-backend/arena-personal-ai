@@ -99,10 +99,16 @@ FENETRE_SECONDES = float(reglage("RATE_LIMIT_WINDOW", "60"))
 REQUETES_PAR_MESSAGE = 2
 
 # --- Envoi de fichiers --------------------------------------------------------
-# Regle metier : Usman ne traite que de l'audio et de la video.
+# Regle metier : audio, video et image — plus seulement les deux premiers.
+# Les photos ont ete exclues jusqu'ici, mais la capacite « vision » du projet
+# Video (agents/video/production_agent.py:_appeler_vision) lit une image, et
+# n'avait donc aucun moyen reel de recevoir la sienne. Ouvert le 02/09/2026 a
+# la demande explicite du proprietaire : "il dois savoir lire les photo et
+# les comprendre [...] rien n'est negligeable".
 EXTENSIONS_MEDIA_AUTORISEES = {
     ".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v",
     ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg",
+    ".jpg", ".jpeg", ".png", ".webp", ".gif",
 }
 # Reglage : depend du disque de la machine.
 TAILLE_MAX_ENVOI = int(reglage("UPLOAD_MAX_BYTES", str(2 * 1024 * 1024 * 1024)))
