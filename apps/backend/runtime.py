@@ -309,7 +309,8 @@ swe_agent = SWEAgent(provider=coder_provider, memory=memory)
 # qui est ce que le proprietaire relit apres coup.
 dioumtoukay_agent = DioumtoukayAgent(
     provider=coder_provider, memory=memory,
-    atelier=Atelier(journal=journal))
+    atelier=Atelier(journal=journal),
+    memoire_longue=memoire_personnelle)
 # Raisonnement profond : plan, calcul reellement execute en bac a sable, puis
 # synthese. Le modele profond, parce que c'est la voie PROFONDE qui l'emprunte.
 # `/health` annoncait « ReasoningEngine » parmi les agents actifs alors qu'aucun

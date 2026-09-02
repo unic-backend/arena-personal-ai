@@ -2,6 +2,39 @@
 
 ## [Non publié]
 
+### Corrigé et amélioré — 02/09/2026 — Dioumtoukay travaille mieux
+
+Demande du propriétaire, le jour même de la première version : « bien améliorer
+dioumtoukay pour qu'il soit fort dans ses travail […] savoir corriger des fail
+des bug des erreur ». Quatre manques mesurés sur la version du matin.
+
+- **Il devait réécrire un fichier entier pour en corriger une ligne.** C'était
+  le plus coûteux : `ecrire` remplace TOUT, donc changer une ligne dans un
+  fichier de six cents obligeait le modèle à les restituer toutes de mémoire —
+  et un modèle local de 14 milliards de paramètres n'y arrive pas sans en
+  abîmer une. `remplacer` cite le passage exact et ne touche à rien d'autre. Il
+  **refuse** un passage introuvable (le modèle a cité de mémoire) ou présent
+  plusieurs fois (rien ne dit lequel il visait), et dit quoi faire à la place.
+- **La fin des sorties longues était coupée.** `_couper` gardait le début ;
+  `pytest` écrit son verdict — « 3 failed » et le nom des tests tombés — sur
+  ses toutes dernières lignes. Une suite bavarde faisait donc disparaître la
+  seule information qui comptait, et Dioumtoukay concluait « les tests passent »
+  sur une sortie amputée. La coupe garde maintenant **le début et la fin**.
+- **Il cherchait à l'aveugle.** `chercher` trouve un texte dans les fichiers
+  (via `grep`, ou ici même s'il manque) : corriger un bug ne commence plus par
+  deviner le fichier.
+- **Il ne savait pas où il était.** Le premier tour reçoit maintenant des
+  repères mesurés — branche git, fichiers modifiés, contenu de la racine —
+  pris **une seule fois**, au départ.
+
+Deux ajouts au rapport et à la mémoire : les **fichiers réellement modifiés**
+sont nommés à part (une écriture ratée n'y figure pas), et un travail qui a
+modifié quelque chose est retenu en mémoire longue — pas une simple lecture.
+
+Mesuré sur du vrai code GitHub : `git clone` de `pallets/itsdangerous`,
+`chercher` y trouve `def dumps` avec son fichier et sa ligne, et le code cloné
+s'exécute (`Signer('cle').sign(b'bonjour')` → code 0).
+
 ### Ajouté — 02/09/2026 — Dioumtoukay, celui qui agit sur la machine
 
 Demande du propriétaire : « il doit être comme claude code entrer dans mon
