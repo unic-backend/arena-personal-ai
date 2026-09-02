@@ -2430,3 +2430,52 @@ modale) — sur ce qui a été explicitement demandé jusqu'ici. Le canal
 `core/agent/capacites.py` reste construit et testé mais toujours pas
 appelé en production par `VideoProductionAgent` : aucune étape de ce
 premier graphe n'a encore eu besoin d'un autre espace (code/documents/web).
+
+---
+
+## DEC-0038 — Dioumtoukay : le propriétaire lève DEC-0014, en connaissance de cause
+
+**2026-09-02.** Demande directe : *« je veux aussi que tu integre ce projet que
+mon ia soit capable de corrigé les bug les erreurs lui même [...] un qui vas
+s'appeler Dioumtoukay [...] il doit être comme claude code entrer dans mon
+terminal mon github et travailler sur le projet »*.
+
+### Ce que ça heurte, et qui l'a levé
+
+**DEC-0014 (29/08/2026) refusait exactement cela** : `core/guardian/` DÉCOUVRE
+et RAPPORTE, ne MODIFIE jamais — *« une garde qui commettrait des correctifs ou
+ouvrirait des pull requests elle-même contournerait exactement la garantie que
+CLAUDE.md pose comme non négociable »*.
+
+Le conflit lui a été présenté avant d'écrire une ligne, avec ce qu'il coûte :
+ne plus voir ce qui entre dans son code, une commande qui ne se rattrape pas,
+un mauvais commit qui part chez tout le monde. Quatre options lui ont été
+posées, de la plus prudente à la plus ouverte. **Sa réponse : « Il doit tout
+faire pas de limite ».**
+
+C'est son projet, sa machine, son code. **DEC-0014 est donc levée pour
+Dioumtoukay, et par lui.** Elle reste en vigueur pour `core/guardian/`, qui
+n'est pas touché.
+
+### Ce que cela n'ouvre pas
+
+Rien d'autre. Les trois effets irréversibles vers l'extérieur — **envoyer un
+mail, publier, supprimer chez un fournisseur** — gardent leur plancher
+(`INTERRUPTEURS_OBLIGATOIRES`, `core/permissions/controle.py`). Ils ne sont pas
+ce qu'il a demandé, et un agent qui travaille sur son code n'a aucune raison
+d'écrire à ses clients.
+
+### Ce qui est tenu quand même, et qui n'est pas une limite
+
+**Tout ce que Dioumtoukay fait est journalisé** (`JournalDesActions`). Ce n'est
+pas une autorisation à demander : c'est un compte-rendu à lire. Un agent qui
+agit sans laisser de trace ne peut pas être corrigé quand il se trompe — et
+c'est le propriétaire, pas l'agent, qui doit pouvoir dire ce qui s'est passé.
+
+### Ce qui est dit et qui n'est pas une réserve de principe
+
+Le modèle qui pilotera Dioumtoukay sur sa machine est **local** (`qwen3.5:9b`,
+DEC-0009/#140). Ce n'est pas le même ordre de capacité qu'un modèle de
+frontière. Le mode d'échec réaliste n'est pas la malveillance : c'est une
+commande mal formée sur le mauvais chemin. Écrit ici parce que c'est une
+propriété mesurable du montage, pas un avis sur son choix.

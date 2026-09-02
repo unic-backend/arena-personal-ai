@@ -2,6 +2,33 @@
 
 ## [Non publié]
 
+### Ajouté — 02/09/2026 — Dioumtoukay, celui qui agit sur la machine
+
+Demande du propriétaire : « il doit être comme claude code entrer dans mon
+terminal mon github et travailler sur le projet ». La décision qui l'autorise
+est **DEC-0038** — il a levé DEC-0014 (« découvrir et rapporter, jamais
+modifier ») après qu'on lui ait présenté ce que ça coûte, en répondant « il
+doit tout faire pas de limite ».
+
+- **`tools/atelier/`** — les mains : lire, écrire, lister, déplacer, exécuter,
+  git. Aucun garde-fou, c'est sa décision. Deux choses tenues, qui n'en sont
+  pas : **tout laisse une trace** dans `JournalDesActions` (un compte-rendu à
+  lire, pas une autorisation à demander), et **un échec se rapporte au lieu de
+  se déguiser** — le défaut mesuré le 01/09 dans `tools/docker_local.py`, où un
+  code de sortie non nul ne levait pas.
+- **`agents/dioumtoukay/`** — la boucle : le modèle rend **une action à la
+  fois**, elle est exécutée pour de vrai, et son résultat réel — sortie,
+  erreur, code de sortie — revient dans l'invite suivante. Il travaille donc
+  sur ce qui s'est passé, jamais sur ce qu'il imaginait. Borné à 12 actions :
+  une boucle sans fin est la première façon dont un agent autonome devient
+  nuisible.
+- **Atteignable depuis l'interface** : nouvelle intention `ATELIER`, nouvel
+  espace « Dioumtoukay » dans la barre latérale, et l'aiguillage hors ligne
+  reconnaît ses phrases (« range mon dossier… », « lance les tests… »).
+  Sans ce branchement, les deux modules précédents seraient du code mort.
+- Ce qui le sépare de `RepoEngineerAgent`, qui reste inchangé : celui-là lit et
+  propose sans jamais rien modifier. Ici on exécute.
+
 ### Corrigé — 01/09/2026 (troisième vague, défauts n° 25 à 29)
 
 - **Deux agents sur trois versaient le texte web brut dans l'invite.**

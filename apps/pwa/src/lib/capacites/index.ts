@@ -13,7 +13,7 @@
    ───────────────────────────────────────────────────────────── */
 
 import { create } from 'zustand';
-import { Code2, FileText, Globe, Hammer, Video, type LucideIcon } from 'lucide-react';
+import { Code2, FileText, Globe, Hammer, Terminal, Video, type LucideIcon } from 'lucide-react';
 
 export interface Capacite {
   id: string;
@@ -39,6 +39,26 @@ export const CAPACITES: Capacite[] = [
       'Write a Python script that renames every file in a folder',
       'Explain what this code does',
       'Fix the error I am about to paste',
+    ],
+  },
+  {
+    // Dioumtoukay AGIT sur la machine : il ouvre les fichiers, lance les
+    // commandes, touche au depot (DEC-0038). « Usman Coder » juste au-dessus
+    // ecrit du code dans un bac a sable et n'en sort jamais — ce sont deux
+    // metiers, pas deux noms pour le meme.
+    id: 'dioumtoukay',
+    nomFr: 'Dioumtoukay',
+    nomEn: 'Dioumtoukay',
+    icone: Terminal,
+    exemplesFr: [
+      'Range mon dossier Téléchargements par type de fichier',
+      'Lance les tests du projet et corrige ce qui casse',
+      'Regarde mon dépôt et dis-moi ce qui a changé',
+    ],
+    exemplesEn: [
+      'Sort my Downloads folder by file type',
+      'Run the project tests and fix what breaks',
+      'Look at my repository and tell me what changed',
     ],
   },
   {
