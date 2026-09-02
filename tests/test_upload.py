@@ -48,6 +48,19 @@ def test_un_media_est_accepte(client, dossier_media, nom):
     assert (dossier_media / nom).exists()
 
 
+@pytest.mark.parametrize("nom", ["photo.jpg", "cliche.PNG", "capture.webp"])
+def test_une_photo_est_acceptee(client, dossier_media, nom):
+    """Ouvert le 02/09/2026 : la capacite « vision » du projet Video lit une
+    image (agents/video/production_agent.py:_appeler_vision), mais jusqu'ici
+    aucune photo n'atteignait jamais MEDIA_DIR — le seul point d'entree la
+    refusait, sans exception, quel que soit l'appelant."""
+    res = envoyer(client, nom)
+
+    assert res.status_code == 200, res.json()
+    assert res.json()["status"] == "success"
+    assert (dossier_media / nom).exists()
+
+
 @pytest.mark.parametrize("nom", ["virus.exe", "script.ps1", "payload.sh", "note.txt", "page.html"])
 def test_un_fichier_non_media_est_refuse(client, dossier_media, nom):
     res = envoyer(client, nom)
