@@ -2479,3 +2479,46 @@ DEC-0009/#140). Ce n'est pas le même ordre de capacité qu'un modèle de
 frontière. Le mode d'échec réaliste n'est pas la malveillance : c'est une
 commande mal formée sur le mauvais chemin. Écrit ici parce que c'est une
 propriété mesurable du montage, pas un avis sur son choix.
+
+---
+
+## DEC-0039 — Le dépôt reste public avec la grille de prix dedans
+
+**Date** : 02/09/2026
+**Statut** : accepté — décision du propriétaire, prise en connaissance de cause
+
+### Le constat, mesuré
+
+Le propriétaire demande si le modèle UniC Plaquiste est bien préparé pour lui
+seul. La réponse est oui côté code — c'est le seul espace qui porte son métier,
+et depuis DEC-0038bis l'instruction générale ne porte plus aucune entreprise.
+
+La mesure du même jour donne autre chose : `unic-backend/arena-personal-ai` est
+**public** (`"private": false`, API GitHub, 02/09/2026 au soir). Il l'avait
+passé en privé le 28/08 ; il ne l'est plus. Or `config/metier.yaml` est suivi
+par git et porte **31 prix, le NINEA, le RCCM, l'adresse et le téléphone**.
+
+Ce qui n'est **pas** exposé, vérifié dans la même mesure : ses devis et
+factures clients (hors de git), sa signature manuscrite (hors de git, et un
+test l'interdit), ses clés (aucun fichier sensible suivi), et son serveur
+(fermé sans `USMAN_API_KEY`).
+
+### La décision
+
+Le constat lui a été présenté avec quatre options : repasser en privé, sortir
+la grille du dépôt, les deux, ou ne rien changer. **Il a choisi de ne rien
+changer.**
+
+C'est son entreprise et ses prix. La décision est enregistrée ici pour une
+seule raison : **qu'aucune session future ne « corrige » de sa propre
+initiative** ce qu'il a tranché — ni en retirant la grille, ni en proposant à
+nouveau la même chose à chaque passage.
+
+### Ce que ça coûte si c'est faux
+
+Un concurrent qui lit sa grille sous-cote chaque devis au franc près. Et ce qui
+est déjà poussé reste dans l'historique GitHub même si le fichier en sortait
+plus tard : la décision n'est pas réversible par une simple suppression.
+
+Ce paragraphe existe parce que c'est la partie vérifiable plus tard, pas parce
+que la décision serait mauvaise. Elle lui appartient.
