@@ -207,3 +207,50 @@ def test_seule_la_production_est_declaree_comme_ecriture(connecteur):
     ecritures = {nom for nom, cap in connecteur.capacites().items() if cap.ecriture}
 
     assert ecritures == {"produire"}
+
+
+class TestLeDevisSOuvreDepuisSonTelephone:
+    """Un PDF que son téléphone ne peut pas ouvrir n'a servi à personne.
+
+    Défaut mesuré le 02/09/2026. Les devis étaient écrits dans `data/devis/` :
+    **personne ne lit ce dossier, et aucune route ne le sert.** Le fichier
+    existait sur le disque du PC et nulle part ailleurs, alors que le
+    propriétaire travaille depuis son téléphone. Il demandait « avec mon
+    téléphone il peut afficher le pdf ? » — la réponse était non.
+
+    Ils sortent maintenant dans `media/rendered/`, servi par
+    `GET /media/rendered/{nom}` derrière `verify_media_access`. Réutiliser
+    cette route plutôt qu'en ouvrir une seconde compte : elle a remplacé un
+    `StaticFiles` qui servait n'importe quel fichier à qui devinait son nom.
+    """
+
+    def test_le_dossier_par_defaut_est_celui_qui_est_servi(self):
+        from apps.backend.config import RENDERED_DIR
+        from core.connectors.devis import DOSSIER_DEVIS
+
+        assert DOSSIER_DEVIS == RENDERED_DIR
+
+    def test_un_devis_produit_porte_son_adresse(self):
+        """L'URL est ce qui rend le fichier atteignable ; sans elle, rien."""
+        connecteur = DevisConnector(metier=charger_metier())
+
+        resultat = connecteur.executer_confirmee(
+            "produire", demande=DEMANDE, **DESTINATAIRE)
+
+        assert resultat.statut is Statut.SUCCES
+        url = (resultat.detail or {}).get("url")
+        assert url, "le devis produit ne dit pas où l'ouvrir"
+        assert url.startswith("/media/rendered/")
+        assert url.endswith(".pdf")
+        assert url == f"/media/rendered/{__import__('pathlib').Path(resultat.preuve).name}"
+
+    def test_un_dossier_choisi_par_l_appelant_ne_promet_aucune_adresse(self, dossier):
+        """Écrit ailleurs, le fichier n'est servi par aucune route : le dire
+        plutôt que rendre un lien qui répondrait 404."""
+        connecteur = DevisConnector(metier=charger_metier(), dossier=dossier)
+
+        resultat = connecteur.executer_confirmee(
+            "produire", demande=DEMANDE, **DESTINATAIRE)
+
+        assert resultat.statut is Statut.SUCCES
+        assert (resultat.detail or {}).get("url") is None

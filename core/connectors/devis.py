@@ -35,13 +35,27 @@ from agents.plaquiste.calcul_materiaux import quantites_pour
 from agents.plaquiste.devis_pdf import Devis, Ligne, chiffrer, construire
 from agents.plaquiste.metre import lire_demande
 from agents.plaquiste.plaquiste_agent import MetierSuivi
+from apps.backend.config import RENDERED_DIR
 from core.actions.resultat import ResultatAction, echec, succes
 from core.connectors.base import Capacite, Connecteur, EtatSante, Sante
 
 logger = logging.getLogger("usman.connecteurs.devis")
 
-#: Ou les documents sont ecrits. Un devis produit doit se retrouver.
-DOSSIER_DEVIS = Path("data") / "devis"
+#: Ou les documents sont ecrits — et **d'ou son telephone peut les ouvrir**.
+#:
+#: Ils atterrissaient dans `data/devis/`, mesure du 02/09/2026 : personne ne
+#: lit ce dossier, et aucune route ne le sert. Le PDF etait donc ecrit sur le
+#: disque du PC et invisible depuis le telephone, seul endroit d'ou le
+#: proprietaire travaille. Un devis qu'on ne peut pas ouvrir n'a pas ete
+#: produit pour grand-chose.
+#:
+#: `media/rendered/` est le dossier que `GET /media/rendered/{nom}` sert deja,
+#: derriere `verify_media_access` (`apps/backend/main.py`). Reutiliser cette
+#: route plutot qu'en ouvrir une seconde n'est pas un raccourci : celle-la a
+#: remplace un `StaticFiles` qui servait n'importe quel fichier a qui devinait
+#: son nom, et deux surfaces qui servent des fichiers sont deux surfaces a
+#: garder.
+DOSSIER_DEVIS = RENDERED_DIR
 
 
 def lignes_depuis_parametres(brutes: List[Dict[str, Any]]) -> List[Ligne]:
@@ -185,9 +199,14 @@ class DevisConnector(Connecteur):
             return echec(action=capacite.nom, cible=self.nom,
                          message="Le rendu s'est termine sans laisser de fichier.")
 
+        # L'adresse par laquelle son telephone ouvre le document. Relative :
+        # l'interface connait deja l'adresse de son serveur, et l'ecrire ici
+        # la figerait a celle de la machine qui a produit le fichier.
+        url = f"/media/rendered/{sortie.name}" if self.dossier == RENDERED_DIR else None
+
         return succes(
             action=capacite.nom, cible=self.nom,
             message=(f"{devis.type_document.capitalize()} {devis.numero} ecrit pour "
                      f"{devis.client} ({calcul['total']} FCFA)."),
             preuve=str(sortie),
-            chiffrage=calcul, octets=sortie.stat().st_size)
+            chiffrage=calcul, octets=sortie.stat().st_size, url=url)
