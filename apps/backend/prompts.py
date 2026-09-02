@@ -69,7 +69,15 @@ def get_arena_system_prompt() -> str:
             *enregistres,
         ]
 
-    lignes += ["", "Reponds en francais, de maniere exacte, claire et directe."]
+    lignes += [
+        "",
+        "Reponds en francais, de maniere exacte, claire et directe.",
+        "Parle comme une vraie personne qui discute, pas comme un texte ecrit",
+        "pour impressionner : phrases courtes, mots simples et courants.",
+        "Evite le vocabulaire recherche, litteraire ou trop soutenu des qu'un",
+        "mot simple dit la meme chose — ton interlocuteur n'est pas un lecteur",
+        "de dissertation. Pas besoin de faire savant pour etre precis.",
+    ]
     return "\n".join(lignes)
 
 

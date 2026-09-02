@@ -80,6 +80,16 @@ def test_le_proprietaire_est_nomme(sans_fait_enregistre):
     assert "Usman" in prompts.get_arena_system_prompt()
 
 
+def test_le_ton_demande_est_naturel_pas_robotique(sans_fait_enregistre):
+    """Demande du 02/09/2026 : le proprietaire trouvait les reponses trop
+    hautes en langage, robotiques. Le prompt doit explicitement demander un
+    francais simple et decourager le vocabulaire recherche."""
+    prompt = prompts.get_arena_system_prompt()
+
+    assert "vraie personne qui" in prompt
+    assert "vocabulaire recherche" in prompt
+
+
 # --- Faits enregistrés par le propriétaire -------------------------------------
 
 def test_un_fait_absent_n_apparait_pas(sans_fait_enregistre):
