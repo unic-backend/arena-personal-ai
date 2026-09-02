@@ -7,6 +7,7 @@ vérifiable sur un fichier court plutôt que noyée dans le point d'entrée.
 from datetime import date
 from typing import Optional
 
+from agents.plaquiste.plaquiste_agent import charger_metier, lignes_presence_en_ligne
 from apps.backend.runtime import memory
 from core.specialistes.selection import bloc_de_methode, choisir
 
@@ -67,6 +68,21 @@ def get_arena_system_prompt() -> str:
             f"Faits enregistres par {owner_name} en memoire longue "
             "(ils peuvent avoir change depuis : verifie si la question porte dessus) :",
             *enregistres,
+        ]
+
+    # Presence en ligne d'UniC Plaquiste (config/unic_plaquiste.yaml, seule
+    # source) : un client peut demander le site, l'appli ou les reseaux sans
+    # parler de devis — cette info doit etre connue partout, pas seulement
+    # quand l'agent metier est convoque. Demande du proprietaire, 02/09/2026.
+    entreprise = charger_metier().get("entreprise", {})
+    presence = lignes_presence_en_ligne(entreprise)
+    if entreprise.get("site"):
+        presence = [f"Site : {entreprise['site']}.", *presence]
+    if presence:
+        lignes += [
+            "",
+            f"Presence en ligne de {entreprise.get('nom', 'l entreprise')} :",
+            *presence,
         ]
 
     lignes += [

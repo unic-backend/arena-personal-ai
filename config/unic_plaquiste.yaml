@@ -21,6 +21,19 @@ entreprise:
   telephone: "+221 77 708 50 92"
   adresse: "Dakar, Senegal — Disponible aussi a l'international"
   site: "www.unicplaquiste.com"
+  # Deux applications, confirmees toutes les deux par le proprietaire
+  # (02/09/2026) : "app" cote client, "expert" cote pro. Une liste, pas un
+  # champ unique, pour ne pas devoir choisir laquelle est "la" bonne.
+  applications:
+    - "app.unicplaquiste.com"
+    - "expert.unicplaquiste.com"
+  # Presence en ligne fournie par le proprietaire le 02/09/2026. Liens
+  # canoniques : les jetons de partage (?_t=, ?igsi=, ?g_st=...) sont retires,
+  # ils suivent la maniere dont le lien a ete partage, pas l'adresse elle-meme.
+  fiche_google_maps: "https://maps.app.goo.gl/fKvNLhN1r3U88gsv9"
+  reseaux_sociaux:
+    tiktok: "https://www.tiktok.com/@unic_plaquiste"
+    instagram: "https://www.instagram.com/unic_plaquiste"
   email: "unicplaquiste@gmail.com"
   ninea: "013141677"
   rccm: "SN.DKR.2026.A.22010"
