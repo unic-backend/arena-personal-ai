@@ -560,3 +560,78 @@ class TestUnOutilInstalleNEstJamaisDitAbsent:
         monkeypatch.setattr(doctor, "_sonder_commande",
                             lambda *a, **kw: doctor.INSTALLE_MAIS_MUET)
         assert doctor._commande_repond("docker", ["info"]) is False
+
+
+class TestLeDiagnosticNommeLesModelesQueLeCodeUtilise:
+    """Mesure du 02/09/2026, le soir où le propriétaire allume son PC.
+
+    Ce fichier lisait `CODER_LOCAL_MODEL` et l'appelait « Modele rapide »,
+    **essentiel**. Le chat lit en réalité `CHAT_LOCAL_MODEL` puis
+    `DEFAULT_LOCAL_MODEL` (`MODELE_RAPIDE = MODELE_CONVERSATION`).
+
+    Conséquence exacte, et c'est la première commande qu'il allait lancer :
+    avec le modèle de conversation installé mais pas celui de code, le rapport
+    annonçait **« ARENA NE PEUT PAS REPONDRE »** — alors que le chat aurait
+    répondu. C'est le défaut que la docstring de ce fichier interdit : un `[OK]`
+    ou un `[ABSENT]` qui n'est pas une mesure de ce que le code fait vraiment.
+    """
+
+    @staticmethod
+    def _rapport(installes):
+        modeles = doctor.modeles_du_code()
+        assert modeles is not None, "apps/backend/config.py illisible depuis le test"
+        return {
+            "conversation": doctor.verifier_modele_du_code(
+                "Modele de conversation", "conversation", modeles, installes,
+                essentiel=True),
+            "code": doctor.verifier_modele_du_code(
+                "Modele de code (Dioumtoukay)", "code", modeles, installes),
+        }
+
+    def test_les_modeles_viennent_du_code_pas_d_un_doublon(self):
+        from apps.backend.config import (
+            MODELE_CODEUR,
+            MODELE_CONVERSATION,
+            MODELE_PROFOND,
+            MODELE_VISION,
+        )
+
+        assert doctor.modeles_du_code() == {
+            "conversation": MODELE_CONVERSATION, "profond": MODELE_PROFOND,
+            "code": MODELE_CODEUR, "vision": MODELE_VISION}
+
+    def test_sans_le_modele_de_code_le_chat_reste_possible(self):
+        """Le cœur du défaut : ARENA répond sans le modèle de Dioumtoukay."""
+        from apps.backend.config import MODELE_CONVERSATION
+
+        rapport = self._rapport([MODELE_CONVERSATION])
+
+        assert rapport["conversation"].etat is doctor.OK
+        assert rapport["code"].etat is doctor.ABSENT
+        assert rapport["code"].essentiel is False, (
+            "le modele de code est declare essentiel : ARENA serait dit muet a tort")
+
+    def test_sans_le_modele_de_conversation_arena_est_vraiment_bloque(self):
+        from apps.backend.config import MODELE_CODEUR
+
+        rapport = self._rapport([MODELE_CODEUR])
+
+        assert rapport["conversation"].etat is doctor.ABSENT
+        assert rapport["conversation"].essentiel is True
+
+    def test_le_modele_de_dioumtoukay_est_verifie_sous_son_role(self):
+        """Il n'était vérifié nulle part sous son vrai nom : lancer Dioumtoukay
+        sans son modèle ne se voyait pas dans le diagnostic."""
+        rapport = self._rapport([])
+
+        assert "Dioumtoukay" in rapport["code"].nom
+        assert "ollama pull" in rapport["code"].remede
+
+    def test_un_config_illisible_ne_fabrique_aucun_nom_de_modele(self, monkeypatch):
+        monkeypatch.setattr(doctor, "modeles_du_code", lambda: None)
+
+        verification = doctor.verifier_modele_du_code(
+            "Modele de conversation", "conversation", None, ["quoi que ce soit"])
+
+        assert verification.etat is doctor.ABSENT
+        assert "indeterminable" in verification.detail
