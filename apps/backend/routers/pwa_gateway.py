@@ -25,6 +25,7 @@ remplace pas.
 import json
 import logging
 import time
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
@@ -58,6 +59,7 @@ from core.actions.confirmation_parlee import (
 from core.execution.mesures import ETAT_INDISPONIBLE, ETAT_MESURE, Mesure, chronometrer
 from core.execution.voies import budget_de, voie_pour
 from core.memory.consolidation import grouper
+from core.memory.conversation import retenir_l_echange
 from core.memory.recuperation import recuperer
 from core.memory.semantique import recuperer_semantique
 from core.security.trust import TrustLevel, wrap
@@ -558,6 +560,17 @@ async def flux_agent(demande: DemandeAgent):
             memory.add_chat_message(
                 session_id=session, role="assistant", content=complet.strip()
             )
+            # Et dans la memoire LONGUE, celle que la recherche relit.
+            #
+            # `add_chat_message` ci-dessus ecrit dans `short_term_memory`, un
+            # journal que `recuperer_semantique` ne consulte jamais. Jusqu'au
+            # 02/09/2026 c'etait le seul enregistrement : au-dela des 8
+            # derniers messages que le telephone renvoie, tout etait perdu.
+            # « Il oublie ce qu'on s'est dit » — et il ne pouvait pas faire
+            # autrement.
+            retenir_l_echange(
+                memoire_personnelle, demande.text, complet.strip(),
+                source=f"conversation du {date.today().strftime('%d/%m/%Y')}")
             # Le tour est alle jusqu'au bout : sa duree est une mesure.
             noter_mesure(Mesure(nom=f"chat {intention}", voie=voie, etat=ETAT_MESURE,
                                 secondes=time.perf_counter() - depart))

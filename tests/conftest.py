@@ -3,7 +3,9 @@
 Objectif : rendre les agents testables **hors ligne**. Rien ici ne doit ouvrir
 une connexion réseau, appeler Ollama, démarrer Docker ni écrire dans le dépôt.
 """
+import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional, Sequence
 
@@ -12,6 +14,21 @@ import pytest
 RACINE = Path(__file__).resolve().parent.parent
 if str(RACINE) not in sys.path:
     sys.path.insert(0, str(RACINE))
+
+# La memoire du proprietaire n'est pas un bac a sable.
+#
+# La premiere ligne de ce fichier dit que rien ne doit « ecrire dans le
+# depot ». Les tests de passerelle ecrivaient pourtant dans
+# `data/database/memory.db` a chaque requete — inerte tant que rien ne relisait
+# ces ecritures. Depuis que la conversation retient
+# (`core/memory/conversation.py`, 02/09/2026), un souvenir ecrit par un test
+# revient dans l'invite du test suivant : les tests se contaminent entre eux,
+# et la vraie memoire se remplit de « Bonjour » de fixtures.
+#
+# Pose AVANT tout import d'Usman : `apps.backend.config` lit cette variable au
+# chargement, et `runtime.py` construit ses magasins dans la foulee.
+os.environ.setdefault(
+    "USMAN_DB_PATH", str(Path(tempfile.mkdtemp(prefix="usman-tests-")) / "memoire.db"))
 
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider

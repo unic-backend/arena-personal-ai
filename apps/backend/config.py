@@ -6,6 +6,7 @@ celui-ci ne fait que lire.
 """
 import logging
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -47,7 +48,16 @@ def reglage(nom: str, defaut: str = "") -> str:
 # --- Emplacements -------------------------------------------------------------
 MEDIA_DIR = BASE_DIR / "media"
 RENDERED_DIR = MEDIA_DIR / "rendered"
-DB_PATH = BASE_DIR / "data" / "database" / "memory.db"
+#: La base unique : memoire courte, souvenirs, journal, file d'attente.
+#:
+#: Reglable depuis le 02/09/2026, et pas par gout : `tests/conftest.py`
+#: annonce des sa premiere ligne que rien ne doit « ecrire dans le depot », et
+#: la suite ecrivait pourtant dans CETTE base a chaque test de passerelle.
+#: C'etait inerte tant que rien ne relisait ces ecritures ; depuis que la
+#: conversation retient (`core/memory/conversation.py`), un souvenir ecrit par
+#: un test revient dans l'invite du test suivant. Les tests pointent donc
+#: ailleurs, et la memoire du proprietaire reste la sienne.
+DB_PATH = Path(os.getenv("USMAN_DB_PATH") or BASE_DIR / "data" / "database" / "memory.db")
 
 # --- Environnement -------------------------------------------------------------
 # `APP_ENV` existait deja dans `.env.example`, sans qu'aucun code ne le lise.
