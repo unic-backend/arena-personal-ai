@@ -62,14 +62,17 @@ export const CAPACITES: Capacite[] = [
     nomFr: 'Vidéo',
     nomEn: 'Video',
     icone: Video,
+    // Un exemple par domaine, pour qu'aucun ne laisse croire que la vidéo
+    // ne sert qu'a UniC Plaquiste : elle traite n'importe quel travail,
+    // vu ou apporte. Demande du proprietaire le 02/09/2026.
     exemplesFr: [
       'Analyse la vidéo que je vais joindre',
-      'Résume-moi ce que montre cette vidéo de chantier',
+      'Monte-moi un clip promo à partir de ces photos',
       'Quelle est la durée et la résolution de ce fichier ?',
     ],
     exemplesEn: [
       'Analyse the video I am about to attach',
-      'Summarise what this worksite video shows',
+      'Edit a promo clip from these photos',
       'What is the duration and resolution of this file?',
     ],
   },
