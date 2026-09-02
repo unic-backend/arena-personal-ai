@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { SourceMeta } from '../../lib/activity/types';
 import { cn } from '../../utils/cn';
 
@@ -125,6 +125,77 @@ export const MarkdownLite = memo(function MarkdownLite({
   );
 });
 
+/* Caracteres reveles par seconde pendant la marche. Un agent specialise
+   (devis, email...) ne flux pas depuis le modele : il compose sa reponse
+   entiere cote serveur puis l'envoie en un seul morceau — sans ceci, elle
+   s'affichait d'un bloc, jamais mot a mot comme chez Claude ou GPT. Le
+   proprietaire l'a signale le 02/09/2026 : "les reponses devraient venir
+   comme en marchant". 200/s est un rythme de lecture, pas la vitesse reelle
+   du reseau ou du modele — les deux peuvent etre plus rapides ou plus
+   lents, la marche les lisse egalement. */
+const CARACTERES_PAR_SECONDE = 200;
+
+/** Revele `texte` progressivement plutot que d'un bloc, que le texte soit
+ *  arrive au fil de l'eau (plusieurs petits morceaux) ou d'un coup (un
+ *  agent specialise qui compose sa reponse entiere avant de l'envoyer) —
+ *  les deux cas produisent la meme marche cote ecran, invisible depuis
+ *  l'appelant.
+ *
+ *  Ne saute jamais directement a la fin quand le reseau dit "termine" :
+ *  pour un agent specialise, le morceau complet et l'evenement "termine"
+ *  arrivent quasi au meme instant — si la marche s'arretait la, elle
+ *  n'aurait jamais le temps de jouer. `streaming` decide seulement si la
+ *  marche continue apres avoir rattrape le texte disponible ; jamais si
+ *  elle doit sauter en avant. */
+function useTexteRevele(texte: string, streaming: boolean): string {
+  const texteRef = useRef(texte);
+  texteRef.current = texte;
+  const streamingRef = useRef(streaming);
+  streamingRef.current = streaming;
+
+  // Vrai des que `streaming` a ete observe au moins une fois pendant la vie
+  // de ce composant : decide si on anime DU TOUT. Un message deja termine
+  // au montage (historique charge, F5 en cours de conversation) s'affiche
+  // entier tout de suite — rejouer sa marche serait un theatre, pas une
+  // information.
+  const dejaEnMarcheRef = useRef(streaming);
+  if (streaming) dejaEnMarcheRef.current = true;
+
+  const [longueur, setLongueur] = useState(() => (streaming ? 0 : texte.length));
+  const dernierTsRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (!dejaEnMarcheRef.current) {
+      setLongueur(texteRef.current.length);
+      return;
+    }
+    let cadre: number | undefined;
+    dernierTsRef.current = undefined;
+    const marcher = (ts: number) => {
+      const cible = texteRef.current.length;
+      let arrete = false;
+      setLongueur((n) => {
+        if (n >= cible) {
+          // Rattrape ET plus rien n'arrivera : la marche s'arrete d'elle-meme.
+          arrete = !streamingRef.current;
+          return n;
+        }
+        const dt = dernierTsRef.current ? ts - dernierTsRef.current : 16;
+        const pas = Math.max(1, Math.round((CARACTERES_PAR_SECONDE * dt) / 1000));
+        return Math.min(cible, n + pas);
+      });
+      dernierTsRef.current = ts;
+      if (!arrete) cadre = requestAnimationFrame(marcher);
+    };
+    cadre = requestAnimationFrame(marcher);
+    return () => {
+      if (cadre !== undefined) cancelAnimationFrame(cadre);
+    };
+  }, [streaming]);
+
+  return texte.slice(0, Math.min(longueur, texte.length));
+}
+
 /* ── response with the blinking stream caret while tokens arrive ── */
 export function StreamingResponse({
   text,
@@ -135,12 +206,17 @@ export function StreamingResponse({
   streaming: boolean;
   sources?: SourceMeta[];
 }) {
+  const visible = useTexteRevele(text, streaming);
   if (!text && streaming) {
     return <div className="stream-caret" aria-label="generating" />;
   }
+  // Le curseur reste tant que la marche n'a pas rattrape le texte — meme si
+  // le reseau a deja dit "termine" (agent specialise : les deux arrivent
+  // quasi ensemble).
+  const encoreEnMarche = visible.length < text.length;
   return (
-    <div className={cn(streaming && 'stream-caret')}>
-      <MarkdownLite text={text} sources={sources} />
+    <div className={cn((streaming || encoreEnMarche) && 'stream-caret')}>
+      <MarkdownLite text={visible} sources={sources} />
     </div>
   );
 }
