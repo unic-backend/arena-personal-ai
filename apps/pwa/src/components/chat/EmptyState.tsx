@@ -5,27 +5,15 @@
    quelles. Aucune promesse n'est faite sur ce qu'ARENA sait faire.
    ───────────────────────────────────────────────────────────── */
 
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Clapperboard } from 'lucide-react';
 import { useI18n } from '../../lib/i18n';
 import { usePersona } from '../../lib/store/personaStore';
 import { capaciteActive, useCapacite } from '../../lib/capacites';
+import { salutationAuHasard } from '../../lib/salutations';
 import { useVideoProject } from '../../lib/store/videoProjectStore';
 import { Logo } from './Sidebar';
-
-/* Salutation selon l'heure locale de l'appareil. */
-function salutation(locale: string): string {
-  const h = new Date().getHours();
-  if (locale === 'fr') {
-    if (h < 5) return 'Bonne nuit';
-    if (h < 18) return 'Bonjour';
-    return 'Bonsoir';
-  }
-  if (h < 5) return 'Good night';
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
-}
 
 export function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
   const { t, locale } = useI18n();
@@ -33,9 +21,15 @@ export function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
   const { active } = useCapacite();
   const setVideoProjectOpen = useVideoProject((s) => s.setModalOpen);
 
+  // Tirée une seule fois à l'ouverture de l'écran, jamais recalculée à
+  // chaque re-rendu — sinon la salutation changerait de langue à chaque
+  // frappe ailleurs dans l'appli. Une nouvelle ouverture (rechargement de
+  // la page) tire une nouvelle langue.
+  const [salutation] = useState(() => salutationAuHasard(new Date().getHours()));
+
   const capacite = capaciteActive(active);
   const nom = userName.trim();
-  const phrase = nom ? `${salutation(locale)}, ${nom}` : salutation(locale);
+  const phrase = nom ? `${salutation}, ${nom}` : salutation;
   const exemples = capacite ? (locale === 'fr' ? capacite.exemplesFr : capacite.exemplesEn) : [];
 
   return (
