@@ -2,6 +2,26 @@
 
 ## [Non publié]
 
+### Corrigé — 02/09/2026 — Le diagnostic se trompait de modèle
+
+Trouvé au moment où le propriétaire allume son PC, juste avant qu'il lance la
+première commande. `doctor.py` lisait `CODER_LOCAL_MODEL`, l'appelait
+**« Modèle rapide »** et le déclarait **essentiel**. Le chat lit en réalité
+`CHAT_LOCAL_MODEL` puis `DEFAULT_LOCAL_MODEL`
+(`apps/backend/config.py` : `MODELE_RAPIDE = MODELE_CONVERSATION`).
+
+Conséquence exacte : avec `qwen3.5:9b` installé mais pas le modèle de code, le
+rapport annonçait **« ARENA NE PEUT PAS RÉPONDRE »** — alors que le chat aurait
+répondu. Et le modèle de Dioumtoukay n'était vérifié **nulle part** sous son
+vrai rôle : le lancer sans son modèle ne se voyait pas.
+
+Même défaut, même correction que pour les embeddings le 27/08 : les modèles
+sont désormais lus **depuis le code**, pas depuis un second jeu de valeurs par
+défaut écrit dans le diagnostic. Trois lignes au lieu de deux —
+**Modèle de conversation** (essentiel), **Modèle profond**, **Modèle de code
+(Dioumtoukay)** — et `apps/backend/config.py` illisible donne `ABSENT` avec sa
+raison, jamais un nom de modèle inventé.
+
 ### Changé — 02/09/2026 — Les chemins ne nomment plus aucune entreprise
 
 Suite de la décision ci-dessous, et sa dernière conséquence : les fichiers

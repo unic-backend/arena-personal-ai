@@ -231,6 +231,47 @@ def verifier_modele_embeddings(installes: Optional[List[str]]) -> Verification:
     return verifier_modele("Modele d'embeddings", modele, installes)
 
 
+def modeles_du_code() -> Optional[dict]:
+    """Les modeles qu'ARENA utilise **reellement**, nommes par le code.
+
+    Meme defaut que pour les embeddings, meme correction. Ce diagnostic lisait
+    `CODER_LOCAL_MODEL` et l'appelait « Modele rapide », **essentiel** ; le
+    chat lit en realite `CHAT_LOCAL_MODEL` puis `DEFAULT_LOCAL_MODEL`
+    (`apps/backend/config.py`, `MODELE_RAPIDE = MODELE_CONVERSATION`).
+
+    Mesure du 02/09/2026 : avec `qwen3.5:9b` installe et pas le modele de code,
+    le rapport annoncait **« ARENA NE PEUT PAS REPONDRE »** — alors que le chat
+    aurait repondu. Et le modele de Dioumtoukay, lui, n'etait verifie nulle
+    part sous son vrai role.
+
+    Une seule source, et `None` quand elle est illisible : nommer un modele au
+    hasard est exactement ce qui produit ce genre de defaut.
+    """
+    try:
+        from apps.backend.config import (
+            MODELE_CODEUR,
+            MODELE_CONVERSATION,
+            MODELE_PROFOND,
+            MODELE_VISION,
+        )
+    except Exception:  # noqa: BLE001 — un import qui echoue n'est pas une reponse
+        return None
+    return {"conversation": MODELE_CONVERSATION, "profond": MODELE_PROFOND,
+            "code": MODELE_CODEUR, "vision": MODELE_VISION}
+
+
+def verifier_modele_du_code(nom_lisible: str, role: str, modeles: Optional[dict],
+                            installes: Optional[List[str]],
+                            essentiel: bool = False) -> Verification:
+    """Un modele nomme par le code. Illisible → on le dit, on n'en invente pas."""
+    if modeles is None:
+        return Verification(
+            nom_lisible, ABSENT,
+            "indeterminable : apps/backend/config.py n'est pas lisible d'ici",
+            "Lancer le diagnostic depuis la racine du depot", essentiel=essentiel)
+    return verifier_modele(nom_lisible, modeles[role], installes, essentiel=essentiel)
+
+
 # --- Les capacites qui dependent d'un outil ---------------------------------------
 
 #: Les trois etats d'un outil externe. « installe mais muet » n'est pas
@@ -656,9 +697,10 @@ def diagnostiquer() -> Rapport:
         absentes_google = variables_google_absentes()
     except Exception:  # noqa: BLE001 — `None` veut deja dire « on n'a pas pu regarder »
         absentes_google = None
-    rapide = os.getenv("CODER_LOCAL_MODEL", "qwen2.5-coder:14b")
-    profond = os.getenv("DEFAULT_LOCAL_MODEL", "qwen3.5:9b")
-    vision = os.getenv("VISION_LOCAL_MODEL", "qwen3-vl:4b")
+    # Les modeles viennent du CODE, jamais d'un second jeu de valeurs par
+    # defaut ecrit ici : c'est ce doublon qui faisait annoncer le modele de
+    # code comme « Modele rapide » et le declarait essentiel.
+    modeles = modeles_du_code()
 
     return Rapport([
         mesurer("Python", verifier_python),
@@ -667,14 +709,20 @@ def diagnostiquer() -> Rapport:
         mesurer("Cle API", verifier_cle_api),
         mesurer("Inference (hybride)", verifier_inference),
         mesurer("Ollama", lambda: verifier_ollama(installes)),
-        mesurer("Modele rapide",
-                lambda: verifier_modele("Modele rapide", rapide, installes, essentiel=True)),
+        mesurer("Modele de conversation",
+                lambda: verifier_modele_du_code("Modele de conversation", "conversation",
+                                                modeles, installes, essentiel=True)),
         mesurer("Modele profond",
-                lambda: verifier_modele("Modele profond", profond, installes)),
+                lambda: verifier_modele_du_code("Modele profond", "profond",
+                                                modeles, installes)),
+        mesurer("Modele de code (Dioumtoukay)",
+                lambda: verifier_modele_du_code("Modele de code (Dioumtoukay)", "code",
+                                                modeles, installes)),
         mesurer("Modele d'embeddings",
                 lambda: verifier_modele_embeddings(installes)),
         mesurer("Modele de vision",
-                lambda: verifier_modele("Modele de vision", vision, installes)),
+                lambda: verifier_modele_du_code("Modele de vision", "vision",
+                                                modeles, installes)),
         mesurer("Carte graphique", verifier_gpu),
         mesurer("ffmpeg (video)", verifier_ffmpeg),
         mesurer("Tesseract (OCR)", verifier_tesseract),
