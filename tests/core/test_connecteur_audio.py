@@ -8,6 +8,11 @@ Le test qui compte vraiment est `TestLaVoixNeSortPasDeLaMachine` : une voix
 est une donnée sensible, et rien ne doit pouvoir la faire voyager.
 """
 
+import shutil
+import struct
+import wave
+from pathlib import Path
+
 import httpx
 import pytest
 
@@ -17,9 +22,28 @@ from core.connectors.audio_voix import (
     AdresseNonLocale,
     ConnecteurAudioVoix,
     ErreurDeMoteur,
+    ressemble_a_du_wav,
     sonder_le_fichier,
     url_de_voicestudio,
 )
+
+#: `ffprobe` n'est pas installé sur le CI. Les mesures qui l'exigent sont
+#: sautées là-bas — sauter n'est pas passer, et le rapport le dit.
+_SANS_FFPROBE = pytest.mark.skipif(
+    shutil.which("ffprobe") is None,
+    reason="ffprobe absent : la mesure de durée ne peut pas être faite ici")
+
+
+def _un_vrai_wav(dossier: Path, secondes: float = 1.0) -> Path:
+    """Un WAV réel d'une seconde, écrit sans ffmpeg — le CI n'en a pas."""
+    chemin = dossier / "vrai.wav"
+    cadence = 8000
+    with wave.open(str(chemin), "wb") as flux:
+        flux.setnchannels(1)
+        flux.setsampwidth(2)
+        flux.setframerate(cadence)
+        flux.writeframes(struct.pack("<h", 0) * int(cadence * secondes))
+    return chemin
 
 
 class TestLaVoixNeSortPasDeLaMachine:
@@ -130,7 +154,8 @@ class TestLaSondeNInventeRien:
 
     def test_un_fichier_absent_ne_rend_aucun_zero(self, tmp_path):
         mesures = sonder_le_fichier(tmp_path / "rien.wav")
-        assert mesures == {"duree_ms": None, "octets": None, "format": None}
+        assert mesures == {"duree_ms": None, "octets": None, "format": None,
+                           "sonde_disponible": None}
 
     def test_un_fichier_qui_n_est_pas_de_l_audio_n_a_pas_de_duree(self, tmp_path):
         faux = tmp_path / "faux.wav"
@@ -144,6 +169,115 @@ class TestLaSondeNInventeRien:
         fichier.write_bytes(b"x" * 10)
         mesures = sonder_le_fichier(fichier, ffprobe="ffprobe-qui-n-existe-pas")
         assert mesures["duree_ms"] is None
+
+    def test_une_sonde_absente_se_distingue_d_un_fichier_muet(self, tmp_path):
+        """« ffprobe manque » et « ce fichier n'a pas de durée » sont deux
+        constats différents. Les confondre a fait jeter un son valide."""
+        fichier = tmp_path / "x.wav"
+        fichier.write_bytes(b"x" * 10)
+
+        sans_sonde = sonder_le_fichier(fichier, ffprobe="ffprobe-qui-n-existe-pas")
+
+        assert sans_sonde["sonde_disponible"] is False
+        if shutil.which("ffprobe"):
+            assert sonder_le_fichier(fichier)["sonde_disponible"] is True
+
+    @_SANS_FFPROBE
+    def test_le_format_est_vraiment_mesure(self, tmp_path):
+        """`ffprobe` rend `format_name` AVANT `duration` : lire « la dernière
+        ligne » comme le format laissait ce champ toujours à None."""
+        wav = _un_vrai_wav(tmp_path)
+
+        mesures = sonder_le_fichier(wav)
+
+        assert mesures["duree_ms"] == 1000
+        assert mesures["format"] == "wav", "le format n'est toujours pas mesuré"
+
+
+class TestUnSonValideSurvitAUneSondeAbsente:
+    """Défaut mesuré le 02/09/2026, et le plus coûteux du module.
+
+    Sans `ffprobe`, `sonder_le_fichier` rend `duree_ms = None` — pour une
+    raison qui ne concerne **pas** le fichier. `_parler` traitait ce `None`
+    comme « le son est mauvais », supprimait le fichier et annonçait un échec.
+    Un WAV réel de 2 s et 176 478 octets partait ainsi à la poubelle.
+
+    La règle 2 du module tient quand même : l'en-tête du conteneur est
+    vérifiée, donc un message d'erreur renvoyé avec un code 200 reste refusé.
+    Ce qui change, c'est qu'on n'annonce **pas** une durée qu'on n'a pas
+    mesurée.
+    """
+
+    @staticmethod
+    def _connecteur_qui_produit(monkeypatch, contenu: bytes, dossier: Path,
+                                sonde_absente: bool = True):
+        import core.connectors.audio_voix as module
+
+        connecteur = ConnecteurAudioVoix(dossier=dossier)
+        monkeypatch.setattr(connecteur, "_choisir_la_voix", lambda url, demande: "piper")
+
+        class FausseReponse:
+            status_code = 200
+            content = contenu
+
+        class FauxClient:
+            def __init__(self, **kw):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def post(self, *a, **kw):
+                return FausseReponse()
+
+        monkeypatch.setattr(module.httpx, "Client", FauxClient)
+        if sonde_absente:
+            vraie = module.sonder_le_fichier
+            monkeypatch.setattr(
+                module, "sonder_le_fichier",
+                lambda chemin: vraie(chemin, ffprobe="ffprobe-qui-n-existe-pas"))
+        return connecteur
+
+    def test_le_fichier_est_garde_et_le_resultat_est_un_succes(
+            self, monkeypatch, tmp_path):
+        son = _un_vrai_wav(tmp_path).read_bytes()
+        connecteur = self._connecteur_qui_produit(monkeypatch, son, tmp_path / "sortie")
+
+        resultat = connecteur._parler("http://127.0.0.1:3900", texte="bonjour")
+
+        assert resultat.statut is Statut.SUCCES, "un son valide a encore ete jete"
+        assert Path(resultat.preuve).is_file()
+
+    def test_la_duree_non_mesuree_n_est_pas_annoncee(self, monkeypatch, tmp_path):
+        """Annoncer une durée qu'on n'a pas mesurée serait pire que se taire."""
+        son = _un_vrai_wav(tmp_path).read_bytes()
+        connecteur = self._connecteur_qui_produit(monkeypatch, son, tmp_path / "sortie")
+
+        resultat = connecteur._parler("http://127.0.0.1:3900", texte="bonjour")
+
+        assert resultat.detail["duree_ms"] is None
+        assert "non verifiee" in resultat.message
+
+    def test_une_erreur_en_json_avec_un_code_200_reste_refusee(
+            self, monkeypatch, tmp_path):
+        """La règle 2 ne s'affaiblit pas : ce n'est pas du son, ça ne passe pas."""
+        connecteur = self._connecteur_qui_produit(
+            monkeypatch, b'{"error": "modele absent"}', tmp_path / "sortie")
+
+        resultat = connecteur._parler("http://127.0.0.1:3900", texte="bonjour")
+
+        assert resultat.statut is Statut.ECHEC
+        assert not list((tmp_path / "sortie").glob("*.wav")), "le faux son a ete garde"
+
+    def test_l_entete_wav_est_reconnue_pour_ce_qu_elle_est(self, tmp_path):
+        assert ressemble_a_du_wav(_un_vrai_wav(tmp_path)) is True
+
+        pas_du_son = tmp_path / "faux.wav"
+        pas_du_son.write_bytes(b'{"error": "modele absent"}')
+        assert ressemble_a_du_wav(pas_du_son) is False
 
 
 class TestCapacites:

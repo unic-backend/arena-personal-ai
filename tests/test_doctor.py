@@ -9,6 +9,7 @@ précisément ce qui a permis à cette ligne de survivre.
 `test_aucun_secret_n_est_affiche` est celui qui protège le propriétaire quand il
 colle son diagnostic dans une conversation.
 """
+import subprocess
 import sys
 from pathlib import Path
 
@@ -500,3 +501,62 @@ class TestModeleEmbeddings:
 
         assert resultat.etat == doctor.ABSENT
         assert "indeterminable" in resultat.detail
+
+
+class TestUnOutilInstalleNEstJamaisDitAbsent:
+    """Mesure du 02/09/2026 : `ffmpeg` rapporte « absent » au tout premier
+    passage du diagnostic, puis « repond » aux quatre suivants, sans que rien
+    ne change entre-temps.
+
+    Le detail qui compte n'est pas le clignotement — c'est le CONSEIL qui
+    l'accompagnait : « winget install ffmpeg », adresse a quelqu'un qui l'a
+    deja installe. Un diagnostic qui envoie reparer ce qui marche coute plus
+    qu'un diagnostic muet.
+    """
+
+    def test_une_commande_absente_se_dit_absente(self, monkeypatch):
+        monkeypatch.setattr(doctor.shutil, "which", lambda _: None)
+
+        assert doctor._sonder_commande("ffmpeg", ["-version"]) == doctor.PAS_INSTALLE
+
+    def test_une_commande_installee_qui_ne_repond_pas_est_muette_pas_absente(
+            self, monkeypatch):
+        monkeypatch.setattr(doctor.shutil, "which", lambda _: "/usr/bin/ffmpeg")
+
+        def expire(*a, **kw):
+            raise subprocess.TimeoutExpired(cmd="ffmpeg", timeout=doctor.DELAI_SONDE)
+
+        monkeypatch.setattr(doctor.subprocess, "run", expire)
+
+        assert doctor._sonder_commande("ffmpeg", ["-version"]) == doctor.INSTALLE_MAIS_MUET
+
+    def test_ffmpeg_muet_n_envoie_pas_installer_ce_qui_est_deja_la(self, monkeypatch):
+        monkeypatch.setattr(doctor, "_sonder_commande",
+                            lambda *a, **kw: doctor.INSTALLE_MAIS_MUET)
+
+        verification = doctor.verifier_ffmpeg()
+
+        assert verification.etat is not doctor.ABSENT
+        # Le conseil nuisible est precis : « installe-le ». Verifier une
+        # installation existante, lui, reste un conseil valable.
+        assert "winget install" not in (verification.remede or "")
+        assert "installe" in verification.detail
+
+    def test_ffmpeg_vraiment_absent_dit_toujours_comment_l_installer(self, monkeypatch):
+        monkeypatch.setattr(doctor, "_sonder_commande",
+                            lambda *a, **kw: doctor.PAS_INSTALLE)
+
+        verification = doctor.verifier_ffmpeg()
+
+        assert verification.etat is doctor.ABSENT
+        assert "ffmpeg" in (verification.remede or "")
+
+    def test_le_contrat_des_autres_sondes_ne_bouge_pas(self, monkeypatch):
+        """`_commande_repond` reste un booleen : les autres sondes s'en servent."""
+        monkeypatch.setattr(doctor, "_sonder_commande",
+                            lambda *a, **kw: doctor.INSTALLE_ET_REPOND)
+        assert doctor._commande_repond("docker", ["info"]) is True
+
+        monkeypatch.setattr(doctor, "_sonder_commande",
+                            lambda *a, **kw: doctor.INSTALLE_MAIS_MUET)
+        assert doctor._commande_repond("docker", ["info"]) is False

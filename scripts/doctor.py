@@ -233,16 +233,43 @@ def verifier_modele_embeddings(installes: Optional[List[str]]) -> Verification:
 
 # --- Les capacites qui dependent d'un outil ---------------------------------------
 
-def _commande_repond(binaire: str, arguments: List[str]) -> bool:
-    """Lance vraiment la commande. `shutil.which` dirait seulement qu'un fichier existe."""
+#: Les trois etats d'un outil externe. « installe mais muet » n'est pas
+#: « absent », et les confondre fait dire au diagnostic d'installer ce qui est
+#: deja la — le pire conseil qu'il puisse donner.
+INSTALLE_ET_REPOND = "repond"
+PAS_INSTALLE = "absent"
+INSTALLE_MAIS_MUET = "muet"
+
+#: De quoi laisser un binaire demarrer a froid. 10 s ne suffisaient pas :
+#: mesure du 02/09/2026 sur cette machine, `ffmpeg` a ete rapporte « absent »
+#: au tout premier passage puis « repond » aux quatre suivants, sans que rien
+#: ne change entre-temps. La cause exacte de ce premier echec n'a pas ete
+#: capturee — c'est justement pour ca que l'etat rendu ne doit plus dependre
+#: d'elle.
+DELAI_SONDE = 30
+
+
+def _sonder_commande(binaire: str, arguments: List[str]) -> str:
+    """L'etat d'un outil externe : absent, muet, ou il repond.
+
+    `shutil.which` dit seulement qu'un fichier existe ; on lance donc vraiment
+    la commande. Mais quand elle ne repond pas alors que le binaire est bien
+    la, l'outil n'est pas absent : il n'a pas repondu. Le distinguer evite
+    d'envoyer le proprietaire installer ce qu'il a deja.
+    """
     if shutil.which(binaire) is None:
-        return False
+        return PAS_INSTALLE
     try:
         acheve = subprocess.run([binaire, *arguments], capture_output=True,
-                                timeout=10, check=False)
+                                timeout=DELAI_SONDE, check=False)
     except Exception:  # noqa: BLE001
-        return False
-    return acheve.returncode == 0
+        return INSTALLE_MAIS_MUET
+    return INSTALLE_ET_REPOND if acheve.returncode == 0 else INSTALLE_MAIS_MUET
+
+
+def _commande_repond(binaire: str, arguments: List[str]) -> bool:
+    """Vrai quand l'outil est la ET repond. Le contrat des sondes existantes."""
+    return _sonder_commande(binaire, arguments) == INSTALLE_ET_REPOND
 
 
 def verifier_gpu(sonde: Optional[Callable[[], bool]] = None) -> Verification:
@@ -257,12 +284,28 @@ def verifier_gpu(sonde: Optional[Callable[[], bool]] = None) -> Verification:
 
 
 def verifier_ffmpeg(sonde: Optional[Callable[[], bool]] = None) -> Verification:
-    presente = sonde() if sonde else _commande_repond("ffmpeg", ["-version"])
-    if not presente:
+    """ffmpeg est la porte de toute la video : analyse, sous-titres, montage.
+
+    Trois etats, pas deux. Un ffmpeg installe qui n'a pas repondu n'est pas un
+    ffmpeg absent, et lui dire « installe-le » quand il l'a deja l'envoie
+    chercher un probleme qui n'existe pas.
+    """
+    if sonde is not None:
+        etat = INSTALLE_ET_REPOND if sonde() else PAS_INSTALLE
+    else:
+        etat = _sonder_commande("ffmpeg", ["-version"])
+    if etat == PAS_INSTALLE:
         return Verification(
             "ffmpeg (video)", ABSENT,
             "absent : pas d'analyse video, pas de sous-titres, pas de montage",
             "winget install ffmpeg")
+    if etat == INSTALLE_MAIS_MUET:
+        return Verification(
+            "ffmpeg (video)", EN_PANNE,
+            f"installe, mais n'a pas repondu en {DELAI_SONDE}s : la video est "
+            "indisponible pour l'instant, sans qu'il y ait rien a installer",
+            "Relancer le diagnostic ; si ca se repete, verifier l'installation "
+            "de ffmpeg.")
     return Verification("ffmpeg (video)", OK, "repond")
 
 
