@@ -1,16 +1,16 @@
-# Permissions par compte, service, action et niveau de risque.
+﻿# Permissions par compte, service, action et niveau de risque.
 #
 # Ce fichier est modifiable par le proprietaire : c'est la specification qui le
-# demande (« The user must be able to change these policies »). Le code ne
+# demande (Â« The user must be able to change these policies Â»). Le code ne
 # contient aucune de ces decisions.
 #
 # Trois decisions possibles :
 #   ALLOWED       l'action part sans rien demander
-#   CONFIRMATION  tout est prepare, l'action attend un « oui »
+#   CONFIRMATION  tout est prepare, l'action attend un Â« oui Â»
 #   DENIED        l'action ne part pas, meme demandee
 #
 # Trois niveaux de risque, repris de la specification : LOW, MEDIUM, HIGH.
-# Le risque ne decide rien par lui-meme — il est affiche au moment de demander
+# Le risque ne decide rien par lui-meme â€” il est affiche au moment de demander
 # la confirmation, pour que le proprietaire voie ce qu'il autorise.
 #
 # REGLE QUI NE SE CONFIGURE PAS : une action absente de ce fichier est REFUSEE.
@@ -79,7 +79,7 @@ services:
   # Donnees publiques du Senegal (GalsenAPI). Lecture seule, sans identifiant :
   # le connecteur ne declare aucune capacite d'ecriture, donc il n'y a rien
   # d'autre a autoriser ici. Ajouter une action d'ecriture dans ce fichier ne la
-  # ferait pas exister — une capacite non declaree n'atteint jamais le service.
+  # ferait pas exister â€” une capacite non declaree n'atteint jamais le service.
   senegal_data:
     read:        {decision: ALLOWED,      risque: LOW}
     search:      {decision: ALLOWED,      risque: LOW}
@@ -90,7 +90,7 @@ services:
   # WRITE_FILES. Lire les modeles ou la galerie ne coute rien.
   #
   # Pourquoi elle n'est PAS dans INTERRUPTEURS_OBLIGATOIRES : ce plancher du
-  # code est reserve aux trois actions irreversibles — envoyer, publier,
+  # code est reserve aux trois actions irreversibles â€” envoyer, publier,
   # supprimer. Une video generee s'efface. Un test le dit
   # (test_les_trois_interrupteurs_bloquants_couvrent_les_actions_irreversibles),
   # il a refuse l'ajout, et il avait raison.
@@ -99,8 +99,8 @@ services:
   # c'est voulu. Annuler REDUIT un effet, elle n'en emet aucun, et demander une
   # confirmation pour arreter une generation qui s'emballe sur la carte
   # graphique serait nuisible au moment exact ou il faut aller vite. Ecrit ici
-  # parce qu'un audit automatique signale cette ligne comme une « ecriture sans
-  # confirmation » (mesure du 01/09/2026) et qu'un futur lecteur la corrigerait
+  # parce qu'un audit automatique signale cette ligne comme une Â« ecriture sans
+  # confirmation Â» (mesure du 01/09/2026) et qu'un futur lecteur la corrigerait
   # a tort.
   video_generation:
     read:        {decision: ALLOWED,      risque: LOW}
@@ -109,7 +109,7 @@ services:
 
   # Devis UniC Plaquiste. Chiffrer ne coute rien et n'ecrit rien. Produire le
   # PDF ecrit un document qui partira chez un client : confirmation, et
-  # coupe-circuit WRITE_FILES. Ce n'est pas irreversible — un fichier s'efface —
+  # coupe-circuit WRITE_FILES. Ce n'est pas irreversible â€” un fichier s'efface â€”
   # donc pas de place dans INTERRUPTEURS_OBLIGATOIRES.
   plaquiste:
     read:        {decision: ALLOWED,      risque: LOW}
@@ -117,7 +117,7 @@ services:
 
   # Montage video. Batir une timeline et la relire ne touche a rien : c'est
   # une structure en memoire, pas un fichier. Rendre ecrit une video sur le
-  # disque et monopolise le processeur — meme logique que le devis PDF et
+  # disque et monopolise le processeur â€” meme logique que le devis PDF et
   # l'export OpenTakeoff : confirmation, coupe-circuit WRITE_FILES.
   #
   # Pas dans INTERRUPTEURS_OBLIGATOIRES pour la meme raison que la generation
@@ -127,6 +127,9 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     document:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
 
+  # Xaar Kaname / Deep-Live-Cam : transformation locale d'une image/video.
+  # Le moteur ecrit un nouvel artefact sur disque et utilise le GPU :
+  # confirmation obligatoire + coupe-circuit WRITE_FILES.
   # Audio et voix (VoiceStudio, pilote par HTTP en local). Ecouter un fichier
   # deja sur la machine ne cree rien ; produire de la parole ecrit un fichier
   # WAV, donc confirmation et coupe-circuit WRITE_FILES, comme le devis PDF.
@@ -138,12 +141,12 @@ services:
 
   # OpenTakeoff : mesurer un plan PDF ne touche a rien hors du processus qui
   # le lit. Exporter ecrit le rapport et le plan marque a cote du plan source
-  # — meme logique que le devis PDF : confirmation, coupe-circuit WRITE_FILES.
+  # â€” meme logique que le devis PDF : confirmation, coupe-circuit WRITE_FILES.
   takeoff:
     read:        {decision: ALLOWED,      risque: LOW}
     export:      {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
 
-# Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
+# Regles par compte â€” ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail
 # recurrents et fiables. C'est ce que fait une regle de compte : mettre

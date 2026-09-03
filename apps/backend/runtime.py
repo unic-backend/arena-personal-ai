@@ -56,6 +56,7 @@ from core.connectors.opentakeoff import ConnecteurOpenTakeoff
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.stockage_jetons import charger_tout as _charger_jetons_persistants
 from core.connectors.wan2gp import Wan2GPConnector
+from core.connectors.xaar_kaname import XaarKanameConnector
 from core.conversations.depot import DepotConversations
 from core.execution.disjoncteur import Disjoncteur
 from core.execution.hooks import RegistreDeCrochets
@@ -146,6 +147,11 @@ registre.declarer(
     "devis",
     lambda: DevisConnector(acces=acces, journal=journal, file_attente=file_attente,
                            crochets=crochets),
+)
+registre.declarer(
+    "xaar_kaname",
+    lambda: XaarKanameConnector(acces=acces, journal=journal, file_attente=file_attente,
+                                crochets=crochets),
 )
 # Metre de plan PDF : moteur OpenTakeoff, installe a cote (DEC-0008), jamais
 # dans ce depot. Non configure tant qu'il n'est pas construit sur sa machine —
@@ -342,7 +348,7 @@ plaquiste_agent = PlaquisteAgent(
 video_production_agent = VideoProductionAgent(
     provider=deep_provider, memory=memory, provider_vision=ollama_vision,
     video_analyzer_agent=video_agent, audio_agent=audio_agent,
-    montage_agent=montage_agent)
+    montage_agent=montage_agent, registre=registre)
 
 memory.set_fact("user_profile", "owner", "Ousmane", {"role": "Propriétaire et créateur d'Usman"})
 

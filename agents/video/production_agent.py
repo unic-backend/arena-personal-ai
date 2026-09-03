@@ -51,7 +51,7 @@ logger = logging.getLogger("usman.agent.production_video")
 #: externes (HTTP) ; le montage est un travail ffmpeg (CPU). Aucun des trois
 #: n'entre dans ce groupe.
 RESSOURCE_GPU_LOCAL = "gpu_local"
-CAPACITES_GPU_LOCAL = frozenset({"vision", "wangp"})
+CAPACITES_GPU_LOCAL = frozenset({"vision", "wangp", "xaar_kaname"})
 
 #: Les statuts, dans les deux formes que porte le depot, qui disent qu'une
 #: etape a fait ce qu'elle pouvait honnetement faire — produit un resultat,
@@ -319,7 +319,7 @@ class VideoProductionAgent(BaseAgent):
         montage reussi — jamais suppose. Une generation/narration seulement
         SOUMISE (`NEEDS_CONFIRMATION`) n'a pas encore de fichier reel."""
         for etape in reversed(graphe):
-            if etape.capacite != "montage":
+            if etape.capacite not in ("montage", "xaar_kaname"):
                 continue
             trace = resultat.trace_de(etape.id)
             if trace is None or trace.resultat is None:

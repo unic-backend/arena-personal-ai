@@ -92,6 +92,24 @@ class MontageAgentDouble:
         return self._reponse
 
 
+class RegistreXaarDouble:
+    def __init__(self, reponse=None):
+        self.appels = []
+        self._reponse = reponse or {
+            "statut": "SUCCESS",
+            "message": "Xaar termine",
+            "output": "sortie_xaar.jpg",
+        }
+
+    async def executer(self, connecteur, capacite, **parametres):
+        self.appels.append({
+            "connecteur": connecteur,
+            "capacite": capacite,
+            "parametres": parametres,
+        })
+        return self._reponse
+
+
 @pytest.fixture
 def reference(tmp_path):
     fichier = tmp_path / "chantier.jpg"
@@ -101,7 +119,7 @@ def reference(tmp_path):
 
 class TestPlanRefuse:
     async def test_une_capacite_hors_liste_refuse_le_plan(self):
-        modele = ModeleDouble(['[{"id": "a", "capacite": "xaar_kaname"}]'])
+        modele = ModeleDouble(['[{"id": "a", "capacite": "capacite_inexistante"}]'])
         agent = VideoProductionAgent(provider=modele)
 
         resultat = await agent.run("fabrique une video")
@@ -131,7 +149,7 @@ class TestPlanRefuse:
         agent = VideoProductionAgent(provider=modele)
 
         resultat = await agent.run("fabrique une video",
-                                   context={"capacites": ["xaar_kaname"]})
+                                   context={"capacites": ["capacite_inexistante"]})
 
         assert resultat["status"] == "error"
         assert modele.prompts == []
@@ -293,3 +311,67 @@ class TestRessourceGpuPartagee:
         duree = time.perf_counter() - depart
 
         assert duree >= 0.15, "deux etapes vision (GPU local) ont tourne en meme temps"
+
+class TestXaarKaname:
+    async def test_xaar_kaname_transmet_les_references_au_registre(self, tmp_path):
+        source = tmp_path / "source.jpg"
+        cible = tmp_path / "cible.jpg"
+        source.write_bytes(b"source")
+        cible.write_bytes(b"cible")
+
+        modele = ModeleDouble([
+            '[{"id": "xaar", "capacite": "xaar_kaname", '
+            '"parametres": {"source_reference": 0, "target_reference": 1}}]'
+        ])
+        registre = RegistreXaarDouble()
+
+        agent = VideoProductionAgent(
+            provider=modele,
+            registre=registre,
+        )
+
+        resultat = await agent.run(
+            "traite la cible avec la source",
+            context={"references": [str(source), str(cible)]},
+        )
+
+        assert resultat["status"] == "success"
+        assert len(registre.appels) == 1
+
+        appel = registre.appels[0]
+        assert appel["connecteur"] == "xaar_kaname"
+        assert appel["capacite"] == "traiter"
+        assert appel["parametres"]["source"] == str(source.resolve())
+        assert appel["parametres"]["target"] == str(cible.resolve())
+        assert appel["parametres"]["many_faces"] is False
+    async def test_xaar_kaname_produit_un_artefact_final(self, tmp_path):
+        source = tmp_path / "source.jpg"
+        cible = tmp_path / "cible.jpg"
+        sortie = tmp_path / "sortie_xaar.jpg"
+        source.write_bytes(b"source")
+        cible.write_bytes(b"cible")
+        sortie.write_bytes(b"resultat-xaar")
+
+        modele = ModeleDouble([
+            '[{"id": "xaar", "capacite": "xaar_kaname", '
+            '"parametres": {"source_reference": 0, "target_reference": 1}}]'
+        ])
+        registre = RegistreXaarDouble(reponse={
+            "statut": "SUCCESS",
+            "message": "Xaar termine",
+            "preuve": str(sortie),
+            "output": str(sortie),
+        })
+
+        agent = VideoProductionAgent(
+            provider=modele,
+            registre=registre,
+        )
+
+        resultat = await agent.run(
+            "traite la cible avec la source",
+            context={"references": [str(source), str(cible)]},
+        )
+
+        assert resultat["status"] == "success"
+        assert resultat["projet"]["artefact_final"] == str(sortie)

@@ -39,10 +39,10 @@ class TestValiderGraphe:
     def test_une_capacite_hors_liste_est_refusee_et_nommee(self):
         etapes, refus = valider_graphe([
             {"id": "a", "capacite": "vision"},
-            {"id": "b", "capacite": "xaar_kaname"},
+            {"id": "b", "capacite": "capacite_inexistante"},
         ])
         assert [e.id for e in etapes] == ["a"]
-        assert any("xaar_kaname" in r for r in refus)
+        assert any("capacite_inexistante" in r for r in refus)
 
     def test_toutes_les_capacites_video_sont_acceptees(self):
         plan = [{"id": f"e{i}", "capacite": c} for i, c in enumerate(CAPACITES_VIDEO)]

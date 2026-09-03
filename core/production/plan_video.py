@@ -1,10 +1,10 @@
-"""Traduire un objectif Video en graphe de production — sans jamais laisser
+"""Traduire un objectif Video en graphe de production â€” sans jamais laisser
 le modele piloter directement les capacites reelles.
 
 Meme discipline que `core/montage/planificateur.py`, deja verifiee sur le
 montage : une capacite hors de la liste fermee est refusee et nommee,
 jamais devinee. Un plan invalide n'est jamais remplace par un plan par
-defaut — le refus se rapporte avec sa raison, il ne se simule pas.
+defaut â€” le refus se rapporte avec sa raison, il ne se simule pas.
 """
 from __future__ import annotations
 
@@ -14,13 +14,13 @@ from typing import Any, List, Mapping, Tuple
 from core.production.etat_projet import EtapeProjet
 
 #: La liste fermee des capacites reelles qu'un projet Video peut composer
-#: (DEC-0037). « vision » et « transcription » sont des LECTURES ; « wangp »,
-#: « moneyprinter » et « narration » sont des ECRITURES qui passent par la
-#: file de confirmation existante (`core/actions/attente.py`, verrouillee) —
-#: rien n'est confirme a la place du proprietaire. « montage » assemble ce
+#: (DEC-0037). Â« vision Â» et Â« transcription Â» sont des LECTURES ; Â« wangp Â»,
+#: Â« moneyprinter Â» et Â« narration Â» sont des ECRITURES qui passent par la
+#: file de confirmation existante (`core/actions/attente.py`, verrouillee) â€”
+#: rien n'est confirme a la place du proprietaire. Â« montage Â» assemble ce
 #: que les etapes precedentes ont reellement produit.
 CAPACITES_VIDEO: Tuple[str, ...] = (
-    "vision", "transcription", "wangp", "moneyprinter", "narration", "montage",
+    "vision", "transcription", "wangp", "moneyprinter", "narration", "xaar_kaname", "montage",
 )
 
 
@@ -31,7 +31,7 @@ class PlanRefuse(Exception):
 def extraire_json(texte: str) -> Any:
     """Le premier objet ou tableau JSON du texte du modele.
 
-    Meme fonction que `core/montage/planificateur.py:extraire_json` —
+    Meme fonction que `core/montage/planificateur.py:extraire_json` â€”
     reecrite ici plutot que reimportee : les deux modules restent
     independants, et un futur changement du format de montage ne doit pas
     silencieusement affecter celui du projet Video.
@@ -53,16 +53,16 @@ def valider_graphe(
     """Transforme ce que le modele a produit en graphe executable.
 
     Args:
-        brut: le JSON deja parse — une liste d'etapes, ou un objet portant
+        brut: le JSON deja parse â€” une liste d'etapes, ou un objet portant
             une cle `etapes`/`graphe`.
-        capacites_autorisees: le sous-ensemble ouvert pour CE projet — le
+        capacites_autorisees: le sous-ensemble ouvert pour CE projet â€” le
             mode TEAM (choix explicite du proprietaire) restreint la liste
             fermee par defaut, il ne l'elargit jamais.
 
     Returns:
         `(etapes, refus)`. Les etapes sont sures : capacite dans la liste
         fermee, id unique, dependances citees comme de simples chaines
-        (une reference vers un id inconnu n'est jamais devinee — l'executeur
+        (une reference vers un id inconnu n'est jamais devinee â€” l'executeur
         la traite deja comme "jamais resolue", explicitement, sans boucler).
         `refus` nomme chaque ligne ecartee et sa raison.
 
@@ -94,7 +94,7 @@ def valider_graphe(
 
         capacite = str(ligne.get("capacite") or "").strip()
         if capacite not in capacites_autorisees:
-            refus.append(f"#{numero} {id_etape} : capacite refusee « {capacite or '(aucune)'} ».")
+            refus.append(f"#{numero} {id_etape} : capacite refusee Â« {capacite or '(aucune)'} Â».")
             continue
 
         parametres = ligne.get("parametres") or {}
@@ -124,14 +124,14 @@ def valider_graphe(
 
 
 #: Une capacite d'ECRITURE : elle passe par la file de confirmation
-#: existante (`core/actions/attente.py`, verrouillee — DEC-0013). Sa
+#: existante (`core/actions/attente.py`, verrouillee â€” DEC-0013). Sa
 #: soumission rend `NEEDS_CONFIRMATION`, jamais un fichier immediatement
 #: disponible : WanGP/MoneyPrinterTurbo generent en arriere-plan (le
-#: `preuve` d'une soumission est un identifiant de tache, pas un chemin —
+#: `preuve` d'une soumission est un identifiant de tache, pas un chemin â€”
 #: `core/connectors/wan2gp.py`/`moneyprinter.py`), et VoiceStudio n'ecrit
 #: son fichier reel qu'une fois la confirmation passee
 #: (`core/connectors/audio_voix.py`).
-CAPACITES_ECRITURE = frozenset({"wangp", "moneyprinter", "narration"})
+CAPACITES_ECRITURE = frozenset({"wangp", "moneyprinter", "narration", "xaar_kaname"})
 
 
 def _sans_montage_sur_ecriture_directe(
@@ -140,7 +140,7 @@ def _sans_montage_sur_ecriture_directe(
     """Refuse un montage qui dependrait directement d'une ecriture.
 
     Le fichier reel d'une generation ou d'une narration n'existe qu'APRES
-    confirmation du proprietaire (jamais dans le meme passage) — le
+    confirmation du proprietaire (jamais dans le meme passage) â€” le
     detecter ici, au moment du plan, vaut mieux qu'un montage qui echouerait
     plus tard faute de media, sans que la vraie raison soit dite.
     """
@@ -152,7 +152,7 @@ def _sans_montage_sur_ecriture_directe(
         if etape.capacite == "montage" and ecritures:
             refus.append(
                 f"{etape.id} : ne peut pas dependre de {', '.join(ecritures)} "
-                "— une ecriture (generation ou narration) passe par "
+                "â€” une ecriture (generation ou narration) passe par "
                 "confirmation, son fichier reel n'existe qu'apres, jamais "
                 "dans le meme passage.")
             continue
@@ -169,7 +169,7 @@ def prompt_de_planification(
 
     Les references figurent par NOM seul (index dans la liste), jamais par
     chemin : le modele ne doit designer aucun fichier qu'on ne lui a pas
-    ouvert — meme discipline que `core/montage/planificateur.py`.
+    ouvert â€” meme discipline que `core/montage/planificateur.py`.
     """
     liste_refs = "\n".join(f"- ref{i}" for i in range(len(references))) or "- (aucune reference)"
     liste_capacites = "\n".join(f"- {c}" for c in capacites_autorisees)
@@ -183,12 +183,19 @@ Chaque etape :
 Capacites autorisees, et elles seules :
 {liste_capacites}
 
-N'utilise QUE ce qui est reellement necessaire a l'objectif — ne compose pas
+N'utilise QUE ce qui est reellement necessaire a l'objectif â€” ne compose pas
 une capacite qui ne sert a rien ici. Une etape ne depend que d'un id
 d'etape de CE plan.
 
 References disponibles (cite-les par nom, jamais par chemin) :
 {liste_refs}
+
+Contrats de parametres :
+- vision : parametres.reference = index d'une reference image.
+- transcription : parametres.reference = index d'une reference audio/video.
+- xaar_kaname : parametres.source_reference = index de l'image source,
+  parametres.target_reference = index de l'image cible.
+- montage : parametres.references = liste d'indices de references ou d'artefacts.
 
 Objectif du proprietaire :
 {objectif}
