@@ -2,6 +2,27 @@
 
 ## [Non publié]
 
+### Corrigé — 03/09/2026 — Xaar Kaname existait partout sauf sur l'écran d'où on le lance
+
+Le propriétaire demande comment utiliser Deep Live Cam depuis son interface. La
+chaîne était complète — modale « Projet vidéo » → `POST /api/video/projet` →
+agent vidéo → connecteur → confirmation → moteur — et `xaar_kaname` **manquait
+dans la seule liste qui décide de ce qu'on peut cocher**.
+
+Le commentaire au-dessus de cette liste prévenait déjà qu'elle devait refléter
+`plan_video.py:CAPACITES_VIDEO` « exactly », et redoutait la dérive inverse :
+proposer une capacité que le serveur refuse. C'est l'autre sens qui s'est
+produit — une capacité que rien ne permettait de choisir. **Un commentaire
+n'empêche pas une dérive, il la raconte après coup.**
+
+3 tests (`tests/test_capacites_video_pwa.py`) mesurent l'égalité des deux
+listes, contenu et ordre, et exigent une icône et un libellé pour chaque
+capacité — une capacité sans icône fait planter la modale au rendu.
+
+Ce qui reste vrai et ne dépend pas de ce correctif : le moteur ne tourne que
+sur le PC du propriétaire (`tools/video/xaar_kaname/`, hors du dépôt, AGPL).
+Depuis Railway il n'existe pas, et `scripts/doctor.py` le dit.
+
 ### Corrigé — 03/09/2026 — La coupure de l'ancien défaut dormait encore sur son téléphone
 
 **Mesuré à 02:19.** Le correctif de 01:36 empêchait une nouvelle coupure ; il

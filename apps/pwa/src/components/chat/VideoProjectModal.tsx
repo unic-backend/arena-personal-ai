@@ -14,7 +14,7 @@ import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle, Ban, Check, Clapperboard, Eye, FileVideo2, Film, Loader2,
-  Mic2, Paperclip, Scissors, Sparkles, Subtitles, Video, X,
+  Mic2, Paperclip, Scissors, Sparkles, Subtitles, UserRoundCog, Video, X,
 } from 'lucide-react';
 import {
   CapaciteVideo, CAPACITES_VIDEO, EtapeProjetResultat, useVideoProject,
@@ -29,6 +29,7 @@ const ICONE_CAPACITE: Record<CapaciteVideo, typeof Eye> = {
   wangp: Film,
   moneyprinter: Sparkles,
   narration: Mic2,
+  xaar_kaname: UserRoundCog,
   montage: Scissors,
 };
 
@@ -38,6 +39,7 @@ function labelCapacite(c: CapaciteVideo, fr: boolean): string {
     transcription: ['Transcription', 'Transcription'],
     wangp: ['Génération de scène', 'Scene generation'],
     moneyprinter: ['Production auto', 'Auto production'],
+    xaar_kaname: ['Visage (Xaar Kaname)', 'Face (Xaar Kaname)'],
     narration: ['Narration', 'Narration'],
     montage: ['Montage', 'Editing'],
   };

@@ -23,6 +23,7 @@ export const CAPACITES_VIDEO = [
   'wangp',
   'moneyprinter',
   'narration',
+  'xaar_kaname',
   'montage',
 ] as const;
 
