@@ -12,8 +12,23 @@ import {
 import { normaliserSources } from '../activity/sources';
 import { estDebitDepasse, pousserEtTirer } from '../sync/conversations';
 import { useCapacite } from '../capacites';
-import { localTransport } from '../activity/transport';
-import { makeRemoteTransport } from '../activity/remoteTransport';
+import { choisirTransport } from '../activity/transport';
+
+/**
+ * Rend l'erreur lisible par le proprietaire, pas par un developpeur.
+ *
+ * `BACKEND_OFFLINE` est le seul cas traduit : c'est celui qu'il rencontre
+ * quand son serveur decroche. Avant, il ne le rencontrait pas du tout — une
+ * demo du navigateur repondait a sa place en se faisant passer pour Usman
+ * (mesure du 03/09/2026). Le reste garde sa forme brute : une erreur inconnue
+ * qu'on habillerait en phrase rassurante serait le meme defaut, en plus petit.
+ */
+function messageErreur(err: unknown): string {
+  if (err instanceof Error && err.message === 'BACKEND_OFFLINE') {
+    return useI18n.getState().t('chat.offline');
+  }
+  return String(err);
+}
 import { activeRemoteCfg } from './backendStore';
 import { AgentContext } from '../agent/orchestrator';
 import { loadVFS, saveVFS, resetVFS, VFS } from '../agent/vfs';
@@ -545,13 +560,14 @@ export const useChat = create<ChatState>((set, get) => {
     const startedAt = Date.now();
     try {
       /* Video editing stays on-device; other attachments use the secure remote upload. */
-      const remote = attachments.some((value) => value.kind === 'video') ? null : activeRemoteCfg();
+      const surAppareil = attachments.some((value) => value.kind === 'video');
+      const remote = surAppareil ? null : activeRemoteCfg();
       const conv = get().conversations.find((c) => c.id === convId);
       const history = (conv?.messages ?? [])
         .filter((m) => m.text && m.id !== assistantMsg.id)
         .slice(-8)
         .map((m) => ({ role: m.role, content: m.text }));
-      const transport = remote ? makeRemoteTransport(remote) : localTransport;
+      const transport = choisirTransport(remote, surAppareil);
       const stream = transport.run({ text: visibleText, video, attachments, history }, vfsContext, abort.signal);
       for await (const chunk of stream) {
         log(chunk);
@@ -593,7 +609,7 @@ export const useChat = create<ChatState>((set, get) => {
               ...m,
               status: cancelled ? 'cancelled' : 'error',
               text: m.live || (cancelled ? useI18n.getState().t('msg.cancelled') : ''),
-              error: cancelled ? undefined : String(err),
+              error: cancelled ? undefined : messageErreur(err),
               activity: m.activity,
             }
           : m,
@@ -703,7 +719,7 @@ export const useChat = create<ChatState>((set, get) => {
         .slice(-8)
         .map((m) => ({ role: m.role, content: m.text }));
 
-      const transport = remote ? makeRemoteTransport(remote) : localTransport;
+      const transport = choisirTransport(remote);
       const stream = transport.run({ text: trimmedText, history }, vfsContext, abort.signal);
 
       for await (const chunk of stream) {
@@ -744,7 +760,7 @@ export const useChat = create<ChatState>((set, get) => {
               ...m,
               status: cancelled ? 'cancelled' : 'error',
               text: m.live || (cancelled ? useI18n.getState().t('msg.cancelled') : ''),
-              error: cancelled ? undefined : String(err),
+              error: cancelled ? undefined : messageErreur(err),
               activity: m.activity,
             }
           : m,
@@ -855,7 +871,7 @@ export const useChat = create<ChatState>((set, get) => {
         .slice(-8)
         .map((m) => ({ role: m.role, content: m.text }));
 
-      const transport = remote ? makeRemoteTransport(remote) : localTransport;
+      const transport = choisirTransport(remote);
       const stream = transport.run({ text: precedingUserMsg.text, history }, vfsContext, abort.signal);
 
       for await (const chunk of stream) {
@@ -895,7 +911,7 @@ export const useChat = create<ChatState>((set, get) => {
               ...m,
               status: cancelled ? 'cancelled' : 'error',
               text: m.live || (cancelled ? useI18n.getState().t('msg.cancelled') : ''),
-              error: cancelled ? undefined : String(err),
+              error: cancelled ? undefined : messageErreur(err),
               activity: m.activity,
             }
           : m,

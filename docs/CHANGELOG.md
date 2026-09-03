@@ -2,6 +2,48 @@
 
 ## [Non publié]
 
+### Corrigé — 03/09/2026 — Une démo du navigateur répondait à sa place, signée Usman
+
+**Mesuré sur son téléphone, à 01:36.** Il écrit « Bonjour ». Une réponse
+arrive en 2,4 s, avec une carte d'activité verte : « je suis **Usman**, un
+atelier IA observable ». Elle lui propose « exécution terminal réelle » et
+« une vraie arborescence projet ».
+
+Rien de tout cela n'était vrai, et son IA n'avait pas parlé.
+
+| Ce qui se passait | Où |
+|---|---|
+| Le texte est écrit en dur, aucun modèle n'intervient | `strings.ts:424` |
+| Un filtre sur le mot « bonjour » le déclenche | `orchestrator.ts:608` |
+| Serveur décroché → le navigateur répond à sa place | `chatStore.ts:554` |
+| Une seule sonde ratée débranchait le serveur, et c'était enregistré | `backendStore.ts:84` |
+| Le « projet » proposé est un faux dépôt nommé *pulseboard*, dans le `localStorage` | `vfs.ts` |
+| L'état du serveur n'existait que dans le panneau backend, jamais dans la conversation | — |
+
+C'est le défaut que ce dépôt refuse partout ailleurs — annoncer une capacité
+qu'on n'a pas — au seul endroit qu'il lit vraiment.
+
+**Ce qui change.** Un point de décision unique (`choisirTransport`) : la vidéo
+reste sur l'appareil, où elle tourne pour de bon ; tout le reste passe par son
+serveur, ou ne répond pas. Sans serveur, `offlineTransport` refuse et dit
+pourquoi — pas de texte produit, pas de repli. Le message ne se préfixe pas de
+« le moteur a renvoyé une erreur » : aucun moteur n'a répondu, et c'est
+exactement ce malentendu qui faisait passer la démo pour son IA.
+
+**Et la déconnexion qui l'y avait amené.** La sonde réessaie trois fois avant
+d'abandonner, et `enabled` ne bouge plus : il dit ce que le propriétaire veut,
+pas ce que le réseau permet à cet instant. Seul le bouton « Déconnecter » le
+change. Quand le réseau revient, la sonde repart seule.
+
+14 tests (`tests/test_pwa_pas_de_demo_dans_le_chat.py`), écrits en Python
+faute de lanceur côté PWA. **Deux gardes ont dû être resserrées après un
+sabotage qui passait** : remettre `localTransport` comme repli, et remettre
+`enabled: false` dans le seul `set` du bouton « Déconnecter » — les deux
+laissaient les tests verts. Un test qui vérifie qu'une pièce existe ne vérifie
+pas qu'elle est branchée.
+
+Suite complète : 3226 passent. `tsc` et le build de la PWA sont propres.
+
 ### Ajouté — 03/09/2026 — Xaar Kaname branché de bout en bout
 
 Le connecteur du propriétaire est arrivé sur le dépôt. Il était **complet et

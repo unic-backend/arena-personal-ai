@@ -87,6 +87,7 @@ const en: Dict = {
   'theme.light': 'Light',
   'theme.system': 'System',
 
+  'chat.offline': 'Your server did not answer, so nothing answered in its place. Reconnect it in the backend panel, then send your message again.',
   'backend.title': 'backend',
   'backend.api': 'remote api',
   'backend.local': 'local runtime',
@@ -408,6 +409,7 @@ const fr: Dict = {
   'theme.light': 'Clair',
   'theme.system': 'Système',
 
+  'chat.offline': 'Ton serveur n’a pas répondu, et rien n’a répondu à sa place. Rebranche-le dans le panneau backend, puis renvoie ton message.',
   'backend.title': 'backend',
   'backend.api': 'api distante',
   'backend.local': 'moteur local',

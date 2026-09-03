@@ -11,6 +11,7 @@
 
 import type { StreamChunk } from './types';
 import { runAgent, AgentContext, AgentRequest } from '../agent/orchestrator';
+import { makeRemoteTransport, RemoteConfig } from './remoteTransport';
 
 export interface AgentTransport {
   run(
@@ -20,10 +21,53 @@ export interface AgentTransport {
   ): AsyncGenerator<StreamChunk>;
 }
 
-/** in-process transport: the orchestrator IS the backend */
+/**
+ * On-device transport. **Reserved for what genuinely runs on the phone** —
+ * today, video editing. It is no longer the chat's fallback: see
+ * `offlineTransport` below for why.
+ */
 export const localTransport: AgentTransport = {
   run: (request, ctx, signal) => runAgent(request, ctx, signal),
 };
+
+/**
+ * What answers when the owner's server does not.
+ *
+ * **Measured on 03/09/2026, on his phone.** He typed « Bonjour ». His backend
+ * was disconnected, so the chat silently fell back to `localTransport` and an
+ * in-browser demo answered him — signed *Usman*, offering « exécution
+ * terminal réelle » and « une vraie arborescence projet ». Both were false:
+ * that demo works on an invented project named *pulseboard* held in
+ * localStorage. Nothing on screen distinguished it from his real AI.
+ *
+ * A platform that cannot do something says so. It does not produce a
+ * plausible answer instead — that rule is the whole repository's, and this is
+ * where it was being broken in the one place he actually reads.
+ *
+ * So: no answer at all, and the reason. An empty screen he understands beats
+ * a full one he cannot trust.
+ */
+export const offlineTransport: AgentTransport = {
+  // eslint-disable-next-line require-yield
+  async *run() {
+    throw new Error('BACKEND_OFFLINE');
+  },
+};
+
+/**
+ * The single decision point. `surAppareil` is true only for work that really
+ * runs here (video). Everything else needs the server, or says it cannot.
+ *
+ * Three call sites used to spell this out themselves, and each could drift.
+ */
+export function choisirTransport(
+  remote: RemoteConfig | null,
+  surAppareil = false,
+): AgentTransport {
+  if (surAppareil) return localTransport;
+  if (remote) return makeRemoteTransport(remote);
+  return offlineTransport;
+}
 
 /**
  * Drop-in replacement once a network backend exists:

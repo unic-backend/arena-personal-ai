@@ -9,6 +9,21 @@ import { pingBackend, RemoteConfig } from '../activity/remoteTransport';
 
 const KEY = 'usman.backend.v1';
 
+/**
+ * Attentes entre deux tentatives de sonde, en millisecondes.
+ *
+ * **Mesure du 03/09/2026 :** une seule sonde ratee coupait le serveur, et la
+ * coupure etait enregistree — il fallait le rebrancher a la main. Un tunnel
+ * qui se rendort, un telephone qui change d'antenne, et son IA devenait
+ * injoignable jusqu'a ce qu'il ouvre le panneau.
+ *
+ * Trois tentatives, espacees : de quoi traverser une coupure passagere sans
+ * transformer un hoquet en deconnexion.
+ */
+const ATTENTES = [800, 2500] as const;
+
+const patienter = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export type BackendStatus = 'local' | 'checking' | 'online' | 'error';
 
 interface BackendState {
@@ -70,28 +85,36 @@ export const useBackend = create<BackendState>((set, get) => ({
     }
     set({ status: 'checking', error: undefined });
     const cfg: RemoteConfig = { url: url.trim(), apiKey: apiKey.trim() || undefined };
-    try {
-      const r = await pingBackend(cfg);
-      if (r.ok) {
-        set({
-          status: 'online',
-          latencyMs: r.latencyMs,
-          remoteName: r.name,
-          remoteProvider: r.provider,
-          remoteModel: r.model,
-          enabled: true,
-        });
-        persist({ url: cfg.url, apiKey: cfg.apiKey ?? '', enabled: true });
-        return true;
+
+    let dernier: { latencyMs?: number; error?: string } = {};
+    for (let essai = 0; essai < ATTENTES.length + 1; essai += 1) {
+      try {
+        const r = await pingBackend(cfg);
+        if (r.ok) {
+          set({
+            status: 'online',
+            latencyMs: r.latencyMs,
+            remoteName: r.name,
+            remoteProvider: r.provider,
+            remoteModel: r.model,
+            enabled: true,
+          });
+          persist({ url: cfg.url, apiKey: cfg.apiKey ?? '', enabled: true });
+          return true;
+        }
+        dernier = { latencyMs: r.latencyMs, error: r.error ?? 'Provider probe failed' };
+      } catch (err) {
+        dernier = { error: err instanceof Error ? err.message : String(err) };
       }
-      set({ status: 'error', latencyMs: r.latencyMs, error: r.error ?? 'Provider probe failed', enabled: false });
-      persist({ url: cfg.url, apiKey: cfg.apiKey ?? '', enabled: false });
-      return false;
-    } catch (err) {
-      set({ status: 'error', error: err instanceof Error ? err.message : String(err), enabled: false });
-      persist({ url: cfg.url, apiKey: cfg.apiKey ?? '', enabled: false });
-      return false;
+      if (essai < ATTENTES.length) await patienter(ATTENTES[essai]);
     }
+
+    // Echec apres toutes les tentatives. **`enabled` ne bouge pas.**
+    // Il dit ce que le proprietaire veut, pas ce que le reseau permet a cet
+    // instant ; seul le bouton « Deconnecter » le change. L'etat, lui, dit la
+    // verite du moment.
+    set({ status: 'error', latencyMs: dernier.latencyMs, error: dernier.error });
+    return false;
   },
 
   disconnect: () => {
@@ -105,4 +128,22 @@ export function activeRemoteCfg(): RemoteConfig | null {
   const { enabled, url, apiKey } = useBackend.getState();
   if (!enabled || !url.trim()) return null;
   return { url: url.trim(), apiKey: apiKey.trim() || undefined };
+}
+
+/**
+ * Le reseau revient : on re-sonde, sans qu'il ait rien a faire.
+ *
+ * C'est la seconde moitie de la meme reparation. Reessayer trois fois traverse
+ * une coupure de quelques secondes ; celle-ci rattrape les autres — un metro,
+ * un avion, une nuit sans wifi. Sans elle, l'etat resterait « inaccessible »
+ * jusqu'a ce qu'il ouvre le panneau et appuie sur « Re-tester ».
+ *
+ * Ne fait rien si aucun serveur n'est branche : re-sonder une adresse vide
+ * afficherait une erreur a quelqu'un qui n'a jamais demande de serveur.
+ */
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    const { enabled, url, status } = useBackend.getState();
+    if (enabled && url.trim() && status !== 'checking') void useBackend.getState().test();
+  });
 }
