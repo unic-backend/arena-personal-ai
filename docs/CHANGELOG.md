@@ -35,6 +35,19 @@ débranche — font tomber une garde chacun.
 composant React n'est monté ici, et Playwright reste manuel. Un lanceur qui
 existe ne teste pas tout ; il teste ce qu'on lui a écrit.
 
+**Le premier passage en CI est tombé, et le défaut méritait d'être gardé.**
+La CI épinglait Node 20 pendant que le développement tournait en 22. `undici@8`
+(tiré par jsdom) appelle `webidl.util.markAsUncloneable`, absente de Node 20 :
+les 12 tests passaient en local et la CI rendait **« no tests »** avec deux
+erreurs non capturées — ce qui se lit comme une suite vide, pas comme une panne.
+
+Un lanceur de tests qui rapporte « aucun test » au lieu d'un échec est plus
+dangereux que pas de lanceur du tout.
+
+La version vient désormais d'`apps/pwa/.nvmrc`, lue par la CI
+(`node-version-file`) et déclarée dans `engines`. Un seul endroit décide, donc
+le poste de travail et la CI ne peuvent plus diverger en silence.
+
 Suite Python : 3345 passent. Suite PWA : 12 passent.
 
 ### Corrigé — 03/09/2026 — Trois documents qui décrivaient un dépôt qui n'existe plus

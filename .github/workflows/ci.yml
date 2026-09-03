@@ -108,7 +108,14 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # La version vient du fichier, pas d'un nombre recopie ici.
+          # Mesure du 03/09/2026 : la CI epinglait « 20 » pendant que le
+          # developpement tournait en 22. `undici@8` (tire par jsdom) appelle
+          # `webidl.util.markAsUncloneable`, absente de Node 20 — les 12 tests
+          # passaient en local et la CI rendait « no tests », ce qui se lit
+          # comme une suite vide plutot que comme une panne. Un seul endroit
+          # decide, donc les deux ne peuvent plus diverger en silence.
+          node-version-file: apps/pwa/.nvmrc
           cache: npm
           cache-dependency-path: apps/pwa/package-lock.json
 
