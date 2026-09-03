@@ -235,7 +235,15 @@ async def health_check(authorization: Optional[str] = Header(None)):
         "authenticated": authentifie,
         "error": raison,
         "name": "ARENA",
-        "provider": "ollama",
+        # **Jamais un nom ecrit en dur.** Ce champ valait « ollama » quoi qu'il
+        # arrive, et l'interface l'affiche tel quel sur le telephone
+        # (`backendStore.ts` : `remoteProvider: r.provider`). Un backend servi
+        # par Groq annoncait donc « ollama » : un ecran qui dit « local »
+        # pendant que le texte part chez un tiers.
+        #
+        # `fournisseur_en_service` rend `None` tant que rien n'a ete servi —
+        # c'est « on ne sait pas encore », jamais « local ».
+        "provider": fast_provider.fournisseur_en_service or "indetermine",
         "model": fast_provider.model_name,
         "status": "healthy" if ollama_online else "degraded",
         "ollama_available": ollama_online,

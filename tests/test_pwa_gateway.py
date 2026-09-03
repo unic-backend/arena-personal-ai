@@ -623,7 +623,64 @@ def test_health_porte_les_champs_que_l_interface_lit(client):
     for champ in ("ok", "name", "provider", "model"):
         assert champ in corps
     assert corps["name"] == "ARENA"
-    assert corps["provider"] == "ollama"
+
+
+class TestSanteDitQuiRepondVraiment:
+    """Mesure du 03/09/2026, sur le téléphone du propriétaire.
+
+    Son écran affichait **« ollama · qwen3.5:9b »** — et ce fichier l'exigeait :
+    `assert corps["provider"] == "ollama"`. Or ce champ était **écrit en dur**
+    dans `/health`, quel que soit le moteur qui répond vraiment.
+
+    Son backend distant a `GROQ_API_KEY` configurée. Le texte pouvait donc
+    partir chez Groq pendant que son téléphone affichait « ollama ». Un écran
+    qui dit « local » alors que la phrase voyage est pire qu'un écran muet : il
+    donne une garantie de confidentialité que rien ne soutient — et il venait
+    justement de demander où allaient ses données.
+
+    L'assertion n'est pas affaiblie, elle est **retournée** : elle épinglait le
+    défaut au lieu de le tenir.
+    """
+
+    class _ChoixFactice:
+        def __init__(self, fournisseur):
+            self.fournisseur = fournisseur
+
+    def test_le_fournisseur_annonce_est_celui_qui_a_repondu(self, client, monkeypatch):
+        from apps.backend import runtime
+
+        monkeypatch.setattr(runtime.fast_provider, "dernier_choix",
+                            self._ChoixFactice("groq"))
+
+        assert client.get("/health").json()["provider"] == "groq"
+
+    def test_aucun_nom_de_fournisseur_n_est_ecrit_en_dur(self, client, monkeypatch):
+        """Le test qui aurait attrapé le défaut : trois fournisseurs, trois noms."""
+        from apps.backend import runtime
+
+        vus = set()
+        for nom in ("groq", "deepinfra", "local"):
+            monkeypatch.setattr(runtime.fast_provider, "dernier_choix",
+                                self._ChoixFactice(nom))
+            vus.add(client.get("/health").json()["provider"])
+
+        assert vus == {"groq", "deepinfra", "local"}, (
+            f"/health n'annonce pas le vrai fournisseur : {vus}")
+
+    def test_avant_toute_reponse_il_ne_devine_pas(self, client, monkeypatch):
+        """« On ne sait pas encore » n'est pas « local »."""
+        from apps.backend import runtime
+
+        monkeypatch.setattr(runtime.fast_provider, "dernier_choix", None)
+
+        assert client.get("/health").json()["provider"] == "indetermine"
+
+    def test_le_routeur_ne_pretend_pas_local_avant_d_avoir_servi(self, monkeypatch):
+        from apps.backend import runtime
+
+        monkeypatch.setattr(runtime.fast_provider, "dernier_choix", None)
+
+        assert runtime.fast_provider.fournisseur_en_service is None
 
 
 def test_ok_veut_dire_tu_peux_obtenir_une_reponse_maintenant(client, entetes):
