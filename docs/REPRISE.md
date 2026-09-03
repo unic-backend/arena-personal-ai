@@ -963,14 +963,19 @@ part bien.
   cas le 03/09/2026 après le merge de la PR #152, corrigé depuis.
   Ce qui reste vrai : l'historique contient les six valeurs de secrets décrites
   dans `documents/RUNBOOK_PURGE_SECRETS.md`, et cette purge reste à faire.
-- **`apps/pwa` n'a toujours aucun lanceur de tests.** Les correctifs
-  d'interface (#56, #58) sont vérifiés par Playwright à la main, et ceux de la
-  nuit du 03/09/2026 le sont par des **tests Python qui lisent le source
-  TypeScript** (`tests/test_pwa_pas_de_demo_dans_le_chat.py`,
-  `tests/test_capacites_video_pwa.py`). C'est grossier, et c'est assumé : une
-  garde grossière qui existe vaut mieux qu'une garde élégante qui n'existe pas.
-  Elles ne mesurent que la structure du code, jamais son comportement à
-  l'écran. Un vrai lanceur reste un travail à part, non demandé à ce jour.
+- ~~**`apps/pwa` n'a aucun lanceur de tests**~~ — **fait le 03/09/2026.**
+  `npm test` (vitest + jsdom) tourne, et la CI l'exécute avec le typecheck et
+  le build (`apps/pwa` est un job à part).
+  12 tests couvrent ce qui a réellement fait mal cette nuit : `choisirTransport`
+  ne rend jamais la voie sur appareil sans serveur, `offlineTransport` ne
+  produit **aucun** jeton et distingue « aucun serveur enregistré » de
+  « serveur muet », une coupure non signée revient branchée au démarrage, une
+  coupure signée tient, et un échec de sonde **ne débranche pas**.
+  Ce qu'ils apportent par rapport aux tests Python qui lisaient le source : ils
+  **exécutent** le code. Les trois sabotages correspondants font tomber une
+  garde chacun — ce que les tests de lecture, eux, ne voyaient pas toujours.
+  Ce qui reste non couvert : le rendu à l'écran. Aucun composant React n'est
+  monté ici, et Playwright reste manuel.
 - ~~**Une seule panne de `/health` déconnecte l'application**~~ — **corrigé le
   03/09/2026** (`3f2d8be`). La sonde réessaie trois fois avant d'abandonner,
   `enabled` ne bouge plus (il dit ce que le propriétaire veut, pas ce que le

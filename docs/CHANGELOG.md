@@ -2,6 +2,41 @@
 
 ## [Non publié]
 
+### Ajouté — 03/09/2026 — La PWA a enfin un lanceur de tests
+
+Le point était noté dans `docs/REPRISE.md` comme « un travail à part ». Il
+n'était plus tenable : le code qui décide si une démo du navigateur peut
+répondre à la place du serveur — donc **se faire passer pour son IA** —
+n'était gardé que par des tests Python qui **lisent** le source TypeScript.
+
+Une garde qui lit du texte voit une forme, pas un comportement.
+
+`npm test` (vitest + jsdom) tourne, et la CI l'exécute dans un job `pwa` avec
+le typecheck et le build. `jsdom` n'est pas décoratif : `backendStore` lit
+`localStorage` et s'abonne à `online` — sans navigateur simulé, ces
+chemins-là ne s'exécutent pas du tout.
+
+12 tests, sur ce qui a réellement fait mal cette nuit :
+
+| Ce qui est exécuté | Ce que ça empêche |
+|---|---|
+| `choisirTransport(null)` rend le refus, jamais la voie sur appareil | qu'une démo réponde à sa place |
+| `choisirTransport(null, true)` reste local | que le montage vidéo tombe avec la démo |
+| `offlineTransport` ne produit **aucun** jeton | qu'on remette du texte à la place du serveur |
+| il distingue « aucun serveur » de « serveur muet » | qu'on cherche une panne sans la nommer |
+| une coupure **non signée** revient branchée | qu'il doive réparer le défaut à la main |
+| une coupure **signée** tient | que son choix soit annulé par la reprise |
+| un échec de sonde **ne débranche pas** | qu'une coupure passagère devienne durable |
+
+Trois sabotages — repli redevenu la démo, reprise désactivée, échec qui
+débranche — font tomber une garde chacun.
+
+**Ce qui reste non couvert, et il faut le dire** : le rendu à l'écran. Aucun
+composant React n'est monté ici, et Playwright reste manuel. Un lanceur qui
+existe ne teste pas tout ; il teste ce qu'on lui a écrit.
+
+Suite Python : 3345 passent. Suite PWA : 12 passent.
+
 ### Corrigé — 03/09/2026 — Trois documents qui décrivaient un dépôt qui n'existe plus
 
 Même faute que celle traquée partout ailleurs ici — **une valeur écrite qui

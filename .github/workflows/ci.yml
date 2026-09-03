@@ -100,6 +100,42 @@ jobs:
           docker run --rm --entrypoint apps/backend/entrypoint.sh arena:ci \
             sh -c "ls -ld /app/data /app/media && whoami"
 
+  pwa:
+    name: PWA typecheck, tests and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/pwa/package-lock.json
+
+      - name: Install
+        working-directory: apps/pwa
+        # `npm ci` plutot que `npm install` : la CI installe ce que le
+        # verrou dit, jamais une version resolue au moment ou elle tourne.
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: apps/pwa
+        run: npx tsc --noEmit
+
+      - name: Tests
+        working-directory: apps/pwa
+        # Ce depot a vecu sans lanceur de tests cote interface jusqu'au
+        # 03/09/2026. Les regles de sûrete du chat — ne jamais laisser une
+        # demo repondre a la place du serveur, ne pas debrancher sur une
+        # coupure passagere — n'etaient gardees que par des tests Python qui
+        # LISENT le source TypeScript. Une garde qui lit du texte voit une
+        # forme, pas un comportement.
+        run: npm test
+
+      - name: Build
+        working-directory: apps/pwa
+        run: npm run build
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
