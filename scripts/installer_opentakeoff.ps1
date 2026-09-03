@@ -13,6 +13,21 @@
 
 $ErrorActionPreference = "Stop"
 
+# `$ErrorActionPreference = "Stop"` ne couvre PAS le code de sortie d'un
+# programme externe sous PowerShell 5.1. Sans ce controle, un git ou un npm
+# en echec passait inapercu et le script annoncait " Termine " (mesure du
+# 03/09/2026 : l'installeur Faceplugin l'a fait, et le mensonge n'a ete
+# rattrape qu'au diagnostic).
+function Stop-Si-Echec($quoi) {
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ""
+        Write-Host "ARRET : $quoi a echoue. Rien n'est utilisable."
+        Write-Host "Envoie les lignes ci-dessus telles quelles."
+        exit 1
+    }
+}
+
+
 $Racine = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Cible = Join-Path (Split-Path -Parent $Racine) "opentakeoff"
 
@@ -39,8 +54,10 @@ foreach ($outil in @("git", "node", "npm")) {
 if (Test-Path $Cible) {
     Write-Host "[INFO]   Deja present : mise a jour."
     git -C $Cible pull --ff-only
+    Stop-Si-Echec "la mise a jour du depot"
 } else {
     git clone --depth 1 https://github.com/Kentucky-ai/opentakeoff.git $Cible
+    Stop-Si-Echec "le telechargement du moteur"
 }
 
 # 3. Ses dependances. Deux dossiers : `web/` porte le moteur de mesure
@@ -48,12 +65,15 @@ if (Test-Path $Cible) {
 Write-Host "[INFO]   npm install (web)"
 Push-Location (Join-Path $Cible "web")
 npm install
+Stop-Si-Echec "npm install"
 Pop-Location
 
 Write-Host "[INFO]   npm install + build (mcp)"
 Push-Location (Join-Path $Cible "mcp")
 npm install
+Stop-Si-Echec "npm install"
 npm run build
+Stop-Si-Echec "la construction (npm run build)"
 Pop-Location
 
 $Construit = Join-Path $Cible "mcp\dist\server.js"

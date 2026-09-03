@@ -12,6 +12,21 @@
 
 $ErrorActionPreference = "Stop"
 
+# `$ErrorActionPreference = "Stop"` ne couvre PAS le code de sortie d'un
+# programme externe sous PowerShell 5.1. Sans ce controle, un git ou un pip
+# en echec passait inapercu et le script annoncait " Termine " (mesure du
+# 03/09/2026 sur l'installeur Faceplugin : le mensonge n'a ete rattrape
+# qu'au diagnostic, une etape plus loin).
+function Stop-Si-Echec($quoi) {
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ""
+        Write-Host "ARRET : $quoi a echoue. Rien n'est utilisable."
+        Write-Host "Envoie les lignes ci-dessus telles quelles."
+        exit 1
+    }
+}
+
+
 $Racine = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Cible = Join-Path (Split-Path -Parent $Racine) "MoneyPrinterTurbo"
 
@@ -38,8 +53,10 @@ foreach ($outil in @("git", "python", "ffmpeg")) {
 if (Test-Path $Cible) {
     Write-Host "[INFO]   Deja present : mise a jour."
     git -C $Cible pull --ff-only
+    Stop-Si-Echec "la mise a jour du depot"
 } else {
     git clone --depth 1 https://github.com/harry0703/MoneyPrinterTurbo.git $Cible
+    Stop-Si-Echec "le telechargement du moteur"
 }
 
 # 3. Son propre environnement virtuel. Il ne partage pas celui d'ARENA : ses
@@ -47,9 +64,11 @@ if (Test-Path $Cible) {
 $Venv = Join-Path $Cible ".venv"
 if (-not (Test-Path $Venv)) {
     python -m venv $Venv
+    Stop-Si-Echec "la creation de l'environnement"
 }
 & (Join-Path $Venv "Scripts\python.exe") -m pip install --upgrade pip
 & (Join-Path $Venv "Scripts\python.exe") -m pip install -r (Join-Path $Cible "requirements.txt")
+Stop-Si-Echec "l'installation des dependances"
 
 # 4. Sa configuration. On copie l'exemple sans jamais y ecrire une cle : c'est
 #    a toi de le faire, et elle ne doit exister que sur cette machine.

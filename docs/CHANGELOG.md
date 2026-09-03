@@ -2,6 +2,45 @@
 
 ## [Non publié]
 
+### Corrigé — 03/09/2026 — Un installeur annonçait « Termine » sur un échec total
+
+Le diagnostic sur sa machine rend tout au vert sauf une ligne :
+
+```
+[PANNE] Visages (Faceplugin)  Le moteur ne démarre pas.
+                              (ModuleNotFoundError: No module named 'cv2')
+```
+
+Cause racine : **son Python est 3.14.6, et `torch==2.4.1` n'a de roues que
+pour 3.8 à 3.12** (vérifié sur PyPI : `cp38` à `cp312`). L'environnement créé
+depuis son interpréteur ne pouvait donc rien installer — et l'installeur a
+affiché **« Termine »**.
+
+`$ErrorActionPreference = "Stop"` **ne couvre pas** le code de sortie d'un
+programme externe sous PowerShell 5.1. Le `pip install` a échoué de bout en
+bout sans que le script s'en aperçoive.
+
+C'est la règle 3 de la mentalité d'Usman — *une action ratée se rapporte telle
+quelle* — appliquée à un script. Et le mensonge n'a été rattrapé qu'une étape
+plus loin, par la ligne de diagnostic ajoutée le matin même. **Sans elle, il
+aurait cru la capacité installée.**
+
+Deux corrections :
+
+- L'installeur **choisit** son interpréteur (`py -3.12`, `-3.11`, `-3.10`) au
+  lieu de subir celui du système, refait un environnement bâti sur un Python
+  trop récent, et **s'arrête en le disant** si aucune version compatible n'est
+  présente. Un environnement construit sur le mauvais interpréteur est pire
+  qu'une absence d'environnement : il a l'air installé.
+- Il vérifie que le moteur **s'importe vraiment** avant d'annoncer la fin.
+
+**La garde a immédiatement trouvé le même défaut dans les trois autres
+installeurs** — MoneyPrinterTurbo, OpenTakeoff, UI/UX Pro Max. Aucun ne
+regardait `$LASTEXITCODE`. Tous les quatre s'arrêtent maintenant sur l'échec
+de leur `git`, `npm`, `pip` ou `venv`.
+
+24 tests (`tests/test_scripts_powershell.py`). Suite complète : 3369 passent.
+
 ### Corrigé — 03/09/2026 — Les scripts PowerShell ne démarraient pas chez lui
 
 Il colle la séquence d'installation. Les deux installeurs sont refusés avant

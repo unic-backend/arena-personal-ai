@@ -69,3 +69,40 @@ def test_le_piege_est_nomme_dans_le_fichier():
 
     assert "cp1252" in source
     assert "BOM" in source, "le lecteur ne saura pas pourquoi le BOM est exclu"
+
+
+#: Les installeurs qui lancent un programme externe. `git`, `pip`, `python` :
+#: aucun ne leve d'exception PowerShell en echouant.
+INSTALLEURS = [p for p in SCRIPTS if p.name.startswith("installer_")]
+
+
+@pytest.mark.parametrize("script", INSTALLEURS, ids=lambda p: p.name)
+def test_un_installeur_verifie_le_code_de_sortie_de_ce_quil_lance(script):
+    """**`$ErrorActionPreference = "Stop"` ne couvre PAS un programme externe.**
+
+    Mesuré le 03/09/2026 sur la machine du propriétaire. Son Python est 3.14 ;
+    `torch==2.4.1` n'a de roues que pour 3.8 à 3.12. Le `pip install` a donc
+    échoué de bout en bout — et l'installeur a affiché « Termine ».
+
+    Le mensonge n'a été rattrapé qu'une étape plus loin, par le diagnostic :
+    `ModuleNotFoundError: No module named 'cv2'`. Sans cette ligne au
+    diagnostic, il aurait cru la capacité installée.
+
+    Un installeur qui ne regarde pas `$LASTEXITCODE` annonce un succès qu'il
+    n'a pas mesuré. C'est la règle 3 de la mentalité d'Usman, appliquée à un
+    script.
+    """
+    texte = script.read_text(encoding="utf-8")
+
+    assert "$LASTEXITCODE" in texte, (
+        f"{script.name} ne regarde jamais le code de sortie de ce qu'il lance : "
+        "il annoncera « Termine » sur un echec.")
+
+
+@pytest.mark.parametrize("script", INSTALLEURS, ids=lambda p: p.name)
+def test_un_installeur_sarrete_au_lieu_de_continuer(script):
+    """Voir l'échec ne suffit pas : il faut s'arrêter dessus."""
+    texte = script.read_text(encoding="utf-8")
+
+    assert "exit 1" in texte, (
+        f"{script.name} peut voir un echec sans jamais s'arreter")

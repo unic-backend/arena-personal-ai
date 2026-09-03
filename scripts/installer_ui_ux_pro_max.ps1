@@ -14,6 +14,21 @@
 
 $ErrorActionPreference = "Stop"
 
+# `$ErrorActionPreference = "Stop"` ne couvre PAS le code de sortie d'un
+# programme externe sous PowerShell 5.1. Sans ce controle, un git ou un npm
+# en echec passait inapercu et le script annoncait " Termine " (mesure du
+# 03/09/2026 : l'installeur Faceplugin l'a fait, et le mensonge n'a ete
+# rattrape qu'au diagnostic).
+function Stop-Si-Echec($quoi) {
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ""
+        Write-Host "ARRET : $quoi a echoue. Rien n'est utilisable."
+        Write-Host "Envoie les lignes ci-dessus telles quelles."
+        exit 1
+    }
+}
+
+
 $Racine = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Cible = Join-Path $Racine "tools\design\ui_ux_pro_max"
 
@@ -26,9 +41,11 @@ $Moteur = Join-Path $Cible "src\ui-ux-pro-max\scripts\search.py"
 if (Test-Path $Moteur) {
     Write-Host "Deja present. Mise a jour du depot..."
     git -C $Cible pull --ff-only
+    Stop-Si-Echec "la mise a jour du depot"
 } else {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Cible) | Out-Null
     git clone --depth 1 https://github.com/nextlevelbuilder/ui-ux-pro-max-skill $Cible
+    Stop-Si-Echec "le telechargement du moteur"
 }
 
 Write-Host ""
