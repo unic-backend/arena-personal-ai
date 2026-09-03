@@ -954,13 +954,15 @@ part bien.
 
 ### Ce qui reste ouvert
 
-- **La CI ne peut pas passer au vert** : le budget GitHub Actions du compte est
-  à 0 $ avec « arrêt d'utilisation », donc chaque exécution est tuée en quelques
-  secondes avant qu'un runner soit attribué — sur `master` aussi, depuis la PR
-  #43. Relever le budget demande un moyen de paiement, refusé à ce jour. Les
-  dépôts **ne doivent pas** être repassés en public pour contourner : leur
-  historique contient encore les six valeurs de secrets décrites dans
-  `documents/RUNBOOK_PURGE_SECRETS.md`.
+- ~~**La CI ne peut pas passer au vert**~~ — **plus vrai, mesuré le
+  03/09/2026.** Le dépôt est public depuis DEC-0039, et les exécutions publiques
+  ne consomment pas le budget : la CI tourne et passe au vert (`3a1f798`,
+  `2535f91`, le 03/09/2026). Ce point restait écrit ici depuis la PR #43 et
+  aurait fait renoncer à regarder la CI sans la consulter. **Un rouge sur
+  `master` est donc de nouveau un vrai rouge**, à traiter comme tel — c'était le
+  cas le 03/09/2026 après le merge de la PR #152, corrigé depuis.
+  Ce qui reste vrai : l'historique contient les six valeurs de secrets décrites
+  dans `documents/RUNBOOK_PURGE_SECRETS.md`, et cette purge reste à faire.
 - **`apps/pwa` n'a aucun lanceur de tests.** Les correctifs d'interface (#56,
   #58) sont vérifiés par Playwright à la main, mais rien ne les fige. En ajouter
   un est un travail à part, non demandé à ce jour.
