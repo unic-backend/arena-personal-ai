@@ -115,10 +115,29 @@ try {
 #
 # La phrase " scanne ce carre " n'est plus affichee que s'il y a un carre :
 # l'annoncer avant de savoir, c'etait promettre ce qui allait echouer.
-$carre = python -c "import qrcode,sys; q=qrcode.QRCode(border=2); q.add_data(sys.argv[1]); q.make(); q.print_ascii(invert=True)" $adresse 2>$null
+# `2>$null` ne suffit PAS. Sous `$ErrorActionPreference = "Stop"`, la sortie
+# d'erreur d'un programme EXTERNE devient une erreur bloquante
+# (`NativeCommandError`) avant meme la redirection : la trace Python
+# s'affichait quand meme, en rouge, a la fin d'un demarrage reussi
+# (mesure du 03/09/2026 sur sa machine, apres un premier correctif qui
+# croyait la redirection suffisante).
+#
+# On rend donc la preference a "Continue" le temps de cet appel, et on la
+# remet ensuite : ailleurs dans ce script, une erreur DOIT arreter.
+$carre = $null
+$prefPrecedente = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $carre = python -c "import qrcode,sys; q=qrcode.QRCode(border=2); q.add_data(sys.argv[1]); q.make(); q.print_ascii(invert=True)" $adresse 2>$null
+    if ($LASTEXITCODE -ne 0) { $carre = $null }
+} catch {
+    $carre = $null
+} finally {
+    $ErrorActionPreference = $prefPrecedente
+}
 
 Write-Host ""
-if ($LASTEXITCODE -eq 0 -and $carre) {
+if ($carre) {
     Write-Host "  Scanne ce carre avec ton telephone, puis colle l'adresse dans le"
     Write-Host "  panneau Backend de l'application." -ForegroundColor Cyan
     Write-Host ""

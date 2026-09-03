@@ -106,3 +106,33 @@ def test_un_installeur_sarrete_au_lieu_de_continuer(script):
 
     assert "exit 1" in texte, (
         f"{script.name} peut voir un echec sans jamais s'arreter")
+
+
+def test_un_appel_optionnel_neutralise_la_preference_derreur():
+    """`2>$null` ne suffit pas quand `$ErrorActionPreference = "Stop"`.
+
+    **Mesuré deux fois le 03/09/2026, sur sa machine.** Le paquet `qrcode`
+    manque, donc `python -c "import qrcode..."` écrit sur la sortie d'erreur.
+    Sous `Stop`, PowerShell 5.1 en fait une erreur **bloquante**
+    (`NativeCommandError`) avant même la redirection : la trace Python
+    s'affichait en rouge à la fin d'un démarrage parfaitement réussi.
+
+    Un premier correctif avait ajouté `2>$null` et une branche sur
+    `$LASTEXITCODE`, en croyant la redirection suffisante. **Elle ne l'est
+    pas** — et c'est pour ça que ce test existe plutôt qu'un commentaire.
+
+    Ce que ça coûtait : le propriétaire lit « ARENA n'a pas démarré » alors
+    que le serveur, le tunnel et l'adresse sont juste au-dessus.
+    """
+    texte = (RACINE / "scripts" / "lancer_arena.ps1").read_text(encoding="utf-8")
+    # Ancre sur `$prefPrecedente` : `$carre = $null` apparait trois fois
+    # (initialisation, echec du code de sortie, catch), et couper dessus
+    # mesurait un morceau qui ne contenait pas le `finally` — le test
+    # tombait alors sur un fichier parfaitement correct.
+    bloc = texte.split("$prefPrecedente = $ErrorActionPreference")[1][:900]
+
+    assert '$ErrorActionPreference = "Continue"' in bloc, (
+        "l'appel optionnel tourne encore sous Stop : sa trace s'affichera")
+    assert "finally" in bloc, (
+        "la preference n'est pas rendue : une vraie erreur ne bloquerait plus "
+        "le reste du script")

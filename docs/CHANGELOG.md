@@ -2,6 +2,27 @@
 
 ## [Non publié]
 
+### Corrigé — 03/09/2026 — Une trace rouge à la fin d'un démarrage réussi
+
+`Lancer_ARENA.bat` démarre tout correctement — Ollama, serveur, tunnel,
+adresse — puis affiche une trace Python en rouge. Elle se lit comme « ARENA
+n'a pas démarré » alors que l'adresse à scanner est juste au-dessus.
+
+Cause : le paquet `qrcode` manque, donc `python -c "import qrcode..."` écrit
+sur la sortie d'erreur. Sous `$ErrorActionPreference = "Stop"`, PowerShell 5.1
+en fait une erreur **bloquante** (`NativeCommandError`) — **avant** la
+redirection.
+
+**Un premier correctif avait ajouté `2>$null` et une branche sur
+`$LASTEXITCODE`, en croyant la redirection suffisante.** Elle ne l'est pas.
+C'est pour ça que ce correctif-ci porte un test plutôt qu'un commentaire : la
+même erreur a été commise deux fois.
+
+La préférence passe à `Continue` le temps de cet appel et revient dans un
+`finally` — ailleurs dans ce script, une erreur doit toujours arrêter.
+
+25 tests. Suite complète : 3370 passent.
+
 ### Corrigé — 03/09/2026 — Un installeur annonçait « Termine » sur un échec total
 
 Le diagnostic sur sa machine rend tout au vert sauf une ligne :
