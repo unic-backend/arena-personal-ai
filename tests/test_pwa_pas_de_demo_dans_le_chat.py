@@ -16,7 +16,6 @@ tests (`docs/REPRISE.md`, *Ce qui reste ouvert*). Ils lisent le source : c'est
 grossier, mais une garde grossière qui existe vaut mieux qu'une garde élégante
 qui n'existe pas.
 """
-import re
 from pathlib import Path
 
 import pytest
@@ -219,9 +218,16 @@ def test_lerreur_hors_ligne_ne_se_prefixe_pas_de_moteur_en_erreur():
     justement pas répondu — c'est ce malentendu qui faisait passer la démo
     pour son IA."""
     vue = _lire(PWA / "components" / "chat" / "ChatMessage.tsx")
+    store = _lire(CHAT_STORE)
 
-    assert re.search(r"chat\.offline'\)\s*\?\s*msg\.error", vue), (
-        "le message hors ligne est encore prefixe comme une erreur moteur")
+    assert "estMessageDeLiaison(msg.error)" in vue, (
+        "le message hors ligne est prefixe comme une erreur moteur")
+    # La comparaison texte a texte etait fragile : celui de `offlineWhy`
+    # porte une raison variable. Le test verifie que les TROIS cles y passent,
+    # sinon l'un des trois messages reprendrait le prefixe.
+    cles = store.split("CLES_DE_LIAISON = [")[1].split("]")[0]
+    for cle in ("chat.offline", "chat.offlineWhy", "chat.noBackend"):
+        assert cle in cles, f"{cle} reprendrait le prefixe « erreur moteur »"
 
 
 BACKEND_STORE = PWA / "lib" / "store" / "backendStore.ts"
@@ -288,3 +294,74 @@ class TestReconnexion:
 
         assert "enabled" in bloc and "url" in bloc, (
             "la reprise ne verifie pas qu'un serveur est reellement branche")
+
+
+class TestRepriseApresLeDefaut:
+    """La coupure écrite par l'ancien défaut dort encore sur son téléphone.
+
+    **Mesuré le 03/09/2026 à 02:19.** Le correctif de 01:36 empêchait une
+    nouvelle coupure ; il n'effaçait pas celle déjà enregistrée. Le
+    propriétaire revenait donc sur le même écran, et la seule issue était
+    d'aller rebrancher à la main — lui faire réparer le défaut.
+    """
+
+    def test_une_coupure_non_signee_est_annulee_au_demarrage(self):
+        source = _lire(BACKEND_STORE)
+        corps = source.split("function load(")[1].split("function persist(")[0]
+
+        assert "debrancheParLui" in corps, (
+            "rien ne distingue une coupure subie d'une coupure choisie")
+        assert "enabled: true" in corps, (
+            "une coupure jamais choisie reste en place : il doit encore "
+            "rebrancher a la main")
+
+    def test_le_bouton_deconnecter_signe_sa_coupure(self):
+        """Sinon la reprise ci-dessus annulerait aussi son choix à lui."""
+        source = _lire(BACKEND_STORE)
+        corps = source.split("disconnect:")[1][:400]
+
+        assert "true" in corps.split("persist(")[1][:120], (
+            "la deconnexion volontaire n'est pas signee : elle serait annulee "
+            "au prochain demarrage")
+
+    def test_la_veille_existe_vraiment(self):
+        """**Le message affiché dit « il est réessayé tout seul ».**
+
+        Sans cette veille, ce serait une promesse de plus — le défaut même
+        qu'on vient de retirer de l'écran d'accueil. Une phrase et le code qui
+        la tient s'écrivent ensemble.
+        """
+        source = _lire(BACKEND_STORE)
+
+        assert "programmerVeille" in source, "rien ne reessaie pendant la panne"
+        assert "VEILLE_MAX" in source, (
+            "aucun plafond : une adresse morte serait martelee toute la nuit")
+
+    def test_le_message_ne_promet_que_ce_qui_existe(self):
+        """Si la veille disparaît, la phrase devient fausse — et ce test tombe."""
+        i18n = _lire(PWA / "lib" / "i18n" / "index.ts")
+        store = _lire(BACKEND_STORE)
+
+        promet = "réessayé tout seul" in i18n
+        tient = "programmerVeille" in store
+        assert promet == tient, (
+            "le message et le mecanisme ont diverge : l'un promet ce que "
+            "l'autre ne fait pas")
+
+    def test_les_trois_cas_sont_distingues(self):
+        """« Aucun serveur enregistré » et « le serveur ne répond pas » ne se
+        réparent pas pareil. Une seule phrase pour les deux envoyait chercher
+        une panne sans dire laquelle."""
+        transport = _lire(TRANSPORT)
+        i18n = _lire(PWA / "lib" / "i18n" / "index.ts")
+
+        assert "BACKEND_ABSENT" in transport
+        assert i18n.count("'chat.noBackend':") == 2
+        assert i18n.count("'chat.offlineWhy':") == 2
+
+    def test_la_raison_mesuree_arrive_a_lecran(self):
+        transport = _lire(TRANSPORT)
+        store = _lire(CHAT_STORE)
+
+        assert "BACKEND_OFFLINE::" in transport, "l'erreur reelle ne voyage pas"
+        assert "BACKEND_OFFLINE::" in store, "l'erreur reelle n'est pas relue"

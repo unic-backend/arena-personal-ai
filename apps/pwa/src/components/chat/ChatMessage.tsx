@@ -14,7 +14,7 @@ import { MarkdownLite, StreamingResponse } from '../activity/StreamingResponse';
 import { DomainMark } from '../activity/StatusIcon';
 import { useI18n } from '../../lib/i18n';
 import { useSpeech, isSpeechSynthesisSupported } from '../../lib/speech';
-import { useChat } from '../../lib/store/chatStore';
+import { useChat, estMessageDeLiaison } from '../../lib/store/chatStore';
 import { triggerHaptic } from '../../lib/theme';
 import type { ItemCtx } from '../activity/ActivityItem';
 import { cn } from '../../utils/cn';
@@ -502,7 +502,7 @@ export const ChatMessage = memo(function ChatMessage({
                 moteur a renvoye une erreur » designerait un moteur qui n a
                 justement pas repondu — et c est ce malentendu qui laissait
                 croire qu une reponse venait de son IA. */}
-            {msg.error === t('chat.offline') ? msg.error : `${t('msg.error')} : ${msg.error}`}
+            {estMessageDeLiaison(msg.error) ? msg.error : `${t('msg.error')} : ${msg.error}`}
           </div>
         )}
 

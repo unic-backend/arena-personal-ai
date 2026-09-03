@@ -12,6 +12,7 @@
 import type { StreamChunk } from './types';
 import { runAgent, AgentContext, AgentRequest } from '../agent/orchestrator';
 import { makeRemoteTransport, RemoteConfig } from './remoteTransport';
+import { useBackend } from '../store/backendStore';
 
 export interface AgentTransport {
   run(
@@ -50,7 +51,14 @@ export const localTransport: AgentTransport = {
 export const offlineTransport: AgentTransport = {
   // eslint-disable-next-line require-yield
   async *run() {
-    throw new Error('BACKEND_OFFLINE');
+    // Dire **pourquoi**, pas seulement quoi faire. « Rebranche-le dans le
+    // panneau » envoie chercher une panne sans dire laquelle : le
+    // 03/09/2026 a 02:19, le proprietaire est revenu avec le meme ecran,
+    // parce que la phrase ne distinguait pas « aucun serveur enregistre »
+    // de « le serveur ne repond pas », et ne portait pas l'erreur mesuree.
+    const { url, error } = useBackend.getState();
+    if (!url.trim()) throw new Error('BACKEND_ABSENT');
+    throw new Error(error ? `BACKEND_OFFLINE::${error}` : 'BACKEND_OFFLINE');
   },
 };
 

@@ -47,16 +47,38 @@ function load(): { url: string; apiKey: string; enabled: boolean } {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
-      const p = JSON.parse(raw) as { url?: string; apiKey?: string; enabled?: boolean };
-      return { url: p.url ?? '', apiKey: p.apiKey ?? '', enabled: !!p.enabled };
+      const p = JSON.parse(raw) as {
+        url?: string; apiKey?: string; enabled?: boolean; debrancheParLui?: boolean;
+      };
+      const url = p.url ?? '';
+
+      // **Une adresse enregistree et debranchee SANS marque vient du defaut,
+      // pas de lui.** Jusqu'au 03/09/2026 une seule sonde ratee ecrivait
+      // `enabled: false` ici ; la coupure survivait aux redemarrages et il
+      // fallait rouvrir le panneau pour rebrancher. Cet etat-la dort encore
+      // sur son telephone, et rien ne l'effacerait tout seul — lui demander
+      // d'aller le corriger, c'est lui faire reparer le bug.
+      //
+      // `debrancheParLui` n'est ecrit que par le bouton « Deconnecter ». Son
+      // absence, avec une adresse presente, veut donc dire : personne n'a
+      // choisi cette coupure. On rebranche, et la sonde du demarrage tranche.
+      if (url && !p.enabled && !p.debrancheParLui) {
+        return { url, apiKey: p.apiKey ?? '', enabled: true };
+      }
+      return { url, apiKey: p.apiKey ?? '', enabled: !!p.enabled };
     }
   } catch { /* ignore */ }
   return { url: '', apiKey: '', enabled: false };
 }
 
-function persist(s: Pick<BackendState, 'url' | 'apiKey' | 'enabled'>) {
+function persist(
+  s: Pick<BackendState, 'url' | 'apiKey' | 'enabled'>,
+  debrancheParLui = false,
+) {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ url: s.url, apiKey: s.apiKey, enabled: s.enabled }));
+    localStorage.setItem(KEY, JSON.stringify({
+      url: s.url, apiKey: s.apiKey, enabled: s.enabled, debrancheParLui,
+    }));
   } catch { /* ignore */ }
 }
 
@@ -74,7 +96,7 @@ export const useBackend = create<BackendState>((set, get) => ({
   },
   setEnabled: (enabled) => {
     set({ enabled, status: enabled ? 'online' : 'local', error: undefined });
-    persist({ ...get(), enabled });
+    persist({ ...get(), enabled }, !enabled);
   },
 
   async test() {
@@ -118,8 +140,10 @@ export const useBackend = create<BackendState>((set, get) => ({
   },
 
   disconnect: () => {
+    // Signee : c'est ce qui la distingue d'une coupure subie, et ce qui la
+    // fait tenir au prochain demarrage.
     set({ enabled: false, status: 'local', error: undefined });
-    persist({ ...get(), enabled: false });
+    persist({ ...get(), enabled: false }, true);
   },
 }));
 
@@ -145,5 +169,49 @@ if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
     const { enabled, url, status } = useBackend.getState();
     if (enabled && url.trim() && status !== 'checking') void useBackend.getState().test();
+  });
+}
+
+/**
+ * Tant que le serveur est branche mais muet, on continue de frapper.
+ *
+ * **Cette veille est ce qui rend vraie la phrase montree dans le chat.**
+ * Le message dit « il est reessaye tout seul » ; sans ce qui suit, ce serait
+ * une promesse de plus — exactement le defaut qu'on vient de retirer de
+ * l'ecran d'accueil. Une phrase et le code qui la tient s'ecrivent ensemble.
+ *
+ * L'evenement `online` ne couvre que le reseau du telephone. Il ne dit rien
+ * d'un serveur qui redemarre, d'un tunnel qui se rendort ou d'un hebergeur
+ * qui met deux minutes a repondre — les cas reels ici.
+ *
+ * L'attente s'allonge jusqu'a une minute : assez pour rattraper vite une
+ * panne courte, assez peu pour ne pas marteler une adresse morte toute la
+ * nuit sur sa batterie.
+ */
+const VEILLE_MIN = 15_000;
+const VEILLE_MAX = 60_000;
+let attente = VEILLE_MIN;
+let veille: ReturnType<typeof setTimeout> | null = null;
+
+function programmerVeille() {
+  if (veille) return;
+  veille = setTimeout(async () => {
+    veille = null;
+    const { enabled, url, status } = useBackend.getState();
+    if (!enabled || !url.trim()) return;
+    if (status === 'error') {
+      const ok = await useBackend.getState().test();
+      attente = ok ? VEILLE_MIN : Math.min(attente * 2, VEILLE_MAX);
+    }
+    if (useBackend.getState().status === 'error') programmerVeille();
+  }, attente);
+}
+
+if (typeof window !== 'undefined') {
+  useBackend.subscribe((etat, precedent) => {
+    if (etat.status === 'error' && precedent.status !== 'error') {
+      attente = VEILLE_MIN;
+      programmerVeille();
+    }
   });
 }

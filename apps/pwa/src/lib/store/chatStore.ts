@@ -23,9 +23,37 @@ import { choisirTransport } from '../activity/transport';
  * (mesure du 03/09/2026). Le reste garde sa forme brute : une erreur inconnue
  * qu'on habillerait en phrase rassurante serait le meme defaut, en plus petit.
  */
+/** Les cles des messages qui expliquent une absence de serveur, pas une panne. */
+const CLES_DE_LIAISON = ['chat.offline', 'chat.offlineWhy', 'chat.noBackend'] as const;
+
+/**
+ * Ce texte explique-t-il une absence de serveur ?
+ *
+ * L'ecran les affiche nus : « le moteur a renvoye une erreur » designerait un
+ * moteur qui n'a justement pas repondu. Comparer les textes un a un etait
+ * fragile — celui de `offlineWhy` porte une raison variable. On regenere donc
+ * les trois depuis leurs cles et on compare sur la partie stable.
+ */
+export function estMessageDeLiaison(texte: string | undefined): boolean {
+  if (!texte) return false;
+  const t = useI18n.getState().t;
+  return CLES_DE_LIAISON.some((cle) => {
+    const modele = t(cle, { raison: '\u0000' });
+    const [debut] = modele.split('\u0000');
+    return texte === modele || (debut.length > 20 && texte.startsWith(debut));
+  });
+}
+
 function messageErreur(err: unknown): string {
-  if (err instanceof Error && err.message === 'BACKEND_OFFLINE') {
-    return useI18n.getState().t('chat.offline');
+  if (!(err instanceof Error)) return String(err);
+  const t = useI18n.getState().t;
+
+  if (err.message === 'BACKEND_ABSENT') return t('chat.noBackend');
+  if (err.message === 'BACKEND_OFFLINE') return t('chat.offline');
+  if (err.message.startsWith('BACKEND_OFFLINE::')) {
+    // La raison mesuree voyage avec : « rebranche-le » sans dire ce qui a
+    // echoue envoyait chercher une panne sans la nommer.
+    return t('chat.offlineWhy', { raison: err.message.slice('BACKEND_OFFLINE::'.length) });
   }
   return String(err);
 }

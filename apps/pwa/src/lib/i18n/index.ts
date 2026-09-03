@@ -87,7 +87,9 @@ const en: Dict = {
   'theme.light': 'Light',
   'theme.system': 'System',
 
-  'chat.offline': 'Your server did not answer, so nothing answered in its place. Reconnect it in the backend panel, then send your message again.',
+  'chat.offline': 'Your server did not answer, and nothing answered in its place. It is being retried on its own — send your message again in a moment.',
+  'chat.offlineWhy': 'Your server did not answer ({raison}), and nothing answered in its place. It is being retried on its own — send your message again in a moment.',
+  'chat.noBackend': 'No server is set up yet, so there is nothing to answer you. Open the menu, then the backend panel, and enter your server address.',
   'backend.title': 'backend',
   'backend.api': 'remote api',
   'backend.local': 'local runtime',
@@ -409,7 +411,9 @@ const fr: Dict = {
   'theme.light': 'Clair',
   'theme.system': 'Système',
 
-  'chat.offline': 'Ton serveur n’a pas répondu, et rien n’a répondu à sa place. Rebranche-le dans le panneau backend, puis renvoie ton message.',
+  'chat.offline': 'Ton serveur n’a pas répondu, et rien n’a répondu à sa place. Il est réessayé tout seul — renvoie ton message dans un instant.',
+  'chat.offlineWhy': 'Ton serveur n’a pas répondu ({raison}), et rien n’a répondu à sa place. Il est réessayé tout seul — renvoie ton message dans un instant.',
+  'chat.noBackend': 'Aucun serveur n’est enregistré, donc rien ne peut te répondre. Ouvre le menu, puis le panneau backend, et mets l’adresse de ton serveur.',
   'backend.title': 'backend',
   'backend.api': 'api distante',
   'backend.local': 'moteur local',

@@ -2,6 +2,42 @@
 
 ## [Non publié]
 
+### Corrigé — 03/09/2026 — La coupure de l'ancien défaut dormait encore sur son téléphone
+
+**Mesuré à 02:19.** Le correctif de 01:36 empêchait une nouvelle coupure ; il
+n'effaçait pas celle déjà écrite. Le propriétaire est revenu sur le même écran,
+et la seule issue proposée était d'aller rebrancher à la main — **lui faire
+réparer le défaut**.
+
+Trois choses, et la troisième est la plus importante.
+
+**1. La coupure subie est annulée, celle qu'il a choisie tient.** Le bouton
+« Déconnecter » signe désormais sa coupure (`debrancheParLui`). Une adresse
+enregistrée, débranchée *sans* cette signature, ne peut venir que de l'ancien
+défaut : elle est rebranchée au démarrage, et la sonde tranche.
+
+**2. Le message dit ce qui ne va pas.** Trois cas au lieu d'un : aucun serveur
+enregistré, serveur muet, serveur muet *avec la raison mesurée*. « Rebranche-le
+dans le panneau » envoyait chercher une panne sans la nommer.
+
+**3. La phrase et le mécanisme qui la tient sont écrits ensemble.** Le message
+annonce « il est réessayé tout seul ». Une veille le rend vrai : nouvelle sonde
+pendant la panne, attente doublée jusqu'à une minute — assez pour rattraper vite
+une panne courte, assez peu pour ne pas marteler une adresse morte sur sa
+batterie. L'évènement `online` seul ne couvrait que le réseau du téléphone, et
+ne disait rien d'un serveur qui redémarre.
+
+`test_le_message_ne_promet_que_ce_qui_existe` mesure l'accord entre les deux :
+si la veille disparaît, la phrase devient fausse et le test tombe. **Sans lui,
+ce correctif aurait réintroduit exactement le défaut qu'il répare** — une
+promesse à l'écran sans le code derrière.
+
+6 tests de plus (24 au total). Sabotages : ne plus annuler la coupure subie, ne
+plus signer la coupure volontaire, retirer la veille, retirer un des trois
+messages de la liste sans préfixe — chacun fait tomber sa garde.
+
+Suite complète : 3236 passent. `tsc`, build PWA et garde des orphelins propres.
+
 ### Supprimé — 03/09/2026 — La démo du navigateur, et tout ce qu'elle simulait
 
 Suite du correctif du même jour. Le repli était coupé ; le code restait, et un
