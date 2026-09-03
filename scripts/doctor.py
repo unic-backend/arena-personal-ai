@@ -524,6 +524,54 @@ def verifier_xaar_kaname() -> Verification:
     return Verification("Xaar Kaname (visage)", EN_PANNE, detail)
 
 
+def _ligne_connecteur(titre: str, module: str, classe: str, remede: str) -> Verification:
+    """Une ligne de diagnostic pour un connecteur, par SA sonde.
+
+    Ecrit une fois pour Faceplugin et UI/UX Pro Max plutot que deux fois : ces
+    deux moteurs se mesurent exactement comme OpenTakeoff et Xaar Kaname, et
+    une quatrieme copie du meme bloc finirait par diverger d'une des trois.
+    """
+    try:
+        sys.path.insert(0, str(RACINE))
+        from importlib import import_module
+
+        from core.connectors.base import EtatSante
+        connecteur = getattr(import_module(module), classe)
+    except Exception:  # noqa: BLE001 — les dependances manquent : une autre ligne le dit
+        return Verification(titre, EN_PANNE,
+                            "indeterminable : les dependances ne s'importent pas")
+    try:
+        sante = connecteur().sonder()
+    except Exception as erreur:  # noqa: BLE001 — un diagnostic ne meurt pas d'une panne qu'il diagnostique
+        return Verification(titre, EN_PANNE,
+                            f"la sonde a echoue : {type(erreur).__name__}: {erreur}")
+
+    if sante.etat == EtatSante.OPERATIONNEL:
+        return Verification(titre, OK, sante.message)
+    detail = f"{sante.message} ({sante.ce_qui_manque})" if sante.ce_qui_manque else sante.message
+    if sante.etat == EtatSante.NON_CONFIGURE:
+        return Verification(titre, NON_CONFIGURE, detail, remede)
+    return Verification(titre, EN_PANNE, detail)
+
+
+def verifier_faceplugin() -> Verification:
+    """Le SDK d'analyse de visages, interroge pour de vrai.
+
+    Le moteur vit HORS du depot : son depot ne porte aucune licence, et il
+    embarque torch (1,1 Go mesures avec ses dependances).
+    """
+    return _ligne_connecteur(
+        "Visages (Faceplugin)", "core.connectors.faceplugin", "ConnecteurFaceplugin",
+        "scripts/installer_faceplugin.ps1 (moteur hors depot : aucune licence declaree)")
+
+
+def verifier_ui_ux_pro_max() -> Verification:
+    """L'intelligence de design (MIT), interrogee pour de vrai."""
+    return _ligne_connecteur(
+        "Design (UI/UX Pro Max)", "core.connectors.ui_ux_pro_max", "ConnecteurUiUxProMax",
+        "scripts/installer_ui_ux_pro_max.ps1 (moteur MIT, installe a cote)")
+
+
 def verifier_gardien() -> Verification:
     """La memoire de maintenance du gardien (DEC-0014) — ce qu'elle contient
     deja, jamais « aucun probleme » invente si aucun cycle n'a encore tourne.
@@ -772,6 +820,8 @@ def diagnostiquer() -> Rapport:
         mesurer("Voix (VoiceStudio)", verifier_voicestudio),
         mesurer("Metre de plan (OpenTakeoff)", verifier_opentakeoff),
         mesurer("Xaar Kaname (visage)", verifier_xaar_kaname),
+        mesurer("Visages (Faceplugin)", verifier_faceplugin),
+        mesurer("Design (UI/UX Pro Max)", verifier_ui_ux_pro_max),
         mesurer("Gardien (maintenance)", verifier_gardien),
         mesurer("Courrier (Gmail)", lambda: verifier_google(
             "Courrier (Gmail)", "ARENA ne lit pas ton courrier",

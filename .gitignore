@@ -85,3 +85,33 @@ documents/unic_plaquiste/*
 # Ce que le depot porte pour Xaar : `core/connectors/xaar_kaname.py`, ses
 # tests, et de quoi installer le moteur a cote.
 tools/video/xaar_kaname/
+
+# --- Faceplugin : moteur externe, hors du depot ---------------------------
+#
+# Le depot du SDK ne porte AUCUN fichier LICENSE — seulement un badge
+# « Open Source » dans son README, qui ne concede rien en droit. Sans licence
+# explicite : tous droits reserves. Faire entrer son source dans un depot
+# PUBLIC (DEC-0039) serait indefendable, et c'est la meme frontiere que pour
+# VoiceStudio (DEC-0027) et Xaar Kaname : un processus separe.
+#
+# Trois raisons, la premiere etant la plus grave :
+#   - la licence, absente ;
+#   - `.venv/` avec torch et opencv : 1,1 Go mesures ;
+#   - les poids pre-entraines et les images de test du SDK.
+#
+# Ce que le depot porte : `core/connectors/faceplugin.py`, son pont, ses
+# tests et de quoi installer le moteur a cote.
+tools/vision/faceplugin/
+
+# --- UI/UX Pro Max : moteur externe, hors du depot ------------------------
+#
+# Celui-ci est MIT, donc rien n'interdirait de le versionner. Il reste dehors
+# par CONVENTION, pas par contrainte : tout moteur externe vit a cote d'ARENA
+# ici (VoiceStudio, WanGP, MoneyPrinterTurbo, OpenTakeoff, Xaar Kaname), et
+# une seule regle vaut mieux que deux selon la licence. 23 Mo de donnees CSV
+# qu'un installeur rapatrie en une commande.
+#
+# Ce que le depot porte : `core/connectors/ui_ux_pro_max.py`, ses tests et
+# son installeur. La notice MIT voyage avec le moteur, dans son propre
+# LICENSE, jamais separee de lui.
+tools/design/ui_ux_pro_max/

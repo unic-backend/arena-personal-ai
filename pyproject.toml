@@ -24,7 +24,13 @@ target-version = "py311"
 # dans `docs/audits/`). Le lint d'ARENA ne le corrige pas : c'est un skill de
 # developpement, jamais execute par ARENA en service, et le reformater
 # divergerait de la source qu'on pourrait vouloir resynchroniser plus tard.
-exclude = ["media", "data", "apps/pwa", ".claude/skills"]
+# Les moteurs externes ne sont pas notre code : les analyser rapporterait
+# 434 erreurs (mesure du 03/09/2026) qui ne nous appartiennent pas, et les
+# corriger reviendrait a modifier du code que ce depot ne versionne meme pas.
+exclude = [
+    "media", "data", "apps/pwa", ".claude/skills",
+    "tools/vision/faceplugin", "tools/design/ui_ux_pro_max",
+]
 
 [tool.ruff.lint]
 # Jeu volontairement resserre : erreurs reelles, imports inutiles, imports non

@@ -48,6 +48,7 @@ from core.agent.capacites import RegistreCapacites, adaptateur_synchrone
 from core.connectors.audio_voix import ConnecteurAudioVoix
 from core.connectors.calendrier import CalendrierConnector
 from core.connectors.devis import DevisConnector
+from core.connectors.faceplugin import ConnecteurFaceplugin
 from core.connectors.galsen import GalsenConnector
 from core.connectors.gmail import GmailConnector
 from core.connectors.moneyprinter import MoneyPrinterConnector
@@ -55,6 +56,7 @@ from core.connectors.montage import ConnecteurMontage
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.stockage_jetons import charger_tout as _charger_jetons_persistants
+from core.connectors.ui_ux_pro_max import ConnecteurUiUxProMax
 from core.connectors.wan2gp import Wan2GPConnector
 from core.connectors.xaar_kaname import XaarKanameConnector
 from core.conversations.depot import DepotConversations
@@ -152,6 +154,21 @@ registre.declarer(
     "xaar_kaname",
     lambda: XaarKanameConnector(acces=acces, journal=journal, file_attente=file_attente,
                                 crochets=crochets),
+)
+# Analyse de visages : SDK Faceplugin, installe a cote (hors depot, aucune
+# licence declaree). Detecter et reperer sont des lectures ; extraire un
+# gabarit et comparer sont de la biometrie et passent par la confirmation.
+registre.declarer(
+    "faceplugin",
+    lambda: ConnecteurFaceplugin(acces=acces, journal=journal,
+                                 file_attente=file_attente, crochets=crochets),
+)
+# Intelligence de design : UI/UX Pro Max (MIT), moteur local en Python pur.
+# Lecture seule — son option d'ecriture sur disque n'est pas exposee.
+registre.declarer(
+    "ui_ux_pro_max",
+    lambda: ConnecteurUiUxProMax(acces=acces, journal=journal,
+                                 file_attente=file_attente, crochets=crochets),
 )
 # Metre de plan PDF : moteur OpenTakeoff, installe a cote (DEC-0008), jamais
 # dans ce depot. Non configure tant qu'il n'est pas construit sur sa machine —

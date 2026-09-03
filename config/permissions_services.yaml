@@ -107,6 +107,35 @@ services:
     generate:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
     cancel:      {decision: ALLOWED,      risque: LOW}
 
+  # Analyse de visages (SDK Faceplugin, moteur local hors depot).
+  #
+  # **Deux niveaux, et la frontiere est l'identite.** Compter des visages et
+  # placer des reperes ne dit pas QUI : ce sont des lectures, comme mesurer une
+  # image. Extraire un gabarit et comparer deux visages produisent de la
+  # BIOMETRIE — une donnee qui identifie une personne. Ces deux-la demandent
+  # l'accord du proprietaire, a chaque fois.
+  #
+  # `interrupteur: WRITE_FILES` parce qu'un gabarit extrait est une donnee
+  # personnelle qui sort du moteur : le coupe-circuit general doit pouvoir
+  # l'arreter. Pas dans INTERRUPTEURS_OBLIGATOIRES : rien ne quitte la machine,
+  # et le plancher du code reste reserve a envoyer, publier, supprimer.
+  #
+  # Le connecteur n'a AUCUNE base de visages et n'en constitue pas : comparer
+  # exige les deux images dans le meme appel. Il n'y a donc rien a interroger
+  # en arriere-plan, et aucune identification implicite n'est possible.
+  biometrie_visage:
+    read:        {decision: ALLOWED,      risque: LOW}
+    biometrie:   {decision: CONFIRMATION, risque: HIGH, interrupteur: WRITE_FILES}
+
+  # Intelligence de design (UI/UX Pro Max, MIT, moteur local hors depot).
+  #
+  # Lecture pure : le moteur interroge des tables CSV et rend des
+  # recommandations. Rien n'est ecrit, rien ne part. L'option `--persist` du
+  # moteur n'est deliberement pas exposee — une capacite de raisonnement qui
+  # demanderait des droits d'ecriture « au cas ou » les elargirait sans usage.
+  design_ui:
+    read:        {decision: ALLOWED,      risque: LOW}
+
   # Devis UniC Plaquiste. Chiffrer ne coute rien et n'ecrit rien. Produire le
   # PDF ecrit un document qui partira chez un client : confirmation, et
   # coupe-circuit WRITE_FILES. Ce n'est pas irreversible — un fichier s'efface —

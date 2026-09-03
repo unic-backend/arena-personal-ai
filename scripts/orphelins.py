@@ -24,6 +24,23 @@ PAQUETS = ('core', 'agents', 'tools', 'apps', 'social')
 DEPART = ['apps.backend.main', 'apps.backend.routers.pwa_gateway',
           'apps.backend.runtime', 'agents.orchestrator.orchestrator_agent']
 
+#: Les moteurs externes, installes SOUS `tools/` mais qui ne sont pas notre
+#: code : ils ne sont pas versionnes (`.gitignore`), on ne les corrige pas, et
+#: les compter comme orphelins ferait remonter des milliers de modules d'un
+#: `.venv` (mesure du 03/09/2026 : le SDK Faceplugin en apporte plus de 3000).
+MOTEURS_EXTERNES = ('tools/vision/faceplugin', 'tools/design/ui_ux_pro_max')
+
+#: Des modules lances en SOUS-PROCESSUS, jamais importes.
+#:
+#: Un pont vers un moteur externe tourne avec l'interpreteur DE CE MOTEUR : il
+#: ne peut pas etre importe par ARENA, sinon il chargerait torch dans notre
+#: environnement. Il est pourtant bel et bien atteint — le declarer dormant
+#: serait faux, et le citer dans le plan des modules qui dorment le serait
+#: aussi. Chaque entree nomme qui le lance, pour qu'on puisse le verifier.
+LANCES_EN_SOUS_PROCESSUS = {
+    'core.connectors.ponts.faceplugin_pont': 'core/connectors/faceplugin.py',
+}
+
 
 def _module_de(chemin: pathlib.Path) -> str:
     """`core/memory/semantique.py` -> `core.memory.semantique`, partout.
@@ -39,8 +56,15 @@ def _module_de(chemin: pathlib.Path) -> str:
 
 def fichiers_du_projet() -> Dict[str, pathlib.Path]:
     """Tous les modules des paquets du projet, par nom pointe."""
-    return {_module_de(p): p for p in RACINE.rglob('*.py')
-            if p.relative_to(RACINE).parts[0] in PAQUETS and '__pycache__' not in p.parts}
+    fichiers = {}
+    for p in RACINE.rglob('*.py'):
+        relatif = p.relative_to(RACINE)
+        if relatif.parts[0] not in PAQUETS or '__pycache__' in p.parts:
+            continue
+        if any(relatif.as_posix().startswith(m) for m in MOTEURS_EXTERNES):
+            continue
+        fichiers[_module_de(p)] = p
+    return fichiers
 
 
 def _imports(chemin: pathlib.Path) -> Set[str]:
@@ -87,6 +111,8 @@ def est_reveillable(module: str) -> bool:
     portant ce nom. Une exemption survit toujours a sa raison ; c est pour ca
     qu elle doit partir avec elle.
     """
+    if module in LANCES_EN_SOUS_PROCESSUS:
+        return False
     return not module.endswith('__init__')
 
 

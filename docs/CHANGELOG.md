@@ -2,6 +2,71 @@
 
 ## [Non publié]
 
+### Ajouté — 03/09/2026 — Analyse de visages et intelligence de design
+
+Deux moteurs externes rejoignent ARENA. Même architecture — la seule qui existe
+ici — mais **pour deux raisons opposées**, et c'est ce qui mérite d'être écrit.
+Détail complet → `docs/audits/faceplugin_et_ui_ux_audit.md`.
+
+**Faceplugin** (analyse de visages) : son dépôt ne porte **aucun fichier
+`LICENSE`**. Son README affiche un badge « Open Source » et « no licensing
+fees » — ni l'un ni l'autre ne concède quoi que ce soit en droit. Sans licence
+explicite : tous droits réservés. Il reste donc dehors, comme Deep-Live-Cam.
+
+**UI/UX Pro Max** (design) : **MIT**, Python pur, aucune dépendance. Rien
+n'interdirait de le versionner. Il reste dehors **par convention** — une seule
+règle pour tous les moteurs vaut mieux que deux selon la licence, parce que
+c'est la seconde qu'on oublie d'appliquer.
+
+**Quatre capacités de visage, et la frontière est l'identité.** Compter des
+visages et placer leurs repères ne disent pas *qui* : ce sont des lectures.
+Extraire un gabarit (256 dimensions) et comparer deux visages produisent de la
+biométrie — ces deux-là demandent l'accord du propriétaire à chaque appel
+(`biometrie_visage.biometrie: CONFIRMATION`, risque `HIGH`).
+
+Quatre garanties tenues par la structure, pas par une intention : aucune base
+de visages et rien pour en constituer une (`comparer` exige les deux images
+dans le même appel) ; aucun gabarit écrit sur le disque ; `detecter` ne ramène
+jamais de caractéristiques même si le moteur les a calculées dans la même
+passe ; rien en arrière-plan.
+
+**UI/UX Pro Max est en lecture seule, délibérément.** Le moteur sait persister
+un design system (`--persist`) ; cette option n'est pas exposée. Une capacité
+de raisonnement qui demanderait des droits d'écriture « au cas où » les
+élargirait sans usage.
+
+**Testé contre les moteurs réels**, pas seulement avec des doubles : 1 visage
+détecté, 68 repères, vecteur de 256 dimensions, similarité 86,3 entre deux
+photos et **100,0 d'une image contre elle-même** — le contrôle qui prouve que
+le score n'est pas fabriqué. Une image sans visage rend `nombre: 0` ; comparer
+deux images sans visage rend un échec **sans score**, parce qu'un 0 se lirait
+« comparées, très différentes ».
+
+Trois défauts trouvés et corrigés en chemin :
+
+| Défaut | Ce qu'il produisait |
+|---|---|
+| Le pont ne trouvait pas le SDK | Python ajoute le dossier du *script*, pas le dossier courant |
+| Le SDK écrit `priors nums:4420` sur la sortie standard | une mesure réussie se rapportait « sortie illisible » |
+| Ruff et deux gardes descendaient dans les moteurs | 434 erreurs et 5 faux coupables venus de `sympy` |
+
+Le pont préfixe donc sa réponse d'un marqueur, et `MOTEURS_EXTERNES` est
+déclaré une seule fois (`scripts/orphelins.py`) puis réutilisé — deux listes
+auraient divergé.
+
+**`core.connectors.ponts.faceplugin_pont` n'est pas dormant** : il tourne avec
+l'interpréteur *du SDK*, donc ARENA ne peut pas l'importer sans charger torch
+dans son propre environnement. `LANCES_EN_SOUS_PROCESSUS` le déclare avec le
+nom de son appelant, pour qu'on puisse le vérifier.
+
+L'ancien test d'isolation de Xaar Kaname est **fondu** dans
+`tests/test_moteurs_externes_restent_dehors.py` : deux fichiers mesuraient la
+même règle du dépôt et pouvaient diverger. Aucune assertion perdue — le
+sabotage que l'ancien attrapait fait toujours tomber une garde, et la règle
+couvre maintenant les sept moteurs.
+
+69 tests ajoutés. Suite complète : 3329 passent.
+
 ### Corrigé — 03/09/2026 — Les trois défauts vus sur son écran de 02:47
 
 Les trois existaient indépendamment de la machine branchée. Corrigés pendant
@@ -286,7 +351,8 @@ Mesuré avant la règle — le `.gitignore` d'ARENA couvrait `.venv`, mais **pas
 **pas** le source AGPL. Après : tout est ignoré, `git status` ne voit plus rien
 sous ce dossier.
 
-10 tests (`tests/test_xaar_kaname_reste_dehors.py`), dont celui qui mesure que
+10 tests (fondus le 03/09/2026 dans `tests/test_moteurs_externes_restent_dehors.py`, qui mesure la même
+règle pour les sept moteurs externes), dont celui qui mesure que
 VoiceStudio, WanGP et MoneyPrinterTurbo n'ont jamais mis une ligne dans git —
 la règle du dépôt est vérifiée, pas supposée. Sabotage : règle retirée,
 6 tests tombent.

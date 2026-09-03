@@ -116,6 +116,15 @@ VOIE_PAR_INTENTION: Dict[str, Voie] = {
     # Un plan de montage est un JSON structure a produire d un coup et
     # relu : plusieurs passes sur la machine, jamais un aller dehors.
     "MONTAGE": Voie.PROFONDE,
+    # L'analyse de visages ne demande aucun raisonnement : la capacite se
+    # choisit par mots-cles et c'est le SDK Faceplugin qui travaille, sur
+    # processeur. Meme raison que le son — attendre le modele profond serait du
+    # temps perdu avant un appel qui ne le consulte jamais.
+    "VISAGE": Voie.LEGERE,
+    # Concevoir une interface demande de composer : lire ce que rend le moteur
+    # de design, en tirer des choix, les justifier. Plusieurs passes sur la
+    # machine, jamais un aller dehors.
+    "DESIGN_UI": Voie.PROFONDE,
     # Le son ne demande aucun raisonnement au modele : la capacite se
     # choisit par mots-cles et c'est VoiceStudio qui travaille. La voie
     # LEGERE, donc — attendre le modele profond serait du temps perdu.

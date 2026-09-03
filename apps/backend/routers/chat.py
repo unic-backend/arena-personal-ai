@@ -36,6 +36,7 @@ from apps.backend.runtime import (
     plaquiste_agent,
     publisher_agent,
     reasoning_engine,
+    registre,
     repo_engineer,
     researcher_agent,
     social_agent,
@@ -105,6 +106,78 @@ EXTENSIONS_MONTABLES = frozenset({
     ".jpg", ".jpeg", ".png", ".webp",
     ".mp3", ".wav", ".m4a", ".aac",
 })
+
+
+#: Ce que Faceplugin sait lire. Sous-ensemble strict de `EXTENSIONS_MONTABLES` :
+#: lui envoyer un `.mp4` echouerait dans le moteur, apres coup.
+EXTENSIONS_IMAGES = frozenset({".jpg", ".jpeg", ".png", ".webp"})
+
+#: Ce qui distingue « compose-moi un design system » d'une simple question de
+#: style. Le moteur repond aux deux, mais pas avec la meme chose.
+FORMES_DESIGN_SYSTEM = (
+    "design system", "design-system", "systeme de design", "système de design",
+    "charte graphique", "identite visuelle", "identité visuelle",
+)
+
+
+def _veut_un_design_system(demande: str) -> bool:
+    """Vrai si la demande reclame un systeme complet, pas une recherche."""
+    texte = demande.lower()
+    return any(forme in texte for forme in FORMES_DESIGN_SYSTEM)
+
+
+def images_analysables(video_path: Optional[str] = None) -> List[str]:
+    """Ses images, et elles seules — meme discipline que `medias_montables`."""
+    return [c for c in medias_montables(video_path)
+            if Path(c).suffix.lower() in EXTENSIONS_IMAGES]
+
+
+def _issue_en_reponse(issue: Any) -> Dict[str, Any]:
+    """Un `ResultatAction` de connecteur, dans la forme que rend ce routeur.
+
+    Reutilise la structure existante plutot que d'en inventer une : `status`,
+    `response`, et le detail du connecteur. Rien n'est reformule — un resultat
+    qui se ferait embellir en passant ici ne serait plus le sien.
+    """
+    favorable = issue.statut.value in {"SUCCESS", "PARTIAL", "NEEDS_CONFIRMATION"}
+    return {
+        "status": "success" if favorable else "error",
+        "response": issue.message,
+        "statut_connecteur": issue.statut.value,
+        "detail": issue.detail or {},
+    }
+
+
+def _analyse_de_visages(demande: str, images: List[str]) -> Dict[str, Any]:
+    """Choisit la capacite Faceplugin d'apres la demande, puis l'execute.
+
+    **Aucune image n'est inventee.** Sans image dans son inventaire, on le dit
+    au lieu de fabriquer un chemin : le moteur echouerait de toute facon, mais
+    plus tard et moins clairement.
+
+    « Comparer » demande deux images : avec une seule, on refuse ici plutot
+    que de comparer une image avec elle-meme, ce qui rendrait 100 et se lirait
+    comme un resultat.
+    """
+    texte = demande.lower()
+    if not images:
+        return {"status": "error",
+                "response": "Aucune image dans tes fichiers : dépose-les d'abord."}
+
+    if any(f in texte for f in ("compare", "même personne", "meme personne")):
+        if len(images) < 2:
+            return {"status": "error",
+                    "response": "Comparer demande deux images ; il n'y en a qu'une."}
+        return _issue_en_reponse(registre.executer(
+            "faceplugin", "comparer", image=images[0], image2=images[1]))
+
+    if any(f in texte for f in ("caracteristique", "caractéristique", "gabarit")):
+        capacite = "caracteristiques"
+    elif any(f in texte for f in ("repere", "repère", "landmark", "points du visage")):
+        capacite = "reperes"
+    else:
+        capacite = "detecter"
+    return _issue_en_reponse(registre.executer("faceplugin", capacite, image=images[0]))
 
 
 def medias_montables(video_path: Optional[str] = None) -> List[str]:
@@ -381,6 +454,22 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         result = await coder_agent.run(request.prompt)
     elif intent == "TREND_SEARCH":
         result = await trend_agent.run(request.prompt, context={"region": request.region})
+    elif intent == "VISAGE":
+        # Analyse de visages par le SDK Faceplugin, via le registre — jamais
+        # en direct : c'est le registre qui applique la permission, et deux de
+        # ces quatre capacites sont de la biometrie, donc soumises a
+        # confirmation (`config/permissions_services.yaml`).
+        #
+        # Les images viennent de SON inventaire, comme pour le montage et la
+        # vision. Le modele ne nomme aucun chemin : il ne peut donc pas faire
+        # analyser un fichier qu'il aurait invente.
+        result = _analyse_de_visages(request.prompt, images_analysables(request.video_path))
+    elif intent == "DESIGN_UI":
+        # Intelligence de design (UI/UX Pro Max). Lecture pure : la demande
+        # EST la requete, il n'y a aucun fichier a designer ni rien a ecrire.
+        capacite = "design_system" if _veut_un_design_system(request.prompt) else "chercher"
+        issue = registre.executer("ui_ux_pro_max", capacite, requete=request.prompt)
+        result = _issue_en_reponse(issue)
     elif intent == "VIDEO_ANALYSIS":
         # « ou en est ma video ? » ne parle d aucun fichier. Reclamer un chemin
         # ici renvoyait une erreur a une question parfaitement claire.

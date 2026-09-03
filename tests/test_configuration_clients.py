@@ -30,6 +30,10 @@ RACINE = Path(__file__).resolve().parent.parent
 #: générés à l'exécution, pas toujours vides, pas toujours lisibles.
 PAQUETS_SOURCE = ("apps", "core", "agents", "tools", "social")
 
+#: Reutilise depuis `scripts/orphelins.py` : une seule liste des moteurs
+#: externes, pour que les deux balayages ne divergent pas.
+from scripts.orphelins import MOTEURS_EXTERNES  # noqa: E402
+
 #: Les quatre clés qui n'ouvrent plus rien. Les remettre dans un fichier lu par
 #: le système, c'est redonner de la valeur a des valeurs publiquement connues.
 CLES_MORTES = ("CREDS_KEY", "JWT_SECRET", "JWT_REFRESH_SECRET", "WEBUI_SECRET_KEY")
@@ -221,6 +225,13 @@ class TestAucuneAdresseOllamaEcriteEnDur:
             for chemin in (RACINE / paquet).rglob("*.py"):
                 relatif = chemin.relative_to(RACINE).as_posix()
                 if "__pycache__" in relatif or relatif in self.AUTORISES:
+                    continue
+                # Les moteurs externes vivent sous `tools/` sans etre notre
+                # code. Le `.venv` du SDK Faceplugin apporte sympy et pygments,
+                # qui contiennent « 11434 » dans des tables de tests et de
+                # caracteres (mesure du 03/09/2026) : cinq faux coupables qu'on
+                # ne peut ni corriger ni versionner.
+                if any(relatif.startswith(m) for m in MOTEURS_EXTERNES):
                     continue
                 source = chemin.read_text(encoding="utf-8")
                 if "11434" in source and "OLLAMA_BASE_URL" not in source:

@@ -89,6 +89,8 @@ INTENTIONS = {
     "AUDIO",
     "VIDEO_PROJET",
     "ATELIER",
+    "VISAGE",
+    "DESIGN_UI",
 }
 
 #: Ce qui parle de ses RESEAUX SOCIAUX. Teste avant le metier : « une
@@ -234,6 +236,38 @@ AUDIO = (
     "narration", "en voix francaise", "en voix française",
     "double cette video", "double cette vidéo", "doublage",
     "quelles voix", "quels moteurs audio", "moteurs de voix",
+)
+
+#: ANALYSER des visages sur une image : compter, situer, reperer, comparer.
+#: Distinct de VISION (comprendre une image en general) et de la generation de
+#: visage de Xaar Kaname : ici on MESURE, on ne fabrique rien.
+#:
+#: « visage » seul ne suffit pas : « mets ce visage sur cette photo » est une
+#: generation, pas une analyse. Les formes retenues portent donc un verbe de
+#: mesure ou de comparaison.
+VISAGE = (
+    "analyse ce visage", "analyse ces visages", "analyse les visages",
+    "detecte les visages", "détecte les visages", "detecte le visage",
+    "détecte le visage", "combien de visages", "compare ces deux visages",
+    "compare ces visages", "compare les visages", "meme personne",
+    "même personne", "reconnaissance faciale", "points du visage",
+    "reperes du visage", "repères du visage", "landmarks",
+    "caracteristiques du visage", "caractéristiques du visage",
+    "extrais le visage", "extrais les caracteristiques du visage",
+    "extrais les caractéristiques du visage",
+)
+
+#: CONCEVOIR une interface : style, palette, typographie, regles UX, design
+#: system. Distinct de CODE_EXECUTION (ecrire le code) : ici on decide a quoi
+#: ca doit ressembler, avant d'ecrire quoi que ce soit.
+DESIGN_UI = (
+    "design system", "design-system", "systeme de design", "système de design",
+    "concois l interface", "conçois l'interface", "concois linterface",
+    "quelle palette", "quelle typographie", "quelles couleurs pour",
+    "quelle police pour", "ameliore l ux", "améliore l'ux", "ameliore lux",
+    "ameliore l interface", "améliore l'interface", "regles ux", "règles ux",
+    "charte graphique", "style d interface", "style d'interface",
+    "maquette", "identite visuelle", "identité visuelle",
 )
 
 #: MONTER une video a partir de fichiers qu il possede deja. Distinct de
@@ -577,6 +611,16 @@ class OrchestratorAgent(BaseAgent):
         # enverraient ailleurs, vers un agent qui ne touche rien.
         if any(k in text for k in ATELIER):
             return "ATELIER"
+
+        # Analyse de visages et conception d'interface. Testes tot, avant les
+        # familles generiques : « analyse ces visages » contient « analyse » et
+        # partirait a la vision generale ; « conçois l'interface de cette
+        # application » contient « application » et partirait au code.
+        if any(k in text for k in VISAGE):
+            return "VISAGE"
+
+        if any(k in text for k in DESIGN_UI):
+            return "DESIGN_UI"
 
         # Son agenda. Teste en premier : ces formulations ne veulent jamais dire
         # autre chose, et plusieurs contiennent des mots de temps qui les
