@@ -2,6 +2,37 @@
 
 ## [Non publié]
 
+### Corrigé — 02/09/2026 — Le QR code du lanceur n'avait jamais marché
+
+Mesuré sur la machine du propriétaire, au premier démarrage de la soirée :
+
+```
+python -c "import qrcode,sys; ..."
+ModuleNotFoundError: No module named 'qrcode'
+```
+
+`scripts/lancer_arena.ps1` appelle `qrcode` depuis PowerShell, par `python -c`.
+Un scan d'imports Python ne voit **rien** : ce n'est pas un `import` dans un
+`.py`, c'est une chaîne dans un script shell. Le paquet n'a donc jamais été
+déclaré, jamais installé par `pip install -r requirements.txt`, et **le carré à
+scanner n'a jamais fonctionné chez personne** depuis que le lanceur existe.
+
+Deux moitiés, et la seconde comptait plus que la première :
+
+- **La dépendance est déclarée** (`qrcode==8.2`, dans `requirements.txt` et
+  dans le verrou). Sa seule dépendance sous Windows, `colorama`, était déjà là.
+- **Le lanceur ne plante plus.** La trace Python s'affichait entre « ARENA --
+  demarrage » et « Laisse les deux fenetres ouvertes » : au milieu d'un
+  démarrage **réussi**, ce qui se lit comme un échec alors que le serveur et le
+  tunnel tournaient tous les deux. Sans le paquet, il dit maintenant en une
+  ligne que l'adresse au-dessus suffit, et comment retrouver le carré.
+- La phrase « Scanne ce carre » n'est plus affichée **que s'il y a un carré** :
+  l'annoncer avant de savoir, c'était promettre ce qui allait échouer.
+
+`tests/test_lanceur.py` ferme le trou pour de bon : tout module importé par un
+`python -c` du lanceur doit être déclaré, ou appartenir à la bibliothèque
+standard. Vérifié par sabotage — en retirant la déclaration, deux tests tombent.
+
 ### Corrigé — 02/09/2026 — Le diagnostic se trompait de modèle
 
 Trouvé au moment où le propriétaire allume son PC, juste avant qu'il lance la

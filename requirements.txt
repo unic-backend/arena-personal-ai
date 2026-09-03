@@ -30,6 +30,11 @@ python-pptx==1.0.2        # tools/documents/reader.py — lecture des .pptx
 pypdfium2==5.13.0         # tools/documents/reader.py — rendu d'une page PDF en image, pour l'OCR
 pytesseract==0.3.13       # tools/documents/reader.py — OCR d'un PDF scanne. Exige le binaire
                           # tesseract (+ tesseract-ocr-fra) installe a part sur la machine.
+qrcode==8.2               # scripts/lancer_arena.ps1 — le carre a scanner avec le
+                          # telephone. Appele par `python -c` depuis PowerShell, donc
+                          # invisible d'un scan d'imports : il a manque ici du jour ou
+                          # le lanceur a ete ecrit au 02/09/2026, et le QR code n'a
+                          # jamais marche chez personne.
 reportlab==4.4.9          # agents/plaquiste/devis_pdf.py — devis a la charte UniC.
                           # Epingle exactement par browser-use 0.13.8 : demander 5.0.1
                           # rendait requirements.txt insoluble. Verifie le 2026-08-28,
