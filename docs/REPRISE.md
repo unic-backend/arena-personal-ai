@@ -963,11 +963,34 @@ part bien.
   cas le 03/09/2026 après le merge de la PR #152, corrigé depuis.
   Ce qui reste vrai : l'historique contient les six valeurs de secrets décrites
   dans `documents/RUNBOOK_PURGE_SECRETS.md`, et cette purge reste à faire.
-- **`apps/pwa` n'a aucun lanceur de tests.** Les correctifs d'interface (#56,
-  #58) sont vérifiés par Playwright à la main, mais rien ne les fige. En ajouter
-  un est un travail à part, non demandé à ce jour.
-- **Une seule panne de `/health` déconnecte l'application.** `backendStore.test()`
-  met `enabled: false` dès que la sonde échoue, et la synchronisation s'arrête
-  jusqu'à reconnexion manuelle. Comportement antérieur à ce VOLET, non modifié.
+- **`apps/pwa` n'a toujours aucun lanceur de tests.** Les correctifs
+  d'interface (#56, #58) sont vérifiés par Playwright à la main, et ceux de la
+  nuit du 03/09/2026 le sont par des **tests Python qui lisent le source
+  TypeScript** (`tests/test_pwa_pas_de_demo_dans_le_chat.py`,
+  `tests/test_capacites_video_pwa.py`). C'est grossier, et c'est assumé : une
+  garde grossière qui existe vaut mieux qu'une garde élégante qui n'existe pas.
+  Elles ne mesurent que la structure du code, jamais son comportement à
+  l'écran. Un vrai lanceur reste un travail à part, non demandé à ce jour.
+- ~~**Une seule panne de `/health` déconnecte l'application**~~ — **corrigé le
+  03/09/2026** (`3f2d8be`). La sonde réessaie trois fois avant d'abandonner,
+  `enabled` ne bouge plus (il dit ce que le propriétaire veut, pas ce que le
+  réseau permet — seul le bouton « Déconnecter » le change, et il signe sa
+  coupure), et une veille re-sonde pendant la panne, l'attente doublant jusqu'à
+  une minute.
+  Ce que ça a coûté avant d'être vu : le 03/09/2026 entre 01:36 et 02:39, le
+  propriétaire a parlé à une **démo du navigateur** qui se faisait passer pour
+  son IA, parce que cette coupure-là était écrite dans le `localStorage` de son
+  téléphone et que rien ne l'effaçait. La démo est supprimée (`c9a6838`).
 - **La fusion est par conversation, pas par message.** Modifier le même fil sur
   les deux appareils hors ligne garde le plus récent en entier.
+- **Les moteurs lourds ne tournent que sur son PC.** Ollama, VoiceStudio,
+  WanGP, MoneyPrinterTurbo, Deep-Live-Cam et le SDK Faceplugin sont absents de
+  Railway, qui n'a pas de carte graphique. Branché là-bas, seul le chat
+  répond (Groq) — et depuis le 03/09/2026 le panneau vidéo le **dit** au lieu
+  de proposer sept capacités dont six échoueront (`GET /agent/capabilities`).
+  Ce n'est pas un défaut à corriger : c'est la conséquence de DEC-0022, et
+  elle est maintenant visible avant de lancer plutôt qu'après l'échec.
+- **Le SDK Faceplugin n'a aucune licence.** Aucun fichier `LICENSE` dans son
+  dépôt — un badge « Open Source » dans son README ne concède rien en droit.
+  Il reste hors du dépôt, et **un usage commercial demande de vérifier auprès
+  de l'éditeur** avant toute distribution.

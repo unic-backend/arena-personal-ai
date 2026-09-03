@@ -211,3 +211,31 @@ class TestLeDetecteurNeGardePasUneExemptionMorte:
                 f"{fragment} est encore exempté alors que "
                 f"{'existe' if (racine / 'apps' / 'pwa').exists() else 'le dossier a disparu'}"
             )
+
+
+def test_le_compteur_de_modules_de_CLAUDE_md_est_a_jour():
+    """Le chiffre affiché dans `CLAUDE.md` est celui que la commande rend.
+
+    **Mesuré le 03/09/2026.** Ce fichier — le premier que lit chaque session —
+    annonçait « 104 modules, 77 atteints » alors que le dépôt en comptait 176
+    et en atteignait 137. L'écart s'était creusé sans que rien ne le signale :
+    un nombre figé dans un document ne vieillit pas visiblement, il se lit
+    comme l'état du jour.
+
+    C'est la même faute que celle traquée partout ailleurs ici — une valeur
+    écrite qui prétend être une mesure. La différence est qu'elle visait la
+    prochaine session plutôt qu'un utilisateur.
+
+    Ce test échouera à chaque module ajouté ou branché. **C'est voulu** : le
+    correctif tient en un nombre, et le coût de l'oubli est un fichier
+    d'accueil qui ment.
+    """
+    from scripts.orphelins import parcourir
+
+    fichiers, vus, _ = parcourir()
+    claude = (RACINE / "CLAUDE.md").read_text(encoding="utf-8")
+
+    attendu = f"→ {len(fichiers)} modules, {len(vus)} atteints."
+    assert attendu in claude, (
+        f"CLAUDE.md annonce un compte perime. Mesure du jour : « {attendu} ». "
+        "Relance `python scripts/orphelins.py` et reporte les deux nombres.")

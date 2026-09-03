@@ -18,10 +18,14 @@ vraiment.
 
 ```
 python scripts/orphelins.py
-→ 104 modules, 77 atteints. Aucun module réel endormi.
+→ 176 modules, 137 atteints. Aucun module réel endormi.   (mesuré le 03/09/2026)
 ```
 
-C'est la mesure, et elle ne se raconte pas. **N'ouvre pas une nouvelle phase du
+C'est la mesure, et elle ne se raconte pas — **elle se refait**. Ce bloc a
+porté « 104 modules, 77 atteints » jusqu'au 03/09/2026, longtemps après que le
+dépôt en compte 176. Un chiffre figé dans le fichier que chaque session lit en
+premier ne vieillit pas visiblement : il se lit comme l'état du jour. Relance
+la commande plutôt que de recopier ce nombre. **N'ouvre pas une nouvelle phase du
 plan et n'intègre rien de nouveau** : il donne la suite lui-même. Les deux
 questions posées à ce moment-là sont tranchées depuis : la visibilité du dépôt
 (privé depuis le 28/08/2026) et le sort de `apps/pwa/server/` (supprimé le

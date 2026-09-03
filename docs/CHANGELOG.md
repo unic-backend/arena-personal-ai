@@ -2,6 +2,41 @@
 
 ## [Non publié]
 
+### Corrigé — 03/09/2026 — Trois documents qui décrivaient un dépôt qui n'existe plus
+
+Même faute que celle traquée partout ailleurs ici — **une valeur écrite qui
+prétend être une mesure** — mais visant la prochaine session plutôt qu'un
+utilisateur.
+
+**`CLAUDE.md` annonçait « 104 modules, 77 atteints ».** Le dépôt en compte 176
+et en atteint 137. L'écart s'était creusé sans que rien ne le signale : un
+nombre figé dans le fichier que chaque session lit en premier ne vieillit pas
+visiblement, il se lit comme l'état du jour.
+
+`test_le_compteur_de_modules_de_CLAUDE_md_est_a_jour` relance la commande et
+compare. **Il échouera à chaque module ajouté ou branché, et c'est voulu** : le
+correctif tient en un nombre, le coût de l'oubli est un fichier d'accueil qui
+ment.
+
+**`docs/REPRISE.md` listait comme ouvert ce qui était fermé cette nuit.** « Une
+seule panne de `/health` déconnecte l'application » est corrigé (`3f2d8be`) —
+et la note dit maintenant ce que ce défaut a coûté avant d'être vu : entre
+01:36 et 02:39, le propriétaire a parlé à une démo du navigateur qui se faisait
+passer pour son IA, parce que cette coupure était écrite dans le `localStorage`
+de son téléphone et que rien ne l'effaçait.
+
+Deux limites y sont ajoutées, parce qu'elles se redécouvriront sinon : **les
+moteurs lourds ne tournent que sur son PC** (conséquence de DEC-0022, désormais
+visible avant de lancer plutôt qu'après l'échec), et **le SDK Faceplugin n'a
+aucune licence** — un usage commercial demande de vérifier auprès de l'éditeur.
+
+La note sur les tests de la PWA est corrigée aussi : ils existent maintenant,
+en Python, et **ne mesurent que la structure du source TypeScript, jamais le
+comportement à l'écran**. Le dire évite qu'on les prenne pour ce qu'ils ne sont
+pas.
+
+Suite complète : 3345 passent.
+
 ### Ajouté — 03/09/2026 — La mentalité d'Usman, écrite et tenue par des tests
 
 Le propriétaire demande d'améliorer la mentalité d'Usman en y intégrant « le
