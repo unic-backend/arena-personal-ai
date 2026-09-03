@@ -119,6 +119,22 @@ class RouteurModeles(ModelProvider):
         fournisseur = self.distants.get(choix.fournisseur)
         return getattr(fournisseur, "model_name", choix.fournisseur)
 
+    @property
+    def fournisseur_en_service(self) -> Optional[str]:
+        """Qui a repondu la derniere fois. `None` tant que rien n'a ete servi.
+
+        **`None` n'est pas « local ».** C'est la distinction qui compte ici :
+        tant qu'aucune reponse n'est passee, personne ne sait d'ou viendra la
+        suivante, et l'annoncer serait une supposition.
+
+        Mesure du 03/09/2026, sur le telephone du proprietaire : l'ecran
+        affichait « ollama » — ecrit en dur dans `/health` — alors que le
+        fournisseur reel pouvait etre Groq. Un ecran qui dit « local » pendant
+        que le texte part chez un tiers est pire qu'un ecran muet : il donne
+        une garantie de confidentialite que rien ne soutient.
+        """
+        return self.dernier_choix.fournisseur if self.dernier_choix else None
+
     # --- Choisir -------------------------------------------------------------------
 
     def _candidats(self, classement: Classement) -> tuple:

@@ -2,6 +2,38 @@
 
 ## [Non publié]
 
+### Corrigé — 03/09/2026 — L'écran disait « ollama » quoi qu'il arrive
+
+Mesuré sur le téléphone du propriétaire, pendant qu'il changeait l'adresse de
+son backend. Son écran affichait **« ollama · qwen3.5:9b »**, et son backend
+distant répondait `"provider": "ollama"`, `"ollama_available": true`.
+
+Or ce backend tourne sur un hébergeur cloud, avec `GROQ_API_KEY` configurée.
+Deux choses s'y ajoutaient :
+
+- **`provider` était écrit en dur** dans `/health`. Quel que soit le moteur qui
+  répond, il valait « ollama ». L'interface l'affiche tel quel
+  (`backendStore.ts` : `remoteProvider: r.provider`).
+- **`ollama_available` mesure l'aiguilleur, pas Ollama** : il vaut `true` dès
+  qu'**un** fournisseur répond — Groq compris.
+
+Résultat : le texte pouvait partir chez Groq pendant que le téléphone affichait
+« ollama ». **Un écran qui dit « local » alors que la phrase voyage est pire
+qu'un écran muet** : il donne une garantie de confidentialité que rien ne
+soutient — et le propriétaire venait de demander où allaient ses données.
+
+`RouteurDeModeles.fournisseur_en_service` rend désormais celui qui a
+réellement répondu, et `None` tant que rien n'a été servi : « on ne sait pas
+encore » n'est pas « local ». `/health` affiche `indetermine` dans ce cas.
+
+Le test qui exigeait `corps["provider"] == "ollama"` **épinglait le défaut**.
+Il n'est pas affaibli, il est retourné — vérifié par sabotage : en remettant
+la valeur en dur, trois tests tombent.
+
+**Signalé, non corrigé :** le nom `ollama_available` reste inexact — il veut
+dire « un fournisseur répond ». Le renommer touche un contrat que l'interface
+lit ; ce n'est pas le sujet de ce correctif.
+
 ### Corrigé — 02/09/2026 — Le QR code du lanceur n'avait jamais marché
 
 Mesuré sur la machine du propriétaire, au premier démarrage de la soirée :
