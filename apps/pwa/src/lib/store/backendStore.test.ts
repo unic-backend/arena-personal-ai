@@ -200,3 +200,93 @@ describe('deux adresses, bascule automatique', () => {
     expect(frais.getState().urlSecours).toBe('https://railway.test');
   });
 });
+
+describe('le PC s\'eteint pendant l\'usage', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('un envoi rate declenche la bascule vers le secours', async () => {
+    // **Le cas NORMAL, pas le cas rare** : son PC ne tourne qu'environ 4 h
+    // par jour. Sans ce chemin, le panneau restait « en ligne » sur une
+    // machine eteinte et chaque message suivant partait dans le vide.
+    const ping = vi.fn(async (cfg: { url: string }) =>
+      cfg.url.includes('railway')
+        ? { ok: true, latencyMs: 30, provider: 'groq' }
+        : { ok: false, latencyMs: 1, error: 'PC eteint' });
+    vi.doMock('../activity/remoteTransport', () => ({ pingBackend: ping }));
+
+    // **Par le vrai chemin.** Le premier essai appelait `signalerEchec`
+    // directement : retirer l'appel depuis `chatStore` ne faisait alors
+    // tomber aucun test, alors que c'est exactement le cablage qui manquait
+    // avant ce correctif. Une garde qui verifie qu'une piece existe ne
+    // verifie pas qu'elle est branchee.
+    vi.resetModules();
+    const magasinModule = await import('./backendStore');
+    const { signalerSiPanne } = await import('./chatStore');
+    const magasin = magasinModule.useBackend;
+    magasin.setState({
+      url: 'https://mon-pc.test', urlSecours: 'https://railway.test',
+      enabled: true, status: 'online', serveurActif: 'principal',
+    });
+
+    signalerSiPanne(new TypeError('Failed to fetch'), true);
+    await vi.waitFor(() => expect(magasin.getState().status).toBe('online'), { timeout: 15000 });
+
+    expect(magasin.getState().serveurActif).toBe('secours');
+    vi.doUnmock('../activity/remoteTransport');
+  }, 20000);
+
+  it('une annulation ne fait basculer personne', async () => {
+    // « Stop » n'est pas une panne. Sans cette garde, chaque interruption
+    // volontaire ferait changer de serveur.
+    //
+    // Premier essai de ce test : il importait `signalerSiPanne` et verifiait
+    // qu'il etait `undefined` faute d'export. Ca ne mesurait rien du tout.
+    // La fonction est donc exportee et appelee ici pour de vrai.
+    vi.resetModules();
+    const magasinModule = await import('./backendStore');
+    const { signalerSiPanne } = await import('./chatStore');
+    const magasin = magasinModule.useBackend;
+    magasin.setState({
+      url: 'https://mon-pc.test', enabled: true, status: 'online',
+      serveurActif: 'principal',
+    });
+
+    const abandon = new DOMException('stop', 'AbortError');
+    signalerSiPanne(abandon, true);
+
+    expect(magasin.getState().status).toBe('online');
+    expect(magasin.getState().serveurActif).toBe('principal');
+  });
+
+  it('un travail LOCAL qui echoue ne fait pas basculer', async () => {
+    // Le montage video tourne sur l'appareil : sa panne ne dit rien du
+    // serveur, et debrancher le PC pour ca serait absurde.
+    vi.resetModules();
+    const magasinModule = await import('./backendStore');
+    const { signalerSiPanne } = await import('./chatStore');
+    const magasin = magasinModule.useBackend;
+    magasin.setState({ url: 'https://mon-pc.test', enabled: true, status: 'online' });
+
+    signalerSiPanne(new Error('codec absent'), false);
+
+    expect(magasin.getState().status).toBe('online');
+  });
+
+  it('sans serveur de secours, l\'echec reste un echec', async () => {
+    // Rien n'est invente : pas de secours, pas de bascule.
+    vi.doMock('../activity/remoteTransport', () => ({
+      pingBackend: vi.fn().mockResolvedValue({ ok: false, latencyMs: 1, error: 'PC eteint' }),
+    }));
+
+    const magasin = await magasinFrais();
+    magasin.setState({
+      url: 'https://mon-pc.test', urlSecours: '', enabled: true, status: 'online',
+    });
+
+    magasin.getState().signalerEchec('Failed to fetch');
+    await vi.waitFor(() => expect(magasin.getState().status).toBe('error'), { timeout: 15000 });
+
+    expect(magasin.getState().serveurActif).toBeNull();
+    vi.doUnmock('../activity/remoteTransport');
+  }, 20000);
+});

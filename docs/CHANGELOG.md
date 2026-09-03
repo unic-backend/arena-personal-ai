@@ -2,6 +2,40 @@
 
 ## [Non publié]
 
+### Corrigé — 03/09/2026 — La bascule ne se déclenchait jamais en usage réel
+
+Le propriétaire, après la bascule à deux adresses : *« mon PC ne s'allume que
+4 h par jour, j'espère que tu vas pas me mettre dans la merde »*.
+
+Vérification plutôt que réassurance — et il y avait un trou. **Un message qui
+échoue ne prévenait pas le panneau.** `chatStore` n'importait que
+`activeRemoteCfg` ; le statut restait `online` sur une machine éteinte, et la
+veille ne démarre que sur `error`. Concrètement : PC éteint **en cours
+d'usage**, chaque message suivant partait dans le vide jusqu'à ce qu'il
+rouvre le panneau et appuie lui-même.
+
+Avec un PC allumé 4 h par jour, ce chemin-là est le cas **normal**, pas le cas
+rare.
+
+`signalerEchec` re-sonde et bascule. Trois garde-fous, chacun mesuré :
+
+- une **annulation** n'est pas une panne — sinon chaque « stop » changerait de serveur ;
+- un travail **local** qui échoue ne dit rien du serveur ;
+- le message **n'est jamais renvoyé tout seul** : un envoi parti à moitié a pu
+  avoir un effet, le rejouer le doublerait.
+
+**Le sabotage a d'abord passé.** Retirer l'appel depuis `chatStore` ne faisait
+tomber aucun test : le test appelait `signalerEchec` en direct, court-circuitant
+exactement le câblage qui manquait. Corrigé — il passe maintenant par
+`signalerSiPanne`. *Une garde qui vérifie qu'une pièce existe ne vérifie pas
+qu'elle est branchée* : troisième fois de la journée.
+
+`vitest.setup.ts` comble `matchMedia`, absent de jsdom. La règle est écrite
+dedans : **on bouche ce que le navigateur aurait fourni, jamais ce que le code
+doit produire.**
+
+21 tests côté PWA. Suite Python : 3370 passent.
+
 ### Ajouté — 03/09/2026 — Deux adresses, et le serveur qui répond vraiment
 
 Le propriétaire branche son téléphone sur son PC et pose la bonne question :

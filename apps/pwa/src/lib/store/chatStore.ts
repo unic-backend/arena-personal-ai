@@ -44,6 +44,24 @@ export function estMessageDeLiaison(texte: string | undefined): boolean {
   });
 }
 
+/**
+ * Previent le panneau qu'un envoi a echoue contre le serveur en cours.
+ *
+ * **C'est ce qui declenche la bascule en usage reel.** Le panneau reste
+ * `online` tant que personne ne re-sonde : sans cet appel, un PC eteint EN
+ * COURS d'utilisation laissait chaque message suivant partir dans le vide.
+ *
+ * Une annulation n'est pas une panne : `AbortError` ne signale rien, sinon
+ * chaque « stop » ferait basculer de serveur.
+ */
+export function signalerSiPanne(err: unknown, distant: boolean): void {
+  if (!distant) return;
+  if (err instanceof DOMException && err.name === 'AbortError') return;
+  if (err instanceof Error && err.message.startsWith('BACKEND_')) return;
+  useBackend.getState().signalerEchec(String(err));
+}
+
+
 function messageErreur(err: unknown): string {
   if (!(err instanceof Error)) return String(err);
   const t = useI18n.getState().t;
@@ -57,7 +75,7 @@ function messageErreur(err: unknown): string {
   }
   return String(err);
 }
-import { activeRemoteCfg } from './backendStore';
+import { activeRemoteCfg, useBackend } from './backendStore';
 import { AgentContext } from '../agent/orchestrator';
 import {
   MAX_ATTACHMENTS,
@@ -572,10 +590,12 @@ export const useChat = create<ChatState>((set, get) => {
       set((s) => ({ eventLog: [...s.eventLog.slice(-399), { ts: Date.now(), chunk }] }));
 
     const startedAt = Date.now();
+    /* Video editing stays on-device; other attachments use the secure remote upload. */
+    const surAppareil = attachments.some((value) => value.kind === 'video');
+    // Hors du `try` : l'attrape doit savoir si c'est un serveur DISTANT qui a
+    // lache — c'est ce qui declenche la bascule — ou du travail local.
+    const remote = surAppareil ? null : activeRemoteCfg();
     try {
-      /* Video editing stays on-device; other attachments use the secure remote upload. */
-      const surAppareil = attachments.some((value) => value.kind === 'video');
-      const remote = surAppareil ? null : activeRemoteCfg();
       const conv = get().conversations.find((c) => c.id === convId);
       const history = (conv?.messages ?? [])
         .filter((m) => m.text && m.id !== assistantMsg.id)
@@ -616,6 +636,7 @@ export const useChat = create<ChatState>((set, get) => {
       }
     } catch (err) {
       const cancelled = err instanceof DOMException && err.name === 'AbortError';
+      signalerSiPanne(err, remote !== null);
       if (!cancelled) triggerHaptic('warning');
       patchMessages((m) =>
         m.id === assistantMsg.id
@@ -725,8 +746,9 @@ export const useChat = create<ChatState>((set, get) => {
       set((s) => ({ eventLog: [...s.eventLog.slice(-399), { ts: Date.now(), chunk }] }));
 
     const startedAt = Date.now();
+    // Hors du `try` : voir plus haut, l'attrape en a besoin.
+    const remote = activeRemoteCfg();
     try {
-      const remote = activeRemoteCfg();
       const history = truncatedMessages
         .slice(0, -1) // exclude current assistant message
         .filter((m) => m.text)
@@ -768,6 +790,7 @@ export const useChat = create<ChatState>((set, get) => {
       }
     } catch (err) {
       const cancelled = err instanceof DOMException && err.name === 'AbortError';
+      signalerSiPanne(err, remote !== null);
       patchMessages((m) =>
         m.id === assistantMsg.id
           ? {
@@ -877,8 +900,9 @@ export const useChat = create<ChatState>((set, get) => {
       set((s) => ({ eventLog: [...s.eventLog.slice(-399), { ts: Date.now(), chunk }] }));
 
     const startedAt = Date.now();
+    // Hors du `try` : voir plus haut, l'attrape en a besoin.
+    const remote = activeRemoteCfg();
     try {
-      const remote = activeRemoteCfg();
       const history = conv.messages
         .slice(0, assistantIndex)
         .filter((m) => m.text)
@@ -919,6 +943,7 @@ export const useChat = create<ChatState>((set, get) => {
       }
     } catch (err) {
       const cancelled = err instanceof DOMException && err.name === 'AbortError';
+      signalerSiPanne(err, remote !== null);
       patchMessages((m) =>
         m.id === messageId
           ? {

@@ -47,6 +47,8 @@ interface BackendState {
   setApiKeySecours(key: string): void;
   setEnabled(on: boolean): void;
   test(): Promise<boolean>;
+  /** Un envoi a echoue contre le serveur en cours : re-sonder et basculer. */
+  signalerEchec(raison: string): void;
   disconnect(): void;
 }
 
@@ -200,6 +202,28 @@ export const useBackend = create<BackendState>((set, get) => ({
       serveurActif: null,
     });
     return false;
+  },
+
+  /**
+   * Un message n'est pas parti : le serveur en cours ne repond plus.
+   *
+   * **Sans ceci, la bascule ne se declenchait jamais en usage reel.** Le
+   * panneau reste `online` tant que personne ne re-sonde, et la veille ne
+   * demarre que sur `error` : un PC eteint EN COURS d'utilisation laissait
+   * chaque message suivant partir dans le vide, jusqu'a ce que le
+   * proprietaire rouvre le panneau et appuie lui-meme.
+   *
+   * Mesure du 03/09/2026 : son PC ne tourne qu'environ 4 h par jour. Ce
+   * chemin-la est donc le cas NORMAL, pas le cas rare.
+   *
+   * On re-sonde, on ne renvoie PAS le message : un envoi parti a moitie a
+   * pu avoir un effet sur le serveur, et le rejouer tout seul le doublerait.
+   */
+  signalerEchec: (raison) => {
+    const { enabled, status } = get();
+    if (!enabled || status === 'checking') return;
+    set({ status: 'error', error: raison });
+    void get().test();
   },
 
   disconnect: () => {
