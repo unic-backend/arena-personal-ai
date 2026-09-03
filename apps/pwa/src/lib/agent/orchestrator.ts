@@ -1,25 +1,22 @@
 /* ─────────────────────────────────────────────────────────────
-   Agent Orchestrator — the backend.
+   On-device pipelines — video and attachments, nothing else.
 
-   Receives a user request, detects its language, plans an
-   execution pipeline, runs the real tools (VFS, shell, search
-   index, executors) and emits a typed activity-event stream plus
-   the final token stream — in the user's language.
+   This file used to call itself "the backend" and answer anything
+   asked of it. It answered from invented material: a fake project,
+   a fake search index, canned prose. On 03/09/2026 that reached
+   the owner's phone as if it were his AI, and it was removed.
 
-   The frontend never invents a step: every rendered activity
-   corresponds to an event yielded here.
+   What remains genuinely runs here, in the browser: probing a
+   video, cutting it, reading an attached file. Every rendered
+   activity still corresponds to an event yielded here — the
+   difference is that the events now describe work that happened.
+
+   Everything else belongs to his server, which answers or says it
+   cannot: `offlineTransport` in `../activity/transport`.
    ───────────────────────────────────────────────────────────── */
 
-import type {
-  ActivityEvent, StreamChunk, SourceMeta, FileOpMeta,
-} from '../activity/types';
-import {
-  VFS, vfs as vfsOps, discoverTests, Diagnostic,
-} from './vfs';
-import { searchCorpus, RankedDoc } from './knowledge';
-import { CORPUS_FR } from './knowledgeFr';
-import { calc, runJavaScript, runShell, transpileLite, SUPPORTED_LANGUAGES } from './exec';
-import { agentStrings, AgentDict, FixFacts } from './strings';
+import type { ActivityEvent, StreamChunk } from '../activity/types';
+import { agentStrings, AgentDict } from './strings';
 import { detectLanguage, uiLocale, Lang } from '../i18n';
 import {
   AttachedVideo, probeVideo, extractThumbnails, trimVideo, trimSupported,
@@ -28,12 +25,16 @@ import {
 import {
   PendingAttachment, prepareAttachment, summarizeAttachment,
 } from '../attachments';
-import { usePersona } from '../store/personaStore';
 
-export interface AgentContext {
-  getTree(): VFS;
-  setTree(v: VFS): void;
-}
+/**
+ * Ce qu'une execution sur appareil recoit du chat.
+ *
+ * Il portait `getTree`/`setTree` — un faux projet que six pipelines
+ * pretendaient reparer. Ils sont supprimes (03/09/2026) ; la video et les
+ * pieces jointes n'ont jamais eu besoin d'espace de travail. L'interface
+ * reste pour ce qui viendra, sans rien inventer aujourd'hui.
+ */
+export type AgentContext = Record<string, never>;
 
 /* ── primitives ── */
 
@@ -112,541 +113,21 @@ async function* streamText(text: string, signal?: AbortSignal): AsyncGenerator<S
   if (buf) yield { type: 'token', text: buf };
 }
 
-/* ── diff helper for honest add/remove counts ── */
-function diffStat(before: string, after: string): { added: number; removed: number } {
-  const a = before.split('\n');
-  const b = after.split('\n');
-  let added = 0, removed = 0;
-  for (const line of a) if (!b.includes(line)) removed++;
-  for (const line of b) if (!a.includes(line)) added++;
-  return { added, removed };
-}
-
-/** corpus content in the conversation language */
-function localized(doc: RankedDoc | undefined, lang: Lang): { excerpt: string; body: string[] } {
-  if (!doc) return { excerpt: '', body: [] };
-  if (lang === 'fr') {
-    const fr = CORPUS_FR[doc.id];
-    if (fr) return fr;
-  }
-  return { excerpt: doc.excerpt, body: doc.body };
-}
-
 /* ═══════════════════ PIPELINE: analyze project & fix build ═══════════════════ */
 
-async function* pipelineFixBuild(
-  ctx: AgentContext, signal: AbortSignal, d: AgentDict,
-): AsyncGenerator<StreamChunk, { sources?: SourceMeta[] }> {
-  yield* think(d.think.analyzing, d.think.understanding, signal);
-  const plan = yield* evStart({
-    kind: 'planning', title: d.think.planning,
-    description: d.think.planDesc,
-    metadata: { steps: d.planSteps },
-  });
-  await beat(rnd(300, 500));
-  assertLive(signal);
-  yield* evDone(plan);
+/* ─────────────────────────────────────────────────────────────
+   Six pipelines vivaient ici : reparation de build, recherche,
+   calcul, execution de code, terminal, et conversation. Aucun ne
+   touchait quoi que ce soit de reel — ils travaillaient sur un
+   projet invente nomme *pulseboard*, garde dans le localStorage.
 
-  /* ── 1 · inspect repository (real walk with real progress numbers) ── */
-  const scan = yield* evStart({
-    kind: 'tool', tool: 'vfs_scan', title: d.fix.scan,
-    description: d.fix.walk,
-  });
-  let tree = ctx.getTree();
-  const files = vfsOps.list(tree);
-  for (let i = 0; i < files.length; i += 2) {
-    await beat(rnd(28, 60));
-    assertLive(signal);
-    yield* evPatch(scan, {
-      phase: 'progress',
-      description: d.fix.scanFile(files[Math.min(i + 1, files.length - 1)]!),
-      progress: { done: Math.min(i + 2, files.length), total: files.length, unit: d.units.files },
-    });
-  }
-  const tsFiles = files.filter((f) => /\.tsx?$/.test(f)).length;
-  yield* evDone(scan, {
-    description: d.fix.scanDone(files.length, vfsOps.totalLines(tree).toLocaleString()),
-    output: { files: files.length, tsFiles, lines: vfsOps.totalLines(tree), bytes: vfsOps.totalBytes(tree) },
-    progress: { done: files.length, total: files.length, unit: d.units.files },
-  });
+   Le 03/09/2026, a 01:36, ils ont repondu au proprietaire en se
+   faisant passer pour son IA. Supprimes le meme jour.
 
-  /* ── 2 · dependencies ── */
-  const deps = yield* evStart({ kind: 'tool', tool: 'file_reader', title: d.fix.deps });
-  await beat(rnd(240, 420));
-  const pkgRaw = vfsOps.read(tree, 'package.json') ?? '{}';
-  const pkg = JSON.parse(pkgRaw);
-  const depCount = Object.keys(pkg.dependencies ?? {}).length + Object.keys(pkg.devDependencies ?? {}).length;
-  const readPkg = yield* evStart({
-    kind: 'file', tool: 'file_reader', parentId: deps.id, title: 'package.json',
-    description: d.fix.parseManifest,
-    metadata: { op: 'read', path: 'package.json', bytes: pkgRaw.length } satisfies FileOpMeta & Record<string, unknown>,
-  });
-  await beat(rnd(160, 260));
-  yield* evDone(readPkg, { description: d.fix.depsDeclared(depCount) });
-  const cfgRaw = vfsOps.read(tree, 'tsconfig.json') ?? '{}';
-  const readCfg = yield* evStart({
-    kind: 'file', tool: 'file_reader', parentId: deps.id, title: 'tsconfig.json',
-    metadata: { op: 'parse', path: 'tsconfig.json' } satisfies FileOpMeta & Record<string, unknown>,
-  });
-  await beat(rnd(140, 220));
-  const strict = /"strict"\s*:\s*true/.test(cfgRaw);
-  yield* evDone(readCfg, { description: strict ? d.fix.strictOn : d.fix.strictOff });
-  yield* evDone(deps, {
-    description: d.fix.depsDone(depCount),
-    output: { dependencies: depCount, strict },
-  });
-
-  /* ── 3 · first build ── */
-  const build1 = yield* evStart({
-    kind: 'terminal', tool: 'terminal', title: d.fix.buildRun,
-    input: { command: 'npm run build' },
-    description: d.fix.buildDesc,
-  });
-  await beat(rnd(650, 950));
-  assertLive(signal);
-  const r1 = runShell(tree, 'npm run build');
-
-  if (!r1.ok) {
-    yield* evFail(build1, {
-      description: d.fix.buildExit(r1.exitCode),
-      output: { command: 'npm run build', stdout: r1.stdout, stderr: r1.stderr, exitCode: r1.exitCode, diagnostics: r1.diagnostics },
-    });
-  } else {
-    yield* evDone(build1, {
-      description: `${d.fix.exitOk} · ${r1.stdout[r1.stdout.length - 1]}`,
-      output: { command: 'npm run build', stdout: r1.stdout, exitCode: 0 },
-    });
-  }
-
-  const diags: Diagnostic[] = r1.diagnostics ?? [];
-  const fixedFiles: Array<{ path: string; summary: string; added: number; removed: number }> = [];
-
-  if (diags.length) {
-    /* ── 4 · investigate ── */
-    const inv = yield* evStart({
-      kind: 'analysis', tool: 'analysis', title: d.fix.investigate,
-      description: d.fix.invDesc,
-    });
-    await beat(rnd(500, 800));
-    assertLive(signal);
-    const affected = [...new Set(diags.map((x) => x.file))];
-    yield* evDone(inv, {
-      description: d.fix.invDone(diags.length, affected.length),
-      output: { diagnostics: diags, files: affected },
-    });
-
-    /* ── 5 · apply real fixes ── */
-    const edit = yield* evStart({
-      kind: 'tool', tool: 'file_editor', title: d.fix.editing,
-      description: d.fix.editDesc,
-    });
-    for (const diag of diags) {
-      assertLive(signal);
-      let target = diag.file;
-      let before: string | undefined;
-      let after: string | undefined;
-      let summary = '';
-
-      if (diag.code === 'TS2307' && /date-fns/.test(diag.message)) {
-        target = 'package.json';
-        before = vfsOps.read(tree, target);
-        if (before) {
-          const p = JSON.parse(before);
-          p.dependencies = { ...p.dependencies, 'date-fns': '^4.1.0' };
-          after = JSON.stringify(p, null, 2) + '\n';
-          summary = d.fix.fixDep;
-        }
-      } else if (diag.code === 'TS2322') {
-        before = vfsOps.read(tree, target);
-        if (before && /return seconds \* 1000/.test(before)) {
-          after = before.replace(
-            /export function formatDuration\(seconds: number\): string \{\s*return seconds \* 1000\s*\}/,
-            `export function formatDuration(seconds: number): string {
-  if (seconds < 60) return \`\${seconds}s\`
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  if (m < 60) return \`\${m}m \${String(s).padStart(2, '0')}s\`
-  const h = Math.floor(m / 60)
-  return \`\${h}h \${String(m % 60).padStart(2, '0')}m\`
-}`,
-          );
-          summary = d.fix.fixRet;
-        }
-      } else if (diag.code === 'TS2305') {
-        const member = /member '(\w+)'/.exec(diag.message)?.[1];
-        before = vfsOps.read(tree, target);
-        if (before && member === 'cns') {
-          after = before.replace(/\bcns\b/g, 'cn');
-          summary = d.fix.fixRename(member);
-        }
-      }
-
-      if (before !== undefined && after !== undefined && after !== before) {
-        const stat = diffStat(before, after);
-        const f = yield* evStart({
-          kind: 'file', tool: 'file_editor', parentId: edit.id, title: target,
-          description: summary,
-          metadata: { op: 'edit', path: target, ...stat } satisfies FileOpMeta & Record<string, unknown>,
-        });
-        await beat(rnd(300, 520));
-        const written = vfsOps.write(tree, target, after);
-        ctx.setTree(written);
-        tree = written;
-        yield* evDone(f, { description: summary, metadata: { op: 'edit', path: target, ...stat } });
-        if (!fixedFiles.some((x) => x.path === target)) {
-          fixedFiles.push({ path: target, summary, ...stat });
-        }
-      } else {
-        const f = yield* evStart({
-          kind: 'file', tool: 'file_editor', parentId: edit.id, title: target,
-          description: d.fix.manual,
-        });
-        await beat(220);
-        yield* evDone(f);
-      }
-    }
-    yield* evDone(edit, {
-      description: d.fix.filesModified(new Set(fixedFiles.map((f) => f.path)).size),
-      output: { files: fixedFiles },
-    });
-  }
-
-  /* ── 6 · tests (real discovery, per-suite progress) ── */
-  const testCmd = yield* evStart({
-    kind: 'terminal', tool: 'terminal', title: d.fix.tests,
-    input: { command: 'npm test' },
-    description: d.fix.testsDiscover,
-  });
-  const suites = discoverTests(ctx.getTree());
-  const totalCases = suites.reduce((a, s) => a + s.cases, 0);
-  for (let i = 0; i < suites.length; i++) {
-    await beat(rnd(120, 220));
-    assertLive(signal);
-    const doneCases = suites.slice(0, i + 1).reduce((a, s) => a + s.cases, 0);
-    yield* evPatch(testCmd, {
-      phase: 'progress',
-      description: d.fix.testsRun(suites[i]!.path),
-      progress: { done: doneCases, total: totalCases, unit: d.units.tests },
-    });
-  }
-  const rt = runShell(ctx.getTree(), 'npm test');
-  const totals = rt.testTotals ?? { passed: rt.ok ? totalCases : 0, failed: rt.ok ? 0 : totalCases, total: totalCases, suites: [] };
-  yield* (rt.ok ? evDone : evFail)(testCmd, {
-    description: rt.ok ? d.fix.testsDone(totals.passed, suites.length) : (rt.stderr ?? d.fix.testFailed),
-    output: {
-      command: 'npm test', stdout: rt.stdout, exitCode: rt.exitCode,
-      suites: totals.suites,
-      totals: { passed: totals.passed, failed: totals.failed, total: totals.total },
-    },
-    progress: { done: totalCases, total: totalCases, unit: d.units.tests },
-  });
-
-  /* ── 7 · rebuild (only if we changed something) ── */
-  let buildLine = 'build already green';
-  if (fixedFiles.length > 0) {
-    const build2 = yield* evStart({
-      kind: 'terminal', tool: 'terminal', title: d.fix.rebuild,
-      input: { command: 'npm run build' },
-      description: d.fix.rebuildDesc,
-    });
-    await beat(rnd(750, 1100));
-    const r2 = runShell(ctx.getTree(), 'npm run build');
-    buildLine = r2.stdout[r2.stdout.length - 1] ?? 'build finished';
-    yield* (r2.ok ? evDone : evFail)(build2, {
-      description: r2.ok ? `${d.fix.exitOk} · ${buildLine}` : d.fix.buildExit(r2.exitCode),
-      output: { command: 'npm run build', stdout: r2.stdout, stderr: r2.stderr, exitCode: r2.exitCode },
-    });
-  }
-
-  yield* think(d.think.preparing, d.think.organizing, signal, rnd(380, 620));
-
-  /* ── compose the answer from recorded facts ── */
-  const facts: FixFacts = {
-    diagCount: diags.length,
-    fileCount: new Set(diags.map((x) => x.file)).size,
-    diags: diags.map((x) => ({ file: x.file, line: x.line, code: x.code, message: x.message })),
-    fixedFiles,
-    testPassed: totals.passed,
-    testTotal: totals.total,
-    suites: suites.length,
-    buildLine,
-    files: files.length,
-    lines: vfsOps.totalLines(ctx.getTree()).toLocaleString(),
-    depCount,
-  };
-  yield* streamText(fixedFiles.length ? d.fixAnswer(facts) : d.fixGreenAnswer(facts), signal);
-  return {};
-}
-
-/* ═══════════════════ PIPELINE: web research ═══════════════════ */
-
-async function* pipelineResearch(
-  query: string, signal: AbortSignal, d: AgentDict, lang: Lang,
-): AsyncGenerator<StreamChunk, { sources?: SourceMeta[] }> {
-  yield* think(d.think.analyzing, d.research.identify(query), signal);
-
-  const search = yield* evStart({
-    kind: 'search', tool: 'web_search', title: d.research.searching,
-    input: { query },
-    description: d.research.searchingDesc(query),
-  });
-  await beat(rnd(480, 760));
-  assertLive(signal);
-  yield* evPatch(search, { phase: 'progress', description: d.research.querying });
-  await beat(rnd(320, 520));
-  const ranked = searchCorpus(query);
-  yield* evDone(search, {
-    description: d.research.found(ranked.length),
-    output: {
-      query, result_count: ranked.length,
-      results: ranked.slice(0, 8).map((r) => ({ title: r.title, domain: r.domain, date: r.date })),
-    },
-  });
-
-  const top = ranked.slice(0, Math.min(5, ranked.length));
-  if (!top.length) {
-    yield* think(d.think.preparingShort, undefined, signal, 320);
-    yield* streamText(d.research.none(query), signal);
-    return { sources: [] };
-  }
-
-  const browse = yield* evStart({
-    kind: 'tool', tool: 'browser', title: d.research.reading,
-    description: d.research.opening,
-  });
-  const opened: RankedDoc[] = [];
-  for (const doc of top) {
-    assertLive(signal);
-    const s = yield* evStart({
-      kind: 'browser', tool: 'browser', parentId: browse.id,
-      title: doc.domain, description: doc.title,
-      input: { url: doc.url },
-      metadata: { source: doc satisfies SourceMeta },
-    });
-    await beat(rnd(280, 520));
-    yield* evDone(s, { description: doc.title });
-    opened.push(doc);
-    yield* evPatch(browse, {
-      phase: 'progress',
-      description: d.research.openedProg(opened.length, top.length),
-      progress: { done: opened.length, total: top.length, unit: d.units.sources },
-    });
-  }
-  yield* evDone(browse, {
-    description: d.research.openedDone(opened.length),
-    output: { sources: opened.map((x) => ({ title: x.title, domain: x.domain, date: x.date })) },
-  });
-
-  const compare = yield* evStart({
-    kind: 'analysis', tool: 'analysis', title: d.research.comparing,
-    description: d.research.comparingDesc,
-  });
-  await beat(rnd(550, 850));
-  assertLive(signal);
-  const first = opened[0]!;
-  const range = `${opened[opened.length - 1]!.date} – ${first.date}`;
-  yield* evDone(compare, { description: d.research.compared(opened.length, range) });
-
-  yield* think(d.think.preparingShort, d.think.synthesizing, signal, rnd(420, 700));
-
-  const lead = localized(first, lang);
-  const facts: string[] = [];
-  opened.forEach((doc, i) => localized(doc, lang).body.slice(0, 2).forEach((b) => facts.push(`${b} [${i + 1}]`)));
-  const closing = localized(opened[1] ?? first, lang).excerpt.replace(/\.$/, '').toLowerCase();
-  const doms = opened.map((x) => x.domain.replace(/\..*$/, '')).slice(0, 3).join(', ') + (opened.length > 3 ? ', …' : '');
-  const text = [
-    d.research.heresWhat(query),
-    '',
-    `> ${lead.excerpt} [1]`,
-    '',
-    d.research.keyFindings,
-    ...facts.slice(0, 6).map((f) => `- ${f}`),
-    '',
-    d.research.across(opened.length, doms, closing),
-  ].join('\n');
-  yield* streamText(text, signal);
-  return { sources: opened.map(({ title, domain, url, date, excerpt }) => ({ title, domain, url, date, excerpt })) };
-}
-
-/* ═══════════════════ PIPELINE: calculator ═══════════════════ */
-
-async function* pipelineCalc(
-  expr: string, signal: AbortSignal, d: AgentDict,
-): AsyncGenerator<StreamChunk, Record<string, never>> {
-  const tool = yield* evStart({
-    kind: 'calculation', tool: 'calculator', title: d.calc.title,
-    input: { expression: expr },
-    description: d.calc.desc,
-  });
-  await beat(rnd(220, 420));
-  let result: ReturnType<typeof calc> | undefined;
-  let err: string | undefined;
-  try { result = calc(expr); } catch (e) { err = e instanceof Error ? e.message : String(e); }
-  assertLive(signal);
-  if (result) {
-    yield* evDone(tool, {
-      description: `${expr} = ${result.pretty}`,
-      output: { expression: expr, result: result.pretty },
-    });
-    yield* think(d.think.preparingShort, undefined, signal, rnd(220, 380));
-    yield* streamText(d.calc.answer(expr, result.pretty), signal);
-  } else {
-    yield* evFail(tool, { title: d.calc.failTitle, description: err });
-    yield* think(d.think.preparingShort, undefined, signal, 240);
-    yield* streamText(d.calc.fail(expr, err ?? ''), signal);
-  }
-  return {};
-}
-
-/* ═══════════════════ PIPELINE: code execution ═══════════════════ */
-
-async function* pipelineCode(
-  lang: string, code: string, signal: AbortSignal, d: AgentDict,
-): AsyncGenerator<StreamChunk, Record<string, never>> {
-  const supported = SUPPORTED_LANGUAGES.some((l) => l.id === lang);
-  const exec = yield* evStart({
-    kind: 'code', tool: 'code_runner', title: d.code.title,
-    input: { language: lang, code },
-    description: supported
-      ? d.code.running(SUPPORTED_LANGUAGES.find((l) => l.id === lang)!.label)
-      : d.code.noRunner(lang),
-  });
-  await beat(rnd(280, 520));
-  if (!supported) {
-    yield* evFail(exec, {
-      title: d.code.failTitle,
-      description: d.code.noRunnerDesc(lang, SUPPORTED_LANGUAGES.map((l) => l.id).join(', ')),
-    });
-    yield* think(d.think.preparingShort, undefined, signal, 260);
-    yield* streamText(
-      d.code.noRunnerAnswer(SUPPORTED_LANGUAGES.map((l) => l.label).join(', '), lang),
-      signal,
-    );
-    return {};
-  }
-  assertLive(signal);
-  const js = lang === 'typescript' ? transpileLite(code) : code;
-  const out = runJavaScript(js);
-  const ms = out.durationMs.toFixed(1);
-  yield* (out.ok ? evDone : evFail)(exec, {
-    title: out.ok ? d.code.title : d.code.failTitle,
-    description: out.ok ? d.code.doneDesc(out.lines.length, ms) : out.error,
-    output: { language: lang, code, stdout: out.lines, error: out.error, durationMs: out.durationMs },
-  });
-  yield* think(d.think.preparingShort, undefined, signal, rnd(260, 420));
-  const label = lang === 'typescript' ? 'TypeScript' : lang === 'shell' ? 'Shell' : 'JavaScript';
-  const text = out.ok
-    ? d.code.okAnswer(label, out.lines.length, ms, out.lines.map((l) => l.text))
-    : d.code.errAnswer(out.error ?? 'Error', out.lines.map((l) => l.text));
-  yield* streamText(text, signal);
-  return {};
-}
-
-/* ═══════════════════ PIPELINE: terminal command ═══════════════════ */
-
-async function* pipelineCommand(
-  command: string, ctx: AgentContext, signal: AbortSignal, d: AgentDict,
-): AsyncGenerator<StreamChunk, Record<string, never>> {
-  const term = yield* evStart({
-    kind: 'terminal', tool: 'terminal', title: d.command.title,
-    input: { command },
-    description: d.command.desc,
-    metadata: { retryable: true },
-  });
-  await beat(rnd(420, 780));
-  assertLive(signal);
-  const r = runShell(ctx.getTree(), command);
-  const out = r.stdout.length > 18 ? [...r.stdout.slice(0, 18), d.command.moreLines(r.stdout.length - 18)] : r.stdout;
-  yield* (r.ok ? evDone : evFail)(term, {
-    title: r.ok ? d.command.title : d.command.titleFailed,
-    description: r.ok ? d.fix.exitOk : (r.stderr ? r.stderr.split('\n')[0] : d.fix.buildExit(r.exitCode)),
-    output: { command, stdout: out, stderr: r.stderr, exitCode: r.exitCode, diagnostics: r.diagnostics },
-    metadata: { retryable: true },
-  });
-  yield* think(d.think.preparingShort, undefined, signal, rnd(280, 460));
-  const text = r.ok
-    ? [
-        d.command.okLead(command),
-        '', '```', ...out.slice(0, 12), ...(out.length > 12 ? [d.command.moreLines(out.length - 12)] : []), '```',
-        '',
-        command.includes('build') ? d.command.noteBuild : command.includes('test') ? d.command.noteTest : d.command.noteGeneric,
-      ].join('\n')
-    : [
-        d.command.failLead(command, r.exitCode),
-        '', '```', ...(r.stderr ? r.stderr.split('\n').slice(0, 12) : out.slice(0, 12)), '```',
-        '',
-        r.diagnostics?.length ? d.command.diagNote(r.diagnostics.length) : d.command.retryNote,
-      ].join('\n');
-  yield* streamText(text, signal);
-  return {};
-}
-
-/* ═══════════════════ PIPELINE: general chat ═══════════════════ */
-
-async function* pipelineChat(
-  text: string, signal: AbortSignal, d: AgentDict, lang: Lang,
-): AsyncGenerator<StreamChunk, { sources?: SourceMeta[] }> {
-  yield* think(d.think.understandingReq, d.think.readingMsg, signal, rnd(380, 640));
-
-  const gather = yield* evStart({
-    kind: 'analysis', tool: 'analysis', title: d.chat.gatherTitle,
-    description: d.chat.gatherDesc,
-  });
-  await beat(rnd(300, 520));
-  const hits = searchCorpus(text).slice(0, 4);
-  assertLive(signal);
-  yield* evDone(gather, {
-    description: hits.length ? d.chat.found(hits.length) : d.chat.noneNeeded,
-  });
-
-  yield* think(d.think.composing, hits.length ? d.think.weaving : d.think.structuring, signal, rnd(380, 640));
-
-  const lower = text.toLowerCase();
-  let out: string;
-  let sources: SourceMeta[] | undefined;
-
-  const isGreeting = /^(hi|hello|hey|yo|good (morning|afternoon|evening))\b/.test(lower)
-    || /^(salut|bonjour|bonsoir|coucou|hello)\b/.test(lower);
-  const isCaps = /what can you do|your (tools|capabilities)|help$/.test(lower)
-    || /que peux[- ]tu|tes (outils|capacités)|fonctionnalités|^\s*aide\s*[?!.]?\s*$/.test(lower);
-
-  const userProfile = usePersona.getState();
-  const userName = userProfile.userName.trim();
-
-  if (isGreeting) {
-    if (userName) {
-      out = lang === 'fr'
-        ? d.chat.greeting.replace('Bonjour —', `Bonjour ${userName} —`)
-        : d.chat.greeting.replace('Hello —', `Hello ${userName} —`);
-    } else {
-      out = d.chat.greeting;
-    }
-  } else if (isCaps) {
-    out = d.chat.caps;
-  } else if (hits.length) {
-    sources = hits.map(({ title, domain, url, date, excerpt }) => ({ title, domain, url, date, excerpt }));
-    const facts: string[] = [];
-    hits.slice(0, 3).forEach((doc, i) => localized(doc, lang).body.slice(0, 2).forEach((b) => facts.push(`${b} [${i + 1}]`)));
-    const top = hits[0]!;
-    const topExcerpt = localized(top, lang).excerpt.replace(/\.$/, '').toLowerCase();
-    out = [
-      `${d.chat.hitsIntro}`,
-      '',
-      ...facts.slice(0, 5).map((f) => `- ${f}`),
-      '',
-      d.chat.strongest(top.title, top.domain, topExcerpt),
-      '',
-      d.chat.deeperAsk,
-    ].join('\n');
-  } else {
-    out = d.chat.fallback;
-  }
-
-  yield* streamText(out, signal);
-  return { sources };
-}
-
-/* ═══════════════════ PIPELINE: video processing ═══════════════════ */
+   Ce qui reste ici tourne vraiment sur l appareil : la video et
+   les pieces jointes. Le reste passe par son serveur, ou ne
+   repond pas — voir `offlineTransport` dans `../activity/transport`.
+   ───────────────────────────────────────────────────────────── */
 
 async function* pipelineVideo(
   video: AttachedVideo, text: string, signal: AbortSignal, d: AgentDict, lang: Lang,
@@ -885,76 +366,6 @@ async function* pipelineAttachments(
   return {};
 }
 
-/* ═══════════════════ INTENT ROUTER ═══════════════════ */
-
-type Intent =
-  | { kind: 'code'; lang: string; code: string }
-  | { kind: 'calc'; expr: string }
-  | { kind: 'command'; command: string }
-  | { kind: 'fix' }
-  | { kind: 'research'; query: string }
-  | { kind: 'chat'; text: string };
-
-export function detectIntent(raw: string): Intent {
-  const text = raw.trim();
-  const lower = text.toLowerCase();
-
-  // explicit code block
-  const fence = /```(\w+)?\s*\n([\s\S]*?)```/.exec(text);
-  if (fence && /run|exec|exécut|execute|lance|what does|output|affiche/i.test(lower.replace(fence[0], ''))) {
-    const lang = (fence[1] || 'javascript').toLowerCase().replace(/^js$/, 'javascript').replace(/^ts$/, 'typescript').replace(/^(sh|bash)$/, 'shell');
-    return { kind: 'code', lang, code: fence[2].trim() };
-  }
-
-  // quoted command
-  const quoted = /(?:run|execute|exécut(?:e|er|ez)|lance(?:r|z)?|démarre(?:r)?)\s+`([^`]+)`/i.exec(text);
-  if (quoted) return { kind: 'command', command: quoted[1]!.trim() };
-
-  // shortcut commands
-  if (/\brun\s+(the\s+)?(tests?|test\s+suite)\b/.test(lower) || /(lance|exécute|exécuter)\s+(les\s+)?tests?\b/.test(lower)) {
-    return { kind: 'command', command: 'npm test' };
-  }
-  if (/^(run\s+)?(npm|ls|cat|grep|wc|head|tail|echo)\b/.test(lower)) {
-    return { kind: 'command', command: text.replace(/^(run|lance|lancer|exécute|exécuter|exécutez)\s+/i, '').trim() };
-  }
-
-  // project repair pipeline
-  if (
-    /(fix|repair|investigate|debug|diagnose).*(build|error|project|test|repo)/.test(lower) ||
-    /(build|tests?)\s+(is\s+)?(fail|broken|not\s+work)/.test(lower) ||
-    /analy[sz]e\s+(my|the|this|mon|ce|le|ton)\s+(project|repo|codebase|projet|dépôt|code)/.test(lower) ||
-    /(corrige[rz]?|répare[rz]?|débog\w*|diagnostique[rz]?)[\s\S]*(build|projet|erreur|compilation|tests?|dépôt)/.test(lower) ||
-    /(build|compilation|tests?|projet)\s+(ne\s+(passe|marche|fonctionne)\s+pas|échoue|en\s+échec|cassé)/.test(lower) ||
-    /revois?\s+(mon|le|ce)\s+(projet|code|dépôt)/.test(lower)
-  ) {
-    return { kind: 'fix' };
-  }
-
-  // calculator
-  const mathCandidate = text
-    .replace(/^(what\s+is|what's|calculate|compute|solve|evaluate|how\s+much\s+is|calcule(?:r|z)?|calcul(?:ez)?\s+de|combien\s+fait|que\s+vaut|évalue(?:r|z)?|résous|résoudre)\s*/i, '')
-    .replace(/[?=.]\s*$/, '')
-    .trim();
-  if (/^[-+0-9(\s]/.test(mathCandidate) && /[0-9]/.test(mathCandidate) && /[+\-*/^%×÷]|pi\b/.test(mathCandidate) && !/[a-df-z]/i.test(mathCandidate.replace(/pi/g, ''))) {
-    return { kind: 'calc', expr: mathCandidate };
-  }
-
-  // web research
-  const searchVerbs = /^(please\s+)?(search|look\s*up|find|research|google|browse|recherche(?:r|z)?|cherche(?:r|z)?|trouve(?:r|z)?)\s*/i;
-  if (searchVerbs.test(text) || /latest|news|state of|trends?|what'?s happening|tell me (about|what)|derni[eè]re?s?|nouveaut[ée]s?|actualit[ée]s?|parle[- ]moi de/i.test(lower)) {
-    const q = text
-      .replace(searchVerbs, '')
-      .replace(/^\s*(the\s+web|online|the\s+internet|sur\s+le\s+web|en\s+ligne)\s*:?-?\s*(for|pour)?/i, '')
-      .replace(/^\s*for\s+/i, '')
-      .replace(/^\s*(what\s+is|what's|what\s+are|tell\s+me\s+about|quels?\s+sont|quelles\s+sont|parle[- ]moi\s+de)\s+/i, '')
-      .replace(/^\s*(the\s+)?(latest|derniers?|derni[eè]res?)\s+(on|about|in|developments\s+in|sur|de|des|concernant)\s+/i, '')
-      .trim() || text;
-    return { kind: 'research', query: q.replace(/[?.!]+$/, '') };
-  }
-
-  return { kind: 'chat', text };
-}
-
 /* ═══════════════════ ENTRY POINT ═══════════════════ */
 
 export interface AgentRequest {
@@ -967,7 +378,7 @@ export interface AgentRequest {
 
 export async function* runAgent(
   request: AgentRequest,
-  ctx: AgentContext,
+  _ctx: AgentContext,
   signal?: AbortSignal,
 ): AsyncGenerator<StreamChunk> {
   await beat(rnd(220, 420)); // connection ramp — first event arrives shortly after send
@@ -987,15 +398,8 @@ export async function* runAgent(
     return;
   }
 
-  const intent = detectIntent(request.text);
-  let meta: { sources?: SourceMeta[] } = {};
-  switch (intent.kind) {
-    case 'fix': meta = yield* pipelineFixBuild(ctx, signal!, d); break;
-    case 'research': meta = yield* pipelineResearch(intent.query, signal!, d, lang); break;
-    case 'calc': meta = yield* pipelineCalc(intent.expr, signal!, d); break;
-    case 'code': meta = yield* pipelineCode(intent.lang, intent.code, signal!, d); break;
-    case 'command': meta = yield* pipelineCommand(intent.command, ctx, signal!, d); break;
-    default: meta = yield* pipelineChat(intent.text, signal!, d, lang);
-  }
-  yield { type: 'done', meta };
+  // Rien d'autre ne tourne ici. `choisirTransport` ne mene a ce fichier que
+  // pour la video ; y arriver autrement serait un cablage casse, et un texte
+  // rendu a la place serait exactement le defaut retire le 03/09/2026.
+  throw new Error('BACKEND_OFFLINE');
 }

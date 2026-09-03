@@ -11,7 +11,6 @@ import {
   Moon,
   Plug,
   Plus,
-  RotateCcw,
   Search,
   Share2,
   Smartphone,
@@ -46,7 +45,7 @@ interface PaletteItem {
 
 export function CommandPalette() {
   const { isOpen, search, closePalette, setSearch } = useCommandPalette();
-  const { conversations, selectConversation, newChat, resetWorkspace, toggleLog, clearAllConversations } = useChat();
+  const { conversations, selectConversation, newChat, toggleLog, clearAllConversations } = useChat();
   const { setModalOpen: setConnectorsModalOpen } = useConnectors();
   const { setModalOpen: setVideoProjectOpen } = useVideoProject();
   const { setAccent, accent, colorMode, setColorMode } = useTheme();
@@ -155,17 +154,6 @@ export function CommandPalette() {
       },
     });
 
-    list.push({
-      id: 'action-reset-repo',
-      category: 'actions',
-      title: t('cmd.resetRepo'),
-      subtitle: 'Virtual testbed codebase',
-      icon: <RotateCcw size={14} className="text-amber-400" />,
-      onSelect: () => {
-        resetWorkspace();
-        closePalette();
-      },
-    });
 
     if (installable) {
       list.push({
@@ -312,7 +300,6 @@ export function CommandPalette() {
     closePalette,
     setConnectorsModalOpen,
     toggleLog,
-    resetWorkspace,
     install,
     clearAllConversations,
     setAccent,

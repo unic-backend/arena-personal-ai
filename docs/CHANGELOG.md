@@ -2,6 +2,40 @@
 
 ## [Non publié]
 
+### Supprimé — 03/09/2026 — La démo du navigateur, et tout ce qu'elle simulait
+
+Suite du correctif du même jour. Le repli était coupé ; le code restait, et un
+import d'une ligne l'aurait rebranché — c'est un import d'une ligne qui avait
+produit le défaut.
+
+**2 139 lignes retirées.** Six pipelines qui ne touchaient rien de réel
+(réparation de build, recherche web, calcul, exécution de code, terminal,
+conversation), le faux projet *pulseboard* et son système de fichiers en
+`localStorage`, le faux index documentaire et sa version française, le faux
+terminal, et les 288 lignes de prose écrite d'avance qu'ils servaient.
+
+Avec eux partent le bouton « relancer la commande » — il aurait rejoué une
+commande du **vrai** serveur contre le **faux** projet — et l'entrée
+« réinitialiser l'espace de travail » des réglages et de la palette, qui
+réinitialisait un dépôt qui n'existe plus.
+
+**Ce qui reste tourne vraiment sur l'appareil** : sonder une vidéo, la couper,
+lire une pièce jointe. `runAgent` n'a plus de voie par défaut : y arriver
+autrement que par la vidéo lève `BACKEND_OFFLINE` au lieu de composer un texte.
+
+| Mesure | Avant | Après |
+|---|---|---|
+| Paquet servi | 763 kB | **690 kB** |
+| Compressé | 226 kB | **200 kB** |
+
+4 tests de plus (18 au total). Sabotages : remettre un fichier de la démo,
+remettre la phrase d'accueil, remettre une voie par défaut qui rend du texte —
+chacun fait tomber sa garde. Le premier lecteur de commentaires du test
+signalait son propre commentaire d'explication ; il suit maintenant les blocs
+`/* */` pour de bon.
+
+Suite complète : 3230 passent. `tsc`, build PWA et garde des orphelins propres.
+
 ### Corrigé — 03/09/2026 — Une démo du navigateur répondait à sa place, signée Usman
 
 **Mesuré sur son téléphone, à 01:36.** Il écrit « Bonjour ». Une réponse

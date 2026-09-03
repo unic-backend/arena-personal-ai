@@ -7,7 +7,7 @@
 
 import { create } from 'zustand';
 import {
-  ActivityNode, MessageMeta, StreamChunk, upsertNode, normalizeLoaded, findNode,
+  ActivityNode, MessageMeta, StreamChunk, upsertNode, normalizeLoaded, 
 } from '../activity/types';
 import { normaliserSources } from '../activity/sources';
 import { estDebitDepasse, pousserEtTirer } from '../sync/conversations';
@@ -31,9 +31,6 @@ function messageErreur(err: unknown): string {
 }
 import { activeRemoteCfg } from './backendStore';
 import { AgentContext } from '../agent/orchestrator';
-import { loadVFS, saveVFS, resetVFS, VFS } from '../agent/vfs';
-import { runShell } from '../agent/exec';
-import { agentStrings } from '../agent/strings';
 import {
   MAX_ATTACHMENTS,
   PendingAttachment,
@@ -44,7 +41,7 @@ import {
 } from '../attachments';
 import { useSpeech } from '../speech';
 import { triggerHaptic } from '../theme';
-import { uiLocale, useI18n } from '../i18n';
+import { useI18n } from '../i18n';
 
 export interface MessageVariant {
   id: string;
@@ -253,22 +250,17 @@ interface ChatState {
   regenerateAssistant(messageId: string): Promise<void>;
   switchVariant(messageId: string, targetIndex: number): void;
   cancel(): void;
-  rerunCommand(conversationId: string, messageId: string, nodeId: string): Promise<void>;
-  resetWorkspace(): void;
   synchroniser(): Promise<void>;
-  vfsVersion: number;
 }
 
 let abort: AbortController | null = null;
-let tree: VFS = loadVFS();
-
-export const vfsContext: AgentContext = {
-  getTree: () => tree,
-  setTree: (v) => {
-    tree = v;
-    saveVFS(v);
-  },
-};
+/**
+ * Ce que le transport sur appareil recoit. Il portait un faux projet
+ * (*pulseboard*, dans le localStorage) que six pipelines pretendaient
+ * reparer ; ils sont supprimes depuis le 03/09/2026. La video, elle, n'a
+ * jamais eu besoin d'un espace de travail.
+ */
+export const contexteAppareil: AgentContext = {};
 
 export const useChat = create<ChatState>((set, get) => {
   const conversationsInitiales = loadConversations();
@@ -294,7 +286,6 @@ export const useChat = create<ChatState>((set, get) => {
   logOpen: false,
   pendingAttachments: [],
   attachmentError: undefined,
-  vfsVersion: 0,
 
   async addPendingFiles(files) {
     const capacity = Math.max(0, MAX_ATTACHMENTS - get().pendingAttachments.length);
@@ -462,11 +453,6 @@ export const useChat = create<ChatState>((set, get) => {
     }));
   },
 
-  resetWorkspace: () => {
-    tree = resetVFS();
-    set((s) => ({ vfsVersion: s.vfsVersion + 1 }));
-  },
-
   async send(text: string) {
     if (get().isRunning) return;
     const attachments = get().pendingAttachments;
@@ -568,7 +554,7 @@ export const useChat = create<ChatState>((set, get) => {
         .slice(-8)
         .map((m) => ({ role: m.role, content: m.text }));
       const transport = choisirTransport(remote, surAppareil);
-      const stream = transport.run({ text: visibleText, video, attachments, history }, vfsContext, abort.signal);
+      const stream = transport.run({ text: visibleText, video, attachments, history }, contexteAppareil, abort.signal);
       for await (const chunk of stream) {
         log(chunk);
         if (chunk.type === 'activity') {
@@ -720,7 +706,7 @@ export const useChat = create<ChatState>((set, get) => {
         .map((m) => ({ role: m.role, content: m.text }));
 
       const transport = choisirTransport(remote);
-      const stream = transport.run({ text: trimmedText, history }, vfsContext, abort.signal);
+      const stream = transport.run({ text: trimmedText, history }, contexteAppareil, abort.signal);
 
       for await (const chunk of stream) {
         log(chunk);
@@ -872,7 +858,7 @@ export const useChat = create<ChatState>((set, get) => {
         .map((m) => ({ role: m.role, content: m.text }));
 
       const transport = choisirTransport(remote);
-      const stream = transport.run({ text: precedingUserMsg.text, history }, vfsContext, abort.signal);
+      const stream = transport.run({ text: precedingUserMsg.text, history }, contexteAppareil, abort.signal);
 
       for await (const chunk of stream) {
         log(chunk);
@@ -984,52 +970,6 @@ export const useChat = create<ChatState>((set, get) => {
   },
 
   /* Re-execute a failed terminal command — real retry through the shell. */
-  async rerunCommand(conversationId: string, messageId: string, nodeId: string) {
-    const conv = get().conversations.find((c) => c.id === conversationId);
-    const msg = conv?.messages.find((m) => m.id === messageId);
-    const node = msg ? findNode(msg.activity, nodeId) : undefined;
-    const command = (node?.input as { command?: string } | undefined)?.command;
-    if (!node || !command) return;
-    const d = agentStrings(uiLocale());
-
-    const rerunStarted: typeof node = {
-      ...node,
-      phase: 'started',
-      status: 'running',
-      description: d.command.retrying,
-      startedAt: Date.now(),
-      completedAt: undefined,
-      durationMs: undefined,
-    };
-    set((s) => ({
-      conversations: s.conversations.map((c) =>
-        c.id === conversationId
-          ? { ...c, messages: c.messages.map((m) => (m.id === messageId ? { ...m, activity: upsertNode(m.activity, rerunStarted) } : m)) }
-          : c,
-      ),
-    }));
-
-    await new Promise((r) => setTimeout(r, 520));
-    const res = runShell(vfsContext.getTree(), command);
-    const finished: typeof node = {
-      ...rerunStarted,
-      phase: res.ok ? 'completed' : 'failed',
-      status: res.ok ? 'completed' : 'failed',
-      completedAt: Date.now(),
-      durationMs: Date.now() - rerunStarted.startedAt,
-      description: res.ok ? d.command.retryOk : res.stderr?.split('\n')[0] ?? d.fix.buildExit(res.exitCode),
-      output: { command, stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode },
-    };
-    set((s) => {
-      const conversations = s.conversations.map((c) =>
-        c.id === conversationId
-          ? { ...c, messages: c.messages.map((m) => (m.id === messageId ? { ...m, activity: upsertNode(m.activity, finished) } : m)) }
-          : c,
-      );
-      persist(conversations);
-      return { conversations };
-    });
-  },
 };
 });
 

@@ -13,7 +13,6 @@ import {
   Monitor,
   Moon,
   Plug,
-  RotateCcw,
   Share2,
   Sun,
   TerminalSquare,
@@ -162,7 +161,7 @@ export function SettingsModal() {
   const { setModalOpen: openPersona, userName } = usePersona();
   const { setModalOpen: openMemoryModal, memories } = useMemory();
   const { setModalOpen: openConnectors, connectors } = useConnectors();
-  const { resetWorkspace, toggleLog } = useChat();
+  const { toggleLog } = useChat();
 
   const activeMemories = memories.filter((m) => m.enabled).length;
   const activeConnectors = Object.values(connectors).filter((s) => s.status === 'connected').length;
@@ -344,13 +343,6 @@ export function SettingsModal() {
                   title={l.share}
                   sub={l.shareSub}
                   onClick={openAndClose(() => useExport.getState().openExport())}
-                />
-                <Row
-                  icon={<RotateCcw size={14} />}
-                  title={l.reset}
-                  sub={l.resetSub}
-                  danger
-                  onClick={openAndClose(resetWorkspace)}
                 />
               </Section>
             </div>

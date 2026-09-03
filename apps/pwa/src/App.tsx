@@ -24,7 +24,7 @@ import { useCapacite, nomEspace } from './lib/capacites';
 import { cn } from './utils/cn';
 
 export default function App() {
-  const { conversations, activeId, isRunning, send, cancel, rerunCommand, toggleLog } = useChat();
+  const { conversations, activeId, isRunning, send, cancel, toggleLog } = useChat();
   const { t, locale } = useI18n();
   const { togglePalette } = useCommandPalette();
   const [mobileNav, setMobileNav] = useState(false);
@@ -211,7 +211,6 @@ export default function App() {
                   <ChatMessage
                     msg={m}
                     conversationId={conv!.id}
-                    onRetryCommand={(messageId, nodeId) => rerunCommand(conv!.id, messageId, nodeId)}
                   />
                 </ErrorBoundary>
               ))}

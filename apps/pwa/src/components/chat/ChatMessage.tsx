@@ -216,11 +216,9 @@ function VariantNavigator({
 export const ChatMessage = memo(function ChatMessage({
   msg,
   conversationId,
-  onRetryCommand,
 }: {
   msg: Msg;
   conversationId: string;
-  onRetryCommand: (messageId: string, nodeId: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -372,7 +370,7 @@ export const ChatMessage = memo(function ChatMessage({
     );
   }
 
-  const ctx: ItemCtx = { conversationId, messageId: msg.id, onRetryCommand };
+  const ctx: ItemCtx = { conversationId, messageId: msg.id };
   const working = msg.status === 'working' || msg.status === 'streaming';
   const showActivity = msg.activity.length > 0 || working;
   const bodyText = msg.status === 'done' || msg.status === 'cancelled' ? (msg.text || msg.live) : msg.live;

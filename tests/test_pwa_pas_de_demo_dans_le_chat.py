@@ -32,6 +32,30 @@ def _lire(chemin: Path) -> str:
     return chemin.read_text(encoding="utf-8")
 
 
+def _code_numerote(source: str) -> list[tuple[int, str]]:
+    """Les lignes de code, numerotees, commentaires exclus.
+
+    Un `startswith("*")` ne suffit pas : les blocs `/* ... */` de ce depot
+    alignent leur texte sans etoile de continuation, et le premier essai de
+    ce test a donc signale son propre commentaire d'explication.
+    """
+    lignes, dans_bloc = [], False
+    for numero, brute in enumerate(source.splitlines(), 1):
+        ligne = brute.strip()
+        if dans_bloc:
+            if "*/" in ligne:
+                dans_bloc = False
+            continue
+        if ligne.startswith("/*"):
+            if "*/" not in ligne:
+                dans_bloc = True
+            continue
+        if ligne.startswith(("//", "*")):
+            continue
+        lignes.append((numero, brute))
+    return lignes
+
+
 def _lignes_de_code(source: str) -> list[str]:
     """Les lignes de code seules — les commentaires sont retires.
 
@@ -140,23 +164,54 @@ def test_le_message_dit_que_rien_na_repondu():
 @pytest.mark.parametrize("mensonge", [
     "exécution terminal réelle",
     "vraie arborescence projet",
+    # La phrase d'accueil elle-meme. « atelier IA observable » seul ne
+    # conviendrait pas : c'est aussi le slogan de la marque
+    # (`brand.sub`), et la chronologie d'activite, elle, est bien reelle.
+    "Chaque outil que j",
+    "pulseboard",
 ])
-def test_les_promesses_fausses_ne_sont_plus_servies_au_chat(mensonge):
-    """Ces deux phrases étaient sur son écran, et elles étaient fausses.
+def test_les_promesses_fausses_ont_disparu_du_code_servi(mensonge):
+    """Ces phrases étaient sur son écran le 03/09/2026, et elles étaient fausses.
 
-    Elles peuvent rester dans le source tant que le chat ne les sert plus ;
-    ce qui est interdit, c'est qu'un chemin les ramène. On mesure donc qu'elles
-    ne sont plus atteignables **depuis le chat** — le seul importateur restant
-    de `strings.ts` doit être la démo elle-même ou la vidéo.
+    Elles ne sont plus seulement inatteignables : elles n'existent plus. Le
+    test cherche dans tout ce que la PWA embarque, sauf les commentaires qui
+    racontent ce qui a été retiré — un dépôt qui efface aussi la raison de
+    l'effacement se fait remettre le défaut par le premier qui trouve le
+    manque suspect.
     """
-    strings = _lire(PWA / "lib" / "agent" / "strings.ts")
-    if mensonge not in strings:
-        pytest.skip("la phrase n'existe plus du tout")
+    trouves = []
+    for chemin in PWA.rglob("*.ts*"):
+        for numero, ligne in _code_numerote(_lire(chemin)):
+            if mensonge.lower() in ligne.lower():
+                trouves.append(f"{chemin.relative_to(PWA)}:{numero}")
 
-    store = _lire(CHAT_STORE)
-    # `agentStrings` peut rester pour la video et le terminal du plan de
-    # travail ; ce qui compte est qu'aucun repli ne rejoue la demo.
-    assert "localTransport" not in store
+    assert not trouves, f"« {mensonge} » est encore servi : {trouves}"
+
+
+def test_les_modules_de_la_demo_nexistent_plus():
+    """Le faux projet, le faux index, le faux terminal.
+
+    Les garder « au cas où » les rendrait réactivables par un import d'une
+    ligne — et c'est un import d'une ligne qui a produit le défaut.
+    """
+    for mort in ("vfs.ts", "exec.ts", "knowledge.ts", "knowledgeFr.ts"):
+        assert not (PWA / "lib" / "agent" / mort).exists(), (
+            f"{mort} est revenu : le faux projet peut se rebrancher")
+
+
+def test_le_transport_sur_appareil_ne_sert_plus_que_ce_qui_tourne_ici():
+    """`runAgent` n'a plus de voie par défaut qui produirait du texte."""
+    source = _lire(PWA / "lib" / "agent" / "orchestrator.ts")
+
+    for disparu in ("pipelineChat", "pipelineFixBuild", "pipelineResearch",
+                    "pipelineCalc", "pipelineCode", "pipelineCommand",
+                    "detectIntent"):
+        assert f"function* {disparu}" not in source and f"function {disparu}" not in source, (
+            f"{disparu} est de retour")
+
+    assert "pipelineVideo" in source, "le montage video a ete emporte avec la demo"
+    assert "BACKEND_OFFLINE" in source, (
+        "arriver ici hors video doit refuser, pas rendre un texte")
 
 
 def test_lerreur_hors_ligne_ne_se_prefixe_pas_de_moteur_en_erreur():
