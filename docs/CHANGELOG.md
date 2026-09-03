@@ -2,6 +2,42 @@
 
 ## [Non publié]
 
+### Corrigé — 03/09/2026 — Les scripts PowerShell ne démarraient pas chez lui
+
+Il colle la séquence d'installation. Les deux installeurs sont refusés avant
+leur première ligne :
+
+```
+Le terminateur " est manquant dans la chaîne.
+... ite-Host "  UI/UX Pro Max â€" intelligence de design, a cote d'ARENA"
+```
+
+Windows PowerShell 5.1 décode un `.ps1` **sans BOM** en cp1252, jamais en
+UTF-8. Un `—` (trois octets) devient trois caractères parasites, `«` et `»` en
+produisent deux chacun. Tombés dans une chaîne, le guillemet fermant n'est
+plus trouvé et **le script entier est rejeté**.
+
+La solution évidente — enregistrer avec un BOM — est fermée ici :
+`test_aucun_fichier_ne_commence_par_un_bom` l'interdit, pour de bonnes raisons
+de son côté. Reste la seule qui marche partout : de l'ASCII pur.
+
+**Cinq des sept scripts en contenaient**, pas seulement les deux nouveaux. Les
+trois plus anciens (`installer_moneyprinter`, `installer_opentakeoff`,
+`lancer_arena`) n'avaient pas encore cassé — leurs caractères ne tombaient pas
+dans une chaîne. Ils attendaient la mauvaise ligne au mauvais endroit.
+
+C'est la troisième fois en deux jours qu'un encodage casse quelque chose ici
+— après le BOM du YAML et le double encodage de `plan_video.py`. Les trois
+avaient la même forme : un fichier écrit sous une hypothèse d'encodage, lu
+sous une autre.
+
+16 tests (`tests/test_scripts_powershell.py`). Le second mesure le symptôme
+exact qu'il a vu — une ligne qui laisse une chaîne ouverte — car l'ASCII seul
+ne le garantit pas. Sabotages : remettre un tiret cadratin, remettre un
+guillemet en trop ; chacun fait tomber sa garde.
+
+Suite complète : 3361 passent.
+
 ### Ajouté — 03/09/2026 — La PWA a enfin un lanceur de tests
 
 Le point était noté dans `docs/REPRISE.md` comme « un travail à part ». Il

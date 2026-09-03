@@ -16,7 +16,7 @@ $Racine = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Cible = Join-Path (Split-Path -Parent $Racine) "MoneyPrinterTurbo"
 
 Write-Host "=============================================================="
-Write-Host "  MoneyPrinterTurbo — installation a cote d'ARENA"
+Write-Host "  MoneyPrinterTurbo - installation a cote d'ARENA"
 Write-Host "  Destination : $Cible"
 Write-Host "=============================================================="
 
@@ -85,5 +85,5 @@ Write-Host "   cd $Cible" -ForegroundColor Green
 Write-Host "   .venv\Scripts\python.exe -m uvicorn app.asgi:app --host 127.0.0.1 --port 8080" -ForegroundColor Green
 Write-Host ""
 Write-Host "Puis, depuis ARENA :  python scripts\doctor.py"
-Write-Host "La ligne « Video courte (MPT) » doit passer a [OK]."
+Write-Host "La ligne ' Video courte (MPT) ' doit passer a [OK]."
 Write-Host ""

@@ -1,8 +1,8 @@
 # Installe le SDK Faceplugin DANS tools\vision\faceplugin\, hors de git.
 #
-# Ce depot ne porte AUCUN fichier LICENSE : seulement un badge « Open Source »
+# Ce depot ne porte AUCUN fichier LICENSE : seulement un badge " Open Source "
 # dans son README, qui ne concede rien en droit. Sans licence explicite, tous
-# droits reserves — son source ne peut donc pas entrer dans un depot public.
+# droits reserves - son source ne peut donc pas entrer dans un depot public.
 # `.gitignore` couvre `tools/vision/faceplugin/` en entier, et un test le
 # verifie (`tests/test_moteurs_externes_restent_dehors.py`).
 #
@@ -18,7 +18,7 @@ $Racine = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Cible = Join-Path $Racine "tools\vision\faceplugin\Open-Source-Face-Recognition-SDK"
 
 Write-Host "=============================================================="
-Write-Host "  Faceplugin — analyse de visages, installe a cote d'ARENA"
+Write-Host "  Faceplugin - analyse de visages, installe a cote d'ARENA"
 Write-Host "  Destination : $Cible"
 Write-Host "=============================================================="
 
@@ -43,7 +43,7 @@ Write-Host "Installation de ses dependances (torch, opencv...)..."
 
 Write-Host ""
 Write-Host "Termine. Verifie avec :"
-Write-Host "  python scripts\doctor.py     -> ligne « Visages (Faceplugin) »"
+Write-Host "  python scripts\doctor.py     -> ligne ' Visages (Faceplugin) '"
 Write-Host ""
 Write-Host "Rappel : les fonctions biometriques (extraire un gabarit, comparer"
 Write-Host "deux visages) demandent ta confirmation a chaque appel. ARENA ne"

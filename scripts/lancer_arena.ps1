@@ -110,10 +110,10 @@ try {
 # un environnement monte avant cette date ne l'aura toujours pas.
 #
 # Ce que ca donnait : une trace Python en plein demarrage, qui se lit comme
-# « ARENA n'a pas demarre » alors que le serveur ET le tunnel tournent, et que
+# " ARENA n'a pas demarre " alors que le serveur ET le tunnel tournent, et que
 # l'adresse est juste au-dessus. Le QR code est un confort ; l'adresse suffit.
 #
-# La phrase « scanne ce carre » n'est plus affichee que s'il y a un carre :
+# La phrase " scanne ce carre " n'est plus affichee que s'il y a un carre :
 # l'annoncer avant de savoir, c'etait promettre ce qui allait echouer.
 $carre = python -c "import qrcode,sys; q=qrcode.QRCode(border=2); q.add_data(sys.argv[1]); q.make(); q.print_ascii(invert=True)" $adresse 2>$null
 
@@ -125,7 +125,7 @@ if ($LASTEXITCODE -eq 0 -and $carre) {
     $carre | ForEach-Object { Write-Host $_ }
 } else {
     Write-Host "  Pas de QR code : le paquet qrcode n'est pas installe." -ForegroundColor DarkGray
-    Write-Host "  L'adresse ci-dessus marche telle quelle — tape-la dans le panneau"
+    Write-Host "  L'adresse ci-dessus marche telle quelle - tape-la dans le panneau"
     Write-Host "  Backend de ton telephone." -ForegroundColor Cyan
     Write-Host "  Pour avoir le carre au prochain demarrage : pip install qrcode" -ForegroundColor DarkGray
 }

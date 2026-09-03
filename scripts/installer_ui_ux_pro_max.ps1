@@ -1,6 +1,6 @@
 # Installe UI/UX Pro Max DANS tools\design\ui_ux_pro_max\, hors de git.
 #
-# Ce moteur est MIT — rien n'interdirait de le versionner. Il reste dehors par
+# Ce moteur est MIT - rien n'interdirait de le versionner. Il reste dehors par
 # CONVENTION : tout moteur externe vit a cote d'ARENA ici (VoiceStudio, WanGP,
 # MoneyPrinterTurbo, OpenTakeoff, Xaar Kaname), et une seule regle vaut mieux
 # que deux selon la licence. Sa notice MIT voyage avec lui, dans son propre
@@ -18,7 +18,7 @@ $Racine = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Cible = Join-Path $Racine "tools\design\ui_ux_pro_max"
 
 Write-Host "=============================================================="
-Write-Host "  UI/UX Pro Max — intelligence de design, a cote d'ARENA"
+Write-Host "  UI/UX Pro Max - intelligence de design, a cote d'ARENA"
 Write-Host "  Destination : $Cible"
 Write-Host "=============================================================="
 
@@ -33,4 +33,4 @@ if (Test-Path $Moteur) {
 
 Write-Host ""
 Write-Host "Termine. Verifie avec :"
-Write-Host "  python scripts\doctor.py     -> ligne « Design (UI/UX Pro Max) »"
+Write-Host "  python scripts\doctor.py     -> ligne ' Design (UI/UX Pro Max) '"

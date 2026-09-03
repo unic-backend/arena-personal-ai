@@ -2,14 +2,14 @@
 #
 # Le moteur de metre : un depot separe (Kentucky-ai, Apache-2.0), ses propres
 # dependances Node. Le copier dans ce depot melangerait deux historiques pour
-# rien — ARENA le lance lui-meme comme un processus, exactement comme il
+# rien - ARENA le lance lui-meme comme un processus, exactement comme il
 # refuse d'executer du code sans Docker (DEC-0004) : rien n'entre ici sauf le
 # chemin vers son dossier construit.
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\installer_opentakeoff.ps1
 #
 # Rien n'est lance a la fin : il n'y a rien a lancer en continu. ARENA demarre
-# et arrete le processus Node a chaque metre — voir core/mcp/stdio_transport.py.
+# et arrete le processus Node a chaque metre - voir core/mcp/stdio_transport.py.
 
 $ErrorActionPreference = "Stop"
 
@@ -17,7 +17,7 @@ $Racine = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Cible = Join-Path (Split-Path -Parent $Racine) "opentakeoff"
 
 Write-Host "=============================================================="
-Write-Host "  OpenTakeoff — installation a cote d'ARENA"
+Write-Host "  OpenTakeoff - installation a cote d'ARENA"
 Write-Host "  Destination : $Cible"
 Write-Host "=============================================================="
 
@@ -75,5 +75,5 @@ Write-Host "Rien d'autre a lancer : ARENA demarre et arrete le processus Node"
 Write-Host "lui-meme, a chaque plan mesure."
 Write-Host ""
 Write-Host "Puis, depuis ARENA :  python scripts\doctor.py"
-Write-Host "La ligne « Metre de plan (OpenTakeoff) » doit passer a [OK]."
+Write-Host "La ligne ' Metre de plan (OpenTakeoff) ' doit passer a [OK]."
 Write-Host ""
