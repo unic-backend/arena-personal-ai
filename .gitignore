@@ -63,3 +63,25 @@ documents/unic_plaquiste/*
 
 # Le zip de la PWA : on versionne le code source, jamais l archive.
 *.zip
+
+# --- Xaar Kaname / Deep-Live-Cam : moteur externe, hors du depot -------------
+#
+# Deep-Live-Cam est sous **AGPL-3.0**. `LICENSE` dit « All rights reserved ».
+# Faire entrer son source ici ferait d ARENA une oeuvre derivee, et ARENA
+# devrait alors etre publie sous AGPL — sur un depot qui est **public**
+# (DEC-0039). C est exactement le raisonnement deja tenu pour VoiceStudio
+# (DEC-0027) : la frontiere est un **processus separe**, joint par sa ligne de
+# commande. Le connecteur vit dans ARENA ; le moteur, jamais.
+#
+# La regle de ce depot est deja etablie et se verifie : `git ls-files` ne
+# contient AUCUNE ligne de VoiceStudio, de WanGP ni de MoneyPrinterTurbo —
+# seulement leurs connecteurs, leurs tests et leurs scripts d installation.
+#
+# Trois problemes regles par cette seule ligne :
+#   - la licence AGPL, qui est le plus grave ;
+#   - `models/inswapper_128.onnx`, plusieurs centaines de Mo ;
+#   - `.venv/` avec ses DLL CUDA/cuDNN, et les images produites.
+#
+# Ce que le depot porte pour Xaar : `core/connectors/xaar_kaname.py`, ses
+# tests, et de quoi installer le moteur a cote.
+tools/video/xaar_kaname/
