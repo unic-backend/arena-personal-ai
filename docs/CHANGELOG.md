@@ -2,6 +2,48 @@
 
 ## [Non publié]
 
+### Ajouté — 03/09/2026 — La mentalité d'Usman, écrite et tenue par des tests
+
+Le propriétaire demande d'améliorer la mentalité d'Usman en y intégrant « le
+raisonnement de Claude ». **Ce n'est pas possible et ça se dit** : le code et
+les poids de Claude ne sont publics nulle part. Annoncer une intégration
+qu'on ne peut pas faire serait exactement le défaut retiré cette nuit.
+
+Ce qui est fait à la place est réel : les sept règles que cette plateforme a
+payées pour apprendre, posées dans le prompt de base d'Usman
+(`apps/backend/prompts.py`, `DISCIPLINE`).
+
+| Règle | Le défaut qui l'a payée |
+|---|---|
+| 1 — dire ce qu'on n'a pas vérifié | — |
+| 2 — n'annoncer aucune capacité absente | 01:36, une démo se fait passer pour son IA et promet « exécution terminal réelle » |
+| 3 — rapporter un échec tel quel | un bouton « Confirmer » sous un message disant que le moteur est mort |
+| 4 — « absent » ≠ « inconnu » | déjà distingué dans le code, pas dans la parole du modèle |
+| 5 — ne rien boucher avec du plausible | quatre tests ont figé des valeurs fabriquées jusqu'à `main` |
+| 6 — corriger en une phrase | — |
+| 7 — dire ce qui a été fait | — |
+
+**Une règle qui ne peut pas nommer sa mesure n'entre pas.** C'est ce qui
+sépare une discipline d'une liste de bonnes manières, et un test le vérifie :
+retirer les dates de l'en-tête fait tomber une garde.
+
+Ce qui est mesuré, et ce qui ne l'est pas — la distinction est écrite dans le
+fichier de test plutôt que supposée :
+
+- **Mesuré** : les sept règles présentes, une seule fois, arrivant jusqu'aux
+  trois chemins de réponse. La méthode d'un spécialiste vient après elles et
+  ne peut rien effacer.
+- **Non mesuré** : que le modèle les *suive*. Aucun modèle ne tourne en CI
+  (DEC-0022). Prétendre le contraire serait la règle 2.
+
+Un test qui vérifie qu'une instruction existe ne prouve pas qu'elle change un
+comportement. Il prouve qu'elle ne peut pas disparaître en silence — et c'est
+déjà ce qui manquait.
+
+14 tests. Sabotages : retirer une règle, ne plus poser la discipline dans le
+prompt, ajouter une huitième règle sans mesure, effacer les dates — chacun
+fait tomber une garde. Suite complète : 3344 passent.
+
 ### Ajouté — 03/09/2026 — Analyse de visages et intelligence de design
 
 Deux moteurs externes rejoignent ARENA. Même architecture — la seule qui existe
