@@ -83,6 +83,27 @@ function ActionsEnAttente({ msg }: { msg: Msg }) {
                 </a>
               )}
             </div>
+          ) : a.disponible === false ? (
+            /* Le moteur ne repond pas : pas de bouton « Confirmer ».
+               Mesure du 03/09/2026 — il en recevait un juste sous un message
+               disant que VoiceStudio etait injoignable. Confirmer ne pouvait
+               qu'echouer, et il l'apprenait apres avoir appuye. Un bouton qui
+               ne peut pas aboutir est la meme faute qu'une phrase qui promet
+               ce qu'elle ne fait pas, en plus couteux : il demande un geste
+               avant de dire non. « Annuler » reste, pour vider la file. */
+            <div className="space-y-2 pt-2">
+              <div className="text-[11px] leading-relaxed text-amber-200/70">
+                {a.indisponible_raison || t('action.engineOffline')}
+              </div>
+              <button
+                type="button"
+                onClick={() => agir(a.id, 'annuler')}
+                disabled={enCours === a.id}
+                className="rounded-md border border-white/10 px-3 py-1.5 text-[11.5px] text-zinc-300 transition hover:bg-white/5 disabled:opacity-50"
+              >
+                {t('action.cancel')}
+              </button>
+            </div>
           ) : (
             <div className="flex gap-2 pt-2.5">
               <button

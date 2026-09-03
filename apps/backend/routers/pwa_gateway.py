@@ -58,6 +58,7 @@ from core.actions.confirmation_parlee import (
     a_confirmer_par_phrase,
     est_une_confirmation,
 )
+from core.connectors.base import EtatSante
 from core.execution.mesures import ETAT_INDISPONIBLE, ETAT_MESURE, Mesure, chronometrer
 from core.execution.voies import budget_de, voie_pour
 from core.memory.consolidation import grouper
@@ -385,6 +386,40 @@ def noter_mesure(mesure: Mesure) -> Mesure:
     return mesure
 
 
+def _etat_du_moteur(nom_connecteur: str) -> Dict[str, Any]:
+    """Le moteur qui executerait cette action repond-il, maintenant ?
+
+    **Mesure du 03/09/2026.** Le proprietaire recoit un bouton « Confirmer »
+    pour une synthese vocale, juste sous un message disant que VoiceStudio ne
+    repond pas. Le bouton etait offert quand meme : confirmer ne pouvait
+    qu'echouer, et il l'apprenait apres avoir appuye.
+
+    Un bouton qui ne peut pas aboutir est la meme faute que la phrase qui
+    promet ce qu'elle ne fait pas — en plus couteux, parce qu'il demande un
+    geste avant de dire non.
+
+    L'etat vient de la sonde du connecteur, jamais d'une seconde logique. La
+    file est vide la plupart du temps, donc ce controle ne coute rien au cas
+    courant ; quand elle ne l'est pas, c'est exactement le moment ou
+    l'information compte.
+
+    Une sonde qui leve ou un connecteur inconnu rend `disponible: True` :
+    **on n'interdit pas une action parce qu'on n'a pas su la mesurer.** Le
+    doute laisse le bouton, il ne le retire pas.
+    """
+    try:
+        sante = registre.obtenir(nom_connecteur).sonder()
+    except Exception:  # noqa: BLE001 — ne pas savoir n'est pas un refus
+        return {"disponible": True, "indisponible_raison": ""}
+
+    if sante.etat is EtatSante.OPERATIONNEL:
+        return {"disponible": True, "indisponible_raison": ""}
+    raison = sante.message or sante.etat.value
+    if sante.ce_qui_manque:
+        raison = f"{raison} ({sante.ce_qui_manque})"
+    return {"disponible": False, "indisponible_raison": raison}
+
+
 def _actions_en_attente() -> List[Dict[str, Any]]:
     """Ce qui attend un accord, en clair, pour l'interface.
 
@@ -400,6 +435,7 @@ def _actions_en_attente() -> List[Dict[str, Any]]:
                 "cible": a.cible,
                 "risque": a.risque,
                 "expire_le": a.expire_le,
+                **_etat_du_moteur(a.connecteur),
             }
             for a in file_attente.en_attente(limite=5)
         ]

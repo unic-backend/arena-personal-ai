@@ -29,6 +29,26 @@ INTENTION_PAR_ESPACE = {
     "dioumtoukay": "ATELIER",
 }
 
+#: Les intentions qui appartiennent a un espace, au-dela de son defaut.
+#:
+#: **Mesure du 03/09/2026.** « Monte-moi un clip promo a partir de ces
+#: photos » — une suggestion proposee par l'application elle-meme — donnait
+#: `MONTAGE` sans espace, et `VIDEO_ANALYSIS` depuis l'espace « Video ». Le
+#: proprietaire recevait « Aucune video valide fournie pour l'analyse » : il
+#: avait joint des PHOTOS et demande un MONTAGE. **Choisir l'espace rendait le
+#: routage pire que ne rien choisir.**
+#:
+#: L'espace dit une FAMILLE, pas une action : cliquer « Video » ne dit pas
+#: analyser plutot que monter. Il reste donc autoritaire — jamais on ne sort
+#: de sa famille — mais il ne tranche plus a la place d'un mot-cle qui, lui,
+#: a nomme l'action.
+#:
+#: Un espace absent de cette table garde exactement l'ancien comportement :
+#: son defaut s'applique sans discussion.
+FAMILLE_PAR_ESPACE = {
+    "video": {"VIDEO_ANALYSIS", "MONTAGE", "VIDEO_PROJET", "AUDIO", "VISION"},
+}
+
 # Liste fermée : toute réponse du modèle hors de cet ensemble est rejetée.
 #: Les mots qui, chez lui, designent son metier sans ambiguite. Consultes a
 #: deux endroits : pour aiguiller vers PLAQUISTE, et pour empecher une phrase
@@ -499,8 +519,21 @@ class OrchestratorAgent(BaseAgent):
             return "FRESH_INFO"
 
         if espace and espace in INTENTION_PAR_ESPACE:
-            logger.info("Espace %s choisi dans l'interface -> %s", espace, INTENTION_PAR_ESPACE[espace])
-            return INTENTION_PAR_ESPACE[espace]
+            defaut = INTENTION_PAR_ESPACE[espace]
+            famille = FAMILLE_PAR_ESPACE.get(espace)
+            if famille:
+                # Les mots-cles sont deterministes et gratuits : on leur laisse
+                # nommer l'action DANS la famille de l'espace. Hors famille,
+                # leur avis est ignore — l'espace reste ce que le proprietaire
+                # a demande en cliquant.
+                precise = self._classer_par_mots_cles(user_input)
+                if precise in famille and precise != defaut:
+                    logger.info(
+                        "Espace %s : mot-cle plus precis que le defaut -> %s",
+                        espace, precise)
+                    return precise
+            logger.info("Espace %s choisi dans l'interface -> %s", espace, defaut)
+            return defaut
 
         intention = await self._classer_par_modele(user_input)
         if intention is not None:

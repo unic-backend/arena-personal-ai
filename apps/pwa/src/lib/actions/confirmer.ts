@@ -20,6 +20,12 @@ export interface ActionEnAttente {
   cible: string;
   risque: string;
   expire_le?: string;
+  /** Le moteur qui executerait cette action repond-il ? Absent d'un serveur
+   *  plus ancien — on considere alors qu'il repond, plutot que de retirer un
+   *  bouton par ignorance. */
+  disponible?: boolean;
+  /** Pourquoi il ne repond pas. Vide quand il repond. */
+  indisponible_raison?: string;
 }
 
 export interface ResultatConfirmation {

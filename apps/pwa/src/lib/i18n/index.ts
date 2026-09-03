@@ -87,6 +87,7 @@ const en: Dict = {
   'theme.light': 'Light',
   'theme.system': 'System',
 
+  'action.engineOffline': 'The engine for this action is not answering — nothing can be sent yet.',
   'chat.offline': 'Your server did not answer, and nothing answered in its place. It is being retried on its own — send your message again in a moment.',
   'chat.offlineWhy': 'Your server did not answer ({raison}), and nothing answered in its place. It is being retried on its own — send your message again in a moment.',
   'chat.noBackend': 'No server is set up yet, so there is nothing to answer you. Open the menu, then the backend panel, and enter your server address.',
@@ -411,6 +412,7 @@ const fr: Dict = {
   'theme.light': 'Clair',
   'theme.system': 'Système',
 
+  'action.engineOffline': 'Le moteur de cette action ne répond pas — rien ne peut partir pour l’instant.',
   'chat.offline': 'Ton serveur n’a pas répondu, et rien n’a répondu à sa place. Il est réessayé tout seul — renvoie ton message dans un instant.',
   'chat.offlineWhy': 'Ton serveur n’a pas répondu ({raison}), et rien n’a répondu à sa place. Il est réessayé tout seul — renvoie ton message dans un instant.',
   'chat.noBackend': 'Aucun serveur n’est enregistré, donc rien ne peut te répondre. Ouvre le menu, puis le panneau backend, et mets l’adresse de ton serveur.',

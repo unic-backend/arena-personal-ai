@@ -2,6 +2,51 @@
 
 ## [Non publié]
 
+### Corrigé — 03/09/2026 — Les trois défauts vus sur son écran de 02:47
+
+Les trois existaient indépendamment de la machine branchée. Corrigés pendant
+que son PC démarrait.
+
+**1. `â€"` était dans le fichier, pas à l'affichage.** `plan_video.py`
+contenait littéralement ces caractères à la place du tiret cadratin, sur
+13 lignes, et `permissions_services.yaml` sur 7 — un texte UTF-8 relu en
+cp1252 puis ré-enregistré.
+
+La réparation se fait par `encode("cp1252")`, **pas latin-1** : `€` (U+20AC)
+n'existe pas en latin-1, et c'est justement lui qui compose `â€"`. Un premier
+essai en latin-1 a laissé intactes exactement les lignes à réparer. Le YAML a
+été vérifié : `yaml.safe_load` rend le même objet avant et après — seul le
+texte a changé, jamais une décision. Garde ajoutée à `tests/test_encodage.py`.
+
+**2. Un bouton « Confirmer » sous un message disant que le moteur est
+absent.** Il en recevait deux pour une synthèse vocale, juste sous
+« VoiceStudio ne répond pas sur `http://127.0.0.1:3900` ». Confirmer ne pouvait
+qu'échouer, et il l'apprenait après avoir appuyé.
+
+Une action en attente porte désormais l'état du moteur qui l'exécuterait, par
+la sonde du connecteur. Moteur absent : pas de « Confirmer », la raison à la
+place, et « Annuler » reste pour vider la file. **Une sonde qui échoue laisse
+le bouton** — ne pas savoir mesurer n'est pas un refus, et retirer le bouton
+remplacerait un faux « ça marche » par un faux « c'est cassé ».
+
+**3. L'espace « Vidéo » rendait le routage pire que ne rien choisir.**
+
+```
+« Monte-moi un clip promo à partir de ces photos »
+  sans espace       → MONTAGE          (juste)
+  espace « video »  → VIDEO_ANALYSIS   (faux)
+```
+
+D'où « Aucune vidéo valide fournie pour l'analyse » sur une demande de montage
+à partir de photos — **et c'est l'application elle-même qui suggérait cette
+phrase.** Un espace dit une famille, pas une action : cliquer « Vidéo » ne dit
+pas analyser plutôt que monter. `FAMILLE_PAR_ESPACE` laisse les mots-clés
+nommer l'action *dans* la famille ; hors famille leur avis est ignoré, car
+avoir cliqué « Vidéo » est une instruction. Les espaces sans famille déclarée
+gardent exactement l'ancien comportement.
+
+16 tests ajoutés. Suite complète : 3258 passent.
+
 ### Ajouté — 03/09/2026 — Le panneau vidéo dit ce que la machine branchée sait faire
 
 **Mesuré à 02:47.** Le propriétaire, sur son téléphone branché à Railway, coche
