@@ -26,10 +26,13 @@ fonctionnent chacun seul, mais rien ne les composait sur un meme projet.
 from __future__ import annotations
 
 import base64
+import inspect
 import logging
+import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from apps.backend.config import RENDERED_DIR
 from core.agent.base_agent import BaseAgent
 from core.execution.coordination import Coordination, Etape
 from core.memory.memory_manager import MemoryManager
@@ -59,6 +62,38 @@ CAPACITES_GPU_LOCAL = frozenset({"vision", "wangp", "xaar_kaname"})
 #: une capacite absente.
 _STATUTS_FR_FAVORABLES = frozenset({"SUCCESS", "PARTIAL", "NEEDS_CONFIRMATION"})
 _STATUTS_EN_FAVORABLES = frozenset({"success", "warning"})
+
+
+def _depuis_resultat_action(resultat: Any) -> Dict[str, Any]:
+    """Traduit un `ResultatAction` de connecteur dans la forme lue ici.
+
+    **Sans cette traduction, un succes se lisait comme un echec.**
+    `ResultatAction.to_dict()` rend `{"status": "SUCCESS"}` — la cle anglaise
+    avec la valeur francaise. `_issue_favorable` lit alors la branche anglaise
+    et cherche `"SUCCESS"` dans `{"success", "warning"}` : absent, donc
+    defavorable, donc `_verifie` leve sur une etape parfaitement reussie
+    (mesure du 03/09/2026).
+
+    On rend donc la forme **francaise** : cle `statut`, qui porte les memes
+    valeurs que le connecteur (`SUCCESS`, `NEEDS_CONFIRMATION`...). `preuve`
+    voyage avec, car c'est elle que `_artefact_final` regarde pour savoir
+    qu'un fichier existe vraiment.
+    """
+    corps = resultat.to_dict() if hasattr(resultat, "to_dict") else dict(resultat or {})
+    #: `statut` d'abord : un connecteur qui rend deja la forme francaise la
+    #: porte sous ce nom. `status` ensuite, car c'est ce que `to_dict()`
+    #: fabrique — cle anglaise, valeur francaise. Lire `status` en premier
+    #: rendrait `None` sur le premier cas, et `_verifie` leverait sur un
+    #: succes.
+    statut = corps.get("statut", corps.get("status"))
+    traduit: Dict[str, Any] = {
+        "statut": statut,
+        "message": corps.get("message") or corps.get("response") or "",
+    }
+    preuve = corps.get("preuve", corps.get("output"))
+    if preuve is not None:
+        traduit["preuve"] = preuve
+    return traduit
 
 
 def _issue_favorable(resultat: Dict[str, Any]) -> Tuple[bool, str]:
@@ -95,6 +130,7 @@ class VideoProductionAgent(BaseAgent):
         video_analyzer_agent: Any = None,
         audio_agent: Any = None,
         montage_agent: Any = None,
+        registre: Any = None,
     ) -> None:
         super().__init__(
             name="VideoProductionAgent",
@@ -108,6 +144,11 @@ class VideoProductionAgent(BaseAgent):
         self.video_analyzer_agent = video_analyzer_agent
         self.audio_agent = audio_agent
         self.montage_agent = montage_agent
+        # Xaar Kaname est un CONNECTEUR, pas un agent : il passe par le
+        # registre, donc par le controle d'acces et la file de confirmation.
+        # C'est ce qui lui fait respecter `video_generation.generate =
+        # CONFIRMATION` comme WanGP et MoneyPrinterTurbo.
+        self.registre = registre
 
     async def run(self, objectif: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         contexte = context or {}
@@ -203,6 +244,8 @@ class VideoProductionAgent(BaseAgent):
                 return await self._appeler_narration(parametres)
             if capacite == "montage":
                 return await self._appeler_montage(parametres, references)
+            if capacite == "xaar_kaname":
+                return await self._appeler_xaar_kaname(parametres, references)
             # valider_graphe() ne laisse jamais passer autre chose que
             # CAPACITES_VIDEO : atteindre ceci serait un bug de ce module,
             # jamais une entree du modele.
@@ -289,6 +332,67 @@ class VideoProductionAgent(BaseAgent):
         resultat = await self.audio_agent.run(
             "narration", context={"texte": texte, "langue": str(parametres.get("langue") or "fr")})
         return self._verifie(resultat, "narration")
+
+    def _reference_indexee(self, parametres: Dict[str, Any], cle: str,
+                           references: List[str]) -> Optional[str]:
+        """La reference designee par INDEX sous `cle`, jamais devinee.
+
+        Volontairement plus strict que `_reference` : celui-la choisit la seule
+        reference disponible quand l'index manque, ce qui est juste pour une
+        capacite a une entree. Xaar en prend **deux** — le visage source et la
+        cible — et les confondre poserait le mauvais visage sur la mauvaise
+        image sans que rien ne le signale. Un index absent est donc refuse.
+        """
+        try:
+            index = int(parametres.get(cle))
+        except (TypeError, ValueError):
+            return None
+        if 0 <= index < len(references) and Path(references[index]).is_file():
+            return references[index]
+        return None
+
+    async def _appeler_xaar_kaname(self, parametres: Dict[str, Any],
+                                   references: List[str]) -> Dict[str, Any]:
+        """Xaar Kaname (Deep-Live-Cam), par son connecteur — jamais en direct.
+
+        Le connecteur porte l'action `generate` du service `video_generation`,
+        que `config/permissions_services.yaml` met a `CONFIRMATION` : passer
+        par le registre est ce qui fait respecter cette protection. Appeler le
+        moteur directement d'ici la contournerait.
+
+        La sortie est nommee par ARENA, dans `RENDERED_DIR` — jamais un chemin
+        ecrit par le modele dans son plan, et au meme endroit que les autres
+        rendus pour que le fichier soit servable par `/media/rendered/`.
+        """
+        if self.registre is None:
+            raise RuntimeError("aucun registre de connecteurs branche")
+
+        source = self._reference_indexee(parametres, "source_reference", references)
+        cible = self._reference_indexee(parametres, "target_reference", references)
+        if source is None:
+            raise RuntimeError("source_reference : index d'image source absent ou invalide")
+        if cible is None:
+            raise RuntimeError("target_reference : index d'image cible absent ou invalide")
+
+        sortie = RENDERED_DIR / f"xaar-{uuid.uuid4().hex[:8]}{Path(cible).suffix or '.jpg'}"
+
+        # Chemins **absolus** : le moteur tourne dans son propre dossier, a
+        # cote d'ARENA. Un chemin relatif y designerait un autre fichier, ou
+        # aucun — et le connecteur lancerait le moteur sur du vide.
+        resultat = self.registre.executer(
+            "xaar_kaname", "traiter",
+            source=str(Path(source).resolve()),
+            target=str(Path(cible).resolve()),
+            output=str(sortie),
+            many_faces=bool(parametres.get("many_faces", False)),
+        )
+        # Le registre reel est synchrone ; un registre double peut etre
+        # asynchrone. On attend ce qui est attendable plutot que de supposer
+        # l'un des deux : sans cela la coroutine n'est jamais executee et le
+        # resultat lu est l'objet coroutine lui-meme.
+        if inspect.isawaitable(resultat):
+            resultat = await resultat
+        return self._verifie(_depuis_resultat_action(resultat), "xaar_kaname")
 
     async def _appeler_montage(self, parametres: Dict[str, Any],
                                references: List[str]) -> Dict[str, Any]:

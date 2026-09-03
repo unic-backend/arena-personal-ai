@@ -9,6 +9,7 @@ avec les bonnes dependances, jamais un succes invente.
 """
 import asyncio
 import time
+from pathlib import Path
 
 import pytest
 
@@ -375,3 +376,36 @@ class TestXaarKaname:
 
         assert resultat["status"] == "success"
         assert resultat["projet"]["artefact_final"] == str(sortie)
+
+    async def test_xaar_kaname_donne_au_moteur_des_chemins_absolus(self, tmp_path, monkeypatch):
+        """Le moteur tourne dans SON dossier, pas dans celui d'ARENA.
+
+        Les deux tests au-dessus passent des references deja absolues
+        (`tmp_path`), donc ils ne peuvent pas voir ce probleme-la. Une
+        reference relative arrivee d'un plan ou d'une PWA designerait, une
+        fois rendue au moteur, un fichier d'un autre dossier — ou aucun. Le
+        moteur echouerait alors sur du vide, sans que rien ici ne le dise.
+        """
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "source.jpg").write_bytes(b"source")
+        (tmp_path / "cible.jpg").write_bytes(b"cible")
+
+        modele = ModeleDouble([
+            '[{"id": "xaar", "capacite": "xaar_kaname", '
+            '"parametres": {"source_reference": 0, "target_reference": 1}}]'
+        ])
+        registre = RegistreXaarDouble()
+
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+
+        await agent.run(
+            "traite la cible avec la source",
+            context={"references": ["source.jpg", "cible.jpg"]},
+        )
+
+        parametres = registre.appels[0]["parametres"]
+        for cle in ("source", "target"):
+            assert Path(parametres[cle]).is_absolute(), (
+                f"{cle} part en relatif : le moteur le lirait depuis son "
+                "propre dossier, donc a cote du bon fichier")
+            assert Path(parametres[cle]).is_file()

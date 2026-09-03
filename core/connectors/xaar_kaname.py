@@ -10,18 +10,17 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict
 
+from core.actions.resultat import (
+    ResultatAction,
+    echec,
+    succes,
+)
 from core.connectors.base import (
     Capacite,
     Connecteur,
     EtatSante,
     Sante,
 )
-from core.actions.resultat import (
-    ResultatAction,
-    succes,
-    echec,
-)
-
 
 XAAR_ROOT = (
     Path(__file__).resolve().parents[2]
@@ -59,22 +58,43 @@ class XaarKanameConnector(Connecteur):
         )
 
     def sonder(self) -> Sante:
+        """L'état du moteur, mesuré sur le disque.
+
+        **Trois états, pas deux, et la distinction est celle qui compte pour
+        qui lit le diagnostic :**
+
+        - le dossier n'existe pas → `NON_CONFIGURE`. Rien n'est cassé : le
+          moteur n'est simplement pas installé. C'est déjà ce que rapportent
+          WanGP, MoneyPrinterTurbo, VoiceStudio et OpenTakeoff quand ils sont
+          absents. Le dire `EN_PANNE` enverrait le propriétaire réparer une
+          installation qui n'a jamais existé.
+        - le dossier existe mais `.venv` ou `run.py` manque → `EN_PANNE`.
+          Là une installation a commencé et n'est pas allée au bout : il y a
+          bien quelque chose à réparer.
+        - tout est là → `OPERATIONNEL`.
+
+        `ce_qui_manque` porte le chemin exact, parce qu'un « introuvable »
+        sans le chemin cherché n'aide personne à savoir où regarder.
+        """
         if not XAAR_ROOT.is_dir():
             return Sante(
-                etat=EtatSante.EN_PANNE,
-                message="Dépôt Xaar Kaname introuvable.",
+                etat=EtatSante.NON_CONFIGURE,
+                message="Xaar Kaname n'est pas installé.",
+                ce_qui_manque=str(XAAR_ROOT),
             )
 
         if not XAAR_PYTHON.is_file():
             return Sante(
                 etat=EtatSante.EN_PANNE,
-                message="Environnement Python Xaar Kaname introuvable.",
+                message="Installation incomplète : environnement Python absent.",
+                ce_qui_manque=str(XAAR_PYTHON),
             )
 
         if not XAAR_RUN.is_file():
             return Sante(
                 etat=EtatSante.EN_PANNE,
-                message="Entrée run.py de Xaar Kaname introuvable.",
+                message="Installation incomplète : run.py absent.",
+                ce_qui_manque=str(XAAR_RUN),
             )
 
         return Sante(

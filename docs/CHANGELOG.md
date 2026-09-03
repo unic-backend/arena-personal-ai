@@ -2,12 +2,60 @@
 
 ## [Non publié]
 
+### Ajouté — 03/09/2026 — Xaar Kaname branché de bout en bout
+
+Le connecteur du propriétaire est arrivé sur le dépôt. Il était **complet et
+juste** — il lance le moteur, et surtout il vérifie que le fichier a vraiment
+été écrit au lieu de croire un code de retour à 0. Ce qui manquait était
+autour : de quoi l'atteindre, et de quoi savoir s'il est là.
+
+**Trois défauts mesurés entre l'agent vidéo et le connecteur**, chacun cassé et
+remis pour prouver qu'un test le tient :
+
+| Défaut | Ce qu'il produisait | Tests qui tombent si on le remet |
+|---|---|---|
+| Le résultat était lu sous la clé `status` seule | un `SUCCESS` se lisait `None`, donc l'étape échouait alors qu'elle avait réussi | 2 |
+| L'appel au registre n'était jamais attendu | la coroutine restait un objet, rien ne partait | 2 |
+| Les chemins partaient tels quels | le moteur tourne dans **son** dossier : un chemin relatif y désigne un autre fichier, ou aucun | 1 |
+
+Le troisième n'était mesuré par aucun test — les deux tests existants passent
+des chemins déjà absolus, donc ils ne pouvaient pas le voir. Un test le mesure
+maintenant.
+
+**Le moteur avait aussi disparu du diagnostic.** WanGP, MoneyPrinterTurbo,
+VoiceStudio et OpenTakeoff ont chacun leur ligne dans `scripts/doctor.py` ;
+Xaar était le seul sans. Le propriétaire n'apprenait son absence qu'en lançant
+une génération — après coup, et sans savoir quoi installer. La ligne existe, et
+elle distingue **trois** états au lieu de deux :
+
+- dossier absent → `NON_CONFIGURE`, avec le chemin attendu. Rien n'est cassé :
+  rien n'est installé. Le dire « en panne » enverrait réparer une installation
+  qui n'a jamais existé.
+- dossier présent mais `.venv` ou `run.py` manquant → `EN_PANNE`. Là, une
+  installation a commencé sans aller au bout.
+- tout est là → `OPERATIONNEL`.
+
+**La protection n'a pas bougé** : `video_generation.generate` reste à
+`CONFIRMATION`. Mesuré en direct — un appel au connecteur rend `A_CONFIRMER`,
+« Rien n'est parti », avec un identifiant à confirmer.
+
+Le moteur reste **hors du dépôt** (AGPL-3.0), comme VoiceStudio.
+
+13 tests ajoutés (`tests/test_connecteur_xaar_kaname.py`, `tests/test_doctor.py`,
+`tests/agents/video/test_production_agent.py`). Suite complète : 3212 passent.
+
+### Corrigé — 03/09/2026 — Un BOM en tête d'un fichier de configuration
+
+`config/permissions_services.yaml` commençait par trois octets invisibles
+(BOM UTF-8) qui faisaient tomber `test_aucun_fichier_ne_commence_par_un_bom`.
+Trois octets retirés, aucune ligne de contenu touchée.
+
 ### Ajouté — 03/09/2026 — Xaar Kaname : le moteur reste dehors
 
 Le propriétaire a intégré **Xaar Kaname** (le nom ARENA de **Deep-Live-Cam**)
-sur sa machine, et demande de finir et déployer. Le connecteur et le moteur
-sont sur son disque, non commités ; rien de tout cela n'est encore sur le
-dépôt distant.
+sur sa machine, et demande de finir et déployer. À la date de cette entrée, le
+connecteur et le moteur étaient sur son disque seul. Le connecteur est arrivé
+depuis (voir l'entrée du même jour ci-dessus) ; le moteur, lui, reste dehors.
 
 Ce qui est verrouillé ici, et qui ne dépend pas de ses fichiers :
 **`tools/video/xaar_kaname/` n'entrera jamais dans git.**

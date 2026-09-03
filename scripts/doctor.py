@@ -484,6 +484,46 @@ def verifier_opentakeoff() -> Verification:
     return Verification("Metre de plan (OpenTakeoff)", EN_PANNE, sante.message)
 
 
+def verifier_xaar_kaname() -> Verification:
+    """Xaar Kaname (Deep-Live-Cam), interroge pour de vrai.
+
+    C'etait le seul moteur externe sans ligne ici : WanGP, MoneyPrinterTurbo,
+    VoiceStudio et OpenTakeoff en ont une chacun. Sans elle, le proprietaire
+    n'avait aucun moyen de savoir si le moteur etait installe — il ne
+    l'apprenait qu'en lancant une generation.
+
+    Comme pour OpenTakeoff, on reutilise `sonder()` du connecteur plutot que
+    d'ecrire une seconde mesure de la meme sante : deux mesures qui pourraient
+    diverger seraient pires qu'une seule.
+
+    Le moteur vit HORS du depot (AGPL-3.0, DEC-0027) : ARENA ne l'installe pas
+    et ne le demarre pas.
+    """
+    try:
+        sys.path.insert(0, str(RACINE))
+        from core.connectors.base import EtatSante
+        from core.connectors.xaar_kaname import XaarKanameConnector
+    except Exception:  # noqa: BLE001 — les dependances manquent : une autre ligne le dit
+        return Verification("Xaar Kaname (visage)", EN_PANNE,
+                            "indeterminable : les dependances ne s'importent pas")
+
+    # Une panne d'un connecteur marque SA ligne, jamais tout le diagnostic.
+    try:
+        sante = XaarKanameConnector().sonder()
+    except Exception as erreur:  # noqa: BLE001 — un diagnostic ne meurt pas d'une panne qu'il diagnostique
+        return Verification("Xaar Kaname (visage)", EN_PANNE,
+                            f"la sonde a echoue : {type(erreur).__name__}: {erreur}")
+    if sante.etat == EtatSante.OPERATIONNEL:
+        return Verification("Xaar Kaname (visage)", OK, sante.message)
+    detail = f"{sante.message} ({sante.ce_qui_manque})" if sante.ce_qui_manque else sante.message
+    if sante.etat == EtatSante.NON_CONFIGURE:
+        return Verification(
+            "Xaar Kaname (visage)", NON_CONFIGURE, detail,
+            "Installer Deep-Live-Cam dans tools/video/xaar_kaname/ "
+            "(hors du depot : AGPL-3.0), avec son .venv et ses modeles.")
+    return Verification("Xaar Kaname (visage)", EN_PANNE, detail)
+
+
 def verifier_gardien() -> Verification:
     """La memoire de maintenance du gardien (DEC-0014) — ce qu'elle contient
     deja, jamais « aucun probleme » invente si aucun cycle n'a encore tourne.
@@ -731,6 +771,7 @@ def diagnostiquer() -> Rapport:
         mesurer("Video courte (MPT)", verifier_moneyprinter),
         mesurer("Voix (VoiceStudio)", verifier_voicestudio),
         mesurer("Metre de plan (OpenTakeoff)", verifier_opentakeoff),
+        mesurer("Xaar Kaname (visage)", verifier_xaar_kaname),
         mesurer("Gardien (maintenance)", verifier_gardien),
         mesurer("Courrier (Gmail)", lambda: verifier_google(
             "Courrier (Gmail)", "ARENA ne lit pas ton courrier",

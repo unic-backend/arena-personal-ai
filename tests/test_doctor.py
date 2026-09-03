@@ -635,3 +635,49 @@ class TestLeDiagnosticNommeLesModelesQueLeCodeUtilise:
 
         assert verification.etat is doctor.ABSENT
         assert "indeterminable" in verification.detail
+
+
+class TestXaarKaname:
+    """Xaar Kaname etait le seul moteur externe sans ligne au diagnostic.
+
+    WanGP, MoneyPrinterTurbo, VoiceStudio et OpenTakeoff en ont une chacun.
+    Sans elle, le proprietaire n'apprenait l'absence du moteur qu'en lancant
+    une generation — donc apres coup, et sans savoir quoi installer.
+    """
+
+    def test_le_diagnostic_complet_porte_la_ligne(self):
+        """Sans ça, la vérification existe mais personne ne la voit."""
+        import inspect
+        assert 'mesurer("Xaar Kaname (visage)"' in inspect.getsource(doctor)
+
+    def test_moteur_absent_est_non_configure_pas_en_panne(self, monkeypatch, tmp_path):
+        """`EN_PANNE` enverrait réparer une installation qui n'existe pas."""
+        from core.connectors import xaar_kaname
+
+        monkeypatch.setattr(xaar_kaname, "XAAR_ROOT", tmp_path / "nulle_part")
+        verification = doctor.verifier_xaar_kaname()
+
+        assert verification.etat == NON_CONFIGURE
+        assert verification.remede, "une ligne sans remède ne dit pas quoi faire"
+
+    def test_la_ligne_dit_ou_le_moteur_est_attendu(self, monkeypatch, tmp_path):
+        """Un « introuvable » sans le chemin cherché n'aide personne."""
+        from core.connectors import xaar_kaname
+
+        monkeypatch.setattr(xaar_kaname, "XAAR_ROOT", tmp_path / "nulle_part")
+        verification = doctor.verifier_xaar_kaname()
+
+        assert "nulle_part" in verification.detail
+
+    def test_une_sonde_qui_leve_marque_sa_ligne_et_ne_remonte_pas(self, monkeypatch):
+        """Un diagnostic ne meurt pas de ce qu'il diagnostique."""
+        from core.connectors import xaar_kaname
+
+        monkeypatch.setattr(
+            xaar_kaname.XaarKanameConnector, "sonder",
+            lambda self: (_ for _ in ()).throw(OSError(10038, "pas un socket")))
+
+        verification = doctor.verifier_xaar_kaname()
+
+        assert verification.etat == EN_PANNE
+        assert "10038" in verification.detail
