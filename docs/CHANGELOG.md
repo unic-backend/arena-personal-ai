@@ -2,6 +2,43 @@
 
 ## [Non publié]
 
+### Ajouté — 03/09/2026 — Le panneau vidéo dit ce que la machine branchée sait faire
+
+**Mesuré à 02:47.** Le propriétaire, sur son téléphone branché à Railway, coche
+des capacités et lance un projet. Retour : `modele de vision : All connection
+attempts failed`, `VoiceStudio ne repond pas sur http://127.0.0.1:3900`. Aucun
+de ces moteurs n'existe sur Railway — Ollama, VoiceStudio, WanGP,
+MoneyPrinterTurbo et Deep Live Cam tournent tous sur son PC.
+
+Le panneau proposait les sept capacités sans jamais demander lesquelles la
+machine tenait, **et il n'avait aucun moyen de le demander : la route
+n'existait pas.** C'est le défaut de la nuit sous une autre forme — annoncer
+une capacité qu'on n'a pas. Il ne mentait pas dans une phrase, il mentait dans
+un bouton.
+
+`GET /agent/capabilities` (`core/production/disponibilite.py`) renvoie chaque
+capacité à **la sonde qui la mesure déjà** — celle du connecteur, celle du
+fournisseur de vision — jamais à une seconde logique qui pourrait diverger.
+C'est la discipline de `scripts/doctor.py`.
+
+Dans l'interface, ce qui ne peut pas tourner est grisé, barré, non cliquable,
+**et la raison est écrite sous la liste** : un téléphone n'a pas de survol,
+donc une raison en `title=` n'existe pas. Si le serveur ne répond pas à la
+sonde, aucun verdict n'est affiché — ne rien savoir s'affiche comme ne rien
+savoir, jamais comme « tout marche ».
+
+7 tests. **Deux gardes ont dû être resserrées après un sabotage qui passait** :
+compter les occurrences de `disponibilite: null` sans regarder dans quelle
+branche laissait vider le `catch` sans qu'un test tombe. Une garde qui compte
+sans regarder où ne garde rien.
+
+`/agent/capabilities` est enregistrée dans l'empreinte de
+`tests/test_surface_api.py` — qui a d'ailleurs attrapé la nouvelle route
+toute seule. Sans `limiter_debit` : une lecture d'état, appelée à chaque
+ouverture du panneau, ne doit pas consommer le quota des envois.
+
+Suite complète : 3247 passent.
+
 ### Corrigé — 03/09/2026 — Xaar Kaname existait partout sauf sur l'écran d'où on le lance
 
 Le propriétaire demande comment utiliser Deep Live Cam depuis son interface. La

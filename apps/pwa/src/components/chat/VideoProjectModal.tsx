@@ -108,7 +108,8 @@ export function VideoProjectModal() {
   const backend = useBackend();
   const {
     modalOpen, setModalOpen, objectif, setObjectif,
-    capacitesChoisies, toggleCapacite, references, addReferenceFiles, removeReference,
+    capacitesChoisies, toggleCapacite, disponibilite, chargerDisponibilite,
+    references, addReferenceFiles, removeReference,
     submitting, result, error, submit, reset,
   } = useVideoProject();
 
@@ -127,6 +128,17 @@ export function VideoProjectModal() {
   };
 
   const mode = capacitesChoisies.size > 0 ? 'team' : 'auto';
+
+  /* Ce que la machine branchee sait faire, demande a chaque ouverture : un
+     PC qu'on allume entre deux ouvertures doit changer l'affichage. */
+  useEffect(() => {
+    if (modalOpen) void chargerDisponibilite();
+  }, [modalOpen, chargerDisponibilite]);
+
+  const indisponibles = (CAPACITES_VIDEO
+    .map((c) => [c, disponibilite?.[c]] as const)
+    .filter(([, etat]) => etat?.disponible === false)) as Array<
+      [CapaciteVideo, { disponible: boolean; raison: string }]>;
   const etapes = result?.projet?.resultat?.etapes ?? [];
 
   return (
@@ -257,16 +269,25 @@ export function VideoProjectModal() {
                       {CAPACITES_VIDEO.map((c) => {
                         const Icon = ICONE_CAPACITE[c];
                         const selected = capacitesChoisies.has(c);
+                        // `null` = le serveur n'a pas repondu : on n'affiche
+                        // aucun verdict plutot qu'un faux. Une capacite connue
+                        // indisponible porte toujours sa raison.
+                        const etat = disponibilite?.[c];
+                        const indisponible = etat?.disponible === false;
                         return (
                           <button
                             key={c}
                             type="button"
                             onClick={() => toggleCapacite(c)}
+                            disabled={indisponible}
+                            title={indisponible ? etat?.raison : undefined}
                             className={cn(
                               'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition active:scale-95',
-                              selected
-                                ? 'border-accent-500/40 bg-accent-500/10 text-accent-300'
-                                : 'border-white/8 bg-white/[0.02] text-zinc-400 hover:border-white/15 hover:text-zinc-200',
+                              indisponible
+                                ? 'cursor-not-allowed border-white/5 bg-white/[0.01] text-zinc-600 line-through decoration-zinc-700'
+                                : selected
+                                  ? 'border-accent-500/40 bg-accent-500/10 text-accent-300'
+                                  : 'border-white/8 bg-white/[0.02] text-zinc-400 hover:border-white/15 hover:text-zinc-200',
                             )}
                           >
                             <Icon size={12} />
@@ -275,6 +296,18 @@ export function VideoProjectModal() {
                         );
                       })}
                     </div>
+                    {indisponibles.length > 0 && (
+                      /* Un telephone n'a pas de survol : la raison doit etre
+                         lue sans y toucher, sinon elle n'existe pas. */
+                      <ul className="mt-2 space-y-1 border-l border-amber-500/25 pl-2.5">
+                        {indisponibles.map(([nom, etat]) => (
+                          <li key={nom} className="text-[9.5px] leading-relaxed text-zinc-500">
+                            <span className="text-zinc-400">{labelCapacite(nom, fr)}</span>
+                            {' — '}{etat.raison}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     <p className="mt-1.5 text-[9.5px] leading-relaxed text-zinc-600">
                       {mode === 'auto' ? t('vidproj.modeAutoHint') : t('vidproj.modeTeamHint')}
                     </p>

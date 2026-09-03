@@ -80,6 +80,10 @@ interface Store {
   /** empty set = mode AUTO (server picks from the full closed list) */
   capacitesChoisies: Set<CapaciteVideo>;
   toggleCapacite(c: CapaciteVideo): void;
+  /** Ce que la machine branchee sait reellement faire. `null` = pas encore
+   *  demande — on n'affiche alors aucun verdict plutot qu'un faux. */
+  disponibilite: Record<string, { disponible: boolean; raison: string }> | null;
+  chargerDisponibilite(): Promise<void>;
   references: ReferenceFile[];
   addReferenceFiles(files: FileList | File[]): Promise<void>;
   removeReference(id: string): void;
@@ -103,6 +107,40 @@ export const useVideoProject = create<Store>((set, get) => ({
       else next.add(c);
       return { capacitesChoisies: next };
     }),
+
+  disponibilite: null,
+
+  /**
+   * Demande au serveur ce qu'il sait faire.
+   *
+   * **Mesure du 03/09/2026.** Le proprietaire, sur son telephone branche a
+   * Railway, cochait « Narration » et « Vision » : aucun de ces moteurs n'y
+   * existe, ils tournent sur son PC. Le projet partait quand meme et echouait
+   * apres coup sur `All connection attempts failed`.
+   *
+   * En cas d'echec on reste a `null` : ne rien savoir s'affiche comme ne rien
+   * savoir, jamais comme « tout marche ».
+   */
+  async chargerDisponibilite() {
+    const cfg = activeRemoteCfg();
+    if (!cfg) {
+      set({ disponibilite: null });
+      return;
+    }
+    try {
+      const res = await fetch(`${cfg.url.replace(/\/+$/, '')}/agent/capabilities`, {
+        headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) { set({ disponibilite: null }); return; }
+      const corps = await res.json() as {
+        video?: Record<string, { disponible: boolean; raison: string }>;
+      };
+      set({ disponibilite: corps.video ?? null });
+    } catch {
+      set({ disponibilite: null });
+    }
+  },
   references: [],
 
   /* Envoie chaque fichier a POST /api/upload (le meme point d'entree que la

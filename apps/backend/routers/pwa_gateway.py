@@ -48,6 +48,7 @@ from apps.backend.runtime import (
     memoire_personnelle,
     memory,
     mesures_execution,
+    ollama_vision,
     orchestrator,
     pieces_jointes,
     registre,
@@ -63,6 +64,7 @@ from core.memory.consolidation import grouper
 from core.memory.conversation import retenir_l_echange
 from core.memory.recuperation import recuperer
 from core.memory.semantique import recuperer_semantique
+from core.production.disponibilite import disponibilite_video
 from core.relecture import relire
 from core.security.trust import TrustLevel, wrap
 
@@ -700,3 +702,24 @@ async def envoyer_fichier(
     corps["kind"] = kind
     corps["extractedCharacters"] = corps.pop("characters")
     return corps
+
+
+@router.get("/agent/capabilities", dependencies=[Depends(verify_api_key)])
+async def capacites_disponibles() -> Dict[str, Any]:
+    """Ce que CETTE machine sait faire, capacite par capacite.
+
+    **Sans cette route, l'interface proposait sept capacites video sans jamais
+    pouvoir demander lesquelles la machine branchee tenait.** Le proprietaire,
+    sur son telephone branche a Railway, cochait « Narration » ou « Vision » —
+    aucun de ces moteurs n'existe la-bas, ils tournent sur son PC — et
+    recevait `All connection attempts failed` apres coup (mesure du
+    03/09/2026).
+
+    Chaque etat vient de la sonde qui le mesure deja (connecteur, fournisseur),
+    jamais d'une seconde logique : deux mesures de la meme sante qui pourraient
+    diverger seraient pires qu'une seule.
+
+    Une capacite indisponible porte **toujours** sa raison. « Indisponible »
+    sans dire pourquoi renvoie chercher une panne sans la nommer.
+    """
+    return {"video": await disponibilite_video(registre, ollama_vision)}

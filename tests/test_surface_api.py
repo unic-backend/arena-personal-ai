@@ -28,6 +28,12 @@ SURFACE_ATTENDUE = {
     # Remplace le mount StaticFiles d'origine, joignable sans cle (phase 4.2).
     "/media/rendered/{nom}": (["GET"], ["verify_media_access"]),
     # Passerelle vers l'interface PWA du proprietaire.
+    # Ce que CETTE machine sait faire, capacite par capacite. Sans elle,
+    # le panneau video proposait sept capacites sans pouvoir demander
+    # lesquelles la machine branchee tenait (mesure du 03/09/2026).
+    # Pas de `limiter_debit` : une lecture d'etat, appelee a chaque
+    # ouverture du panneau, ne doit pas consommer le quota des envois.
+    "/agent/capabilities": (["GET"], ["verify_api_key"]),
     "/agent/stream": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/files": (["POST"], ["verify_api_key"]),
     "/v1/models": (["GET"], ["verify_api_key"]),
