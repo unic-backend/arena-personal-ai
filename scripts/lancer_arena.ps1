@@ -54,6 +54,50 @@ if (-not $cloudflared) {
     exit 1
 }
 
+# --- 2 bis. L'interface -------------------------------------------------------
+#
+# **Le serveur sert l'ANCIENNE interface en silence quand la nouvelle n'est
+# pas compilee.** `apps/pwa/dist/` est ignore par git (Vite le regenere), donc
+# il n'existe jamais apres un clone ou un `git pull` : `interface_servie()`
+# retombe sur `apps/frontend/index.html` sans le dire.
+#
+# Mesure du 03/09/2026 : le proprietaire branche son telephone sur son PC,
+# voit son ancienne interface et l'espace Dioumtoukay disparu, et croit que
+# du travail a ete perdu. Rien ne l'etait - un fichier de compilation
+# manquait, et personne ne le disait.
+$dist = Join-Path $racine "apps\pwa\dist\index.html"
+if (Test-Path $dist) {
+    Write-Host "  [ok] interface : la nouvelle (PWA)" -ForegroundColor Green
+} else {
+    $npm = Get-Command npm -ErrorAction SilentlyContinue
+    if (-not $npm) {
+        Write-Host "  [X] interface : l'ANCIENNE sera servie." -ForegroundColor Yellow
+        Write-Host "      La nouvelle n'est pas compilee et npm est introuvable."
+        Write-Host "      Sans elle : pas d'espace Dioumtoukay, pas de projet video."
+        Write-Host "      Installe Node : winget install OpenJS.NodeJS.LTS"
+        Write-Host "      puis relance ce script."
+    } else {
+        Write-Host "  [..] interface : compilation de la nouvelle (une fois)..." -ForegroundColor Cyan
+        $pwa = Join-Path $racine "apps\pwa"
+        Push-Location $pwa
+        $prefNpm = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            if (-not (Test-Path (Join-Path $pwa "node_modules"))) { npm ci 2>&1 | Out-Null }
+            npm run build 2>&1 | Out-Null
+        } finally {
+            $ErrorActionPreference = $prefNpm
+            Pop-Location
+        }
+        if (Test-Path $dist) {
+            Write-Host "  [ok] interface : la nouvelle (PWA), compilee a l'instant" -ForegroundColor Green
+        } else {
+            Write-Host "  [X] interface : la compilation a echoue, l'ANCIENNE sera servie." -ForegroundColor Yellow
+            Write-Host "      Pour voir l'erreur : cd apps\pwa ; npm run build"
+        }
+    }
+}
+
 # --- 3. Le serveur -----------------------------------------------------------
 $activation = Join-Path $racine ".venv\Scripts\Activate.ps1"
 if (Test-Path $activation) {

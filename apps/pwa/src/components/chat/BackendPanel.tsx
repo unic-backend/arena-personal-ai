@@ -9,7 +9,8 @@ export function BackendPanel() {
   const { t } = useI18n();
   const {
     url, apiKey, enabled, status, latencyMs, remoteName, remoteProvider, remoteModel, error,
-    setUrl, setApiKey, test, disconnect,
+    urlSecours, apiKeySecours, serveurActif,
+    setUrl, setApiKey, setUrlSecours, setApiKeySecours, test, disconnect,
   } = useBackend();
   const [open, setOpen] = useState(false);
 
@@ -72,8 +73,37 @@ export function BackendPanel() {
                 spellCheck={false}
                 className="w-full rounded-md border border-white/8 bg-ink-950/70 px-2 py-1.5 font-mono text-[10.5px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-accent-500/40"
               />
+              {/* La seconde adresse, essayee quand la premiere ne repond pas.
+                  Le proprietaire n'en retenait qu'une : brancher son PC
+                  effacait Railway, et PC eteint plus rien ne repondait
+                  jusqu'a ce qu'il recolle l'adresse a la main
+                  (mesure du 03/09/2026). */}
+              <p className="pt-1 font-mono text-[9px] uppercase tracking-wide text-zinc-600">
+                {t('backend.secours')}
+              </p>
+              <input
+                value={urlSecours}
+                onChange={(e) => setUrlSecours(e.target.value)}
+                placeholder={t('backend.secoursPh')}
+                spellCheck={false}
+                className="w-full rounded-md border border-white/8 bg-ink-950/70 px-2 py-1.5 font-mono text-[10.5px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-accent-500/40"
+              />
+              <input
+                value={apiKeySecours}
+                onChange={(e) => setApiKeySecours(e.target.value)}
+                placeholder={t('backend.keyPh')}
+                type="password"
+                spellCheck={false}
+                className="w-full rounded-md border border-white/8 bg-ink-950/70 px-2 py-1.5 font-mono text-[10.5px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-accent-500/40"
+              />
+              <p className="text-[9.5px] leading-relaxed text-zinc-600">
+                {t('backend.secoursAide')}
+              </p>
               {remoteModel && enabled && (
                 <p className="truncate font-mono text-[9px] text-zinc-600">
+                  {/* **Laquelle des deux repond.** Sans ca, l'ecran dit « en
+                      ligne » sans dire ou part le texte : son PC ou le cloud. */}
+                  {serveurActif === 'secours' ? `${t('backend.viaSecours')} · ` : ''}
                   {remoteProvider ? `${remoteProvider} · ` : ''}{remoteModel}
                 </p>
               )}

@@ -29,6 +29,11 @@ export type BackendStatus = 'local' | 'checking' | 'online' | 'error';
 interface BackendState {
   url: string;
   apiKey: string;
+  /** L'adresse de repli, essayee quand la premiere ne repond pas. */
+  urlSecours: string;
+  apiKeySecours: string;
+  /** Laquelle des deux a repondu au dernier essai. `null` = aucune. */
+  serveurActif: 'principal' | 'secours' | null;
   enabled: boolean;
   status: BackendStatus;
   latencyMs?: number;
@@ -38,17 +43,26 @@ interface BackendState {
   error?: string;
   setUrl(url: string): void;
   setApiKey(key: string): void;
+  setUrlSecours(url: string): void;
+  setApiKeySecours(key: string): void;
   setEnabled(on: boolean): void;
   test(): Promise<boolean>;
   disconnect(): void;
 }
 
-function load(): { url: string; apiKey: string; enabled: boolean } {
+type Enregistre = {
+  url: string; apiKey: string; enabled: boolean;
+  urlSecours: string; apiKeySecours: string;
+};
+
+
+function load(): Enregistre {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const p = JSON.parse(raw) as {
         url?: string; apiKey?: string; enabled?: boolean; debrancheParLui?: boolean;
+        urlSecours?: string; apiKeySecours?: string;
       };
       const url = p.url ?? '';
 
@@ -62,22 +76,27 @@ function load(): { url: string; apiKey: string; enabled: boolean } {
       // `debrancheParLui` n'est ecrit que par le bouton « Deconnecter ». Son
       // absence, avec une adresse presente, veut donc dire : personne n'a
       // choisi cette coupure. On rebranche, et la sonde du demarrage tranche.
+      const secours = {
+        urlSecours: p.urlSecours ?? '',
+        apiKeySecours: p.apiKeySecours ?? '',
+      };
       if (url && !p.enabled && !p.debrancheParLui) {
-        return { url, apiKey: p.apiKey ?? '', enabled: true };
+        return { url, apiKey: p.apiKey ?? '', enabled: true, ...secours };
       }
-      return { url, apiKey: p.apiKey ?? '', enabled: !!p.enabled };
+      return { url, apiKey: p.apiKey ?? '', enabled: !!p.enabled, ...secours };
     }
   } catch { /* ignore */ }
-  return { url: '', apiKey: '', enabled: false };
+  return { url: '', apiKey: '', enabled: false, urlSecours: '', apiKeySecours: '' };
 }
 
 function persist(
-  s: Pick<BackendState, 'url' | 'apiKey' | 'enabled'>,
+  s: Pick<BackendState, 'url' | 'apiKey' | 'enabled' | 'urlSecours' | 'apiKeySecours'>,
   debrancheParLui = false,
 ) {
   try {
     localStorage.setItem(KEY, JSON.stringify({
       url: s.url, apiKey: s.apiKey, enabled: s.enabled, debrancheParLui,
+      urlSecours: s.urlSecours, apiKeySecours: s.apiKeySecours,
     }));
   } catch { /* ignore */ }
 }
@@ -85,6 +104,16 @@ function persist(
 export const useBackend = create<BackendState>((set, get) => ({
   ...load(),
   status: 'local',
+  serveurActif: null,
+
+  setUrlSecours: (urlSecours) => {
+    set({ urlSecours });
+    persist({ ...get(), urlSecours });
+  },
+  setApiKeySecours: (apiKeySecours) => {
+    set({ apiKeySecours });
+    persist({ ...get(), apiKeySecours });
+  },
 
   setUrl: (url) => {
     set({ url });
@@ -100,42 +129,76 @@ export const useBackend = create<BackendState>((set, get) => ({
   },
 
   async test() {
-    const { url, apiKey } = get();
-    if (!url.trim()) {
+    const etat = get();
+    if (!etat.url.trim() && !etat.urlSecours.trim()) {
       set({ status: 'error', error: 'empty URL' });
       return false;
     }
     set({ status: 'checking', error: undefined });
-    const cfg: RemoteConfig = { url: url.trim(), apiKey: apiKey.trim() || undefined };
 
-    let dernier: { latencyMs?: number; error?: string } = {};
-    for (let essai = 0; essai < ATTENTES.length + 1; essai += 1) {
-      try {
-        const r = await pingBackend(cfg);
-        if (r.ok) {
-          set({
-            status: 'online',
-            latencyMs: r.latencyMs,
-            remoteName: r.name,
-            remoteProvider: r.provider,
-            remoteModel: r.model,
-            enabled: true,
-          });
-          persist({ url: cfg.url, apiKey: cfg.apiKey ?? '', enabled: true });
-          return true;
+    /** Un serveur, reessaye. Rend son etat sans rien enregistrer. */
+    const sonder = async (cfg: RemoteConfig) => {
+      let dernier: { latencyMs?: number; error?: string } = {};
+      for (let essai = 0; essai < ATTENTES.length + 1; essai += 1) {
+        try {
+          const r = await pingBackend(cfg);
+          if (r.ok) return { ok: true as const, r };
+          dernier = { latencyMs: r.latencyMs, error: r.error ?? 'Provider probe failed' };
+        } catch (err) {
+          dernier = { error: err instanceof Error ? err.message : String(err) };
         }
-        dernier = { latencyMs: r.latencyMs, error: r.error ?? 'Provider probe failed' };
-      } catch (err) {
-        dernier = { error: err instanceof Error ? err.message : String(err) };
+        if (essai < ATTENTES.length) await patienter(ATTENTES[essai]);
       }
-      if (essai < ATTENTES.length) await patienter(ATTENTES[essai]);
+      return { ok: false as const, dernier };
+    };
+
+    // **Le principal d'abord, toujours.** C'est sa machine : le modele y
+    // tourne chez lui et rien ne part chez un tiers (DEC-0002). Le secours
+    // n'est essaye que quand le principal ne repond pas, jamais en parallele
+    // — sinon un message pourrait partir dehors alors que son PC etait juste
+    // lent a repondre.
+    const candidats: Array<{ cfg: RemoteConfig; quel: 'principal' | 'secours' }> = [];
+    if (etat.url.trim()) {
+      candidats.push({
+        cfg: { url: etat.url.trim(), apiKey: etat.apiKey.trim() || undefined },
+        quel: 'principal',
+      });
+    }
+    if (etat.urlSecours.trim()) {
+      candidats.push({
+        cfg: { url: etat.urlSecours.trim(), apiKey: etat.apiKeySecours.trim() || undefined },
+        quel: 'secours',
+      });
     }
 
-    // Echec apres toutes les tentatives. **`enabled` ne bouge pas.**
-    // Il dit ce que le proprietaire veut, pas ce que le reseau permet a cet
-    // instant ; seul le bouton « Deconnecter » le change. L'etat, lui, dit la
-    // verite du moment.
-    set({ status: 'error', latencyMs: dernier.latencyMs, error: dernier.error });
+    let dernier: { latencyMs?: number; error?: string } = {};
+    for (const { cfg, quel } of candidats) {
+      const issue = await sonder(cfg);
+      if (issue.ok) {
+        set({
+          status: 'online',
+          latencyMs: issue.r.latencyMs,
+          remoteName: issue.r.name,
+          remoteProvider: issue.r.provider,
+          remoteModel: issue.r.model,
+          enabled: true,
+          serveurActif: quel,
+          error: undefined,
+        });
+        persist({ ...get(), enabled: true });
+        return true;
+      }
+      dernier = issue.dernier;
+    }
+
+    // Echec apres toutes les tentatives, sur les deux adresses.
+    // **`enabled` ne bouge pas.** Il dit ce que le proprietaire veut, pas ce
+    // que le reseau permet a cet instant ; seul le bouton « Deconnecter » le
+    // change. L'etat, lui, dit la verite du moment.
+    set({
+      status: 'error', latencyMs: dernier.latencyMs, error: dernier.error,
+      serveurActif: null,
+    });
     return false;
   },
 
@@ -149,9 +212,23 @@ export const useBackend = create<BackendState>((set, get) => ({
 
 /** effective config used by the chat layer */
 export function activeRemoteCfg(): RemoteConfig | null {
-  const { enabled, url, apiKey } = useBackend.getState();
-  if (!enabled || !url.trim()) return null;
-  return { url: url.trim(), apiKey: apiKey.trim() || undefined };
+  const { enabled, url, apiKey, urlSecours, apiKeySecours, serveurActif } =
+    useBackend.getState();
+  if (!enabled) return null;
+
+  // Celui qui a REPONDU a la derniere sonde, pas celui qu'on prefere. Rendre
+  // le principal alors que c'est le secours qui repond enverrait chaque
+  // message dans le vide (mesure du 03/09/2026 : une seule adresse etait
+  // retenue, et son PC eteint coupait tout jusqu'a ce qu'il recolle
+  // l'adresse a la main).
+  if (serveurActif === 'secours' && urlSecours.trim()) {
+    return { url: urlSecours.trim(), apiKey: apiKeySecours.trim() || undefined };
+  }
+  if (url.trim()) return { url: url.trim(), apiKey: apiKey.trim() || undefined };
+  if (urlSecours.trim()) {
+    return { url: urlSecours.trim(), apiKey: apiKeySecours.trim() || undefined };
+  }
+  return null;
 }
 
 /**

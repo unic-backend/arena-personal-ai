@@ -107,3 +107,96 @@ describe('la sonde', () => {
     vi.doUnmock('../activity/remoteTransport');
   });
 });
+
+describe('deux adresses, bascule automatique', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('le principal repond : le secours n\'est jamais appele', async () => {
+    // **L'ordre n'est pas un detail.** Sa machine d'abord : le modele y
+    // tourne chez lui et rien ne part chez un tiers (DEC-0002). Sonder les
+    // deux en parallele pourrait envoyer un message dehors alors que son PC
+    // etait seulement lent.
+    const ping = vi.fn().mockResolvedValue({ ok: true, latencyMs: 5, provider: 'ollama' });
+    vi.doMock('../activity/remoteTransport', () => ({ pingBackend: ping }));
+
+    const magasin = await magasinFrais();
+    magasin.setState({
+      url: 'https://mon-pc.test', urlSecours: 'https://railway.test', enabled: true,
+    });
+    await magasin.getState().test();
+
+    expect(ping).toHaveBeenCalledTimes(1);
+    expect(ping.mock.calls[0][0].url).toBe('https://mon-pc.test');
+    expect(magasin.getState().serveurActif).toBe('principal');
+    vi.doUnmock('../activity/remoteTransport');
+  });
+
+  it('le principal muet : le secours prend le relais', async () => {
+    const ping = vi.fn(async (cfg: { url: string }) =>
+      cfg.url.includes('railway')
+        ? { ok: true, latencyMs: 40, provider: 'groq' }
+        : { ok: false, latencyMs: 1, error: 'injoignable' });
+    vi.doMock('../activity/remoteTransport', () => ({ pingBackend: ping }));
+
+    const magasin = await magasinFrais();
+    magasin.setState({
+      url: 'https://mon-pc.test', urlSecours: 'https://railway.test', enabled: true,
+    });
+    await magasin.getState().test();
+
+    expect(magasin.getState().status).toBe('online');
+    expect(magasin.getState().serveurActif).toBe('secours');
+    expect(magasin.getState().remoteProvider).toBe('groq');
+    vi.doUnmock('../activity/remoteTransport');
+  });
+
+  // 2 serveurs x 3 tentatives x (800 + 2500 ms) : l'echec TOTAL prend ~13 s.
+  // C'est le prix de la bascule, et il se paie une seule fois.
+  it('les deux muets : aucun n\'est declare actif', { timeout: 20000 }, async () => {
+    vi.doMock('../activity/remoteTransport', () => ({
+      pingBackend: vi.fn().mockResolvedValue({ ok: false, latencyMs: 1, error: 'rien' }),
+    }));
+
+    const magasin = await magasinFrais();
+    magasin.setState({
+      url: 'https://mon-pc.test', urlSecours: 'https://railway.test', enabled: true,
+    });
+    await magasin.getState().test();
+
+    expect(magasin.getState().status).toBe('error');
+    expect(magasin.getState().serveurActif).toBeNull();
+    // `enabled` ne bouge toujours pas : il dit ce qu'il veut, pas ce que le
+    // reseau permet.
+    expect(magasin.getState().enabled).toBe(true);
+    vi.doUnmock('../activity/remoteTransport');
+  });
+
+  it('le chat parle a CELUI qui a repondu, pas au prefere', async () => {
+    // Sans ca, chaque message partirait vers le PC eteint pendant que le
+    // panneau affiche « en ligne » grace au secours.
+    // `magasinFrais()` fait un `vi.resetModules()` : importer
+    // `activeRemoteCfg` AVANT donnait une autre instance du module, donc un
+    // autre magasin. Le test ecrivait dans l'un et lisait dans l'autre.
+    vi.resetModules();
+    const module = await import('./backendStore');
+    const { activeRemoteCfg } = module;
+    const magasin = module.useBackend;
+    magasin.setState({
+      url: 'https://mon-pc.test', apiKey: 'a',
+      urlSecours: 'https://railway.test', apiKeySecours: 'b',
+      enabled: true, serveurActif: 'secours',
+    });
+
+    expect(activeRemoteCfg()?.url).toBe('https://railway.test');
+    expect(activeRemoteCfg()?.apiKey).toBe('b');
+  });
+
+  it('les deux adresses survivent au redemarrage', async () => {
+    const magasin = await magasinFrais();
+    magasin.getState().setUrl('https://mon-pc.test');
+    magasin.getState().setUrlSecours('https://railway.test');
+
+    const frais = await magasinFrais();
+    expect(frais.getState().urlSecours).toBe('https://railway.test');
+  });
+});

@@ -2,6 +2,57 @@
 
 ## [Non publié]
 
+### Ajouté — 03/09/2026 — Deux adresses, et le serveur qui répond vraiment
+
+Le propriétaire branche son téléphone sur son PC et pose la bonne question :
+*« mon PC éteint, est-ce que ton travail a cassé Railway ? »*
+
+**Non** — vérifié : les nouveaux connecteurs sont déclarés en paresseux, aucun
+n'importe torch au démarrage, aucune dépendance ajoutée au serveur. Mais
+l'application ne retenait **qu'une seule adresse** (`url` était un texte, pas
+une liste). Brancher son PC effaçait Railway ; PC éteint, plus rien ne
+répondait jusqu'à ce qu'il recolle l'adresse à la main.
+
+Une seconde adresse existe maintenant, avec sa propre clé. **L'ordre n'est pas
+un détail** : sa machine d'abord, toujours — le modèle y tourne chez lui et
+rien ne part chez un tiers (DEC-0002). Le secours n'est essayé **que** quand
+le principal ne répond pas, jamais en parallèle : sonder les deux à la fois
+pourrait envoyer un message dehors alors que son PC était seulement lent.
+
+`activeRemoteCfg()` rend **celui qui a répondu**, pas celui qu'on préfère.
+Sans ça, chaque message partirait vers le PC éteint pendant que le panneau
+afficherait « en ligne » grâce au secours. L'écran nomme lequel des deux
+répond — un « en ligne » qui ne dit pas où part le texte ne vaut rien.
+
+Ce que ça coûte, et c'est écrit dans le test : **l'échec total prend ~13 s**
+(2 serveurs × 3 tentatives × attentes croissantes). C'est le prix de la
+bascule, et il ne se paie que quand les deux sont muets.
+
+5 tests de plus (17 côté PWA), qui **exécutent** la bascule. Sabotages :
+parler au préféré au lieu du répondant, ne plus essayer le secours, ne plus
+enregistrer la seconde adresse — chacun fait tomber une garde.
+
+### Corrigé — 03/09/2026 — Il voyait son ancienne interface, Dioumtoukay disparu
+
+Même session, symptôme alarmant : *« je suis dans l'ancienne version de mon
+interface et le modèle dioumtoukay n'est plus là, peut-être beaucoup de
+travail sont cassés ou partis »*.
+
+**Rien n'était perdu.** `apps/pwa/dist/` est ignoré par git — Vite le
+régénère — donc il n'existe jamais après un `git pull`. `interface_servie()`
+retombait alors **en silence** sur `apps/frontend/index.html`, l'ancienne
+interface, où l'espace Dioumtoukay n'existe pas.
+
+Le serveur savait laquelle il servait (`/health` le dit) ; le lanceur, lui,
+ne disait rien. `Lancer_ARENA.bat` compile désormais la PWA quand elle manque,
+annonce **toujours** laquelle sera servie, et quand npm est introuvable
+explique ce qui sera perdu au lieu de démarrer sans le dire.
+
+C'est le défaut de la nuit dans sa version la plus coûteuse : le silence a
+fait croire à une perte de travail.
+
+Suite Python : 3370 passent. Suite PWA : 17 passent.
+
 ### Corrigé — 03/09/2026 — Une trace rouge à la fin d'un démarrage réussi
 
 `Lancer_ARENA.bat` démarre tout correctement — Ollama, serveur, tunnel,
