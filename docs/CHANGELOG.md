@@ -2,6 +2,32 @@
 
 ## [Non publié]
 
+### Ajouté — 03/09/2026 — Xaar Kaname : le moteur reste dehors
+
+Le propriétaire a intégré **Xaar Kaname** (le nom ARENA de **Deep-Live-Cam**)
+sur sa machine, et demande de finir et déployer. Le connecteur et le moteur
+sont sur son disque, non commités ; rien de tout cela n'est encore sur le
+dépôt distant.
+
+Ce qui est verrouillé ici, et qui ne dépend pas de ses fichiers :
+**`tools/video/xaar_kaname/` n'entrera jamais dans git.**
+
+Deep-Live-Cam est sous **AGPL-3.0** ; `LICENSE` d'ARENA dit « All rights
+reserved », et le dépôt est **public** (DEC-0039). Faire entrer son source
+ferait d'ARENA une œuvre dérivée. C'est le raisonnement déjà tenu pour
+VoiceStudio (DEC-0027) : la frontière est un **processus séparé**, joint par
+sa ligne de commande.
+
+Mesuré avant la règle — le `.gitignore` d'ARENA couvrait `.venv`, mais **pas**
+`models/inswapper_128.onnx` (plusieurs centaines de Mo), **pas** les rendus,
+**pas** le source AGPL. Après : tout est ignoré, `git status` ne voit plus rien
+sous ce dossier.
+
+10 tests (`tests/test_xaar_kaname_reste_dehors.py`), dont celui qui mesure que
+VoiceStudio, WanGP et MoneyPrinterTurbo n'ont jamais mis une ligne dans git —
+la règle du dépôt est vérifiée, pas supposée. Sabotage : règle retirée,
+6 tests tombent.
+
 ### Corrigé — 03/09/2026 — L'écran disait « ollama » quoi qu'il arrive
 
 Mesuré sur le téléphone du propriétaire, pendant qu'il changeait l'adresse de
