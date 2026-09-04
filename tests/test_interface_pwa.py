@@ -193,3 +193,73 @@ def test_la_pwa_du_depot_a_bien_ses_fichiers_sources():
     for nom in ("sw.js", "manifest.webmanifest", "offline.html"):
         assert (public / nom).is_file(), f"{nom} manquant dans apps/pwa/public/"
     assert (public / "icons").is_dir()
+
+
+# --- Ce qui retarde le premier affichage -----------------------------------------
+
+def test_les_polices_ne_retiennent_pas_le_premier_affichage():
+    """La feuille de style des polices ne doit jamais bloquer l'affichage.
+
+    **Mesure du 04/09/2026**, interface reelle dans Chromium, trois essais dans
+    chaque cas : avec la feuille bloquante, le champ de saisie devenait
+    utilisable en **25,49 s** (mediane) ; en refusant l'appel a Google, en
+    **0,33 s**. Meme fichier, meme machine — la page attendait la reponse d'un
+    tiers avant de montrer quoi que ce soit. Apres correction : **0,19 s**,
+    Google joignable ou non.
+
+    Sa connexion est mobile et le telephone est son premier usage. Une
+    demi-minute d'ecran fige ne se lit pas comme « les polices chargent », elle
+    se lit comme « l'application ne marche pas » — et c'est deja la conclusion
+    qu'il a tiree une fois cette semaine.
+
+    Ce que ce test NE dit pas : que la police ne vient plus de chez Google.
+    Elle en vient toujours. Ce qui est repare est l'attente.
+    """
+    from html.parser import HTMLParser
+    from pathlib import Path
+
+    index = (Path(__file__).resolve().parent.parent
+             / "apps" / "pwa" / "index.html").read_text(encoding="utf-8")
+
+    class Lecteur(HTMLParser):
+        """**Un vrai analyseur, pas une fenetre de lignes.**
+
+        Le premier jet regardait quatre lignes avant et six apres. Le
+        `<noscript>` qui suit la balise tombait dans cette fenetre, et le lien
+        bloquant etait donc ignore : le sabotage passait sans rien casser. Le
+        meme piege que la fenetre de 80 caracteres corrigee le meme jour dans
+        `test_disponibilite_video.py` — une fenetre mesure la mise en page, pas
+        la structure.
+        """
+
+        def __init__(self):
+            super().__init__()
+            self.dans_noscript = False
+            self.bloquantes = []
+
+        def handle_starttag(self, balise, attributs):
+            if balise == "noscript":
+                self.dans_noscript = True
+                return
+            if balise != "link" or self.dans_noscript:
+                return
+            attrs = dict(attributs)
+            if "fonts.googleapis.com/css2" not in (attrs.get("href") or ""):
+                return
+            if attrs.get("rel") != "stylesheet":
+                return
+            if attrs.get("media") != "print":
+                self.bloquantes.append(attrs.get("href", "")[:60])
+
+        def handle_endtag(self, balise):
+            if balise == "noscript":
+                self.dans_noscript = False
+
+    lecteur = Lecteur()
+    lecteur.feed(index)
+
+    assert not lecteur.bloquantes, (
+        f"Feuille de police bloquante : {lecteur.bloquantes}. "
+        'Sans media="print" + onload, la page attend la reponse de Google '
+        "avant le premier affichage : 25,49 s mesurees le 04/09/2026 contre "
+        "0,19 s apres correction.")

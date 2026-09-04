@@ -13,10 +13,39 @@
     <meta name="description" content="Usman — a personal, observable AI workbench. Watch every tool call, search, video edit and build step happen live." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!--
+      Les polices ne bloquent plus l'affichage.
+
+      **Mesure du 04/09/2026**, interface reelle dans Chromium, trois essais
+      chacun : avec cette feuille de style bloquante, le champ de saisie
+      devenait utilisable en 25,49 s (mediane) ; en refusant l'appel a Google,
+      en 0,33 s. Le meme fichier, la meme machine — la difference etait
+      l'attente de la reponse de Google avant le premier affichage.
+
+      Sa connexion est mobile et son telephone est le premier usage : une
+      demi-minute d'ecran fige se lit comme « l'application ne marche pas ».
+
+      `media="print"` fait charger la feuille SANS retenir l'affichage ; le
+      `onload` la rend active des qu'elle arrive. Le texte s'affiche
+      immediatement dans la police de repli, puis bascule — c'est ce que
+      `display=swap` prevoyait deja, et qui n'arrivait jamais parce que la
+      page attendait la feuille elle-meme.
+
+      Google reste appele : ce qui est repare ici est l'attente, pas le fait
+      que la police vienne de chez eux. Voir le rapport de la nuit.
+    -->
     <link
       href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:opsz,wght@14..32,300..700&family=JetBrains+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'; this.onload=null;"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:opsz,wght@14..32,300..700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230a0a0b'/%3E%3Ctext x='16' y='22' font-family='Georgia, serif' font-size='17' fill='%23e07856' text-anchor='middle'%3EU%3C/text%3E%3C/svg%3E" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icons/usman-512.png" />
