@@ -38,39 +38,77 @@ MARQUEUR = "@@ARENA@@"
 #: Un double du SDK. Il imite l'API relevee dans le `run.py` reel — rien de
 #: plus — et bavarde sur la sortie standard comme le vrai le fait.
 FAUX_SDK = '''
-import numpy as np
 print("priors nums:4420")  # le vrai moteur ecrit ceci avant de rendre la main
 
 VISAGES = 2
 
+
+class Tableau(list):
+    """Le strict minimum de ce que le pont attend d'un tableau : `reshape`."""
+
+    def reshape(self, *_):
+        plat = []
+        for element in self:
+            plat.extend(element if isinstance(element, (list, tuple)) else [element])
+        return Tableau(plat)
+
+
 def GetImageInfo(image, faceMaxCount):
     n = min(VISAGES, faceMaxCount)
-    boxes = [np.array([1.0, 2.0, 3.0, 4.0]) for _ in range(n)]
-    scores = [np.array([[0.9]]) for _ in range(n)]
-    landmarks = [np.array([[5.0, 6.0]]) for _ in range(n)]
+    boxes = [Tableau([1.0, 2.0, 3.0, 4.0]) for _ in range(n)]
+    scores = [Tableau([[0.9]]) for _ in range(n)]
+    landmarks = [Tableau([[5.0, 6.0]]) for _ in range(n)]
     aligns = [None] * n
-    features = [np.array([0.1, 0.2, 0.3]) for _ in range(n)]
+    features = [Tableau([0.1, 0.2, 0.3]) for _ in range(n)]
     return n, boxes, scores, landmarks, aligns, features
 
+
 def get_similarity(f1, f2):
-    return (float(np.sum(f1 * f2)) + 1) * 50
+    return (sum(a * b for a, b in zip(list(f1), list(f2))) + 1) * 50
+'''
+
+#: Doubles des deux bibliotheques du SDK, deposees a cote de `run.py`.
+#:
+#: **Elles ne sont pas une commodite : elles sont la condition pour que ce test
+#: existe.** Le premier jet importait le vrai `cv2` et le vrai `numpy`, presents
+#: sur la machine de developpement — et le CI est tombe avec douze
+#: `ModuleNotFoundError` (mesure du 04/09/2026). Les exiger aurait fait entrer
+#: dans ARENA les dependances du SDK que l'installeur garde justement dehors,
+#: pour une raison de licence. On double donc ce qui n'appartient pas a ARENA,
+#: et on teste ce qui lui appartient.
+FAUX_CV2 = '''
+IMREAD_COLOR = 1
+
+def imread(chemin, drapeau=None):
+    """Rend un objet quelconque si le fichier existe, `None` sinon — c'est le
+    seul contrat dont le pont depend."""
+    import os
+    return object() if os.path.exists(chemin) else None
+'''
+
+FAUX_NUMPY = '''
+def array(valeurs):
+    return list(valeurs)
 '''
 
 
 def _sdk(tmp_path: Path, visages: int = 2) -> Path:
-    """Ecrit le double du SDK dans un dossier, et rend ce dossier."""
+    """Ecrit le double du SDK **et de ses deux bibliotheques**, et rend le
+    dossier. Le pont insere son `cwd` en tete de `sys.path` : ce sont donc ces
+    fichiers-la qu'il importe, pas ceux de la machine."""
     (tmp_path / "run.py").write_text(
         FAUX_SDK.replace("VISAGES = 2", f"VISAGES = {visages}"), encoding="utf-8")
+    (tmp_path / "cv2.py").write_text(FAUX_CV2, encoding="utf-8")
+    (tmp_path / "numpy.py").write_text(FAUX_NUMPY, encoding="utf-8")
     return tmp_path
 
 
 def _image(tmp_path: Path) -> Path:
-    """Une vraie image lisible par cv2 — 4x4 pixels, aucun visage humain."""
-    import cv2
-    import numpy as np
-
+    """Un fichier qui existe. **Aucune image reelle, et surtout aucun visage** —
+    la contrainte du proprietaire est qu'aucune donnee biometrique reelle
+    n'entre dans ces tests."""
     chemin = tmp_path / "carre.png"
-    cv2.imwrite(str(chemin), np.zeros((4, 4, 3), dtype="uint8"))
+    chemin.write_bytes(b"pas une vraie image, et c'est voulu")
     return chemin
 
 
