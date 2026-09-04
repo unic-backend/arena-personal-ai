@@ -2825,3 +2825,79 @@ tentation d'éditer les nombres sans vérifier que l'ensemble se résout — un
 reproduire est pire qu'un aveu de `INCONNU`. C'est pour ça que la vérification
 est passée par le vrai résolveur et une vraie installation, deux fois, plutôt
 que par la lecture de métadonnées seule.
+
+---
+
+## DEC-0045 — La revue OWASP du backend : l'audit qui n'appelait que GET
+
+**2026-09-04.** Suite du volet défensif (DEC-0042 à 0044). Revue de sécurité
+du backend FastAPI. Le code lui-même — auth, débit, chemins de fichiers,
+OAuth, CORS, docs fermées par défaut — est solide et déjà bien construit
+(`apps/backend/security.py`, `connectors.py`). Aucune faille trouvée dans le
+code métier. Le vrai défaut était dans **l'outil censé le vérifier**.
+
+### Ce qui a été trouvé
+
+`scripts/auditer_surface_publique.py` n'envoyait qu'un `GET`, quelle que soit
+la vraie méthode d'une route, et sautait entièrement toute route paramétrée
+(`if "{" in chemin: continue`). Deux conséquences mesurées, pas supposées :
+
+- Un `POST` non protégé répond `405 Method Not Allowed` à un `GET` — un code
+  ≥ 400, compté « protégé attendu » sans que la clé n'ait jamais été
+  évaluée. Sabotage : `dependencies=[Depends(verify_api_key)]` retiré de
+  `/api/upload`, corps vide + sans clé, vraie méthode POST → `422` (la
+  validation du fichier requis échoue avant l'authentification, sur une
+  route sabotée COMME sur une route protégée — les deux masquent le même
+  signal). Avec un vrai fichier joint → `200 OK`, upload accepté sans clé.
+  L'ancien script (GET seul) annonçait « protégé » dans les deux cas.
+- `/connectors/{fournisseur}/status`, `/connectors/{fournisseur}/disconnect`,
+  `/connectors/{fournisseur}/auth`, `/api/actions/{identifiant}/confirm`,
+  `/api/actions/{identifiant}/cancel` : jamais appelées par l'audit
+  automatisé, ni avec la bonne méthode ni avec aucune.
+
+`tests/test_surface_api.py` — qui lit `route.dependencies` directement, sans
+appeler quoi que ce soit — donnait déjà une preuve **statique** fiable de
+ces cinq routes (confirmé : 100% des dépendances d'authentification du dépôt
+sont déclarées via `dependencies=[Depends(...)]`, jamais en paramètre de
+fonction — la lecture statique ne peut donc pas les manquer). Le trou était
+spécifiquement dans la preuve **comportementale**, complémentaire, que ces
+routes rejettent vraiment un appel non authentifié — et non redondante :
+elle est la seule à pouvoir attraper une dépendance déclarée mais dont
+l'implémentation serait cassée.
+
+### Ce qui a été corrigé
+
+`scripts/auditer_surface_publique.py` appelle maintenant la vraie méthode de
+chaque route déclarée, avec :
+- un paramètre de substitution pour tout chemin `{xxx}` — une valeur dédiée
+  (`gmail`, le seul fournisseur OAuth câblé) pour `{fournisseur}`, sinon une
+  valeur neutre, documentée comme non concluante pour les deux routes
+  `/api/actions/{identifiant}/...` (leur propre logique 404 sur un
+  identifiant inconnu, protégée ou non — `test_surface_api.py` reste leur
+  garde fiable) ;
+- un corps minimal mais réellement valide (`CORPS_MINIMAL`) pour les quatre
+  routes qui exigent un fichier ou un champ de formulaire obligatoire —
+  sans quoi un corps vide échoue sur sa propre validation avant même
+  d'atteindre la question de l'authentification, protégée ou non.
+
+**Sabotage-vérifié, trois fois** : retirer la dépendance de `/api/upload` →
+`[DEFAUT] HTTP 200` (avant : silencieux). Retirer celle de
+`/connectors/{fournisseur}/status` → `[DEFAUT] HTTP 200` (avant : jamais
+sondée). Retirer celle de `/connectors/{fournisseur}/disconnect` → pareil.
+Les trois corrigés côté code réel, jamais côté sabotage.
+
+`tests/test_auditer_surface_publique.py` verrouille les deux corrections :
+retirer `CORPS_MINIMAL`, la valeur dédiée `gmail`, ou revenir à un `GET`
+partout fait échouer la suite (vérifié par sabotage sur le script
+lui-même).
+
+### Ce que ça coûte si c'est faux
+
+Un audit qui annonce « protégé » sans l'avoir vérifié est pire qu'aucun
+audit : il éteint la vigilance exactement là où elle devait rester allumée.
+Rien n'était réellement exposé aujourd'hui — chaque route de ce dépôt est
+correctement protégée, prouvé par `test_surface_api.py` (statique) et
+maintenant aussi par `auditer_surface_publique.py` (comportemental, sur
+la vraie méthode). Le risque fermé est pour la prochaine route ajoutée sans
+sa dépendance : l'ancien script l'aurait laissée passer pour un `POST`, en
+silence.

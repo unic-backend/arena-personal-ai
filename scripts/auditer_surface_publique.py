@@ -8,7 +8,7 @@ redémarrage (`docs/REPRISE.md`). Sur le serveur (DEC-0021), l'adresse sera
 fixe et permanente : ce que ce script trouve ouvert aujourd'hui, tout Internet
 pourra le trouver aussi.
 
-**Deux règles :**
+**Trois règles :**
 
 1. **On interroge l'application réelle, jamais son code source.** Une route
    décorée `dependencies=[Depends(verify_api_key)]` peut exister sans que la
@@ -20,12 +20,27 @@ pourra le trouver aussi.
 2. **Une route publique n'est pas un défaut si elle est sur la liste — et un
    défaut si elle n'y est pas.** `/`, `/health`, les fichiers de l'interface :
    personne n'a de raison de les protéger. Le reste, oui.
+
+3. **On appelle la VRAIE méthode de chaque route, jamais un `GET` par
+   défaut.** Trouvé par sabotage le 04/09/2026 (DEC-0045) : la version
+   précédente de ce script n'envoyait que des `GET`. Une route déclarée en
+   `POST` répondait alors `405 Method Not Allowed` — un code >= 400, compté
+   comme « protégée » — sans que la dépendance d'authentification n'ait
+   jamais été évaluée. Une protection retirée d'une route `POST` passait
+   inaperçue. Pire : les routes paramétrées (`/connectors/{fournisseur}/...`,
+   `/api/actions/{id}/...`) n'étaient JAMAIS appelées, sautées d'un
+   `if "{" in chemin: continue`. Ce script appelle maintenant la vraie
+   méthode de chaque route, avec un paramètre de substitution neutre pour
+   les chemins qui en attendent un, et un corps minimal mais VALIDE pour les
+   quatre routes qui exigent un fichier — sans quoi une route non protégée
+   échouerait sur sa propre validation (422) avant même d'avoir eu la
+   moindre chance de répondre 200, masquant le défaut au lieu de le révéler.
 """
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, List
+from typing import Any, Dict, Iterator, List, Tuple
 
 RACINE = Path(__file__).resolve().parent.parent
 if str(RACINE) not in sys.path:
@@ -40,7 +55,42 @@ CLE_DE_TEST = "audit-cle-de-test-non-secrete"
 ROUTES_DELIBEREMENT_PUBLIQUES = frozenset({
     "/", "/offline.html", "/manifest.webmanifest", "/sw.js",
     "/icons/{nom}", "/ui/classique", "/health",
+    # Google appelle cette route directement, jamais avec la clé d'ARENA — le
+    # `state` CSRF à usage unique est sa propre protection (connectors.py).
+    "/connectors/{fournisseur}/callback",
 })
+
+#: Une valeur neutre pour un segment `{xxx}` d'un chemin, quand aucune valeur
+#: réelle n'existe (`/icons/{nom}`, `/api/actions/{identifiant}`) — la route
+#: répond alors 404 sur SA PROPRE logique (fichier/identifiant introuvable)
+#: que la clé soit bonne ou non, ce qui ne prouve rien sur l'authentification
+#: pour ces chemins-là. Documenté, pas contourné : il faudrait un vrai
+#: fichier ou une vraie action en attente pour lever le doute, ce que
+#: `tests/test_surface_api.py` couvre déjà autrement (lecture statique de
+#: `dependencies=[...]`, fiable ici — voir DEC-0045).
+PARAMETRE_DE_SONDE = "sonde-audit"
+
+#: Par nom de paramètre, une valeur qui traverse la logique métier de la
+#: route SANS la masquer — pour que le seul obstacle qui reste soit
+#: l'authentification, et que la réponse dise vraiment quelque chose sur
+#: elle. `gmail` est le seul fournisseur OAuth câblé (`connectors.py`,
+#: `FOURNISSEURS_OAUTH`) : une valeur inventée y échouerait sur sa propre
+#: validation (« fournisseur inconnu ») avant même d'atteindre la clé.
+VALEURS_DE_SONDE_PAR_PARAMETRE: Dict[str, str] = {
+    "fournisseur": "gmail",
+}
+
+#: Les quatre routes qui exigent un fichier (`File(...)`) ou un champ de
+#: formulaire (`Form(...)`) obligatoire. Un corps vide y échoue sur SA PROPRE
+#: validation (422) que la route soit protégée ou non — ce qui masquerait un
+#: défaut réel. Chaque valeur construit les arguments `requests`/`TestClient`
+#: d'un appel qui, sur une route non protégée, réussirait vraiment (200).
+CORPS_MINIMAL: Dict[str, Dict[str, Any]] = {
+    "/api/upload": {"files": {"file": ("sonde.mp4", b"sonde", "video/mp4")}},
+    "/files": {"files": {"file": ("sonde.txt", b"sonde", "text/plain")}},
+    "/api/speech/transcribe": {"files": {"file": ("sonde.wav", b"sonde", "audio/wav")}},
+    "/api/process-video": {"data": {"video_path": "/tmp/sonde-inexistant.mp4"}},
+}
 
 
 @dataclass
@@ -57,8 +107,23 @@ class Constat:
         return self.code < 400 and not self.attendu_public
 
 
-def _routes_api_declarees() -> List[str]:
-    """Les chemins `@router.*` du projet — pas les mounts statiques, traités à part."""
+def _chemin_concret(gabarit: str) -> str:
+    """Remplace chaque `{xxx}` par une valeur de sonde — la valeur dédiée du
+    paramètre si elle existe, sinon la valeur neutre par défaut."""
+    if "{" not in gabarit:
+        return gabarit
+    import re
+
+    def substituer(correspondance: "re.Match[str]") -> str:
+        nom = correspondance.group(1)
+        return VALEURS_DE_SONDE_PAR_PARAMETRE.get(nom, PARAMETRE_DE_SONDE)
+
+    return re.sub(r"\{([^}]+)\}", substituer, gabarit)
+
+
+def _routes_api_declarees() -> List[Tuple[str, Tuple[str, ...]]]:
+    """Les chemins `@router.*` du projet et leurs vraies méthodes — pas les
+    mounts statiques, traités à part."""
     from fastapi.routing import APIRoute
 
     from apps.backend.main import app
@@ -66,7 +131,7 @@ def _routes_api_declarees() -> List[str]:
     def parcourir(routes):
         for route in routes:
             if isinstance(route, APIRoute):
-                yield route.path
+                yield route.path, tuple(sorted(route.methods - {"HEAD", "OPTIONS"}))
             elif hasattr(route, "original_router"):
                 yield from parcourir(route.original_router.routes)
             elif hasattr(route, "routes"):
@@ -125,7 +190,9 @@ def _avec_une_cle_de_test() -> Iterator[None]:
 
 
 def auditer() -> List[Constat]:
-    """Appelle chaque route déclarée et les mounts connus, sans aucune clé."""
+    """Appelle chaque route déclarée — sa vraie méthode, un paramètre de
+    sonde si elle en attend un, un corps minimal si sa propre validation
+    l'exige — et les mounts connus, sans aucune clé."""
     from fastapi.testclient import TestClient
 
     from apps.backend.main import app
@@ -134,12 +201,15 @@ def auditer() -> List[Constat]:
         client = TestClient(app)
         constats = []
 
-        for chemin in _routes_api_declarees():
-            if "{" in chemin:
-                continue  # parametree : /icons/{nom} est deja sur la liste publique
-            reponse = client.get(chemin)
-            constats.append(Constat(chemin, reponse.status_code,
-                                    attendu_public=chemin in ROUTES_DELIBEREMENT_PUBLIQUES))
+        for gabarit, methodes in _routes_api_declarees():
+            if gabarit == "/media/rendered/{nom}":
+                continue  # sonde dediee, avec un vrai fichier : _auditer_mount_media
+            chemin = _chemin_concret(gabarit)
+            corps = CORPS_MINIMAL.get(gabarit, {})
+            for methode in methodes:
+                reponse = client.request(methode, chemin, **corps)
+                constats.append(Constat(gabarit, reponse.status_code,
+                                        attendu_public=gabarit in ROUTES_DELIBEREMENT_PUBLIQUES))
 
         constats.append(_auditer_mount_media(client))
 
