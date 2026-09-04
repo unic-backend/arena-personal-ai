@@ -181,6 +181,34 @@ if ($annonceUrl -and $annonceCle) {
             -ContentType "application/json" -Body $corps -TimeoutSec 20 | Out-Null
         Write-Host "  [ok] adresse annoncee au serveur permanent" -ForegroundColor Green
         Write-Host "       ton telephone la trouvera tout seul." -ForegroundColor DarkGray
+
+        # **Une seule annonce ne suffit pas.** Le serveur permanent redemarre
+        # a chaque mise en ligne d'une version - et il oublie l'adresse en
+        # redemarrant. Pendant ce temps la machine tourne toujours : le
+        # telephone retombe sur le serveur permanent et les modeles lourds
+        # (Dioumtoukay, video) ne servent plus, sans que rien ne le dise.
+        # Mesure du 04/09/2026 : cinq mises en ligne dans la meme nuit.
+        #
+        # On re-annonce donc en tache de fond tant que cette fenetre est
+        # ouverte. L'adresse ne change pas d'ici la : le tunnel garde son nom
+        # tant qu'il tourne. Re-annoncer la meme adresse est sans effet de
+        # bord - le serveur permanent remplace la ligne, il n'en empile pas.
+        Start-Job -Name "arena-annonce" -ScriptBlock {
+            param($cible, $cle, $adresseMachine, $nomMachine)
+            while ($true) {
+                Start-Sleep -Seconds 600
+                try {
+                    $charge = @{ adresse = $adresseMachine; machine = $nomMachine } | ConvertTo-Json
+                    Invoke-RestMethod -Method Post -Uri "$cible/machine/adresse" `
+                        -Headers @{ Authorization = "Bearer $cle" } `
+                        -ContentType "application/json" -Body $charge -TimeoutSec 20 | Out-Null
+                } catch {
+                    # Une re-annonce ratee n'a rien a signaler : la suivante
+                    # arrive dans dix minutes, et la premiere a deja reussi.
+                }
+            }
+        } -ArgumentList $annonceUrl.TrimEnd('/'), $annonceCle, $adresse, $env:COMPUTERNAME | Out-Null
+        Write-Host "       re-annoncee toutes les 10 min tant que cette fenetre est ouverte." -ForegroundColor DarkGray
     } catch {
         # Une annonce ratee n'empeche pas ARENA de tourner : elle prive
         # seulement le telephone de la trouver sans copier-coller. On le dit

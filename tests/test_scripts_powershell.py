@@ -21,8 +21,14 @@ contenaient. Les trois plus anciens n'avaient pas encore cassé — leurs
 caractères ne tombaient pas dans une chaîne. Ils attendaient la mauvaise
 ligne au mauvais endroit.
 """
+import json
 import re
+import shutil
+import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from typing import Optional
 
 import pytest
 
@@ -167,3 +173,127 @@ def test_chaque_reglage_lu_par_un_script_est_documente_dans_env_example():
         "Reglage(s) lu(s) par un script mais absent(s) de .env.example : "
         + ", ".join(f"{nom} ({', '.join(ou)})" for nom, ou in manquantes.items())
     )
+
+
+# --- L'analyse reelle, quand un interpreteur est disponible -----------------------
+#
+# Tout ce qui precede lit le TEXTE des scripts. C'est utile et ca a attrape de
+# vraies fautes, mais aucune de ces gardes ne repond a la seule question qui
+# compte le matin ou il double-clique : **est-ce que PowerShell accepte ce
+# fichier ?** Deux fois dans la nuit du 03/09/2026, la reponse etait non, et il
+# l'a apprise par un ecran rouge sur sa machine.
+
+def _interpreteur() -> Optional[str]:
+    """Un PowerShell utilisable ici, ou `None`. Jamais suppose present."""
+    for nom in ("pwsh", "powershell", "/opt/pwsh/pwsh"):
+        chemin = shutil.which(nom) or (nom if Path(nom).exists() else None)
+        if chemin:
+            return chemin
+    return None
+
+
+@pytest.mark.parametrize("script", SCRIPTS, ids=lambda p: p.name)
+def test_powershell_accepte_vraiment_le_fichier(script):
+    """Le script est **analyse par PowerShell**, pas relu par une expression.
+
+    Saute quand aucun interpreteur n'est la — dire « OK » sans avoir analyse
+    serait exactement le defaut que ce depot traque partout ailleurs.
+    """
+    pwsh = _interpreteur()
+    if not pwsh:
+        pytest.skip("aucun PowerShell ici : rien n'a ete analyse, et on le dit")
+
+    ordre = (
+        "$e = $null; "
+        f"[System.Management.Automation.Language.Parser]::ParseFile('{script}', "
+        "[ref]$null, [ref]$e) | Out-Null; "
+        "if ($e.Count) { $e | ForEach-Object { "
+        "'ligne ' + $_.Extent.StartLineNumber + ' : ' + $_.Message } }"
+    )
+    issue = subprocess.run([pwsh, "-NoProfile", "-Command", ordre],
+                           capture_output=True, text=True, timeout=180)
+
+    assert issue.returncode == 0 and not issue.stdout.strip(), (
+        f"PowerShell refuse {script.name} :\n{issue.stdout}{issue.stderr}")
+
+
+def test_la_re_annonce_envoie_vraiment_ce_quil_faut():
+    """Le bloc de re-annonce du lanceur est **execute**, contre un faux serveur.
+
+    Pourquoi ce test et pas seulement l'analyse syntaxique : un script qui
+    s'analyse peut n'envoyer nulle part, ou envoyer sans la cle. Ce qui compte
+    est ce qui arrive au serveur permanent.
+
+    Ce qu'il garde : une seule annonce ne suffit pas. Le serveur permanent
+    oublie l'adresse a chaque redemarrage — cinq mises en ligne dans la nuit du
+    04/09/2026 — pendant que la machine, elle, tourne toujours. Sans re-annonce,
+    le telephone retombe sur le serveur permanent et les modeles lourds ne
+    servent plus, sans que rien ne le dise.
+
+    `Start-Sleep` est neutralise : on teste l'appel, pas l'attente de dix
+    minutes.
+    """
+    pwsh = _interpreteur()
+    if not pwsh:
+        pytest.skip("aucun PowerShell ici : rien n'a ete execute, et on le dit")
+
+    texte = (RACINE / "scripts" / "lancer_arena.ps1").read_text(encoding="utf-8")
+    marque = 'Start-Job -Name "arena-annonce" -ScriptBlock {'
+    assert marque in texte, "le lanceur n'annonce plus son adresse en tache de fond"
+
+    # Le bloc REEL, decoupe sur ses accolades — jamais recopie ici : un test
+    # qui contient sa propre copie du code ne surveille que lui-meme.
+    reste = texte[texte.index(marque) + len(marque):]
+    profondeur, bloc = 1, ""
+    for caractere in reste:
+        if caractere == "{":
+            profondeur += 1
+        elif caractere == "}":
+            profondeur -= 1
+            if profondeur == 0:
+                break
+        bloc += caractere
+
+    recu: list = []
+
+    class Ecouteur(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802 — nom impose par http.server
+            taille = int(self.headers.get("Content-Length", 0))
+            recu.append({"chemin": self.path,
+                         "auth": self.headers.get("Authorization"),
+                         "corps": json.loads(self.rfile.read(taille) or b"{}")})
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"ok":true}')
+
+        def log_message(self, *args):
+            pass
+
+    serveur = HTTPServer(("127.0.0.1", 0), Ecouteur)
+    threading.Thread(target=serveur.serve_forever, daemon=True).start()
+    port = serveur.server_address[1]
+    try:
+        programme = (
+            "function Start-Sleep { param($Seconds) }\n"
+            "$bloc = { " + bloc + " }\n"
+            f'& $bloc "http://127.0.0.1:{port}" "cle-de-test" '
+            '"https://tunnel-du-jour.test" "PC-DE-TEST"\n'
+        )
+        processus = subprocess.Popen([pwsh, "-NoProfile", "-Command", programme],
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     text=True)
+        try:
+            processus.wait(timeout=4)  # la boucle est infinie : on la coupe
+        except subprocess.TimeoutExpired:
+            processus.kill()
+    finally:
+        serveur.shutdown()
+
+    assert recu, "le bloc de re-annonce n'a rien envoye"
+    premiere = recu[0]
+    assert premiere["chemin"] == "/machine/adresse"
+    assert premiere["auth"] == "Bearer cle-de-test", (
+        "sans la cle, le serveur permanent refuse et la re-annonce ne sert a rien")
+    assert premiere["corps"]["adresse"] == "https://tunnel-du-jour.test"
+    assert premiere["corps"]["machine"] == "PC-DE-TEST"
