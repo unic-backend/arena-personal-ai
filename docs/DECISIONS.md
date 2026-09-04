@@ -2752,3 +2752,76 @@ par la suite de tests avant fusion.
 Un audit qu'on croit propre alors qu'il n'a pas tourné : une faille laissée
 ouverte par confiance mal placée. D'où la règle des trois états, tenue par un
 test. Le scanner ne corrige rien de lui-même — il montre où regarder.
+
+---
+
+## DEC-0044 — Les quatre failles trouvées par DEC-0043 : montées, pas seulement rapportées
+
+**2026-09-04.** Suite de DEC-0043. Le propriétaire, en un mot : « Monter le ».
+
+### Ce qui a changé
+
+`requirements.txt` : `pypdf` 6.14.2 → 6.16.2, `langchain-openai` 1.1.9 → 1.1.14,
+`pydantic` 2.12.5 → 2.13.5. `click` et `mcp` restent transitifs (jamais épinglés
+en direct) mais montent avec `browser-use` 0.13.8 → 0.13.10, qui les épingle en
+dur — `click` à 8.3.3, `mcp` à 2.1.1.
+
+### Pourquoi c'est plus qu'un changement de quatre chiffres
+
+`browser-use==0.13.8` épingle exactement `mcp==1.26.0` et `click==8.3.1` — les
+deux versions vulnérables. Les corriger seul, sans toucher `browser-use`, ne se
+resoud pas : pip le refuse (vérifié — voir plus bas). La version corrigée exige
+elle-même `pydantic==2.13.5` (utilisée partout dans le backend FastAPI) et
+`pypdf==6.16.2` exactement. `langchain-openai==1.1.14` (le correctif) exige
+`openai>=2.26.0`, que `browser-use==0.13.10` fournit désormais en épingle dure —
+ce qui **résout au passage** le conflit historique documenté dans
+`requirements.lock.txt` (`langchain-openai==1.6.0` contre `openai==2.16.0`, qui
+ne pouvaient jamais coexister).
+
+Le paquet `mcp` (SDK) n'est importé nulle part dans le code : `core/mcp/transport.py`
+documente lui-même l'avoir écarté au profit de httpx pur. Le monter ne change
+rien à l'exécution d'ARENA — seulement à ce que `browser-use` embarque.
+
+### Ce qui a été vraiment vérifié, pas supposé
+
+`browser-use`, `mcp`, `langchain-openai` ne sont pas installés dans l'environnement
+de l'assistant : impossible de les valider en les import ant simplement. Vérifié
+à la place, dans l'ordre :
+
+1. Le vrai résolveur pip (`pip install --dry-run`) sur le jeu complet des quatre
+   versions montées — aucune erreur, aucun `ResolutionImpossible`.
+2. Installation réelle dans un environnement virtuel isolé, propre (pas
+   l'environnement de travail, pollué par d'autres installations de cette
+   session) — `pip check` y répond `No broken requirements found`.
+3. La suite complète dans cet environnement : **3440 passed** (32 de plus
+   qu'avant — des tests jusque-là `importorskip`-és sur `mcp`/`langchain_openai`,
+   absents ici, tournent maintenant pour de vrai), 0 échec.
+4. Ciblé sur les chemins sensibles — devis PDF, OpenTakeoff, transport MCP
+   interne d'ARENA (`core/mcp/`, distinct du SDK) : 99/99.
+5. `scripts/scanner_dependances.py` sur le fichier corrigé : `PROPRE`.
+
+**Sabotage-vérifié** : rétrograder `pypdf` seul (en laissant `browser-use` à sa
+version montée) rend le jeu de dépendances **irrésoluble** — `pip-audit` refuse
+alors un rapport et le scanner répond `INCONNU`, jamais `PROPRE` par erreur. La
+preuve que les paquets montent ensemble, pas un par un.
+
+### `requirements.lock.txt`
+
+Rien ne l'installe dans ce dépôt (ni `Dockerfile`, ni les scripts PowerShell) —
+c'est un `pip freeze` documenté de sa machine, pas un fichier réinstallé. Seules
+les sept lignes directement concernées (`browser-use`, `click`, `langchain-openai`,
+`mcp`, `openai`, `pydantic`, `pypdf`) ont été mises à jour, pour qu'il cesse de
+contredire `requirements.txt` avec d'anciennes épingles vulnérables. Elles ne
+viennent **pas** d'un vrai `pip freeze` fait sur son PC — l'en-tête du fichier le
+dit maintenant explicitement. Le reste du fichier n'a pas été touché : je n'ai
+aucun moyen de savoir ce qui tourne réellement chez lui pour les paquets que je
+n'ai pas changés, et l'inventer serait la simulation que ce dépôt interdit.
+
+### Ce que ça coûte si c'est faux
+
+Le vrai risque n'était pas dans les quatre versions elles-mêmes, mais dans la
+tentation d'éditer les nombres sans vérifier que l'ensemble se résout — un
+`requirements.txt` qui *a l'air* corrigé mais que `pip install` ne peut pas
+reproduire est pire qu'un aveu de `INCONNU`. C'est pour ça que la vérification
+est passée par le vrai résolveur et une vraie installation, deux fois, plutôt
+que par la lecture de métadonnées seule.

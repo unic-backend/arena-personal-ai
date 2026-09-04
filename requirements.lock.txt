@@ -3,12 +3,20 @@
 # pywin32 porte un marqueur de plateforme : sans lui, l'installation echoue hors Windows.
 #
 # ATTENTION : ce gel n'est pas reinstallable tel quel, et ce n'est pas nouveau :
-#  - langchain-openai==1.6.0 exige openai>=2.45, alors que la ligne openai==2.16.0
-#    ci-dessous vient de browser-use==0.13.8 qui l'epingle. Les deux coexistent sur
-#    la machine, mais pip refuse de reproduire ce couple.
 #  - numpy==2.5.2 exige Python >= 3.12, alors que apps/backend/Dockerfile part de
 #    python:3.11-slim.
-# requirements.txt contourne les deux en ne figeant que les dependances directes.
+# requirements.txt contourne ca en ne figeant que les dependances directes.
+#
+# 04/09/2026 : sept lignes (browser-use, click, langchain-openai, mcp, openai,
+# pydantic, pypdf) montees pour corriger des failles publiees (voir
+# requirements.txt et DEC-0044). Elles ne viennent PAS d'un `pip freeze` reel
+# sur sa machine — verifiees par une resolution pip complete et une installation
+# reelle dans un environnement isole, faute de pouvoir toucher son PC d'ici.
+# Le prochain `pip freeze` fait CHEZ LUI reste la source qui fait foi pour le
+# reste de ce fichier ; ces sept lignes ne devraient plus differer de ce gel-la.
+# La ligne langchain-openai==1.6.0 / openai==2.16.0 qui coexistaient sans pouvoir
+# se reproduire ensemble a disparu avec ce changement : langchain-openai==1.1.14
+# accepte l'openai==2.26.0 qu'exige desormais browser-use==0.13.10.
 aiofiles==25.1.0
 aiohappyeyeballs==2.7.1
 aiohttp==3.14.3
@@ -24,14 +32,14 @@ backoff==2.2.1
 beautifulsoup4==4.15.0
 brotli==1.2.0
 browser-harness==0.1.9
-browser-use==0.13.8
+browser-use==0.13.10
 browser-use-sdk==3.4.2
 bubus==1.5.6
 cdp-use==1.4.5
 certifi==2026.7.22
 cffi==2.1.1
 charset-normalizer==3.5.1
-click==8.3.1
+click==8.3.3
 cloudpickle==3.1.2
 colorama==0.4.6
 configparser==7.2.0
@@ -88,7 +96,7 @@ langchain-classic==1.0.8
 langchain-community==0.4.2
 langchain-core==1.6.0
 langchain-ollama==1.1.0
-langchain-openai==1.6.0
+langchain-openai==1.1.14
 langchain-protocol==0.0.18
 langchain-text-splitters==1.1.2
 langsmith==0.11.1
@@ -97,7 +105,7 @@ lxml==6.1.2
 markdown-it-py==4.2.0
 markdownify==1.2.2
 matplotlib==3.11.1
-mcp==1.26.0
+mcp==2.1.1
 mdurl==0.1.2
 mpmath==1.3.0
 multidict==6.7.1
@@ -107,7 +115,7 @@ numpy==2.5.2
 oauthlib==3.3.1
 ollama==0.6.1
 onnxruntime==1.29.0
-openai==2.16.0
+openai==2.26.0
 orjson==3.12.0
 packaging==26.3
 pandas==2.3.3
@@ -126,7 +134,7 @@ psutil==7.2.2
 pyasn1==0.6.4
 pyasn1_modules==0.4.2
 pycparser==3.0
-pydantic==2.12.5
+pydantic==2.13.5
 pydantic-settings==2.15.0
 pydantic_core==2.41.5
 pyee==13.0.1
@@ -134,7 +142,7 @@ Pygments==2.21.0
 PyJWT==2.13.0
 pyotp==2.9.0
 pyparsing==3.3.2
-pypdf==6.14.2
+pypdf==6.16.2
 pypinyin==0.55.0
 python-dateutil==2.9.0.post0
 python-docx==1.2.0
