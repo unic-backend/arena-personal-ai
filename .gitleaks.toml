@@ -82,6 +82,12 @@ paths = [
   # garde-fou documentaire doit connaitre la forme de ce qu'il cherche.
   '''(^|/)tests/test_preparer_purge_secrets\.py$''',
   '''(^|/)tests/test_documentation\.py$''',
+  # Meme raison (DEC-0042) : ce fichier prouve que scripts/scanner_secrets.py
+  # reconnait un secret a sa FORME. Ses fixtures sont inventees pour avoir
+  # une tete de secret — c'est le test lui-meme, pas une fuite. Mesure le
+  # 04/09/2026 : 4 faux positifs (generic-api-key) sur des valeurs qui ne
+  # sont jamais apparues ailleurs (`git log --all -S`).
+  '''(^|/)tests/test_scanner_secrets\.py$''',
   # Ce fichier decrit les regles : ses exemples ne sont pas des secrets.
   '''(^|/)\.gitleaks\.toml$''',
 ]
