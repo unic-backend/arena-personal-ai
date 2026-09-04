@@ -63,6 +63,7 @@ Et tiens-la à jour : une mémoire périmée est pire qu'aucune mémoire.
 | `docs/REGLES_DE_TRAVAIL.md` | **Comment travailler avec lui.** Il n'écrit pas de code. Tout découle de ça. |
 | `docs/REPRISE.md` | **Où le travail s'est arrêté**, phase par phase, avec ce qui est mesuré et ce qui ne l'est pas. |
 | `docs/DECISIONS.md` | Les décisions prises, chacune avec *ce que ça coûte si elle est fausse*. |
+| `docs/COMMANDES_PC.md` | **Les commandes de sa machine.** Ne lui en invente jamais une : cette fiche, ou `python scripts/doctor.py`. |
 
 Ne demande jamais « où en étions-nous ? ». C'est écrit.
 

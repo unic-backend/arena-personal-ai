@@ -239,3 +239,58 @@ def test_le_compteur_de_modules_de_CLAUDE_md_est_a_jour():
     assert attendu in claude, (
         f"CLAUDE.md annonce un compte perime. Mesure du jour : « {attendu} ». "
         "Relance `python scripts/orphelins.py` et reporte les deux nombres.")
+
+
+# --- La fiche des commandes du proprietaire ---------------------------------------
+#
+# Ecrite le 04/09/2026 a sa demande : « garde en memoire toutes les commandes qui
+# devraient etre sur mon pc quand c'est allume ». Une fiche de commandes est
+# exactement le genre de fichier qui vieillit sans que ca se voie — il se lit
+# comme l'etat du jour longtemps apres avoir cesse de l'etre. Ces trois tests
+# sont ce qui l'empeche.
+
+COMMANDES = RACINE / "docs" / "COMMANDES_PC.md"
+
+
+def test_la_fiche_des_commandes_existe():
+    assert COMMANDES.exists(), (
+        "docs/COMMANDES_PC.md a disparu : c'est la seule liste que le "
+        "proprietaire lit avant d'allumer sa machine.")
+
+
+def test_chaque_installateur_du_depot_figure_dans_la_fiche():
+    """**Un installateur ajoute et jamais cite est un moteur qu'il n'installera
+    pas.** Le sens marche aussi dans l'autre : une commande citee pour un
+    script disparu l'enverrait dans le vide.
+    """
+    fiche = COMMANDES.read_text(encoding="utf-8")
+    reels = {p.name for p in (RACINE / "scripts").glob("installer_*.ps1")}
+    cites = set(re.findall(r"installer_[a-z0-9_]+\.ps1", fiche))
+
+    assert reels == cites, (
+        f"Installateurs presents mais absents de la fiche : {sorted(reels - cites)}. "
+        f"Cites par la fiche mais inexistants : {sorted(cites - reels)}.")
+
+
+def test_les_modeles_cites_sont_ceux_que_le_code_demande():
+    """**Le nom d'un modele ne se recopie pas de memoire.**
+
+    `ollama pull` sur un nom perime telecharge des gigaoctets pour rien et
+    laisse ARENA sans le modele dont il a besoin. Les noms viennent d'une
+    seule source — `apps/backend/config.py` — et ce test verifie que la fiche
+    n'a pas diverge.
+    """
+    from apps.backend.config import (
+        MODELE_CODEUR,
+        MODELE_CONVERSATION,
+        MODELE_PROFOND,
+        MODELE_VISION,
+    )
+
+    fiche = COMMANDES.read_text(encoding="utf-8")
+    attendus = {MODELE_CONVERSATION, MODELE_PROFOND, MODELE_CODEUR, MODELE_VISION}
+    manquants = sorted(m for m in attendus if f"ollama pull {m}" not in fiche)
+
+    assert not manquants, (
+        f"Modele(s) demande(s) par le code mais absent(s) de la fiche : {manquants}. "
+        "Reporte les noms depuis apps/backend/config.py.")
