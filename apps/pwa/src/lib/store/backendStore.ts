@@ -278,6 +278,33 @@ export const useBackend = create<BackendState>((set, get) => ({
 }));
 
 /** effective config used by the chat layer */
+/**
+ * Previent le panneau qu'un envoi a echoue contre le serveur en cours.
+ *
+ * **C'est ce qui declenche la bascule en usage reel.** Le panneau reste
+ * `online` tant que personne ne re-sonde : sans cet appel, un PC eteint EN
+ * COURS d'utilisation laissait chaque envoi suivant partir dans le vide.
+ *
+ * Elle vit ici, a cote de `activeRemoteCfg`, et non dans le magasin du chat :
+ * **tout module qui prend une adresse par `activeRemoteCfg` doit pouvoir
+ * signaler son echec sans dependre du chat.** Ecrite dans `chatStore` le
+ * 03/09/2026, la regle n'a ete appliquee qu'au chat pendant une journee,
+ * pendant que la confirmation d'action, la dictee, la video et les
+ * connecteurs echouaient en silence (mesure du 04/09/2026).
+ *
+ * Deux choses ne sont PAS des pannes de serveur :
+ * - une annulation (`AbortError`), sinon chaque « stop » ferait basculer ;
+ * - un refus du serveur (`res.ok === false`), qui n'arrive jamais ici : il a
+ *   repondu, il a dit non. Seul le `catch` d'un appel reseau passe par ici.
+ */
+export function signalerSiPanne(err: unknown, distant: boolean): void {
+  if (!distant) return;
+  if (err instanceof DOMException && err.name === 'AbortError') return;
+  if (err instanceof Error && err.message.startsWith('BACKEND_')) return;
+  useBackend.getState().signalerEchec(String(err));
+}
+
+
 export function activeRemoteCfg(): RemoteConfig | null {
   const { enabled, url, apiKey, urlSecours, apiKeySecours, serveurActif, urlAnnoncee } =
     useBackend.getState();

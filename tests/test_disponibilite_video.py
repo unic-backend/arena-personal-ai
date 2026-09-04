@@ -134,14 +134,31 @@ def test_ne_rien_savoir_ne_saffiche_pas_comme_tout_marche():
     # plus haut, et le test mesurait alors un corps qui n'existait pas.
     corps = store.split("async chargerDisponibilite()")[1].split("\n  },")[0]
 
+    def code_de(depuis: str) -> str:
+        """Le code d'une branche, **commentaires retires**, jusqu'a la suivante.
+
+        Le premier decoupage prenait 80 caracteres apres le mot-cle. Une fenetre
+        fixe mesure la mise en page, pas le comportement : ajouter un commentaire
+        de quatre lignes dans le `catch` a fait tomber ce test le 04/09/2026
+        alors que `disponibilite: null` y etait toujours pose. Et dans l'autre
+        sens, le mot serait trouve **dans un commentaire** — une garde qui lit
+        les commentaires valide une intention, jamais un comportement.
+        """
+        fragment = corps.split(depuis)[1]
+        for suivante in ("if (!res.ok)", "} catch", "\n    }"):
+            if suivante != depuis and suivante in fragment:
+                fragment = fragment.split(suivante)[0]
+        return "\n".join(ligne for ligne in fragment.splitlines()
+                          if not ligne.strip().startswith(("//", "*", "/*")))
+
     # Les TROIS sorties d'echec doivent effacer le verdict, pas seulement
     # deux : compter les occurrences laissait passer le sabotage du
     # 03/09/2026 — le `catch` vide, les deux autres branches intactes, test
     # vert. Une garde qui compte sans regarder ou ne garde rien.
-    for branche, extrait in (
-        ("aucun serveur branche", corps.split("if (!cfg)")[1][:80]),
-        ("reponse en erreur", corps.split("if (!res.ok)")[1][:80]),
-        ("panne reseau", corps.split("} catch")[1][:80]),
+    for branche, depuis in (
+        ("aucun serveur branche", "if (!cfg)"),
+        ("reponse en erreur", "if (!res.ok)"),
+        ("panne reseau", "} catch"),
     ):
-        assert "disponibilite: null" in extrait, (
+        assert "disponibilite: null" in code_de(depuis), (
             f"« {branche} » garderait un ancien verdict a l'ecran")

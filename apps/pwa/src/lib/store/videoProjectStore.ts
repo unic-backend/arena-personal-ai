@@ -11,7 +11,7 @@
    ───────────────────────────────────────────────────────────── */
 
 import { create } from 'zustand';
-import { activeRemoteCfg } from './backendStore';
+import { activeRemoteCfg, signalerSiPanne } from './backendStore';
 
 /** The closed capability vocabulary — must mirror
  * `core/production/plan_video.py:CAPACITES_VIDEO` exactly. A UI list
@@ -137,7 +137,11 @@ export const useVideoProject = create<Store>((set, get) => ({
         video?: Record<string, { disponible: boolean; raison: string }>;
       };
       set({ disponibilite: corps.video ?? null });
-    } catch {
+    } catch (e) {
+      // Ne rien savoir reste `null` — mais le panneau, lui, doit apprendre que
+      // le serveur n'a pas repondu. Sans ca, la page video restait vide sur un
+      // panneau vert (mesure du 04/09/2026).
+      signalerSiPanne(e, true);
       set({ disponibilite: null });
     }
   },
@@ -167,8 +171,17 @@ export const useVideoProject = create<Store>((set, get) => ({
           body: form,
         });
         if (!res.ok) {
+          // **Un refus n'est pas une panne de liaison.** Il etait jete dans le
+          // meme `catch` que les erreurs reseau : impossible d'y distinguer
+          // « le serveur a dit non » de « le serveur n'a pas repondu ». On le
+          // traite ici, et le `catch` ne garde que le reseau.
           const detail = await res.json().catch(() => null);
-          throw new Error((detail && detail.detail) || `HTTP ${res.status}`);
+          const raison = (detail && detail.detail) || `HTTP ${res.status}`;
+          set((s) => ({
+            references: s.references.map((r) =>
+              r.id === attente.id ? { ...r, status: 'failed' as const, error: raison } : r),
+          }));
+          return;
         }
         const data = (await res.json()) as { path: string };
         set((s) => ({
@@ -176,6 +189,7 @@ export const useVideoProject = create<Store>((set, get) => ({
             r.id === attente.id ? { ...r, path: data.path, status: 'ready' as const } : r),
         }));
       } catch (e) {
+        signalerSiPanne(e, true);
         set((s) => ({
           references: s.references.map((r) =>
             r.id === attente.id
@@ -226,6 +240,7 @@ export const useVideoProject = create<Store>((set, get) => ({
       const data = (await res.json()) as ProjetVideoResultat;
       set({ result: data, submitting: false });
     } catch (e) {
+      signalerSiPanne(e, true);
       set({ error: e instanceof Error ? e.message : 'network-error', submitting: false });
     }
   },

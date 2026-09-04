@@ -17,7 +17,7 @@
 
 import { create } from 'zustand';
 import { getConnector } from '../connectors/catalog';
-import { activeRemoteCfg } from './backendStore';
+import { activeRemoteCfg, signalerSiPanne } from './backendStore';
 
 export interface ConnectorState {
   status: 'disconnected' | 'connecting' | 'connected';
@@ -175,7 +175,7 @@ export const useConnectors = create<Store>((set, get) => {
         void fetch(`${cfg.url}/connectors/${id}/disconnect`, {
           method: 'POST',
           headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
-        }).catch(() => {});
+        }).catch((e) => signalerSiPanne(e, true));
       }
       update(id, {
         status: 'disconnected',

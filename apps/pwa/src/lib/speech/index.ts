@@ -11,7 +11,7 @@
    ───────────────────────────────────────────────────────────── */
 
 import { create } from 'zustand';
-import { activeRemoteCfg } from '../store/backendStore';
+import { activeRemoteCfg, signalerSiPanne } from '../store/backendStore';
 
 /* ── Web Speech API Type Shims ── */
 interface SpeechRecognitionEventLike extends Event {
@@ -136,13 +136,21 @@ async function demarrerDictationServeur(
             body: form,
           });
           if (!res.ok) {
-            const detail = await res.json().catch(() => null);
-            throw new Error((detail && detail.detail) || `HTTP ${res.status}`);
+            // Le serveur a repondu, il a refuse : ce n'est pas une panne de
+            // liaison, et le traiter ici evite de le confondre avec une dans
+            // le `catch` ci-dessous.
+            set({ isTranscribing: false, error: 'transcription-failed' });
+            onError?.('transcription-failed');
+            return;
           }
           const data = (await res.json()) as { text: string };
           set({ isTranscribing: false });
           onResult(data.text ?? '', '');
-        } catch {
+        } catch (e) {
+          // Sa machine s'est eteinte pendant qu'il dictait : le panneau doit
+          // l'apprendre, sinon il reste vert et la dictee suivante repart vers
+          // la meme machine morte.
+          signalerSiPanne(e, true);
           set({ isTranscribing: false, error: 'transcription-failed' });
           onError?.('transcription-failed');
         }

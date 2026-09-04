@@ -45,21 +45,15 @@ export function estMessageDeLiaison(texte: string | undefined): boolean {
 }
 
 /**
- * Previent le panneau qu'un envoi a echoue contre le serveur en cours.
+ * Reexporte depuis `backendStore`, ou cette fonction vit maintenant.
  *
- * **C'est ce qui declenche la bascule en usage reel.** Le panneau reste
- * `online` tant que personne ne re-sonde : sans cet appel, un PC eteint EN
- * COURS d'utilisation laissait chaque message suivant partir dans le vide.
- *
- * Une annulation n'est pas une panne : `AbortError` ne signale rien, sinon
- * chaque « stop » ferait basculer de serveur.
+ * Elle est restee ici du 03/09 au 04/09/2026, et pendant ce temps la regle
+ * qu'elle porte n'a ete appliquee qu'au chat : les cinq autres modules qui
+ * parlent au serveur auraient du importer le magasin du chat pour s'en
+ * servir. Une regle rangee au mauvais endroit est une regle qui ne voyage
+ * pas.
  */
-export function signalerSiPanne(err: unknown, distant: boolean): void {
-  if (!distant) return;
-  if (err instanceof DOMException && err.name === 'AbortError') return;
-  if (err instanceof Error && err.message.startsWith('BACKEND_')) return;
-  useBackend.getState().signalerEchec(String(err));
-}
+export { signalerSiPanne };
 
 
 function messageErreur(err: unknown): string {
@@ -75,7 +69,7 @@ function messageErreur(err: unknown): string {
   }
   return String(err);
 }
-import { activeRemoteCfg, useBackend } from './backendStore';
+import { activeRemoteCfg, signalerSiPanne } from './backendStore';
 import { AgentContext } from '../agent/orchestrator';
 import {
   MAX_ATTACHMENTS,

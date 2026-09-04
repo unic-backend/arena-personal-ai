@@ -11,7 +11,7 @@
  * pas le droit de confirmer (envoi d'un mail, publication, suppression) :
  * lui nomme exactement ce qu'il valide.
  */
-import { activeRemoteCfg } from '../store/backendStore';
+import { activeRemoteCfg, signalerSiPanne } from '../store/backendStore';
 
 /** Une action preparee qui attend un accord. Miroir de `_actions_en_attente`. */
 export interface ActionEnAttente {
@@ -75,7 +75,12 @@ async function appeler(id: string, quoi: 'confirm' | 'cancel'): Promise<Resultat
       message: corps?.response || corps?.message || 'C’est fait.',
       document: adresseOuvrable(corps?.detail?.url, base, cfg.apiKey),
     };
-  } catch {
+  } catch (err) {
+    // **Le panneau doit l'apprendre.** Sans cette ligne il restait `online`
+    // sur une machine eteinte : la veille ne demarrait pas, le secours
+    // n'etait jamais essaye, et tout ce qu'il faisait ensuite partait dans le
+    // vide jusqu'a ce qu'il rouvre le panneau (mesure du 04/09/2026).
+    signalerSiPanne(err, true);
     return { ok: false, message: 'Le serveur n’a pas répondu.' };
   }
 }
