@@ -2,6 +2,64 @@
 
 ## [Non publié]
 
+### Audit — 04/09/2026 — Travail de nuit : cinq défauts sur une suite verte
+
+Demande : *« verify ce qui est cassé, ce qui n'est pas testé, ce qui marche
+pas, ce qui n'est pas bon »*. La suite était verte à 3402 tests. Elle l'est
+restée pendant les cinq trouvailles — c'est bien le problème.
+
+**1. Cinq modules parlaient au serveur en silence.** La règle « un envoi raté
+prévient le panneau » avait été posée dans le chat le 03/09 et nulle part
+ailleurs : confirmation d'action, dictée, vidéo (trois points), connecteurs.
+Le pire est la confirmation — il appuie sur *Confirmer*, sa machine vient de
+s'éteindre, et le panneau reste vert pendant que tout part dans le vide.
+C'est la **huitième** occurrence de « une règle apprise à un endroit, jamais
+portée sur les autres ».
+
+**2. Le pont Faceplugin : 49 lignes, aucun test.** C'est pourtant lui qui
+tourne sur sa machine. Ce que rien ne tenait : **la garde qui retire les
+gabarits biométriques** des opérations de détection — une contrainte qu'il
+avait posée en toutes lettres. 13 tests maintenant, par le vrai point
+d'entrée.
+
+**3. Le PC n'annonçait son adresse qu'une fois.** Le serveur permanent oublie
+l'adresse à chaque redéploiement — cinq dans la même nuit — pendant que la
+machine tourne toujours. Il l'aurait rencontré comme « Dioumtoukay a encore
+disparu ». Ré-annonce toutes les dix minutes.
+
+**4. L'interface attendait Google avant qu'il puisse écrire.** Mesuré dans
+Chromium sur l'interface réelle, trois essais : **25,49 s** avant que le champ
+soit utilisable, contre **0,33 s** en refusant l'appel. Après correction :
+**0,19 s**. Sur un téléphone en connexion mobile, une demi-minute d'écran figé
+se lit comme « l'application est cassée ».
+
+**5. Un test mesurait la mise en page, pas le comportement.**
+`test_disponibilite_video` découpait 80 caractères après un mot-clé : un
+commentaire de quatre lignes le faisait tomber alors que le code était juste,
+et il aurait accepté le mot cherché **dans un commentaire**. Réparé, et les
+deux pièges vérifiés.
+
+**Deux fautes de ma part, dites ici parce qu'elles se répètent.** Le test du
+pont importait `cv2` et `numpy` parce qu'ils existent sur la machine de
+développement : douze tests rouges dans le CI. Et ma première garde des
+polices lisait *quatre lignes avant, six après* — le `<noscript>` voisin
+tombait dedans, et le sabotage passait. Deux fois le même geste : **mesurer
+l'environnement ou la mise en page au lieu de la structure.**
+
+**Ce qui est désormais outillé.** PowerShell **analyse vraiment** les sept
+scripts, au lieu d'une expression qui lisait leur texte — deux écrans rouges
+sur sa machine cette semaine, et aucune garde statique ne les avait vus. Le
+bloc de ré-annonce est **exécuté** contre un faux serveur. Les 34 tests
+PowerShell et les 13 du pont tournent dans le CI, vérifié dans les journaux.
+
+**Non corrigé, et c'est à lui de trancher** : les polices viennent toujours de
+Google, donc ouvrir l'application lui apprend son adresse IP et l'heure.
+Les héberger dans le fichier coûte du poids ; les remplacer change le dessin.
+Signalé, pas décidé.
+
+3424 tests Python, 29 côté interface.
+
+
 ### Ajouté — 04/09/2026 — Le téléphone trouve le PC tout seul
 
 Sa demande, mot pour mot : *« à chaque fois que j'allume mon pc je dois
