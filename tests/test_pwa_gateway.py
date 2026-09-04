@@ -1194,3 +1194,56 @@ class TestReponseVide:
         assert "DEEP_RESEARCH" in charges[-1]["message"]
         assert not any(c.get("type") == "token" and not c.get("text", "").strip()
                        for c in charges), "aucune bulle vide ne doit partir"
+
+
+class TestLeDocumentEcritRemonteAuTelephone:
+    """Le PDF de devis ne passe plus par la confirmation (04/09/2026, demande
+    du proprietaire). Le bouton de confirmation portait jusqu'ici le lien de
+    telechargement : sans ce champ, le fichier existerait et aucun ecran ne
+    pourrait l'ouvrir — le chemin sur le disque du serveur ne veut rien dire
+    sur un telephone.
+    """
+
+    def _reponse_agent(self, document):
+        async def repondre(demande, intent=None):
+            return {"response": "Devis ecrit.", "agent": "PlaquisteAgent",
+                    "sources": [], "document": document}
+        return repondre
+
+    def _plaquiste(self, monkeypatch, document):
+        async def metier(*_a, **_k):
+            return "PLAQUISTE"
+        monkeypatch.setattr(pwa_gateway, "dispatch_request", self._reponse_agent(document))
+        monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", metier)
+
+    def test_un_pdf_ecrit_porte_son_adresse_dans_le_meta(self, client, entetes, monkeypatch):
+        self._plaquiste(monkeypatch, {
+            "statut": "SUCCESS", "message": "Devis UC-2026-0904-XXX ecrit.",
+            "preuve": "/app/media/rendered/UC-2026-0904-XXX.pdf",
+            "url": "/media/rendered/UC-2026-0904-XXX.pdf",
+        })
+
+        charges = trames(demander(client, entetes, text="fais le pdf du devis").text)
+
+        documents = charges[-1]["meta"]["documents"]
+        assert documents, "aucun document annonce alors que le PDF est ecrit"
+        assert documents[0]["url"] == "/media/rendered/UC-2026-0904-XXX.pdf"
+
+    def test_un_document_sans_fichier_n_annonce_rien(self, client, entetes, monkeypatch):
+        """`INCOMPLET` n'a produit aucun fichier : fabriquer un lien vers rien
+        serait exactement le faux-succes que le projet interdit."""
+        self._plaquiste(monkeypatch, {
+            "statut": "INCOMPLET", "manquants": ["client"],
+            "message": "Le PDF n'est pas lance : il manque client.",
+        })
+
+        charges = trames(demander(client, entetes, text="fais le pdf du devis").text)
+
+        assert charges[-1]["meta"]["documents"] == []
+
+    def test_sans_document_le_champ_reste_vide(self, client, entetes, monkeypatch):
+        self._plaquiste(monkeypatch, None)
+
+        charges = trames(demander(client, entetes, text="bonjour").text)
+
+        assert charges[-1]["meta"]["documents"] == []

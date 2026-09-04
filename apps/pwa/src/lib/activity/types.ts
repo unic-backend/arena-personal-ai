@@ -104,11 +104,23 @@ export type StreamChunk =
 
 import type { ActionEnAttente } from '../actions/confirmer';
 
+/** Un document reellement ecrit pendant le tour, avec l'adresse qui l'ouvre. */
+export interface DocumentProduit {
+  url: string;
+  action: string;
+  message: string;
+}
+
 export interface MessageMeta {
   sources?: SourceMeta[];
   query?: string;
   /** Ce qui attend un accord : l'interface pose un bouton dessus. */
   en_attente?: ActionEnAttente[];
+  /** Ce qui vient d'etre ECRIT pendant ce tour et qu'il peut ouvrir tout de
+   *  suite — un devis PDF depuis qu'il ne passe plus par la confirmation
+   *  (04/09/2026). Sans ce champ, le fichier existe sur le serveur et aucun
+   *  ecran ne peut l'atteindre. Miroir de `_documents_produits`. */
+  documents?: DocumentProduit[];
   /** Identifiant confirmé par une phrase (« c'est bon ») pendant ce tour. */
   confirme?: string;
   provider?: string;

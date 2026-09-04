@@ -46,7 +46,7 @@ export interface ResultatConfirmation {
  * La cle voyage en parametre `cle` et non en en-tete : un lien qu'on tape
  * navigue, il n'est pas appele en `fetch()` et ne peut donc poser aucun
  * en-tete. `verify_media_access` existe exactement pour ce cas. */
-function adresseOuvrable(url: string | undefined, base: string, cle?: string): string | undefined {
+export function adresseOuvrable(url: string | undefined, base: string, cle?: string): string | undefined {
   if (!url) return undefined;
   const complet = url.startsWith('http') ? url : `${base}${url}`;
   if (!cle) return complet;

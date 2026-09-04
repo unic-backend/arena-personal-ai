@@ -2578,3 +2578,79 @@ rien.**
 
 Si le serveur permanent tombe, le téléphone ne sait plus où est la machine et
 retombe sur ce qu'il a déjà enregistré : il perd la découverte, pas l'usage.
+
+---
+
+## DEC-0041 — Le PDF s'écrit à la demande, sans bouton de confirmation
+
+**2026-09-04.** Demande directe du propriétaire, mot pour mot : « Pourquoi le
+pdf demande des confirmation bouton confirmé alors que chatgpt et claude etc si
+tu demandes pdf il le fait simplement je veux ca a tout prix a n'importe quelle
+zone [...] le projet dois faire un pdf si je le demande ».
+
+Cette décision **renverse** l'ancienne règle : `plaquiste.document` passe de
+`CONFIRMATION` à `ALLOWED` dans `config/permissions_services.yaml`.
+
+### Pourquoi c'est défendable, et pas un simple relâchement
+
+Un PDF de devis n'est pas de la même nature que les actions qui gardent leur
+confirmation :
+
+- il **ne quitte pas la machine** — il atterrit dans `media/rendered/`, servi
+  par `GET /media/rendered/{nom}` derrière la clé API ;
+- il est **réversible** : un fichier de trop se supprime, un e-mail parti ne
+  se rattrape pas ;
+- il **ne coûte rien** : pas de GPU, pas de quota, pas de tiers ;
+- et surtout **il le relit avant que quiconque le voie**. C'est LUI qui
+  l'envoie au client. La confirmation prétendait le protéger d'un document
+  qu'il allait de toute façon relire.
+
+Ce qui garde sa confirmation, sans exception : l'envoi d'un e-mail, une
+publication, une suppression, la génération vidéo (GPU, longue, coûteuse) et
+VoiceStudio. La frontière n'est pas « écrire / ne pas écrire », c'est
+**« ça part dehors, ou ça reste ici »**.
+
+### Ce qui protège encore
+
+Le coupe-circuit **`WRITE_FILES` reste déclaré** sur `plaquiste.document` :
+l'éteindre coupe encore toute production de PDF. Retirer la confirmation n'a
+pas retiré l'interrupteur.
+
+### Le piège qu'il a fallu fermer
+
+La confirmation était **le seul chemin par lequel le lien de téléchargement
+arrivait sur son téléphone** (`confirmerAction` lisait `detail.url` dans la
+réponse du serveur). La supprimer aurait produit exactement le symptôme
+d'avant : *un PDF qui existe sur le serveur et qu'aucun écran ne peut
+atteindre*. L'adresse traverse donc maintenant toute la chaîne —
+`DevisConnector` → `_proposer_le_document` → `_documents_produits` →
+`meta.documents` → le bouton « Ouvrir le document ».
+
+### Ce que le sabotage a trouvé (et que les tests ne voyaient pas)
+
+Trois trous, tous réels, comblés avant de livrer :
+
+1. Retirer `interrupteur: WRITE_FILES` du **vrai** fichier de politique ne
+   faisait échouer aucun test : celui du coupe-circuit écrivait sa propre
+   politique. La protection pouvait donc disparaître en silence.
+   → `test_la_vraie_politique_livree_ecrit_le_pdf_sans_accord_mais_sous_coupe_circuit`.
+2. Remplacer la propagation de `url` dans l'agent par `None` ne faisait
+   échouer aucun test — le maillon exact qui avait **déjà** perdu ce lien une
+   fois n'était couvert nulle part.
+   → `TestLAdresseDuPdfRemonteJusquALaReponse`.
+3. La docstring de `_proposer_le_document` affirmait encore « Rien n'est écrit
+   ici : `produire` est une action à confirmer ». Elle décrivait le contraire
+   du code.
+
+### Ce que ça coûte si c'est faux
+
+Un devis PDF écrit sur une phrase mal comprise. Le coût réel est un fichier de
+trop dans `media/rendered/`, relu et jeté — pas un document parti chez un
+client, puisque l'envoi garde sa confirmation. Le garde-fou qui compte
+davantage reste le destinataire : `test_sans_destinataire_rien_n_est_produit`
+tient toujours, et un devis sans client/lieu/objet n'est toujours pas écrit.
+Un devis adressé à la mauvaise personne reste pire qu'un devis absent.
+
+Le vrai coût serait de retirer aussi `WRITE_FILES` en croyant continuer cette
+décision : plus rien n'arrêterait l'écriture de fichiers. C'est pour ça qu'un
+test lit désormais le fichier livré.
