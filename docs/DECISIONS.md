@@ -2705,3 +2705,50 @@ visible en revue. Un scanner trop discret laisse la fuite entrer : quatre
 sabotages (scanner aveugle, entropie neutralisée, marqueur ignoré, masque qui
 révèle) ont chacun fait échouer un test avant livraison. Il ne remplace pas la
 purge de l'historique, qui reste préparée et jamais autorisée (DEC-0007).
+
+---
+
+## DEC-0043 — L'audit des dépendances : « je n'ai pas pu vérifier » n'est pas « c'est propre »
+
+**2026-09-04.** Suite du volet défensif (DEC-0042). Après le scanner de secrets,
+un audit des **failles connues** des dépendances : `scripts/scanner_dependances.py`,
+qui enveloppe `pip-audit` (base d'avis OSV / PyPI).
+
+### La règle qui fait tout
+
+Trois états, jamais deux — la même discipline que `scripts/doctor.py` et
+`core/actions/resultat.py` :
+
+- `PROPRE`  : pip-audit a répondu, aucune faille.
+- `FAILLES` : pip-audit a répondu, voici lesquelles.
+- `INCONNU` : pip-audit n'est pas installé, OU la base d'avis est injoignable.
+
+Le seul piège qui compte ici est de rendre `PROPRE` quand la mesure a échoué.
+Le PC d'Usman peut être hors ligne ; un audit qui n'a pas pu interroger la base
+et répond « aucune faille » endort une alerte qui n'a jamais été prise. Trois
+sabotages (outil muet rendu PROPRE, parseur qui ignore les vulns, sortie
+illisible avalée) ont chacun fait échouer un test avant livraison. Le code de
+sortie sépare les cas : `2` pour INCONNU, distinct de `1` pour des failles
+réelles — un CI peut traiter « pas pu vérifier » autrement que « cassé ».
+
+### Ce qui a été mesuré, et ce qui reste sa décision
+
+Lancé sur `requirements.txt`, il a trouvé des failles réelles dans `pypdf`
+(lecture des PDF, chemin du devis), `mcp` (transport), `langchain-openai` et
+`click`. **Le chiffre n'est pas recopié ici exprès** : il vieillirait comme un
+faux état du jour. La commande le redonne à l'instant :
+
+    python scripts/scanner_dependances.py
+
+Monter les versions est une modification du graphe de dépendances qui ne peut
+pas être validée entièrement sur la machine de l'assistant (pile GPU, verrou
+`requirements.lock.txt` à régénérer, et `langchain-openai` porte une contrainte
+de version explicite dans `requirements.txt`). C'est donc **rapporté, pas
+appliqué d'office** : la correction est sa décision, relançable et vérifiable
+par la suite de tests avant fusion.
+
+### Ce que ça coûte si c'est faux
+
+Un audit qu'on croit propre alors qu'il n'a pas tourné : une faille laissée
+ouverte par confiance mal placée. D'où la règle des trois états, tenue par un
+test. Le scanner ne corrige rien de lui-même — il montre où regarder.
