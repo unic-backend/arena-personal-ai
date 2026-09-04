@@ -77,7 +77,30 @@ def docs_actives() -> bool:
 
 # --- Origines autorisees (CORS) -----------------------------------------------
 # Jamais « * » : le navigateur laisserait n'importe quel site appeler /api.
-ORIGINES_PAR_DEFAUT = "http://localhost:3000,http://localhost:3080,http://localhost:8000"
+#
+# **Le domaine Railway est dans la liste par defaut, et ce n'est pas un
+# raccourci.** Le montage vise par le proprietaire est celui-ci :
+#
+#     la PAGE vient de Railway (toujours allume)
+#     le CERVEAU est son PC quand il tourne, Railway sinon
+#
+# Sans cette origine, son navigateur bloque l'appel de la page Railway vers
+# son PC, et la bascule a deux adresses ne sert a rien : il n'a acces a sa
+# machine qu'en ouvrant l'adresse du tunnel, qui change a chaque demarrage.
+#
+# Mesure du 03/09/2026 : la seule alternative etait de lui faire editer `.env`
+# a la main sur sa machine, a chaque installation. Un reglage qu'on ne peut
+# pas livrer est un reglage qui ne sera pas mis.
+#
+# Le domaine est ecrit EN ENTIER, jamais `*.up.railway.app` : un joker
+# laisserait n'importe quelle application hebergee la-bas appeler son API.
+# `ALLOWED_ORIGINS` dans `.env` remplace cette liste quand il le decide.
+ORIGINES_PAR_DEFAUT = ",".join((
+    "https://arena-personal-ai-production.up.railway.app",
+    "http://localhost:3000",
+    "http://localhost:3080",
+    "http://localhost:8000",
+))
 ALLOWED_ORIGINS = [
     origine.strip()
     for origine in reglage("ALLOWED_ORIGINS", ORIGINES_PAR_DEFAUT).split(",")

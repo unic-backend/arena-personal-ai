@@ -2,6 +2,37 @@
 
 ## [Non publié]
 
+### Ajouté — 03/09/2026 — Le domaine Railway est autorisé par défaut
+
+Le montage visé par le propriétaire, et c'est lui qui explique ce changement :
+
+```
+la PAGE vient de Railway (toujours allumé)
+le CERVEAU est son PC quand il tourne, Railway sinon
+```
+
+Sans cette origine, le navigateur bloque l'appel de la page Railway vers son
+PC, et la bascule à deux adresses ne sert à rien : il n'aurait accès à sa
+machine qu'en ouvrant l'adresse du tunnel, **qui change à chaque démarrage**.
+
+La seule alternative était de lui faire éditer `.env` à la main, sur sa
+machine, à chaque installation. **Un réglage qu'on ne peut pas livrer est un
+réglage qui ne sera pas mis.**
+
+Le domaine est écrit **en entier**, jamais `*.up.railway.app` : un joker
+laisserait n'importe quelle application hébergée là-bas appeler son API depuis
+le navigateur d'un visiteur. `localhost` reste dans la liste — cette valeur
+**remplace** la précédente, et l'oublier aurait coupé l'accès depuis son
+propre PC. Son `.env` reste prioritaire quand il en décide autrement.
+
+**Un test a rattrapé une consigne fausse que je lui avais donnée.** La
+variable porte le préfixe `USMAN_` : je lui avais dit d'écrire
+`ALLOWED_ORIGINS=` dans son `.env`, un réglage qui n'aurait jamais été lu. Le
+test cherchait le même mauvais nom et a échoué — c'est ce qui l'a révélé.
+Une consigne fausse coûte plus cher qu'un test rouge.
+
+8 tests. Suite complète : 3378 passent.
+
 ### Corrigé — 03/09/2026 — La bascule ne se déclenchait jamais en usage réel
 
 Le propriétaire, après la bascule à deux adresses : *« mon PC ne s'allume que
