@@ -780,12 +780,16 @@ class PlaquisteAgent(BaseAgent):
 
     def _proposer_le_document(self, texte: str, context: Dict[str, Any],
                               metre: Optional[Calcul] = None) -> Optional[Dict[str, Any]]:
-        """Soumet la production du PDF quand un fichier est explicitement demande.
+        """Produit le PDF quand un fichier est explicitement demande.
 
-        Rien n'est ecrit ici : `produire` est une action a confirmer, et le
-        proprietaire garde la main. Le destinataire vient du contexte de la
-        conversation, jamais d'une lecture de la phrase — un devis adresse a la
-        mauvaise personne est pire qu'un devis absent.
+        **Le fichier est ecrit ici**, sans accord prealable, depuis le
+        04/09/2026 (decision du proprietaire, DEC-0041) : « le projet dois
+        faire un pdf si je le demande ». La docstring disait le contraire
+        jusqu'a ce jour-la — `produire` etait une action a confirmer. Ce qui
+        protege encore : le coupe-circuit `WRITE_FILES`, et le fait que le
+        document reste chez lui — c'est LUI qui l'envoie. Le destinataire vient
+        du contexte de la conversation, jamais d'une lecture de la phrase — un
+        devis adresse a la mauvaise personne est pire qu'un devis absent.
 
         `metre` est le calcul deja fait par `run()` (dimensions dictees OU
         surface mesuree sur un plan) : quand il existe, ses lignes sont
@@ -830,8 +834,19 @@ class PlaquisteAgent(BaseAgent):
         resultat = self.registre.executer(
             "devis", "produire", demande=texte,
             type_document=type_document_demande(texte), **destinataire, **parametres_lignes)
-        return {"statut": resultat.statut.value, "message": resultat.message,
-                "preuve": resultat.preuve}
+        # `url` est l'adresse par laquelle son telephone OUVRE le document
+        # (`core/connectors/devis.py`). Elle vivait dans `detail` et s'arretait
+        # ici : la reponse portait le chemin sur le disque du serveur, qui ne
+        # veut rien dire sur un telephone. Depuis que le PDF ne passe plus par
+        # la confirmation (04/09/2026), c'est le SEUL chemin par lequel le lien
+        # peut lui parvenir — sans elle, le fichier existe et reste
+        # inatteignable.
+        compte_rendu = {"statut": resultat.statut.value, "message": resultat.message,
+                        "preuve": resultat.preuve}
+        adresse = (resultat.detail or {}).get("url")
+        if adresse:
+            compte_rendu["url"] = adresse
+        return compte_rendu
 
     async def _destinataire_par_modele(
         self, historique: List[Dict[str, str]], message_actuel: str,

@@ -1,10 +1,18 @@
-"""Le devis UniC Plaquiste : chiffrer librement, ecrire seulement sur accord.
+"""Le devis UniC Plaquiste : chiffrer librement, et ecrire le PDF tout de suite.
 
-Deux tests portent l'integration.
-`test_produire_ne_part_jamais_sans_confirmation` : un devis est un document qui
-part chez un client, il ne s'ecrit pas parce qu'une phrase y ressemblait.
-`test_un_devis_produit_laisse_un_fichier_qui_est_sa_preuve` : le succes est le
-PDF sur le disque, jamais l'intention de l'ecrire.
+**Le 04/09/2026, le proprietaire a retire la confirmation sur ce seul point** :
+« si tu demandes un pdf il le fait simplement [...] je veux ca a tout prix ».
+Ce qui rend le choix tenable, et que ces tests tiennent :
+
+`test_produire_ecrit_le_pdf_tout_de_suite` : plus d'accord prealable — le
+fichier est ecrit, et le succes est ce fichier.
+`test_le_pdf_produit_porte_l_adresse_par_laquelle_l_ouvrir` : sans elle, le
+PDF existe et reste inatteignable depuis un telephone.
+`test_le_coupe_circuit_write_files_bloque_encore_le_pdf` : la protection n'a
+pas disparu avec la confirmation.
+
+Le PDF reste chez lui : il le relit, et c'est LUI qui l'envoie. Ce qui quitte
+la machine — un e-mail, une publication — garde sa confirmation.
 
 Le troisieme qui compte est `test_sans_destinataire_rien_n_est_produit` : un
 devis adresse a la mauvaise personne est pire qu'un devis absent.
@@ -39,11 +47,78 @@ def fichiers(dossier):
 
 # --- Les deux tests que l'integration doit passer -------------------------------
 
-def test_produire_ne_part_jamais_sans_confirmation(connecteur, dossier):
+def test_produire_ecrit_le_pdf_tout_de_suite(connecteur, dossier):
+    """Le PDF ne demande plus d'accord prealable — decision du proprietaire du
+    04/09/2026 (« si tu demandes un pdf il le fait simplement »).
+
+    Ce qui rend ce choix tenable est teste juste en dessous : le fichier reste
+    chez lui, et le coupe-circuit WRITE_FILES le bloque toujours.
+    """
     resultat = connecteur.executer("produire", demande=DEMANDE, **DESTINATAIRE)
 
-    assert resultat.statut is not Statut.SUCCES
-    assert fichiers(dossier) == [], "un document a ete ecrit sans confirmation"
+    assert resultat.statut is Statut.SUCCES, resultat.message
+    assert fichiers(dossier), "aucun fichier ecrit alors que le PDF etait demande"
+    assert resultat.preuve, "un succes sans preuve ne se construit pas"
+
+
+def test_le_pdf_produit_porte_l_adresse_par_laquelle_l_ouvrir(dossier, monkeypatch):
+    """Sans cette adresse, le fichier existe et reste inatteignable depuis un
+    telephone : le chemin sur le disque du serveur n'y veut rien dire. C'est
+    le seul chemin par lequel le lien lui parvient depuis que la confirmation
+    — qui le portait — ne s'affiche plus pour un devis.
+
+    Le dossier de sortie EST celui que `GET /media/rendered/{nom}` sert : c'est
+    cette egalite, et elle seule, qui autorise a annoncer une adresse.
+    """
+    monkeypatch.setattr("core.connectors.devis.RENDERED_DIR", dossier)
+
+    resultat = DevisConnector(dossier=dossier).executer(
+        "produire", demande=DEMANDE, **DESTINATAIRE)
+
+    adresse = resultat.detail.get("url")
+    assert adresse, "aucune adresse d'ouverture dans le resultat"
+    assert adresse.startswith("/media/rendered/"), adresse
+    assert adresse.endswith(".pdf"), adresse
+
+
+def test_un_pdf_ecrit_hors_du_dossier_servi_n_annonce_aucune_adresse(connecteur):
+    """L'inverse, et il compte autant : un fichier que le serveur ne sert pas
+    n'a pas d'adresse — on ne fabrique pas un lien qui ferait 404."""
+    resultat = connecteur.executer("produire", demande=DEMANDE, **DESTINATAIRE)
+
+    assert resultat.statut is Statut.SUCCES, resultat.message
+    assert resultat.detail.get("url") is None
+
+
+def test_le_coupe_circuit_write_files_bloque_encore_le_pdf(dossier, tmp_path):
+    """Retirer la confirmation n'a PAS retire la protection.
+
+    `WRITE_FILES` reste declare sur `plaquiste.document` : l'eteindre coupe
+    encore toute production de PDF. C'est ce qui distingue « il n'a plus a
+    donner son accord a chaque fois » de « plus rien ne le protege ».
+    """
+    import yaml
+
+    from core.permissions.controle import ControleAcces
+    from core.permissions.permission_manager import PermissionManager
+    from core.permissions.politique import PolitiqueDePermissions
+
+    politique = tmp_path / "politique.yaml"
+    politique.write_text(yaml.safe_dump({"services": {"plaquiste": {"document": {
+        "decision": "ALLOWED", "risque": "MEDIUM", "interrupteur": "WRITE_FILES"}}}}),
+        encoding="utf-8")
+    permissions = PermissionManager(config_path=str(tmp_path / "booleens.yaml"))
+    permissions.permissions.update({"WRITE_FILES": False})
+
+    connecteur = DevisConnector(
+        dossier=dossier,
+        acces=ControleAcces(permissions=permissions,
+                            politique=PolitiqueDePermissions(chemin=politique)))
+
+    resultat = connecteur.executer("produire", demande=DEMANDE, **DESTINATAIRE)
+
+    assert resultat.statut is Statut.REFUSE, resultat.message
+    assert fichiers(dossier) == [], "un PDF a ete ecrit malgre WRITE_FILES eteint"
 
 
 def test_un_devis_produit_laisse_un_fichier_qui_est_sa_preuve(connecteur, dossier):
@@ -254,3 +329,23 @@ class TestLeDevisSOuvreDepuisSonTelephone:
 
         assert resultat.statut is Statut.SUCCES
         assert (resultat.detail or {}).get("url") is None
+
+
+def test_la_vraie_politique_livree_ecrit_le_pdf_sans_accord_mais_sous_coupe_circuit():
+    """Ce que le fichier LIVRE dit, pas ce qu'un test se fabrique.
+
+    Trouve par sabotage le 04/09/2026 : `test_le_coupe_circuit_write_files_...`
+    ecrit sa propre politique, donc il prouve que le mecanisme marche et rien
+    de plus. Retirer `interrupteur: WRITE_FILES` de
+    `config/permissions_services.yaml` ne faisait echouer aucun test — la
+    protection pouvait disparaitre en silence. Celui-ci lit le vrai fichier.
+    """
+    from core.permissions.politique import FICHIER_POLITIQUE, PolitiqueDePermissions
+
+    regle = PolitiqueDePermissions(chemin=FICHIER_POLITIQUE).regle("plaquiste", "document")
+
+    assert regle is not None, "plaquiste.document a disparu de la politique livree"
+    assert regle.get("decision") == "ALLOWED", (
+        "le PDF redemande un accord : decision du 04/09/2026 annulee sans decision")
+    assert regle.get("interrupteur") == "WRITE_FILES", (
+        "le coupe-circuit a disparu : plus rien ne peut arreter l'ecriture de fichiers")

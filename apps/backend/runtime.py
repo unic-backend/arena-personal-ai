@@ -51,6 +51,7 @@ from core.connectors.devis import DevisConnector
 from core.connectors.faceplugin import ConnecteurFaceplugin
 from core.connectors.galsen import GalsenConnector
 from core.connectors.gmail import GmailConnector
+from core.connectors.graphify import ConnecteurGraphify
 from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.montage import ConnecteurMontage
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
@@ -177,6 +178,14 @@ registre.declarer(
     "opentakeoff",
     lambda: ConnecteurOpenTakeoff(acces=acces, journal=journal, file_attente=file_attente,
                                   crochets=crochets),
+)
+# Graphe structurel du depot : Graphify (Apache-2.0), tree-sitter, hors ligne.
+# Cartographie CE depot (agents/, core/, apps/, tools/) — pas un second RAG,
+# pas un generateur de PDF. Voir core/connectors/graphify.py, DEC-0046.
+registre.declarer(
+    "graphify",
+    lambda: ConnecteurGraphify(acces=acces, journal=journal, file_attente=file_attente,
+                               crochets=crochets),
 )
 # Montage video : batir une timeline (lecture) et la rendre (ecriture, donc
 # confirmation). Le moteur de rendu est ffmpeg, deja local et compatible avec

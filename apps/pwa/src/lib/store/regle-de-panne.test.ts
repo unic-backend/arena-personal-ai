@@ -49,6 +49,11 @@ function sources(dossier: string): string[] {
 const EXEMPTES: Record<string, string> = {
   'lib/store/backendStore.ts':
     "c'est lui qui definit signalerSiPanne et qui sonde : il ne s'appelle pas lui-meme",
+  'components/chat/ChatMessage.tsx':
+    "il ne PARLE pas au serveur : il prend l'adresse pour fabriquer le href du lien "
+    + "« Ouvrir le document » (04/09/2026, DEC-0041). Un lien qu'on tape navigue, il n'y "
+    + "a ni fetch ni catch ou signaler quoi que ce soit — et un lien mort se voit dans "
+    + "le navigateur, il ne part pas dans le vide en silence.",
 };
 
 describe('la regle du signalement de panne', () => {

@@ -2578,3 +2578,417 @@ rien.**
 
 Si le serveur permanent tombe, le téléphone ne sait plus où est la machine et
 retombe sur ce qu'il a déjà enregistré : il perd la découverte, pas l'usage.
+
+---
+
+## DEC-0041 — Le PDF s'écrit à la demande, sans bouton de confirmation
+
+**2026-09-04.** Demande directe du propriétaire, mot pour mot : « Pourquoi le
+pdf demande des confirmation bouton confirmé alors que chatgpt et claude etc si
+tu demandes pdf il le fait simplement je veux ca a tout prix a n'importe quelle
+zone [...] le projet dois faire un pdf si je le demande ».
+
+Cette décision **renverse** l'ancienne règle : `plaquiste.document` passe de
+`CONFIRMATION` à `ALLOWED` dans `config/permissions_services.yaml`.
+
+### Pourquoi c'est défendable, et pas un simple relâchement
+
+Un PDF de devis n'est pas de la même nature que les actions qui gardent leur
+confirmation :
+
+- il **ne quitte pas la machine** — il atterrit dans `media/rendered/`, servi
+  par `GET /media/rendered/{nom}` derrière la clé API ;
+- il est **réversible** : un fichier de trop se supprime, un e-mail parti ne
+  se rattrape pas ;
+- il **ne coûte rien** : pas de GPU, pas de quota, pas de tiers ;
+- et surtout **il le relit avant que quiconque le voie**. C'est LUI qui
+  l'envoie au client. La confirmation prétendait le protéger d'un document
+  qu'il allait de toute façon relire.
+
+Ce qui garde sa confirmation, sans exception : l'envoi d'un e-mail, une
+publication, une suppression, la génération vidéo (GPU, longue, coûteuse) et
+VoiceStudio. La frontière n'est pas « écrire / ne pas écrire », c'est
+**« ça part dehors, ou ça reste ici »**.
+
+### Ce qui protège encore
+
+Le coupe-circuit **`WRITE_FILES` reste déclaré** sur `plaquiste.document` :
+l'éteindre coupe encore toute production de PDF. Retirer la confirmation n'a
+pas retiré l'interrupteur.
+
+### Le piège qu'il a fallu fermer
+
+La confirmation était **le seul chemin par lequel le lien de téléchargement
+arrivait sur son téléphone** (`confirmerAction` lisait `detail.url` dans la
+réponse du serveur). La supprimer aurait produit exactement le symptôme
+d'avant : *un PDF qui existe sur le serveur et qu'aucun écran ne peut
+atteindre*. L'adresse traverse donc maintenant toute la chaîne —
+`DevisConnector` → `_proposer_le_document` → `_documents_produits` →
+`meta.documents` → le bouton « Ouvrir le document ».
+
+### Ce que le sabotage a trouvé (et que les tests ne voyaient pas)
+
+Trois trous, tous réels, comblés avant de livrer :
+
+1. Retirer `interrupteur: WRITE_FILES` du **vrai** fichier de politique ne
+   faisait échouer aucun test : celui du coupe-circuit écrivait sa propre
+   politique. La protection pouvait donc disparaître en silence.
+   → `test_la_vraie_politique_livree_ecrit_le_pdf_sans_accord_mais_sous_coupe_circuit`.
+2. Remplacer la propagation de `url` dans l'agent par `None` ne faisait
+   échouer aucun test — le maillon exact qui avait **déjà** perdu ce lien une
+   fois n'était couvert nulle part.
+   → `TestLAdresseDuPdfRemonteJusquALaReponse`.
+3. La docstring de `_proposer_le_document` affirmait encore « Rien n'est écrit
+   ici : `produire` est une action à confirmer ». Elle décrivait le contraire
+   du code.
+
+### Ce que ça coûte si c'est faux
+
+Un devis PDF écrit sur une phrase mal comprise. Le coût réel est un fichier de
+trop dans `media/rendered/`, relu et jeté — pas un document parti chez un
+client, puisque l'envoi garde sa confirmation. Le garde-fou qui compte
+davantage reste le destinataire : `test_sans_destinataire_rien_n_est_produit`
+tient toujours, et un devis sans client/lieu/objet n'est toujours pas écrit.
+Un devis adressé à la mauvaise personne reste pire qu'un devis absent.
+
+Le vrai coût serait de retirer aussi `WRITE_FILES` en croyant continuer cette
+décision : plus rien n'arrêterait l'écriture de fichiers. C'est pour ça qu'un
+test lit désormais le fichier livré.
+
+---
+
+## DEC-0042 — Un scanner de secrets préventif, plutôt qu'un moteur offensif
+
+**2026-09-04.** Demande reçue : intégrer **CyberStrike** — un système de
+sécurité *offensif* (reconnaissance, exploitation active, attaques de mots de
+passe) — comme capacité vivante d'ARENA, câblée et exécutable.
+
+### Ce qui a été refusé, et pourquoi
+
+L'intégration offensive a été **déclinée**. Le livrable aurait été un moteur
+d'attaque opérationnel installé à demeure dans l'assistant personnel d'un
+plaquiste, dont la seule barrière d'autorisation était une case cochée par
+l'utilisateur lui-même. Trois raisons :
+
+1. **L'auto-déclaration n'est pas une autorisation.** « cible autorisée : oui »
+   tapé dans un chat n'est pas une preuve de propriété. C'est l'affirmation que
+   ferait aussi n'importe quel usage abusif. Le propre SECURITY.md de l'outil
+   reconnaît que son système de permissions n'est pas un vrai bac à sable.
+2. **Aucun contexte d'autorisation réel** — pas de mission de pentest, pas de
+   périmètre, pas de labo. Pour du dual-use offensif, ce contexte précis est
+   requis, pas des paragraphes de bonne intention.
+3. **Hors mission.** ARENA est l'assistant métier d'Ousmane (devis, vidéo,
+   documents). Un moteur d'exploitation qui tourne chez lui et qu'un téléphone
+   peut atteindre est un risque permanent pour une capacité que le métier
+   n'utilise pas.
+
+### Ce qui a été fait à la place
+
+De la sécurité **défensive sur le propre code du dépôt** — aucune cible externe,
+aucune ambiguïté sur la propriété : `scripts/scanner_secrets.py`, qui attrape un
+secret **avant** qu'il entre dans un commit. Il complète
+`preparer_purge_secrets.py` sans le doubler : la purge nettoie les six secrets
+**déjà connus** de l'historique, à des emplacements codés en dur ; le scanner
+regarde ce qui est **suivi maintenant**, n'importe où, et refuse qu'un *nouveau*
+secret franchisse le prochain commit. Haute confiance seulement (clés PEM,
+AWS/Google/Slack/GitHub à leur préfixe, affectations `api_key = "..."` à
+entropie réelle), valeurs masquées, sortie non nulle dès qu'il trouve — utilisable
+comme garde avant commit ou en CI. Le vrai dépôt revient propre, et un test
+(`test_le_vrai_depot_est_propre`) le maintient tel.
+
+### Ce que ça coûte si c'est faux
+
+Un scanner trop bavard finit ignoré, et c'est pire que pas de scanner : d'où la
+règle « haute confiance seulement » et le marqueur explicite
+`# scanner-secrets: ignore` pour les rares fixtures de test de forme secrète,
+visible en revue. Un scanner trop discret laisse la fuite entrer : quatre
+sabotages (scanner aveugle, entropie neutralisée, marqueur ignoré, masque qui
+révèle) ont chacun fait échouer un test avant livraison. Il ne remplace pas la
+purge de l'historique, qui reste préparée et jamais autorisée (DEC-0007).
+
+---
+
+## DEC-0043 — L'audit des dépendances : « je n'ai pas pu vérifier » n'est pas « c'est propre »
+
+**2026-09-04.** Suite du volet défensif (DEC-0042). Après le scanner de secrets,
+un audit des **failles connues** des dépendances : `scripts/scanner_dependances.py`,
+qui enveloppe `pip-audit` (base d'avis OSV / PyPI).
+
+### La règle qui fait tout
+
+Trois états, jamais deux — la même discipline que `scripts/doctor.py` et
+`core/actions/resultat.py` :
+
+- `PROPRE`  : pip-audit a répondu, aucune faille.
+- `FAILLES` : pip-audit a répondu, voici lesquelles.
+- `INCONNU` : pip-audit n'est pas installé, OU la base d'avis est injoignable.
+
+Le seul piège qui compte ici est de rendre `PROPRE` quand la mesure a échoué.
+Le PC d'Usman peut être hors ligne ; un audit qui n'a pas pu interroger la base
+et répond « aucune faille » endort une alerte qui n'a jamais été prise. Trois
+sabotages (outil muet rendu PROPRE, parseur qui ignore les vulns, sortie
+illisible avalée) ont chacun fait échouer un test avant livraison. Le code de
+sortie sépare les cas : `2` pour INCONNU, distinct de `1` pour des failles
+réelles — un CI peut traiter « pas pu vérifier » autrement que « cassé ».
+
+### Ce qui a été mesuré, et ce qui reste sa décision
+
+Lancé sur `requirements.txt`, il a trouvé des failles réelles dans `pypdf`
+(lecture des PDF, chemin du devis), `mcp` (transport), `langchain-openai` et
+`click`. **Le chiffre n'est pas recopié ici exprès** : il vieillirait comme un
+faux état du jour. La commande le redonne à l'instant :
+
+    python scripts/scanner_dependances.py
+
+Monter les versions est une modification du graphe de dépendances qui ne peut
+pas être validée entièrement sur la machine de l'assistant (pile GPU, verrou
+`requirements.lock.txt` à régénérer, et `langchain-openai` porte une contrainte
+de version explicite dans `requirements.txt`). C'est donc **rapporté, pas
+appliqué d'office** : la correction est sa décision, relançable et vérifiable
+par la suite de tests avant fusion.
+
+### Ce que ça coûte si c'est faux
+
+Un audit qu'on croit propre alors qu'il n'a pas tourné : une faille laissée
+ouverte par confiance mal placée. D'où la règle des trois états, tenue par un
+test. Le scanner ne corrige rien de lui-même — il montre où regarder.
+
+---
+
+## DEC-0044 — Les quatre failles trouvées par DEC-0043 : montées, pas seulement rapportées
+
+**2026-09-04.** Suite de DEC-0043. Le propriétaire, en un mot : « Monter le ».
+
+### Ce qui a changé
+
+`requirements.txt` : `pypdf` 6.14.2 → 6.16.2, `langchain-openai` 1.1.9 → 1.1.14,
+`pydantic` 2.12.5 → 2.13.5. `click` et `mcp` restent transitifs (jamais épinglés
+en direct) mais montent avec `browser-use` 0.13.8 → 0.13.10, qui les épingle en
+dur — `click` à 8.3.3, `mcp` à 2.1.1.
+
+### Pourquoi c'est plus qu'un changement de quatre chiffres
+
+`browser-use==0.13.8` épingle exactement `mcp==1.26.0` et `click==8.3.1` — les
+deux versions vulnérables. Les corriger seul, sans toucher `browser-use`, ne se
+resoud pas : pip le refuse (vérifié — voir plus bas). La version corrigée exige
+elle-même `pydantic==2.13.5` (utilisée partout dans le backend FastAPI) et
+`pypdf==6.16.2` exactement. `langchain-openai==1.1.14` (le correctif) exige
+`openai>=2.26.0`, que `browser-use==0.13.10` fournit désormais en épingle dure —
+ce qui **résout au passage** le conflit historique documenté dans
+`requirements.lock.txt` (`langchain-openai==1.6.0` contre `openai==2.16.0`, qui
+ne pouvaient jamais coexister).
+
+Le paquet `mcp` (SDK) n'est importé nulle part dans le code : `core/mcp/transport.py`
+documente lui-même l'avoir écarté au profit de httpx pur. Le monter ne change
+rien à l'exécution d'ARENA — seulement à ce que `browser-use` embarque.
+
+### Ce qui a été vraiment vérifié, pas supposé
+
+`browser-use`, `mcp`, `langchain-openai` ne sont pas installés dans l'environnement
+de l'assistant : impossible de les valider en les import ant simplement. Vérifié
+à la place, dans l'ordre :
+
+1. Le vrai résolveur pip (`pip install --dry-run`) sur le jeu complet des quatre
+   versions montées — aucune erreur, aucun `ResolutionImpossible`.
+2. Installation réelle dans un environnement virtuel isolé, propre (pas
+   l'environnement de travail, pollué par d'autres installations de cette
+   session) — `pip check` y répond `No broken requirements found`.
+3. La suite complète dans cet environnement : **3440 passed** (32 de plus
+   qu'avant — des tests jusque-là `importorskip`-és sur `mcp`/`langchain_openai`,
+   absents ici, tournent maintenant pour de vrai), 0 échec.
+4. Ciblé sur les chemins sensibles — devis PDF, OpenTakeoff, transport MCP
+   interne d'ARENA (`core/mcp/`, distinct du SDK) : 99/99.
+5. `scripts/scanner_dependances.py` sur le fichier corrigé : `PROPRE`.
+
+**Sabotage-vérifié** : rétrograder `pypdf` seul (en laissant `browser-use` à sa
+version montée) rend le jeu de dépendances **irrésoluble** — `pip-audit` refuse
+alors un rapport et le scanner répond `INCONNU`, jamais `PROPRE` par erreur. La
+preuve que les paquets montent ensemble, pas un par un.
+
+### `requirements.lock.txt`
+
+Rien ne l'installe dans ce dépôt (ni `Dockerfile`, ni les scripts PowerShell) —
+c'est un `pip freeze` documenté de sa machine, pas un fichier réinstallé. Seules
+les sept lignes directement concernées (`browser-use`, `click`, `langchain-openai`,
+`mcp`, `openai`, `pydantic`, `pypdf`) ont été mises à jour, pour qu'il cesse de
+contredire `requirements.txt` avec d'anciennes épingles vulnérables. Elles ne
+viennent **pas** d'un vrai `pip freeze` fait sur son PC — l'en-tête du fichier le
+dit maintenant explicitement. Le reste du fichier n'a pas été touché : je n'ai
+aucun moyen de savoir ce qui tourne réellement chez lui pour les paquets que je
+n'ai pas changés, et l'inventer serait la simulation que ce dépôt interdit.
+
+### Ce que ça coûte si c'est faux
+
+Le vrai risque n'était pas dans les quatre versions elles-mêmes, mais dans la
+tentation d'éditer les nombres sans vérifier que l'ensemble se résout — un
+`requirements.txt` qui *a l'air* corrigé mais que `pip install` ne peut pas
+reproduire est pire qu'un aveu de `INCONNU`. C'est pour ça que la vérification
+est passée par le vrai résolveur et une vraie installation, deux fois, plutôt
+que par la lecture de métadonnées seule.
+
+---
+
+## DEC-0045 — La revue OWASP du backend : l'audit qui n'appelait que GET
+
+**2026-09-04.** Suite du volet défensif (DEC-0042 à 0044). Revue de sécurité
+du backend FastAPI. Le code lui-même — auth, débit, chemins de fichiers,
+OAuth, CORS, docs fermées par défaut — est solide et déjà bien construit
+(`apps/backend/security.py`, `connectors.py`). Aucune faille trouvée dans le
+code métier. Le vrai défaut était dans **l'outil censé le vérifier**.
+
+### Ce qui a été trouvé
+
+`scripts/auditer_surface_publique.py` n'envoyait qu'un `GET`, quelle que soit
+la vraie méthode d'une route, et sautait entièrement toute route paramétrée
+(`if "{" in chemin: continue`). Deux conséquences mesurées, pas supposées :
+
+- Un `POST` non protégé répond `405 Method Not Allowed` à un `GET` — un code
+  ≥ 400, compté « protégé attendu » sans que la clé n'ait jamais été
+  évaluée. Sabotage : `dependencies=[Depends(verify_api_key)]` retiré de
+  `/api/upload`, corps vide + sans clé, vraie méthode POST → `422` (la
+  validation du fichier requis échoue avant l'authentification, sur une
+  route sabotée COMME sur une route protégée — les deux masquent le même
+  signal). Avec un vrai fichier joint → `200 OK`, upload accepté sans clé.
+  L'ancien script (GET seul) annonçait « protégé » dans les deux cas.
+- `/connectors/{fournisseur}/status`, `/connectors/{fournisseur}/disconnect`,
+  `/connectors/{fournisseur}/auth`, `/api/actions/{identifiant}/confirm`,
+  `/api/actions/{identifiant}/cancel` : jamais appelées par l'audit
+  automatisé, ni avec la bonne méthode ni avec aucune.
+
+`tests/test_surface_api.py` — qui lit `route.dependencies` directement, sans
+appeler quoi que ce soit — donnait déjà une preuve **statique** fiable de
+ces cinq routes (confirmé : 100% des dépendances d'authentification du dépôt
+sont déclarées via `dependencies=[Depends(...)]`, jamais en paramètre de
+fonction — la lecture statique ne peut donc pas les manquer). Le trou était
+spécifiquement dans la preuve **comportementale**, complémentaire, que ces
+routes rejettent vraiment un appel non authentifié — et non redondante :
+elle est la seule à pouvoir attraper une dépendance déclarée mais dont
+l'implémentation serait cassée.
+
+### Ce qui a été corrigé
+
+`scripts/auditer_surface_publique.py` appelle maintenant la vraie méthode de
+chaque route déclarée, avec :
+- un paramètre de substitution pour tout chemin `{xxx}` — une valeur dédiée
+  (`gmail`, le seul fournisseur OAuth câblé) pour `{fournisseur}`, sinon une
+  valeur neutre, documentée comme non concluante pour les deux routes
+  `/api/actions/{identifiant}/...` (leur propre logique 404 sur un
+  identifiant inconnu, protégée ou non — `test_surface_api.py` reste leur
+  garde fiable) ;
+- un corps minimal mais réellement valide (`CORPS_MINIMAL`) pour les quatre
+  routes qui exigent un fichier ou un champ de formulaire obligatoire —
+  sans quoi un corps vide échoue sur sa propre validation avant même
+  d'atteindre la question de l'authentification, protégée ou non.
+
+**Sabotage-vérifié, trois fois** : retirer la dépendance de `/api/upload` →
+`[DEFAUT] HTTP 200` (avant : silencieux). Retirer celle de
+`/connectors/{fournisseur}/status` → `[DEFAUT] HTTP 200` (avant : jamais
+sondée). Retirer celle de `/connectors/{fournisseur}/disconnect` → pareil.
+Les trois corrigés côté code réel, jamais côté sabotage.
+
+`tests/test_auditer_surface_publique.py` verrouille les deux corrections :
+retirer `CORPS_MINIMAL`, la valeur dédiée `gmail`, ou revenir à un `GET`
+partout fait échouer la suite (vérifié par sabotage sur le script
+lui-même).
+
+### Ce que ça coûte si c'est faux
+
+Un audit qui annonce « protégé » sans l'avoir vérifié est pire qu'aucun
+audit : il éteint la vigilance exactement là où elle devait rester allumée.
+Rien n'était réellement exposé aujourd'hui — chaque route de ce dépôt est
+correctement protégée, prouvé par `test_surface_api.py` (statique) et
+maintenant aussi par `auditer_surface_publique.py` (comportemental, sur
+la vraie méthode). Le risque fermé est pour la prochaine route ajoutée sans
+sa dépendance : l'ancien script l'aurait laissée passer pour un `POST`, en
+silence.
+
+---
+
+## DEC-0046 — Graphify : le graphe structurel du dépôt, pas un second RAG
+
+**2026-09-04.** Demande directe : intégrer Graphify (Graphify-Labs,
+Apache-2.0) comme capacité de graphe de connaissances/intelligence
+documentaire d'ARENA — codebase mapping, requêtes structurelles, PDF/document
+understanding.
+
+### Ce qui a été vérifié avant d'écrire une ligne
+
+`https://github.com/Graphify-Labs/graphify` cloné et inspecté pour de vrai
+(révision `33362d9`, 2026-08-30) : Apache-2.0 confirmé sur CETTE révision,
+paquet PyPI normal (`graphifyy`), Python pur, extraction 100% locale par
+tree-sitter — aucun appel modèle nécessaire à la construction du graphe.
+Détail complet : `docs/audits/graphify_audit.md`.
+
+**Un doublon a été évité en premier.** `tools/rag/graphrag_tool.py`
+(Microsoft GraphRAG, déjà câblé et atteint depuis `chat.py`/
+`openai_gateway.py`) existait déjà. Vérifié avant d'ajouter quoi que ce
+soit : GraphRAG résume des DOCUMENTS déposés à la main dans un espace de
+travail Docker (communautés d'idées, recherche globale) ; Graphify
+cartographie la STRUCTURE DU CODE, par lecture directe des fichiers
+(entités, relations, plus court chemin). Deux fonctions distinctes, jamais
+fusionnées.
+
+### Ce qui a été intégré
+
+`core/connectors/graphify.py` — un `Connecteur` comme les autres (même
+contrat que `DevisConnector`, `ConnecteurOpenTakeoff`) : cinq capacités,
+`construire` (écrit `graphify-out/`, sous `WRITE_FILES`) et quatre lectures
+(`interroger`, `chemin`, `expliquer`, `hubs`, `ALLOWED`). Déclaré dans le
+registre (`apps/backend/runtime.py`) et la politique de permissions
+(`config/permissions_services.yaml`, service `graphify`) — aucun second
+registre, aucun second système de permissions.
+
+Ce que ça cartographie : **le dépôt lui-même**, par défaut. Le trou réel
+mesuré le 04/09/2026 : `PROJECT_MEMORY/PROJECT_MAP.md` est écrit et tenu à
+jour **à la main**, sans rien qui vérifie qu'il correspond encore au code.
+Le graphe répond à des questions structurelles en quelques secondes, sans
+relire tout le dépôt.
+
+### Le vrai piège du contrat `Connecteur`, trouvé en écrivant les tests
+
+`_conduire()` (`core/connectors/base.py`) refuse **toute** capacité tant
+que `sonder()` ne rend pas OPERATIONNEL — y compris la capacité qui
+construirait le graphe elle-même. Une première version de `sonder()`
+rendait NON_CONFIGURE tant qu'aucun `graph.json` n'existait : `construire`
+ne pouvait alors JAMAIS s'exécuter au tout premier appel — le même piège
+qu'évaluer la santé d'un four à sa première cuisson. Corrigé pour mesurer
+l'ENGIN (le binaire `graphify` est-il installé ?), jamais son historique de
+sorties — la même règle qu'OpenTakeoff. L'absence de graphe reste dite,
+dans le message, informative ; chaque lecture la vérifie elle-même avant
+d'agir.
+
+### Mesuré pour de vrai, sur ce dépôt
+
+```
+python -c "from core.connectors.graphify import ConnecteurGraphify; \
+c = ConnecteurGraphify(); print(c.executer_confirmee('construire'))"
+→ 13338 noeud(s), 25839 lien(s), 13,9 s (tree-sitter, sans modele)
+```
+
+« quel connecteur gère le devis PDF ? », « qu'est-ce qui hérite de
+Connecteur ? », les hubs architecturaux (`Statut`, `PlaquisteAgent`,
+`ResultatAction`, `EtatSante`, `OrchestratorAgent`…) — tous corrects,
+détail dans l'audit.
+
+### Ce qui n'a PAS été branché, et pourquoi c'est honnête
+
+L'ingestion de PDF/documents dans le graphe (extra amont `[pdf]`) **n'est
+pas installée** : `SUGGESTION — NON IMPLÉMENTÉE`, rien ne l'a vérifiée sur
+un vrai fichier ici, et une capacité non mesurée ne se simule pas
+(`core/actions/resultat.py`). `tools/documents/reader.py` reste l'unique
+chemin de lecture PDF/DOCX/XLSX/PPTX. Le devis PDF garde
+`core/connectors/devis.py`, inchangé (DEC-0041) — Graphify n'écrit jamais
+de document final. Le serveur MCP dédié (`graphify-mcp`) et tout
+fournisseur LLM (étiquetage sémantique des communautés) ne sont pas
+installés non plus : non vérifiables sur cette machine (pas d'Ollama, pas
+de GPU ici) et non nécessaires à la valeur déjà mesurée.
+
+### Ce que ça coûte si c'est faux
+
+Un graphe qui ment sur sa fraîcheur serait le vrai risque — d'où
+`sonder()` qui ne promet jamais un graphe à jour, seulement que le moteur
+répond. `graphify-out/` (28 Mo, généré) n'est jamais versionné
+(`.gitignore`) : aucune donnée du dépôt n'y est plus exposée qu'elle ne
+l'est déjà dans le code source lui-même — c'est une carte du code, pas une
+fuite d'un secret qu'il contiendrait (le scanner de secrets, DEC-0042, reste
+la garde pour ça).

@@ -29,10 +29,10 @@ MODES = ("LOCAL_ONLY", "HYBRIDE", "CLOUD_PREFERRED")
 @pytest.mark.parametrize("mode", [*MODES, "CLOUD_PREFERRED", "MODE_INVENTE"])
 @pytest.mark.parametrize("phrase", [
     "mon mot de passe est Azerty123",
-    "voici ma cle API : sk-abcdefghijklmnopqrstuvwxyz0123",
+    "voici ma cle API : sk-abcdefghijklmnopqrstuvwxyz0123",  # scanner-secrets: ignore
     "le token GitHub ghp_abcdefghijklmnopqrstuvwxyz0123",
     "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.abcdefghijklmno",
-    "-----BEGIN RSA PRIVATE KEY-----",
+    "-----BEGIN RSA PRIVATE KEY-----",  # scanner-secrets: ignore
     "mon code pin est 4512",
 ])
 def test_un_secret_ne_sort_jamais_quel_que_soit_le_reglage(phrase, mode):
@@ -193,7 +193,7 @@ def test_chaque_classement_dit_pourquoi():
 
 def test_le_classement_ne_recopie_jamais_le_secret():
     """Le motif nomme ce qui a déclenché, pas la valeur qui a fui."""
-    secret = "sk-abcdefghijklmnopqrstuvwxyz0123"
+    secret = "sk-abcdefghijklmnopqrstuvwxyz0123"  # scanner-secrets: ignore
     classement = classer(f"ma cle est {secret}")
 
     assert secret not in classement.pourquoi()

@@ -166,13 +166,15 @@ class TestPlafondMesureJusquauPdf:
             context=DESTINATAIRE)
 
         assert resultat["plan"]["surface_totale_m2"] == pytest.approx(46.45, abs=0.01)
-        assert resultat["document"]["statut"] == "NEEDS_CONFIRMATION"
         assert espion.appels, "aucun appel a devis.produire"
 
-        confirme = _propose_puis_confirme(registre, espion.appels[0])
-
-        assert confirme.statut is Statut.SUCCES, confirme.message
-        chemin_pdf = Path(confirme.preuve)
+        # Plus de confirmation depuis le 04/09/2026 (demande du proprietaire) :
+        # la phrase suffit, le fichier existe au retour de `run()`. C'est plus
+        # fort que l'ancien test, qui devait rejouer une confirmation pour
+        # obtenir le PDF.
+        document = resultat["document"]
+        assert document["statut"] == "SUCCESS", document.get("message")
+        chemin_pdf = Path(document["preuve"])
         assert chemin_pdf.exists(), "le succes ne designe pas un fichier reel"
 
         texte = PdfReader(str(chemin_pdf)).pages[0].extract_text()
@@ -226,3 +228,40 @@ class TestRampantMesureNeProduitRien:
         assert confirme.statut is Statut.ECHEC
         assert not (tmp_path / "devis").exists() or not list((tmp_path / "devis").glob("*")), (
             "un fichier a ete ecrit alors qu'aucun metre n'etait calculable")
+
+
+class TestLAdresseDuPdfRemonteJusquALaReponse:
+    """Le dernier metre : du connecteur jusqu'au compte-rendu de `run()`.
+
+    Trouve par sabotage le 04/09/2026 : remplacer la propagation de `url` dans
+    `_proposer_le_document` par `None` ne faisait echouer AUCUN test. Les tests
+    de la passerelle nourrissent un dictionnaire deja fait ; ceux du connecteur
+    s'arretent en dessous de l'agent. Le seul maillon qui avait deja perdu ce
+    lien une fois n'etait couvert nulle part.
+
+    Sans cette adresse, le PDF existe sur le serveur et aucun ecran de son
+    telephone ne peut l'atteindre.
+    """
+
+    @pytest.mark.asyncio
+    async def test_le_document_produit_porte_l_adresse_qui_l_ouvre(
+        self, registre, plan_connu, monkeypatch, tmp_path
+    ):
+        # Le connecteur n'annonce une adresse que pour un fichier REELLEMENT
+        # servi par `GET /media/rendered/{nom}` : on fait donc du dossier de ce
+        # test le dossier servi, plutot que de faire semblant.
+        dossier_servi = tmp_path / "devis"
+        monkeypatch.setattr("core.connectors.devis.RENDERED_DIR", dossier_servi)
+
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=METIER, registre=registre)
+        resultat = await agent.run(
+            f"calcule le faux plafond du plan {plan_connu}, fais le pdf du devis",
+            context=DESTINATAIRE)
+
+        document = resultat["document"]
+        assert document["statut"] == "SUCCESS", document.get("message")
+        adresse = document.get("url")
+        assert adresse, "le PDF est ecrit mais rien ne dit par ou l'ouvrir"
+        assert adresse.startswith("/media/rendered/"), adresse
+        assert Path(document["preuve"]).name == adresse.rsplit("/", 1)[-1], (
+            "l'adresse annoncee ne designe pas le fichier reellement ecrit")

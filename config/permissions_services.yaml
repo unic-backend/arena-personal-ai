@@ -136,13 +136,33 @@ services:
   design_ui:
     read:        {decision: ALLOWED,      risque: LOW}
 
-  # Devis UniC Plaquiste. Chiffrer ne coute rien et n'ecrit rien. Produire le
-  # PDF ecrit un document qui partira chez un client : confirmation, et
-  # coupe-circuit WRITE_FILES. Ce n'est pas irreversible — un fichier s'efface —
-  # donc pas de place dans INTERRUPTEURS_OBLIGATOIRES.
+  # Devis UniC Plaquiste. Chiffrer ne coute rien et n'ecrit rien.
+  #
+  # Produire le PDF est passe de CONFIRMATION a ALLOWED le 04/09/2026, sur
+  # demande explicite du proprietaire : « si tu demandes un pdf il le fait
+  # simplement [...] je veux ca a tout prix ». La distinction qui rend ce
+  # choix tenable, et qui ne s'applique qu'ici :
+  #
+  #   ecrire un PDF chez lui n'est PAS un effet qui quitte la machine.
+  #
+  # Le fichier atterrit dans `media/rendered/`, il le relit, et c'est LUI qui
+  # decide ensuite de l'envoyer. Rien ne part chez un client, rien ne coute,
+  # rien n'est irreversible — un fichier s'efface. La confirmation ne le
+  # protegeait donc de rien ici : elle ajoutait une etape entre « fais-moi le
+  # devis » et le devis.
+  #
+  # Ce qui garde sa confirmation, et pourquoi : envoyer un e-mail (part chez
+  # un client), publier sur ses reseaux (public), generer une video
+  # (des minutes de GPU), parler (VoiceStudio ecrit puis peut etre diffuse).
+  # La regle n'est pas « les ecritures sont libres » : elle est « ce qui
+  # reste sur sa machine et qu'il relit avant d'agir ne demande pas d'accord
+  # prealable ».
+  #
+  # `interrupteur: WRITE_FILES` reste : couper cet interrupteur coupe encore
+  # la production du PDF, comme toute ecriture de fichier.
   plaquiste:
-    read:        {decision: ALLOWED,      risque: LOW}
-    document:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+    read:        {decision: ALLOWED, risque: LOW}
+    document:    {decision: ALLOWED, risque: MEDIUM, interrupteur: WRITE_FILES}
 
   # Montage video. Batir une timeline et la relire ne touche a rien : c'est
   # une structure en memoire, pas un fichier. Rendre ecrit une video sur le
@@ -174,6 +194,14 @@ services:
   takeoff:
     read:        {decision: ALLOWED,      risque: LOW}
     export:      {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+
+  # Graphify : le graphe structurel du depot (DEC-0046). Interroger un graphe
+  # deja construit ne touche a rien — meme lecture que `takeoff.read`.
+  # Construire ecrit graphify-out/ (graph.json, graph.html, GRAPH_REPORT.md) :
+  # coupe-circuit WRITE_FILES, comme toute ecriture de ce depot.
+  graphify:
+    read:        {decision: ALLOWED,      risque: LOW}
+    document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
 
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #

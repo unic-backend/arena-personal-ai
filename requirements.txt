@@ -6,7 +6,8 @@
 # --- API et serveur (apps/backend/main.py, scripts/start.ps1) ---
 fastapi==0.141.1
 uvicorn==0.52.4
-pydantic==2.12.5
+pydantic==2.13.5          # monte le 04/09/2026 : browser-use 0.13.10 l'epingle
+                          # desormais a cette version exacte (etait 2.12.5)
 python-multipart==0.0.32          # requis par FastAPI pour UploadFile et Form
 
 # --- Configuration ---
@@ -19,11 +20,16 @@ httpx==0.28.1
 # --- Outils ---
 faster-whisper==1.2.1     # tools/audio/transcription_tool.py
 ddgs==9.15.0               # tools/search/web_search_tool.py
-browser-use==0.13.8        # tools/browser/browser_use_tool.py
-langchain-openai==1.1.9   # ChatOpenAI utilise par browser-use ; 1.6.0 exige openai>=2.45
-                          # alors que browser-use 0.13.8 epingle openai==2.16.0
+browser-use==0.13.10      # tools/browser/browser_use_tool.py — monte le 04/09/2026 :
+                          # 0.13.8 epinglait mcp==1.26.0 et click==8.3.1, tous deux avec
+                          # des failles publiees. 0.13.10 les monte a 2.1.1 et 8.3.3.
+langchain-openai==1.1.14  # ChatOpenAI utilise par browser-use — corrige PYSEC-2026-76 (SSRF).
+                          # 1.1.9 exigeait openai<2.26 ; browser-use 0.13.10 epingle desormais
+                          # openai==2.26.0, que 1.1.14 accepte (>=2.26.0,<3.0.0).
 lightrag-hku==1.5.6       # tools/rag/lightrag_tool.py
-pypdf==6.14.2             # tools/documents/reader.py — lecture des PDF
+pypdf==6.16.2             # tools/documents/reader.py — lecture des PDF. Monte le
+                          # 04/09/2026 (5 failles publiees) ; epingle exactement par
+                          # browser-use 0.13.10, comme reportlab ci-dessous.
 python-docx==1.2.0        # tools/documents/reader.py — lecture des .docx
 openpyxl==3.1.5           # tools/documents/reader.py — lecture des .xlsx
 python-pptx==1.0.2        # tools/documents/reader.py — lecture des .pptx
@@ -39,6 +45,11 @@ reportlab==4.4.9          # agents/plaquiste/devis_pdf.py — devis a la charte 
                           # Epingle exactement par browser-use 0.13.8 : demander 5.0.1
                           # rendait requirements.txt insoluble. Verifie le 2026-08-28,
                           # suite complete au vert avec 4.4.9.
+graphifyy==0.9.53         # core/connectors/graphify.py — graphe structurel du depot
+                          # (tree-sitter, hors ligne). Nom du paquet PyPI : "graphifyy"
+                          # (deux "y"), commande installee : "graphify". Extra [pdf]
+                          # volontairement PAS installe : l'ingestion de documents dans
+                          # le graphe n'est pas branchee ici (DEC-0046).
 
 # Non liste ici, et volontairement :
 # - ffmpeg : binaire systeme, pas un paquet pip (voir Dockerfile)

@@ -61,7 +61,7 @@ def test_une_valeur_tres_courte_est_entierement_masquee():
 
 def test_le_motif_librechat_isole_la_cle():
     fichier, motif = purge.EMPLACEMENTS[0]
-    contenu = '      apiKey: "valeur-secrete-ici"\n      baseURL: "http://x"\n'
+    contenu = '      apiKey: "valeur-secrete-ici"\n      baseURL: "http://x"\n'  # scanner-secrets: ignore
 
     assert fichier == "librechat.yaml"
     assert motif.findall(contenu) == ["valeur-secrete-ici"]
@@ -112,7 +112,7 @@ def depot_git(dossier: Path, commits: list[tuple[str, str]]) -> Path:
 def test_une_cle_versionnee_puis_retiree_est_retrouvee(tmp_path):
     """Le cas réel : la valeur ne figure plus dans le fichier, mais reste dans l'historique."""
     depot = depot_git(tmp_path / "depot", [
-        ("librechat.yaml", 'endpoints:\n  custom:\n    - apiKey: "cle-fuitee-2099"\n'),
+        ("librechat.yaml", 'endpoints:\n  custom:\n    - apiKey: "cle-fuitee-2099"\n'),  # scanner-secrets: ignore
         ("librechat.yaml", 'endpoints:\n  custom:\n    - apiKey: "${ARENA_API_KEY}"\n'),
     ])
 
@@ -159,7 +159,7 @@ def test_un_depot_sans_secret_ne_renvoie_rien(tmp_path):
 def test_un_clone_superficiel_est_reconnu(tmp_path):
     """`actions/checkout` n'en récupère qu'un commit : y chercher ne prouve rien."""
     complet = depot_git(tmp_path / "complet", [
-        ("librechat.yaml", 'apiKey: "cle-fuitee-2099"\n'),
+        ("librechat.yaml", 'apiKey: "cle-fuitee-2099"\n'),  # scanner-secrets: ignore
         ("librechat.yaml", 'apiKey: "${ARENA_API_KEY}"\n'),
     ])
     superficiel = tmp_path / "superficiel"
