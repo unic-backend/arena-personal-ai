@@ -2654,3 +2654,54 @@ Un devis adressé à la mauvaise personne reste pire qu'un devis absent.
 Le vrai coût serait de retirer aussi `WRITE_FILES` en croyant continuer cette
 décision : plus rien n'arrêterait l'écriture de fichiers. C'est pour ça qu'un
 test lit désormais le fichier livré.
+
+---
+
+## DEC-0042 — Un scanner de secrets préventif, plutôt qu'un moteur offensif
+
+**2026-09-04.** Demande reçue : intégrer **CyberStrike** — un système de
+sécurité *offensif* (reconnaissance, exploitation active, attaques de mots de
+passe) — comme capacité vivante d'ARENA, câblée et exécutable.
+
+### Ce qui a été refusé, et pourquoi
+
+L'intégration offensive a été **déclinée**. Le livrable aurait été un moteur
+d'attaque opérationnel installé à demeure dans l'assistant personnel d'un
+plaquiste, dont la seule barrière d'autorisation était une case cochée par
+l'utilisateur lui-même. Trois raisons :
+
+1. **L'auto-déclaration n'est pas une autorisation.** « cible autorisée : oui »
+   tapé dans un chat n'est pas une preuve de propriété. C'est l'affirmation que
+   ferait aussi n'importe quel usage abusif. Le propre SECURITY.md de l'outil
+   reconnaît que son système de permissions n'est pas un vrai bac à sable.
+2. **Aucun contexte d'autorisation réel** — pas de mission de pentest, pas de
+   périmètre, pas de labo. Pour du dual-use offensif, ce contexte précis est
+   requis, pas des paragraphes de bonne intention.
+3. **Hors mission.** ARENA est l'assistant métier d'Ousmane (devis, vidéo,
+   documents). Un moteur d'exploitation qui tourne chez lui et qu'un téléphone
+   peut atteindre est un risque permanent pour une capacité que le métier
+   n'utilise pas.
+
+### Ce qui a été fait à la place
+
+De la sécurité **défensive sur le propre code du dépôt** — aucune cible externe,
+aucune ambiguïté sur la propriété : `scripts/scanner_secrets.py`, qui attrape un
+secret **avant** qu'il entre dans un commit. Il complète
+`preparer_purge_secrets.py` sans le doubler : la purge nettoie les six secrets
+**déjà connus** de l'historique, à des emplacements codés en dur ; le scanner
+regarde ce qui est **suivi maintenant**, n'importe où, et refuse qu'un *nouveau*
+secret franchisse le prochain commit. Haute confiance seulement (clés PEM,
+AWS/Google/Slack/GitHub à leur préfixe, affectations `api_key = "..."` à
+entropie réelle), valeurs masquées, sortie non nulle dès qu'il trouve — utilisable
+comme garde avant commit ou en CI. Le vrai dépôt revient propre, et un test
+(`test_le_vrai_depot_est_propre`) le maintient tel.
+
+### Ce que ça coûte si c'est faux
+
+Un scanner trop bavard finit ignoré, et c'est pire que pas de scanner : d'où la
+règle « haute confiance seulement » et le marqueur explicite
+`# scanner-secrets: ignore` pour les rares fixtures de test de forme secrète,
+visible en revue. Un scanner trop discret laisse la fuite entrer : quatre
+sabotages (scanner aveugle, entropie neutralisée, marqueur ignoré, masque qui
+révèle) ont chacun fait échouer un test avant livraison. Il ne remplace pas la
+purge de l'historique, qui reste préparée et jamais autorisée (DEC-0007).
