@@ -118,3 +118,11 @@ tools/vision/faceplugin/
 # son installeur. La notice MIT voyage avec le moteur, dans son propre
 # LICENSE, jamais separee de lui.
 tools/design/ui_ux_pro_max/
+
+# --- Graphify : graphe structurel du depot, jamais commite ----------------
+#
+# graph.json/graph.html/GRAPH_REPORT.md a la racine sont GENERES par la
+# capacite "construire" (DEC-0046) : un cache local qui peut nommer chaque
+# fonction et fichier du depot. Rien de secret en soi, mais rien d'utile a
+# versionner non plus — reconstruit en une commande, chez qui en a besoin.
+graphify-out/

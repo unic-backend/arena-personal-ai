@@ -195,6 +195,14 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     export:      {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
 
+  # Graphify : le graphe structurel du depot (DEC-0046). Interroger un graphe
+  # deja construit ne touche a rien — meme lecture que `takeoff.read`.
+  # Construire ecrit graphify-out/ (graph.json, graph.html, GRAPH_REPORT.md) :
+  # coupe-circuit WRITE_FILES, comme toute ecriture de ce depot.
+  graphify:
+    read:        {decision: ALLOWED,      risque: LOW}
+    document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail

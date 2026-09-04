@@ -2901,3 +2901,94 @@ maintenant aussi par `auditer_surface_publique.py` (comportemental, sur
 la vraie méthode). Le risque fermé est pour la prochaine route ajoutée sans
 sa dépendance : l'ancien script l'aurait laissée passer pour un `POST`, en
 silence.
+
+---
+
+## DEC-0046 — Graphify : le graphe structurel du dépôt, pas un second RAG
+
+**2026-09-04.** Demande directe : intégrer Graphify (Graphify-Labs,
+Apache-2.0) comme capacité de graphe de connaissances/intelligence
+documentaire d'ARENA — codebase mapping, requêtes structurelles, PDF/document
+understanding.
+
+### Ce qui a été vérifié avant d'écrire une ligne
+
+`https://github.com/Graphify-Labs/graphify` cloné et inspecté pour de vrai
+(révision `33362d9`, 2026-08-30) : Apache-2.0 confirmé sur CETTE révision,
+paquet PyPI normal (`graphifyy`), Python pur, extraction 100% locale par
+tree-sitter — aucun appel modèle nécessaire à la construction du graphe.
+Détail complet : `docs/audits/graphify_audit.md`.
+
+**Un doublon a été évité en premier.** `tools/rag/graphrag_tool.py`
+(Microsoft GraphRAG, déjà câblé et atteint depuis `chat.py`/
+`openai_gateway.py`) existait déjà. Vérifié avant d'ajouter quoi que ce
+soit : GraphRAG résume des DOCUMENTS déposés à la main dans un espace de
+travail Docker (communautés d'idées, recherche globale) ; Graphify
+cartographie la STRUCTURE DU CODE, par lecture directe des fichiers
+(entités, relations, plus court chemin). Deux fonctions distinctes, jamais
+fusionnées.
+
+### Ce qui a été intégré
+
+`core/connectors/graphify.py` — un `Connecteur` comme les autres (même
+contrat que `DevisConnector`, `ConnecteurOpenTakeoff`) : cinq capacités,
+`construire` (écrit `graphify-out/`, sous `WRITE_FILES`) et quatre lectures
+(`interroger`, `chemin`, `expliquer`, `hubs`, `ALLOWED`). Déclaré dans le
+registre (`apps/backend/runtime.py`) et la politique de permissions
+(`config/permissions_services.yaml`, service `graphify`) — aucun second
+registre, aucun second système de permissions.
+
+Ce que ça cartographie : **le dépôt lui-même**, par défaut. Le trou réel
+mesuré le 04/09/2026 : `PROJECT_MEMORY/PROJECT_MAP.md` est écrit et tenu à
+jour **à la main**, sans rien qui vérifie qu'il correspond encore au code.
+Le graphe répond à des questions structurelles en quelques secondes, sans
+relire tout le dépôt.
+
+### Le vrai piège du contrat `Connecteur`, trouvé en écrivant les tests
+
+`_conduire()` (`core/connectors/base.py`) refuse **toute** capacité tant
+que `sonder()` ne rend pas OPERATIONNEL — y compris la capacité qui
+construirait le graphe elle-même. Une première version de `sonder()`
+rendait NON_CONFIGURE tant qu'aucun `graph.json` n'existait : `construire`
+ne pouvait alors JAMAIS s'exécuter au tout premier appel — le même piège
+qu'évaluer la santé d'un four à sa première cuisson. Corrigé pour mesurer
+l'ENGIN (le binaire `graphify` est-il installé ?), jamais son historique de
+sorties — la même règle qu'OpenTakeoff. L'absence de graphe reste dite,
+dans le message, informative ; chaque lecture la vérifie elle-même avant
+d'agir.
+
+### Mesuré pour de vrai, sur ce dépôt
+
+```
+python -c "from core.connectors.graphify import ConnecteurGraphify; \
+c = ConnecteurGraphify(); print(c.executer_confirmee('construire'))"
+→ 13338 noeud(s), 25839 lien(s), 13,9 s (tree-sitter, sans modele)
+```
+
+« quel connecteur gère le devis PDF ? », « qu'est-ce qui hérite de
+Connecteur ? », les hubs architecturaux (`Statut`, `PlaquisteAgent`,
+`ResultatAction`, `EtatSante`, `OrchestratorAgent`…) — tous corrects,
+détail dans l'audit.
+
+### Ce qui n'a PAS été branché, et pourquoi c'est honnête
+
+L'ingestion de PDF/documents dans le graphe (extra amont `[pdf]`) **n'est
+pas installée** : `SUGGESTION — NON IMPLÉMENTÉE`, rien ne l'a vérifiée sur
+un vrai fichier ici, et une capacité non mesurée ne se simule pas
+(`core/actions/resultat.py`). `tools/documents/reader.py` reste l'unique
+chemin de lecture PDF/DOCX/XLSX/PPTX. Le devis PDF garde
+`core/connectors/devis.py`, inchangé (DEC-0041) — Graphify n'écrit jamais
+de document final. Le serveur MCP dédié (`graphify-mcp`) et tout
+fournisseur LLM (étiquetage sémantique des communautés) ne sont pas
+installés non plus : non vérifiables sur cette machine (pas d'Ollama, pas
+de GPU ici) et non nécessaires à la valeur déjà mesurée.
+
+### Ce que ça coûte si c'est faux
+
+Un graphe qui ment sur sa fraîcheur serait le vrai risque — d'où
+`sonder()` qui ne promet jamais un graphe à jour, seulement que le moteur
+répond. `graphify-out/` (28 Mo, généré) n'est jamais versionné
+(`.gitignore`) : aucune donnée du dépôt n'y est plus exposée qu'elle ne
+l'est déjà dans le code source lui-même — c'est une carte du code, pas une
+fuite d'un secret qu'il contiendrait (le scanner de secrets, DEC-0042, reste
+la garde pour ça).

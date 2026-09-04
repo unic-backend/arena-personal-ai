@@ -45,6 +45,11 @@ reportlab==4.4.9          # agents/plaquiste/devis_pdf.py — devis a la charte 
                           # Epingle exactement par browser-use 0.13.8 : demander 5.0.1
                           # rendait requirements.txt insoluble. Verifie le 2026-08-28,
                           # suite complete au vert avec 4.4.9.
+graphifyy==0.9.53         # core/connectors/graphify.py — graphe structurel du depot
+                          # (tree-sitter, hors ligne). Nom du paquet PyPI : "graphifyy"
+                          # (deux "y"), commande installee : "graphify". Extra [pdf]
+                          # volontairement PAS installe : l'ingestion de documents dans
+                          # le graphe n'est pas branchee ici (DEC-0046).
 
 # Non liste ici, et volontairement :
 # - ffmpeg : binaire systeme, pas un paquet pip (voir Dockerfile)
