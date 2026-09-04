@@ -2522,3 +2522,59 @@ plus tard : la décision n'est pas réversible par une simple suppression.
 
 Ce paragraphe existe parce que c'est la partie vérifiable plus tard, pas parce
 que la décision serait mauvaise. Elle lui appartient.
+
+---
+
+## DEC-0040 — Le serveur permanent est un annuaire, pas un relais
+
+**Date** : 04/09/2026
+**Statut** : accepté
+
+### Le constat, mesuré
+
+Sa demande, mot pour mot : *« à chaque fois que j'allume mon pc je dois changer
+de nouvelle url, il doit être une seule commande qui marche pour toujours »*, et
+*« quand le pc est éteint ça devrait avoir aucun impact »*.
+
+Le tunnel `trycloudflare` tire **un nom au hasard à chaque démarrage**. Son PC
+tourne environ quatre heures par jour : il recopiait une adresse dans son
+téléphone presque tous les jours.
+
+### La décision
+
+Le téléphone ne connaît qu'**une adresse** : le serveur permanent. Le PC y
+dépose l'adresse du jour au démarrage ; le téléphone la demande, puis parle
+**directement** à la machine.
+
+**Le serveur permanent ne voit passer qu'une chaîne de caractères.** C'est ce
+qui distingue ce montage d'un relais, et c'est ce qui permet à sa machine de
+faire tourner Dioumtoukay et la vidéo : la conversation ne transite pas par
+l'hébergeur. DEC-0002 tient — le modèle tourne chez lui, rien ne part chez un
+tiers quand sa machine répond.
+
+Trois gardes, chacune avec sa raison :
+
+- Les deux routes `/machine/adresse` sont derrière la clé API. Sans elle,
+  n'importe qui ferait pointer son téléphone vers une machine choisie par un
+  autre.
+- Les adresses sont essayées **dans l'ordre, jamais en parallèle** : sonder les
+  deux à la fois enverrait un message dehors alors que son PC est seulement
+  lent.
+- Une adresse de plus de douze heures n'est plus servie.
+
+### Ce que ça coûte si c'est faux
+
+La péremption est la garde qui coûte le plus cher à retirer. **`trycloudflare`
+recycle ses noms** : une adresse vieille de plusieurs jours peut pointer sur la
+machine d'un inconnu, à qui le téléphone présenterait sa clé et enverrait ses
+conversations. C'est la seule des trois dont l'absence ne se voit pas — tout
+continue de marcher, avec le mauvais interlocuteur.
+
+Et elle a failli disparaître en silence : en portant `DUREE_DE_VIE` à dix ans,
+les dix-huit tests restaient verts, parce que le test de péremption calculait
+son horodatage **à partir de la constante**. La durée est maintenant épinglée
+par un test à part. **Un test qui suit le code qu'il surveille ne surveille
+rien.**
+
+Si le serveur permanent tombe, le téléphone ne sait plus où est la machine et
+retombe sur ce qu'il a déjà enregistré : il perd la découverte, pas l'usage.
