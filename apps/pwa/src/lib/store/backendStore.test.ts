@@ -290,3 +290,87 @@ describe('le PC s\'eteint pendant l\'usage', () => {
     vi.doUnmock('../activity/remoteTransport');
   }, 20000);
 });
+
+describe('la machine annonce son adresse', () => {
+  beforeEach(() => localStorage.clear());
+
+  /** L'annuaire repond, puis la machine annoncee repond. */
+  function annuaireQuiConnaitLaMachine(adresseMachine: string) {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ presente: true, adresse: adresseMachine }),
+    })));
+  }
+
+  it('le telephone trouve la machine sans qu\'on colle une adresse', async () => {
+    // **Le coeur du besoin** : son tunnel change de nom a chaque demarrage.
+    // Sans ca, il recopiait une adresse plusieurs fois par semaine.
+    annuaireQuiConnaitLaMachine('https://tunnel-du-jour.test');
+    const ping = vi.fn(async (cfg: { url: string }) =>
+      cfg.url.includes('tunnel-du-jour')
+        ? { ok: true, latencyMs: 8, provider: 'ollama' }
+        : { ok: false, latencyMs: 1, error: 'pas lui' });
+    vi.doMock('../activity/remoteTransport', () => ({ pingBackend: ping }));
+
+    const magasin = await magasinFrais();
+    magasin.setState({
+      url: '', urlSecours: 'https://railway.test', apiKeySecours: 'k', enabled: true,
+    });
+    await magasin.getState().test();
+
+    expect(magasin.getState().status).toBe('online');
+    expect(magasin.getState().urlAnnoncee).toBe('https://tunnel-du-jour.test');
+    vi.doUnmock('../activity/remoteTransport');
+    vi.unstubAllGlobals();
+  });
+
+  it('le chat parle a la machine annoncee, pas a l\'adresse de la veille', async () => {
+    // **La garde qui compte.** Sans elle, la sonde reussissait sur la machine
+    // du jour et chaque message partait vers l'adresse enregistree hier.
+    vi.resetModules();
+    const module = await import('./backendStore');
+    module.useBackend.setState({
+      url: 'https://tunnel-d-hier.test', apiKey: 'a',
+      urlSecours: 'https://railway.test', apiKeySecours: 'b',
+      enabled: true, serveurActif: 'principal',
+      urlAnnoncee: 'https://tunnel-du-jour.test',
+    });
+
+    expect(module.activeRemoteCfg()?.url).toBe('https://tunnel-du-jour.test');
+  });
+
+  it('annuaire injoignable : on essaie quand meme ce qu\'on sait', async () => {
+    // Ne pas savoir ou est la machine n'est pas une raison de ne rien tenter.
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('reseau'); }));
+    vi.doMock('../activity/remoteTransport', () => ({
+      pingBackend: vi.fn().mockResolvedValue({ ok: true, latencyMs: 20, provider: 'groq' }),
+    }));
+
+    const magasin = await magasinFrais();
+    magasin.setState({ url: 'https://railway.test', enabled: true });
+    await magasin.getState().test();
+
+    expect(magasin.getState().status).toBe('online');
+    expect(magasin.getState().urlAnnoncee).toBeNull();
+    vi.doUnmock('../activity/remoteTransport');
+    vi.unstubAllGlobals();
+  });
+
+  it('aucune machine annoncee : on retombe sur l\'adresse connue', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, json: async () => ({ presente: false }),
+    })));
+    vi.doMock('../activity/remoteTransport', () => ({
+      pingBackend: vi.fn().mockResolvedValue({ ok: true, latencyMs: 20, provider: 'groq' }),
+    }));
+
+    const magasin = await magasinFrais();
+    magasin.setState({ url: 'https://railway.test', enabled: true });
+    await magasin.getState().test();
+
+    expect(magasin.getState().urlAnnoncee).toBeNull();
+    expect(magasin.getState().status).toBe('online');
+    vi.doUnmock('../activity/remoteTransport');
+    vi.unstubAllGlobals();
+  });
+});

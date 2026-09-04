@@ -2,6 +2,67 @@
 
 ## [Non publié]
 
+### Ajouté — 04/09/2026 — Le téléphone trouve le PC tout seul
+
+Sa demande, mot pour mot : *« à chaque fois que j'allume mon pc je dois
+changer de nouvelle url, il doit être une seule commande qui marche pour
+toujours »*, et *« quand le pc est éteint ça devrait avoir aucun impact »*.
+
+Le problème tenait au tunnel : `trycloudflare` tire **un nom au hasard à
+chaque démarrage**. Pour un PC allumé environ quatre heures par jour, il
+recopiait une adresse dans son téléphone presque tous les jours.
+
+Le montage :
+
+```
+le TÉLÉPHONE ne connaît qu'une adresse : le serveur permanent
+le PC y dépose son adresse du jour au démarrage
+le téléphone la demande, puis parle DIRECTEMENT au PC
+```
+
+**Rien ne transite par le serveur permanent quand la machine répond** — c'est
+ce qui distingue ce montage d'un relais, et c'est ce qui permet à son PC de
+faire tourner Dioumtoukay et la vidéo pendant que le serveur permanent ne voit
+passer qu'une chaîne de caractères. PC éteint, le téléphone retombe sur le
+serveur permanent sans rien changer : les deux adresses restent essayées
+**dans l'ordre, jamais en parallèle**, sinon un message pourrait partir vers
+le nuage pendant que sa machine est seulement lente.
+
+Les deux routes `/machine/adresse` sont derrière la clé API. Sans elle,
+n'importe qui ferait pointer son téléphone vers une machine choisie par un
+autre.
+
+**La garde la moins évidente est la péremption, et c'est la plus
+importante.** `trycloudflare` recycle ses noms : une adresse vieille de
+plusieurs jours peut appartenir à un inconnu, à qui le téléphone présenterait
+sa clé. Au-delà de douze heures, l'adresse n'est plus servie — mieux vaut le
+serveur permanent qu'une machine dont on ne sait plus rien.
+
+**Un sabotage est passé, et c'était celui-là.** En portant `DUREE_DE_VIE` à
+dix ans, les dix-huit tests restaient verts : le test de péremption calculait
+son horodatage **à partir de la constante**, donc il s'élargissait avec elle.
+La durée est maintenant épinglée par un test à part, et l'âge du fichier est
+écrit en dur. Un test qui suit le code qu'il surveille ne surveille rien.
+
+**Un autre défaut, trouvé en passant, était déjà là avant ce travail.**
+`test_surface_api.py` indexait les routes par chemin : deux routes partageant
+un chemin s'écrasaient l'une l'autre, et l'empreinte de l'API n'en gardait
+qu'une. Les méthodes et les dépendances sont maintenant fusionnées.
+
+Enfin, la fixture des tests de route posait `USMAN_API_KEY` par
+`setenv` — une constante lue une seule fois à l'import, donc sans effet dès
+qu'un autre test avait déjà importé le module. Elle passait seule et échouait
+dans la suite complète : la pire des deux façons d'échouer.
+
+Sur sa machine, une seule ligne à ajouter dans `.env` :
+`USMAN_ANNONCE_URL=https://arena-personal-ai-production.up.railway.app`.
+Le lanceur annonce l'adresse au démarrage et **dit si l'annonce a échoué**,
+au lieu de laisser croire que c'est fait.
+
+19 tests Python, 4 tests PWA. Suite complète : 3397 passent, 25 passent côté
+interface.
+
+
 ### Ajouté — 03/09/2026 — Le domaine Railway est autorisé par défaut
 
 Le montage visé par le propriétaire, et c'est lui qui explique ce changement :

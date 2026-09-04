@@ -18,12 +18,12 @@ vraiment.
 
 ```
 python scripts/orphelins.py
-→ 176 modules, 137 atteints. Aucun module réel endormi.   (mesuré le 03/09/2026)
+→ 178 modules, 138 atteints. Aucun module réel endormi.   (mesuré le 04/09/2026)
 ```
 
 C'est la mesure, et elle ne se raconte pas — **elle se refait**. Ce bloc a
 porté « 104 modules, 77 atteints » jusqu'au 03/09/2026, longtemps après que le
-dépôt en compte 176. Un chiffre figé dans le fichier que chaque session lit en
+dépôt en compte 178. Un chiffre figé dans le fichier que chaque session lit en
 premier ne vieillit pas visiblement : il se lit comme l'état du jour. Relance
 la commande plutôt que de recopier ce nombre. **N'ouvre pas une nouvelle phase du
 plan et n'intègre rien de nouveau** : il donne la suite lui-même. Les deux

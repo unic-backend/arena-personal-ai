@@ -34,6 +34,10 @@ interface BackendState {
   apiKeySecours: string;
   /** Laquelle des deux a repondu au dernier essai. `null` = aucune. */
   serveurActif: 'principal' | 'secours' | null;
+  /** L'adresse que la machine a annoncee et qui a repondu. `null` sinon.
+   *  Sans la retenir, la sonde reussissait sur elle et le chat parlait
+   *  quand meme a l'ancienne adresse enregistree. */
+  urlAnnoncee: string | null;
   enabled: boolean;
   status: BackendStatus;
   latencyMs?: number;
@@ -107,6 +111,7 @@ export const useBackend = create<BackendState>((set, get) => ({
   ...load(),
   status: 'local',
   serveurActif: null,
+  urlAnnoncee: null,
 
   setUrlSecours: (urlSecours) => {
     set({ urlSecours });
@@ -154,13 +159,50 @@ export const useBackend = create<BackendState>((set, get) => ({
       return { ok: false as const, dernier };
     };
 
+    // **La machine annoncee passe AVANT tout le reste.**
+    //
+    // Son tunnel change de nom a chaque demarrage : sans cette demande, il
+    // recopiait une adresse dans son telephone plusieurs fois par semaine
+    // (mesure du 03/09/2026). Le serveur permanent sert d'annuaire ; la
+    // conversation, elle, va DIRECTEMENT a sa machine.
+    //
+    // On demande a l'adresse deja connue, quelle qu'elle soit : c'est le
+    // serveur permanent dans le montage vise, et cette demande echoue sans
+    // consequence ailleurs.
+    const annuaire = etat.urlSecours.trim() || etat.url.trim();
+    const cleAnnuaire = (etat.urlSecours.trim() ? etat.apiKeySecours : etat.apiKey).trim();
+    let annoncee: RemoteConfig | null = null;
+    if (annuaire) {
+      try {
+        const res = await fetch(`${annuaire.replace(/\/+$/, '')}/machine/adresse`, {
+          headers: cleAnnuaire ? { Authorization: `Bearer ${cleAnnuaire}` } : {},
+          signal: AbortSignal.timeout(8000),
+        });
+        if (res.ok) {
+          const corps = await res.json() as { presente?: boolean; adresse?: string };
+          if (corps.presente && corps.adresse) {
+            // La cle de SA machine, pas celle de l'annuaire : ce sont deux
+            // serveurs differents, avec deux cles differentes.
+            annoncee = {
+              url: corps.adresse,
+              apiKey: etat.apiKey.trim() || cleAnnuaire || undefined,
+            };
+          }
+        }
+      } catch {
+        // Annuaire injoignable : on continue avec ce qu'on sait deja. Ne pas
+        // savoir ou est la machine n'est pas une raison de ne rien tenter.
+      }
+    }
+
     // **Le principal d'abord, toujours.** C'est sa machine : le modele y
     // tourne chez lui et rien ne part chez un tiers (DEC-0002). Le secours
     // n'est essaye que quand le principal ne repond pas, jamais en parallele
     // — sinon un message pourrait partir dehors alors que son PC etait juste
     // lent a repondre.
     const candidats: Array<{ cfg: RemoteConfig; quel: 'principal' | 'secours' }> = [];
-    if (etat.url.trim()) {
+    if (annoncee) candidats.push({ cfg: annoncee, quel: 'principal' });
+    if (etat.url.trim() && etat.url.trim() !== annoncee?.url) {
       candidats.push({
         cfg: { url: etat.url.trim(), apiKey: etat.apiKey.trim() || undefined },
         quel: 'principal',
@@ -185,6 +227,7 @@ export const useBackend = create<BackendState>((set, get) => ({
           remoteModel: issue.r.model,
           enabled: true,
           serveurActif: quel,
+          urlAnnoncee: cfg.url === annoncee?.url ? cfg.url : null,
           error: undefined,
         });
         persist({ ...get(), enabled: true });
@@ -199,7 +242,7 @@ export const useBackend = create<BackendState>((set, get) => ({
     // change. L'etat, lui, dit la verite du moment.
     set({
       status: 'error', latencyMs: dernier.latencyMs, error: dernier.error,
-      serveurActif: null,
+      serveurActif: null, urlAnnoncee: null,
     });
     return false;
   },
@@ -236,9 +279,16 @@ export const useBackend = create<BackendState>((set, get) => ({
 
 /** effective config used by the chat layer */
 export function activeRemoteCfg(): RemoteConfig | null {
-  const { enabled, url, apiKey, urlSecours, apiKeySecours, serveurActif } =
+  const { enabled, url, apiKey, urlSecours, apiKeySecours, serveurActif, urlAnnoncee } =
     useBackend.getState();
   if (!enabled) return null;
+
+  // **L'adresse annoncee gagne quand c'est elle qui a repondu.** Sans cette
+  // ligne, la sonde reussissait sur la machine du jour et le chat parlait
+  // quand meme a l'adresse enregistree la veille - donc dans le vide.
+  if (urlAnnoncee && serveurActif === 'principal') {
+    return { url: urlAnnoncee, apiKey: apiKey.trim() || apiKeySecours.trim() || undefined };
+  }
 
   // Celui qui a REPONDU a la derniere sonde, pas celui qu'on prefere. Rendre
   // le principal alors que c'est le secours qui repond enverrait chaque

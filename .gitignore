@@ -26,6 +26,9 @@ media/archive/*
 
 # Base de données & Cache
 data/database/*.db
+# L'adresse du jour de la machine du proprietaire : ecrite a chaque
+# demarrage, elle n'a de sens que sur la machine qui l'a ecrite.
+data/database/adresse_machine.json
 # Sauvegardes (scripts/sauvegarder_donnees.py, VOLET « ARENA en ligne » 3.2) :
 # des copies de la meme base, jamais versionnees non plus.
 data/sauvegardes/*.db

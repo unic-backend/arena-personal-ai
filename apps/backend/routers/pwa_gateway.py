@@ -28,12 +28,12 @@ import time
 from datetime import date
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from agents.plaquiste.plaquiste_agent import MetierSuivi
-from apps.backend.config import AGENTS_SPECIALISES
+from apps.backend.config import AGENTS_SPECIALISES, DB_PATH
 from apps.backend.prompts import prompt_avec_methode
 from apps.backend.routers.chat import (
     ChatRequest,
@@ -67,6 +67,7 @@ from core.memory.recuperation import recuperer
 from core.memory.semantique import recuperer_semantique
 from core.production.disponibilite import disponibilite_video
 from core.relecture import relire
+from core.reseau.adresse_machine import AdresseMachine
 from core.security.trust import TrustLevel, wrap
 
 logger = logging.getLogger("usman.backend.pwa")
@@ -759,3 +760,49 @@ async def capacites_disponibles() -> Dict[str, Any]:
     sans dire pourquoi renvoie chercher une panne sans la nommer.
     """
     return {"video": await disponibilite_video(registre, ollama_vision)}
+
+
+#: Ou l'annonce est gardee. A cote de la base : sur Railway c'est le volume
+#: monte sur `/app/data`, donc elle survit a un redemarrage du conteneur.
+_ADRESSE_MACHINE = AdresseMachine(DB_PATH.parent / "adresse_machine.json")
+
+
+class AnnonceMachine(BaseModel):
+    """Ce qu'une machine dit d'elle-meme en arrivant."""
+
+    adresse: str
+    machine: str = ""
+
+
+@router.post("/machine/adresse", dependencies=[Depends(verify_api_key)])
+async def annoncer_machine(annonce: AnnonceMachine) -> Dict[str, Any]:
+    """La machine du proprietaire annonce ou la joindre aujourd'hui.
+
+    **Son PC publie ARENA par un tunnel qui change de nom a chaque
+    demarrage.** Il devait donc recopier une adresse dans son telephone
+    plusieurs fois par semaine (mesure du 03/09/2026). Desormais le PC la
+    depose ici, et le telephone la demande.
+
+    `verify_api_key` n'est pas decoratif : sans lui, n'importe qui pourrait
+    faire pointer son telephone vers une machine choisie par un autre.
+    """
+    try:
+        return _ADRESSE_MACHINE.annoncer(annonce.adresse, annonce.machine)
+    except ValueError as erreur:
+        raise HTTPException(status_code=400, detail=str(erreur)) from erreur
+
+
+@router.get("/machine/adresse", dependencies=[Depends(verify_api_key)])
+async def ou_est_la_machine() -> Dict[str, Any]:
+    """Ou joindre la machine du proprietaire, si on le sait.
+
+    `presente: false` couvre trois cas — jamais annoncee, illisible, ou
+    perimee — et c'est voulu qu'ils se ressemblent : dans les trois, la seule
+    reponse honnete est « je ne sais pas ou elle est ». Le telephone retombe
+    alors sur le serveur permanent au lieu de presenter sa cle a une adresse
+    dont on ne sait plus rien (`trycloudflare` recycle ses noms).
+    """
+    annonce = _ADRESSE_MACHINE.derniere()
+    if annonce is None:
+        return {"presente": False}
+    return {"presente": True, **annonce}

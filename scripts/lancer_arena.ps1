@@ -149,6 +149,52 @@ try {
     Write-Host "  (copiee dans le presse-papier)" -ForegroundColor DarkGray
 } catch { }
 
+# --- Annonce au serveur permanent ---------------------------------------------
+#
+# **Le tunnel change de nom a chaque demarrage.** Sans cette annonce, le
+# proprietaire recopiait une nouvelle adresse dans son telephone chaque fois
+# qu'il allumait sa machine - plusieurs fois par semaine, pour un PC qui
+# tourne environ quatre heures par jour (mesure du 03/09/2026).
+#
+# Le PC depose donc son adresse du jour sur le serveur permanent, et le
+# telephone la demande. Rien ne transite par ce serveur quand la machine
+# repond : il ne sert que d'annuaire.
+#
+# Sans `USMAN_ANNONCE_URL` dans `.env`, rien n'est tente et rien n'est promis.
+$annonceUrl = $null
+$annonceCle = $null
+$fichierEnv = Join-Path $racine ".env"
+if (Test-Path $fichierEnv) {
+    foreach ($ligne in Get-Content $fichierEnv) {
+        if ($ligne -match '^\s*USMAN_ANNONCE_URL\s*=\s*(.+)$') { $annonceUrl = $Matches[1].Trim() }
+        if ($ligne -match '^\s*USMAN_API_KEY\s*=\s*(.+)$')     { $annonceCle = $Matches[1].Trim() }
+    }
+}
+
+if ($annonceUrl -and $annonceCle) {
+    $prefAnnonce = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $corps = @{ adresse = $adresse; machine = $env:COMPUTERNAME } | ConvertTo-Json
+        Invoke-RestMethod -Method Post -Uri "$($annonceUrl.TrimEnd('/'))/machine/adresse" `
+            -Headers @{ Authorization = "Bearer $annonceCle" } `
+            -ContentType "application/json" -Body $corps -TimeoutSec 20 | Out-Null
+        Write-Host "  [ok] adresse annoncee au serveur permanent" -ForegroundColor Green
+        Write-Host "       ton telephone la trouvera tout seul." -ForegroundColor DarkGray
+    } catch {
+        # Une annonce ratee n'empeche pas ARENA de tourner : elle prive
+        # seulement le telephone de la trouver sans copier-coller. On le dit
+        # au lieu de laisser croire que c'est fait.
+        Write-Host "  [X] annonce au serveur permanent impossible." -ForegroundColor Yellow
+        Write-Host "      $($_.Exception.Message)" -ForegroundColor DarkGray
+        Write-Host "      ARENA tourne quand meme - colle l'adresse a la main."
+    } finally {
+        $ErrorActionPreference = $prefAnnonce
+    }
+} else {
+    Write-Host "  (pas d'annonce : USMAN_ANNONCE_URL absente de .env)" -ForegroundColor DarkGray
+}
+
 # Le carre a scanner. Le paquet `qrcode` peut manquer : il n'etait declare
 # nulle part avant le 02/09/2026, donc il n'etait installe chez personne, et
 # un environnement monte avant cette date ne l'aura toujours pas.

@@ -33,6 +33,12 @@ SURFACE_ATTENDUE = {
     # lesquelles la machine branchee tenait (mesure du 03/09/2026).
     # Pas de `limiter_debit` : une lecture d'etat, appelee a chaque
     # ouverture du panneau, ne doit pas consommer le quota des envois.
+    # Ou joindre sa machine aujourd'hui. Son tunnel change de nom a chaque
+    # demarrage ; sans ces deux routes il recopiait une adresse dans son
+    # telephone plusieurs fois par semaine (mesure du 03/09/2026).
+    # `verify_api_key` sur les DEUX : ecrire ferait pointer son telephone
+    # vers la machine d'un autre, lire revelerait ou est la sienne.
+    "/machine/adresse": (["GET", "POST"], ["verify_api_key"]),
     "/agent/capabilities": (["GET"], ["verify_api_key"]),
     "/agent/stream": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/files": (["POST"], ["verify_api_key"]),
@@ -100,7 +106,21 @@ def routes_declarees() -> dict:
     trouvees = {}
     for route in _parcourir(main.app):
         dependances = [d.dependency.__name__ for d in route.dependencies]
-        trouvees[route.path] = (sorted(route.methods - {"HEAD", "OPTIONS"}), dependances)
+        methodes = route.methods - {"HEAD", "OPTIONS"}
+        # **On FUSIONNE au lieu d'ecraser.** Deux decorateurs sur le meme
+        # chemin (`@router.get` et `@router.post`) donnent deux routes
+        # distinctes : avec une affectation, la seconde effacait la premiere
+        # et une methode entiere disparaissait de l'empreinte sans que rien
+        # ne le signale — une route non relue, exactement ce que ce fichier
+        # existe pour empecher (mesure du 03/09/2026, `/machine/adresse`).
+        deja = trouvees.get(route.path)
+        if deja is None:
+            trouvees[route.path] = (sorted(methodes), dependances)
+        else:
+            trouvees[route.path] = (
+                sorted(set(deja[0]) | methodes),
+                sorted(set(deja[1]) | set(dependances)),
+            )
     return trouvees
 
 
