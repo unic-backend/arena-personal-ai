@@ -21,6 +21,7 @@ contenaient. Les trois plus anciens n'avaient pas encore cassé — leurs
 caractères ne tombaient pas dans une chaîne. Ils attendaient la mauvaise
 ligne au mauvais endroit.
 """
+import re
 from pathlib import Path
 
 import pytest
@@ -136,3 +137,33 @@ def test_un_appel_optionnel_neutralise_la_preference_derreur():
     assert "finally" in bloc, (
         "la preference n'est pas rendue : une vraie erreur ne bloquerait plus "
         "le reste du script")
+
+
+def test_chaque_reglage_lu_par_un_script_est_documente_dans_env_example():
+    """**Un reglage que personne ne peut decouvrir est un reglage que personne
+    ne mettra.**
+
+    Mesure du 04/09/2026 : `lancer_arena.ps1` lisait `USMAN_ANNONCE_URL` — la
+    ligne sans laquelle le telephone ne trouve pas la machine — et cette
+    variable n'apparaissait nulle part dans `.env.example`. Le seul endroit
+    ou elle etait ecrite etait un message de chat. Un lanceur qui dit
+    « pas d'annonce : USMAN_ANNONCE_URL absente de .env » ne sert a rien si le
+    fichier d'exemple ne la mentionne jamais.
+
+    Le meme defaut a deja coute une consigne fausse (`ALLOWED_ORIGINS` au lieu
+    de `USMAN_ALLOWED_ORIGINS`, 03/09/2026) : quand le nom exact ne vit que
+    dans une conversation, il finit par etre recopie de travers.
+    """
+    exemple = (RACINE / ".env.example").read_text(encoding="utf-8")
+
+    manquantes = {}
+    for script in SCRIPTS:
+        texte = script.read_text(encoding="utf-8", errors="replace")
+        for nom in sorted(set(re.findall(r"USMAN_[A-Z0-9_]+", texte))):
+            if nom not in exemple:
+                manquantes.setdefault(nom, []).append(script.name)
+
+    assert not manquantes, (
+        "Reglage(s) lu(s) par un script mais absent(s) de .env.example : "
+        + ", ".join(f"{nom} ({', '.join(ou)})" for nom, ou in manquantes.items())
+    )
