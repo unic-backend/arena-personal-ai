@@ -229,6 +229,20 @@ services:
   krillinai:
     generate:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
 
+  # Generation d'interface (DEC-0050) : la technique d'OpenUI (prompt ->
+  # HTML/React/Svelte/Web-Component), jamais son serveur. Meme logique que
+  # workflow_guide/devis : le fichier reste local, relu avant d'etre
+  # partage (et jamais execute par ARENA) — ALLOWED sous WRITE_FILES, pas
+  # de confirmation prealable.
+  ui_generate:
+    document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+
+  # Recherche semantique txtai (DEC-0051) : une lecture pure — les documents
+  # sont FOURNIS par l'appelant dans le meme appel, rien n'est persiste, rien
+  # n'est recupere a distance. Meme niveau que Graphify.interroger.
+  txtai_search:
+    read:        {decision: ALLOWED,      risque: LOW}
+
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail

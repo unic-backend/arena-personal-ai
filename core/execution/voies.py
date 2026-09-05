@@ -125,6 +125,9 @@ VOIE_PAR_INTENTION: Dict[str, Voie] = {
     # de design, en tirer des choix, les justifier. Plusieurs passes sur la
     # machine, jamais un aller dehors.
     "DESIGN_UI": Voie.PROFONDE,
+    # Generer du CODE d'interface est une redaction structuree (comme
+    # DESIGN_UI), pas une classification par mots-cles — la voie PROFONDE.
+    "UI_GENERATE": Voie.PROFONDE,
     # Le son ne demande aucun raisonnement au modele : la capacite se
     # choisit par mots-cles et c'est VoiceStudio qui travaille. La voie
     # LEGERE, donc — attendre le modele profond serait du temps perdu.

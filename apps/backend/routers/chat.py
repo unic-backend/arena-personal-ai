@@ -43,6 +43,7 @@ from apps.backend.runtime import (
     subtitle_agent,
     swe_agent,
     trend_agent,
+    ui_agent,
     video_agent,
     video_production_agent,
     vision_agent,
@@ -470,6 +471,10 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         capacite = "design_system" if _veut_un_design_system(request.prompt) else "chercher"
         issue = registre.executer("ui_ux_pro_max", capacite, requete=request.prompt)
         result = _issue_en_reponse(issue)
+    elif intent == "UI_GENERATE":
+        # Generer une interface EN CODE, distinct de DESIGN_UI (decider a
+        # quoi ca doit ressembler, sans rien ecrire) — DEC-0050.
+        result = await ui_agent.run(request.prompt)
     elif intent == "VIDEO_ANALYSIS":
         # « ou en est ma video ? » ne parle d aucun fichier. Reclamer un chemin
         # ici renvoyait une erreur a une question parfaitement claire.

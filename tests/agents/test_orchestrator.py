@@ -502,3 +502,36 @@ class TestNommerUnConnecteurLOuvre:
         agent = OrchestratorAgent(provider=fake_provider, memory=None)
 
         assert agent._classer_par_mots_cles(phrase) == attendu
+
+
+class TestAiguillageUiGenerate:
+    """DEC-0050 : generer le CODE d'une interface, distinct de DESIGN_UI
+    (decider a quoi ca doit ressembler, sans rien ecrire)."""
+
+    @pytest.mark.parametrize("phrase", [
+        "Crée une interface moderne de tableau de bord pour une entreprise",
+        "génère une interface de connexion",
+        "code-moi une interface de profil utilisateur",
+        "développe une interface pour afficher mes chantiers",
+        "génère un tableau de bord avec des statistiques",
+        "crée un dashboard pour suivre mes devis",
+        "un composant react pour une carte de profil",
+        "prototype d'interface pour mon appli",
+    ])
+    def test_une_demande_de_generation_va_a_ui_generate(self, fake_provider, phrase):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == "UI_GENERATE"
+
+    @pytest.mark.parametrize("phrase,attendu", [
+        ("quelle palette pour mon site vitrine ?", "DESIGN_UI"),
+        ("améliore l'ux de cette page", "DESIGN_UI"),
+        ("propose-moi une maquette", "DESIGN_UI"),
+        ("écris un script python pour trier des fichiers", "CODE_EXECUTION"),
+        ("fais-moi un devis pour le chantier de Ouakam", "PLAQUISTE"),
+    ])
+    def test_ui_generate_ne_capture_pas_les_voisins(self, fake_provider, phrase, attendu):
+        """Decider a quoi ca doit ressembler (DESIGN_UI), ecrire un script
+        generique (CODE_EXECUTION) et chiffrer un chantier (PLAQUISTE) ne
+        sont pas generer le code d'une interface."""
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == attendu
