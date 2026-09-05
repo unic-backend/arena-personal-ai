@@ -3178,3 +3178,132 @@ plus sous le contrôle d'ARENA. Un garde de chemin inefficace laisserait un
 guide embarquer le contenu d'une clé privée comme si c'était une capture
 d'écran légitime — d'où les deux sabotages ci-dessus, et la correction du
 test qui ne les exerçait pas vraiment.
+
+## DEC-0049 — KrillinAI : traduction/doublage d'une vidéo existante, jamais un second orchestrateur
+
+**2026-09-05.** Demande directe : intégrer KrillinAI (krillinai/KrillinAI)
+comme capacité de traduction/sous-titrage/doublage vidéo dans le workspace
+Video d'ARENA — sous-titres source/cible/bilingues, doublage, rendu
+horizontal/vertical, couverture.
+
+### Ce que le dépôt en amont est devenu, vérifié avant d'écrire une ligne
+
+Cloné réellement (`krillinai/krillinai` @ `346d08bb1f3c61c96301ec130c4db8879b3b8444`,
+05/09/2026) : `krillinai/KrillinAI` a été **renommé `krillinai/OpenCreator`
+et entièrement réarchitecturé** — c'est aujourd'hui un espace de travail
+agent complet (bureau Electron, daemon, harnais, marché de compétences) qui
+utilise **Codex CLI comme moteur d'exécution**. Intégrer ce produit-là
+aurait été construire, mot pour mot, le second orchestrateur/système
+d'agents que cette même mission interdisait. **Ce n'est pas ce qui a été
+branché.**
+
+L'ancien moteur (transcription → traduction → sous-titres → doublage →
+rendu, en ligne de commande) survit intact sous `runtime/krillinai/` à
+l'intérieur du même dépôt : un module Go indépendant (`krillin-ai`), huit
+commandes réelles (`subtitle`, `tts`, `speech`, `render-horizontal`,
+`render-vertical`, `cover`, `pipeline`, `voices`), une sortie JSON
+structurée par ligne, un manifest (`krillinai_manifest.json`). **Compilé
+pour de vrai dans cette session** (`go build -o krillinai-cli ./cmd/cli`,
+Go 1.24) — le binaire fonctionne, chaque commande a été exercée en
+`--dry-run` et les JSON réels ont servi de fixtures aux tests, jamais
+inventés.
+
+### La licence a changé de valeur en cours de route
+
+Le README d'OpenCreator affiche Apache-2.0 ; `runtime/krillinai/LICENSE`
+(vérifié directement, pas supposé) est **GPL-3.0-only**. `LICENSE` d'ARENA
+est « All rights reserved » — même raisonnement déjà tenu pour VoiceStudio
+(AGPL-3.0, `core/connectors/audio_voix.py`) : importer ou copier du code
+GPL romprait cette licence. La frontière retenue est identique — **aucune
+ligne du moteur n'entre dans `core/connectors/krillinai.py`** ; il tourne
+comme binaire compilé à part, jamais vendu, jamais téléchargé par ARENA,
+localisé par `KRILLINAI_CLI_BIN` (variable d'environnement) ou le PATH,
+absent → `NON_CONFIGURE` avec la commande de compilation à lancer.
+
+### Ce qui a été intégré
+
+`core/connectors/krillinai.py` (`ConnecteurKrillinAI`, six capacités :
+`subtitle`/`tts`/`render_horizontal`/`render_vertical`/`cover`/`pipeline`),
+câblé dans `core/production/plan_video.py` (`CAPACITES_VIDEO`,
+`CAPACITES_ECRITURE`) sous cinq noms préfixés (`krillin_subtitle`,
+`krillin_tts`, `krillin_render_horizontal`, `krillin_render_vertical`,
+`krillin_cover`) et dans `agents/video/production_agent.py`
+(`_appeler_krillin`, registre-médié comme Xaar Kaname). Permission unique
+`krillinai.generate = CONFIRMATION, MEDIUM, WRITE_FILES`
+(`config/permissions_services.yaml`) — même traitement que
+`video_generation.generate` (WanGP/MoneyPrinterTurbo/Xaar Kaname) : une
+génération reste une génération, jamais confirmée à la place du
+propriétaire. Interface PWA (`videoProjectStore.ts`, `VideoProjectModal.tsx`)
+et rapport de disponibilité (`core/production/disponibilite.py`) mis à
+jour en même temps — un test existant (`test_capacites_video_pwa.py`)
+vérifie que ces trois listes ne peuvent pas diverger.
+
+### Quatre gardes, sabotage-vérifiées
+
+1. **Jamais de clonage vocal.** `--voice-clone-source` (un vrai drapeau du
+   moteur amont, vérifié dans son code) n'est ni lu ni transmis, à aucun
+   niveau (connecteur, agent) — même fourni explicitement. Instruction du
+   propriétaire, antérieure et absolue : *« si tu vois quelque chose de
+   nouveau [près du deep face], ignore-le, ne le touche même pas »* — le
+   clonage vocal est la même famille de risque que Xaar Kaname
+   (Deep-Live-Cam), et cette frontière ne se négocie pas capacité par
+   capacité, quelle que soit la qualité de l'architecture proposée autour.
+2. **Jamais une seconde transcription locale.** `caption_source` refuse
+   `"whisper"`/`"auto"`/`"openai"`/`"aliyun"` : ARENA transcrit déjà
+   (FasterWhisper). Seuls `"manual"` (transcription ARENA fournie) et
+   `"platform"` passent.
+3. **Jamais un téléchargement d'URL implicite.** Une entrée `subtitle` en
+   URL exige `autoriser_telechargement=True` explicite — même logique que
+   GitIngest (DEC-0047) pour une URL distante.
+4. **Jamais un binaire média téléchargé en silence.** `ffmpeg`/`ffprobe`/
+   `yt-dlp` sont exigés déjà présents sur le PATH (vérifié : le moteur
+   amont les télécharge lui-même s'il ne les trouve pas — code source lu,
+   `internal/deps/checker.go`) ; ARENA refuse tout appel réel s'ils
+   manquent, plutôt que de laisser le moteur les récupérer seul.
+
+Les quatre gardes ont été sabotées puis restaurées ; la première tentative
+sur le garde de transcription a d'abord révélé un test qui passait pour la
+MAUVAISE raison ailleurs dans cette session (workflow_guide, DEC-0048) —
+pas ici : chaque sabotage de ce module a produit un échec réel dès le
+premier essai.
+
+### `pipeline` existe, et n'est délibérément pas composable
+
+La capacité `pipeline` du moteur amont est implémentée et testée dans le
+connecteur — mais **volontairement absente de `CAPACITES_VIDEO`** : la
+laisser composable par le graphe ARENA laisserait le moteur amont composer
+ses propres étapes à la place du planificateur, exactement le second
+orchestrateur que la mission interdisait elle-même. La composition
+(sous-titres → doublage → rendu) reste au graphe ARENA, une étape
+confirmée à la fois — comme `krillin_tts`/`krillin_render_*` le
+documentent : ils prennent un CHEMIN déjà confirmé, jamais un index de
+référence, précisément parce que le fichier d'une étape d'écriture
+antérieure n'existe qu'après confirmation du propriétaire, jamais dans le
+même passage (même principe que `montage` face à `wangp`/`moneyprinter`,
+DEC-0037).
+
+### Ce qui reste `UNKNOWN`, honnêtement
+
+Ce conteneur cloud n'a ni ffmpeg, ni ffprobe, ni yt-dlp, ni clé API de
+traduction/TTS/image configurée — mesuré, pas supposé
+(`shutil.which` sur les trois, vide). Une génération réelle bout en bout
+(un vrai MP4 sous-titré/doublé) n'a donc pas pu être vérifiée ici, seulement
+son contrat (`--dry-run`, JSON réel capturé) et ses erreurs de
+configuration absente. Comme la phase 7.2 (`docs/CURRENT_TASK.md`), la
+mesure réelle attend la machine du propriétaire — où ffmpeg est déjà
+présent (`tools/video/ffmpeg_tool.py` en dépend) et où le binaire devra
+être compilé une fois (`go build -o krillinai-cli ./cmd/cli`).
+
+### Ce que ça coûte si c'est faux
+
+Une capacité `krillin_tts` qui accepterait `voice_clone_source` sans le
+filtrer construirait, sur commande, une voix synthétique d'une personne
+réelle — exactement le risque que Xaar Kaname porte déjà pour un visage, et
+que le propriétaire a explicitement mis hors de portée de cette
+intégration. Un garde de transcription absent chargerait un second modèle
+Whisper sur une carte qui n'en tient qu'un à la fois (RTX A2000, 12 Go) —
+lenteur, pas casse, mais un doublon que la mission elle-même interdisait.
+Une capacité `pipeline` laissée composable referait, une étape de plan à la
+fois, exactement le second orchestrateur que ce dépôt refuse depuis le
+début de cette session (Hermes, Open-R1, MengTo/Kage, l'espace de travail
+OpenCreator lui-même).

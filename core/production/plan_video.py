@@ -19,8 +19,20 @@ from core.production.etat_projet import EtapeProjet
 #: file de confirmation existante (`core/actions/attente.py`, verrouillee) —
 #: rien n'est confirme a la place du proprietaire. « montage » assemble ce
 #: que les etapes precedentes ont reellement produit.
+#:
+#: Les cinq « krillin_* » (DEC-0049) traduisent/doublent une video DEJA
+#: FOURNIE — jamais une seconde generation de novo, jamais une seconde
+#: transcription (`krillin_subtitle` exige une transcription DEJA FAITE par
+#: ARENA, voir `core/connectors/krillinai.py`). Le moteur amont expose aussi
+#: une capacite `pipeline` qui compose ses propres etapes en interne —
+#: **volontairement absente d'ici** : la laisser composable ferait du moteur
+#: amont un second orchestrateur, exactement ce qu'une architecture a un seul
+#: chef d'orchestre interdit. La composition (sous-titres -> doublage ->
+#: rendu) reste au graphe ARENA, une etape a la fois.
 CAPACITES_VIDEO: Tuple[str, ...] = (
     "vision", "transcription", "wangp", "moneyprinter", "narration", "xaar_kaname", "montage",
+    "krillin_subtitle", "krillin_tts", "krillin_render_horizontal", "krillin_render_vertical",
+    "krillin_cover",
 )
 
 
@@ -130,8 +142,13 @@ def valider_graphe(
 #: `preuve` d'une soumission est un identifiant de tache, pas un chemin —
 #: `core/connectors/wan2gp.py`/`moneyprinter.py`), et VoiceStudio n'ecrit
 #: son fichier reel qu'une fois la confirmation passee
-#: (`core/connectors/audio_voix.py`).
-CAPACITES_ECRITURE = frozenset({"wangp", "moneyprinter", "narration", "xaar_kaname"})
+#: (`core/connectors/audio_voix.py`). Les « krillin_* » (DEC-0049) suivent
+#: la meme regle : leur fichier n'existe qu'apres confirmation.
+CAPACITES_ECRITURE = frozenset({
+    "wangp", "moneyprinter", "narration", "xaar_kaname",
+    "krillin_subtitle", "krillin_tts", "krillin_render_horizontal", "krillin_render_vertical",
+    "krillin_cover",
+})
 
 
 def _sans_montage_sur_ecriture_directe(
@@ -196,6 +213,17 @@ Contrats de parametres :
 - xaar_kaname : parametres.source_reference = index de l'image source,
   parametres.target_reference = index de l'image cible.
 - montage : parametres.references = liste d'indices de references ou d'artefacts.
+- krillin_subtitle : parametres.reference = index de la reference video,
+  parametres.langue_origine, parametres.langue_cible (ex: "en", "fr"),
+  parametres.caption_source = "manual" (transcription ARENA deja faite) ou
+  "platform" — jamais "whisper"/"auto", ARENA transcrit deja.
+- krillin_tts : parametres.srt_cible = chemin d'un SRT DEJA confirme
+  (jamais un index de reference — ce fichier n'existe qu'apres confirmation
+  d'une etape krillin_subtitle anterieure, hors de ce plan).
+- krillin_render_horizontal / krillin_render_vertical : parametres.video et
+  parametres.sous_titres = chemins DEJA confirmes (memes raisons que
+  krillin_tts).
+- krillin_cover : parametres.prompt = texte du prompt d'image.
 
 Objectif du proprietaire :
 {objectif}

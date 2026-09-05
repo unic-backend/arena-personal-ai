@@ -246,6 +246,27 @@ class VideoProductionAgent(BaseAgent):
                 return await self._appeler_montage(parametres, references)
             if capacite == "xaar_kaname":
                 return await self._appeler_xaar_kaname(parametres, references)
+            if capacite == "krillin_subtitle":
+                return await self._appeler_krillin(
+                    "subtitle", references,
+                    entree=self._reference(parametres, references),
+                    langue_origine=parametres.get("langue_origine"),
+                    langue_cible=parametres.get("langue_cible"),
+                    caption_source=parametres.get("caption_source"))
+            if capacite == "krillin_tts":
+                return await self._appeler_krillin(
+                    "tts", references, srt_cible=parametres.get("srt_cible"))
+            if capacite == "krillin_render_horizontal":
+                return await self._appeler_krillin(
+                    "render_horizontal", references,
+                    video=parametres.get("video"), sous_titres=parametres.get("sous_titres"))
+            if capacite == "krillin_render_vertical":
+                return await self._appeler_krillin(
+                    "render_vertical", references,
+                    video=parametres.get("video"), sous_titres=parametres.get("sous_titres"))
+            if capacite == "krillin_cover":
+                return await self._appeler_krillin(
+                    "cover", references, prompt=parametres.get("prompt"))
             # valider_graphe() ne laisse jamais passer autre chose que
             # CAPACITES_VIDEO : atteindre ceci serait un bug de ce module,
             # jamais une entree du modele.
@@ -394,6 +415,27 @@ class VideoProductionAgent(BaseAgent):
             resultat = await resultat
         return self._verifie(_depuis_resultat_action(resultat), "xaar_kaname")
 
+    async def _appeler_krillin(self, capacite_krillin: str, references: List[str],
+                               **parametres_krillin: Any) -> Dict[str, Any]:
+        """KrillinAI (DEC-0049), par son connecteur — jamais en direct.
+
+        Meme raisonnement que `_appeler_xaar_kaname` : passer par le registre
+        est ce qui fait respecter `krillinai.generate = CONFIRMATION`
+        (`config/permissions_services.yaml`). `voice_clone_source` n'est
+        jamais lu ici ni transmis plus loin — le connecteur lui-meme
+        (`core/connectors/krillinai.py`) le refuse aussi, en profondeur.
+        """
+        if self.registre is None:
+            raise RuntimeError("aucun registre de connecteurs branche")
+
+        parametres_krillin.pop("voice_clone_source", None)
+        parametres_krillin = {k: v for k, v in parametres_krillin.items() if v is not None}
+
+        resultat = self.registre.executer("krillinai", capacite_krillin, **parametres_krillin)
+        if inspect.isawaitable(resultat):
+            resultat = await resultat
+        return self._verifie(_depuis_resultat_action(resultat), f"krillin_{capacite_krillin}")
+
     async def _appeler_montage(self, parametres: Dict[str, Any],
                                references: List[str]) -> Dict[str, Any]:
         if self.montage_agent is None:
@@ -423,7 +465,9 @@ class VideoProductionAgent(BaseAgent):
         montage reussi — jamais suppose. Une generation/narration seulement
         SOUMISE (`NEEDS_CONFIRMATION`) n'a pas encore de fichier reel."""
         for etape in reversed(graphe):
-            if etape.capacite not in ("montage", "xaar_kaname"):
+            if etape.capacite not in (
+                "montage", "xaar_kaname", "krillin_render_horizontal", "krillin_render_vertical",
+            ):
                 continue
             trace = resultat.trace_de(etape.id)
             if trace is None or trace.resultat is None:
