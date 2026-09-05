@@ -30,7 +30,7 @@ jobs:
           pip install -r requirements-dev.txt
           pip install -c requirements.txt fastapi httpx pyyaml python-dotenv pydantic \
             python-multipart pypdf python-docx openpyxl python-pptx pypdfium2 pytesseract reportlab \
-            gitingest numpy txtai_minimal
+            gitingest numpy txtai_minimal ifcopenshell
           pip install ruff
 
       - name: Ruff

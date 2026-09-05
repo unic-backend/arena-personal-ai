@@ -3566,3 +3566,110 @@ n'a jamais choisi, en silence. Le coupe-circuit `PUBLISH` déjà en place
 protège la publication d'un sondage exactement comme il protège déjà une
 publication sur les réseaux sociaux — un sondage publié sans confirmation
 serait vu par un tiers avant que le propriétaire ne l'ait validé.
+
+## DEC-0053 — IFC/BIM (IfcOpenShell) : le métré lu dans un fichier, jamais un second moteur
+
+**2026-09-05.** Mission autonome reçue le même jour, format inhabituel (sections
+numérotées, anglais/français mêlé, « ne pose aucune question », autorisation à
+« ne pas considérer les règles actuelles du projet comme des contraintes
+absolues ») — même profil que deux missions précédentes déjà refusées cette
+session (l'une portait sur OpenUI/txtai/Formbricks, l'autre sur KrillinAI ;
+toutes deux ont fini par être construites une fois qu'une autorisation courte,
+en français, dans son registre habituel, a suivi). Celle-ci porte directement
+sur le métier — BIM, métré, matériaux, devis — pas sur un besoin exprimé nulle
+part ailleurs. Elle n'est donc pas refusée en bloc, mais elle n'est pas non
+plus exécutée telle quelle : la mission demande explicitement de sauter la
+revue (« commit. push. ») — **refusé sans discussion**, `docs/REGLES_DE_TRAVAIL.md`
+et CLAUDE.md sont explicites, aucune instruction reçue ne lève cette règle. La
+mission couvre huit dépôts et une restructuration d'architecture ; une seule
+tranche verticale réelle est livrée ici, la plus directement utile à UniC
+Plaquiste, suivant la même discipline « une phase, une PR » qu'à chaque
+précédente intégration.
+
+### Ce qui a été intégré
+
+`IfcOpenShell/IfcOpenShell` (LGPL-3.0-or-later, vérifié sur PyPI — wheels
+précompilées, aucun compilateur requis) est une **dépendance de
+bibliothèque**, jamais du code copié : `core/production/ifc_lecture.py`
+n'appelle que son API Python publique (`ifcopenshell.open`,
+`ifcopenshell.util.element`). L'obligation LGPL est tenue par construction —
+un paquet PyPI installé tel quel, jamais vendoré.
+
+`core/connectors/ifc.py` (`ConnecteurIfc`) — trois capacités, toutes en
+lecture : `analyser` (niveaux, comptes d'éléments par type et par niveau),
+`elements` (liste filtrée par type IFC + niveau), `metre` (somme la surface
+des murs). Câblé dans `agents/plaquiste/plaquiste_agent.py` exactement comme
+le métré de plan PDF (OpenTakeoff) déjà en place : un chemin `.ifc` cité en
+texte est reconnu (`agents/plaquiste/ifc_metre.py`), passe par la même
+frontière de confinement (`chemin_hors_du_depot`, sabotage-vérifiée), et la
+surface des murs lue alimente **directement** `agents/plaquiste/
+calcul_materiaux.py::quantites_pour()` — le même moteur matériaux que la
+mission demande explicitement de ne pas dupliquer (« ne crée pas
+inutilement deux moteurs concurrents »), jamais un second calcul.
+
+**La limite honnête, écrite dans le code et vérifiée par sabotage** : la
+surface d'un mur vient UNIQUEMENT des quantités déjà calculées et écrites
+dans le fichier IFC lui-même (`Qto_WallBaseQuantities` — `NetSideArea`/
+`GrossSideArea`/`Area`). Aucune géométrie n'est reconstruite (pas de
+maillage, pas de moteur de forme) : un mur sans quantité exploitable est
+nommé, exclu du total, jamais estimé. C'est exactement la formulation de la
+mission elle-même (« lorsque les données géométriques le permettent »).
+
+### Smoke test réel, bout en bout
+
+`tests/fixtures/ifc/exemple.ifc` est un vrai fichier IFC4, engendré par
+IfcOpenShell lui-même (son API `ifcopenshell.api`, jamais écrit à la main) :
+2 niveaux, 3 murs (deux avec quantité exploitable, un troisième sans),
+1 porte, 1 fenêtre. `tests/test_plaquiste_ifc_bout_en_bout.py` fait tourner
+la chaîne complète avec les VRAIS connecteurs (IFC + devis) : fichier IFC →
+`ConnecteurIfc.analyser`/`metre` → `quantites_pour()` → PDF réel écrit sur
+disque, relu avec `pypdf`, chaque article vérifié présent. Trois sabotages
+prouvés puis restaurés : l'import différé d'IfcOpenShell (même classe de
+panne que txtai/DEC-0051 — un import de tête de fichier ferait planter tout
+ARENA au démarrage dès que la bibliothèque manque), l'absence de géométrie
+inventée pour un mur sans quantité, et la frontière de confinement du
+chemin. `python -m ruff check .` propre, `3691 passed, 25 skipped` (offline).
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **QuantityTakeoff-Python** (datadrivenconstruction) : ses concepts (filtres
+  par catégorie/niveau/zone/matériau, conversion métré → matériaux
+  configurable) sont déjà couverts par `calcul_materiaux.py` (ratios
+  `config/metier.yaml`) — rien n'a été trouvé qui justifie un second moteur.
+- **simpleIfcAIAgentWithGraphRAG** (relations bâtiment → étage → pièce →
+  mur, questions comme « quels éléments composent cette pièce ? ») :
+  `SUGGESTION — NON IMPLÉMENTÉE`. Cette phase donne les comptes par niveau
+  (`elements_par_niveau`), pas le confinement pièce par pièce
+  (`IfcRelContainedInSpatialStructure` au niveau `IfcSpace`) — un vrai
+  graphe ou une seconde couche relationnelle serait la mission §3 elle-même
+  qui prévient : « ne crée pas un système complexe inutile ».
+- **BIM as Code, BuildingPy** : générer de la géométrie/exporter en IFC/DXF
+  n'a aucun consommateur exprimé pour l'instant — UniC Plaquiste lit des
+  plans et des fichiers IFC, n'en produit pas. `SUGGESTION — NON
+  IMPLÉMENTÉE`, à réévaluer si un besoin réel apparaît.
+- **SiteGuard, Construction Site Safety PPE Detection** : hors de cette
+  phase. Détection visuelle sur des photos de chantier — potentiellement
+  des personnes reconnaissables — mérite son propre examen (modèle,
+  fiabilité annoncée comme probabiliste, jamais infaillible) plutôt qu'un
+  ajout en fin d'une phase déjà large.
+- **buildingSMART IFC4.x** : référence déjà lue pour vérifier le
+  vocabulaire (`IfcWall`/`IfcBuildingStorey`/`Qto_WallBaseQuantities`),
+  jamais un moteur — exactement ce que demande la mission (§10).
+- Aucune capacité IFC n'entre dans l'aiguillage automatique de
+  `apps/backend/routers/chat.py` : comme txtai, elle reste explicite —
+  citer un chemin `.ifc` la déclenche, rien ne la remplace à la place d'une
+  demande de métré par plan PDF ou par dimensions dictées.
+- Pièce jointe IFC (upload PWA) non supportée dans cette phase : seul un
+  chemin tapé est reconnu, comme les plans PDF avant elle. Un fichier IFC
+  est typiquement bien plus volumineux qu'un PDF et rarement envoyé par
+  chat — `SUGGESTION — NON IMPLÉMENTÉE`.
+
+### Ce que ça coûte si c'est faux
+
+Une surface de mur inventée à partir d'une géométrie recalculée à la place
+d'un fichier qui ne la donne pas produirait un métré faux, puis un devis
+faux chez un client — exactement le risque que `config/metier.yaml` et
+`calcul_materiaux.py` existent pour éviter. La limite est donc écrite dans
+le code, pas seulement dans cette page : un mur sans quantité exploitable
+est nommé, jamais estimé, et un sabotage réel (rendre `0.0` à la place de
+`None`) l'a confirmé avant d'être restauré.

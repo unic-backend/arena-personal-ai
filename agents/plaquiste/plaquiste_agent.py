@@ -25,6 +25,8 @@ from agents.plaquiste.calcul_materiaux import Calcul, quantites_pour
 from agents.plaquiste.calcul_materiaux import formater as formater_calcul
 from agents.plaquiste.chemins import fichier_metier
 from agents.plaquiste.controle_prix import avertissement, verifier_prix
+from agents.plaquiste.ifc_metre import chemin_dans as chemin_ifc_dans
+from agents.plaquiste.ifc_metre import depuis_analyse, depuis_metre, formater_analyse, formater_metre
 from agents.plaquiste.metre import lire_demande
 from agents.plaquiste.metre_plan import (
     chemin_dans,
@@ -910,6 +912,54 @@ class PlaquisteAgent(BaseAgent):
             "export": export,
         }
 
+    def _analyser_ifc(self, texte: str) -> Optional[Dict[str, Any]]:
+        """Lit un fichier IFC dont le chemin est cite dans le texte, sans rien
+        ecrire — niveaux, comptes d'elements, et la surface des murs telle
+        que le fichier IFC la donne (jamais recalculee).
+
+        Meme frontiere que `_mesurer_le_plan` : un chemin qui tombe dans le
+        depot d'ARENA est refuse, et sans connecteur branche l'etat le dit
+        au lieu de faire semblant de lire le fichier. Seul un chemin TAPE
+        est reconnu dans cette premiere phase — pas de piece jointe IFC,
+        bien plus volumineuse qu'un plan PDF et rarement envoyee par chat.
+
+        Returns:
+            Le compte-rendu, ou `None` quand aucun chemin `.ifc` n'a ete lu
+            dans le texte.
+        """
+        chemin = chemin_ifc_dans(texte)
+        if chemin is None:
+            return None
+        if not chemin_hors_du_depot(chemin):
+            logger.warning("Chemin IFC refuse (dans le depot d'ARENA) : %s", chemin)
+            return {"statut": "REFUSE", "chemin": chemin,
+                    "message": "Ce chemin n'est pas ouvert : il tombe dans le depot d'ARENA."}
+        if self.registre is None:
+            return {"statut": "NOT_CONFIGURED", "chemin": chemin,
+                    "message": ("Je peux chiffrer, pas lire un fichier IFC : aucun "
+                                "connecteur n'est branche sur cet agent.")}
+
+        resultat = self.registre.executer("ifc", "analyser", chemin=chemin)
+        if not resultat.a_eu_lieu:
+            return {"statut": resultat.statut.value, "chemin": chemin, "message": resultat.message}
+
+        analyse = depuis_analyse(chemin, resultat.detail or {})
+        compte_rendu: Dict[str, Any] = {
+            "statut": resultat.statut.value,
+            "chemin": chemin,
+            "resume": formater_analyse(analyse),
+            "comptes": analyse.comptes,
+        }
+
+        resultat_metre = self.registre.executer("ifc", "metre", chemin=chemin)
+        if resultat_metre.a_eu_lieu:
+            metre_ifc = depuis_metre(chemin, resultat_metre.detail or {})
+            compte_rendu["resume_metre"] = formater_metre(metre_ifc)
+            if metre_ifc.surface_m2 > 0:
+                compte_rendu["surface_m2"] = metre_ifc.surface_m2
+
+        return compte_rendu
+
     def _piece_plan_pdf(self, identifiants: Optional[List[str]]):
         """La premiere piece jointe qui porte un PDF, ou None.
 
@@ -1302,6 +1352,37 @@ class PlaquisteAgent(BaseAgent):
                 f"{plan.get('message', '')}\nDis-le-lui tel quel, n'invente aucune surface."
             )
 
+        # Un fichier IFC : LU (pas mesure), niveaux/elements/surface des murs
+        # tels que le fichier les donne deja (mission BIM, 05/09/2026). Jamais
+        # confondu avec le metre de plan PDF ci-dessus : deux sources, jamais
+        # fondues en un seul chiffre. Priorite au metre par dimensions
+        # dictees ou par plan PDF (deja calcules ci-dessus) : `metre is None`
+        # ne recalcule que si rien d'autre n'a deja chiffre ce tour.
+        ifc = self._analyser_ifc(message_actuel)
+        if ifc is not None and ifc.get("resume"):
+            instruction = (
+                f"{instruction}\n\nCE QUE LE FICHIER IFC DONNE (lecture reelle, pas "
+                f"une opinion) :\n{ifc['resume']}\nReprends ces chiffres tels quels ; "
+                "ne recompte rien toi-meme."
+            )
+            if metre is None and ifc.get("surface_m2"):
+                faces = faces_du_mur(user_input)
+                metre = quantites_pour(ifc["surface_m2"], self.metier, faces=faces)
+                source_lu = f"murs IFC de {ifc['chemin']} : {ifc.get('resume_metre', '')}"
+                instruction = (
+                    f"{instruction}\n\n{formater_calcul(metre)}\n\n"
+                    "Ces quantites viennent d'etre calculees a partir de ses ratios "
+                    f"reels, sur une surface LUE dans le fichier IFC (jamais dictee) : "
+                    f"{ifc['surface_m2']:g} m2 (une face, telle que le fichier la "
+                    f"donne) x {faces} face(s). Reprends-les telles quelles : ne les "
+                    "recalcule pas, ne les arrondis pas, n'en ajoute aucune."
+                )
+        elif ifc is not None:
+            instruction = (
+                f"{instruction}\n\nLE FICHIER IFC {ifc['chemin']} N'A PAS PU ETRE LU : "
+                f"{ifc.get('message', '')}\nDis-le-lui tel quel, n'invente aucun element."
+            )
+
         # Un decompte de menuiseries (DEC-0022) : seulement sur demande
         # explicite (DEMANDE_DE_DECOMPTE), jamais parce qu'un plan a ete
         # mesure — mesurer des m2 et compter des portes sont deux demandes
@@ -1428,6 +1509,9 @@ class PlaquisteAgent(BaseAgent):
             # Ce qu'un plan PDF joint a rendu. `None` quand aucun chemin de
             # plan n'a ete lu dans la demande.
             "plan": plan,
+            # Ce qu'un fichier IFC cite a rendu. `None` quand aucun chemin
+            # `.ifc` n'a ete lu dans la demande.
+            "ifc": ifc,
             # Ce qu'un decompte de menuiseries a rendu. `None` quand aucun
             # decompte n'a ete demande (DEMANDE_DE_DECOMPTE).
             "marques": marques,

@@ -66,6 +66,9 @@ numpy==2.4.6              # core/production/txtai_recherche.py — le backend nu
                           # requirements.txt faisait planter la suite offline en CI
                           # (ModuleNotFoundError), invisible en local ou numpy arrivait
                           # deja transitivement par d'autres paquets.
+ifcopenshell==0.8.5       # core/connectors/ifc.py — lecture BIM/IFC (DEC-0053).
+                          # LGPL-3.0-or-later, wheels precompiles (aucun compilateur requis).
+                          # Bibliotheque Python appelee, jamais du code copie.
 
 # Non liste ici, et volontairement :
 # - ffmpeg : binaire systeme, pas un paquet pip (voir Dockerfile)

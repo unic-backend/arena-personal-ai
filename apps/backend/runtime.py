@@ -55,6 +55,7 @@ from core.connectors.galsen import GalsenConnector
 from core.connectors.gitingest import ConnecteurGitIngest
 from core.connectors.gmail import GmailConnector
 from core.connectors.graphify import ConnecteurGraphify
+from core.connectors.ifc import ConnecteurIfc
 from core.connectors.krillinai import ConnecteurKrillinAI
 from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.montage import ConnecteurMontage
@@ -210,6 +211,17 @@ registre.declarer(
     "gitingest",
     lambda: ConnecteurGitIngest(acces=acces, journal=journal, file_attente=file_attente,
                                 crochets=crochets),
+)
+# BIM/IFC (mission BIM/metre/securite chantier, 05/09/2026) : lecture d'un
+# fichier IFC via IfcOpenShell (LGPL-3.0-or-later), en bibliotheque Python
+# jamais en code copie. Complementaire au metre de plan PDF (OpenTakeoff) :
+# un plan PDF est mesure, un fichier IFC est LU — ses quantites (surface des
+# murs) viennent du fichier lui-meme, jamais recalculees par geometrie dans
+# cette phase. Voir core/connectors/ifc.py, DEC-0053.
+registre.declarer(
+    "ifc",
+    lambda: ConnecteurIfc(acces=acces, journal=journal, file_attente=file_attente,
+                          crochets=crochets),
 )
 # Sondages/feedback (DEC-0052) : une instance Formbricks EXTERNE, appelee par
 # son API REST publique — aucune ligne de son code (coeur AGPLv3) n'est
