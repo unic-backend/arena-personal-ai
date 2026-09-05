@@ -50,6 +50,7 @@ from core.connectors.audio_voix import ConnecteurAudioVoix
 from core.connectors.calendrier import CalendrierConnector
 from core.connectors.devis import DevisConnector
 from core.connectors.faceplugin import ConnecteurFaceplugin
+from core.connectors.formbricks import ConnecteurFormbricks
 from core.connectors.galsen import GalsenConnector
 from core.connectors.gitingest import ConnecteurGitIngest
 from core.connectors.gmail import GmailConnector
@@ -209,6 +210,17 @@ registre.declarer(
     "gitingest",
     lambda: ConnecteurGitIngest(acces=acces, journal=journal, file_attente=file_attente,
                                 crochets=crochets),
+)
+# Sondages/feedback (DEC-0052) : une instance Formbricks EXTERNE, appelee par
+# son API REST publique — aucune ligne de son code (coeur AGPLv3) n'est
+# copiee ici, meme frontiere que VoiceStudio. Aucune URL par defaut : sans
+# FORMBRICKS_BASE_URL/API_KEY/WORKSPACE_ID explicitement configures, ce
+# connecteur reste NON_CONFIGURE proprement — ARENA continue de fonctionner.
+# Voir core/connectors/formbricks.py.
+registre.declarer(
+    "formbricks",
+    lambda: ConnecteurFormbricks(acces=acces, journal=journal, file_attente=file_attente,
+                                 crochets=crochets),
 )
 # Traduction/doublage d'une video EXISTANTE (sous-titres, TTS, rendu, cover) :
 # l'ancien moteur KrillinAI, GPL-3.0, appele par sous-processus isole — jamais
