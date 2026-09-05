@@ -6,8 +6,9 @@ Rien n'appelle Ollama : le fournisseur est le double du socle
 import httpx
 import pytest
 
-from agents.vision.vision_agent import QUESTION_PAR_DEFAUT, VisionAgent
+from agents.vision.vision_agent import QUESTION_PAR_DEFAUT, VisionAgent, demande_securite_chantier
 from apps.backend.pieces_jointes import DepotPiecesJointes
+from core.actions.resultat import echec, non_configure, succes
 
 OCTETS_IMAGE = b"\x89PNG\r\n\x1a\n" + b"faux-png-mais-suffit-pour-le-test"
 
@@ -124,6 +125,108 @@ class TestOllamaIndisponible:
 
         assert reponse["status"] == "warning"
         assert "ollama" in reponse["response"].lower()
+
+
+class TestDemandeSecuriteChantier:
+    def test_chantier_declenche(self):
+        assert demande_securite_chantier("analyse cette photo de chantier") is True
+
+    def test_epi_declenche(self):
+        assert demande_securite_chantier("verifie les EPI sur cette image") is True
+
+    def test_une_question_ordinaire_ne_declenche_pas(self):
+        assert demande_securite_chantier("que vois-tu ?") is False
+
+    def test_un_plan_ne_declenche_pas(self):
+        assert demande_securite_chantier("analyse ce plan de construction") is False
+
+
+class FauxRegistreSecurite:
+    """Un registre minimal : capture l'appel a `securite_chantier.analyser`,
+    rend un `ResultatAction` REEL — jamais un dict libre (meme discipline que
+    `agents/ui/ui_agent.py`)."""
+
+    def __init__(self, resultat):
+        self._resultat = resultat
+        self.appels = []
+
+    def executer(self, nom, capacite, **parametres):
+        self.appels.append((nom, capacite, parametres))
+        return self._resultat
+
+
+class TestDetectionSecuriteChantier:
+    async def test_declenchee_sur_demande_chantier_avec_registre(self, provider_factory, depot):
+        piece = depot.deposer("chantier.jpg", OCTETS_IMAGE)
+        provider = provider_factory("Une photo de chantier avec des ouvriers.")
+        resultat = succes(
+            action="analyser", cible="securite_chantier",
+            message="1 personne detectee.", preuve="chantier.jpg",
+            personnes=1, risques=[], resume="1 personne detectee(s) sur chantier.jpg.")
+        registre = FauxRegistreSecurite(resultat)
+        agent = VisionAgent(provider=provider, pieces_jointes=depot, registre=registre)
+
+        reponse = await agent.run(
+            "analyse cette photo de chantier", context={"attachments": [piece.identifiant]})
+
+        assert registre.appels == [
+            ("securite_chantier", "analyser",
+             {"image_base64": piece.image_base64, "nom_fichier": "chantier.jpg"})]
+        assert reponse["securite_chantier"]["personnes"] == 1
+        assert "DÉTECTION SÉCURITÉ" in reponse["response"]
+        assert "1 personne detectee" in reponse["response"]
+
+    async def test_jamais_declenchee_sans_mot_de_securite(self, provider_factory, depot):
+        """Une image quelconque (capture d'ecran, plan) ne doit pas
+        declencher une detection EPI pour rien."""
+        piece = depot.deposer("chantier.jpg", OCTETS_IMAGE)
+        provider = provider_factory("Un mur en BA13.")
+        registre = FauxRegistreSecurite(succes(
+            action="analyser", cible="securite_chantier", message="x", preuve="x"))
+        agent = VisionAgent(provider=provider, pieces_jointes=depot, registre=registre)
+
+        reponse = await agent.run("Que vois-tu ?", context={"attachments": [piece.identifiant]})
+
+        assert registre.appels == []
+        assert reponse["securite_chantier"] is None
+
+    async def test_sans_registre_reste_absente(self, provider_factory, depot):
+        piece = depot.deposer("chantier.jpg", OCTETS_IMAGE)
+        provider = provider_factory("Une photo de chantier.")
+        agent = VisionAgent(provider=provider, pieces_jointes=depot, registre=None)
+
+        reponse = await agent.run(
+            "analyse cette photo de chantier", context={"attachments": [piece.identifiant]})
+
+        assert reponse["securite_chantier"] is None
+        assert "DÉTECTION SÉCURITÉ" not in reponse["response"]
+
+    async def test_non_configure_le_dit_jamais_silencieux(self, provider_factory, depot):
+        piece = depot.deposer("chantier.jpg", OCTETS_IMAGE)
+        provider = provider_factory("Une photo de chantier.")
+        registre = FauxRegistreSecurite(non_configure(
+            action="analyser", cible="securite_chantier", ce_qui_manque="SiteGuard"))
+        agent = VisionAgent(provider=provider, pieces_jointes=depot, registre=registre)
+
+        reponse = await agent.run(
+            "analyse cette photo de chantier, verifie les EPI",
+            context={"attachments": [piece.identifiant]})
+
+        assert reponse["securite_chantier"]["statut"] == "NOT_CONFIGURED"
+        assert "SiteGuard" in reponse["response"]
+
+    async def test_un_echec_le_dit_jamais_invente(self, provider_factory, depot):
+        piece = depot.deposer("chantier.jpg", OCTETS_IMAGE)
+        provider = provider_factory("Une photo de chantier.")
+        registre = FauxRegistreSecurite(echec(
+            action="analyser", cible="securite_chantier", message="SiteGuard injoignable"))
+        agent = VisionAgent(provider=provider, pieces_jointes=depot, registre=registre)
+
+        reponse = await agent.run(
+            "analyse cette photo de chantier", context={"attachments": [piece.identifiant]})
+
+        assert reponse["securite_chantier"]["statut"] == "FAILED"
+        assert reponse["securite_chantier"]["personnes"] is None
 
 
 class TestModeleAbsent:

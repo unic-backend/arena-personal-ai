@@ -3673,3 +3673,108 @@ faux chez un client — exactement le risque que `config/metier.yaml` et
 le code, pas seulement dans cette page : un mur sans quantité exploitable
 est nommé, jamais estimé, et un sabotage réel (rendre `0.0` à la place de
 `None`) l'a confirmé avant d'être restauré.
+
+## DEC-0054 — Sécurité chantier : SiteGuard appelé par HTTP, jamais Ultralytics importé
+
+**2026-09-05.** Deuxième tranche de la mission BIM/métré/sécurité chantier
+(DEC-0053). Section 6 de la mission : détecter personnes/EPI (casque, gilet)
+sur une photo de chantier, présenter le résultat comme une observation
+probabiliste, jamais un verdict.
+
+### Deux dépôts évalués, un choisi pour la licence de son jeu de données
+
+`SiteGuard` (C-Nekopedia/SiteGuard) et `Construction-Site-Safety-PPE-
+Detection` (VoxDroid) sont tous deux MIT, tous deux construits sur
+Ultralytics YOLO. Différence décisive, vérifiée avant d'écrire une ligne :
+les poids livrés par SiteGuard (`yolo26n_ppe.pt`) sont entraînés sur le
+« Construction-PPE dataset », **lui-même AGPL-3.0** — la mission demande
+explicitement (§12) de vérifier « les licences des modèles/datasets
+séparément des licences des dépôts », et faire hériter un fichier de poids
+d'une licence de jeu de données AGPL est un terrain juridique incertain, non
+tranché. Le dépôt VoxDroid, lui, utilise le « Construction Site Safety
+Image Dataset » (Roboflow/snehilsanyal), **CC BY 4.0** — attribution
+seulement, aucune ambiguïté copyleft.
+
+Cela ne change rien à l'architecture retenue : **ARENA n'importe et ne
+redistribue le fichier de poids d'aucun des deux**. Il appelle l'API REST
+déjà exposée par SiteGuard (`POST /api/v1/detection/image`, vérifiée dans
+le code source réel de son dépôt — le gestionnaire de route et le service
+de détection y sont lus directement, pas devinés), exactement comme
+VoiceStudio (AGPL) ou Formbricks (AGPLv3) : une agrégation par appel
+externe, jamais du code copié. La question de licence du dataset VoxDroid
+reste donc annotée ici pour mémoire, sans peser sur ce choix d'architecture.
+
+### La frontière qui compte réellement : Ultralytics est AGPL-3.0
+
+Vérifié sur PyPI : Ultralytics (le paquet `ultralytics`, dont dépendent les
+deux projets pour exécuter YOLO) est **dual-licencié** — AGPL-3.0 pour un
+usage open source, licence Enterprise payante pour un usage propriétaire
+fermé sans les obligations AGPL. ARENA est un logiciel propriétaire
+(`docs/DECISIONS.md` le rappelle pour Formbricks, DEC-0052) et un service
+réseau : importer `ultralytics` directement dans le processus d'ARENA
+exposerait tout le backend aux obligations de mise à disposition du code
+source qu'impose l'AGPL sur un usage réseau — le même risque déjà écarté
+pour VoiceStudio et Formbricks. **`ultralytics` n'entre donc jamais dans
+`requirements.txt` d'ARENA.** SiteGuard reste un programme séparé, installé
+à côté (jamais dans ce dépôt), qu'ARENA appelle par HTTP local — un test
+dédié (`TestJamaisUltralyticsImporte`) vérifie qu'aucune ligne du
+connecteur n'importe `ultralytics` ni `torch`.
+
+### Ce qui a été intégré
+
+`core/production/securite_chantier.py` — traduit le JSON de SiteGuard
+(`detections`, `risks`) en un rapport français, sans recalculer sa logique
+de risque (elle reste côté SiteGuard, ses propres règles). `core/connectors/
+securite_chantier.py` (`ConnecteurSecuriteChantier`) — une capacité
+`analyser` (lecture), `SITEGUARD_BASE_URL` sans défaut (jamais une instance
+distante devinée, DEC-0002), sonde réelle sur `GET /health`.
+
+Câblé dans `agents/vision/vision_agent.py`, pas dans un nouvel aiguillage :
+« analyse cette photo de chantier » route déjà vers `VisionAgent` (la
+garde existante, `VISION`, le prévoit explicitement — « contient
+"chantier" et partirait sinon chez l'assistant devis »). La détection EPI
+est un **second signal, déterministe**, déclenché seulement quand le texte
+porte un mot de sécurité explicite (chantier/EPI/casque/gilet) — jamais sur
+une capture d'écran ou un plan analysés par le même agent — et présenté
+**distinctement** de la description libre de Qwen3-VL, même discipline que
+le décompte de menuiseries face à l'avis visuel dans `plaquiste_agent.py`.
+
+**Le rappel de prudence accompagne chaque rapport, sans exception**
+(vérifié par sabotage) : « une observation probabiliste, jamais une
+certitude ». Aucune image n'est jamais persistée par ce connecteur — elle
+part vers SiteGuard pour la durée de l'appel HTTP, jamais écrite sur disque
+ici, même règle de vie privée que `apps/backend/pieces_jointes.py`.
+
+### Tests et sabotages
+
+`python -m ruff check .` propre, `3720 passed, 25 skipped` (offline). Deux
+sabotages prouvés puis restaurés : le déclencheur de sécurité forcé à
+toujours vrai (`test_jamais_declenchee_sans_mot_de_securite` tombe — une
+capture d'écran aurait déclenché une détection de casque pour rien) ; le
+rappel de prudence retiré du formatage (`test_le_rappel_de_prudence_est_
+toujours_present` tombe — un rapport se lirait comme une certitude).
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **Aucune instance SiteGuard réelle n'a pu être testée** : ni installée ni
+  lancée dans ce conteneur (pas de GPU, pas de `ultralytics`). Les tests du
+  connecteur simulent une instance via un faux client HTTP figé sur son
+  schéma de réponse réel (lu dans son code source, pas deviné).
+- **Vidéo, horodatage, localisation** (mission §6) : cette phase traite une
+  image fixe. Une vidéo demanderait un découpage en trames avec sa propre
+  gestion de débit d'appels vers SiteGuard — `SUGGESTION — NON
+  IMPLÉMENTÉE`.
+- **VoxDroid (dataset CC BY 4.0)** : resté une référence de licence, pas
+  intégré — SiteGuard expose déjà une API REST prête à appeler ; ajouter un
+  second moteur de détection ferait exactement ce que la mission interdit
+  (§11, « pas de services concurrents »).
+
+### Ce que ça coûte si c'est faux
+
+Importer `ultralytics` directement dans ARENA exposerait tout le code
+propriétaire du propriétaire aux obligations réseau de l'AGPL-3.0 — un
+risque juridique réel pour son entreprise, pas seulement une préférence
+d'architecture. Présenter une détection comme une certitude (sans le
+rappel de prudence) pourrait faire ignorer une vérification humaine sur un
+chantier réel — le risque que la mission elle-même signale en toutes
+lettres (§6).

@@ -249,6 +249,12 @@ services:
   ifc:
     read:        {decision: ALLOWED,      risque: LOW}
 
+  # Securite chantier (DEC-0054) : detection EPI sur une photo, appelee via
+  # SiteGuard en local (127.0.0.1 uniquement, jamais un service distant par
+  # defaut). Une lecture, rien n'est ecrit ni publie.
+  securite_chantier:
+    read:        {decision: ALLOWED,      risque: LOW}
+
   # Formbricks (DEC-0052) : sondages/feedback via une instance externe
   # (auto-hebergee de preference, DEC-0002) — jamais du code copie (coeur
   # AGPLv3), toujours par son API REST publique. Lire ses propres sondages/
