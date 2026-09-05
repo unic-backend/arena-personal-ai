@@ -72,7 +72,7 @@ class TestExpurger:
         assert "[masque]" in expurger("Appelle le +221 77 123 45 67")
 
     def test_une_affectation_secrete_a_entropie_haute_est_masquee(self):
-        resultat = expurger('api_key = "Zq7Z-h4T2p-Kw9Rf-Lm3Xv"')
+        resultat = expurger('api_key = "Zq7Z-h4T2p-Kw9Rf-Lm3Xv"')  # gitleaks:allow — fixture, pas un vrai secret
         assert "Zq7Z" not in resultat
         assert "[masque]" in resultat
 
