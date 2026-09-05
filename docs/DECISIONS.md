@@ -3307,3 +3307,98 @@ Une capacité `pipeline` laissée composable referait, une étape de plan à la
 fois, exactement le second orchestrateur que ce dépôt refuse depuis le
 début de cette session (Hermes, Open-R1, MengTo/Kage, l'espace de travail
 OpenCreator lui-même).
+
+## DEC-0050 — OpenUI : la technique de prompt, jamais le serveur qui exige un compte GitHub
+
+**2026-09-05.** Demande directe, après feu vert explicite du propriétaire
+pour reprendre les intégrations mises en attente (OpenUI, txtai,
+Formbricks) : intégrer OpenUI (wandb/openui) comme capacité de génération
+d'interface — décrire, voir généré, en HTML/React/Svelte/Web Component.
+
+### Ce qui a été vérifié avant d'écrire une ligne
+
+Cloné réellement (`wandb/openui` @ `42d7ab4`, 05/09/2026) : contrairement à
+KrillinAI, ce dépôt **n'a pas changé de forme** — toujours Apache-2.0,
+toujours un backend FastAPI + frontend React. Mais son vrai contrat a été
+lu dans le code, pas supposé : `POST /v1/chat/completions`
+(dans le `server.py` du dépôt OpenUI, pas d'ARENA) **exige une session utilisateur**
+(`request.session["user_id"]`, 401 sinon), obtenue par connexion GitHub
+OAuth — sauf en `Env.LOCAL` (le défaut), où `GET /v1/session` provisionne
+un utilisateur local automatiquement. Le serveur tire aussi `weave`
+(télémétrie W&B, gardée locale tant que `WANDB_API_KEY` n'est pas posée —
+vérifié dans `server.py`), `boto3`, `peewee`, `fastapi-sso`.
+
+**Ce qui fait le vrai travail n'est pas ce serveur.** Le prompt qui
+transforme une description en interface vit côté CLIENT, en TypeScript
+(`frontend/src/api/openai.ts::systemPrompt`) : fragment HTML, classes
+Tailwind, variables CSS de thème clair/sombre, images de substitution
+`placehold.co` — envoyé ensuite à n'importe quel modèle compatible OpenAI,
+dont **Ollama**, déjà ce qu'ARENA utilise en local (DEC-0002). Le serveur
+FastAPI n'est qu'un relais générique multi-fournisseurs avec comptabilité
+d'usage et authentification — une doublure de ce qu'ARENA a déjà
+(`ModelProvider`, le routeur de modèles, les permissions).
+
+### Ce qui a été intégré, et pourquoi cette forme
+
+**La technique, jamais les fichiers.** Même discipline que le catalogue de
+specialistes (`core/specialistes/catalogue.py`) et Social Media Skills, plus
+tôt dans cette session : aucune ligne de `frontend/src/api/openai.ts`
+copiée. `core/production/ui_generation.py` reprend le PRINCIPE (fragment
+autonome, Tailwind, variables de thème, images de substitution), en code
+ARENA, avec le modèle local d'ARENA — pas un second serveur à héberger, pas
+de connexion GitHub, pas de dépendance à `weave`/`boto3`/`peewee`.
+
+Séparation identique à Xaar Kaname/KrillinAI dans
+`agents/video/production_agent.py` : `agents/ui/ui_agent.py`
+(`UiGenerationAgent`) appelle le modèle et extrait le code — jamais
+d'écriture directe ; `core/connectors/ui_generate.py`
+(`ConnecteurUiGenerate`) valide et écrit — jamais de génération. Câblé dans
+l'aiguillage réel (`agents/orchestrator/orchestrator_agent.py`,
+`apps/backend/routers/chat.py`) sous une intention nouvelle, `UI_GENERATE`,
+distincte de `DESIGN_UI` (décider à quoi ça doit ressembler, sans rien
+écrire — la capacité existante d'UI/UX Pro Max, inchangée). **Ajoutée aussi
+au prompt de classification du modèle** (`PROMPT_CLASSIFICATION`), pas
+seulement au repli par mots-clés : `DESIGN_UI` lui-même n'y figurait pas et
+n'était donc atteignable que modèle indisponible — corrigé ici pour
+`UI_GENERATE`, pour ne pas répéter la même capacité invisible que la
+mission originelle de ce dépôt (`docs/CURRENT_TASK.md`) a déjà dû corriger
+une fois.
+
+Permission : `ui_generate.document = ALLOWED, WRITE_FILES` — même
+raisonnement que workflow_guide/devis (DEC-0041/0048) : le fichier reste
+local, relu avant d'être partagé, et n'est **jamais exécuté par ARENA**
+(le proprietaire l'ouvre lui-même dans son navigateur, comme n'importe quel
+autre artefact de `media/rendered/`) — pas la CONFIRMATION de
+`video_generation`/`krillinai`, qui couvre un coût de génération externe
+distinct.
+
+### Une garde sabotage-vérifiée
+
+**Aucun script externe hors d'une liste fermée.** Mandat explicite de la
+mission (« contrôle des URLs externes ») : `valider_scripts_externes()`
+refuse l'écriture ENTIÈRE (pas un avertissement à côté d'un fichier quand
+même écrit) si un `<script src="...">` vise un domaine hors de
+`DOMAINES_SCRIPT_AUTORISES` (les mêmes domaines déjà vérifiés pour les
+artefacts de ce système : cdnjs, jsdelivr, le CDN Tailwind, jquery).
+Sabotagé deux fois : une fois en désactivant l'appel du garde (5 échecs
+réels), une fois en affaiblissant la comparaison de domaine en sous-chaîne
+plutôt qu'en égalité exacte (`cdn.tailwindcss.com.attacker.test` serait
+alors passé — un test dédié l'a détecté) ; les deux fois restauré, vert.
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+Aucune image en entrée (décrire une interface à partir d'une capture
+d'écran) : OpenUI le permet, ARENA a déjà une vision locale
+(`ollama_vision`) qui pourrait la servir, mais aucun besoin réel exprimé ne
+le justifiait pour cette première intégration. `SUGGESTION — NON
+IMPLÉMENTÉE`.
+
+### Ce que ça coûte si c'est faux
+
+Un garde de script externe inefficace laisserait une interface générée
+charger un script arbitraire — exécuté dans le navigateur du propriétaire
+le jour où il ouvre le fichier, pas dans ARENA, mais toujours à son
+insu si le domaine n'est jamais montré. Une capacité ajoutée sans être
+câblée dans l'aiguillage réel serait exactement le défaut que la mission
+« réveiller ce qui dort » a déjà corrigé une fois pour neuf modules :
+écrite, testée, et qu'aucune phrase du propriétaire n'atteint.

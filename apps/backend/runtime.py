@@ -26,6 +26,7 @@ from agents.social.social_agent import SocialAgent
 from agents.subtitle.subtitle_agent import SubtitleAgent
 from agents.swe_agent.swe_agent import SWEAgent
 from agents.trend_analyzer.trend_analyzer_agent import TrendAnalyzerAgent
+from agents.ui.ui_agent import UiGenerationAgent
 from agents.video.production_agent import VideoProductionAgent
 from agents.video_analyzer.video_analyzer_agent import VideoAnalyzerAgent
 from agents.vision.vision_agent import VisionAgent
@@ -59,6 +60,7 @@ from core.connectors.montage import ConnecteurMontage
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.stockage_jetons import charger_tout as _charger_jetons_persistants
+from core.connectors.ui_generate import ConnecteurUiGenerate
 from core.connectors.ui_ux_pro_max import ConnecteurUiUxProMax
 from core.connectors.wan2gp import Wan2GPConnector
 from core.connectors.workflow_guide import ConnecteurWorkflowGuide
@@ -216,6 +218,17 @@ registre.declarer(
     "krillinai",
     lambda: ConnecteurKrillinAI(acces=acces, journal=journal, file_attente=file_attente,
                                 crochets=crochets),
+)
+# Generation d'interface : la technique d'OpenUI (prompt -> HTML/React/
+# Svelte/Web-Component), jamais son serveur (connexion GitHub requise,
+# weave/boto3/peewee/fastapi-sso qu'ARENA n'a pas besoin d'heberger). Ce
+# connecteur ne genere rien lui-meme : agents/ui/ui_agent.py appelle le
+# modele, ceci valide (aucun script externe hors liste fermee) et ecrit.
+# Voir core/connectors/ui_generate.py, DEC-0050.
+registre.declarer(
+    "ui_generate",
+    lambda: ConnecteurUiGenerate(acces=acces, journal=journal, file_attente=file_attente,
+                                 crochets=crochets),
 )
 # Montage video : batir une timeline (lecture) et la rendre (ecriture, donc
 # confirmation). Le moteur de rendu est ffmpeg, deja local et compatible avec
@@ -405,6 +418,9 @@ video_production_agent = VideoProductionAgent(
     provider=deep_provider, memory=memory, provider_vision=ollama_vision,
     video_analyzer_agent=video_agent, audio_agent=audio_agent,
     montage_agent=montage_agent, registre=registre)
+# Generation d'interface (DEC-0050) : produire du code d'interface est une
+# redaction structuree (comme le montage/le devis), donc le modele profond.
+ui_agent = UiGenerationAgent(provider=deep_provider, memory=memory, registre=registre)
 
 memory.set_fact("user_profile", "owner", "Ousmane", {"role": "Propriétaire et créateur d'Usman"})
 

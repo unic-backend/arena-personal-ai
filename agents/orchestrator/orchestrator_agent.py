@@ -91,6 +91,7 @@ INTENTIONS = {
     "ATELIER",
     "VISAGE",
     "DESIGN_UI",
+    "UI_GENERATE",
 }
 
 #: Ce qui parle de ses RESEAUX SOCIAUX. Teste avant le metier : « une
@@ -270,6 +271,27 @@ DESIGN_UI = (
     "maquette", "identite visuelle", "identité visuelle",
 )
 
+#: GENERER le CODE d'une interface, distinct de DESIGN_UI (decider a quoi ca
+#: doit ressembler, sans rien ecrire). Exige un verbe de generation combine
+#: a un nom d'interface : "maquette" seule reste DESIGN_UI, jamais confondue
+#: ici (DEC-0050).
+UI_GENERATE = (
+    "genere une interface", "génère une interface",
+    "genere le code d'une interface", "génère le code d'une interface",
+    "cree une interface", "crée une interface",
+    "cree-moi une interface", "crée-moi une interface",
+    "creer une interface", "créer une interface",
+    "code une interface", "code-moi une interface", "codemoi une interface",
+    "developpe une interface", "développe une interface",
+    "genere un tableau de bord", "génère un tableau de bord",
+    "cree un tableau de bord", "crée un tableau de bord",
+    "creer un tableau de bord", "créer un tableau de bord",
+    "genere un dashboard", "génère un dashboard",
+    "cree un dashboard", "crée un dashboard",
+    "composant react", "composant svelte", "web component pour",
+    "page html pour", "prototype d'interface", "prototype d interface",
+)
+
 #: MONTER une video a partir de fichiers qu il possede deja. Distinct de
 #: FABRIQUER_VIDEO (qui GENERE des images depuis un sujet) et de
 #: VIDEO_ANALYSIS : ici les rushes existent, il s agit de les assembler.
@@ -428,6 +450,9 @@ GRAPHRAG        : question sur les liens entre les documents.
 VISION          : comprendre une image, une photo, un plan ou une capture
                   d'écran — décrire, lire un texte qui y figure (OCR),
                   extraire un tableau, analyser un dessin ou un schéma.
+UI_GENERATE     : générer le CODE d'une interface visuelle (page web, écran
+                  d'application, tableau de bord) à partir d'une description —
+                  pas la logique d'un programme, l'apparence d'une interface.
 
 Attention : parler DE code, DE maths ou D'une erreur n'est pas demander d'en produire.
 « Explique-moi le code de la route » est CHAT, pas CODE_EXECUTION.
@@ -618,6 +643,9 @@ class OrchestratorAgent(BaseAgent):
         # application » contient « application » et partirait au code.
         if any(k in text for k in VISAGE):
             return "VISAGE"
+
+        if any(k in text for k in UI_GENERATE):
+            return "UI_GENERATE"
 
         if any(k in text for k in DESIGN_UI):
             return "DESIGN_UI"
