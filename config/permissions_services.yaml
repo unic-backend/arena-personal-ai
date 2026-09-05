@@ -218,6 +218,17 @@ services:
   workflow_guide:
     document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
 
+  # KrillinAI : traduction/doublage/rendu d'une video EXISTANTE (DEC-0049).
+  # Meme traitement que `video_generation.generate` (wangp/moneyprinter/xaar
+  # kaname) : une generation reste une generation, jamais confirmee a la
+  # place du proprietaire — risque MEDIUM (fournisseurs de traduction/TTS/
+  # image externes possibles selon la config du moteur amont), coupe-circuit
+  # WRITE_FILES. Un seul service pour ses six capacites (subtitle/tts/
+  # render_horizontal/render_vertical/cover/pipeline) : toutes ecrivent,
+  # aucune n'est une lecture.
+  krillinai:
+    generate:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail

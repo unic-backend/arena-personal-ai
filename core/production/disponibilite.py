@@ -31,6 +31,11 @@ PAR_CONNECTEUR: Dict[str, str] = {
     "transcription": "audio",
     "xaar_kaname": "xaar_kaname",
     "montage": "montage",
+    "krillin_subtitle": "krillinai",
+    "krillin_tts": "krillinai",
+    "krillin_render_horizontal": "krillinai",
+    "krillin_render_vertical": "krillinai",
+    "krillin_cover": "krillinai",
 }
 
 

@@ -409,3 +409,83 @@ class TestXaarKaname:
                 f"{cle} part en relatif : le moteur le lirait depuis son "
                 "propre dossier, donc a cote du bon fichier")
             assert Path(parametres[cle]).is_file()
+
+
+class TestKrillinAI:
+    """DEC-0049 : traduction/doublage d'une video EXISTANTE — jamais un
+    index de reference pour tts/render (le fichier n'existe qu'apres
+    confirmation d'une etape anterieure), jamais voice_clone_source."""
+
+    async def test_krillin_subtitle_resout_la_reference_et_transmet_les_langues(self, reference):
+        modele = ModeleDouble([
+            '[{"id": "s", "capacite": "krillin_subtitle", '
+            '"parametres": {"reference": 0, "langue_origine": "en", '
+            '"langue_cible": "fr", "caption_source": "manual"}}]'
+        ])
+        registre = RegistreXaarDouble(reponse={"statut": "SUCCESS", "message": "ok",
+                                               "preuve": "srt.srt"})
+
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+        resultat = await agent.run("sous-titre en francais", context={"references": [reference]})
+
+        assert resultat["status"] == "success"
+        appel = registre.appels[0]
+        assert appel["connecteur"] == "krillinai"
+        assert appel["capacite"] == "subtitle"
+        assert appel["parametres"]["entree"] == reference
+        assert appel["parametres"]["langue_origine"] == "en"
+        assert appel["parametres"]["langue_cible"] == "fr"
+
+    async def test_krillin_tts_prend_un_chemin_deja_confirme_jamais_un_index(self):
+        modele = ModeleDouble([
+            '[{"id": "t", "capacite": "krillin_tts", '
+            '"parametres": {"srt_cible": "/chantier/target.srt"}}]'
+        ])
+        registre = RegistreXaarDouble(reponse={"statut": "SUCCESS", "message": "ok",
+                                               "preuve": "audio.wav"})
+
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+        resultat = await agent.run("double la video", context={"references": []})
+
+        assert resultat["status"] == "success"
+        appel = registre.appels[0]
+        assert appel["capacite"] == "tts"
+        assert appel["parametres"]["srt_cible"] == "/chantier/target.srt"
+
+    async def test_krillin_tts_ne_transmet_jamais_voice_clone_source_meme_fourni(self):
+        modele = ModeleDouble([
+            '[{"id": "t", "capacite": "krillin_tts", '
+            '"parametres": {"srt_cible": "/x.srt", '
+            '"voice_clone_source": "/une-voix-a-cloner.wav"}}]'
+        ])
+        registre = RegistreXaarDouble(reponse={"statut": "SUCCESS", "message": "ok",
+                                               "preuve": "audio.wav"})
+
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+        await agent.run("double la video", context={"references": []})
+
+        assert "voice_clone_source" not in registre.appels[0]["parametres"]
+
+    async def test_krillin_render_horizontal_devient_l_artefact_final(self, tmp_path):
+        sortie = tmp_path / "horizontal_bilingual.mp4"
+        sortie.write_bytes(b"video finale")
+        modele = ModeleDouble([
+            '[{"id": "r", "capacite": "krillin_render_horizontal", '
+            '"parametres": {"video": "/chantier/in.mp4", "sous_titres": "/chantier/cible.srt"}}]'
+        ])
+        registre = RegistreXaarDouble(reponse={"statut": "SUCCESS", "message": "ok",
+                                               "preuve": str(sortie)})
+
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+        resultat = await agent.run("rendu horizontal", context={"references": []})
+
+        assert resultat["status"] == "success"
+        assert resultat["projet"]["artefact_final"] == str(sortie)
+
+    async def test_krillin_sans_registre_echoue_honnetement(self):
+        modele = ModeleDouble([
+            '[{"id": "c", "capacite": "krillin_cover", "parametres": {"prompt": "un logo"}}]'
+        ])
+        agent = VideoProductionAgent(provider=modele, registre=None)
+        resultat = await agent.run("genere une couverture", context={"references": []})
+        assert resultat["status"] == "warning"

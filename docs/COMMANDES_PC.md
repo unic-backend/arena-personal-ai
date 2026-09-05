@@ -115,6 +115,21 @@ s'affichait sur une installation entièrement ratée.
 Xaar Kaname (Deep-Live-Cam) n'a pas d'installateur : il s'installe à la main
 dans `tools/video/xaar_kaname/`, hors du dépôt parce qu'il est en AGPL-3.0.
 
+KrillinAI (traduction/doublage vidéo, DEC-0049) non plus, même raison — il
+est en GPL-3.0 : cloner `krillinai/krillinai`, puis compiler seulement
+`runtime/krillinai/` (l'ancien moteur ; le reste du dépôt est devenu
+OpenCreator, un produit différent, non utilisé ici) :
+
+```
+git clone --depth 1 https://github.com/krillinai/krillinai
+cd krillinai/runtime/krillinai
+go build -o krillinai-cli ./cmd/cli
+```
+
+Place ensuite `krillinai-cli` sur le PATH (ou fixe `KRILLINAI_CLI_BIN` sur son
+chemin exact). `ffmpeg`, `ffprobe` et `yt-dlp` doivent déjà être installés —
+ARENA refuse de laisser KrillinAI les télécharger seul.
+
 ---
 
 ## 7. Les modèles Ollama

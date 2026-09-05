@@ -53,6 +53,7 @@ from core.connectors.galsen import GalsenConnector
 from core.connectors.gitingest import ConnecteurGitIngest
 from core.connectors.gmail import GmailConnector
 from core.connectors.graphify import ConnecteurGraphify
+from core.connectors.krillinai import ConnecteurKrillinAI
 from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.montage import ConnecteurMontage
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
@@ -204,6 +205,16 @@ registre.declarer(
 registre.declarer(
     "gitingest",
     lambda: ConnecteurGitIngest(acces=acces, journal=journal, file_attente=file_attente,
+                                crochets=crochets),
+)
+# Traduction/doublage d'une video EXISTANTE (sous-titres, TTS, rendu, cover) :
+# l'ancien moteur KrillinAI, GPL-3.0, appele par sous-processus isole — jamais
+# importe (meme frontiere que VoiceStudio/AGPL, core/connectors/audio_voix.py).
+# Jamais de clonage vocal, jamais une seconde transcription locale : voir
+# core/connectors/krillinai.py, DEC-0049.
+registre.declarer(
+    "krillinai",
+    lambda: ConnecteurKrillinAI(acces=acces, journal=journal, file_attente=file_attente,
                                 crochets=crochets),
 )
 # Montage video : batir une timeline (lecture) et la rendre (ecriture, donc
