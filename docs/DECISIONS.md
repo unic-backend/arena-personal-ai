@@ -3402,3 +3402,94 @@ insu si le domaine n'est jamais montré. Une capacité ajoutée sans être
 câblée dans l'aiguillage réel serait exactement le défaut que la mission
 « réveiller ce qui dort » a déjà corrigé une fois pour neuf modules :
 écrite, testée, et qu'aucune phrase du propriétaire n'atteint.
+
+## DEC-0051 — txtai : un moteur à côté, jamais un second RAG
+
+**2026-09-05.** Dernière des trois intégrations mises en attente (avec
+OpenUI/DEC-0050 et Formbricks) : intégrer txtai (neuml/txtai, Apache-2.0)
+comme capacité de recherche sémantique.
+
+### Ce qu'ARENA a déjà, vérifié avant d'écrire une ligne
+
+Trois systèmes de récupération existent déjà et ont chacun leur rôle :
+`core/memory/semantique.py` (mémoire de conversation retrouvée par le sens,
+embeddings bge-m3 via Ollama local), `tools/rag/lightrag_tool.py` et
+`tools/rag/graphrag_tool.py` (documents déposés par le propriétaire).
+La règle de la mission elle-même est **conditionnelle**, pas un mandat
+d'intégrer coûte que coûte : « NE construis PAS un deuxième RAG... n'utilise
+txtai que lorsque son avantage est démontré » — et démontrer un avantage
+exige un vrai banc de comparaison (pertinence, latence) sur un petit
+jeu de données réel.
+
+### Le blocage réel, honnêtement rapporté
+
+Un vrai banc de comparaison n'a pas pu tourner **dans ce conteneur** :
+`core/memory/semantique.py` mesure déjà, et documente déjà, l'absence
+d'Ollama en cloud — la même limite que la phase 7.2
+(`docs/CURRENT_TASK.md`). Sans embeddings réels, aucune mesure de
+pertinence n'aurait de sens ; en fabriquer une aurait été exactement ce que
+`core/actions/resultat.py` interdit — un chiffre plausible à la place d'une
+mesure. **Donc rien ici ne remplace ni ne route par défaut vers txtai** :
+c'est une capacité réelle, appelable explicitement, jamais activée à la
+place d'un moteur existant. Un test dédié (`test_txtai_n_apparait_dans_
+aucune_intention_du_routeur`) le fige : `apps/backend/routers/chat.py` ne
+cite jamais txtai.
+
+### Ce qui a été intégré, et pourquoi cette forme
+
+**Aucun second modèle d'embeddings.** Installé en `txtai_minimal==9.13.0` —
+la variante officielle du paquet PyPI, vérifiée réellement (téléchargée,
+341 Ko), **sans** `torch`/`transformers`/`faiss` : configuré en
+`method="external"`, le vecteur de chaque texte vient de `embeddings_ollama()`
+(`core/memory/semantique.py`), **la même fonction** que la mémoire de chat
+utilise déjà. Testé pour de vrai (sans Ollama, avec un fournisseur injecté
+déterministe) : un index construit, une vraie requête, un vrai classement
+par score — ce qui est évalué est le moteur d'indexation de txtai
+(`backend="numpy"`, faiss absent), jamais un second modèle sur la RTX A2000.
+
+`core/production/txtai_recherche.py` (la plomberie : construire un index
+éphémère, chercher, jamais persister) ; `core/connectors/txtai_search.py`
+(`ConnecteurTxtaiSearch`, une seule capacité, `rechercher`, une LECTURE —
+rien n'est écrit, rien n'est persisté). Permission :
+`txtai_search.read = ALLOWED, LOW` — même niveau que `graphify.interroger`.
+
+### Deux gardes réelles, sabotage-vérifiées
+
+1. **Un plafond de documents par appel** (`MAX_DOCUMENTS = 200`) — mandat
+   explicite de la mission (§15) : jamais toutes les données du
+   propriétaire transformées en embeddings automatiquement. L'index est
+   reconstruit et jeté à chaque appel, sur les documents FOURNIS dans le
+   même appel, jamais une bibliothèque entière.
+2. **Un embeddings incomplet lève, il ne se complète jamais par un vecteur
+   inventé.** Sabotage réel : désactiver ce garde n'a PAS levé d'exception
+   au même endroit — la vérification a montré que le résultat aurait
+   silencieusement continué avec un index mal formé, plutôt que de
+   confirmer une exception propre plus loin. C'est exactement ce que le
+   sabotage doit révéler : un défaut qui existerait sans bruit.
+
+**Correctif du même bug que GitIngest (DEC-0047), retrouvé avant qu'il ne
+morde ici :** `sonder()` appelait `asyncio.run()` directement — sabotage
+réel confirmé : `RuntimeError: asyncio.run() cannot be called from a
+running event loop`, exactement le message de DEC-0047. Corrigé par le
+même pont par thread dédié, testé depuis une vraie boucle asyncio active
+(`test_sonde_depuis_une_boucle_asyncio_deja_active`).
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+Aucun remplacement de LightRAG/GraphRAG/la mémoire sémantique. Aucun banc
+de comparaison chiffré (pertinence/latence/mémoire, mission §16) : les
+conditions pour le mesurer honnêtement (un Ollama joignable, un vrai corpus)
+n'existent que sur la machine du propriétaire. `SUGGESTION — NON
+IMPLÉMENTÉE` : lancer ce banc une fois qu'Ollama y est joignable, avec les
+deux fournisseurs de vecteurs (celui de la mémoire, celui de txtai) sur le
+MÊME corpus, avant de décider si un remplacement se justifie un jour.
+
+### Ce que ça coûte si c'est faux
+
+Un plafond de documents contourné indexerait, un appel à la fois,
+l'intégralité d'un espace de travail sans que le propriétaire l'ait
+demandé — l'embeddings de toutes ses données, produit silencieusement.
+Un garde d'embeddings incomplet absent laisserait un classement construit
+sur un index mal formé passer pour un résultat fiable, sans que rien ne le
+signale — exactement ce que le sabotage de cette intégration a montré,
+avant que quiconque ne le découvre sur un vrai corpus.

@@ -60,6 +60,7 @@ from core.connectors.montage import ConnecteurMontage
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.stockage_jetons import charger_tout as _charger_jetons_persistants
+from core.connectors.txtai_search import ConnecteurTxtaiSearch
 from core.connectors.ui_generate import ConnecteurUiGenerate
 from core.connectors.ui_ux_pro_max import ConnecteurUiUxProMax
 from core.connectors.wan2gp import Wan2GPConnector
@@ -229,6 +230,18 @@ registre.declarer(
     "ui_generate",
     lambda: ConnecteurUiGenerate(acces=acces, journal=journal, file_attente=file_attente,
                                  crochets=crochets),
+)
+# Recherche semantique txtai (DEC-0051) : un moteur A COTE, jamais un
+# remplacement — ARENA a deja une memoire retrouvee par le sens et deux
+# moteurs de documents (LightRAG, GraphRAG). Aucune branche d'aiguillage
+# automatique ne pointe ici : c'est une capacite explicite, pour un banc de
+# comparaison, jamais appelee a la place d'un moteur existant. Le vecteur
+# vient d'Ollama (embeddings_ollama, deja utilise par la memoire de chat) —
+# aucun second modele. Voir core/connectors/txtai_search.py.
+registre.declarer(
+    "txtai_search",
+    lambda: ConnecteurTxtaiSearch(acces=acces, journal=journal, file_attente=file_attente,
+                                  crochets=crochets),
 )
 # Montage video : batir une timeline (lecture) et la rendre (ecriture, donc
 # confirmation). Le moteur de rendu est ffmpeg, deja local et compatible avec

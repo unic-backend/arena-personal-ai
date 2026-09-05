@@ -54,6 +54,11 @@ gitingest==0.3.1          # core/connectors/gitingest.py — un depot (local ou 
                           # transforme en resume+arbre+contenu (DEC-0047). Extra [server]
                           # volontairement PAS installe : ARENA est deja le serveur, aucun
                           # besoin du serveur web/CLI autonome de GitIngest.
+txtai_minimal==9.13.0     # core/connectors/txtai_search.py — recherche semantique
+                          # explicite, jamais un second RAG (DEC-0051). Nom du paquet PyPI :
+                          # "txtai_minimal" — la variante officielle SANS torch/transformers/
+                          # faiss : le vecteur vient d'Ollama (embeddings_ollama, deja
+                          # utilise par core/memory/semantique.py), jamais un second modele.
 
 # Non liste ici, et volontairement :
 # - ffmpeg : binaire systeme, pas un paquet pip (voir Dockerfile)
