@@ -2992,3 +2992,189 @@ répond. `graphify-out/` (28 Mo, généré) n'est jamais versionné
 l'est déjà dans le code source lui-même — c'est une carte du code, pas une
 fuite d'un secret qu'il contiendrait (le scanner de secrets, DEC-0042, reste
 la garde pour ça).
+
+---
+
+## DEC-0047 — GitIngest : un dépôt transformé en texte, pas un second Graphify
+
+**2026-09-05.** Suite du volet intégration (DEC-0046). Demande directe :
+intégrer GitIngest (coderamp-labs, MIT) comme capacité d'ingestion de
+code/contexte — un dépôt local ou une URL Git transformé en résumé, arbre et
+contenu concaténé, prêt pour un modèle.
+
+### Ce qui a été vérifié avant d'écrire une ligne
+
+`https://github.com/coderamp-labs/gitingest` cloné et inspecté (révision
+`4e259a0`, 2025-08-16) : MIT confirmé, paquet PyPI normal (`gitingest`),
+dépendances légères, API Python publique documentée
+(`ingest_async(source, ...) -> (résumé, arbre, contenu)`). Détail complet :
+`docs/audits/gitingest_audit.md`.
+
+**Un doublon a été cherché en premier** (`tools/coder/repo_engineer_tool.py`,
+utilisé par `RepoEngineerTool`) : c'est un outil d'édition locale
+(`get_tree`/`read_files`/`apply_patch`/`run_tests`) pour un agent SWE, sans
+respect de `.gitignore`, sans ingestion d'URL distante, sans statistiques —
+un rôle différent, pas un doublon. Graphify (DEC-0046) cartographie les
+RELATIONS structurelles du code ; GitIngest donne le CONTENU brut. Les deux
+répondent à des questions différentes, jamais fusionnées.
+
+### Ce qui a été intégré
+
+`core/connectors/gitingest.py` — un `Connecteur` de plus (même contrat que
+`ConnecteurGraphify`/`DevisConnector`) : une capacité, `ingerer`
+(`action=read`, `ALLOWED`, risque **MEDIUM** — pas LOW comme Graphify : une
+URL clone un contenu tiers, potentiellement hostile, même brièvement).
+Déclaré dans le registre existant et la politique de permissions existante
+— aucun second registre, aucun second système de permissions, aucun second
+RAG (LightRAG/GraphRAG gardent leur rôle), aucun générateur de PDF touché.
+
+Le contenu ingéré est traité comme une **donnée**, jamais une instruction —
+la même discipline que partout ailleurs dans ce dépôt pour du texte externe
+(recherche web, e-mails reçus). Le connecteur ne fait qu'extraire et
+rapporter ; il n'interprète jamais ce qu'il lit.
+
+### Deux défauts réels trouvés en écrivant les tests, pas en lisant la doc
+
+1. **Un `GITHUB_TOKEN` égaré dans l'environnement casse une ingestion
+   purement locale.** `resolve_token()` (amont) relit systématiquement cette
+   variable dès qu'aucun jeton n'est fourni explicitement — même pour un
+   répertoire local qui n'en a besoin d'aucun — et lève si sa forme n'est
+   pas celle d'un vrai jeton GitHub. Mesuré dans ce conteneur : un
+   `GITHUB_TOKEN` présent pour une tout autre raison faisait échouer
+   l'ingestion d'un simple dossier de test. `_sans_jeton_errant()` retire la
+   variable le temps de l'appel, sauf si l'appelant fournit lui-même un
+   jeton.
+2. **`asyncio.run()` plante depuis une route déjà async.**
+   `registre.executer(...)` est appelé en clair, sans `await`, depuis des
+   routes FastAPI et des agents déjà `async def` — vérifié
+   (`chat.py`, `plaquiste_agent.py`) : déjà sous la boucle d'uvicorn. Une
+   première version appelait `asyncio.run()` directement, qui y lève
+   `RuntimeError: cannot be called from a running event loop`. Corrigé par
+   un thread dédié (`ThreadPoolExecutor`), sabotage-vérifié : revenir à
+   `asyncio.run()` direct fait échouer le test qui simule ce chemin réel.
+
+### Ce qui protège les chemins locaux sensibles
+
+Un segment de chemin (`.ssh`, `.aws`, `.gnupg`, une clé privée nommée) ou un
+nom de fichier (`.env`, `credentials.json`) refuse l'ingestion avant même
+d'ouvrir quoi que ce soit — vérifié et sabotage-vérifié. `.gitignore`
+protège ce qu'un dépôt exclut lui-même ; ceci protège ce qu'aucun
+`.gitignore` ne verra, parce que le chemin vise directement ce dossier.
+
+### Ce qui n'a PAS été branché, et pourquoi c'est honnête
+
+`include_gitignored=True` n'est exposé nulle part — la contourner
+exposerait exactement ce que la protection ci-dessus empêche.
+`SUGGESTION — NON IMPLÉMENTÉE`. L'ingestion de dépôts privés dépend
+entièrement d'un jeton que l'appelant fournirait explicitement ; ARENA ne
+gère aujourd'hui aucun jeton GitHub propre (vérifié : absent de
+`apps/backend/config.py`) — sans jeton, un dépôt privé échoue proprement,
+jamais un faux succès.
+
+### Blocage de vérification, honnêtement rapporté
+
+L'ingestion d'une URL GitHub réelle n'a pas pu être vérifiée bout en bout
+**depuis ce conteneur** : sa politique réseau renvoie 403 sur un simple
+`curl -I https://github.com/...`, indépendamment de GitIngest. Le code est
+réel et utilise la même fonction vérifiée pour l'ingestion locale ; seule
+cette vérification réseau précise reste bloquée par l'environnement de
+test — voir `docs/audits/gitingest_audit.md`, §7.
+
+### Ce que ça coûte si c'est faux
+
+Une ingestion qui contournerait `.gitignore` ou la protection par chemin
+exposerait des secrets locaux au modèle — d'où les deux protections
+sabotage-vérifiées. Un connecteur qui plante sous une vraie route async
+aurait rendu la capacité inutilisable en production sans qu'aucun test
+mocké ne le révèle jamais — c'est exactement ce que le test simulant la
+boucle active existe pour empêcher.
+
+## DEC-0048 — Guide de procédure : un workflow déjà décrit, rendu en document (pas Mimik)
+
+**2026-09-05.** Demande directe : intégrer Mimik (westpoint-io, MIT) —
+extension navigateur qui capture en direct les clics, le DOM et des
+captures d'écran d'une session utilisateur pour produire automatiquement
+un guide de procédure.
+
+### Ce qui a été refusé, et pourquoi
+
+La capture en direct elle-même : ARENA n'a ni extension navigateur ni
+pipeline d'enregistrement de session, et en construire un pour observer ce
+que le propriétaire fait sur son écran est une surface de captation
+nouvelle — pas un outil de lecture — sans aucun besoin réel exprimé pour
+la justifier. Un premier refus a porté sur l'intégration entière ; le
+propriétaire a corrigé : ce n'était pas la demande. Il ne voulait pas de
+surveillance de navigateur, seulement recevoir un workflow **déjà écrit**
+(étapes, captures d'écran déjà existantes, fournies en paramètre) et le
+transformer en document — la partie qui restait après avoir retiré la
+capture en direct était raisonnable, et c'est elle qui a été construite.
+
+### Ce qui a été intégré
+
+`core/production/workflow_guide.py` (modèle de données `Workflow`/`Étape`,
+rédaction, quatre rendus) et `core/connectors/workflow_guide.py`
+(`ConnecteurWorkflowGuide`, une capacité `generer`) — même contrat que les
+connecteurs précédents, déclaré dans le registre et la politique
+existants. **Aucun second moteur** : le PDF passe par reportlab (déjà
+utilisé par `agents/plaquiste/devis_pdf.py`), le DOCX par python-docx
+(déjà une dépendance, jusqu'ici seulement lue par `tools/documents/reader.py`
+— écrire est une capacité de la même bibliothèque). Même logique que le
+devis (DEC-0041) pour la permission : le fichier reste local, relu avant
+d'être partagé — `ALLOWED` sous le coupe-circuit `WRITE_FILES`, pas de
+confirmation préalable.
+
+Deux protections, sabotage-vérifiées :
+
+1. **Rédaction du texte avant mise en page** (`expurger()`) — masque ce qui
+   ressemble à un email, un téléphone, une carte, ou une valeur secrète
+   (affectation `clé = valeur` à haute entropie), avant qu'un mot n'entre
+   dans un fichier produit.
+2. **Chemin de capture d'écran gardé comme celui de GitIngest** — un
+   segment (`.ssh`, `.aws`, `.gnupg`, une clé privée nommée) ou un nom de
+   fichier (`.env`, `credentials.json`) refuse l'inclusion avant même
+   d'ouvrir le fichier ; une capture refusée est signalée et ignorée, elle
+   ne fait jamais échouer tout le rendu.
+
+### Deux défauts réels trouvés en écrivant les tests, pas en lisant la doc
+
+1. **`Image(kind="proportional")` de reportlab exige largeur ET hauteur**
+   pour calculer un ratio — lui passer `height=None` lève un `TypeError`
+   dès la mise en page. Corrigé en lisant la vraie dimension du fichier via
+   Pillow (déjà une dépendance transitive) avant de construire l'image.
+2. **Le caractère de masquage plein (█, U+2588) n'existe pas dans
+   l'encodage WinAnsi** de la police Helvetica par défaut de reportlab — un
+   PDF réel relu avec `pypdf` le rendait comme `■` (U+25A0), un caractère
+   différent. La propriété de sécurité tenait déjà (le texte réel avait
+   disparu), mais le masque affiché était imprévisible. Remplacé par
+   `[masque]`, en Latin-1 pur.
+
+### Ce que le sabotage a trouvé sur les *tests*, pas sur le code
+
+Sabotaged le garde de segment interdit (`.ssh`/`.aws`/`.gnupg`/...) en le
+désactivant : la suite est restée verte. Cause : les chemins d'exemple
+(`~/.ssh/id_rsa`) échouaient déjà sur deux autres filtres indépendants
+(fichier inexistant, extension non image) — le test « passait » sans que
+le garde de segment ne soit jamais exercé. Corrigé en isolant le garde :
+une vraie image PNG, existante, dans un dossier au nom interdit. Re-sabotage
+: 5 échecs réels ; restauration : vert. C'est exactement le risque que
+CLAUDE.md décrit — un test qui passe pour la mauvaise raison est pire que
+l'absence de test, et seul le sabotage l'a montré.
+
+### Ce qui n'a PAS été implémenté, et pourquoi c'est honnête
+
+- **Aucune capture en direct.** Voir plus haut — c'est la partie refusée,
+  documentée ici plutôt que silencieusement abandonnée.
+- **Aucune rédaction du CONTENU d'une image.** Une capture d'écran fournie
+  est embarquée telle quelle ; masquer ce qu'elle montre exigerait de la
+  vision/OCR, non implémenté. `SUGGESTION — NON IMPLÉMENTÉE`.
+- **Aucun export vidéo.** Le montage existant (`tools/video/`) n'a pas été
+  branché ici, faute de besoin réel exprimé pour un guide filmé.
+
+### Ce que ça coûte si c'est faux
+
+Une rédaction qui manquerait un email ou une clé dans un guide destiné à
+être partagé le publierait dans un PDF/DOCX qui, une fois généré, n'est
+plus sous le contrôle d'ARENA. Un garde de chemin inefficace laisserait un
+guide embarquer le contenu d'une clé privée comme si c'était une capture
+d'écran légitime — d'où les deux sabotages ci-dessus, et la correction du
+test qui ne les exerçait pas vraiment.

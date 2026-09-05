@@ -50,6 +50,7 @@ from core.connectors.calendrier import CalendrierConnector
 from core.connectors.devis import DevisConnector
 from core.connectors.faceplugin import ConnecteurFaceplugin
 from core.connectors.galsen import GalsenConnector
+from core.connectors.gitingest import ConnecteurGitIngest
 from core.connectors.gmail import GmailConnector
 from core.connectors.graphify import ConnecteurGraphify
 from core.connectors.moneyprinter import MoneyPrinterConnector
@@ -59,6 +60,7 @@ from core.connectors.registre import RegistreConnecteurs
 from core.connectors.stockage_jetons import charger_tout as _charger_jetons_persistants
 from core.connectors.ui_ux_pro_max import ConnecteurUiUxProMax
 from core.connectors.wan2gp import Wan2GPConnector
+from core.connectors.workflow_guide import ConnecteurWorkflowGuide
 from core.connectors.xaar_kaname import XaarKanameConnector
 from core.conversations.depot import DepotConversations
 from core.execution.disjoncteur import Disjoncteur
@@ -151,6 +153,14 @@ registre.declarer(
     lambda: DevisConnector(acces=acces, journal=journal, file_attente=file_attente,
                            crochets=crochets),
 )
+# Guide de procedure : un workflow deja decrit (jamais capture en direct)
+# transforme en PDF/DOCX/HTML/Markdown. Voir core/connectors/workflow_guide.py,
+# DEC-0048.
+registre.declarer(
+    "workflow_guide",
+    lambda: ConnecteurWorkflowGuide(acces=acces, journal=journal, file_attente=file_attente,
+                                    crochets=crochets),
+)
 registre.declarer(
     "xaar_kaname",
     lambda: XaarKanameConnector(acces=acces, journal=journal, file_attente=file_attente,
@@ -186,6 +196,15 @@ registre.declarer(
     "graphify",
     lambda: ConnecteurGraphify(acces=acces, journal=journal, file_attente=file_attente,
                                crochets=crochets),
+)
+# Un depot (local ou une URL) transforme en resume+arbre+contenu : GitIngest
+# (MIT), API Python directe, aucun processus a surveiller. Complementaire a
+# Graphify (structure) : celui-ci donne le contenu brut. Voir
+# core/connectors/gitingest.py, DEC-0047.
+registre.declarer(
+    "gitingest",
+    lambda: ConnecteurGitIngest(acces=acces, journal=journal, file_attente=file_attente,
+                                crochets=crochets),
 )
 # Montage video : batir une timeline (lecture) et la rendre (ecriture, donc
 # confirmation). Le moteur de rendu est ffmpeg, deja local et compatible avec

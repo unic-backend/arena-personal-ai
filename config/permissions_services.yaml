@@ -203,6 +203,21 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
 
+  # GitIngest : un depot (local ou une URL) transforme en resume+arbre+contenu
+  # (DEC-0047). Aucune ecriture durable (le clone temporaire d'une URL est
+  # nettoye par GitIngest lui-meme) : une lecture, comme la recherche web deja
+  # libre dans ce depot. Risque MEDIUM, pas LOW : une URL clone un contenu
+  # tiers, potentiellement hostile, meme brievement.
+  gitingest:
+    read:        {decision: ALLOWED,      risque: MEDIUM}
+
+  # Guide de procedure : un workflow deja decrit (jamais capture en direct),
+  # ecrit en PDF/DOCX/HTML/Markdown (DEC-0048). Meme logique que le devis
+  # (DEC-0041) : le fichier reste local, il est relu avant d'etre partage —
+  # coupe-circuit WRITE_FILES, pas de confirmation prealable.
+  workflow_guide:
+    document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail
