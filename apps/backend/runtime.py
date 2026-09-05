@@ -60,6 +60,7 @@ from core.connectors.registre import RegistreConnecteurs
 from core.connectors.stockage_jetons import charger_tout as _charger_jetons_persistants
 from core.connectors.ui_ux_pro_max import ConnecteurUiUxProMax
 from core.connectors.wan2gp import Wan2GPConnector
+from core.connectors.workflow_guide import ConnecteurWorkflowGuide
 from core.connectors.xaar_kaname import XaarKanameConnector
 from core.conversations.depot import DepotConversations
 from core.execution.disjoncteur import Disjoncteur
@@ -151,6 +152,14 @@ registre.declarer(
     "devis",
     lambda: DevisConnector(acces=acces, journal=journal, file_attente=file_attente,
                            crochets=crochets),
+)
+# Guide de procedure : un workflow deja decrit (jamais capture en direct)
+# transforme en PDF/DOCX/HTML/Markdown. Voir core/connectors/workflow_guide.py,
+# DEC-0048.
+registre.declarer(
+    "workflow_guide",
+    lambda: ConnecteurWorkflowGuide(acces=acces, journal=journal, file_attente=file_attente,
+                                    crochets=crochets),
 )
 registre.declarer(
     "xaar_kaname",

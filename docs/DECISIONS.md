@@ -3088,3 +3088,93 @@ sabotage-vérifiées. Un connecteur qui plante sous une vraie route async
 aurait rendu la capacité inutilisable en production sans qu'aucun test
 mocké ne le révèle jamais — c'est exactement ce que le test simulant la
 boucle active existe pour empêcher.
+
+## DEC-0048 — Guide de procédure : un workflow déjà décrit, rendu en document (pas Mimik)
+
+**2026-09-05.** Demande directe : intégrer Mimik (westpoint-io, MIT) —
+extension navigateur qui capture en direct les clics, le DOM et des
+captures d'écran d'une session utilisateur pour produire automatiquement
+un guide de procédure.
+
+### Ce qui a été refusé, et pourquoi
+
+La capture en direct elle-même : ARENA n'a ni extension navigateur ni
+pipeline d'enregistrement de session, et en construire un pour observer ce
+que le propriétaire fait sur son écran est une surface de captation
+nouvelle — pas un outil de lecture — sans aucun besoin réel exprimé pour
+la justifier. Un premier refus a porté sur l'intégration entière ; le
+propriétaire a corrigé : ce n'était pas la demande. Il ne voulait pas de
+surveillance de navigateur, seulement recevoir un workflow **déjà écrit**
+(étapes, captures d'écran déjà existantes, fournies en paramètre) et le
+transformer en document — la partie qui restait après avoir retiré la
+capture en direct était raisonnable, et c'est elle qui a été construite.
+
+### Ce qui a été intégré
+
+`core/production/workflow_guide.py` (modèle de données `Workflow`/`Étape`,
+rédaction, quatre rendus) et `core/connectors/workflow_guide.py`
+(`ConnecteurWorkflowGuide`, une capacité `generer`) — même contrat que les
+connecteurs précédents, déclaré dans le registre et la politique
+existants. **Aucun second moteur** : le PDF passe par reportlab (déjà
+utilisé par `agents/plaquiste/devis_pdf.py`), le DOCX par python-docx
+(déjà une dépendance, jusqu'ici seulement lue par `tools/documents/reader.py`
+— écrire est une capacité de la même bibliothèque). Même logique que le
+devis (DEC-0041) pour la permission : le fichier reste local, relu avant
+d'être partagé — `ALLOWED` sous le coupe-circuit `WRITE_FILES`, pas de
+confirmation préalable.
+
+Deux protections, sabotage-vérifiées :
+
+1. **Rédaction du texte avant mise en page** (`expurger()`) — masque ce qui
+   ressemble à un email, un téléphone, une carte, ou une valeur secrète
+   (affectation `clé = valeur` à haute entropie), avant qu'un mot n'entre
+   dans un fichier produit.
+2. **Chemin de capture d'écran gardé comme celui de GitIngest** — un
+   segment (`.ssh`, `.aws`, `.gnupg`, une clé privée nommée) ou un nom de
+   fichier (`.env`, `credentials.json`) refuse l'inclusion avant même
+   d'ouvrir le fichier ; une capture refusée est signalée et ignorée, elle
+   ne fait jamais échouer tout le rendu.
+
+### Deux défauts réels trouvés en écrivant les tests, pas en lisant la doc
+
+1. **`Image(kind="proportional")` de reportlab exige largeur ET hauteur**
+   pour calculer un ratio — lui passer `height=None` lève un `TypeError`
+   dès la mise en page. Corrigé en lisant la vraie dimension du fichier via
+   Pillow (déjà une dépendance transitive) avant de construire l'image.
+2. **Le caractère de masquage plein (█, U+2588) n'existe pas dans
+   l'encodage WinAnsi** de la police Helvetica par défaut de reportlab — un
+   PDF réel relu avec `pypdf` le rendait comme `■` (U+25A0), un caractère
+   différent. La propriété de sécurité tenait déjà (le texte réel avait
+   disparu), mais le masque affiché était imprévisible. Remplacé par
+   `[masque]`, en Latin-1 pur.
+
+### Ce que le sabotage a trouvé sur les *tests*, pas sur le code
+
+Sabotaged le garde de segment interdit (`.ssh`/`.aws`/`.gnupg`/...) en le
+désactivant : la suite est restée verte. Cause : les chemins d'exemple
+(`~/.ssh/id_rsa`) échouaient déjà sur deux autres filtres indépendants
+(fichier inexistant, extension non image) — le test « passait » sans que
+le garde de segment ne soit jamais exercé. Corrigé en isolant le garde :
+une vraie image PNG, existante, dans un dossier au nom interdit. Re-sabotage
+: 5 échecs réels ; restauration : vert. C'est exactement le risque que
+CLAUDE.md décrit — un test qui passe pour la mauvaise raison est pire que
+l'absence de test, et seul le sabotage l'a montré.
+
+### Ce qui n'a PAS été implémenté, et pourquoi c'est honnête
+
+- **Aucune capture en direct.** Voir plus haut — c'est la partie refusée,
+  documentée ici plutôt que silencieusement abandonnée.
+- **Aucune rédaction du CONTENU d'une image.** Une capture d'écran fournie
+  est embarquée telle quelle ; masquer ce qu'elle montre exigerait de la
+  vision/OCR, non implémenté. `SUGGESTION — NON IMPLÉMENTÉE`.
+- **Aucun export vidéo.** Le montage existant (`tools/video/`) n'a pas été
+  branché ici, faute de besoin réel exprimé pour un guide filmé.
+
+### Ce que ça coûte si c'est faux
+
+Une rédaction qui manquerait un email ou une clé dans un guide destiné à
+être partagé le publierait dans un PDF/DOCX qui, une fois généré, n'est
+plus sous le contrôle d'ARENA. Un garde de chemin inefficace laisserait un
+guide embarquer le contenu d'une clé privée comme si c'était une capture
+d'écran légitime — d'où les deux sabotages ci-dessus, et la correction du
+test qui ne les exerçait pas vraiment.
