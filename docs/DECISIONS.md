@@ -3493,3 +3493,76 @@ Un garde d'embeddings incomplet absent laisserait un classement construit
 sur un index mal formé passer pour un résultat fiable, sans que rien ne le
 signale — exactement ce que le sabotage de cette intégration a montré,
 avant que quiconque ne le découvre sur un vrai corpus.
+
+## DEC-0052 — Formbricks : une instance externe appelée par API, jamais du code copié
+
+**2026-09-05.** Dernière des trois intégrations mises en attente (avec
+OpenUI/DEC-0050 et txtai/DEC-0051) : intégrer Formbricks (formbricks/
+formbricks) comme capacité de sondage/feedback.
+
+### La licence commande la forme, vérifiée avant d'écrire une ligne
+
+Cloné réellement (`formbricks/formbricks` @ `4f597cb`, 05/09/2026) : le
+`LICENSE` du dépôt confirme exactement ce que la mission annonçait — le
+cœur est **AGPLv3** ; `apps/web/modules/ee/` (Enterprise) sous licence
+séparée ; seuls des SDK clients (`packages/js`, `packages/android`,
+`packages/ios`, `packages/api`) sont MIT, pas le serveur. **Aucune ligne de
+ce dépôt n'est copiée ici.** L'API REST management (routes réelles sous
+`apps/web/app/api/v1/management/`, lues dans le code source — en-tête
+`x-api-key`, confirmé dans les tests amont, pas deviné) est appelée par
+HTTP, exactement la même frontière que VoiceStudio (AGPL-3.0,
+`core/connectors/audio_voix.py`) : une simple agrégation par appel externe
+n'étend pas les obligations de l'AGPL à qui l'appelle.
+
+### Ce qui a été intégré, et pourquoi cette forme
+
+`core/connectors/formbricks.py` (`ConnecteurFormbricks`) — cinq capacités :
+`creer` (un sondage à une question, texte libre — le schéma complet de
+Formbricks porte une vingtaine de types de questions ; en couvrir un seul,
+suffisant pour « un petit questionnaire de feedback », évite une capacité
+décorative), `lister`, `obtenir`, `reponses`, `analyser` (compte/agrège les
+réponses déjà reçues — **calculé ici**, honnêtement : l'API de Formbricks
+ne rend aucun score d'analyse prêt à l'emploi, vérifié dans le code source,
+donc rien n'invente un chiffre de satisfaction à sa place).
+
+**Aucune URL par défaut.** `FORMBRICKS_BASE_URL` doit être fournie
+explicitement — jamais l'URL cloud de Formbricks devinée à sa place. Une
+instance cloud enverrait de vraies données de réponse (potentiellement
+client/personnelles, mission §23) chez un tiers ; ARENA ne le décide jamais
+à la place du propriétaire (DEC-0002). Sans les trois variables
+(`FORMBRICKS_BASE_URL`, `FORMBRICKS_API_KEY`, `FORMBRICKS_WORKSPACE_ID`) :
+`NON_CONFIGURE`, proprement — ARENA continue de fonctionner (mandat de la
+mission, §24). **Aucune instance n'existe pour ce propriétaire** : ce
+connecteur est réel et testé, mais n'a jamais pu être vérifié contre un
+vrai serveur — seulement contre un faux client HTTP figé sur les réponses
+réelles de l'API (schéma vérifié dans le code source amont).
+
+Permission : `formbricks.read = ALLOWED, LOW` (lire ses propres sondages
+déjà configurés) ; `formbricks.survey = CONFIRMATION, MEDIUM, PUBLISH` —
+publier un sondage est visible d'un tiers (l'instance, et quiconque y
+répond), le même coupe-circuit déjà utilisé pour les réseaux sociaux
+(`config/permissions_services.yaml`), pas `WRITE_FILES` : rien n'est écrit
+sur disque ici, c'est une ressource distante qui est créée.
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+Les réponses ne sont **jamais** écrites dans la mémoire personnelle
+d'ARENA (mission §22) — vérifié : ce fichier n'importe rien de
+`core/memory/`, un test dédié le fige. Aucun câblage dans l'aiguillage
+automatique (`chat.py`) : contrairement à OpenUI/txtai, ce n'est pas une
+question de duplication (ARENA n'a aucune capacité de sondage existante) —
+c'est qu'aucune instance réelle n'existe pour l'exercer, et câbler un
+routage automatique vers une capacité qui répondra `NON_CONFIGURE` à
+chaque fois serait prématuré. `SUGGESTION — NON IMPLÉMENTÉE` : une
+intention dédiée dans `agents/orchestrator/orchestrator_agent.py`, le jour
+où une instance existe réellement.
+
+### Ce que ça coûte si c'est faux
+
+Une URL par défaut devinée enverrait de vraies réponses de sondage —
+potentiellement des données client — vers un service que le propriétaire
+n'a jamais choisi, en silence. Le coupe-circuit `PUBLISH` déjà en place
+(éteint par défaut dans `config/permissions.yaml`, sabotage-vérifié ici)
+protège la publication d'un sondage exactement comme il protège déjà une
+publication sur les réseaux sociaux — un sondage publié sans confirmation
+serait vu par un tiers avant que le propriétaire ne l'ait validé.
