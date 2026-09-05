@@ -50,6 +50,7 @@ from core.connectors.calendrier import CalendrierConnector
 from core.connectors.devis import DevisConnector
 from core.connectors.faceplugin import ConnecteurFaceplugin
 from core.connectors.galsen import GalsenConnector
+from core.connectors.gitingest import ConnecteurGitIngest
 from core.connectors.gmail import GmailConnector
 from core.connectors.graphify import ConnecteurGraphify
 from core.connectors.moneyprinter import MoneyPrinterConnector
@@ -186,6 +187,15 @@ registre.declarer(
     "graphify",
     lambda: ConnecteurGraphify(acces=acces, journal=journal, file_attente=file_attente,
                                crochets=crochets),
+)
+# Un depot (local ou une URL) transforme en resume+arbre+contenu : GitIngest
+# (MIT), API Python directe, aucun processus a surveiller. Complementaire a
+# Graphify (structure) : celui-ci donne le contenu brut. Voir
+# core/connectors/gitingest.py, DEC-0047.
+registre.declarer(
+    "gitingest",
+    lambda: ConnecteurGitIngest(acces=acces, journal=journal, file_attente=file_attente,
+                                crochets=crochets),
 )
 # Montage video : batir une timeline (lecture) et la rendre (ecriture, donc
 # confirmation). Le moteur de rendu est ffmpeg, deja local et compatible avec

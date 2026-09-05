@@ -203,6 +203,14 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
 
+  # GitIngest : un depot (local ou une URL) transforme en resume+arbre+contenu
+  # (DEC-0047). Aucune ecriture durable (le clone temporaire d'une URL est
+  # nettoye par GitIngest lui-meme) : une lecture, comme la recherche web deja
+  # libre dans ce depot. Risque MEDIUM, pas LOW : une URL clone un contenu
+  # tiers, potentiellement hostile, meme brievement.
+  gitingest:
+    read:        {decision: ALLOWED,      risque: MEDIUM}
+
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail

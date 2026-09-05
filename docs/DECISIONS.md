@@ -2992,3 +2992,99 @@ répond. `graphify-out/` (28 Mo, généré) n'est jamais versionné
 l'est déjà dans le code source lui-même — c'est une carte du code, pas une
 fuite d'un secret qu'il contiendrait (le scanner de secrets, DEC-0042, reste
 la garde pour ça).
+
+---
+
+## DEC-0047 — GitIngest : un dépôt transformé en texte, pas un second Graphify
+
+**2026-09-05.** Suite du volet intégration (DEC-0046). Demande directe :
+intégrer GitIngest (coderamp-labs, MIT) comme capacité d'ingestion de
+code/contexte — un dépôt local ou une URL Git transformé en résumé, arbre et
+contenu concaténé, prêt pour un modèle.
+
+### Ce qui a été vérifié avant d'écrire une ligne
+
+`https://github.com/coderamp-labs/gitingest` cloné et inspecté (révision
+`4e259a0`, 2025-08-16) : MIT confirmé, paquet PyPI normal (`gitingest`),
+dépendances légères, API Python publique documentée
+(`ingest_async(source, ...) -> (résumé, arbre, contenu)`). Détail complet :
+`docs/audits/gitingest_audit.md`.
+
+**Un doublon a été cherché en premier** (`tools/coder/repo_engineer_tool.py`,
+utilisé par `RepoEngineerTool`) : c'est un outil d'édition locale
+(`get_tree`/`read_files`/`apply_patch`/`run_tests`) pour un agent SWE, sans
+respect de `.gitignore`, sans ingestion d'URL distante, sans statistiques —
+un rôle différent, pas un doublon. Graphify (DEC-0046) cartographie les
+RELATIONS structurelles du code ; GitIngest donne le CONTENU brut. Les deux
+répondent à des questions différentes, jamais fusionnées.
+
+### Ce qui a été intégré
+
+`core/connectors/gitingest.py` — un `Connecteur` de plus (même contrat que
+`ConnecteurGraphify`/`DevisConnector`) : une capacité, `ingerer`
+(`action=read`, `ALLOWED`, risque **MEDIUM** — pas LOW comme Graphify : une
+URL clone un contenu tiers, potentiellement hostile, même brièvement).
+Déclaré dans le registre existant et la politique de permissions existante
+— aucun second registre, aucun second système de permissions, aucun second
+RAG (LightRAG/GraphRAG gardent leur rôle), aucun générateur de PDF touché.
+
+Le contenu ingéré est traité comme une **donnée**, jamais une instruction —
+la même discipline que partout ailleurs dans ce dépôt pour du texte externe
+(recherche web, e-mails reçus). Le connecteur ne fait qu'extraire et
+rapporter ; il n'interprète jamais ce qu'il lit.
+
+### Deux défauts réels trouvés en écrivant les tests, pas en lisant la doc
+
+1. **Un `GITHUB_TOKEN` égaré dans l'environnement casse une ingestion
+   purement locale.** `resolve_token()` (amont) relit systématiquement cette
+   variable dès qu'aucun jeton n'est fourni explicitement — même pour un
+   répertoire local qui n'en a besoin d'aucun — et lève si sa forme n'est
+   pas celle d'un vrai jeton GitHub. Mesuré dans ce conteneur : un
+   `GITHUB_TOKEN` présent pour une tout autre raison faisait échouer
+   l'ingestion d'un simple dossier de test. `_sans_jeton_errant()` retire la
+   variable le temps de l'appel, sauf si l'appelant fournit lui-même un
+   jeton.
+2. **`asyncio.run()` plante depuis une route déjà async.**
+   `registre.executer(...)` est appelé en clair, sans `await`, depuis des
+   routes FastAPI et des agents déjà `async def` — vérifié
+   (`chat.py`, `plaquiste_agent.py`) : déjà sous la boucle d'uvicorn. Une
+   première version appelait `asyncio.run()` directement, qui y lève
+   `RuntimeError: cannot be called from a running event loop`. Corrigé par
+   un thread dédié (`ThreadPoolExecutor`), sabotage-vérifié : revenir à
+   `asyncio.run()` direct fait échouer le test qui simule ce chemin réel.
+
+### Ce qui protège les chemins locaux sensibles
+
+Un segment de chemin (`.ssh`, `.aws`, `.gnupg`, une clé privée nommée) ou un
+nom de fichier (`.env`, `credentials.json`) refuse l'ingestion avant même
+d'ouvrir quoi que ce soit — vérifié et sabotage-vérifié. `.gitignore`
+protège ce qu'un dépôt exclut lui-même ; ceci protège ce qu'aucun
+`.gitignore` ne verra, parce que le chemin vise directement ce dossier.
+
+### Ce qui n'a PAS été branché, et pourquoi c'est honnête
+
+`include_gitignored=True` n'est exposé nulle part — la contourner
+exposerait exactement ce que la protection ci-dessus empêche.
+`SUGGESTION — NON IMPLÉMENTÉE`. L'ingestion de dépôts privés dépend
+entièrement d'un jeton que l'appelant fournirait explicitement ; ARENA ne
+gère aujourd'hui aucun jeton GitHub propre (vérifié : absent de
+`apps/backend/config.py`) — sans jeton, un dépôt privé échoue proprement,
+jamais un faux succès.
+
+### Blocage de vérification, honnêtement rapporté
+
+L'ingestion d'une URL GitHub réelle n'a pas pu être vérifiée bout en bout
+**depuis ce conteneur** : sa politique réseau renvoie 403 sur un simple
+`curl -I https://github.com/...`, indépendamment de GitIngest. Le code est
+réel et utilise la même fonction vérifiée pour l'ingestion locale ; seule
+cette vérification réseau précise reste bloquée par l'environnement de
+test — voir `docs/audits/gitingest_audit.md`, §7.
+
+### Ce que ça coûte si c'est faux
+
+Une ingestion qui contournerait `.gitignore` ou la protection par chemin
+exposerait des secrets locaux au modèle — d'où les deux protections
+sabotage-vérifiées. Un connecteur qui plante sous une vraie route async
+aurait rendu la capacité inutilisable en production sans qu'aucun test
+mocké ne le révèle jamais — c'est exactement ce que le test simulant la
+boucle active existe pour empêcher.

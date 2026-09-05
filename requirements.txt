@@ -50,6 +50,10 @@ graphifyy==0.9.53         # core/connectors/graphify.py — graphe structurel du
                           # (deux "y"), commande installee : "graphify". Extra [pdf]
                           # volontairement PAS installe : l'ingestion de documents dans
                           # le graphe n'est pas branchee ici (DEC-0046).
+gitingest==0.3.1          # core/connectors/gitingest.py — un depot (local ou une URL)
+                          # transforme en resume+arbre+contenu (DEC-0047). Extra [server]
+                          # volontairement PAS installe : ARENA est deja le serveur, aucun
+                          # besoin du serveur web/CLI autonome de GitIngest.
 
 # Non liste ici, et volontairement :
 # - ffmpeg : binaire systeme, pas un paquet pip (voir Dockerfile)
