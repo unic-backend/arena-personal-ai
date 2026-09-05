@@ -137,6 +137,36 @@ class TestConnecteur:
     def test_authentifier_toujours_vrai(self):
         assert ConnecteurTxtaiSearch().authentifier() is True
 
+    def test_les_modules_s_importent_sans_numpy_installe(self, monkeypatch):
+        """Mesure reelle du 05/09/2026 : `import numpy` en tete de fichier
+        faisait planter TOUT ARENA au demarrage (apps.backend.runtime, donc
+        chaque route) des que numpy manquait — la suite offline de la CI
+        n'installe qu'une liste reduite de paquets, sans numpy. txtai
+        lui-meme est deja importe en differe (`construire_index`, comme
+        Graphify) ; numpy doit suivre la meme regle : NON_CONFIGURE, jamais
+        une app entiere qui ne demarre plus pour un moteur optionnel."""
+        import builtins
+        import importlib
+
+        import core.connectors.txtai_search as connecteur_module
+        import core.production.txtai_recherche as production_module
+
+        reel = builtins.__import__
+
+        def bloque_numpy(name, *args, **kwargs):
+            if name == "numpy" or name.startswith("numpy."):
+                raise ModuleNotFoundError("No module named 'numpy'")
+            return reel(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", bloque_numpy)
+        try:
+            importlib.reload(production_module)
+            importlib.reload(connecteur_module)
+        finally:
+            monkeypatch.undo()
+            importlib.reload(production_module)
+            importlib.reload(connecteur_module)
+
     def test_sonde_depuis_une_boucle_asyncio_deja_active(self):
         """Meme correctif que GitIngest (DEC-0047) : `registre.executer(...)`
         est appele en clair depuis des routes/agents deja `async def` —
