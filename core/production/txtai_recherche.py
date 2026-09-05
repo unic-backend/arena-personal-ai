@@ -34,11 +34,12 @@ from __future__ import annotations
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Sequence, Tuple
-
-import numpy as np
+from typing import TYPE_CHECKING, List, Sequence, Tuple
 
 from core.memory.semantique import embeddings_ollama
+
+if TYPE_CHECKING:
+    import numpy as np
 
 logger = logging.getLogger("usman.production.txtai_recherche")
 
@@ -64,7 +65,9 @@ def faire_transform_synchrone(fournisseur_async=None):
     Ollama reellement joignable."""
     fournisseur_async = fournisseur_async or embeddings_ollama
 
-    def transform(textes: List[str]) -> np.ndarray:
+    def transform(textes: List[str]) -> "np.ndarray":
+        import numpy as np  # local : NON_CONFIGURE, jamais un backend qui plante ARENA au demarrage
+
         vecteurs = _executer_dans_un_thread(lambda: fournisseur_async(textes))
         if not vecteurs or len(vecteurs) != len(textes):
             raise RuntimeError(

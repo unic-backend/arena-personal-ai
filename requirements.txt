@@ -59,6 +59,13 @@ txtai_minimal==9.13.0     # core/connectors/txtai_search.py — recherche semant
                           # "txtai_minimal" — la variante officielle SANS torch/transformers/
                           # faiss : le vecteur vient d'Ollama (embeddings_ollama, deja
                           # utilise par core/memory/semantique.py), jamais un second modele.
+numpy==2.4.6              # core/production/txtai_recherche.py — le backend numpy de
+                          # txtai_minimal (faiss absent) ; txtai_minimal ne declare aucune
+                          # dependance dure (verifie : METADATA vide), donc l'import direct
+                          # doit etre declare ici. Mesure le 05/09/2026 : absent de
+                          # requirements.txt faisait planter la suite offline en CI
+                          # (ModuleNotFoundError), invisible en local ou numpy arrivait
+                          # deja transitivement par d'autres paquets.
 
 # Non liste ici, et volontairement :
 # - ffmpeg : binaire systeme, pas un paquet pip (voir Dockerfile)
