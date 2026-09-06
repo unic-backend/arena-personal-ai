@@ -4505,3 +4505,94 @@ message. Une permission de navigation restée non gouvernée aurait laissé
 un agent autonome cliquer/remplir des formulaires sur le web sans que le
 coupe-circuit général (`SEARCH_WEB`) ni le journal des actions ne le
 voient — exactement le défaut trouvé et corrigé ici.
+
+---
+
+## DEC-0060 — AutoPentestX : même refus que CyberStrike (DEC-0042 reconfirmé), rien câblé
+
+**2026-09-06.** Demande reçue : auditer **AutoPentestX**
+(github.com/Gowtham-Darkseid/AutoPentestX) et fusionner ses meilleures
+capacités dans un « Security Engine » unifié d'ARENA — reconnaissance,
+scan de vulnérabilités, exploitation, reporting CVE/CVSS — avec interdiction
+explicite de dupliquer si une capacité équivalente existe déjà.
+
+### Audit d'ARENA d'abord — ce qui existe déjà
+
+Aucun Security Engine, Security Router ni SecurityAgent n'existe dans
+`agents/`, `core/`, `apps/`. La seule trace de sécurité *offensive* dans le
+dépôt est **DEC-0042** (04/09/2026) : une demande d'intégrer **CyberStrike**
+(reconnaissance, exploitation active, attaques de mots de passe) a été
+**refusée**, remplacée par deux capacités *défensives sur le propre code
+du dépôt* : `scripts/scanner_secrets.py` (DEC-0042) et
+`scripts/scanner_dependances.py` (DEC-0043, failles connues des
+dépendances via `pip-audit`). Aucune des deux ne vise une cible externe.
+
+### Audit réel d'AutoPentestX (dépôt cloné, code lu — pas le README seul)
+
+Licence : **MIT** (`LICENSE`), avec une clause additionnelle explicite
+« for educational and authorized testing purposes only ». `DISCLAIMER.md`
+place l'intégralité de la charge d'autorisation sur l'auteur de la
+commande — « you MUST obtain written authorization from the system
+owner » — sans aucun mécanisme technique qui vérifie cette autorisation :
+exactement l'« auto-déclaration n'est pas une autorisation » identifiée
+par DEC-0042.
+
+Le code confirme que c'est un moteur offensif complet, pas un rapport :
+
+- `modules/scanner.py` — scan de ports et détection d'OS via **Nmap**
+  (`nmap.PortScanner()`) sur une cible réseau arbitraire fournie en
+  paramètre.
+- `modules/vuln_scanner.py` — **Nikto** (scan web) et **SQLMap**
+  (injection SQL) lancés en sous-processus contre la même cible.
+- `modules/cve_lookup.py` / `modules/risk_engine.py` — recherche CVE
+  (circl.lu, NVD) et score CVSS pour les services détectés.
+- `modules/exploit_engine.py` — moteur d'exploitation avec intégration
+  **Metasploit** : associe vulnérabilités/CVE à des modules d'exploit
+  connus (EternalBlue, Shellshock, Drupalgeddon2, backdoors FTP…) et
+  **génère de vrais scripts de ressource Metasploit** (`.rc`, avec
+  `RHOSTS`/`RPORT`/`PAYLOAD`/`LHOST`/`LPORT` déjà remplis, payload par
+  défaut `generic/shell_reverse_tcp`). Le « safe mode » n'empêche que la
+  ligne finale `exploit` d'être décommentée — le reste de la chaîne
+  (scan, association, script prêt à l'emploi) tourne identiquement.
+
+C'est la même catégorie d'outil que CyberStrike, à l'identique sur les
+trois points qui avaient motivé le refus : reconnaissance + exploitation
+active contre des cibles externes, autorisation reposant uniquement sur
+une déclaration de l'utilisateur, aucun rapport avec le métier d'Ousmane
+(devis, vidéo, documents — un plaquiste à Dakar, pas un pentesteur).
+
+### Ce qui a été refusé, et pourquoi
+
+**Rien n'a été câblé.** Aucun connecteur, aucun agent, aucune capacité
+`security.scan`/`security.assess`/`security.recon` n'a été ajouté à
+ARENA. Les trois raisons de DEC-0042 s'appliquent sans changement :
+
+1. Une case « cible autorisée » cochée dans un chat n'est pas une preuve
+   de propriété — AutoPentestX le confirme lui-même : toute la charge
+   d'autorisation est déclarative, jamais vérifiée techniquement.
+2. Aucun contexte réel de mission de pentest, de périmètre écrit ou de
+   labo n'existe dans ARENA pour donner un sens à cette autorisation.
+3. Hors mission : un moteur capable de scanner un réseau, générer des
+   payloads Metasploit et chercher des CVE, accessible depuis un
+   téléphone, est un risque permanent pour un usage que le métier
+   n'a jamais demandé.
+
+### Ce qui existait déjà couvre ce qu'AutoPentestX apporte de légitime
+
+La seule partie d'AutoPentestX qui n'est pas intrinsèquement offensive
+— le reporting (`modules/pdf_report.py`, `modules/database.py`) — n'a de
+sens qu'attachée aux résultats d'un scan externe qu'ARENA ne doit pas
+lancer. Le besoin défensif réel (savoir si le dépôt lui-même contient un
+secret ou une dépendance vulnérable) est déjà couvert par DEC-0042/DEC-0043,
+contre la seule cible dont la propriété n'est pas ambiguë : le dépôt
+d'ARENA lui-même. Rien à fusionner, rien à remplacer, rien de nouveau à
+créer.
+
+### Ce que ça coûte si c'est faux
+
+Le coût d'un refus à tort serait une capacité manquante que le métier ne
+réclame pas. Le coût d'une intégration à tort serait un moteur de scan
+réseau et de génération de payloads d'exploitation, tournant chez lui,
+atteignable depuis son téléphone, sur la seule foi d'une phrase tapée
+dans un chat — le exact scénario que DEC-0042 a déjà écarté. Le second
+coût est sans commune mesure avec le premier ; la décision reste la même.
