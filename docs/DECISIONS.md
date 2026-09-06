@@ -4539,14 +4539,15 @@ par DEC-0042.
 
 Le code confirme que c'est un moteur offensif complet, pas un rapport :
 
-- `modules/scanner.py` — scan de ports et détection d'OS via **Nmap**
-  (`nmap.PortScanner()`) sur une cible réseau arbitraire fournie en
-  paramètre.
-- `modules/vuln_scanner.py` — **Nikto** (scan web) et **SQLMap**
-  (injection SQL) lancés en sous-processus contre la même cible.
-- `modules/cve_lookup.py` / `modules/risk_engine.py` — recherche CVE
-  (circl.lu, NVD) et score CVSS pour les services détectés.
-- `modules/exploit_engine.py` — moteur d'exploitation avec intégration
+- son module scanner (`scanner.py`, dans `modules/` du dépôt AutoPentestX)
+  — scan de ports et détection d'OS via **Nmap** (`nmap.PortScanner()`)
+  sur une cible réseau arbitraire fournie en paramètre.
+- son module d'analyse de vulnérabilités (`vuln_scanner.py`) — **Nikto**
+  (scan web) et **SQLMap** (injection SQL) lancés en sous-processus contre
+  la même cible.
+- ses modules CVE et risque (`cve_lookup.py` / `risk_engine.py`) —
+  recherche CVE (circl.lu, NVD) et score CVSS pour les services détectés.
+- son moteur d'exploitation (`exploit_engine.py`) — intégration
   **Metasploit** : associe vulnérabilités/CVE à des modules d'exploit
   connus (EternalBlue, Shellshock, Drupalgeddon2, backdoors FTP…) et
   **génère de vrais scripts de ressource Metasploit** (`.rc`, avec
@@ -4580,7 +4581,7 @@ ARENA. Les trois raisons de DEC-0042 s'appliquent sans changement :
 ### Ce qui existait déjà couvre ce qu'AutoPentestX apporte de légitime
 
 La seule partie d'AutoPentestX qui n'est pas intrinsèquement offensive
-— le reporting (`modules/pdf_report.py`, `modules/database.py`) — n'a de
+— le reporting (ses modules `pdf_report.py` et `database.py`) — n'a de
 sens qu'attachée aux résultats d'un scan externe qu'ARENA ne doit pas
 lancer. Le besoin défensif réel (savoir si le dépôt lui-même contient un
 secret ou une dépendance vulnérable) est déjà couvert par DEC-0042/DEC-0043,

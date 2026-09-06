@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 
 import pytest
 
+import core.connectors.browser as module
 from core.actions.resultat import Statut
 from core.connectors.base import EtatSante
 from core.connectors.browser import ConnecteurBrowser
@@ -32,21 +33,24 @@ def _sans_lightpanda_par_defaut(monkeypatch):
     monkeypatch.delenv("LIGHTPANDA_CDP_URL", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _moteur_de_base_disponible_par_defaut(monkeypatch):
+    """La CI hors ligne (`.github/workflows/ci.yml`) n'installe jamais
+    browser-use/Playwright — volontairement, comme tout paquet lourd testé
+    par un connecteur plutôt que par lui-même. Ces tests visent le ROUTAGE
+    du connecteur, jamais la présence réelle du paquet tiers ; seul
+    `test_non_configure_sans_browser_use` réapplique explicitement le vrai
+    comportement d'absence."""
+    monkeypatch.setattr(module, "_verifier_moteur_de_base", lambda: None)
+
+
 class TestSante:
     def test_operationnel_quand_browser_use_installe(self):
         assert ConnecteurBrowser(outil=FauxOutil()).sonder().etat is EtatSante.OPERATIONNEL
 
     def test_non_configure_sans_browser_use(self, monkeypatch):
-        import builtins
-
-        reel = builtins.__import__
-
-        def bloque_browser_use(name, *a, **kw):
-            if name in ("browser_use", "langchain_openai"):
-                raise ModuleNotFoundError(f"No module named {name!r}")
-            return reel(name, *a, **kw)
-
-        monkeypatch.setattr(builtins, "__import__", bloque_browser_use)
+        monkeypatch.setattr(module, "_verifier_moteur_de_base",
+                            lambda: "No module named 'browser_use'")
         assert ConnecteurBrowser(outil=FauxOutil()).sonder().etat is EtatSante.NON_CONFIGURE
 
 

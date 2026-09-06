@@ -89,6 +89,22 @@ CE_QUI_MANQUE = (
 )
 
 
+def _verifier_moteur_de_base() -> Optional[str]:
+    """`None` si browser-use + langchain-openai sont importables, sinon le
+    message d'erreur. Séparée de `sonder()` pour que les tests substituent
+    la disponibilité du moteur sans installer le vrai paquet : la CI hors
+    ligne (`.github/workflows/ci.yml`) n'installe jamais browser-use/
+    Playwright — volontairement, comme tout paquet lourd testé par un
+    connecteur plutôt que par lui-même — donc seul le ROUTAGE de ce
+    connecteur doit dépendre de sa présence, jamais ses propres tests."""
+    try:
+        import browser_use  # noqa: F401
+        import langchain_openai  # noqa: F401
+    except ImportError as erreur:
+        return str(erreur)
+    return None
+
+
 def _lightpanda_url() -> str:
     """Aucune adresse par défaut (DEC-0002) : lu à l'appel, jamais au
     chargement du module, pour que les tests le fixent par variable
@@ -146,10 +162,8 @@ class ConnecteurBrowser(Connecteur):
         if self._sante is not None and maintenant - self._sante_mesuree_a < 60.0:
             return self._sante
 
-        try:
-            import browser_use  # noqa: F401
-            import langchain_openai  # noqa: F401
-        except ImportError as erreur:
+        erreur = _verifier_moteur_de_base()
+        if erreur is not None:
             sante = Sante(etat=EtatSante.NON_CONFIGURE,
                          message=f"browser-use non installé : {erreur}",
                          ce_qui_manque=CE_QUI_MANQUE, mesure_le=_maintenant())
