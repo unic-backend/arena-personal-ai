@@ -47,6 +47,7 @@ from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
 from core.agent.capacites import RegistreCapacites, adaptateur_synchrone
 from core.connectors.audio_voix import ConnecteurAudioVoix
+from core.connectors.browser import ConnecteurBrowser
 from core.connectors.calendrier import CalendrierConnector
 from core.connectors.claude_context import ConnecteurClaudeContext
 from core.connectors.devis import DevisConnector
@@ -311,6 +312,16 @@ registre.declarer(
     lambda: ConnecteurOpenViking(acces=acces, journal=journal, file_attente=file_attente,
                                  crochets=crochets),
 )
+# Navigation Web autonome (DEC-0059) : browser-use + Playwright/Chromium
+# local, Lightpanda (AGPLv3, service externe, jamais importe) comme moteur
+# optionnel plus leger derriere le meme contrat, avec repli automatique.
+# Corrige au passage le seul chemin d'ARENA qui agissait sur le web sans
+# passer par ce registre. Voir core/connectors/browser.py.
+registre.declarer(
+    "browser",
+    lambda: ConnecteurBrowser(acces=acces, journal=journal, file_attente=file_attente,
+                              crochets=crochets),
+)
 # Generation d'interface : la technique d'OpenUI (prompt -> HTML/React/
 # Svelte/Web-Component), jamais son serveur (connexion GitHub requise,
 # weave/boto3/peewee/fastapi-sso qu'ARENA n'a pas besoin d'heberger). Ce
@@ -479,7 +490,7 @@ clip_selector = ClipSelectorAgent(provider=deep_provider, memory=memory)
 publisher_agent = PublisherAgent(
     provider=fast_provider, memory=memory, journal=journal, registre=registre
 )
-browser_agent = BrowserAgent(provider=fast_provider, memory=memory)
+browser_agent = BrowserAgent(provider=fast_provider, memory=memory, registre=registre)
 # Agent d'information fraiche : il lit le web avant de repondre.
 fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)
 repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory)

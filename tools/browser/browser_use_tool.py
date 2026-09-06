@@ -24,12 +24,23 @@ class BrowserUseTool:
         self.provider = provider or OllamaProvider(
             base_url=OLLAMA_URL, model_name=MODELE_RAPIDE)
 
-    async def run_task(self, task_instruction: str) -> Dict[str, Any]:
-        """Ouvre Chromium de façon autonome, exécute la tâche et renvoie le résultat."""
+    async def run_task(self, task_instruction: str, cdp_url: Optional[str] = None) -> Dict[str, Any]:
+        """Ouvre Chromium de façon autonome, exécute la tâche et renvoie le résultat.
+
+        `cdp_url` : quand fourni, `browser_use` se CONNECTE à un navigateur
+        DÉJÀ lancé ailleurs (ex. Lightpanda, `lightpanda serve`) au lieu
+        d'en démarrer un nouveau — même paramètre que `browser_use.
+        BrowserSession(cdp_url=...)`, vérifié directement dans le code
+        installé (`browser_use/browser/session.py`). `None` (le défaut)
+        laisse `browser_use` lancer SON PROPRE Chromium local via
+        Playwright, exactement le comportement d'avant ce paramètre —
+        aucun changement pour un appelant qui ne le fournit pas.
+        """
         logger.info(f"🌐 BrowserUseTool entame la tâche : {task_instruction}")
 
         try:
             from browser_use import Agent
+            from browser_use.browser.session import BrowserSession
             from langchain_openai import ChatOpenAI
             from pydantic import Field
 
@@ -44,9 +55,12 @@ class BrowserUseTool:
                 temperature=0.0
             )
 
+            browser_session = BrowserSession(cdp_url=cdp_url) if cdp_url else None
+
             agent = Agent(
                 task=task_instruction,
-                llm=llm
+                llm=llm,
+                browser_session=browser_session,
             )
 
             history = await agent.run()
@@ -55,7 +69,8 @@ class BrowserUseTool:
             return {
                 "status": "success",
                 "task": task_instruction,
-                "result": str(final_result)
+                "result": str(final_result),
+                "moteur": "lightpanda" if cdp_url else "chromium",
             }
 
         except Exception as e:
@@ -64,7 +79,8 @@ class BrowserUseTool:
                 "status": "error",
                 "task": task_instruction,
                 "error": str(e),
-                "result": f"❌ Échec de la navigation autonome : {str(e)}"
+                "result": f"❌ Échec de la navigation autonome : {str(e)}",
+                "moteur": "lightpanda" if cdp_url else "chromium",
             }
 
 if __name__ == "__main__":

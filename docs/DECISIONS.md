@@ -4331,3 +4331,177 @@ des chemins de chantier — vers un service cloud tiers à son insu,
 exactement ce que DEC-0002 existe pour empêcher. Une URL OpenViking
 devinée par défaut connecterait ARENA à un service qui n'est pas le sien.
 Les deux gardes sont vérifiées par sabotage, pas seulement énoncées.
+
+## DEC-0059 — Lightpanda : moteur optionnel derrière la navigation déjà en place, jamais un second navigateur
+
+**2026-09-06.** Mission autonome : évaluer Lightpanda (`lightpanda-io/
+browser`) pour ARENA, avec une règle absolue explicite : ne jamais créer un
+second système s'il en existe déjà un, comparer et fusionner sinon.
+
+### Ce qu'ARENA possède déjà, vérifié avant d'écrire une ligne
+
+Recherche explicite dans `agents/`, `core/`, `apps/`, `tools/`, `tests/`,
+`config/`, `documentation` (mission §« règle anti-doublon ») : ARENA a
+**déjà un navigateur complet**, pas une absence à combler.
+`agents/browser/browser_agent.py` (`BrowserAgent`, intention `BROWSER` de
+l'orchestrateur, câblée dans `apps/backend/routers/chat.py:404-405`)
+pilote `tools/browser/browser_use_tool.py::BrowserUseTool` —
+`browser-use==0.13.10` (agent autonome : clics, formulaires, extraction,
+piloté par un LLM local via Ollama) sur `playwright==1.62.0` (Chromium
+local complet, JavaScript, DOM). Ces deux dépendances sont réelles et
+installées depuis le 04/09/2026 — deux jours avant cette mission, pas un
+trou dans l'architecture. `tools/search/source_fetcher.py` (utilisé par
+`FreshInfoAgent`) est un lecteur de page STATIQUE (httpx + parseur HTML
+`stdlib`, sans JavaScript) : un rôle différent, jamais concurrent.
+
+**Le vrai défaut trouvé pendant l'audit** (mission §« sécurité », phase 1
+demandait explicitement d'inspecter les permissions) : `BrowserAgent`
+appelait `BrowserUseTool` en direct, **hors du registre et des
+permissions** (`ControleAcces`/`config/permissions_services.yaml`) — la
+seule capacité d'ARENA agissant de façon autonome sur le web (clics,
+formulaires, donc des effets externes réels) sans passer par le même
+contrôle d'accès que WanGP, KrillinAI ou les connecteurs des missions
+précédentes. Aucun rapport avec Lightpanda : un défaut préexistant,
+trouvé en auditant l'existant comme demandé, corrigé dans la foulée.
+
+### Lightpanda, audité en clonant le dépôt réel
+
+`lightpanda-io/browser` cloné et inspecté (jamais son seul README) : un
+navigateur écrit **à partir de zéro en Zig** (moteur JS V8, parseur HTML
+`html5ever`/Servo, `libcurl`) — pas un fork de Chromium. Statut, dit par
+le projet lui-même : « Beta [...] you may still encounter errors or
+crashes » — honnête, pas du marketing. Vraies infrastructures de test
+(`make test`, tests de bout en bout, Web Platform Tests publiés
+quotidiennement sur `perf.lightpanda.io/wpt`). Serveur CDP natif
+(`lightpanda serve --port 9222`), compatible Puppeteer/Playwright par
+construction — c'est le point d'entrée que ce dépôt utilise.
+
+**Licence, vérifiée en lisant `LICENSE` et `LICENSING.md` directement**
+(mission §« licence ») : AGPL-3.0-only, sans exception ni double licence
+— contrairement à OpenViking (DEC-0058), aucun sous-dossier séparément
+licencié. Même frontière que tout composant AGPL/GPL déjà traité cette
+session (VoiceStudio, KrillinAI, SiteGuard, Drift, OpenViking) : un
+service **séparé**, jamais importé (impossible de toute façon — Zig,
+pas Python) ni vendorisé. Se connecter à son serveur CDP comme client,
+sans le modifier, est l'usage que le projet documente et attend
+lui-même — aucune obligation de la clause réseau de l'AGPLv3 (section 13)
+ne s'applique à un client non modifié d'un service non modifié.
+
+### Ce qui a été intégré, et sous quelle forme
+
+**Aucun second agent, aucun second outil.** `tools/browser/
+browser_use_tool.py::BrowserUseTool.run_task()` reçoit un paramètre
+additif `cdp_url: Optional[str] = None`, transmis à `browser_use.browser.
+session.BrowserSession(cdp_url=...)` — vérifié dans le code RÉELLEMENT
+installé (`browser-use==0.13.10`, pas deviné depuis sa documentation) :
+fourni, `browser_use` se connecte à un navigateur DÉJÀ lancé (Lightpanda)
+au lieu d'en démarrer un ; `None` (le défaut) laisse le comportement
+IDENTIQUE à avant ce paramètre.
+
+`core/connectors/browser.py` (`ConnecteurBrowser`) porte le routage et
+corrige le défaut de permission dans le même geste — une seule capacité
+logique, `naviguer` :
+
+1. **Lightpanda configuré ET sain** (`LIGHTPANDA_CDP_URL` réglé — aucun
+   défaut, DEC-0002 — et `GET {url}/json/version` répond 200 : cet
+   endpoint est vérifié dans le CODE SOURCE de Lightpanda,
+   `src/server/http.zig::serveJSONVersion`, avec son propre test unitaire
+   `"server: get /json/version"`, jamais supposé) : tenté en premier.
+2. **Échec Lightpanda, à tout moment** : repli silencieux et automatique
+   sur le moteur existant — jamais un échec transmis tant que Chromium
+   peut répondre. Justifié par le statut « Beta » du projet lui-même.
+3. **Lightpanda non configuré** : le moteur existant est utilisé
+   directement — comportement STRICTEMENT identique à avant ce
+   connecteur pour un propriétaire qui ne configure rien.
+
+`agents/browser/browser_agent.py` appelle désormais
+`registre.executer("browser", "naviguer", tache=...)` au lieu de
+`BrowserUseTool` en direct — même discipline que `VisionAgent` pour
+`securite_chantier` (DEC-0054). Permission : `browser.browse = ALLOWED,
+risque MEDIUM, interrupteur SEARCH_WEB` (réutilise le regroupement « web »
+déjà existant, jamais un second coupe-circuit inventé) — `ALLOWED` pour
+préserver le comportement RÉEL d'avant cette mission (aucune confirmation
+n'existait), tout en le rendant enfin GOUVERNÉ : le propriétaire peut
+resserrer en `CONFIRMATION` par simple configuration, sans toucher au
+code. `naviguer` reste déclarée `ecriture=True` (des clics/formulaires ont
+un effet externe réel).
+
+### Tests et sabotages
+
+20 tests neufs (connecteur : 12, agent : 5, `cdp_url` sur `BrowserUseTool`
+réel : 3), plus l'existant relu. Trois sabotages prouvés puis restaurés :
+(1) le repli après échec Lightpanda retiré → un échec réel se présente
+comme un succès (`Statut.SUCCES` au lieu de `Statut.ECHEC`) — la preuve
+qu'un défaut ici mentirait sur ce qui s'est réellement passé ; (2) la
+garde « pas de registre, pas de navigation » retirée de `BrowserAgent` →
+`AttributeError` au lieu d'un refus propre ; (3) le health-check
+Lightpanda ignoré → le moteur non joignable est quand même tenté. `python
+-m ruff check .` propre, suite complète : `3889 passed, 25 skipped,
+48 deselected`.
+
+### Smoke test réel — ce qui a pu être vérifié dans ce bac à sable, et pourquoi une partie ne l'a pas pu
+
+**Vérifié pour de vrai** (Chromium `/opt/pw-browsers/chromium`, déjà
+présent ici) : lancement réel (0,57 s), navigation réelle vers une page
+locale servie par un vrai serveur HTTP (`127.0.0.1`, jamais un mock),
+exécution JavaScript réelle (le texte extrait a été écrit par le
+`<script>` de la page elle-même, pas présent dans le HTML brut),
+extraction réelle du contenu, fermeture propre — 1,05 s au total. Preuve
+que le moteur EXISTANT (la branche par défaut de ce connecteur) fonctionne
+de bout en bout dans cet environnement.
+
+**Non vérifiable ici, et pourquoi** : la politique réseau de ce bac à
+sable bloque toute destination hors d'une liste précise (registres de
+paquets, API Anthropic) — une navigation vers un site public réel
+(`example.com` y compris) est refusée par le proxy sortant, mesuré
+directement (`connect_rejected`, 403). Le smoke test réel a donc ciblé
+une page locale plutôt qu'un site public, ce qui reste un test honnête du
+mécanisme (navigation + JS + extraction), pas du contenu d'Internet.
+Le chemin `browser_use.Agent` complet (la boucle autonome pilotée par un
+LLM) n'a pas pu tourner : Ollama est absent de ce conteneur — même limite
+que la phase 7.2 (`docs/CURRENT_TASK.md`) et que WanGP toute la session.
+`browser_use.BrowserSession.start()` a par ailleurs échoué SANS
+`cdp_url` dans ce bac à sable précis (extensions non téléchargeables,
+lancement Chrome nécessitant des permissions de conteneur que
+`browser_use` ne configure pas par défaut ici) — indépendant de ce
+connecteur, jamais rencontré avec Playwright utilisé directement. Aucun
+Lightpanda réel n'a pu tourner non plus (ni binaire ni Docker disponibles
+ici, comme pour tout composant nécessitant Docker cette session).
+`SUGGESTION — À VÉRIFIER SUR SA MACHINE` : le smoke test complet
+(Lightpanda réel, `browser_use.Agent` avec Ollama, repli mesuré sur un
+Lightpanda arrêté en cours de tâche) attend son PC, comme les mesures 7.2.
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **Un classement des tâches par compatibilité Lightpanda a priori**
+  (mission : « compatible Lightpanda → Lightpanda, nécessite fonctions
+  absentes → moteur existant ») : impossible à deviner honnêtement sans
+  visiter la page cible en premier. Remplacé par une stratégie empirique
+  strictement plus sûre — tenter, puis retomber sur tout échec — qui
+  couvre exactement le troisième cas du diagramme de la mission
+  (« échec Lightpanda → fallback ») sans jamais inventer une
+  classification a priori. `SUGGESTION — NON IMPLÉMENTÉE` : un vrai
+  classement demanderait un jeu de mesures sur des tâches réelles,
+  disponible seulement sur sa machine.
+- **Benchmarks chiffrés Lightpanda vs Chromium** (mission §« comparaison
+  avec l'existant ») : aucun binaire Lightpanda n'a pu tourner ici. Les
+  chiffres du propre dépôt Lightpanda (16x moins de RAM, 9x plus rapide)
+  ne sont PAS repris comme acquis — mission §« ne crois pas
+  automatiquement les chiffres marketing » — seulement cités comme
+  revendication à vérifier. `SUGGESTION — À MESURER SUR SA MACHINE`.
+- **Installation effective de Lightpanda** (binaire, Docker ou WSL2) :
+  hors de portée de ce dépôt — le propriétaire choisit et installe à
+  côté, comme WanGP/OpenTakeoff/MoneyPrinterTurbo. Ce connecteur reste
+  `NON_CONFIGURE`-compatible (aucune tentative sans `LIGHTPANDA_CDP_URL`)
+  jusqu'à ce geste.
+
+### Ce que ça coûte si c'est faux
+
+Un repli qui échouerait silencieusement laisserait une tâche de
+navigation échouer sans que l'appelant sache que Lightpanda, et non le
+moteur existant, en était la cause — d'où le sabotage qui a confirmé que
+retirer le repli change RÉELLEMENT le statut rendu, pas seulement un
+message. Une permission de navigation restée non gouvernée aurait laissé
+un agent autonome cliquer/remplir des formulaires sur le web sans que le
+coupe-circuit général (`SEARCH_WEB`) ni le journal des actions ne le
+voient — exactement le défaut trouvé et corrigé ici.

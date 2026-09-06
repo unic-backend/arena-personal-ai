@@ -305,6 +305,18 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
 
+  # Navigation Web autonome (DEC-0059) : browser-use + Playwright/Chromium
+  # local, avec Lightpanda (AGPLv3, service externe, jamais importe) comme
+  # moteur optionnel plus leger derriere le meme contrat. Une navigation
+  # peut cliquer/remplir un formulaire (effet externe reel) : risque MEDIUM,
+  # coupe-circuit SEARCH_WEB (deja le bon regroupement "web" existant,
+  # jamais un second coupe-circuit invente). ALLOWED par defaut — c'est le
+  # comportement DEJA en place avant ce connecteur (BrowserAgent appelait
+  # BrowserUseTool en direct, sans confirmation) ; le proprietaire peut
+  # resserrer en CONFIRMATION ici, sans toucher au code.
+  browser:
+    browse:      {decision: ALLOWED,      risque: MEDIUM, interrupteur: SEARCH_WEB}
+
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail
