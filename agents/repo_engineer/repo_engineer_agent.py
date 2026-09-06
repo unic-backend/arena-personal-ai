@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 from core.agent.base_agent import BaseAgent
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
+from core.specialistes.selection import bloc_de_methode, choisir
 from tools.coder.repo_engineer_tool import RepoEngineerTool
 
 logger = logging.getLogger("usman.agent.repo_engineer")
@@ -30,12 +31,20 @@ class RepoEngineerAgent(BaseAgent):
         tree_list = self.repo_tool.get_tree(max_depth=2)
         tree_str = "\n".join(tree_list[:30])
 
+        # Meme defaut que DEC-0061 (OpenViking) : une methode de specialiste
+        # declaree pour REPO_ENGINEERING (`tests`, `architecture`,
+        # `core/specialistes/catalogue.py`) n'atteignait jamais cet agent —
+        # seul le repli conversationnel la composait, un chemin que
+        # REPO_ENGINEERING ne prend jamais puisqu'il est deja aiguille ici.
+        methode = bloc_de_methode(choisir(user_input, "REPO_ENGINEERING"))
+
         prompt = (
             "Tu es RepoEngineerAgent, un ingénieur logiciel principal d'élite (style Devin / Odysseus).\n"
             "Analyse le projet et la tâche suivante, puis propose un diagnostic d'architecture précis.\n\n"
             f"Structure partielle du dépôt :\n{tree_str}\n\n"
             f"Demande de modification / Ingénierie : {user_input}\n\n"
             "Diagnostic & Plan d'Ingénierie Multi-fichiers :"
+            + (f"\n\n{methode}" if methode else "")
         )
 
         analysis = await self.provider.generate(prompt=prompt)

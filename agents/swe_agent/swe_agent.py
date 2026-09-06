@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 from core.agent.base_agent import BaseAgent
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
+from core.specialistes.selection import bloc_de_methode, choisir
 from tools.coder.swe_aci_tool import SWEACITool
 
 logger = logging.getLogger("usman.agent.swe")
@@ -63,6 +64,14 @@ class SWEAgent(BaseAgent):
 
         search_res = self.aci.search_dir(terme)
 
+        # La methode d'un specialiste declaree pour SWE_FIX (`debugging`,
+        # `core/specialistes/catalogue.py`) n'atteignait jamais cet agent :
+        # elle n'etait composee que dans le repli conversationnel
+        # (`apps/backend/prompts.py`), un chemin que SWE_FIX ne prend
+        # jamais puisqu'il est deja aiguille ici. Mesure le 06/09/2026,
+        # meme defaut que DEC-0061 (OpenViking) sur un autre agent.
+        methode = bloc_de_methode(choisir(user_input, "SWE_FIX"))
+
         prompt = (
             "Tu es SWEAgent, un ingenieur logiciel d'elite utilisant le protocole ACI (Princeton NLP).\n"
             "Analyse ce probleme de code et les occurrences trouvees dans le depot, "
@@ -70,6 +79,7 @@ class SWEAgent(BaseAgent):
             f"Occurrences ACI trouvees (recherche sur '{terme}') :\n{search_res}\n\n"
             f"Probleme a resoudre : {user_input}\n\n"
             "Analyse chirurgicale & plan de correction :"
+            + (f"\n\n{methode}" if methode else "")
         )
 
         analysis = await self.provider.generate(prompt=prompt)

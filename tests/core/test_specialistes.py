@@ -123,6 +123,29 @@ class TestLeBonMetierEstChoisi:
         assert choisis[0] == "securite"
 
 
+class TestLeSpecialisteDebugging:
+    """Ajouté le 06/09/2026 — concept audité dans mattpocock/skills
+    (`diagnosing-bugs`), jamais son texte. `capacite="ATELIER"` : seul
+    Dioumtoukay peut réellement reproduire, corriger et vérifier."""
+
+    @pytest.mark.parametrize("phrase", [
+        "le site plante quand je clique sur envoyer",
+        "il y a un crash au démarrage",
+        "le script ne marche pas",
+        "reproduire le bug avant de le corriger",
+    ])
+    def test_les_mots_de_panne_l_appellent(self, phrase):
+        assert "debugging" in [s.identifiant for s in choisir(phrase)]
+
+    def test_il_pointe_vers_dioumtoukay(self):
+        from core.specialistes.catalogue import par_identifiant
+
+        assert par_identifiant("debugging").capacite == "ATELIER"
+
+    def test_une_phrase_ordinaire_ne_l_appelle_pas(self):
+        assert "debugging" not in [s.identifiant for s in choisir("bonjour, comment vas-tu ?")]
+
+
 class TestLeBlocDeMethode:
     def test_il_porte_les_etapes_les_controles_et_la_fin(self):
         bloc = bloc_de_methode(choisir("audit de sécurité du code"))
@@ -198,7 +221,13 @@ class TestLesHuitScenariosDuProprietaire:
     """Les huit cas qu'il a demandé de tester, figés ici."""
 
     @pytest.mark.parametrize("demande,intention,attendu", [
-        ("corrige ce bug dans le module de devis", "SWE_FIX", {"tests"}),
+        # "debugging" (06/09/2026, mattpocock/skills) rejoint "tests" ici :
+        # le mot "bug" appelle desormais un vrai mot du catalogue, plus
+        # fort que le renfort SWE_FIX->tests seul avant lui. Les deux
+        # methodes sont complementaires sur une correction de bug (preuve
+        # + hypotheses d'un cote, discipline de test de l'autre), pas un
+        # doublon : le plafond de deux (MAXIMUM) les autorise ensemble.
+        ("corrige ce bug dans le module de devis", "SWE_FIX", {"tests", "debugging"}),
         ("vérifie à la source ce que dit cette documentation", "DEEP_RESEARCH",
          {"recherche"}),
         ("fais une revue de sécurité de ce code", "REPO_ENGINEERING",
@@ -278,6 +307,11 @@ class TestAucuneIntentionOubliee:
         "DEEP_REASONING", "SOCIAL", "PLAQUISTE", "MONTAGE", "AUDIO",
         "VIDEO_ANALYSIS", "EMAIL", "STUDIO", "RAG_DOCS", "GRAPHRAG",
         "BROWSER", "FRESH_INFO", "TREND_SEARCH", "VISION",
+        # ATELIER (Dioumtoukay) manquait ici avant le 06/09/2026 : un agent
+        # qui agit reellement sur la machine est exactement celui ou une
+        # methode de metier a le plus de sens. `debugging` le couvre
+        # desormais (capacite="ATELIER").
+        "ATELIER",
     }
 
     def test_chaque_intention_utile_mene_a_une_methode_ou_a_une_raison(self):

@@ -4833,3 +4833,152 @@ dépôt refuse (`core/actions/resultat.py`). Ne pas borner les réponses
 illisibles gaspillait un budget de douze tours sans qu'aucun travail ne
 parte jamais, en le racontant comme un travail « partiel » au lieu de
 nommer la vraie cause (le moteur, pas la tâche).
+
+---
+
+## DEC-0064 — mattpocock/skills : le vrai défaut n'était pas l'absence d'un système de skills, c'était sa livraison
+
+**2026-09-06.** Mission reçue : auditer mattpocock/skills (MIT) et
+déterminer quelles capacités peuvent améliorer le système d'agents de
+développement d'ARENA — règle absolue : ne jamais créer un deuxième
+système de skills, de prompts, de mémoire ou de tests.
+
+### Ce qu'ARENA possédait déjà (audit avant toute modification)
+
+ARENA a déjà, depuis DEC-0028 (01/09/2026), exactement ce que la mission
+décrit sous « Skills Registry / Skill Runtime » : `core/specialistes/`.
+`Specialiste` (`catalogue.py`) porte les mêmes champs que le schéma
+demandé — nom (`identifiant`), description (`domaine`), déclencheurs
+(`quand`), instructions (`methode`), une liste de contrôle (`controles`),
+une définition de fini observable (`fini_quand`), et une provenance
+(chaque ajout cite sa source dans un commentaire, comme ce catalogue le
+fait lui-même depuis sa création). `choisir()` (`selection.py`) est
+**déjà le chargement intelligent que la mission demande** : déterministe
+par mots-clés (jamais un appel modèle pour router), zéro spécialiste la
+plupart du temps (« bonjour » n'en charge aucun), un plafond de deux.
+`.claude/skills/design-language/` est la seule autre « skill » du dépôt,
+et elle sert un public différent — qui développe ARENA avec Claude Code,
+jamais ARENA elle-même en service (`PROJECT_MEMORY/PROJECT_MAP.md` le
+dit déjà) : pas un doublon, un système pour un autre utilisateur.
+
+**Le vrai défaut, trouvé en traçant chaque appelant réel de
+`core.specialistes`** : `choisir()`/`bloc_de_methode()` ne sont composés
+que par `apps/backend/prompts.py::prompt_avec_methode`, appelée
+uniquement dans la branche CHAT ordinaire des trois passerelles
+(`chat.py`, `pwa_gateway.py`, `openai_gateway.py`) — la branche prise
+**seulement quand l'intention n'est PAS dans `AGENTS_SPECIALISES`**. Or
+la majorité des spécialistes déclarent une `capacite` qui EST dans cet
+ensemble (`tests`→REPO_ENGINEERING, `architecture`→DEEP_REASONING,
+`frontend`/`donnees`→CODE_EXECUTION…) : leur méthode ne pouvait donc
+**jamais** atteindre l'agent qu'elle prétendait servir. `SWEAgent`,
+`RepoEngineerAgent`, `CoderAgent` et `DioumtoukayAgent` composent chacun
+leur propre prompt indépendamment de `prompt_avec_methode` — vérifié en
+lisant leur code, pas supposé. Exactement le défaut de DEC-0061
+(OpenViking mesuré « intégré » par le graphe d'imports, jamais atteint
+par une vraie conversation), trouvé ici sur quatre agents à la fois.
+`ATELIER` (Dioumtoukay) n'était même pas dans l'ensemble audité par
+`tests/core/test_specialistes.py::TestAucuneIntentionOubliee` — l'angle
+mort n'était pas seulement dans le code, il était dans son propre test.
+
+### Audit réel de mattpocock/skills (dépôt cloné, pas le README)
+
+Le skill `diagnosing-bugs` (dossier engineering, fichier SKILL.md) : six phases réelles
+(construire une preuve qui échoue avant de lire le code, réduire au
+scénario minimal, poser 3 à 5 hypothèses falsifiables classées, isoler
+une variable à la fois, écrire le test de non-régression avant le
+correctif, nettoyer l'instrumentation). ARENA n'avait **aucun**
+spécialiste de diagnostic de bug — un manque réel, jamais supposé.
+
+Le skill `tdd` (dossier engineering, fichier `tests.md`) : le spécialiste « tests »
+d'ARENA portait déjà l'essentiel (rouge avant vert, sabotage pour prouver
+qu'un test protège vraiment — plus concret que la discipline source, qui
+reste déclarative). Un anti-motif manquait : le test « tautologique »,
+qui recalcule la valeur attendue de la même façon que le code testé et
+passe donc par construction sans jamais pouvoir contredire un bug.
+
+Le skill `improve-codebase-architecture` (dossier engineering, fichier SKILL.md) : deux
+concepts réels et transposables — le « test de suppression » (un module
+mérite d'être simplifié si le supprimer CONCENTRERAIT sa complexité
+ailleurs, pas seulement la déplacerait) et la priorité aux zones
+récemment modifiées (`git log`) plutôt qu'un audit à plat. Le reste — un
+rapport HTML/Tailwind/Mermaid généré dans le dossier temporaire, un
+sous-agent d'exploration, la gestion de fichiers `CONTEXT.md`/ADR — n'a
+pas de sens ici : ARENA n'a aucune interface pour ouvrir ce rapport, et
+le reproduire serait imiter le dépôt externe plutôt qu'améliorer ARENA
+(`disable-model-invocation: true` dans son en-tête confirme d'ailleurs
+que même ses auteurs le traitent comme un outil lourd et explicite, pas
+un réflexe de chaque conversation sur l'architecture).
+
+**La distinction USER-INVOKED / MODEL-INVOKED de la mission existe
+réellement dans le dépôt** (`disable-model-invocation: true`), mais
+n'avait aucune application utile ici : ARENA n'a pas de mécanisme de
+commande explicite (« `/architecture-review` ») dans la conversation
+d'Ousmane — tout y est en langage naturel — et le seul spécialiste
+candidat à ce mode (l'architecture, avec son rapport visuel) a été jugé
+hors de proportion avec ce qu'ARENA sert (un plaquiste, pas une équipe
+d'ingénierie qui ouvrirait un rapport HTML).
+
+### Décision par capacité
+
+| Capacité | Décision | Ce qui a été fait |
+|---|---|---|
+| Skill Registry / chargement intelligent | **KEEP** | `core/specialistes/` existait déjà et correspond au schéma demandé — aucun second système |
+| Livraison réelle aux agents spécialisés | **IMPROVE** (le vrai défaut) | `SWEAgent`, `RepoEngineerAgent`, `CoderAgent`, `DioumtoukayAgent` composent désormais `bloc_de_methode(choisir(...))` eux-mêmes |
+| Diagnostic de bug (`diagnosing-bugs`) | **NEW** | spécialiste `debugging`, `capacite="ATELIER"` — seul Dioumtoukay peut réellement corriger et vérifier |
+| TDD (`tdd`) | **MERGE** | anti-motif « test tautologique » ajouté aux contrôles de `tests` |
+| Architecture (`improve-codebase-architecture`) | **MERGE** | « test de suppression » et priorité aux zones récemment modifiées ajoutés à `architecture` |
+| Rapport HTML visuel, sous-agent, `CONTEXT.md`/ADR | **IGNORE** | hors de proportion avec l'interface et l'usage réels d'ARENA |
+| `.claude/skills/design-language/` vs `core/specialistes/` | **KEEP les deux, séparés** | publics différents (développer ARENA vs être ARENA), pas un doublon |
+| Mémoire de projet (`CONTEXT.md`) | **IGNORE** | ARENA a déjà une seule mémoire (`core/memory/`) ; rien ici ne justifiait une deuxième source de vérité |
+| Triage GitHub | **IGNORE** | aucune capacité de triage d'issues n'existe dans ARENA et aucune tâche ne l'a demandée — l'ajouter aurait été une capacité sans demande, pas une fusion |
+
+### Tests et sabotage
+
+15 tests neufs : 3 pour le nouveau spécialiste `debugging`
+(déclenchement, `capacite`, absence sur une phrase ordinaire), 1 par
+agent (SWEAgent, RepoEngineerAgent, CoderAgent) vérifiant que
+`"MÉTHODE DE SPÉCIALISTE"` atteint réellement le prompt envoyé au
+modèle, 3 pour Dioumtoukay (déclenchement sur un bug, silence sur une
+tâche ordinaire, la consigne de base reste présente à côté de la
+méthode), plus les ajustements de `tests/core/test_specialistes.py`
+(un scénario existant s'enrichit légitimement de `debugging` en plus de
+`tests` sur « corrige ce bug », `ATELIER` rejoint l'ensemble audité).
+Deux sabotages confirmés puis restaurés : le branchement retiré chez
+Dioumtoukay (la méthode disparaît du prompt), le spécialiste `debugging`
+retiré du catalogue (six tests tombent d'un coup, cohérents). `python -m
+ruff check .` propre, `python -m pytest tests/ -q` → 3915 passed (+15).
+
+### Mesure réelle du coût de contexte
+
+```
+python3 -c "from core.specialistes.selection import choisir, bloc_de_methode; \
+print(len(bloc_de_methode(choisir('range mon dossier')))); \
+print(len(bloc_de_methode(choisir('le script plante avec une erreur au demarrage'))))"
+0
+1649
+```
+
+Zéro caractère injecté quand rien ne s'applique ; ~1649 caractères
+(~285 mots) quand un spécialiste correspond — exactement le « plus de
+qualité avec moins de contexte inutile » que la mission demandait,
+mesuré, pas déclaré.
+
+### Ce qui reste hors de portée de cette machine
+
+Un smoke test agentique complet (Dioumtoukay corrige un vrai bug de bout
+en bout) exige Ollama, absent de ce conteneur (`CLAUDE.md`). Ce qui a été
+vérifié à la place, réellement : la sélection et la composition
+(`choisir`/`bloc_de_methode`) sont le VRAI code, jamais un double, dans
+tous les tests ci-dessus — seul l'appel au modèle final est scripté,
+exactement comme le reste des tests d'agents de ce dépôt.
+
+### Ce que ça coûte si c'est faux
+
+Le coût réel ici n'était pas un système absent — ARENA avait déjà tout
+l'essentiel — mais une intégration qui se déclare sans se vérifier de
+bout en bout : quatre `capacite` pointaient vers des agents qui ne
+recevaient jamais rien, un défaut invisible tant que personne ne trace
+chaque appelant réel. Documenter une capacité comme « intégrée » parce
+qu'un catalogue la déclare, sans avoir vérifié qu'elle atteint l'agent
+nommé, est exactement l'erreur que la mission « réveiller ce qui dort »
+visait à ne plus jamais laisser passer.

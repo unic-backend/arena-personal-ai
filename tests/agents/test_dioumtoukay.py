@@ -41,6 +41,7 @@ class ModeleScripte:
     def __init__(self, *reponses: str, disponible: bool = True):
         self.reponses = list(reponses)
         self.vues = []
+        self.consignes_vues = []
         self._disponible = disponible
 
     async def is_available(self) -> bool:
@@ -48,6 +49,7 @@ class ModeleScripte:
 
     async def generate(self, prompt: str, system_prompt: str = None) -> str:
         self.vues.append(prompt)
+        self.consignes_vues.append(system_prompt)
         return self.reponses.pop(0) if self.reponses else "ACTION: terminer\nCONTENU:\nfini\nFIN"
 
 
@@ -181,6 +183,46 @@ class TestIlDitLaVerite:
         assert len(rendu["actions"]) == TOURS_MAX
         assert rendu["status"] == "partial"
         assert str(TOURS_MAX) in rendu["response"]
+
+
+# --- Ce que mattpocock/skills a fait mesurer ici (06/09/2026) -------------------------
+#
+# ATELIER etait absent de l'audit du catalogue de specialistes : aucune
+# methode de metier (tests, architecture, et desormais debugging) n'a
+# jamais atteint Dioumtoukay, alors qu'il est le seul agent qui peut
+# reellement reproduire un bug, le corriger et verifier — exactement ce que
+# la methode "debugging" decrit. Meme defaut que DEC-0061 (OpenViking),
+# trouve sur un quatrieme agent.
+
+class TestLaMethodeDeSpecialisteAtteintDioumtoukay:
+    @pytest.mark.asyncio
+    async def test_un_bug_convoque_la_methode_debugging(self, bac):
+        moteur = ModeleScripte("ACTION: terminer\nCONTENU:\nfini\nFIN")
+
+        await DioumtoukayAgent(provider=moteur, atelier=Atelier(racine=bac)).run(
+            "le script plante avec une erreur au demarrage")
+
+        assert "MÉTHODE DE SPÉCIALISTE" in moteur.consignes_vues[0]
+        assert "Diagnostic de bug" in moteur.consignes_vues[0]
+
+    @pytest.mark.asyncio
+    async def test_une_demande_ordinaire_ne_gonfle_pas_la_consigne(self, bac):
+        moteur = ModeleScripte("ACTION: terminer\nCONTENU:\nfini\nFIN")
+
+        await DioumtoukayAgent(provider=moteur, atelier=Atelier(racine=bac)).run(
+            "range mon dossier telechargements")
+
+        assert "MÉTHODE DE SPÉCIALISTE" not in moteur.consignes_vues[0]
+
+    @pytest.mark.asyncio
+    async def test_la_consigne_de_base_reste_presente_avec_une_methode(self, bac):
+        """La méthode s'ajoute, elle ne remplace jamais la discipline de base."""
+        moteur = ModeleScripte("ACTION: terminer\nCONTENU:\nfini\nFIN")
+
+        await DioumtoukayAgent(provider=moteur, atelier=Atelier(racine=bac)).run(
+            "il y a un bug dans ce module")
+
+        assert "Tu es Dioumtoukay" in moteur.consignes_vues[0]
 
 
 # --- Ce que mini-SWE-agent a fait mesurer ici (06/09/2026) ---------------------------
