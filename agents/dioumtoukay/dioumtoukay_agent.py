@@ -34,6 +34,7 @@ from __future__ import annotations
 import logging
 import re
 import shlex
+import time
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Dict, List, Optional
@@ -51,6 +52,23 @@ logger = logging.getLogger("usman.agent.dioumtoukay")
 #: consomme la machine sans rien produire ; au-delà, on rend ce qui a été fait
 #: et on le dit, plutôt que de continuer indéfiniment.
 TOURS_MAX = 12
+
+#: Au-delà, le travail s'arrête même si `TOURS_MAX` n'est pas atteint. Une
+#: action peut coûter jusqu'à `DELAI_PAR_DEFAUT` (`Atelier`, 120s) : sans
+#: plafond de temps, douze tours sur des commandes lentes autorisent une
+#: session de plusieurs dizaines de minutes. Concept vérifié dans le code
+#: source de mini-SWE-agent (`AgentConfig.wall_time_limit_seconds`) — 0
+#: désactiverait la limite, comme chez eux, mais rien ici n'a demandé à la
+#: désactiver.
+DUREE_MAX_SECONDES = 20 * 60
+
+#: Au-delà, une réponse illisible D'AFFILÉE n'est plus une réponse à renvoyer
+#: une fois de plus : c'est un moteur qui ne sait pas produire le format
+#: demandé, et continuer jusqu'à `TOURS_MAX` ne ferait que consommer le budget
+#: sans qu'aucune action ne parte jamais. Concept vérifié dans le code source
+#: de mini-SWE-agent (`AgentConfig.max_consecutive_format_errors`, défaut 3,
+#: `DefaultAgent.run` : le compteur revient à zéro dès qu'un tour est propre).
+ILLISIBLES_CONSECUTIVES_MAX = 3
 
 #: Les actions qu'il sait faire. Toute autre étiquette est refusée et lui est
 #: renvoyée telle quelle — corriger sa faute à sa place lui apprendrait à
@@ -282,8 +300,17 @@ class DioumtoukayAgent(BaseAgent):
         rendu: List[Dict[str, Any]] = []
         conclusion = ""
         arrete_par_lui_meme = False
+        debut = time.monotonic()
+        illisibles_consecutives = 0
 
         for tour in range(1, TOURS_MAX + 1):
+            ecoule = time.monotonic() - debut
+            if ecoule >= DUREE_MAX_SECONDES:
+                conclusion = (
+                    f"Arrete apres {int(ecoule // 60)} minutes sans avoir conclu. "
+                    "Ce qui a ete fait est ci-dessous ; la suite reste a faire.")
+                break
+
             invite = self._invite(reperes, user_input, journal_du_travail)
             try:
                 reponse = await self.provider.generate(prompt=invite, system_prompt=CONSIGNE)
@@ -294,9 +321,16 @@ class DioumtoukayAgent(BaseAgent):
 
             action = analyser_action(reponse)
             if action is None:
+                illisibles_consecutives += 1
                 journal_du_travail.append(
                     "Reponse illisible : il faut UNE action au format demande.")
+                if illisibles_consecutives >= ILLISIBLES_CONSECUTIVES_MAX:
+                    conclusion = (
+                        f"Arrete apres {illisibles_consecutives} reponses illisibles "
+                        "d'affilee : le moteur ne produit pas le format demande.")
+                    break
                 continue
+            illisibles_consecutives = 0
 
             if action.nom == "terminer":
                 conclusion = action.contenu.strip() or reponse.strip()

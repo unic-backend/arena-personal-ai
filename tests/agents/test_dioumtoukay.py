@@ -183,6 +183,64 @@ class TestIlDitLaVerite:
         assert str(TOURS_MAX) in rendu["response"]
 
 
+# --- Ce que mini-SWE-agent a fait mesurer ici (06/09/2026) ---------------------------
+#
+# TOURS_MAX bornait deja les tours, mais rien ne detectait un moteur qui ne
+# produit jamais le format demande (il consommait tout le budget sans qu'une
+# seule action ne parte), et rien ne bornait le TEMPS (douze tours sur des
+# commandes lentes autorisent une session de plusieurs dizaines de minutes).
+# Concepts verifies dans le code source de mini-SWE-agent
+# (`AgentConfig.max_consecutive_format_errors`, `wall_time_limit_seconds`) —
+# jamais son code, jamais un deuxieme systeme de limites : les memes
+# compteurs que `TOURS_MAX`, dans la meme boucle.
+
+class TestIlSArreteAussiSurLesReponsesIllisibles:
+    @pytest.mark.asyncio
+    async def test_illisibles_d_affilee_arretent_avant_tours_max(self, bac):
+        from agents.dioumtoukay.dioumtoukay_agent import ILLISIBLES_CONSECUTIVES_MAX
+
+        illisibles = ["n'importe quoi, pas une action"] * ILLISIBLES_CONSECUTIVES_MAX
+
+        rendu = await agent(bac, *illisibles).run("vas-y")
+
+        assert rendu["actions"] == [], "aucune action n'a pu partir d'un moteur illisible"
+        assert rendu["status"] == "partial"
+        assert "illisible" in rendu["response"].lower()
+
+    @pytest.mark.asyncio
+    async def test_une_action_propre_reinitialise_le_compteur(self, bac):
+        """Illisible, puis une action propre, puis illisible : deux illisibles
+        NON consecutives ne doivent pas declencher l'arret anticipe."""
+        from agents.dioumtoukay.dioumtoukay_agent import ILLISIBLES_CONSECUTIVES_MAX
+
+        assert ILLISIBLES_CONSECUTIVES_MAX >= 2, "le test suppose au moins deux"
+        rendu = await agent(
+            bac,
+            "n'importe quoi",
+            "ACTION: lister\nCHEMIN: .",
+            "n'importe quoi",
+            "ACTION: terminer\nCONTENU:\nfini\nFIN",
+        ).run("vas-y")
+
+        assert rendu["status"] == "success"
+        assert len(rendu["actions"]) == 1
+
+
+class TestIlSArreteAussiSurLeTemps:
+    @pytest.mark.asyncio
+    async def test_le_temps_ecoule_arrete_le_travail(self, bac, monkeypatch):
+        import agents.dioumtoukay.dioumtoukay_agent as module
+
+        monkeypatch.setattr(module, "DUREE_MAX_SECONDES", 0)
+        boucle = ["ACTION: lister\nCHEMIN: ."] * 5
+
+        rendu = await agent(bac, *boucle).run("vas-y")
+
+        assert rendu["actions"] == [], "le temps est deja ecoule avant le premier tour"
+        assert rendu["status"] == "partial"
+        assert "minute" in rendu["response"].lower()
+
+
 # --- Le branchement --------------------------------------------------------------------
 #
 # Sans ces trois-la, tout le reste est decoratif : des mains que rien ne peut

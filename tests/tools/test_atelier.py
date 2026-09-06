@@ -121,6 +121,28 @@ class TestLeTerminal:
         assert resultat.ok is False
         assert "arretee" in resultat.message
 
+    def test_le_groupe_de_processus_est_arrete_pas_seulement_le_parent(self, atelier, bac):
+        """`subprocess.run(timeout=...)` ordinaire ne tue que le processus de
+        tete : un enfant qu'il a lance continue de tourner, orphelin, alors
+        qu'`executer` a deja rapporte « arretee ». Concept verifie dans
+        mini-SWE-agent (`environments/local.py::_run`, meme defaut documente,
+        meme correctif : tuer le groupe entier)."""
+        import time
+
+        marqueur = bac / "enfant-vivant.txt"
+        programme = (
+            "import subprocess, time\n"
+            "subprocess.Popen(['python', '-c', "
+            f"'import time; time.sleep(1); open(r\"{marqueur}\", \"w\").write(\"x\")'])\n"
+            "time.sleep(10)\n"
+        )
+
+        resultat = atelier.executer(["python", "-c", programme], delai=0.3)
+
+        assert resultat.ok is False
+        time.sleep(1.5)
+        assert not marqueur.exists(), "le processus enfant a survecu au timeout du parent"
+
     def test_aucune_commande_ne_lance_rien(self, atelier):
         assert atelier.executer([]).ok is False
 
