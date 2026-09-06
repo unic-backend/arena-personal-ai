@@ -83,6 +83,7 @@ SURFACE_ATTENDUE = {
     # EXTERNE, jamais ARENA (garde dans le connecteur, pas ici) — outil de
     # developpement, pas une capacite metier, pas d'aiguillage chat.
     "/api/hermes-evolution/evoluer": (["POST"], ["verify_api_key", "limiter_debit"]),
+    "/api/contexte/rechercher": (["POST"], ["verify_api_key", "limiter_debit"]),
     # Dictee vocale reelle (Faster-Whisper), a la place de la reconnaissance
     # gratuite et sans wolof du navigateur — demande le 02/09/2026.
     "/api/speech/transcribe": (["POST"], ["verify_api_key", "limiter_debit"]),

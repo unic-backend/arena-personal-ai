@@ -287,6 +287,24 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     apply:       {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
 
+  # Claude Context (DEC-0058) : recherche semantique de code, par son propre
+  # serveur MCP (Milvus auto-heberge + Ollama local, jamais Zilliz Cloud/
+  # OpenAI par defaut cote ARENA). Indexer/vider l'index restent des
+  # ecritures LOCALES et rebatissables (comme graphify.construire,
+  # DEC-0046) : ALLOWED sous WRITE_FILES, pas de confirmation par appel.
+  claude_context:
+    read:        {decision: ALLOWED,      risque: LOW}
+    index:       {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+
+  # OpenViking (DEC-0058) : contexte hierarchique/memoire/competences, via
+  # son propre serveur HTTP (AGPLv3, jamais importe) auto-heberge par le
+  # proprietaire. Lire (contexte assemble, recherche, competences) ne coute
+  # rien ; ajouter une ressource ecrit sur SON serveur, comme le devis PDF
+  # (DEC-0041) : ALLOWED sous WRITE_FILES, pas de confirmation par appel.
+  openviking:
+    read:        {decision: ALLOWED,      risque: LOW}
+    document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail

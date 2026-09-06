@@ -79,10 +79,18 @@ class ClientMcpStdio:
     """
 
     def __init__(self, commande: List[str], dossier: str,
-                 delai: float = DELAI_SECONDES) -> None:
+                 delai: float = DELAI_SECONDES,
+                 environnement: Optional[Dict[str, str]] = None) -> None:
         self.commande = commande
         self.dossier = dossier
         self.delai = delai
+        #: Additif, jamais requis : OpenTakeoff hérite l'environnement du
+        #: parent tel quel (`environnement=None`) et n'est pas affecté. Un
+        #: futur serveur qui doit voir un environnement DIFFERENT du parent
+        #: (ex. un fournisseur d'embeddings force, jamais celui hérité) le
+        #: fournit ici — jamais en modifiant `os.environ` du processus ARENA
+        #: lui-même, ce qui affecterait tout le reste en même temps.
+        self._environnement = environnement
         self._processus: Optional[subprocess.Popen] = None
         self._echec_ouverture: str = ""
         #: Octets lus par le thread lecteur, pas encore coupes en lignes.
@@ -119,6 +127,7 @@ class ClientMcpStdio:
                 # Octets bruts (pas `text=True`) : la lecture passe par
                 # `os.read()` sur le descripteur, jamais par le tampon interne
                 # d'un `TextIOWrapper` — voir la note sur `self._tampon`.
+                env=self._environnement,  # None : herite l'environnement du parent, comme avant
             )
         except (OSError, FileNotFoundError) as erreur:
             self._processus = None

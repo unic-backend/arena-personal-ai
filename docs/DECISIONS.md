@@ -4142,3 +4142,192 @@ mais rien ici ne pilote cette annulation) — d'où le choix de tout refuser
 plutôt que de deviner face à une forme de schéma incertaine, et la
 confirmation obligatoire avant que quoi que ce soit n'atteigne un projet
 réellement ouvert.
+
+## DEC-0058 — Claude Context + OpenViking : deux couches réelles ; Agent-Reach reste refusé (DEC-0017 reconfirmé)
+
+**2026-09-06.** Mission autonome : intégrer Claude Context (zilliztech,
+compréhension du code), OpenViking (volcengine, mémoire/contexte/
+compétences) et Agent-Reach (Panniantong, internet) comme trois couches
+complémentaires du cerveau d'ARENA, sans les rendre indépendantes.
+
+### Ce qui existait déjà, vérifié avant d'écrire une ligne
+
+Trois voisins proches, chacun avec sa responsabilité, aucun doublon créé :
+`core/connectors/graphify.py` (DEC-0046, graphe STRUCTUREL par
+tree-sitter, sans modèle) ; `core/connectors/txtai_search.py` (DEC-0051,
+index ÉPHÉMÈRE construit et jeté à chaque appel, plafonné à 200
+documents FOURNIS) ; `core/memory/` (mémoire de conversation locale,
+sans hiérarchie de niveaux). Aucun des trois ne tient un index PERSISTANT
+et incrémental d'un dépôt, ni un contexte hiérarchique budgété en tokens —
+c'est exactement ce que Claude Context et OpenViking apportent, et rien
+d'autre n'a été touché ou fusionné pour ça.
+
+### Claude Context — recherche sémantique de code, par son propre serveur MCP
+
+Dépôt cloné et audité (`zilliztech/claude-context`), MIT confirmé
+(`LICENSE` lu directement). C'est un projet TypeScript/Node.js : la bonne
+frontière n'est pas légale mais architecturale — son propre serveur MCP
+officiel (`@zilliz/claude-context-mcp`, `packages/mcp/src/index.ts`,
+transport `StdioServerTransport`, quatre outils réels lus dans le code :
+`index_codebase`, `search_code`, `clear_index`, `get_indexing_status`)
+est la frontière déjà prévue par le projet pour un client externe — même
+patron qu'OpenTakeoff (`core/connectors/opentakeoff.py`), même transport
+(`core/mcp/stdio_transport.py`, réutilisé sans une ligne de plus, étendu
+d'un paramètre additif `environnement` pour ce connecteur — WanGP/
+OpenTakeoff, qui n'en fournissent jamais, ne sont pas affectés).
+
+**Local-first forcé par la structure, pas par confiance** (DEC-0002).
+Claude Context accepte quatre fournisseurs d'embeddings et documente
+OpenAI comme choix par défaut. `core/connectors/claude_context.py::
+_environnement()` construit l'environnement du sous-processus en partant
+de `os.environ`, puis ÉCRASE `EMBEDDING_PROVIDER` à `"Ollama"` — un
+`OPENAI_API_KEY` présent ailleurs sur la machine, pour un usage sans
+rapport, ne peut jamais faire router un embedding vers un service cloud à
+travers ce connecteur. `OLLAMA_HOST` reprend la MÊME variable que le
+reste d'ARENA (`OLLAMA_BASE_URL`, `core/memory/semantique.py`) — jamais
+une deuxième adresse Ollama inventée (un test dédié du dépôt,
+`test_personne_d_autre_n_ecrit_l_adresse_en_dur`, l'a fait échouer une
+première fois, corrigé). `CLAUDE_CONTEXT_MILVUS_ADDRESS` et
+`CLAUDE_CONTEXT_EMBEDDING_MODEL` n'ont aucun défaut — un Milvus local
+(auto-hébergé, Apache-2.0) existe, son adresse n'est jamais devinée.
+Quatre capacités : `indexer`/`vider_index` (écritures locales et
+rebâtissables, `ALLOWED` sous `WRITE_FILES`, même logique que
+`graphify.construire`) et `rechercher`/`etat_indexation` (lectures).
+
+### OpenViking — contexte hiérarchique/mémoire/compétences, par son propre serveur HTTP
+
+Dépôt cloné et audité (`volcengine/OpenViking`). **Licence vérifiée fichier
+par fichier, jamais supposée d'un sous-dossier à l'autre** (mission §13) :
+le `LICENSE` racine est AGPLv3 ; trois sous-dossiers (`crates/ov_cli`,
+`crates/ragfs`, `crates/ragfs-python`) portent chacun leur PROPRE
+`Cargo.toml` avec `license = "Apache-2.0"`, vérifié en lisant ces trois
+fichiers. Mais ces trois crates sont une abstraction de système de
+fichiers BAS NIVEAU (`ragfs::core::{FileSystem, PluginRegistry}`,
+consommée EN PROCESSUS via un binding Rust) — aucune logique de mémoire,
+skills ou hiérarchie L0/L1/L2, qui vit dans le reste du dépôt, sous
+AGPLv3. Importer la partie Apache-2.0 n'aurait donc rien apporté ici :
+même raisonnement que le rejet de BuildingPy en DEC-0056, un second
+morceau de dépendance pour un besoin qu'il ne sert pas.
+
+Le serveur OpenViking lui-même (`docker-compose.yml`, port 1933) expose
+une API HTTP publique et documentée dans son propre dépôt (`docs/en/
+api/`, vingt-quatre pages lues directement, pas devinées) : réponses
+`{"status":"ok","result":{...}}`, authentification `Bearer`/`X-API-Key`.
+`core/connectors/openviking.py` en appelle quatre routes, un client HTTP
+ordinaire — même frontière que Formbricks (DEC-0052) et SiteGuard
+(DEC-0054), jamais un import :
+- `contexte` → `POST /api/v1/search/search` (`mode="context"`) : le
+  contexte DÉJÀ ASSEMBLÉ, budgété en tokens (`max_tokens`), dégradé par
+  palier L0/L1/L2 et dédupliqué entre tours côté serveur — exactement ce
+  qu'aucun système d'ARENA ne rend aujourd'hui.
+- `rechercher` → `POST /api/v1/search/find` : recherche vectorielle simple.
+- `competences` → `POST /api/v1/skills/find`.
+- `ecrire_ressource` → `POST /api/v1/resources` : ajoute une URL à la
+  base de contexte du propriétaire — écriture locale sur SON serveur,
+  `ALLOWED` sous `WRITE_FILES` (même logique que le devis PDF, DEC-0041 :
+  ce qui reste sur sa propre machine ne demande pas d'accord préalable).
+
+**Rien ne remplace `core/memory/memory_manager.py`.** Cette capacité
+reste explicite, jamais appelée à la place de la mémoire de chat — même
+discipline que txtai (DEC-0051).
+
+### Agent-Reach — dépôt re-cloné, DEC-0017 reconfirmé, rien de nouveau à intégrer
+
+Re-vérifié à neuf (pas recopié de mémoire) : dépôt cloné et relu, huit
+jours après l'audit de DEC-0017. Le dépôt le dit toujours de lui-même :
+« Agent Reach 是一个能力层（capability layer），不是又一个工具 » (« une
+couche de capacité, pas un autre outil ») — il sélectionne, installe,
+teste et route entre des outils tiers déjà indépendants (`yt-dlp`,
+`feedparser`, `gh`, Jina Reader, Exa via `mcporter`), il ne cherche ni ne
+lit rien lui-même. Une évolution mesurée depuis DEC-0017 va dans le même
+sens que la conclusion, pas contre elle : YouTube/Bilibili a perdu
+`yt-dlp` (bloqué par le contrôle anti-scraping de Bilibili depuis
+06/2026) au profit d'un CLI de repli — une dépendance de plus qui casse,
+pas une capacité qui se stabilise. La recherche « tout le web » et la
+lecture de page restent routées vers des services cloud tiers (Exa, Jina
+Reader) non revus selon la discipline DEC-0009 ; les réseaux sociaux
+exigent toujours les cookies de session **personnels** du propriétaire.
+
+**La décision ne change pas** : rien d'Agent-Reach n'est intégré.
+L'internet layer d'ARENA reste `FreshInfoAgent`/`TrendAnalyzerAgent`/
+`agents/researcher/researcher_agent.py` (déjà parallélisé, DEC-0017) —
+relu à nouveau ici, aucun TODO ni défaut trouvé qui justifierait un
+changement forcé (mission : « si elle est correcte, améliore-la » — rien
+à améliorer sans preuve d'un défaut, exactement le principe qui a fermé
+`FreshInfoAgent` en DEC-0017).
+
+### La couche qui les fait collaborer, sans troisième système parallèle
+
+`core/context/recherche_unifiee.py` — une heuristique par mots-clés (code/
+mémoire/internet) décide QUELLES sources une question appelle, les
+interroge en PARALLÈLE (`asyncio.gather`), fusionne avec PROVENANCE
+(`"codebase"`/`"openviking_memory"`/`"web"`, jamais un bloc anonyme). Un
+modèle pour cette décision aurait été un coût pour un signal déjà lisible
+dans la question — même choix que le repli mots-clés de
+`agents/orchestrator/orchestrator_agent.py`. Chaque source reste un appel
+ORDINAIRE (`registre.executer(...)`, ou l'agent internet déjà existant) :
+aucun nouveau système de permissions, de registre ou de routage n'a été
+inventé — le sien reste soumis à celui déjà en place. Atteignable
+réellement, pas dormant : `POST /api/contexte/rechercher`
+(`apps/backend/routers/contexte_unifie.py`), jamais câblé au chat (même
+choix que `/api/hermes-evolution/evoluer` — un outil explicite, pas une
+capacité métier).
+
+**Un défaut réel trouvé et corrigé en écrivant les tests** : appeler
+`registre.executer(...)` (synchrone, bloquant — httpx, sous-processus)
+directement dans une coroutine bloque la boucle asyncio ENTIÈRE le temps
+de l'appel, malgré un `asyncio.gather` de façade — exactement le défaut
+que DEC-0017 avait déjà trouvé et corrigé pour `DeepResearcherAgent`.
+Mesuré par un test de parallélisme réel (deux sources à 0,1 s chacune,
+0,1 s au total attendu) : sans le pont par thread
+(`asyncio.to_thread`), le total mesuré passe à 0,2 s — le sabotage
+inverse (retirer `asyncio.to_thread`) l'a confirmé, puis restauré.
+
+### Tests et sabotages
+
+49 tests neufs (Claude Context : 13, OpenViking : 16, recherche unifiée :
+17, route `/api/contexte/rechercher` : 3), plus les tests existants
+corrigés. Trois sabotages prouvés puis restaurés : (1) l'écrasement de
+`EMBEDDING_PROVIDER` retiré fait disparaître la clé de l'environnement du
+sous-processus (`KeyError`) ; (2) l'appel direct au registre (sans
+`asyncio.to_thread`) fait retomber le test de parallélisme à 0,2 s ; (3)
+une URL OpenViking par défaut ajoutée fait tenter une vraie connexion
+réseau au lieu de rapporter `NON_CONFIGURE` — la différence entre
+`Statut.NON_CONFIGURE` et `Statut.ECHEC` prouve que l'appel a réellement
+été tenté. `python -m ruff check .` propre, suite complète :
+`3869 passed, 25 skipped, 48 deselected`.
+
+Régressions détectées et corrigées en cours de route (la mesure, pas la
+mémoire) : `test_configuration_clients.py` (une deuxième adresse Ollama
+inventée), `test_documentation.py` (le nouveau module de recherche
+unifiée dormait tant qu'aucune route ne l'atteignait — corrigé en
+l'atteignant réellement, pas en le documentant comme exception ; compteur
+`CLAUDE.md` périmé — `python scripts/orphelins.py` mesure 206 modules,
+164 atteints).
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **Le reste de la surface OpenViking** (ACL, snapshots, WebDAV,
+  administration, agent evolution, watches) : hors de la portée réelle
+  demandée (mémoire/contexte/compétences). `SUGGESTION — NON IMPLÉMENTÉE`.
+- **L'upload de fichier local vers OpenViking** (`temp_upload` +
+  multipart) : `ecrire_ressource` ne couvre que l'ajout par URL — un
+  besoin réel mais non exprimé ici. `SUGGESTION — NON IMPLÉMENTÉE`.
+- **Un banc de comparaison chiffré entre la mémoire d'ARENA et
+  OpenViking** (pertinence/latence, comme envisagé pour txtai en
+  DEC-0051) : ni Ollama ni un serveur OpenViking réel n'existent dans ce
+  bac à sable — même limite que la phase 7.2. `SUGGESTION — NON
+  IMPLÉMENTÉE`, à mesurer sur sa machine.
+- **Un routage par modèle plutôt que par mots-clés** pour la recherche
+  unifiée : l'heuristique actuelle couvre les exemples de la mission ;
+  un modèle n'apporterait rien de mesurable ici sans corpus réel de
+  questions ambiguës. `SUGGESTION — NON IMPLÉMENTÉE`.
+
+### Ce que ça coûte si c'est faux
+
+Un `EMBEDDING_PROVIDER` qui filtrerait depuis l'environnement hérité
+enverrait le code du propriétaire — potentiellement des secrets, des prix,
+des chemins de chantier — vers un service cloud tiers à son insu,
+exactement ce que DEC-0002 existe pour empêcher. Une URL OpenViking
+devinée par défaut connecterait ARENA à un service qui n'est pas le sien.
+Les deux gardes sont vérifiées par sabotage, pas seulement énoncées.
