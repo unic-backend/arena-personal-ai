@@ -123,11 +123,18 @@ class ClientMcp:
     """
 
     def __init__(self, base_url: str, chemin: str = "/mcp",
-                 delai: float = DELAI_SECONDES, client: Optional[httpx.Client] = None) -> None:
+                 delai: float = DELAI_SECONDES, client: Optional[httpx.Client] = None,
+                 jeton: Optional[str] = None) -> None:
         self.url = f"{base_url.rstrip('/')}{chemin if chemin.startswith('/') else '/' + chemin}"
         self.delai = delai
         self._client = client
         self._session: Optional[str] = None
+        #: Additif, jamais requis : WanGP n'a pas d'authentification
+        #: (`Wan2GPConnector.authentifier` rend toujours vrai) et ne le
+        #: fournit jamais. Un futur serveur MCP local a jeton de session
+        #: (`Authorization: Bearer <jeton>`) le fournit ; ce module reste
+        #: generique et ne nomme aucun serveur precis.
+        self._jeton = jeton
 
     # --- Bas niveau -------------------------------------------------------------
 
@@ -139,6 +146,8 @@ class ClientMcp:
         }
         if self._session:
             entetes["Mcp-Session-Id"] = self._session
+        if self._jeton:
+            entetes["Authorization"] = f"Bearer {self._jeton}"
         return entetes
 
     def _poster(self, corps: Dict[str, Any]) -> Reponse:

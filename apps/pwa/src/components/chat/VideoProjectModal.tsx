@@ -15,7 +15,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle, AudioLines, Ban, Check, Clapperboard, Eye, FileVideo2, Film,
   Image, Languages, Loader2, Mic2, Paperclip, RectangleHorizontal,
-  RectangleVertical, Scissors, Sparkles, Subtitles, UserRoundCog, Video, X,
+  RectangleVertical, Scissors, Sparkles, Subtitles, UserRoundCog, Video, Wand2, X,
 } from 'lucide-react';
 import {
   CapaciteVideo, CAPACITES_VIDEO, EtapeProjetResultat, useVideoProject,
@@ -37,6 +37,7 @@ const ICONE_CAPACITE: Record<CapaciteVideo, typeof Eye> = {
   krillin_render_horizontal: RectangleHorizontal,
   krillin_render_vertical: RectangleVertical,
   krillin_cover: Image,
+  drift: Wand2,
 };
 
 function labelCapacite(c: CapaciteVideo, fr: boolean): string {
@@ -53,6 +54,7 @@ function labelCapacite(c: CapaciteVideo, fr: boolean): string {
     krillin_render_horizontal: ['Rendu horizontal (KrillinAI)', 'Horizontal render (KrillinAI)'],
     krillin_render_vertical: ['Rendu vertical (KrillinAI)', 'Vertical render (KrillinAI)'],
     krillin_cover: ['Couverture (KrillinAI)', 'Cover image (KrillinAI)'],
+    drift: ['Montage IA (Drift)', 'AI editing (Drift)'],
   };
   return fr ? labels[c][0] : labels[c][1];
 }

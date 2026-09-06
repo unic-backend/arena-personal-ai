@@ -48,7 +48,9 @@ from core.actions.journal import JournalDesActions
 from core.agent.capacites import RegistreCapacites, adaptateur_synchrone
 from core.connectors.audio_voix import ConnecteurAudioVoix
 from core.connectors.calendrier import CalendrierConnector
+from core.connectors.claude_context import ConnecteurClaudeContext
 from core.connectors.devis import DevisConnector
+from core.connectors.drift import ConnecteurDrift
 from core.connectors.faceplugin import ConnecteurFaceplugin
 from core.connectors.formbricks import ConnecteurFormbricks
 from core.connectors.galsen import GalsenConnector
@@ -62,6 +64,7 @@ from core.connectors.krillinai import ConnecteurKrillinAI
 from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.montage import ConnecteurMontage
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
+from core.connectors.openviking import ConnecteurOpenViking
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.securite_chantier import ConnecteurSecuriteChantier
 from core.connectors.stockage_jetons import charger_tout as _charger_jetons_persistants
@@ -277,6 +280,36 @@ registre.declarer(
     "krillinai",
     lambda: ConnecteurKrillinAI(acces=acces, journal=journal, file_attente=file_attente,
                                 crochets=crochets),
+)
+# Drift (DEC-0057) : editeur video (GPLv3) pilote par son PROPRE serveur MCP,
+# jamais importe ni copie — meme frontiere que KrillinAI/VoiceStudio. Reserve
+# EXCLUSIVEMENT au workspace Video (agents/video/production_agent.py) : aucun
+# chemin plaquiste/BIM/metier n'y touche. Aucune URL ni jeton par defaut
+# (DEC-0002) : NON_CONFIGURE tant que DRIFT_MCP_URL/DRIFT_MCP_TOKEN ne sont
+# pas dans le .env. Voir core/connectors/drift.py.
+registre.declarer(
+    "drift",
+    lambda: ConnecteurDrift(acces=acces, journal=journal, file_attente=file_attente,
+                            crochets=crochets),
+)
+# Claude Context (DEC-0058) : recherche semantique de code, par son propre
+# serveur MCP (@zilliz/claude-context-mcp, MIT) — Milvus auto-heberge +
+# Ollama local forces par le connecteur lui-meme, jamais Zilliz Cloud/OpenAI
+# par defaut. Voir core/connectors/claude_context.py.
+registre.declarer(
+    "claude_context",
+    lambda: ConnecteurClaudeContext(acces=acces, journal=journal, file_attente=file_attente,
+                                    crochets=crochets),
+)
+# OpenViking (DEC-0058) : contexte hierarchique/memoire/competences, par son
+# propre serveur HTTP (AGPLv3) — un service SEPARE, auto-heberge par le
+# proprietaire, jamais importe. Explicite, jamais appele a la place de
+# core/memory/ (meme discipline que txtai, DEC-0051). Voir
+# core/connectors/openviking.py.
+registre.declarer(
+    "openviking",
+    lambda: ConnecteurOpenViking(acces=acces, journal=journal, file_attente=file_attente,
+                                 crochets=crochets),
 )
 # Generation d'interface : la technique d'OpenUI (prompt -> HTML/React/
 # Svelte/Web-Component), jamais son serveur (connexion GitHub requise,

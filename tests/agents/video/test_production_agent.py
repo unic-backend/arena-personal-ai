@@ -489,3 +489,177 @@ class TestKrillinAI:
         agent = VideoProductionAgent(provider=modele, registre=None)
         resultat = await agent.run("genere une couverture", context={"references": []})
         assert resultat["status"] == "warning"
+
+
+SCHEMA_TIMELINE = {"tools": [
+    {"name": "split_on_beats",
+     "inputSchema": {"properties": {"clip_id": {"type": "string"}}, "required": ["clip_id"]}},
+    {"name": "place_clip",
+     "inputSchema": {"properties": {"path": {"type": "string"}, "track": {"type": "string"}},
+                     "required": ["path", "track"]}},
+]}
+
+
+class RegistreDriftDouble:
+    """Un serveur Drift de test : `boite_a_outils` ne rend un schema QUE
+    pour les toolboxes fournies — les neuf autres echouent, comme un vrai
+    Drift qui n'a que « timeline » a offrir dans ce scenario."""
+
+    def __init__(self, toolboxes=None, reponse_appliquer=None, echoue_catalogue=False):
+        self.appels = []
+        self._toolboxes = toolboxes if toolboxes is not None else {"timeline": SCHEMA_TIMELINE}
+        self._reponse_appliquer = reponse_appliquer or {
+            "statut": "SUCCESS", "message": "ok",
+            "preuve": "apply : 1 opération(s) appliquée(s)", "detail": {"donnees": {}},
+        }
+        self._echoue_catalogue = echoue_catalogue
+
+    async def executer(self, connecteur, capacite, **parametres):
+        self.appels.append({"connecteur": connecteur, "capacite": capacite, "parametres": parametres})
+        if capacite == "catalogue":
+            if self._echoue_catalogue:
+                return {"statut": "NOT_CONFIGURED", "message": "Drift absent"}
+            return {"statut": "SUCCESS", "message": "catalog", "preuve": "catalog"}
+        if capacite == "boite_a_outils":
+            schema = self._toolboxes.get(parametres.get("name"))
+            if schema is None:
+                return {"statut": "FAILED", "message": "toolbox absente"}
+            return {"statut": "SUCCESS", "message": "toolbox",
+                    "preuve": parametres.get("name"), "detail": {"donnees": schema}}
+        if capacite == "appliquer":
+            return self._reponse_appliquer
+        return {"statut": "FAILED", "message": f"capacite inconnue {capacite}"}
+
+
+class TestDrift:
+    """DEC-0057 : Drift, jamais pilote en direct — le texte du modele
+    devient une liste d'operations validee contre le VRAI schema recu."""
+
+    async def test_drift_via_le_graphe_video_complet(self, reference):
+        modele = ModeleDouble([
+            '[{"id": "d", "capacite": "drift", '
+            '"parametres": {"demande": "coupe les silences", "references": [0]}}]',
+            '[{"toolbox": "timeline", "operation": "split_on_beats", '
+            '"parametres": {"clip_id": "c1"}}]',
+        ])
+        registre = RegistreDriftDouble()
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+
+        resultat = await agent.run(
+            "coupe les silences de cette video", context={"references": [reference]})
+
+        assert resultat["status"] == "success", resultat["response"]
+        capacites_appelees = [a["capacite"] for a in registre.appels]
+        # catalogue, puis une boite_a_outils par toolbox fermee (10), puis appliquer.
+        assert capacites_appelees[0] == "catalogue"
+        assert capacites_appelees.count("boite_a_outils") == 10
+        assert capacites_appelees[-1] == "appliquer"
+        appel_appliquer = registre.appels[-1]
+        assert appel_appliquer["parametres"]["ops"] == [
+            {"toolbox": "timeline", "op": "split_on_beats", "params": {"clip_id": "c1"}}]
+
+    async def test_drift_ne_montre_jamais_un_chemin_au_modele(self, reference):
+        modele = ModeleDouble([
+            '[{"id": "d", "capacite": "drift", '
+            '"parametres": {"demande": "monte cette video", "references": [0]}}]',
+            '[{"toolbox": "timeline", "operation": "split_on_beats", '
+            '"parametres": {"clip_id": "c1"}}]',
+        ])
+        registre = RegistreDriftDouble()
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+
+        await agent.run("monte cette video", context={"references": [reference]})
+
+        prompt_drift = modele.prompts[-1]
+        assert reference not in prompt_drift
+        assert Path(reference).stem in prompt_drift
+
+    async def test_drift_refuse_une_operation_hors_du_vrai_schema(self, reference):
+        modele = ModeleDouble([
+            '[{"id": "d", "capacite": "drift", '
+            '"parametres": {"demande": "fais un truc impossible", "references": [0]}}]',
+            '[{"toolbox": "timeline", "operation": "operation_inventee", "parametres": {}}]',
+        ])
+        registre = RegistreDriftDouble()
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+
+        resultat = await agent.run("fais un truc impossible", context={"references": [reference]})
+
+        assert resultat["status"] == "warning"
+        capacites_appelees = [a["capacite"] for a in registre.appels]
+        assert "appliquer" not in capacites_appelees, "un plan refuse n'atteint jamais Drift"
+
+    async def test_drift_sans_registre_echoue_honnetement(self, reference):
+        modele = ModeleDouble([
+            '[{"id": "d", "capacite": "drift", '
+            '"parametres": {"demande": "coupe les silences", "references": [0]}}]',
+        ])
+        agent = VideoProductionAgent(provider=modele, registre=None)
+
+        resultat = await agent.run("coupe les silences", context={"references": [reference]})
+
+        assert resultat["status"] == "warning"
+
+    async def test_drift_sans_demande_echoue_honnetement(self, reference):
+        modele = ModeleDouble([
+            '[{"id": "d", "capacite": "drift", "parametres": {"references": [0]}}]',
+        ])
+        registre = RegistreDriftDouble()
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+
+        resultat = await agent.run("coupe", context={"references": [reference]})
+
+        assert resultat["status"] == "warning"
+        assert registre.appels == []
+
+    async def test_drift_indisponible_echoue_avant_tout_plan(self, reference):
+        modele = ModeleDouble([
+            '[{"id": "d", "capacite": "drift", '
+            '"parametres": {"demande": "coupe les silences", "references": [0]}}]',
+        ])
+        registre = RegistreDriftDouble(echoue_catalogue=True)
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+
+        resultat = await agent.run("coupe les silences", context={"references": [reference]})
+
+        assert resultat["status"] == "warning"
+        capacites_appelees = [a["capacite"] for a in registre.appels]
+        assert capacites_appelees == ["catalogue"]
+
+    async def test_smoke_drift_jusqu_a_un_fichier_reel_exporte(self, tmp_path):
+        """Smoke test reel (mission Drift, 06/09/2026) : de la demande en
+        langage naturel jusqu'a un fichier EXPORTE qui existe reellement sur
+        le disque — le meme contrat que `_artefact_final` pour montage/
+        xaar_kaname/krillin_render_*."""
+        video_source = tmp_path / "chantier-avant.mp4"
+        video_source.write_bytes(b"\x00\x00\x00\x18ftypmp42-source-avant")
+        export = tmp_path / "chantier-avant-apres.mp4"
+        export.write_bytes(b"\x00\x00\x00\x18ftypmp42-export-reel")
+
+        schema_export = {"tools": [
+            {"name": "export_video",
+             "inputSchema": {"properties": {"format": {"type": "string"}}, "required": []}},
+        ]}
+        registre = RegistreDriftDouble(
+            toolboxes={"timeline": schema_export},
+            reponse_appliquer={
+                "statut": "SUCCESS", "message": "export termine",
+                "preuve": "apply : 1 opération(s) appliquée(s)",
+                "detail": {"donnees": {"results": [{"op": "export_video",
+                                                     "output_path": str(export)}]}},
+            },
+        )
+        modele = ModeleDouble([
+            '[{"id": "d", "capacite": "drift", '
+            '"parametres": {"demande": "exporte la video finale", "references": [0]}}]',
+            '[{"toolbox": "timeline", "operation": "export_video", "parametres": {"format": "mp4"}}]',
+        ])
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+
+        resultat = await agent.run(
+            "prepare et exporte la video finale", context={"references": [str(video_source)]})
+
+        assert resultat["status"] == "success", resultat["response"]
+        assert resultat["projet"]["artefact_final"] == str(export)
+        assert Path(resultat["projet"]["artefact_final"]).is_file()
+        assert Path(resultat["projet"]["artefact_final"]).read_bytes().startswith(b"\x00\x00\x00\x18ftyp")
