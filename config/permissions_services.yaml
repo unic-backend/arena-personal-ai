@@ -249,6 +249,12 @@ services:
   ifc:
     read:        {decision: ALLOWED,      risque: LOW}
 
+  # Generation IFC (DEC-0056) : un croquis local (media/rendered/), relu
+  # avant d'etre partage — meme logique que le devis (DEC-0041) et
+  # ui_generate (DEC-0050).
+  ifc_generation:
+    document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+
   # Securite chantier (DEC-0054) : detection EPI sur une photo, appelee via
   # SiteGuard en local (127.0.0.1 uniquement, jamais un service distant par
   # defaut). Une lecture, rien n'est ecrit ni publie.

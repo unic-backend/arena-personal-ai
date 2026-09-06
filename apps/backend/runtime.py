@@ -57,6 +57,7 @@ from core.connectors.gmail import GmailConnector
 from core.connectors.graphify import ConnecteurGraphify
 from core.connectors.hermes_evolution import ConnecteurHermesEvolution
 from core.connectors.ifc import ConnecteurIfc
+from core.connectors.ifc_generation import ConnecteurIfcGeneration
 from core.connectors.krillinai import ConnecteurKrillinAI
 from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.montage import ConnecteurMontage
@@ -224,6 +225,16 @@ registre.declarer(
     "ifc",
     lambda: ConnecteurIfc(acces=acces, journal=journal, file_attente=file_attente,
                           crochets=crochets),
+)
+# Generation IFC (mission BIM, 06/09/2026) : un croquis minimal de cloison
+# (une face, longueur x hauteur), via l'API d'ecriture d'IfcOpenShell
+# elle-meme — jamais un second moteur BIM (BIM as Code/BuildingPy refuses,
+# DEC-0056). Ecrit dans media/rendered/, comme le devis. Voir
+# core/connectors/ifc_generation.py.
+registre.declarer(
+    "ifc_generation",
+    lambda: ConnecteurIfcGeneration(acces=acces, journal=journal, file_attente=file_attente,
+                                    crochets=crochets),
 )
 # Securite chantier (mission BIM/metre/securite chantier, 05/09/2026) :
 # detection EPI (casque, gilet...) sur une photo, appelee via SiteGuard

@@ -5,7 +5,7 @@ MESURE en 2D, un fichier IFC est LU, ses quantites sont deja dedans.
 """
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 #: Un chemin de fichier IFC, ecrit dans une phrase — Windows (sa machine) ou
 #: Linux (le serveur). Meme forme que `metre_plan.CHEMIN_PDF`.
@@ -75,6 +75,46 @@ def depuis_metre(chemin: str, detail: Dict[str, Any]) -> MetreIfc:
         elements_chiffres=int(detail.get("elements_chiffres") or 0),
         elements_sans_quantite=list(detail.get("elements_sans_quantite") or []),
     )
+
+
+#: Une demande de croquis IFC — GENERER un fichier, jamais confondu avec
+#: lire un fichier IFC existant (`chemin_dans` ci-dessus). Phrase exacte,
+#: jamais le mot « ifc » seul : il apparaît aussi dans « analyse ce fichier
+#: ifc », qui ne doit jamais produire un fichier de son propre chef.
+DEMANDE_DE_CROQUIS_IFC = re.compile(
+    r"g[ée]n[èe]re\w* (?:le|un|moi) (?:croquis|fichier) ifc"
+    r"|cr[ée]e\w* (?:le|un|moi) (?:croquis|fichier) ifc"
+    r"|fais\w* (?:le|un|moi) (?:croquis|fichier) ifc"
+    r"|exporte\w*.{0,30}\bifc\b",
+    re.IGNORECASE)
+
+#: « 5,40 x 2,50 » — longueur x hauteur pour UNE cloison. Volontairement
+#: séparé de `agents/plaquiste/metre.py::lire_demande` (qui compte des
+#: PAROIS et rend une surface déjà multipliée, jamais longueur/hauteur
+#: séparément) : générer un mur exige les deux cotes distinctes, pas leur
+#: produit.
+_NOMBRE_CROQUIS = r"(\d+(?:[.,]\d+)?)"
+DIMENSIONS_CROQUIS = re.compile(
+    rf"{_NOMBRE_CROQUIS}\s*(?:m\b|metres?|mètres?)?\s*(?:x|par|\*|×)\s*{_NOMBRE_CROQUIS}",
+    re.IGNORECASE)
+
+
+def demande_de_croquis_ifc(texte: str) -> bool:
+    """Vrai si la demande veut GÉNÉRER un fichier IFC, pas en lire un."""
+    return bool(DEMANDE_DE_CROQUIS_IFC.search(texte or ""))
+
+
+def dimensions_pour_croquis(texte: str) -> Optional[Tuple[float, float]]:
+    """La longueur et la hauteur lues pour un croquis, ou None si rien
+    d'exploitable — jamais une dimension devinée."""
+    trouve = DIMENSIONS_CROQUIS.search(texte or "")
+    if not trouve:
+        return None
+    longueur = float(trouve.group(1).replace(",", "."))
+    hauteur = float(trouve.group(2).replace(",", "."))
+    if longueur <= 0 or hauteur <= 0:
+        return None
+    return longueur, hauteur
 
 
 def formater_metre(metre: MetreIfc) -> str:
