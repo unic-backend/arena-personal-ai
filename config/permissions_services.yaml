@@ -255,6 +255,13 @@ services:
   securite_chantier:
     read:        {decision: ALLOWED,      risque: LOW}
 
+  # Hermes Agent Self-Evolution (DEC-0055) : fait evoluer un depot CIBLE,
+  # jamais ARENA (garde structurelle dans le connecteur). Un sous-processus
+  # qui peut ouvrir une PR sur un vrai depot : CONFIRMATION, risque HIGH,
+  # sous EXECUTE_COMMANDS (eteint par defaut).
+  hermes_evolution:
+    execute:     {decision: CONFIRMATION, risque: HIGH, interrupteur: EXECUTE_COMMANDS}
+
   # Formbricks (DEC-0052) : sondages/feedback via une instance externe
   # (auto-hebergee de preference, DEC-0002) — jamais du code copie (coeur
   # AGPLv3), toujours par son API REST publique. Lire ses propres sondages/

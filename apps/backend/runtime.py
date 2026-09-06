@@ -55,6 +55,7 @@ from core.connectors.galsen import GalsenConnector
 from core.connectors.gitingest import ConnecteurGitIngest
 from core.connectors.gmail import GmailConnector
 from core.connectors.graphify import ConnecteurGraphify
+from core.connectors.hermes_evolution import ConnecteurHermesEvolution
 from core.connectors.ifc import ConnecteurIfc
 from core.connectors.krillinai import ConnecteurKrillinAI
 from core.connectors.moneyprinter import MoneyPrinterConnector
@@ -234,6 +235,16 @@ registre.declarer(
     "securite_chantier",
     lambda: ConnecteurSecuriteChantier(acces=acces, journal=journal, file_attente=file_attente,
                                        crochets=crochets),
+)
+# Hermes Agent Self-Evolution (DEC-0055) : fait evoluer un depot CIBLE
+# (hermes-agent, NousResearch/hermes-agent-self-evolution, MIT) — jamais
+# ARENA lui-meme, garde structurelle dans le connecteur (DEC-0014 :
+# aucune PR autonome sur ce depot, meme relue avant fusion). Sous-processus
+# externe, jamais importe. Voir core/connectors/hermes_evolution.py.
+registre.declarer(
+    "hermes_evolution",
+    lambda: ConnecteurHermesEvolution(acces=acces, journal=journal, file_attente=file_attente,
+                                      crochets=crochets),
 )
 # Sondages/feedback (DEC-0052) : une instance Formbricks EXTERNE, appelee par
 # son API REST publique — aucune ligne de son code (coeur AGPLv3) n'est

@@ -3778,3 +3778,100 @@ d'architecture. Présenter une détection comme une certitude (sans le
 rappel de prudence) pourrait faire ignorer une vérification humaine sur un
 chantier réel — le risque que la mission elle-même signale en toutes
 lettres (§6).
+
+## DEC-0055 — Hermes Agent Self-Evolution : jamais ARENA comme cible
+
+**2026-09-05.** Reprise d'un dépôt refusé plus tôt dans la session
+(Hermes Agent Self-Evolution, NousResearch/hermes-agent-self-evolution,
+MIT). Le refus initial portait sur un principe déjà tranché par DEC-0014 :
+le Gardien de maintenance DÉCOUVRE et RAPPORTE, il ne MODIFIE jamais —
+« commit/PR autonome explicitement hors périmètre, contraire à la règle
+non négociable du projet ». Hermes Agent Self-Evolution fait exactement
+ça : lire des traces d'exécution, muter des compétences, ouvrir une PR.
+Une revue humaine avant fusion existe déjà côté outil, mais ça ne change
+pas le principe DEC-0014 en soi. Question posée explicitement au
+propriétaire ; sa réponse tranche : « construis-le, mais pointe-le sur
+autre chose que ce dépôt ARENA ».
+
+### Ce qui a changé depuis le premier refus
+
+Deux points vérifiés à nouveau, dans le code source réel de l'outil (pas
+supposés) :
+
+1. **Les modèles utilisés (`optimizer_model`, `eval_model`, `judge_model`)
+   sont de simples chaînes par défaut**, lues directement dans le fichier
+   de configuration de l'outil (`evolution/core`), jamais un verrou. Le
+   blocage initial (« ça part chez un fournisseur cloud », DEC-0002) est
+   réel dans la configuration PAR DÉFAUT de l'outil,
+   mais reste du ressort du propriétaire quand il installe SON exemplaire
+   séparé — ARENA n'a pas à le résoudre pour lui.
+2. **`create_pr: True` est également un défaut de configuration**, pas un
+   comportement figé — mais rien ne garantit qu'il soit désactivable en
+   ligne de commande (non documenté) : ce connecteur traite donc CHAQUE
+   appel comme pouvant ouvrir une PR réelle, jamais une simple suggestion
+   locale.
+
+### La garde structurelle, pas une promesse
+
+`core/connectors/hermes_evolution.py` refuse `depot_cible` s'il tombe dans
+le dépôt d'ARENA lui-même (`_cible_hors_du_depot`, même forme que
+`chemin_hors_du_depot` de `agents/plaquiste/plaquiste_agent.py`) —
+vérifié par sabotage : retirer ce contrôle fait accepter ARENA comme sa
+propre cible, exactement ce que DEC-0014 interdit. La garde vit dans le
+code, pas seulement dans cette page.
+
+**Un programme séparé, jamais importé** : cloné et installé à côté
+(`HERMES_EVOLUTION_DIR`), comme OpenTakeoff, WanGP, VoiceStudio, KrillinAI
+et SiteGuard. Invoqué par sous-processus
+(`python -m evolution.skills.evolve_skill`) — sa seule forme d'appel, pas
+de serveur HTTP à la différence de SiteGuard.
+
+### Le bon coupe-circuit, vérifié dans le code réel
+
+`EXECUTE_COMMANDS` (à `false` par défaut dans `config/permissions.yaml`)
+est le coupe-circuit choisi — une exécution de sous-processus est
+exactement ce pour quoi il existe. Vérifié directement dans
+`core/permissions/controle.py::ControleAcces.verifier` : `interrupteur_de()`
+lit ce nom pour toute capacité qui le déclare dans
+`config/permissions_services.yaml`, le chemin qu'emprunte réellement ce
+connecteur via `Connecteur._conduire()`. Une note d'audit antérieure
+(P-05, dans le worklog technique) signale qu'un appel plus ancien et
+direct à `PermissionManager.is_allowed()` ne consultait jamais ce booléen
+— un chemin distinct de celui des connecteurs modernes, vérifié ici pour
+ne pas répéter la même confusion. `hermes_evolution.execute` est
+`CONFIRMATION`, risque `HIGH` : une exécution qui peut ouvrir une PR sur un
+dépôt réel n'est jamais lancée d'autorité.
+
+### Reachable, pas dormant
+
+`POST /api/hermes-evolution/evoluer` — un outil de développement, pas une
+capacité métier UniC Plaquiste : pas d'aiguillage depuis le chat (même
+choix que `/api/video/projet`, DEC-0037). La confirmation réelle emprunte
+la route générique déjà en place (`POST /api/actions/{identifiant}/confirm`)
+plutôt qu'une route dédiée.
+
+### Tests et sabotage
+
+21 tests du connecteur (aucun `subprocess.run` réel — l'outil n'est
+installé nulle part ici, un programme externe comme OpenTakeoff) + 4 tests
+de la route. Deux sabotages prouvés puis restaurés : la garde de
+confinement retirée (ARENA accepterait sa propre cible) ; l'interrupteur
+`EXECUTE_COMMANDS` retiré de la politique livrée (l'action partirait sans
+coupe-circuit). `python -m ruff check .` propre, `3746 passed, 25 skipped`.
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **Aucune installation réelle testée** : ni l'outil d'évolution, ni un
+  dépôt hermes-agent cible n'existent sur cette machine. `sonder()` fait un
+  vrai appel (`--help`), jamais une déduction depuis un fichier présent.
+- **Le contournement de `create_pr`/du fournisseur cloud** reste la
+  responsabilité du propriétaire dans SA configuration de l'outil, jamais
+  quelque chose qu'ARENA réécrit ou contourne dans le code d'un tiers.
+
+### Ce que ça coûte si c'est faux
+
+Une garde de confinement absente laisserait un outil d'évolution proposer
+des PR sur le code même d'ARENA — exactement le risque que DEC-0014 a
+fermé pour le Gardien. Un coupe-circuit mal relié laisserait un
+sous-processus s'exécuter sans que le propriétaire l'ait autorisé
+globalement — les deux sont vérifiés par sabotage, pas seulement décrits.
