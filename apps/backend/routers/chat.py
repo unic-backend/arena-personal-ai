@@ -50,6 +50,7 @@ from apps.backend.runtime import (
 )
 from apps.backend.security import limiter_debit, validate_media_path, verify_api_key
 from apps.backend.studio import lancer_studio
+from core.context.recherche_unifiee import MOTS_MEMOIRE
 from tools.documents.indexer import (
     DOSSIER_DOCUMENTS,
     FICHIER_INVENTAIRE,
@@ -147,6 +148,33 @@ def _issue_en_reponse(issue: Any) -> Dict[str, Any]:
         "statut_connecteur": issue.statut.value,
         "detail": issue.detail or {},
     }
+
+
+def _contexte_openviking(prompt: str, session_id: str) -> Optional[str]:
+    """Un souvenir pertinent, injecte dans la conversation ordinaire — jamais
+    interroge par reflexe, seulement quand la phrase le demande elle-meme
+    ("on a deja regle ca", `MOTS_MEMOIRE`, `core/context/recherche_unifiee.py`).
+
+    C'etait la capacite qu'OpenViking apportait (DEC-0058) sans qu'aucun
+    chemin de conversation reel ne l'appelle jamais : reachable pour
+    `scripts/orphelins.py` via `/api/contexte/rechercher`, mais aucune
+    phrase d'Ousmane ne pouvait l'atteindre. C'est ici, dans le CHAT
+    ordinaire — le seul chemin que chaque message sans intention metier
+    emprunte — qu'elle sert reellement.
+
+    Un service absent ou en panne ne casse jamais la conversation :
+    `registre.executer` rend NON_CONFIGURE/FAILED sans lever, et ce
+    contexte est alors silencieusement omis, comme le reste de cette
+    integration (DEC-0002 : une capacite absente se rapporte, jamais
+    simulee).
+    """
+    if not any(mot in prompt.lower() for mot in MOTS_MEMOIRE):
+        return None
+    issue = registre.executer("openviking", "contexte", requete=prompt, session_id=session_id)
+    if issue.statut.value not in {"SUCCESS", "PARTIAL"}:
+        return None
+    rendu = (issue.detail or {}).get("rendu")
+    return f"[Contexte pertinent de vos echanges precedents]\n{rendu}" if rendu else None
 
 
 def _analyse_de_visages(demande: str, images: List[str]) -> Dict[str, Any]:
@@ -545,6 +573,9 @@ async def chat_stream_endpoint(request: ChatRequest):
         system_prompt = prompt_avec_methode(request.prompt, intent)
 
         prompt_lines = []
+        contexte_memoire = _contexte_openviking(request.prompt, session_id)
+        if contexte_memoire:
+            prompt_lines.append(contexte_memoire)
         for msg in history:
             role_label = memory.get_fact("owner") or "Ousmane" if msg["role"] == "user" else "Usman"
             prompt_lines.append(f"{role_label}: {msg['content']}")
