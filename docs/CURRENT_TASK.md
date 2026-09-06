@@ -360,10 +360,14 @@ dans le flou.
    valeurs n'ouvrent plus rien. Reste `USMAN_API_KEY`, la seule vivante — à
    changer s'il n'est pas certain de l'avoir fait
    (`documents/RUNBOOK_PURGE_SECRETS.md`, étape 1).
-2. ~~**Le dépôt est public.**~~ **Fait le 28/08/2026 — il l'a passé en privé
-   lui-même.** Vérifié par l'API GitHub : `"private": true`, 0 fork.
-   L'exposition publique est close. La purge de l'historique reste **jamais
-   autorisée** : elle n'est plus urgente, mais c'est sa décision.
+2. ~~**Le dépôt est public.**~~ Passé en privé le 28/08/2026 (sa décision),
+   **repassé en public le 06/09/2026 — sa décision aussi.** Vérifié par
+   l'API GitHub : `"visibility": "public"`. L'historique contenant les six
+   secrets (cinq clés + la sixième non détaillée ici) redevient donc
+   lisible par n'importe qui — la purge (`documents/RUNBOOK_PURGE_SECRETS.md`)
+   reste **jamais autorisée**, c'est sa décision. Il a dit changer
+   `USMAN_API_KEY` lui-même à ce moment-là : **non vérifié par une mesure**,
+   à confirmer avant de l'écrire ailleurs comme fait.
    ~~**Rouvre-t-on le chapitre 8 (connecteur e-mail) ?**~~ **Oui, le
    28/08/2026 — et il est terminé le jour même.** 8.1 : lire et chercher son
    courrier. 8.2 : trier, extraire, rédiger, et **envoyer derrière

@@ -4664,3 +4664,58 @@ silencieuse. Le coût de ne PAS l'avoir corrigé était plus grand qu'il n'y
 paraît : une capacité mesurée « intégrée » qui ne l'était pas au sens où
 ça compte est exactement l'erreur que la mission « réveiller ce qui dort »
 visait à ne plus jamais laisser passer.
+
+---
+
+## DEC-0062 — Le dépôt repasse public, sur sa décision informée
+
+**2026-09-06.** Ousmane a signalé que le dépôt, censé être privé depuis le
+28/08/2026, rendait un 404 dans un autre navigateur ou une fenêtre privée —
+exactement le comportement normal d'un dépôt privé pour qui n'y a pas
+accès. Vérifié par l'API GitHub avant toute affirmation :
+`"visibility": "private"`, confirmant que ce n'était pas un défaut. Sa
+demande : « mon projet doit être facilement visible… tout le monde doit
+le voir ».
+
+### Ce qui a été refusé de faire à sa place
+
+Basculer la visibilité moi-même n'était de toute façon pas possible (aucun
+outil du serveur GitHub disponible ici n'expose ce réglage — une action que
+GitHub réserve délibérément à un geste humain confirmé dans son interface).
+Mais même si l'outil avait existé, le faire sans le lui dire aurait été
+faux : la mise en privé du 28/08/2026 était SA décision, prise précisément
+parce que six secrets restent dans l'historique des commits — quatre morts
+(LibreChat/Open WebUI, retirés, DEC-0007), un vivant (`USMAN_API_KEY`).
+Revenir dessus sans qu'il sache ce que ça rouvre aurait défait une
+protection qu'il avait posée lui-même en connaissance de cause.
+
+### Ce qui a été fait
+
+Question posée avec le compromis exact en clair (public tel quel + rotation
+immédiate de sa part, purge d'abord, accès nommé au lieu du public, ou ne
+rien faire). Réponse : **public tel quel, il change `USMAN_API_KEY`
+lui-même**. Il a effectué le changement de visibilité dans les réglages
+GitHub ; confirmé ici par une nouvelle lecture de l'API :
+`"visibility": "public"`. `CLAUDE.md` et `docs/CURRENT_TASK.md` mis à jour
+pour ne plus affirmer une exposition « close » qui ne l'est plus.
+
+### Ce qui reste non vérifié, et le reste tant que ça ne l'est pas
+
+La rotation de `USMAN_API_KEY` est **déclarée, pas mesurée** — aucun test
+ni aucune commande lancée ici ne la confirme, et rien de ce dépôt ne peut
+la confirmer (le secret ne s'y trouve jamais). `CLAUDE.md` le dit
+explicitement plutôt que de la compter comme acquise : une capacité
+absente — ici, une preuve absente — se rapporte, elle ne se simule pas
+(la règle vaut aussi pour les faits du propriétaire, pas seulement pour
+les mesures techniques).
+
+### Ce que ça coûte si c'est faux
+
+Si `USMAN_API_KEY` n'a pas réellement changé, elle est maintenant lisible
+par quiconque clone le dépôt — un risque plus grand qu'avant le
+28/08/2026, puisque la mise en privé avait justement cessé de le
+mentionner comme urgent. Le coût d'avoir mal documenté cet état serait
+qu'une session future lise « exposition close » (l'ancien texte) et ne
+pense plus à le signaler. D'où la mise à jour immédiate, avec la date et
+la source de vérification (l'API GitHub, pas sa parole seule pour la
+visibilité — mais sa parole seule, marquée comme telle, pour la clé).
