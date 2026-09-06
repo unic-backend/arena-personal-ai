@@ -30,6 +30,7 @@ export const CAPACITES_VIDEO = [
   'krillin_render_horizontal',
   'krillin_render_vertical',
   'krillin_cover',
+  'drift',
 ] as const;
 
 export type CapaciteVideo = (typeof CAPACITES_VIDEO)[number];

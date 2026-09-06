@@ -3971,3 +3971,174 @@ celle du devis produirait deux documents contradictoires chez le même
 client — un croquis technique et un devis qui ne s'accordent pas. La
 garantie est donc dans le code (le même calcul, jamais recalculé), vérifiée
 par sabotage, pas seulement énoncée ici.
+
+## DEC-0057 — Drift : un éditeur vidéo appelé par son propre serveur MCP, jamais absorbé dans le métier
+
+**2026-09-06.** Mission autonome du propriétaire : intégrer les capacités
+réellement utiles de github.com/CutWire-Studios/Drift dans le workspace
+Video existant (DEC-0037), avec une frontière explicite et répétée dans sa
+propre demande : « DRIFT APPARTIENT EXCLUSIVEMENT AU WORKSPACE VIDEO » —
+jamais UniC Plaquiste, jamais BIM, jamais métré/devis/matériaux/chantier/
+finances/CRM. Exemple donné par lui-même : des photos/vidéos de chantier
+entrent par le workspace Video, en ressort une vidéo avant/après ; jamais
+Drift devenant un moteur BIM/métré/devis.
+
+### Licence, vérifiée avant d'écrire une ligne
+
+`LICENSE` des deux dépôts lus directement (pas un paraphrase de README) :
+Drift et Drift-Addons sont tous deux **GPLv3**. Même frontière déjà tenue
+pour VoiceStudio (AGPL) et KrillinAI (GPL-3.0, DEC-0049) : un programme
+**séparé**, installé à côté de ce dépôt, jamais importé ni copié. Ce que
+`core/connectors/drift.py` appelle n'est pas du code Drift : c'est son
+**propre serveur MCP**, documenté dans son propre fichier de documentation
+MCP — exactement la
+frontière que Drift propose lui-même à un agent externe (« Turn on Agent
+access and Cursor, Claude Code, or another compatible agent can work in
+the open project »). Drift n'entre donc jamais dans ce dépôt.
+
+### Le protocole, tel que Drift le documente — jamais deviné
+
+`POST /mcp` avec `Authorization: Bearer <jeton>` (le serveur ne répond que
+sur `127.0.0.1`, un jeton généré par session, jamais fixe). Cinq opérations
+exposées comme des outils MCP : `catalog` (liste des dix toolboxes),
+`toolbox({name})` (le schéma JSON réel d'UNE toolbox), `apply({ops:[...]})`
+(exécute une liste de mutations comme un seul geste d'annulation),
+`inspect({clips,detail})`, `capture()`. Dix toolboxes : media, timeline,
+canvas, playback, text, effects, subtitles (Whisper inclus), audio, ai
+(denoise/détection de visage/auto-reframe), scene (détection de plans).
+
+`core/mcp/transport.py::ClientMcp` (déjà écrit pour WanGP) a reçu une seule
+extension additive : un paramètre `jeton` optionnel, inclus dans l'en-tête
+`Authorization: Bearer` seulement s'il est fourni — WanGP, qui n'en fournit
+jamais, n'est pas affecté (ses tests restent verts sans modification).
+
+### Ce qui a été intégré
+
+`core/connectors/drift.py` (`ConnecteurDrift`, service `video_drift`) :
+cinq capacités en miroir exact des cinq opérations Drift — quatre lectures
+(`catalogue`, `boite_a_outils`, `etat_projet`, `capture`) et une écriture
+(`appliquer`, sous `CONFIRMATION` + `WRITE_FILES`, même niveau que
+`video_generation.generate`). Aucune URL ni jeton par défaut (DEC-0002) :
+`DRIFT_MCP_URL`/`DRIFT_MCP_TOKEN` sont lus à l'appel, jamais un port deviné
+— contrairement à WanGP dont le port par défaut est documenté dans son
+propre README, celui de Drift ne l'est pas.
+
+`core/production/plan_drift.py` traduit une demande en langage naturel
+("coupe les silences", "ajoute une transition") en liste d'opérations
+`apply({ops})` **sans jamais deviner ce que Drift accepte** : les dix
+toolboxes sont la seule liste fermée écrite en dur (documentée par Drift
+lui-même) ; à l'intérieur d'une toolbox, une opération et ses paramètres ne
+sont acceptés que s'ils apparaissent dans le VRAI schéma renvoyé par
+`toolbox({name})` **dans ce même appel** — une toolbox jamais chargée, une
+opération absente du schéma, ou un paramètre inconnu sont refusés et
+nommés, jamais exécutés à l'aveugle. Tout paramètre qui désigne un média
+(`path`/`media`/`file`/`clip_path`/`source`) est résolu depuis un inventaire
+`{nom: chemin}` ouvert par l'appelant — le modèle ne cite jamais un chemin,
+seulement un nom, même garantie que `core/montage/planificateur.py`.
+
+**Hypothèse explicite, non vérifiable sans le poste du propriétaire** (ce
+dépôt tourne dans le cloud, Drift est un programme de bureau Qt qui n'y
+tourne pas) : `toolbox({name})` est supposée rendre une forme proche de
+celle de MCP lui-même (`tools/list` — `{"tools": [{"name", "inputSchema"}]}`).
+Si la forme réelle diverge, le module refuse toute opération plutôt que
+d'en deviner une — le mode d'échec est un refus, jamais une exécution
+hasardeuse. `SUGGESTION — À CONFIRMER SUR SA MACHINE`, avec le vrai Drift.
+Même limite, et même choix, pour la forme exacte d'un élément de `ops`
+envoyé à `apply` : isolée dans une seule fonction (`_vers_forme_drift`),
+pour qu'un ajustement futur reste local.
+
+`agents/video/production_agent.py` : capacité `drift` ajoutée à
+`CAPACITES_VIDEO` et `CAPACITES_ECRITURE` (`core/production/plan_video.py`)
+— une écriture comme wangp/xaar_kaname/krillin_*, jamais confirmée à la
+place du propriétaire ; un montage ne peut pas en dépendre directement dans
+le même plan (même garde que pour les autres écritures). `_appeler_drift`
+résout les références en inventaire, interroge Drift (catalogue puis les
+dix schémas de toolbox), demande au modèle un plan d'opérations, le valide,
+puis appelle `appliquer` via le registre — jamais en direct, ce qui fait
+respecter la confirmation. Ajoutée à `CAPACITES_GPU_LOCAL` : un export
+Drift tourne sur la même RTX A2000 que WanGP/vision/Xaar Kaname, il ne doit
+pas s'y disputer la carte. `_artefact_final` sait désormais chercher, dans
+la réponse d'un `apply` réussi, un chemin de fichier vidéo qui existe
+réellement sur le disque (`_chemin_plausible`, profondeur bornée) — jamais
+un chemin supposé, seulement un qui existe.
+
+`core/production/disponibilite.py` (`PAR_CONNECTEUR`) et les deux fichiers
+PWA (`videoProjectStore.ts`, `VideoProjectModal.tsx`) ont reçu `drift` —
+sans ça, la capacité aurait existé partout sauf sur l'écran d'où on la
+déclenche (précisément la dérive que `tests/test_capacites_video_pwa.py`
+mesure depuis le 03/09/2026).
+
+### La frontière du workspace Video, mesurée, pas seulement promise
+
+`tests/core/test_connecteur_drift.py::TestFrontiereWorkspaceVideo` scanne
+tout `core/`, `agents/`, `apps/`, `config/` (hors tests/docs) et échoue si
+un fichier hors d'une liste explicite de six chemins autorisés nomme
+« Drift » (sensible à la casse : « drift » minuscule reste le mot anglais
+ordinaire, sans rapport). Un futur ajout qui referencerait Drift depuis
+`agents/plaquiste/` ou `core/production/ifc*.py` ferait échouer ce test —
+la frontière se mesure à chaque changement, elle ne se déclare pas une fois.
+
+### Tests et sabotages
+
+42 tests neufs (connecteur : 14, planificateur : 21, agent/smoke : 7), plus
+les tests existants corrigés. Smoke test réel bout en bout
+(`TestDrift::test_smoke_drift_jusqu_a_un_fichier_reel_exporte`) : une
+demande en langage naturel traverse tout le chemin — inventaire de
+références, catalogue, dix schémas de toolbox, plan composé par un modèle
+scripté, validation contre le vrai schéma, `apply` confirmé — jusqu'à un
+fichier réellement présent sur le disque, retrouvé comme `artefact_final`.
+
+Quatre sabotages prouvés puis restaurés : (1) une référence à « Drift »
+injectée dans un fichier métier (`ifc_generation.py`) fait tomber le test
+de frontière ; (2) le rejet d'une opération absente du vrai schéma
+désactivé fait planter la validation avec un `KeyError` — la preuve que la
+garde protège d'un crash, pas seulement d'un refus poli ; (3) la
+substitution nom→chemin désactivée fait fuiter le nom brut dans
+`medias_autorises[...]`, `KeyError` à l'identique ; (4) `video_drift.apply`
+passé à `ALLOWED` fait aboutir un appel Drift sans confirmation. Les quatre
+restaurés, `python -m ruff check .` propre, suite complète : `3819 passed,
+25 skipped, 48 deselected`.
+
+Régressions détectées et corrigées en cours de route (la mesure, pas la
+mémoire) : `tests/test_capacites_video_pwa.py`,
+`tests/test_disponibilite_video.py` (deux listes parallèles de capacités
+non mises à jour), `tests/test_documentation.py` (compteur `CLAUDE.md`
+périmé — `python scripts/orphelins.py` mesure 201 modules, 160 atteints).
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **Drift-Addons** (Whisper/SAM2/ONNX/GPU) : la mission demande de
+  l'inspecter, mais Drift documente déjà `subtitles.generate_subtitles`
+  (Whisper) et `ai.*` (denoise, détection de visage, auto-reframe) comme
+  des opérations natives de son propre serveur MCP — atteignables par ce
+  connecteur SANS rien de plus. Ajouter Drift-Addons sans un besoin
+  d'addon précis qu'aucune toolbox native ne couvre serait une seconde
+  dépendance pour un recouvrement déjà servi. `SUGGESTION — NON
+  IMPLÉMENTÉE`, à réévaluer si un addon précis manque une fois mesuré sur
+  sa machine.
+- **La restructuration du reste du pipeline vidéo** (fusion/suppression de
+  moteurs existants pour éviter tout chevauchement avec Drift) : la
+  mission autorise à réviser la répartition mais interdit explicitement de
+  supprimer une capacité pour chevauchement partiel. Aucun chevauchement
+  mesuré ne justifiait un retrait cette phase-ci (WanGP génère, Drift
+  monte ; KrillinAI traduit/double, Drift monte ; aucun des deux ne fait
+  ce que l'autre fait déjà en mieux, mesuré sur les schémas documentés
+  seulement — pas sur un Drift réel). `SUGGESTION — NON IMPLÉMENTÉE`.
+- **La forme exacte d'un élément `ops` et celle du schéma `toolbox()`** :
+  voir plus haut — la seule chose qu'une session sur sa machine, avec le
+  vrai Drift, peut trancher. Isolées chacune dans une fonction unique pour
+  que la confirmation coûte un ajustement local, pas une réécriture.
+- **Un rendu de la sortie `capture()` dans l'interface PWA** (aperçu JPEG
+  en direct pendant un montage Drift) : aucune demande exprimée au-delà de
+  la capacité elle-même, qui existe déjà (`capture`, lecture). `SUGGESTION
+  — NON IMPLÉMENTÉE`.
+
+### Ce que ça coûte si c'est faux
+
+Une opération Drift acceptée sur la foi d'un schéma mal interprété
+modifierait un projet vidéo réel du propriétaire de façon irréversible
+dans l'état actuel de Drift (un `apply` est « un seul geste d'annulation »,
+mais rien ici ne pilote cette annulation) — d'où le choix de tout refuser
+plutôt que de deviner face à une forme de schéma incertaine, et la
+confirmation obligatoire avant que quoi que ce soit n'atteigne un projet
+réellement ouvert.

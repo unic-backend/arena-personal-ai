@@ -29,10 +29,16 @@ from core.production.etat_projet import EtapeProjet
 #: amont un second orchestrateur, exactement ce qu'une architecture a un seul
 #: chef d'orchestre interdit. La composition (sous-titres -> doublage ->
 #: rendu) reste au graphe ARENA, une etape a la fois.
+#:
+#: « drift » (DEC-0057) monte/edite une reference DEJA FOURNIE via son propre
+#: serveur MCP (`core/connectors/drift.py`) — jamais une generation de novo :
+#: pour ca, wangp/moneyprinter restent le bon choix. Reservee EXCLUSIVEMENT
+#: au workspace Video (mission du 06/09/2026) : aucun chemin plaquiste/BIM/
+#: metier ne la reference.
 CAPACITES_VIDEO: Tuple[str, ...] = (
     "vision", "transcription", "wangp", "moneyprinter", "narration", "xaar_kaname", "montage",
     "krillin_subtitle", "krillin_tts", "krillin_render_horizontal", "krillin_render_vertical",
-    "krillin_cover",
+    "krillin_cover", "drift",
 )
 
 
@@ -147,7 +153,7 @@ def valider_graphe(
 CAPACITES_ECRITURE = frozenset({
     "wangp", "moneyprinter", "narration", "xaar_kaname",
     "krillin_subtitle", "krillin_tts", "krillin_render_horizontal", "krillin_render_vertical",
-    "krillin_cover",
+    "krillin_cover", "drift",
 })
 
 
@@ -224,6 +230,9 @@ Contrats de parametres :
   parametres.sous_titres = chemins DEJA confirmes (memes raisons que
   krillin_tts).
 - krillin_cover : parametres.prompt = texte du prompt d'image.
+- drift : parametres.demande = texte de la demande de montage/edition
+  (ex: "coupe les silences", "ajoute une transition entre les deux clips"),
+  parametres.references = liste d'indices de references a ouvrir dans Drift.
 
 Objectif du proprietaire :
 {objectif}

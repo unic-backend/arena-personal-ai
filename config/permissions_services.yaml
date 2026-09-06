@@ -277,6 +277,16 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     survey:      {decision: CONFIRMATION, risque: MEDIUM, interrupteur: PUBLISH}
 
+  # Drift (DEC-0057) : editeur video pilote par son propre serveur MCP,
+  # local (127.0.0.1 uniquement, jamais un service distant par defaut) —
+  # meme niveau que WanGP (video_generation). Lire le catalogue/schema d'une
+  # toolbox/l'etat du projet/une capture ne modifie rien ; appliquer une
+  # liste d'operations mute un projet reel, donc confirmation, comme
+  # video_generation.generate.
+  video_drift:
+    read:        {decision: ALLOWED,      risque: LOW}
+    apply:       {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail

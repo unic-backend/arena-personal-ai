@@ -49,6 +49,7 @@ from core.agent.capacites import RegistreCapacites, adaptateur_synchrone
 from core.connectors.audio_voix import ConnecteurAudioVoix
 from core.connectors.calendrier import CalendrierConnector
 from core.connectors.devis import DevisConnector
+from core.connectors.drift import ConnecteurDrift
 from core.connectors.faceplugin import ConnecteurFaceplugin
 from core.connectors.formbricks import ConnecteurFormbricks
 from core.connectors.galsen import GalsenConnector
@@ -277,6 +278,17 @@ registre.declarer(
     "krillinai",
     lambda: ConnecteurKrillinAI(acces=acces, journal=journal, file_attente=file_attente,
                                 crochets=crochets),
+)
+# Drift (DEC-0057) : editeur video (GPLv3) pilote par son PROPRE serveur MCP,
+# jamais importe ni copie — meme frontiere que KrillinAI/VoiceStudio. Reserve
+# EXCLUSIVEMENT au workspace Video (agents/video/production_agent.py) : aucun
+# chemin plaquiste/BIM/metier n'y touche. Aucune URL ni jeton par defaut
+# (DEC-0002) : NON_CONFIGURE tant que DRIFT_MCP_URL/DRIFT_MCP_TOKEN ne sont
+# pas dans le .env. Voir core/connectors/drift.py.
+registre.declarer(
+    "drift",
+    lambda: ConnecteurDrift(acces=acces, journal=journal, file_attente=file_attente,
+                            crochets=crochets),
 )
 # Generation d'interface : la technique d'OpenUI (prompt -> HTML/React/
 # Svelte/Web-Component), jamais son serveur (connexion GitHub requise,
