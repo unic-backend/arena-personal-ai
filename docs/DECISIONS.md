@@ -4597,3 +4597,70 @@ réseau et de génération de payloads d'exploitation, tournant chez lui,
 atteignable depuis son téléphone, sur la seule foi d'une phrase tapée
 dans un chat — le exact scénario que DEC-0042 a déjà écarté. Le second
 coût est sans commune mesure avec le premier ; la décision reste la même.
+
+---
+
+## DEC-0061 — OpenViking réellement sollicité par le chat, pas seulement atteignable
+
+**2026-09-06.** Demande reçue : vérifier que les dépôts intégrés cette
+session tournent réellement, pas seulement qu'ils sont « atteignables »
+au sens de `scripts/orphelins.py`.
+
+### Ce que la mesure ne voyait pas
+
+`core/context/recherche_unifiee.py` (DEC-0058) passait
+`test_le_plan_nomme_exactement_les_modules_qui_dorment` parce que
+`apps/backend/routers/contexte_unifie.py` l'importe depuis `main.py` — un
+point d'entrée réel. Mais un import n'est pas un appel : **aucune phrase
+d'Ousmane ne pouvait jamais atteindre `POST /api/contexte/rechercher`**,
+puisque rien, ni dans le chat ni dans l'interface, ne l'invoque. La
+capacité qu'OpenViking apportait — retrouver une décision ou une
+expérience passée (« on a déjà réglé ça ») — dormait donc au sens qui
+compte : reachable par le graphe d'imports, mais jamais par un vrai
+message.
+
+### Ce qui a été corrigé
+
+`apps/backend/routers/chat.py::_contexte_openviking`, appelée depuis le
+chemin **le plus emprunté du dépôt** — le CHAT ordinaire de
+`chat_stream_endpoint` (`else:`, la branche que prend tout message sans
+intention métier). Quand la phrase contient un des signaux déjà écrits
+pour ça (`MOTS_MEMOIRE`, réutilisé depuis `recherche_unifiee.py` — pas
+redupliqué), elle appelle `registre.executer("openviking", "contexte",
+...)` et, en cas de succès, injecte le rendu assemblé en tête du prompt
+envoyé au modèle. Un service absent, en panne, ou une phrase ordinaire
+laissent la conversation exactement comme avant (DEC-0002 : rien n'est
+simulé, l'absence est silencieuse, jamais une erreur visible).
+
+### Ce qui reste un outil de développement, à raison
+
+`POST /api/contexte/rechercher` (les trois sources ensemble, y compris le
+CODE via Claude Context) reste hors du chat, sans que ce soit un oubli :
+`chemin_code` n'a de sens que pointé sur un dossier de code, jamais sur
+une conversation d'un plaquiste qui n'en écrit pas — exactement la
+même raison que documentée pour `/api/hermes-evolution/evoluer` (DEC-0055,
+« un outil de développement, pas une capacité métier »). Seule la source
+mémoire, qui EST une question métier légitime, avait besoin — et reçoit
+maintenant — un chemin depuis une vraie phrase.
+
+### Tests et sabotage
+
+7 tests neufs (`tests/test_contexte_openviking_dans_le_chat.py`) : la
+fonction isolée (signal absent → aucun appel ; succès → injecté ; panne/
+non configuré/rendu vide → omis silencieusement), puis la chaîne réelle
+via `TestClient` sur `/api/chat/stream` — le prompt réellement envoyé au
+modèle est inspecté, pas supposé. Sabotage : la ligne de branchement
+retirée fait échouer le test de bout en bout (« OpenViking n'a jamais été
+appelé : la capacité dort encore »), pas seulement le test unitaire —
+c'est la même distinction que la mesure elle-même vient de révéler.
+`python -m ruff check .` propre, `python -m pytest tests/ -q` vert.
+
+### Ce que ça coûte si c'est faux
+
+Un branchement qui bloquerait au lieu de dégrader referait exactement le
+défaut que DEC-0017 corrigeait déjà ailleurs (une source qui tombe ne doit
+jamais faire tomber la conversation) — d'où le test dédié à l'omission
+silencieuse. Le coût de ne PAS l'avoir corrigé était plus grand qu'il n'y
+paraît : une capacité mesurée « intégrée » qui ne l'était pas au sens où
+ça compte est exactement l'erreur que la mission « réveiller ce qui dort »
+visait à ne plus jamais laisser passer.

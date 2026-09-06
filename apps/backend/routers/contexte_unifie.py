@@ -1,11 +1,19 @@
 """`/api/contexte/rechercher` — la recherche unifiée (code, mémoire,
 internet), réellement atteignable.
 
-Pas d'aiguillage depuis le chat (même choix que `/api/hermes-evolution/
-evoluer`, `/api/video/projet`) : un outil de développement/diagnostic,
-appelé explicitement — `core/context/recherche_unifiee.py` reste composable
-depuis n'importe quel agent qui l'importerait directement, cette route
-n'est que le premier appelant réel, jamais le seul chemin possible.
+Pas d'aiguillage chat pour l'ensemble des trois sources (même choix que
+`/api/hermes-evolution/evoluer`, `/api/video/projet`) : un outil de
+développement/diagnostic, appelé explicitement, notamment pour interroger
+le CODE d'un dossier quelconque (par défaut celui d'ARENA lui-même) —
+`chemin_code` n'a aucun sens dans une conversation d'Ousmane.
+
+**La source « mémoire » seule, elle, est câblée dans le chat ordinaire**
+depuis le 06/09/2026 : `apps/backend/routers/chat.py::_contexte_openviking`
+appelle directement `openviking.contexte` (même registre, mêmes
+permissions) quand une phrase le demande (`MOTS_MEMOIRE`). Ce module reste
+le SEUL endroit qui compose les trois sources ensemble ; cette route en
+reste le premier appelant explicite pour l'ensemble, jamais le seul
+chemin possible vers l'une d'entre elles.
 """
 import logging
 from typing import Any, Dict, Optional
