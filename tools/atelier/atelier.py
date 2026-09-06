@@ -28,7 +28,9 @@ reprendre en douce dans le code reviendrait à décider à sa place.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
+import signal
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -317,26 +319,45 @@ class Atelier:
         Le code de sortie est rendu tel quel. Un code non nul est un echec
         **rapporte**, pas une exception avalee : c'est le defaut mesure le
         01/09/2026 dans `tools/docker_local.py`.
+
+        **Le groupe de processus entier est arrete au timeout, pas seulement
+        celui-ci.** `subprocess.run(..., timeout=...)` ne tue que le processus
+        de tete : un `pytest`/`npm`/script qui a lance ses propres enfants les
+        laisse orphelins et actifs alors que `executer` a deja rapporte
+        « arretee ». Concept verifie dans le code source de mini-SWE-agent
+        (`environments/local.py::_run`, qui documente exactement ce defaut et
+        tue le groupe entier) — repris ici avec le style deja en place
+        (Popen + `communicate`, jamais `shell=True`).
         """
         if not commande:
             return Resultat(False, "Aucune commande donnee.")
         ou = self._chemin(dossier) if dossier else self.racine
         try:
-            fini = subprocess.run(  # noqa: S603 — c'est le but du module
-                commande, cwd=str(ou), capture_output=True, text=True,
-                timeout=delai, check=False)
+            processus = subprocess.Popen(  # noqa: S603 — c'est le but du module
+                commande, cwd=str(ou), text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                start_new_session=(os.name == "posix"))
         except FileNotFoundError:
             r = Resultat(False, f"Commande introuvable : {commande[0]}")
-        except subprocess.TimeoutExpired:
-            r = Resultat(False, f"Commande arretee apres {delai:.0f}s : {' '.join(commande)}")
         except Exception as erreur:  # noqa: BLE001
             r = Resultat(False, f"Commande impossible ({type(erreur).__name__}).")
         else:
-            r = Resultat(
-                ok=fini.returncode == 0,
-                message=(f"{' '.join(commande)} -> code {fini.returncode}"),
-                sortie=_couper(fini.stdout), erreur=_couper(fini.stderr),
-                code=fini.returncode)
+            try:
+                sortie, erreur_std = processus.communicate(timeout=delai)
+            except subprocess.TimeoutExpired:
+                if os.name == "posix":
+                    os.killpg(processus.pid, signal.SIGKILL)
+                else:
+                    processus.kill()
+                sortie, erreur_std = processus.communicate()
+                r = Resultat(False, f"Commande arretee apres {delai:.0f}s : {' '.join(commande)}",
+                             sortie=_couper(sortie), erreur=_couper(erreur_std))
+            else:
+                r = Resultat(
+                    ok=processus.returncode == 0,
+                    message=(f"{' '.join(commande)} -> code {processus.returncode}"),
+                    sortie=_couper(sortie), erreur=_couper(erreur_std),
+                    code=processus.returncode)
         self._noter("executer", " ".join(commande), r)
         return r
 

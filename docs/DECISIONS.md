@@ -4719,3 +4719,117 @@ qu'une session future lise « exposition close » (l'ancien texte) et ne
 pense plus à le signaler. D'où la mise à jour immédiate, avec la date et
 la source de vérification (l'API GitHub, pas sa parole seule pour la
 visibilité — mais sa parole seule, marquée comme telle, pour la clé).
+
+---
+
+## DEC-0063 — mini-SWE-agent : deux concepts réels repris, aucun second coding agent
+
+**2026-09-06.** Mission reçue : auditer mini-SWE-agent
+(github.com/SWE-agent/mini-swe-agent, v2, MIT) et déterminer ce qui peut
+améliorer le système de software engineering d'ARENA — règle absolue :
+ne jamais créer un deuxième agent de code si un équivalent existe déjà.
+
+### Ce qu'ARENA possédait déjà, vérifié avant d'écrire une ligne
+
+Le rôle « software engineer » d'ARENA n'est PAS un agent unique mais
+quatre, chacun avec une responsabilité distincte, aucun ne faisant le
+travail d'un autre :
+
+| Agent | Rôle | Écrit des fichiers ? |
+|---|---|---|
+| `RepoEngineerAgent` | lit l'architecture multi-fichiers, propose un plan | non |
+| `SWEAgent` | analyse chirurgicale d'un bug (protocole ACI) | non |
+| `CoderAgent` | génère un script Python, l'exécute dans un bac à sable, s'auto-corrige (2 essais) | dans le bac à sable seulement |
+| `DioumtoukayAgent` (`tools/atelier/atelier.py`) | agit réellement : lit, écrit, remplace un passage précis, cherche, déplace, exécute des commandes, git — **sans permission ni confirmation**, DEC-0038 | oui, sur la machine réelle |
+
+**`DioumtoukayAgent` EST déjà, presque terme à terme, ce que mini-SWE-agent
+formalise** : une boucle une-action-par-tour (le modèle ne rend jamais
+plusieurs actions à la fois), une **histoire linéaire** (`journal_du_travail`,
+rejouée intégralement à chaque tour), un budget de tours (`TOURS_MAX = 12`,
+déjà l'équivalent exact de `step_limit`), une exécution shell réelle avec
+code de sortie/stdout/stderr rendus tels quels (`Atelier.executer`,
+subprocess en liste jamais en chaîne shell), une conscience git
+(`_reperes()` lit la branche et `git status` avant le premier tour), et une
+fin explicite (`ACTION: terminer`). Ce n'est pas une coïncidence de nommage :
+la demande d'origine de Dioumtoukay (02/09/2026, DEC-0038) était « il doit
+être comme claude code » — la même philosophie que mini-SWE-agent
+(« MODEL → BASH → RESULT → MODEL »), écrite indépendamment.
+
+### Audit réel de mini-SWE-agent (code cloné, pas le README)
+
+Son agent par défaut (module `default.py` sous `agents/`, classe
+`DefaultAgent`) et son environnement local (module `local.py` sous
+`environments/`, classe `LocalEnvironment`) lus en entier. Deux différences
+réelles, vérifiées dans le code, absentes d'ARENA :
+
+1. **`AgentConfig.max_consecutive_format_errors`** (défaut 3) : une réponse
+   du modèle qui ne se parse pas fait échouer le tour ; `n_consecutive_format_errors`
+   compte les échecs *d'affilée* et arrête proprement (`RepeatedFormatError`)
+   plutôt que de laisser `step_limit` seul absorber un moteur qui ne produit
+   jamais le bon format. Dioumtoukay ne comptait AUCUNE réponse illisible : une
+   par tour aurait consommé les douze tours sans qu'une seule action ne parte.
+2. **Sa fonction d'exécution locale** tue le **groupe de processus entier**
+   au timeout (`start_new_session=True`, `os.killpg`), avec ce commentaire
+   dans leur propre code : « kills the whole process group on timeout so no
+   children are orphaned ». `Atelier.executer` utilisait `subprocess.run(...,
+   timeout=...)`, qui ne tue que le processus de tête — un `pytest`/`npm`
+   ayant lancé ses propres enfants les laisse tourner, orphelins, après
+   qu'`executer` a pourtant rapporté « arrêtée ».
+
+Aucune des deux n'est copiée : les deux sont des **techniques**, réimplémentées
+dans le style déjà en place (français, `Resultat`, `_couper`, jamais
+`shell=True`).
+
+### Comparaison — décision par capacité
+
+| Capacité | ARENA | mini-SWE-agent | Décision |
+|---|---|---|---|
+| Boucle une-action-par-tour, histoire linéaire | `DioumtoukayAgent` | `DefaultAgent` | **KEEP** — déjà équivalent |
+| Budget de tours | `TOURS_MAX` | `step_limit` | **KEEP** — déjà équivalent |
+| Budget de temps (mur) | absent | `wall_time_limit_seconds` | **IMPROVE** (implémenté : `DUREE_MAX_SECONDES`) |
+| Détection de réponses illisibles répétées | absente | `max_consecutive_format_errors` | **IMPROVE** (implémenté : `ILLISIBLES_CONSECUTIVES_MAX`) |
+| Exécution shell : code sortie/stdout/stderr fidèles | `Atelier.executer` | `LocalEnvironment.execute` | **KEEP**, avec un correctif ciblé |
+| Groupe de processus tué au timeout | absent (bug latent) | présent, documenté | **IMPROVE** (implémenté) |
+| Abstraction Environment (Local/Docker/Singularity/Modal) | absente, volontairement | présente | **IGNORE** — DEC-0038 : Dioumtoukay travaille SUR la machine réelle du propriétaire par demande explicite (« comme Claude Code »/« entre dans mes fichiers du pc ») ; une abstraction Docker irait contre cette décision, pas avec elle |
+| Fin de tâche via un marqueur magique dans stdout (`COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`) | `ACTION: terminer` explicite | marqueur texte sniffé | **IGNORE** — l'action explicite d'ARENA est plus lisible et ne peut pas être déclenchée par accident par une sortie de commande |
+| Séparation Agent/Model/Environment | déjà séparés (`provider`, `atelier`, l'agent) | classes + templates Jinja | **IGNORE** — séparation déjà équivalente ; ajouter Jinja pour un seul agent est une dépendance sans gain mesuré |
+| Cost limit (jetons facturés) | non applicable | présent | **IGNORE** — Ollama local, pas de coût par jeton (DEC-0002) |
+| Résolution d'issues GitHub, connecteur GitHub | déjà couvert (Dioumtoukay clone/installe/lance n'importe quel dépôt sur consigne explicite) | mode dédié SWE-bench | **IGNORE** — un second système GitHub dupliquerait ce que la boucle générale fait déjà |
+| Analyse en lecture seule avant modification | `RepoEngineerAgent`/`SWEAgent` | absent (un seul agent) | **KEEP** — ARENA a un palier que mini-SWE-agent n'a pas |
+| Génération + exécution isolée d'un script autonome | `CoderAgent` (bac à sable, auto-correction) | absent | **KEEP** — capacité que mini-SWE-agent n'a pas non plus |
+
+### Tests et sabotage
+
+4 tests neufs : `tests/tools/test_atelier.py` (1, processus enfant vérifié
+réellement mort après le timeout du parent — pas un mock) et
+`tests/agents/test_dioumtoukay.py` (3 : arrêt sur illisibles d'affilée,
+compteur réinitialisé par un tour propre, arrêt sur le temps écoulé).
+Trois sabotages, chacun confirmé puis restauré : le groupe de processus non
+tué (l'enfant survit au parent — mesuré, pas supposé), l'arrêt sur
+illisibles retiré (`status` redevient `success` au lieu de `partial`),
+l'arrêt sur le temps retiré (les cinq actions partent malgré une limite à
+zéro seconde). `python -m ruff check .` propre, `python -m pytest tests/ -q`
+→ 3900 passed (+4).
+
+### Licence et provenance
+
+MIT (Kilian A. Lieret, Carlos E. Jimenez), vérifiée dans `LICENSE.md` du
+dépôt cloné. Aucune ligne copiée : les deux corrections portées dans
+`tools/atelier/atelier.py` et `agents/dioumtoukay/dioumtoukay_agent.py`
+sont des réimplémentations, dans le style du dépôt (français, `Resultat`,
+constantes documentées) — la provenance du CONCEPT est citée dans le code
+et ici, comme pour Agency Agents (DEC-0028) et OpenCut (`NOTICE.md`).
+
+### Ce que ça coûte si c'est faux
+
+Un deuxième agent de code aurait dédoublé exactement ce que DEC-0038 a
+déjà tranché : Dioumtoukay est LE responsable logique de l'action réelle
+sur la machine, les trois autres celui de l'analyse/génération isolée. Le
+coût réel ici était plus subtil : ne PAS corriger le groupe de processus
+laisse un `pytest`/`npm` interrompu tourner en arrière-plan sur la machine
+du propriétaire après qu'ARENA a dit « arrêtée » — un mensonge silencieux
+sur l'état réel de sa machine, exactement la catégorie de défaut que ce
+dépôt refuse (`core/actions/resultat.py`). Ne pas borner les réponses
+illisibles gaspillait un budget de douze tours sans qu'aucun travail ne
+parte jamais, en le racontant comme un travail « partiel » au lieu de
+nommer la vraie cause (le moteur, pas la tâche).
