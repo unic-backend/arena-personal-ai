@@ -55,11 +55,14 @@ from core.connectors.galsen import GalsenConnector
 from core.connectors.gitingest import ConnecteurGitIngest
 from core.connectors.gmail import GmailConnector
 from core.connectors.graphify import ConnecteurGraphify
+from core.connectors.hermes_evolution import ConnecteurHermesEvolution
+from core.connectors.ifc import ConnecteurIfc
 from core.connectors.krillinai import ConnecteurKrillinAI
 from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.montage import ConnecteurMontage
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
 from core.connectors.registre import RegistreConnecteurs
+from core.connectors.securite_chantier import ConnecteurSecuriteChantier
 from core.connectors.stockage_jetons import charger_tout as _charger_jetons_persistants
 from core.connectors.txtai_search import ConnecteurTxtaiSearch
 from core.connectors.ui_generate import ConnecteurUiGenerate
@@ -210,6 +213,38 @@ registre.declarer(
     "gitingest",
     lambda: ConnecteurGitIngest(acces=acces, journal=journal, file_attente=file_attente,
                                 crochets=crochets),
+)
+# BIM/IFC (mission BIM/metre/securite chantier, 05/09/2026) : lecture d'un
+# fichier IFC via IfcOpenShell (LGPL-3.0-or-later), en bibliotheque Python
+# jamais en code copie. Complementaire au metre de plan PDF (OpenTakeoff) :
+# un plan PDF est mesure, un fichier IFC est LU — ses quantites (surface des
+# murs) viennent du fichier lui-meme, jamais recalculees par geometrie dans
+# cette phase. Voir core/connectors/ifc.py, DEC-0053.
+registre.declarer(
+    "ifc",
+    lambda: ConnecteurIfc(acces=acces, journal=journal, file_attente=file_attente,
+                          crochets=crochets),
+)
+# Securite chantier (mission BIM/metre/securite chantier, 05/09/2026) :
+# detection EPI (casque, gilet...) sur une photo, appelee via SiteGuard
+# (C-Nekopedia/SiteGuard, MIT) — un programme SEPARE installe a cote, jamais
+# dans ce depot (SiteGuard depend lui-meme d'Ultralytics YOLO, AGPL-3.0).
+# Consomme par VisionAgent, jamais un aiguillage automatique dedie. Voir
+# core/connectors/securite_chantier.py.
+registre.declarer(
+    "securite_chantier",
+    lambda: ConnecteurSecuriteChantier(acces=acces, journal=journal, file_attente=file_attente,
+                                       crochets=crochets),
+)
+# Hermes Agent Self-Evolution (DEC-0055) : fait evoluer un depot CIBLE
+# (hermes-agent, NousResearch/hermes-agent-self-evolution, MIT) — jamais
+# ARENA lui-meme, garde structurelle dans le connecteur (DEC-0014 :
+# aucune PR autonome sur ce depot, meme relue avant fusion). Sous-processus
+# externe, jamais importe. Voir core/connectors/hermes_evolution.py.
+registre.declarer(
+    "hermes_evolution",
+    lambda: ConnecteurHermesEvolution(acces=acces, journal=journal, file_attente=file_attente,
+                                      crochets=crochets),
 )
 # Sondages/feedback (DEC-0052) : une instance Formbricks EXTERNE, appelee par
 # son API REST publique — aucune ligne de son code (coeur AGPLv3) n'est
@@ -380,7 +415,8 @@ trend_agent = TrendAnalyzerAgent(provider=deep_provider, memory=memory)
 # de la derniere generation acceptee.
 video_agent = VideoAnalyzerAgent(provider=deep_provider, memory=memory,
                                  registre=registre, travaux=travaux, journal=journal)
-vision_agent = VisionAgent(provider=ollama_vision, memory=memory, pieces_jointes=pieces_jointes)
+vision_agent = VisionAgent(provider=ollama_vision, memory=memory, pieces_jointes=pieces_jointes,
+                          registre=registre)
 # Montage : la phrase du proprietaire devient un plan d operations validees
 # (`core/montage/planificateur.py`), jamais un pilotage direct de la timeline.
 # Le modele profond, parce que produire un JSON structure et coherent est une

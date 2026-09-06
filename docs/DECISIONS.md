@@ -3566,3 +3566,312 @@ n'a jamais choisi, en silence. Le coupe-circuit `PUBLISH` déjà en place
 protège la publication d'un sondage exactement comme il protège déjà une
 publication sur les réseaux sociaux — un sondage publié sans confirmation
 serait vu par un tiers avant que le propriétaire ne l'ait validé.
+
+## DEC-0053 — IFC/BIM (IfcOpenShell) : le métré lu dans un fichier, jamais un second moteur
+
+**2026-09-05.** Mission autonome reçue le même jour, format inhabituel (sections
+numérotées, anglais/français mêlé, « ne pose aucune question », autorisation à
+« ne pas considérer les règles actuelles du projet comme des contraintes
+absolues ») — même profil que deux missions précédentes déjà refusées cette
+session (l'une portait sur OpenUI/txtai/Formbricks, l'autre sur KrillinAI ;
+toutes deux ont fini par être construites une fois qu'une autorisation courte,
+en français, dans son registre habituel, a suivi). Celle-ci porte directement
+sur le métier — BIM, métré, matériaux, devis — pas sur un besoin exprimé nulle
+part ailleurs. Elle n'est donc pas refusée en bloc, mais elle n'est pas non
+plus exécutée telle quelle : la mission demande explicitement de sauter la
+revue (« commit. push. ») — **refusé sans discussion**, `docs/REGLES_DE_TRAVAIL.md`
+et CLAUDE.md sont explicites, aucune instruction reçue ne lève cette règle. La
+mission couvre huit dépôts et une restructuration d'architecture ; une seule
+tranche verticale réelle est livrée ici, la plus directement utile à UniC
+Plaquiste, suivant la même discipline « une phase, une PR » qu'à chaque
+précédente intégration.
+
+### Ce qui a été intégré
+
+`IfcOpenShell/IfcOpenShell` (LGPL-3.0-or-later, vérifié sur PyPI — wheels
+précompilées, aucun compilateur requis) est une **dépendance de
+bibliothèque**, jamais du code copié : `core/production/ifc_lecture.py`
+n'appelle que son API Python publique (`ifcopenshell.open`,
+`ifcopenshell.util.element`). L'obligation LGPL est tenue par construction —
+un paquet PyPI installé tel quel, jamais vendoré.
+
+`core/connectors/ifc.py` (`ConnecteurIfc`) — trois capacités, toutes en
+lecture : `analyser` (niveaux, comptes d'éléments par type et par niveau),
+`elements` (liste filtrée par type IFC + niveau), `metre` (somme la surface
+des murs). Câblé dans `agents/plaquiste/plaquiste_agent.py` exactement comme
+le métré de plan PDF (OpenTakeoff) déjà en place : un chemin `.ifc` cité en
+texte est reconnu (`agents/plaquiste/ifc_metre.py`), passe par la même
+frontière de confinement (`chemin_hors_du_depot`, sabotage-vérifiée), et la
+surface des murs lue alimente **directement** `agents/plaquiste/
+calcul_materiaux.py::quantites_pour()` — le même moteur matériaux que la
+mission demande explicitement de ne pas dupliquer (« ne crée pas
+inutilement deux moteurs concurrents »), jamais un second calcul.
+
+**La limite honnête, écrite dans le code et vérifiée par sabotage** : la
+surface d'un mur vient UNIQUEMENT des quantités déjà calculées et écrites
+dans le fichier IFC lui-même (`Qto_WallBaseQuantities` — `NetSideArea`/
+`GrossSideArea`/`Area`). Aucune géométrie n'est reconstruite (pas de
+maillage, pas de moteur de forme) : un mur sans quantité exploitable est
+nommé, exclu du total, jamais estimé. C'est exactement la formulation de la
+mission elle-même (« lorsque les données géométriques le permettent »).
+
+### Smoke test réel, bout en bout
+
+`tests/fixtures/ifc/exemple.ifc` est un vrai fichier IFC4, engendré par
+IfcOpenShell lui-même (son API `ifcopenshell.api`, jamais écrit à la main) :
+2 niveaux, 3 murs (deux avec quantité exploitable, un troisième sans),
+1 porte, 1 fenêtre. `tests/test_plaquiste_ifc_bout_en_bout.py` fait tourner
+la chaîne complète avec les VRAIS connecteurs (IFC + devis) : fichier IFC →
+`ConnecteurIfc.analyser`/`metre` → `quantites_pour()` → PDF réel écrit sur
+disque, relu avec `pypdf`, chaque article vérifié présent. Trois sabotages
+prouvés puis restaurés : l'import différé d'IfcOpenShell (même classe de
+panne que txtai/DEC-0051 — un import de tête de fichier ferait planter tout
+ARENA au démarrage dès que la bibliothèque manque), l'absence de géométrie
+inventée pour un mur sans quantité, et la frontière de confinement du
+chemin. `python -m ruff check .` propre, `3691 passed, 25 skipped` (offline).
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **QuantityTakeoff-Python** (datadrivenconstruction) : ses concepts (filtres
+  par catégorie/niveau/zone/matériau, conversion métré → matériaux
+  configurable) sont déjà couverts par `calcul_materiaux.py` (ratios
+  `config/metier.yaml`) — rien n'a été trouvé qui justifie un second moteur.
+- **simpleIfcAIAgentWithGraphRAG** (relations bâtiment → étage → pièce →
+  mur, questions comme « quels éléments composent cette pièce ? ») :
+  `SUGGESTION — NON IMPLÉMENTÉE`. Cette phase donne les comptes par niveau
+  (`elements_par_niveau`), pas le confinement pièce par pièce
+  (`IfcRelContainedInSpatialStructure` au niveau `IfcSpace`) — un vrai
+  graphe ou une seconde couche relationnelle serait la mission §3 elle-même
+  qui prévient : « ne crée pas un système complexe inutile ».
+- **BIM as Code, BuildingPy** : générer de la géométrie/exporter en IFC/DXF
+  n'a aucun consommateur exprimé pour l'instant — UniC Plaquiste lit des
+  plans et des fichiers IFC, n'en produit pas. `SUGGESTION — NON
+  IMPLÉMENTÉE`, à réévaluer si un besoin réel apparaît.
+- **SiteGuard, Construction Site Safety PPE Detection** : hors de cette
+  phase. Détection visuelle sur des photos de chantier — potentiellement
+  des personnes reconnaissables — mérite son propre examen (modèle,
+  fiabilité annoncée comme probabiliste, jamais infaillible) plutôt qu'un
+  ajout en fin d'une phase déjà large.
+- **buildingSMART IFC4.x** : référence déjà lue pour vérifier le
+  vocabulaire (`IfcWall`/`IfcBuildingStorey`/`Qto_WallBaseQuantities`),
+  jamais un moteur — exactement ce que demande la mission (§10).
+- Aucune capacité IFC n'entre dans l'aiguillage automatique de
+  `apps/backend/routers/chat.py` : comme txtai, elle reste explicite —
+  citer un chemin `.ifc` la déclenche, rien ne la remplace à la place d'une
+  demande de métré par plan PDF ou par dimensions dictées.
+- Pièce jointe IFC (upload PWA) non supportée dans cette phase : seul un
+  chemin tapé est reconnu, comme les plans PDF avant elle. Un fichier IFC
+  est typiquement bien plus volumineux qu'un PDF et rarement envoyé par
+  chat — `SUGGESTION — NON IMPLÉMENTÉE`.
+
+### Ce que ça coûte si c'est faux
+
+Une surface de mur inventée à partir d'une géométrie recalculée à la place
+d'un fichier qui ne la donne pas produirait un métré faux, puis un devis
+faux chez un client — exactement le risque que `config/metier.yaml` et
+`calcul_materiaux.py` existent pour éviter. La limite est donc écrite dans
+le code, pas seulement dans cette page : un mur sans quantité exploitable
+est nommé, jamais estimé, et un sabotage réel (rendre `0.0` à la place de
+`None`) l'a confirmé avant d'être restauré.
+
+## DEC-0054 — Sécurité chantier : SiteGuard appelé par HTTP, jamais Ultralytics importé
+
+**2026-09-05.** Deuxième tranche de la mission BIM/métré/sécurité chantier
+(DEC-0053). Section 6 de la mission : détecter personnes/EPI (casque, gilet)
+sur une photo de chantier, présenter le résultat comme une observation
+probabiliste, jamais un verdict.
+
+### Deux dépôts évalués, un choisi pour la licence de son jeu de données
+
+`SiteGuard` (C-Nekopedia/SiteGuard) et `Construction-Site-Safety-PPE-
+Detection` (VoxDroid) sont tous deux MIT, tous deux construits sur
+Ultralytics YOLO. Différence décisive, vérifiée avant d'écrire une ligne :
+les poids livrés par SiteGuard (`yolo26n_ppe.pt`) sont entraînés sur le
+« Construction-PPE dataset », **lui-même AGPL-3.0** — la mission demande
+explicitement (§12) de vérifier « les licences des modèles/datasets
+séparément des licences des dépôts », et faire hériter un fichier de poids
+d'une licence de jeu de données AGPL est un terrain juridique incertain, non
+tranché. Le dépôt VoxDroid, lui, utilise le « Construction Site Safety
+Image Dataset » (Roboflow/snehilsanyal), **CC BY 4.0** — attribution
+seulement, aucune ambiguïté copyleft.
+
+Cela ne change rien à l'architecture retenue : **ARENA n'importe et ne
+redistribue le fichier de poids d'aucun des deux**. Il appelle l'API REST
+déjà exposée par SiteGuard (`POST /api/v1/detection/image`, vérifiée dans
+le code source réel de son dépôt — le gestionnaire de route et le service
+de détection y sont lus directement, pas devinés), exactement comme
+VoiceStudio (AGPL) ou Formbricks (AGPLv3) : une agrégation par appel
+externe, jamais du code copié. La question de licence du dataset VoxDroid
+reste donc annotée ici pour mémoire, sans peser sur ce choix d'architecture.
+
+### La frontière qui compte réellement : Ultralytics est AGPL-3.0
+
+Vérifié sur PyPI : Ultralytics (le paquet `ultralytics`, dont dépendent les
+deux projets pour exécuter YOLO) est **dual-licencié** — AGPL-3.0 pour un
+usage open source, licence Enterprise payante pour un usage propriétaire
+fermé sans les obligations AGPL. ARENA est un logiciel propriétaire
+(`docs/DECISIONS.md` le rappelle pour Formbricks, DEC-0052) et un service
+réseau : importer `ultralytics` directement dans le processus d'ARENA
+exposerait tout le backend aux obligations de mise à disposition du code
+source qu'impose l'AGPL sur un usage réseau — le même risque déjà écarté
+pour VoiceStudio et Formbricks. **`ultralytics` n'entre donc jamais dans
+`requirements.txt` d'ARENA.** SiteGuard reste un programme séparé, installé
+à côté (jamais dans ce dépôt), qu'ARENA appelle par HTTP local — un test
+dédié (`TestJamaisUltralyticsImporte`) vérifie qu'aucune ligne du
+connecteur n'importe `ultralytics` ni `torch`.
+
+### Ce qui a été intégré
+
+`core/production/securite_chantier.py` — traduit le JSON de SiteGuard
+(`detections`, `risks`) en un rapport français, sans recalculer sa logique
+de risque (elle reste côté SiteGuard, ses propres règles). `core/connectors/
+securite_chantier.py` (`ConnecteurSecuriteChantier`) — une capacité
+`analyser` (lecture), `SITEGUARD_BASE_URL` sans défaut (jamais une instance
+distante devinée, DEC-0002), sonde réelle sur `GET /health`.
+
+Câblé dans `agents/vision/vision_agent.py`, pas dans un nouvel aiguillage :
+« analyse cette photo de chantier » route déjà vers `VisionAgent` (la
+garde existante, `VISION`, le prévoit explicitement — « contient
+"chantier" et partirait sinon chez l'assistant devis »). La détection EPI
+est un **second signal, déterministe**, déclenché seulement quand le texte
+porte un mot de sécurité explicite (chantier/EPI/casque/gilet) — jamais sur
+une capture d'écran ou un plan analysés par le même agent — et présenté
+**distinctement** de la description libre de Qwen3-VL, même discipline que
+le décompte de menuiseries face à l'avis visuel dans `plaquiste_agent.py`.
+
+**Le rappel de prudence accompagne chaque rapport, sans exception**
+(vérifié par sabotage) : « une observation probabiliste, jamais une
+certitude ». Aucune image n'est jamais persistée par ce connecteur — elle
+part vers SiteGuard pour la durée de l'appel HTTP, jamais écrite sur disque
+ici, même règle de vie privée que `apps/backend/pieces_jointes.py`.
+
+### Tests et sabotages
+
+`python -m ruff check .` propre, `3720 passed, 25 skipped` (offline). Deux
+sabotages prouvés puis restaurés : le déclencheur de sécurité forcé à
+toujours vrai (`test_jamais_declenchee_sans_mot_de_securite` tombe — une
+capture d'écran aurait déclenché une détection de casque pour rien) ; le
+rappel de prudence retiré du formatage (`test_le_rappel_de_prudence_est_
+toujours_present` tombe — un rapport se lirait comme une certitude).
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **Aucune instance SiteGuard réelle n'a pu être testée** : ni installée ni
+  lancée dans ce conteneur (pas de GPU, pas de `ultralytics`). Les tests du
+  connecteur simulent une instance via un faux client HTTP figé sur son
+  schéma de réponse réel (lu dans son code source, pas deviné).
+- **Vidéo, horodatage, localisation** (mission §6) : cette phase traite une
+  image fixe. Une vidéo demanderait un découpage en trames avec sa propre
+  gestion de débit d'appels vers SiteGuard — `SUGGESTION — NON
+  IMPLÉMENTÉE`.
+- **VoxDroid (dataset CC BY 4.0)** : resté une référence de licence, pas
+  intégré — SiteGuard expose déjà une API REST prête à appeler ; ajouter un
+  second moteur de détection ferait exactement ce que la mission interdit
+  (§11, « pas de services concurrents »).
+
+### Ce que ça coûte si c'est faux
+
+Importer `ultralytics` directement dans ARENA exposerait tout le code
+propriétaire du propriétaire aux obligations réseau de l'AGPL-3.0 — un
+risque juridique réel pour son entreprise, pas seulement une préférence
+d'architecture. Présenter une détection comme une certitude (sans le
+rappel de prudence) pourrait faire ignorer une vérification humaine sur un
+chantier réel — le risque que la mission elle-même signale en toutes
+lettres (§6).
+
+## DEC-0055 — Hermes Agent Self-Evolution : jamais ARENA comme cible
+
+**2026-09-05.** Reprise d'un dépôt refusé plus tôt dans la session
+(Hermes Agent Self-Evolution, NousResearch/hermes-agent-self-evolution,
+MIT). Le refus initial portait sur un principe déjà tranché par DEC-0014 :
+le Gardien de maintenance DÉCOUVRE et RAPPORTE, il ne MODIFIE jamais —
+« commit/PR autonome explicitement hors périmètre, contraire à la règle
+non négociable du projet ». Hermes Agent Self-Evolution fait exactement
+ça : lire des traces d'exécution, muter des compétences, ouvrir une PR.
+Une revue humaine avant fusion existe déjà côté outil, mais ça ne change
+pas le principe DEC-0014 en soi. Question posée explicitement au
+propriétaire ; sa réponse tranche : « construis-le, mais pointe-le sur
+autre chose que ce dépôt ARENA ».
+
+### Ce qui a changé depuis le premier refus
+
+Deux points vérifiés à nouveau, dans le code source réel de l'outil (pas
+supposés) :
+
+1. **Les modèles utilisés (`optimizer_model`, `eval_model`, `judge_model`)
+   sont de simples chaînes par défaut**, lues directement dans le fichier
+   de configuration de l'outil (`evolution/core`), jamais un verrou. Le
+   blocage initial (« ça part chez un fournisseur cloud », DEC-0002) est
+   réel dans la configuration PAR DÉFAUT de l'outil,
+   mais reste du ressort du propriétaire quand il installe SON exemplaire
+   séparé — ARENA n'a pas à le résoudre pour lui.
+2. **`create_pr: True` est également un défaut de configuration**, pas un
+   comportement figé — mais rien ne garantit qu'il soit désactivable en
+   ligne de commande (non documenté) : ce connecteur traite donc CHAQUE
+   appel comme pouvant ouvrir une PR réelle, jamais une simple suggestion
+   locale.
+
+### La garde structurelle, pas une promesse
+
+`core/connectors/hermes_evolution.py` refuse `depot_cible` s'il tombe dans
+le dépôt d'ARENA lui-même (`_cible_hors_du_depot`, même forme que
+`chemin_hors_du_depot` de `agents/plaquiste/plaquiste_agent.py`) —
+vérifié par sabotage : retirer ce contrôle fait accepter ARENA comme sa
+propre cible, exactement ce que DEC-0014 interdit. La garde vit dans le
+code, pas seulement dans cette page.
+
+**Un programme séparé, jamais importé** : cloné et installé à côté
+(`HERMES_EVOLUTION_DIR`), comme OpenTakeoff, WanGP, VoiceStudio, KrillinAI
+et SiteGuard. Invoqué par sous-processus
+(`python -m evolution.skills.evolve_skill`) — sa seule forme d'appel, pas
+de serveur HTTP à la différence de SiteGuard.
+
+### Le bon coupe-circuit, vérifié dans le code réel
+
+`EXECUTE_COMMANDS` (à `false` par défaut dans `config/permissions.yaml`)
+est le coupe-circuit choisi — une exécution de sous-processus est
+exactement ce pour quoi il existe. Vérifié directement dans
+`core/permissions/controle.py::ControleAcces.verifier` : `interrupteur_de()`
+lit ce nom pour toute capacité qui le déclare dans
+`config/permissions_services.yaml`, le chemin qu'emprunte réellement ce
+connecteur via `Connecteur._conduire()`. Une note d'audit antérieure
+(P-05, dans le worklog technique) signale qu'un appel plus ancien et
+direct à `PermissionManager.is_allowed()` ne consultait jamais ce booléen
+— un chemin distinct de celui des connecteurs modernes, vérifié ici pour
+ne pas répéter la même confusion. `hermes_evolution.execute` est
+`CONFIRMATION`, risque `HIGH` : une exécution qui peut ouvrir une PR sur un
+dépôt réel n'est jamais lancée d'autorité.
+
+### Reachable, pas dormant
+
+`POST /api/hermes-evolution/evoluer` — un outil de développement, pas une
+capacité métier UniC Plaquiste : pas d'aiguillage depuis le chat (même
+choix que `/api/video/projet`, DEC-0037). La confirmation réelle emprunte
+la route générique déjà en place (`POST /api/actions/{identifiant}/confirm`)
+plutôt qu'une route dédiée.
+
+### Tests et sabotage
+
+21 tests du connecteur (aucun `subprocess.run` réel — l'outil n'est
+installé nulle part ici, un programme externe comme OpenTakeoff) + 4 tests
+de la route. Deux sabotages prouvés puis restaurés : la garde de
+confinement retirée (ARENA accepterait sa propre cible) ; l'interrupteur
+`EXECUTE_COMMANDS` retiré de la politique livrée (l'action partirait sans
+coupe-circuit). `python -m ruff check .` propre, `3746 passed, 25 skipped`.
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **Aucune installation réelle testée** : ni l'outil d'évolution, ni un
+  dépôt hermes-agent cible n'existent sur cette machine. `sonder()` fait un
+  vrai appel (`--help`), jamais une déduction depuis un fichier présent.
+- **Le contournement de `create_pr`/du fournisseur cloud** reste la
+  responsabilité du propriétaire dans SA configuration de l'outil, jamais
+  quelque chose qu'ARENA réécrit ou contourne dans le code d'un tiers.
+
+### Ce que ça coûte si c'est faux
+
+Une garde de confinement absente laisserait un outil d'évolution proposer
+des PR sur le code même d'ARENA — exactement le risque que DEC-0014 a
+fermé pour le Gardien. Un coupe-circuit mal relié laisserait un
+sous-processus s'exécuter sans que le propriétaire l'ait autorisé
+globalement — les deux sont vérifiés par sabotage, pas seulement décrits.
