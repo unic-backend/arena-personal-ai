@@ -5,8 +5,10 @@ from agents.plaquiste.ifc_metre import (
     AnalyseIfc,
     MetreIfc,
     chemin_dans,
+    demande_de_croquis_ifc,
     depuis_analyse,
     depuis_metre,
+    dimensions_pour_croquis,
     formater_analyse,
     formater_metre,
 )
@@ -37,6 +39,39 @@ DETAIL_ANALYSE = {
     "comptes": {"mur": 3, "porte": 1, "fenetre": 1, "espace": 0, "plafond": 0},
     "elements_par_niveau": {"Niveau 1": {"mur": 2, "porte": 1}, "Niveau 2": {"mur": 1, "fenetre": 1}},
 }
+
+
+class TestDemandeDeCroquisIfc:
+    def test_genere_le_croquis_ifc_declenche(self):
+        assert demande_de_croquis_ifc("genere le croquis ifc de cette cloison") is True
+
+    def test_cree_un_fichier_ifc_declenche(self):
+        assert demande_de_croquis_ifc("cree un fichier ifc de 5,40 x 2,50") is True
+
+    def test_exporte_en_ifc_declenche(self):
+        assert demande_de_croquis_ifc("exporte cette cloison en ifc") is True
+
+    def test_lire_un_fichier_ifc_ne_declenche_pas(self):
+        """La frontiere qui compte : LIRE un fichier IFC existant ne doit
+        jamais en generer un nouveau de son propre chef."""
+        assert demande_de_croquis_ifc("analyse le fichier /home/saer/batiment.ifc") is False
+
+    def test_une_phrase_ordinaire_ne_declenche_pas(self):
+        assert demande_de_croquis_ifc("chiffre-moi 18 parois de 5,40 x 2,50 m") is False
+
+
+class TestDimensionsPourCroquis:
+    def test_longueur_x_hauteur_est_lue(self):
+        assert dimensions_pour_croquis("5,40 x 2,50 m") == (5.4, 2.5)
+
+    def test_forme_avec_par(self):
+        assert dimensions_pour_croquis("3 par 2.5") == (3.0, 2.5)
+
+    def test_rien_lu_rend_none(self):
+        assert dimensions_pour_croquis("genere le croquis ifc de cette cloison") is None
+
+    def test_une_dimension_nulle_n_est_pas_retenue(self):
+        assert dimensions_pour_croquis("0 x 2,50 m") is None
 
 
 class TestDepuisAnalyse:

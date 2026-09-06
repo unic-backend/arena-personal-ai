@@ -26,7 +26,14 @@ from agents.plaquiste.calcul_materiaux import formater as formater_calcul
 from agents.plaquiste.chemins import fichier_metier
 from agents.plaquiste.controle_prix import avertissement, verifier_prix
 from agents.plaquiste.ifc_metre import chemin_dans as chemin_ifc_dans
-from agents.plaquiste.ifc_metre import depuis_analyse, depuis_metre, formater_analyse, formater_metre
+from agents.plaquiste.ifc_metre import (
+    demande_de_croquis_ifc,
+    depuis_analyse,
+    depuis_metre,
+    dimensions_pour_croquis,
+    formater_analyse,
+    formater_metre,
+)
 from agents.plaquiste.metre import lire_demande
 from agents.plaquiste.metre_plan import (
     chemin_dans,
@@ -960,6 +967,44 @@ class PlaquisteAgent(BaseAgent):
 
         return compte_rendu
 
+    def _generer_croquis_ifc(self, texte: str) -> Optional[Dict[str, Any]]:
+        """Écrit un croquis IFC minimal (une cloison) sur demande EXPLICITE,
+        jamais parce qu'un métré a été calculé ce tour — mesurer et générer
+        un fichier IFC sont deux demandes différentes.
+
+        Les dimensions viennent UNIQUEMENT d'une lecture directe de longueur
+        x hauteur (`dimensions_pour_croquis`) : jamais reprises d'un métré
+        multi-parois déjà calculé (`quantites_pour`), qui ne porte plus la
+        longueur et la hauteur séparément une fois converties en surface.
+
+        Returns:
+            Le compte-rendu, ou `None` sans demande explicite ou sans
+            dimensions exploitables.
+        """
+        if not demande_de_croquis_ifc(texte):
+            return None
+        dimensions = dimensions_pour_croquis(texte)
+        if dimensions is None:
+            return {"statut": "INCOMPLET",
+                    "message": ("Le croquis IFC n'est pas généré : donne la longueur et la "
+                                "hauteur de la cloison, par exemple « 5,40 x 2,50 m ».")}
+        if self.registre is None:
+            return {"statut": "NOT_CONFIGURED",
+                    "message": ("Je peux chiffrer, pas écrire de fichier IFC : aucun "
+                                "connecteur n'est branché sur cet agent.")}
+
+        longueur_m, hauteur_m = dimensions
+        resultat = self.registre.executer(
+            "ifc_generation", "generer", longueur_m=longueur_m, hauteur_m=hauteur_m)
+        compte_rendu: Dict[str, Any] = {
+            "statut": resultat.statut.value, "message": resultat.message,
+            "preuve": resultat.preuve,
+        }
+        adresse = (resultat.detail or {}).get("url")
+        if adresse:
+            compte_rendu["url"] = adresse
+        return compte_rendu
+
     def _piece_plan_pdf(self, identifiants: Optional[List[str]]):
         """La premiere piece jointe qui porte un PDF, ou None.
 
@@ -1383,6 +1428,15 @@ class PlaquisteAgent(BaseAgent):
                 f"{ifc.get('message', '')}\nDis-le-lui tel quel, n'invente aucun element."
             )
 
+        # Un croquis IFC (mission BIM, 06/09/2026) : GENERER un fichier, sur
+        # demande explicite, jamais lie a la lecture d'un fichier IFC ci-dessus.
+        croquis_ifc = self._generer_croquis_ifc(message_actuel)
+        if croquis_ifc is not None:
+            instruction = (
+                f"{instruction}\n\nCROQUIS IFC DEMANDE : {croquis_ifc['message']}\n"
+                "Dis-le-lui tel quel."
+            )
+
         # Un decompte de menuiseries (DEC-0022) : seulement sur demande
         # explicite (DEMANDE_DE_DECOMPTE), jamais parce qu'un plan a ete
         # mesure — mesurer des m2 et compter des portes sont deux demandes
@@ -1512,6 +1566,9 @@ class PlaquisteAgent(BaseAgent):
             # Ce qu'un fichier IFC cite a rendu. `None` quand aucun chemin
             # `.ifc` n'a ete lu dans la demande.
             "ifc": ifc,
+            # Ce qu'une demande de croquis IFC a rendu. `None` sans demande
+            # explicite de generation.
+            "croquis_ifc": croquis_ifc,
             # Ce qu'un decompte de menuiseries a rendu. `None` quand aucun
             # decompte n'a ete demande (DEMANDE_DE_DECOMPTE).
             "marques": marques,

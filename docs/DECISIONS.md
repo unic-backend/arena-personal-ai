@@ -3875,3 +3875,99 @@ des PR sur le code même d'ARENA — exactement le risque que DEC-0014 a
 fermé pour le Gardien. Un coupe-circuit mal relié laisserait un
 sous-processus s'exécuter sans que le propriétaire l'ait autorisé
 globalement — les deux sont vérifiés par sabotage, pas seulement décrits.
+
+## DEC-0056 — Génération IFC : l'API d'IfcOpenShell suffit, jamais un second moteur BIM
+
+**2026-09-06.** Dernier volet mis de côté par DEC-0053 (« BIM as Code »/
+BuildingPy, génération de géométrie, section 4/5 de la mission) et
+question du graphe de relations pièce-par-pièce (section 3). Autorisation
+explicite du propriétaire de reprendre « ce qui reste de la mission BIM ».
+
+### BIM as Code et BuildingPy réévalués, tous deux écartés
+
+Les deux dépôts (benjaminwfriedman/bimascode, OpenAEC-Foundation/
+building-py) ont été relus à nouveau, licence et architecture comprises :
+tous deux MIT/permissifs, mais tous deux apportent un **second moteur
+géométrique** — `build123d` (un noyau CAO, OCCT) pour BIM as Code,
+Blender/Revit/Speckle pour BuildingPy. La mission l'interdit explicitement
+(§11, « pas de moteurs BIM redondants »). Vérifié directement dans le code
+d'IfcOpenShell (déjà une dépendance, DEC-0053), pas supposé : son propre
+module `ifcopenshell.api.geometry` expose `create_2pt_wall` — de quoi créer
+un mur simple (deux points, hauteur, épaisseur) et écrire un fichier IFC
+valide, **sans aucune dépendance supplémentaire**. Les deux dépôts
+n'apportent donc rien qu'IfcOpenShell ne fasse déjà pour le besoin réel
+(un croquis simple, pas une maquette complète) — écartés pour duplication,
+pas pour licence.
+
+### Le graphe de relations pièce-par-pièce : écarté pour une raison technique, pas seulement l'absence de besoin
+
+Vérifié empiriquement avant de conclure (jamais supposé) : la relation IFC
+qui rattacherait un mur à la pièce qu'il sépare
+(`IfcRelSpaceBoundary`, ou `IfcRelReferencedInSpatialStructure`) n'a
+**aucun assistant de création** dans l'API haut niveau d'IfcOpenShell
+(contrairement aux relations couramment exportées — niveaux, matériaux,
+quantités) et son inverse (`get_referenced_elements`) ne l'a pas retrouvée
+de façon fiable dans un test direct, même construite à la main. C'est la
+preuve concrète que cette relation est rarement peuplée par les logiciels
+d'auteur réels — construire une capacité dessus produirait le plus souvent
+un résultat vide, silencieusement inutile. `DEC-0053` avait déjà écarté
+cette capacité pour éviter un système complexe inutile (mission §3) ; cette
+vérification confirme que la prudence était aussi technique, pas seulement
+un principe.
+
+### Ce qui a été intégré
+
+`core/production/ifc_generation.py` — `generer_croquis_cloison(longueur_m,
+hauteur_m, epaisseur_m, nom)` : un projet IFC minimal, une cloison
+rectiligne, sa quantité `Qto_WallBaseQuantities.NetSideArea` écrite dans le
+même geste — **calculée exactement comme `agents/plaquiste/
+calcul_materiaux.py` la lirait** (longueur x hauteur, une face), jamais un
+second calcul qui pourrait diverger du devis. `core/connectors/
+ifc_generation.py` (`ConnecteurIfcGeneration`) — une capacité `generer`
+(écriture), `ALLOWED` sous `WRITE_FILES` (même logique que le devis,
+DEC-0041 : le fichier reste local, dans `media/rendered/`, relu avant
+d'être partagé).
+
+Câblé dans `agents/plaquiste/plaquiste_agent.py` sur une phrase EXPLICITE
+de génération (« génère le fichier ifc », « exporte... en ifc ») —
+volontairement distincte et jamais déclenchée par la lecture d'un fichier
+IFC existant (`chemin_dans`, DEC-0053) : lire et écrire sont deux demandes
+différentes, vérifié par sabotage. Les dimensions (longueur x hauteur)
+sont lues par un analyseur dédié, séparé de `agents/plaquiste/metre.py::
+lire_demande` — celui-ci compte des parois et rend une surface déjà
+multipliée, jamais la longueur et la hauteur séparément, ce qu'exige la
+génération d'un mur.
+
+### Tests et sabotages
+
+Smoke test réel bout en bout : un croquis engendré est relu par notre
+propre `ifc_lecture.py` (DEC-0053) et rend exactement la même surface.
+Deux sabotages prouvés puis restaurés : une surface fausse écrite dans le
+fichier généré (`+1.0`) fait tomber la garantie de cohérence
+écriture/lecture ; le déclencheur de génération élargi à tout message
+contenant « ifc » fait tomber la frontière lecture/écriture (lire un
+fichier IFC existant aurait aussi tenté d'en générer un). `python -m ruff
+check .` propre, `3777 passed, 25 skipped`.
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **Portes et fenêtres** : ajouter une ouverture suppose de positionner un
+  linteau, une mesure que rien ici ne fait encore. `SUGGESTION — NON
+  IMPLÉMENTÉE`.
+- **Export DXF** : la mission le demande (§4) mais n'a aucun consommateur
+  exprimé au-delà de l'IFC lui-même — pas construit pour l'instant.
+- **Plusieurs murs / une pièce complète** : cette phase reste UNE cloison
+  rectiligne ; composer un plan complet exigerait une disposition (angles,
+  intersections) qu'aucune donnée actuelle ne fournit.
+- **Le graphe de relations pièce-par-pièce** : voir plus haut — resterait
+  `SUGGESTION — NON IMPLÉMENTÉE` même avec un besoin exprimé, tant que
+  la fiabilité de la relation sous-jacente n'est pas démontrée sur un
+  fichier réel d'un logiciel d'auteur.
+
+### Ce que ça coûte si c'est faux
+
+Une surface écrite dans le fichier IFC généré qui ne correspondrait pas à
+celle du devis produirait deux documents contradictoires chez le même
+client — un croquis technique et un devis qui ne s'accordent pas. La
+garantie est donc dans le code (le même calcul, jamais recalculé), vérifiée
+par sabotage, pas seulement énoncée ici.

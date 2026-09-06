@@ -18,7 +18,9 @@ from agents.plaquiste.calcul_materiaux import quantites_pour  # noqa: E402
 from agents.plaquiste.plaquiste_agent import PlaquisteAgent, charger_metier  # noqa: E402
 from core.connectors.devis import DevisConnector  # noqa: E402
 from core.connectors.ifc import ConnecteurIfc  # noqa: E402
+from core.connectors.ifc_generation import ConnecteurIfcGeneration  # noqa: E402
 from core.connectors.registre import RegistreConnecteurs  # noqa: E402
+from core.production.ifc_lecture import elements, ouvrir  # noqa: E402
 
 METIER = charger_metier()
 DESTINATAIRE = {"client": "Fast Group", "lieu": "Almadies", "objet": "cloisons BA13"}
@@ -48,6 +50,8 @@ def registre(tmp_path) -> RegistreConnecteurs:
     inventaire = RegistreConnecteurs()
     inventaire.declarer("ifc", lambda: ConnecteurIfc())
     inventaire.declarer("devis", lambda: DevisConnector(metier=METIER, dossier=tmp_path / "devis"))
+    inventaire.declarer(
+        "ifc_generation", lambda: ConnecteurIfcGeneration(dossier=tmp_path / "rendus"))
     return inventaire
 
 
@@ -114,3 +118,43 @@ class TestSansIfcOpenShell:
         resultat = await agent.run(f"analyse le fichier {fichier_ifc}", context=DESTINATAIRE)
 
         assert resultat["ifc"]["statut"] == "NOT_CONFIGURED"
+
+
+class TestCroquisIfcJusquauFichierReel:
+    """Génération (DEC-0056), pas lecture : un fichier IFC réel est écrit et
+    relu, sans rapport avec `fichier_ifc`/`FIXTURE_SOURCE` ci-dessus."""
+
+    @pytest.mark.asyncio
+    async def test_le_croquis_ifc_est_un_fichier_reel_et_coherent(self, registre):
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=METIER, registre=registre)
+
+        resultat = await agent.run(
+            "genere le croquis ifc de cette cloison de 5,40 x 2,50 m", context=DESTINATAIRE)
+
+        croquis = resultat["croquis_ifc"]
+        assert croquis["statut"] == "SUCCESS", croquis["message"]
+        chemin_ecrit = Path(croquis["preuve"])
+        assert chemin_ecrit.is_file()
+
+        murs = elements(ouvrir(str(chemin_ecrit)), "IfcWall")
+        assert len(murs) == 1
+        assert murs[0].surface_m2 == 13.5
+
+    @pytest.mark.asyncio
+    async def test_sans_dimensions_est_incomplet_jamais_invente(self, registre):
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=METIER, registre=registre)
+
+        resultat = await agent.run("genere le croquis ifc de cette cloison", context=DESTINATAIRE)
+
+        assert resultat["croquis_ifc"]["statut"] == "INCOMPLET"
+
+    @pytest.mark.asyncio
+    async def test_analyser_un_fichier_ifc_ne_declenche_pas_une_generation(
+        self, registre, fichier_ifc
+    ):
+        """La frontiere qui compte (DEC-0056) : LIRE ne doit jamais aussi ECRIRE."""
+        agent = PlaquisteAgent(provider=ModeleDouble(), metier=METIER, registre=registre)
+
+        resultat = await agent.run(f"analyse le fichier {fichier_ifc}", context=DESTINATAIRE)
+
+        assert resultat["croquis_ifc"] is None
