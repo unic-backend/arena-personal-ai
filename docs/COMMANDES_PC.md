@@ -139,6 +139,40 @@ politique reseau. Aucune synthese OmniVoice reelle n'a donc pu etre generee
 depuis cette session ; seul le routage cote ARENA (`core/connectors/audio_voix.py`)
 a ete verifie, avec un VoiceStudio simule.
 
+> **⚠️ Avant de lancer ce `uv sync` : les poids d'OmniVoice sont CC-BY-NC —
+> usage commercial interdit** (DEC-0069, mesure du 07/09/2026 sur le fichier
+> de licences de VoiceStudio). Une voix off de chantier pour UniC est un usage
+> commercial. **ARENA refusera donc de s'en servir pour ton travail**, et te
+> dira pourquoi plutot que de produire un fichier en silence — c'est voulu.
+>
+> Pour parler *vraiment* pour UniC, installe a cote un moteur a licence
+> permissive : **`cosyvoice`** (Apache-2.0) est le plus proche d'OmniVoice, il
+> clone et il accepte `instruct`. `voxcpm2` (Apache-2.0), `kittentts` et
+> `gpt-sovits` (MIT) marchent aussi.
+>
+> OmniVoice reste utilisable pour un essai ou une comparaison, en le declarant :
+> `python scripts/verifier_voix.py --usage recherche`.
+
+**Verifier la chaine vocale, pour de vrai, sur ta machine :**
+
+```
+python scripts/verifier_voix.py
+```
+
+Elle passe **par ARENA** (pas par VoiceStudio en direct, sinon elle mesurerait
+VoiceStudio), et rend, ligne par ligne : les moteurs installes avec l'appareil
+qu'ils utilisent reellement et leur licence, puis une synthese reelle en
+francais, anglais et **wolof**, chacune avec sa duree, sa cadence, son
+amplitude et son facteur temps reel mesures. Un fichier parfaitement
+silencieux y est un ECHEC, pas un succes.
+
+Pour tester aussi le clonage — jamais sans autorisation declaree :
+
+```
+python scripts/verifier_voix.py --ref-audio media/ma_voix.wav \
+    --autorisation "Ousmane Diop, proprietaire de la voix"
+```
+
 **Lean 4 — la vérification formelle (DEC-0067).** Sans lui, ARENA ne peut
 *rien* prouver : elle le dit au lieu de laisser un modèle l'affirmer. Le
 toolchain est Apache-2.0 mais fait **2,9 Go** décompressé, donc il reste hors

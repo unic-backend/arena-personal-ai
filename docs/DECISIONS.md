@@ -5426,3 +5426,125 @@ jusqu'au jour où quelqu'un compte dessus. La mesure des modules ne pouvait
 pas l'attraper, et c'est précisément pour ça qu'il fallait une mesure
 séparée : **une garantie qu'aucun test ne tient finit toujours par ne plus
 être vraie.**
+
+---
+
+## DEC-0069 — OmniVoice allait devenir le moteur par défaut d'UniC, et sa licence l'interdit
+
+**2026-09-07.** Mission reçue : auditer OmniVoice, et l'intégrer comme moteur
+TTS réellement opérationnel *si et seulement si* il apporte une vraie
+amélioration — sans deuxième système vocal, avec un seul routeur, et sans
+jamais contourner la licence du modèle pré-entraîné.
+
+### Le défaut, en trois faits qui ne se recoupent qu'ensemble
+
+1. Le registre TTS de VoiceStudio est un dictionnaire **ordonné** dont
+   `omnivoice` est la **première** entrée, énumérée dans cet ordre (fichier
+   `tts_backend.py` ligne 2260, commit `53ff367`, lu sur cette machine).
+2. ARENA choisissait `disponibles[0]` — *« le premier que le service déclare
+   disponible »*, écrit le 01/09/2026 pour ne pas suivre aveuglément le
+   moteur « actif » de VoiceStudio. Bonne intention, mauvaise règle.
+3. Les **poids** d'OmniVoice sont **CC-BY-NC**. Son dépôt ne porte qu'un
+   `LICENSE` Apache-2.0 — qui couvre le **code** — et **aucune mention** de la
+   licence des poids.
+
+Donc : dès que le paquet est installé, OmniVoice devient le moteur de
+**toutes les voix off d'UniC Plaquiste**. Et la commande qui l'installe,
+c'est ARENA elle-même qui la lui donnait, dans `docs/COMMANDES_PC.md`, depuis
+DEC-0065.
+
+Une entreprise de cloisons à Dakar, des vidéos de chantier, un modèle marqué
+« non commercial » : rien dans le code ne l'aurait dit, et rien dans le
+journal ne l'aurait retrouvé.
+
+### La source, atteignable, qui tranche un `UNKNOWN` de DEC-0065
+
+DEC-0065 avait laissé la licence des poids `UNKNOWN`, faute d'atteindre
+Hugging Face — toujours bloqué ici (mesuré : `curl` code 000, WebFetch
+`EGRESS_BLOCKED`). Mais VoiceStudio, qui empaquette OmniVoice, l'écrit dans
+son `LICENSE-NOTICE.md` :
+
+> *« Downloaded model weights are not relicensed by VoiceStudio. The default
+> k2-fsa/OmniVoice model card identifies its code as Apache-2.0 and pretrained
+> weights as CC-BY-NC. »*
+
+Son `README.md` porte la même information dans une colonne « License » par
+moteur — la source de la table de `core/audio/routage_tts.py`. La fiche
+Hugging Face elle-même n'a **pas** été lue ici : deux sources indépendantes
+la citent, aucune n'est elle.
+
+### Ce qui a été fait
+
+**Un seul routeur, et il connaît les licences** : `core/audio/routage_tts.py`.
+Le connecteur portait **deux** fonctions de choix (parler, cloner) ; il n'y en
+a plus qu'une. Sa règle de partage est le cœur du module :
+
+- **Ce que la machine sait mesurer, on le lui demande** à chaque appel :
+  disponibilité, `supports_cloning`, `effective_device`, `routing_status`.
+- **Ce qu'aucune API n'expose vit dans la table** — la licence des poids et le
+  support de `instruct` —, chaque entrée avec sa source et sa date.
+
+`effective_device` et `routing_status` sont la découverte utile de l'audit :
+VoiceStudio les publiait déjà, ARENA les recevait et les **jetait**. C'est la
+réponse mesurée à « quel appareil sert réellement ? », et elle ne se déduit
+pas de la présence d'un GPU — un moteur compatible CUDA peut retomber sur le
+processeur faute de VRAM, et `cpu_fallback` le dit.
+
+Cinq comportements, tous tenus par des tests :
+
+1. `omnivoice` seul + travail commercial → **refus**, licence nommée, **aucun
+   fichier écrit**, et le message donne les deux sorties possibles.
+2. `omnivoice` + un moteur permissif → le permissif, quel que soit l'ordre.
+3. `omnivoice` **nommé explicitement** → refus quand même : nommer un moteur
+   n'ouvre aucune porte.
+4. `usage="recherche"` déclaré → `omnivoice` parle. La licence interdit le
+   commerce, pas l'essai — et cette porte est atteignable depuis une vraie
+   phrase, sinon ce serait une capacité morte de plus (DEC-0061, DEC-0068).
+5. À licence égale, le moteur **réellement accéléré** passe devant.
+
+**L'usage par défaut est commercial**, et un `usage` mal orthographié est
+refusé plutôt que ramené au défaut : le ramener en silence choisirait à sa
+place, et dans le seul sens qui coûte.
+
+`scripts/doctor.py` ne dit plus `[OK]` quand les seuls moteurs installés sont
+non commerciaux — c'était le même mensonge que « un port qui répond sans
+moteur », que ce fichier interdisait déjà.
+
+### Le sabotage qui est passé, encore
+
+Sept sabotages ont été joués. Six ont fait échouer des tests. **Le septième
+est passé au vert** : retirer le contrôle de licence de `doctor.py` ne cassait
+rien, parce que ce contrôle n'avait aucun test. Il en a deux maintenant, et
+les deux sabotages échouent.
+
+C'est la quatrième fois en trois jours qu'une garantie de ce dépôt se révèle
+non tenue — filtre `supports_cloning`, sonde du navigateur, garde-fou des
+connecteurs dormants, et ici. La constante n'est plus une surprise : **ce
+qu'aucun test ne casse, personne ne tient.**
+
+### Ce qui n'a pas été fait, et pourquoi
+
+- **Rien n'a été cloné dans ARENA**, aucun poids téléchargé. Tant que la
+  licence bloque l'usage principal, télécharger des gigaoctets serait payer
+  un stockage pour une capacité qu'ARENA refusera d'exercer.
+- **Aucun deuxième système vocal.** Le connecteur a rétréci, pas grossi.
+- **KrillinAI garde son TTS de doublage** (DEC-0049) : il ne synthétise jamais
+  de novo et n'accepte aucun clonage. Frontière assumée, pas oubli.
+- **Aucune langue déclarée opérationnelle.** Le dépôt annonce « over 600
+  languages » ; ce nombre est **repris, pas vérifié**.
+  `scripts/verifier_voix.py` mesure français, anglais et wolof sur sa machine.
+
+### Ce que ça coûte si c'est faux
+
+**Si la mesure est fausse** — si les poids étaient en réalité
+commercialement libres — le coût est une gêne : il installe un autre moteur,
+ou déclare un usage non commercial, ou corrige une ligne de la table avec sa
+source. Réversible en une minute.
+
+**Si elle est juste et qu'on n'avait rien fait**, le coût n'est pas
+symétrique : des vidéos commerciales déjà publiées, faites avec un modèle qui
+l'interdit, sans trace permettant de savoir lesquelles. Un fichier produit ne
+se dé-produit pas.
+
+C'est cette asymétrie, et elle seule, qui justifie que le défaut par défaut
+soit le refus.
