@@ -21,6 +21,22 @@ async function magasinFrais() {
   return (await import('./backendStore')).useBackend;
 }
 
+//: Le budget des tests qui empruntent le chemin de REESSAI de la sonde.
+//
+//: Ces tests attendent pour de vrai : 3 tentatives x (800 + 2500 ms) par
+//: serveur. Sur cette machine ils tiennent en ~3,3 s, mais le plafond par
+//: defaut de vitest est de 5000 ms — moins de 1,7 s de marge, qu'un runner
+//: charge mange sans difficulte. Mesure du 07/09/2026 : « le principal muet »
+//: a echoue en CI a **5002 ms** pendant qu'il passait a 3311 ms ici.
+//:
+//: Ce n'etait donc pas un alea : c'est un budget qui n'avait jamais ete
+//: dimensionne. Le voisin « les deux muets » portait deja cette correction
+//: (20000 ms) et son arithmetique en commentaire ; elle n'avait simplement
+//: pas ete appliquee aux trois autres. (Deux tests de plus l'avaient deja,
+//: sous la forme du dernier argument `}, 20000)` — c'est `tsc` qui l'a
+//: rappele quand j'ai voulu leur en donner un second.)
+const BUDGET_REESSAI = 20000
+
 describe('reprise apres une coupure subie', () => {
   beforeEach(() => localStorage.clear());
 
@@ -74,7 +90,7 @@ describe('le bouton Deconnecter', () => {
 describe('la sonde', () => {
   beforeEach(() => localStorage.clear());
 
-  it('reessaie avant d\'abandonner', async () => {
+  it('reessaie avant d\'abandonner', { timeout: BUDGET_REESSAI }, async () => {
     // Une coupure passagere ne doit plus coûter une deconnexion.
     const magasin = await magasinFrais();
     magasin.setState({ url: 'https://son-serveur.test', enabled: true });
@@ -90,7 +106,7 @@ describe('la sonde', () => {
     vi.doUnmock('../activity/remoteTransport');
   });
 
-  it('un echec ne debranche PAS le serveur', async () => {
+  it('un echec ne debranche PAS le serveur', { timeout: BUDGET_REESSAI }, async () => {
     vi.doMock('../activity/remoteTransport', () => ({
       pingBackend: vi.fn().mockResolvedValue({ ok: false, latencyMs: 1, error: 'HTTP 502' }),
     }));
@@ -131,7 +147,7 @@ describe('deux adresses, bascule automatique', () => {
     vi.doUnmock('../activity/remoteTransport');
   });
 
-  it('le principal muet : le secours prend le relais', async () => {
+  it('le principal muet : le secours prend le relais', { timeout: BUDGET_REESSAI }, async () => {
     const ping = vi.fn(async (cfg: { url: string }) =>
       cfg.url.includes('railway')
         ? { ok: true, latencyMs: 40, provider: 'groq' }
