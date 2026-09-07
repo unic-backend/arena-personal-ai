@@ -34,6 +34,12 @@ data/database/adresse_machine.json
 data/sauvegardes/*.db
 data/cache/*
 data/embeddings/*
+
+# Le journal durable des travaux de Dioumtoukay (DEC-0072). Il porte les
+# DEMANDES du proprietaire et les chemins de ses fichiers : c'est de la donnee
+# personnelle, jamais du source. Le depot porte le module qui l'ecrit
+# (`core/execution/reprise.py`), pas son contenu.
+data/travaux/*
 data/documents/*
 !data/documents/.gitkeep
 data/rag/*
