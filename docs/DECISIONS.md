@@ -4982,3 +4982,156 @@ chaque appelant réel. Documenter une capacité comme « intégrée » parce
 qu'un catalogue la déclare, sans avoir vérifié qu'elle atteint l'agent
 nommé, est exactement l'erreur que la mission « réveiller ce qui dort »
 visait à ne plus jamais laisser passer.
+
+---
+
+## DEC-0065 — OmniVoice : déjà déclaré par VoiceStudio, le vrai travail était le routage et l'autorisation
+
+**2026-09-07.** Mission reçue : intégrer OmniVoice (k2-fsa/OmniVoice, TTS
+massivement multilingue, clonage et voice design) comme moteur vocal
+réellement opérationnel dans ARENA — jamais un deuxième système vocal.
+
+### Ce qu'ARENA avait déjà (audit avant toute modification)
+
+ARENA a déjà, depuis la mission VoiceStudio du 01/09/2026, exactement
+l'architecture que la mission demande : `agents/audio/audio_agent.py` →
+`core/connectors/audio_voix.py` → VoiceStudio (processus séparé, AGPL-3.0,
+`127.0.0.1:3900`) → moteur choisi **parmi ce qui est réellement disponible**
+(`_choisir_la_voix`, jamais le défaut du service). C'est déjà le « TTS
+Router » que la mission décrit : les agents demandent une capacité
+(`parler`), jamais un moteur nommé.
+
+**Fait central, qui change toute la mission** : `omnivoice` n'est pas un
+moteur à ajouter. VoiceStudio le connaît déjà — c'est même l'exemple cité
+dans le code d'ARENA lui-même (`_choisir_la_voix`, commentaire écrit le
+01/09/2026 : *« VoiceStudio garde `omnivoice` comme moteur actif même quand
+son paquet n'est pas installé »*). Le travail n'était donc pas de brancher
+un nouveau moteur, mais de rendre ARENA capable d'utiliser ses capacités
+réelles (clonage, voice design) le jour où le paquet est présent — et de
+garantir qu'un clonage n'arrive jamais sans autorisation explicite.
+
+### Audit réel d'OmniVoice et de VoiceStudio (dépôts clonés, jamais le README seul)
+
+`k2-fsa/OmniVoice` (commit `08be0b4c`, 24/08/2026) : code Apache-2.0 vérifié
+dans `LICENSE` et `pyproject.toml`. Trois modes réels confirmés dans le
+code (module `omnivoice.models.omnivoice`) : clonage (`ref_audio`/`ref_text`),
+voice design (`instruct=`, ex. *"female, low pitch, british accent"*), voix
+automatique. Dépendances réelles : `torch>=2.4`, `transformers>=5.3.0`,
+`accelerate`, `gradio` — une machine sans GPU peut les faire tourner en CPU,
+mais lentement ; l'assistant qui écrit ce document n'en a pas eu besoin,
+pour la raison ci-dessous.
+
+**La question de licence que la mission demandait de ne pas laisser
+passer** : le squelette du modèle est architecturalement un **Qwen3**
+(le module d'accélération FlashInfer importe `Qwen3RMSNorm`,
+`Qwen3Attention`), et le tokenizer audio par défaut est un modèle **tiers**
+séparé, `eustlb/higgs-audio-v2-tokenizer` (dérivé de Higgs Audio v2, Boson
+AI), téléchargé indépendamment des poids d'OmniVoice. Ni la licence exacte
+des poids d'OmniVoice sur Hugging Face, ni celle de ce tokenizer tiers,
+n'ont pu être vérifiées : `huggingface.co` est **bloqué par la politique
+réseau de cette machine** (403 mesuré directement, pas supposé). Des issues
+GitHub réelles (#258, #235, ouvertes ; #211, #60, fermées) discutent
+justement d'un usage commercial pas totalement clair malgré le code
+Apache-2.0 — **`UNKNOWN`, et ça le reste tant que quelqu'un ne le vérifie
+pas depuis une machine qui atteint Hugging Face.**
+
+`debpalash/VoiceStudio` (commit `53ff367c`, 05/09/2026 — **une version plus
+récente que l'audit du 01/09/2026**, qui portait `a30b7166`) : découverte
+qui change le diagnostic de cet audit précédent. Le 01/09/2026, `omnivoice`
+échouait avec *« No module named 'transformers' »* : le paquet et ses
+dépendances lourdes n'étaient pas installés. Dans la version actuelle,
+`torch`, `torchaudio`, `torchvision` et `transformers>=5.5.0` sont des
+**dépendances de base** de VoiceStudio lui-même (`pyproject.toml` : le
+projet entier s'appelle littéralement `omnivoice`, et vend `omnivoice/`
+comme paquet interne en installation éditable). Un simple `git pull && uv
+sync` sur l'installation existante du propriétaire suffit désormais à
+rendre le paquet présent — documenté dans `docs/COMMANDES_PC.md`.
+
+**Schéma exact du clonage, vérifié dans le source, jamais deviné** :
+`POST /profiles` (formulaire multipart : `name`, `ref_audio`, `ref_text`,
+`kind="clone"`) rend un identifiant de profil ; ce profil se redemande
+ensuite comme n'importe quelle voix à `POST /v1/audio/speech`
+(`voice=<profile_id>`). Deux appels, jamais un — une hypothèse d'un seul
+appel aurait envoyé un champ que VoiceStudio n'attend pas. Le champ
+`instruct` de voice design, lui, se transmet directement dans le même appel
+que la parole ordinaire, sans profil. Et `/engines/tts` expose bien
+`supports_cloning` (booléen ou `None` quand la capacité dépend du modèle
+chargé) — le champ que le routage utilise maintenant réellement.
+
+### Décision par capacité
+
+| Capacité | Décision | Ce qui a été fait |
+|---|---|---|
+| Système vocal (agent → connecteur → VoiceStudio) | **KEEP** | déjà l'architecture demandée, aucun second système |
+| Sélection de moteur par disponibilité réelle | **KEEP** | `_choisir_la_voix` existait déjà, inchangé |
+| Voice design (`instruct`) | **MERGE** | `_parler` transmet `instruct` quand fourni — jamais inventé, vérifié dans le source de VoiceStudio |
+| Clonage de voix | **NEW** | capacité `cloner` : deux appels réels (profil, puis synthèse), moteur choisi parmi ceux qui déclarent `supports_cloning` |
+| Autorisation du clonage | **NEW** | exigée dans le code de la capacité elle-même (`_cloner` refuse une autorisation vide), en plus de la confirmation HIGH — jamais un second système de permissions |
+| Téléchargement/cache du modèle, VRAM | **IGNORE** | déjà la politique de VoiceStudio (§10 de l'audit du 01/09/2026) ; ARENA n'en ajoute pas une seconde |
+| Benchmark GPU multi-langues réel | **BLOQUÉ, rapporté `UNKNOWN`** | pas de GPU ici, `huggingface.co` bloqué par la politique réseau — mesuré, pas contourné |
+
+### Ce qui a été implémenté
+
+- `core/connectors/audio_voix.py` : capacité `cloner` (permission dédiée,
+  `resultat_attendu` nommant la source et l'autorisation avant confirmation),
+  `_moteurs_capables_de_clonage`/`_choisir_pour_clonage` (filtrent sur
+  `supports_cloning is True`, jamais sur `None`), `_cloner` (autorisation
+  obligatoire → référence réelle sur disque → moteur capable → profil →
+  synthèse → même vérification par `ffprobe` que `_parler`), `_parler`
+  accepte désormais `instruct`.
+- `config/permissions_services.yaml` : `audio_voix.cloner` en
+  `CONFIRMATION`/`HIGH` sous `WRITE_FILES` — distinct de `document`/`MEDIUM`.
+- `agents/audio/audio_agent.py` : déclencheurs `CLONER`, testés avant
+  `PARLER` ; `_cloner` refuse sans référence, sans texte, ou sans
+  autorisation déclarée — jamais un aller-retour inutile au connecteur.
+
+### Tests et sabotages
+
+23 tests neufs (vérifiés via `pytest --collect-only -q` : 3963 collectés,
+contre 3940 avant cette mission). Deux sabotages, tous deux confirmés puis
+restaurés :
+
+1. Retirer le refus d'autorisation vide dans `_cloner` → le test dédié
+   échoue avec l'assertion attendue (le moteur aurait été choisi sans
+   autorisation).
+2. Retirer le filtre `supports_cloning` de `_moteurs_capables_de_clonage` →
+   **passait d'abord inaperçu** : les tests de `_choisir_pour_clonage`
+   remplacent cette méthode elle-même par un double, donc ils prouvent
+   l'appel, jamais le filtre. Une classe de test séparée
+   (`TestLeFiltreDeClonageInterrogeVraimentVoiceStudio`), qui n'imite que la
+   réponse HTTP et laisse tourner le vrai filtre, attrape le sabotage —
+   ajoutée après l'avoir vu passer à tort, exactement la discipline que ce
+   dépôt demande.
+
+`python -m ruff check .` propre. `python -m pytest tests/ -q` →
+3938 passed, 25 skipped (était 3915 avant cette mission — cohérent avec les
+23 tests ajoutés). `python scripts/orphelins.py` inchangé (207/165) : aucun
+nouveau fichier module, seulement des ajouts dans l'existant.
+
+### Ce qui reste hors de portée de cette machine, et pourquoi
+
+Aucune synthèse OmniVoice réelle n'a été générée. Trois raisons mesurées,
+pas supposées : `huggingface.co` est bloqué par la politique réseau de ce
+conteneur (`curl` direct → 403, « organization policy ») ; cette machine
+n'a pas de GPU (`nvidia-smi` absent) ; et surtout, architecturalement,
+OmniVoice ne doit **jamais** s'installer dans le venv d'ARENA — il vit dans
+l'environnement séparé de VoiceStudio, qui n'est lui-même pas présent dans
+ce conteneur (c'est un processus que le propriétaire lance sur sa propre
+machine). Ce qui a été vérifié à la place, réellement : le routage, le
+schéma d'appel à VoiceStudio (profil puis synthèse), et le refus
+d'autorisation sont du vrai code, testé et sabotage-vérifié — seule la
+réponse HTTP de VoiceStudio est simulée dans les tests, exactement comme
+pour `_parler`/`_transcrire` avant cette mission.
+
+### Ce que ça coûte si c'est faux
+
+Si le tokenizer audio tiers ou les poids d'OmniVoice portent une
+restriction commerciale non vue ici, le propriétaire les installerait sur la
+foi d'un `Apache-2.0` en façade — d'où le `UNKNOWN` volontaire plutôt qu'un
+« licence vérifiée » qui ne le serait pas. Si l'autorisation de clonage
+n'était vérifiée que dans le message de confirmation (jamais dans le code
+de la capacité), une confirmation automatisée future ou un appel direct
+pourrait cloner une voix sans qu'aucune autorisation n'ait jamais été
+déclarée — exactement le risque d'usurpation que la mission signalait, et
+la raison pour laquelle ce refus vit dans `_cloner` et pas seulement dans
+`resultat_attendu`.

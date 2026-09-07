@@ -287,6 +287,14 @@ class TestCapacites:
         assert capacites["transcrire"].ecriture is False
         assert capacites["moteurs"].ecriture is False
 
+    def test_cloner_est_une_ecriture_distincte_de_parler(self, tmp_path):
+        capacites = ConnecteurAudioVoix(dossier=tmp_path).capacites()
+        assert capacites["cloner"].ecriture is True
+        assert capacites["cloner"].action == "cloner", (
+            "l'action doit differer de 'document' : le clonage a son propre "
+            "risque dans config/permissions_services.yaml"
+        )
+
     def test_le_service_est_celui_declare_dans_les_permissions(self, tmp_path):
         assert ConnecteurAudioVoix(dossier=tmp_path).service == "audio_voix"
 
@@ -316,6 +324,292 @@ class TestChoixDuMoteur:
     def test_le_premier_disponible_est_choisi_pas_le_defaut_du_service(self, tmp_path):
         c = self._connecteur(tmp_path, ["kittentts", "sherpa-onnx"])
         assert c._choisir_la_voix("http://127.0.0.1:3900", "") == "kittentts"
+
+
+class TestVoiceDesign:
+    """`instruct` : verifie dans le source de VoiceStudio, jamais suppose."""
+
+    def test_instruct_absent_ne_change_rien_au_corps(self, monkeypatch, tmp_path):
+        import core.connectors.audio_voix as module
+
+        c = ConnecteurAudioVoix(dossier=tmp_path)
+        monkeypatch.setattr(c, "_choisir_la_voix", lambda url, demande: "omnivoice")
+        corps_vus = []
+
+        class FauxClient:
+            def __init__(self, **kw):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def post(self, url, json=None, **kw):
+                corps_vus.append(json)
+                class R:
+                    status_code = 200
+                    content = b""
+                return R()
+
+        monkeypatch.setattr(module.httpx, "Client", FauxClient)
+        c._parler("http://127.0.0.1:3900", texte="bonjour")
+        assert "instruct" not in corps_vus[0]
+
+    def test_instruct_fourni_est_transmis_tel_quel(self, monkeypatch, tmp_path):
+        import core.connectors.audio_voix as module
+
+        c = ConnecteurAudioVoix(dossier=tmp_path)
+        monkeypatch.setattr(c, "_choisir_la_voix", lambda url, demande: "omnivoice")
+        corps_vus = []
+
+        class FauxClient:
+            def __init__(self, **kw):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def post(self, url, json=None, **kw):
+                corps_vus.append(json)
+                class R:
+                    status_code = 200
+                    content = b""
+                return R()
+
+        monkeypatch.setattr(module.httpx, "Client", FauxClient)
+        c._parler("http://127.0.0.1:3900", texte="bonjour",
+                  instruct="female, low pitch, british accent")
+        assert corps_vus[0]["instruct"] == "female, low pitch, british accent"
+
+
+class TestChoixDuMoteurPourLeClonage:
+    """`supports_cloning` vient de VoiceStudio, jamais suppose (DEC-0065)."""
+
+    def _connecteur(self, tmp_path, backends):
+        c = ConnecteurAudioVoix(dossier=tmp_path)
+        c._moteurs_capables_de_clonage = lambda url: [
+            b["id"] for b in backends if b.get("available") and b.get("supports_cloning") is True
+        ]
+        return c
+
+    def test_aucun_moteur_capable_leve_une_erreur_nommee(self, tmp_path):
+        c = self._connecteur(tmp_path, [
+            {"id": "kittentts", "available": True, "supports_cloning": False},
+        ])
+        with pytest.raises(ErreurDeMoteur) as erreur:
+            c._choisir_pour_clonage("http://127.0.0.1:3900", "")
+        assert "clonage" in str(erreur.value)
+
+    def test_un_moteur_capable_mais_non_demande_est_choisi(self, tmp_path):
+        c = self._connecteur(tmp_path, [
+            {"id": "kittentts", "available": True, "supports_cloning": False},
+            {"id": "omnivoice", "available": True, "supports_cloning": True},
+        ])
+        assert c._choisir_pour_clonage("http://127.0.0.1:3900", "") == "omnivoice"
+
+    def test_un_moteur_demande_mais_incapable_est_refuse(self, tmp_path):
+        c = self._connecteur(tmp_path, [
+            {"id": "kittentts", "available": True, "supports_cloning": False},
+            {"id": "omnivoice", "available": True, "supports_cloning": True},
+        ])
+        with pytest.raises(ErreurDeMoteur) as erreur:
+            c._choisir_pour_clonage("http://127.0.0.1:3900", "kittentts")
+        assert "kittentts" in str(erreur.value)
+        assert "omnivoice" in str(erreur.value)
+
+    def test_supports_cloning_none_ne_compte_pas_comme_prouve(self, tmp_path):
+        """Capacite dependant du modele charge (ex. mlx-audio) : pas une preuve."""
+        c = self._connecteur(tmp_path, [
+            {"id": "mlx-audio", "available": True, "supports_cloning": None},
+        ])
+        with pytest.raises(ErreurDeMoteur):
+            c._choisir_pour_clonage("http://127.0.0.1:3900", "")
+
+
+class TestLeFiltreDeClonageInterrogeVraimentVoiceStudio:
+    """`_moteurs_capables_de_clonage` reel, jamais remplace par un double.
+
+    Les tests de `TestChoixDuMoteurPourLeClonage` remplacent cette methode
+    elle-meme : ils prouvent que `_choisir_pour_clonage` l'utilise bien, mais
+    pas que SON filtre `supports_cloning` lit vraiment le champ. Un sabotage
+    de ce filtre (retirer `and b.get("supports_cloning") is True`) laissait
+    ces dix tests passer — cette classe est la, precisement, pour l'attraper.
+    """
+
+    def _reponse_engines(self, monkeypatch, backends):
+        import core.connectors.audio_voix as module
+
+        class FausseReponse:
+            def json(self):
+                return {"backends": backends}
+
+        class FauxClient:
+            def __init__(self, **kw):
+                pass
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+            def get(self, url):
+                return FausseReponse()
+
+        monkeypatch.setattr(module.httpx, "Client", FauxClient)
+
+    def test_un_moteur_disponible_mais_non_clonant_est_exclu(self, monkeypatch, tmp_path):
+        c = ConnecteurAudioVoix(dossier=tmp_path)
+        self._reponse_engines(monkeypatch, [
+            {"id": "kittentts", "available": True, "supports_cloning": False},
+        ])
+        assert c._moteurs_capables_de_clonage("http://127.0.0.1:3900") == []
+
+    def test_un_moteur_clonant_et_disponible_est_retenu(self, monkeypatch, tmp_path):
+        c = ConnecteurAudioVoix(dossier=tmp_path)
+        self._reponse_engines(monkeypatch, [
+            {"id": "kittentts", "available": True, "supports_cloning": False},
+            {"id": "omnivoice", "available": True, "supports_cloning": True},
+        ])
+        assert c._moteurs_capables_de_clonage("http://127.0.0.1:3900") == ["omnivoice"]
+
+    def test_un_moteur_clonant_mais_indisponible_est_exclu(self, monkeypatch, tmp_path):
+        c = ConnecteurAudioVoix(dossier=tmp_path)
+        self._reponse_engines(monkeypatch, [
+            {"id": "omnivoice", "available": False, "supports_cloning": True},
+        ])
+        assert c._moteurs_capables_de_clonage("http://127.0.0.1:3900") == []
+
+
+class TestClonage:
+    """Deux appels reels a VoiceStudio (profil, puis synthese) — jamais un seul."""
+
+    @staticmethod
+    def _wav_reel(dossier):
+        return _un_vrai_wav(dossier)
+
+    def _connecteur_capable(self, tmp_path, moteur="omnivoice"):
+        c = ConnecteurAudioVoix(dossier=tmp_path / "sortie")
+        c._choisir_pour_clonage = lambda url, demande: moteur
+        return c
+
+    def test_sans_autorisation_rien_n_est_tente(self, tmp_path):
+        c = self._connecteur_capable(tmp_path)
+
+        def jamais_appele(url, demande):
+            raise AssertionError("le moteur a ete choisi sans autorisation declaree")
+
+        c._choisir_pour_clonage = jamais_appele
+
+        r = c._cloner("http://127.0.0.1:3900", texte="bonjour",
+                      ref_audio=str(self._wav_reel(tmp_path)), autorisation="")
+        assert r.statut is Statut.ECHEC
+        assert "Autorisation" in r.message
+
+    def test_sans_reference_reelle_c_est_un_echec_nomme(self, tmp_path):
+        c = self._connecteur_capable(tmp_path)
+        r = c._cloner("http://127.0.0.1:3900", texte="bonjour",
+                      ref_audio=str(tmp_path / "fantome.wav"),
+                      autorisation="Ousmane, proprietaire de la voix")
+        assert r.statut is Statut.ECHEC
+        assert "fantome.wav" in r.message
+
+    def test_aucun_moteur_capable_est_non_configure(self, tmp_path):
+        c = ConnecteurAudioVoix(dossier=tmp_path / "sortie")
+        c._choisir_pour_clonage = lambda url, demande: (_ for _ in ()).throw(
+            ErreurDeMoteur("aucun moteur disponible dans VoiceStudio ne declare le clonage"))
+        r = c._cloner("http://127.0.0.1:3900", texte="bonjour",
+                      ref_audio=str(self._wav_reel(tmp_path)),
+                      autorisation="Ousmane")
+        assert r.statut is Statut.NON_CONFIGURE
+
+    def test_le_clonage_reussi_passe_par_le_profil_puis_la_synthese(self, monkeypatch, tmp_path):
+        import core.connectors.audio_voix as module
+
+        c = self._connecteur_capable(tmp_path)
+        son = self._wav_reel(tmp_path).read_bytes()
+        appels = []
+
+        class FausseReponseProfil:
+            status_code = 201
+            text = ""
+            def json(self):
+                return {"id": "profil-abc123"}
+
+        class FausseReponseSynthese:
+            status_code = 200
+            content = son
+
+        class FauxClient:
+            def __init__(self, **kw):
+                pass
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+            def post(self, url, **kw):
+                appels.append((url, kw))
+                if url.endswith("/profiles"):
+                    return FausseReponseProfil()
+                return FausseReponseSynthese()
+
+        monkeypatch.setattr(module.httpx, "Client", FauxClient)
+
+        r = c._cloner("http://127.0.0.1:3900", texte="Bonjour Dakar",
+                      ref_audio=str(self._wav_reel(tmp_path)), ref_text="allo",
+                      autorisation="Ousmane, proprietaire de la voix")
+
+        assert r.statut is Statut.SUCCES, r.message
+        assert len(appels) == 2, "le clonage doit faire deux appels : profil, puis synthese"
+        url_profil, kw_profil = appels[0]
+        assert url_profil.endswith("/profiles")
+        assert kw_profil["data"]["kind"] == "clone"
+        assert "ref_audio" in kw_profil["files"]
+
+        url_parole, kw_parole = appels[1]
+        assert url_parole.endswith("/v1/audio/speech")
+        assert kw_parole["json"]["voice"] == "profil-abc123"
+
+        assert r.detail["profil"] == "profil-abc123"
+        assert r.detail["autorisation"] == "Ousmane, proprietaire de la voix"
+        assert Path(r.preuve).is_file()
+
+    def test_un_profil_refuse_est_un_echec_et_rien_n_est_ecrit(self, monkeypatch, tmp_path):
+        import core.connectors.audio_voix as module
+
+        c = self._connecteur_capable(tmp_path)
+
+        class FausseReponseProfil:
+            status_code = 422
+            text = "clone profiles require ref_audio"
+
+        class FauxClient:
+            def __init__(self, **kw):
+                pass
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+            def post(self, url, **kw):
+                return FausseReponseProfil()
+
+        monkeypatch.setattr(module.httpx, "Client", FauxClient)
+
+        r = c._cloner("http://127.0.0.1:3900", texte="bonjour",
+                      ref_audio=str(self._wav_reel(tmp_path)),
+                      autorisation="Ousmane")
+        assert r.statut is Statut.ECHEC
+        assert not list((tmp_path / "sortie").glob("*.wav")), "rien ne devait etre ecrit"
+
+    def test_resultat_attendu_nomme_la_source_et_l_autorisation(self, tmp_path):
+        c = ConnecteurAudioVoix(dossier=tmp_path)
+        capacite = c.capacites()["cloner"]
+        texte = c.resultat_attendu(
+            capacite, ref_audio="media/voix_client.wav", autorisation="Fatou, cliente")
+        assert "media/voix_client.wav" in texte
+        assert "Fatou, cliente" in texte
 
 
 # --- Ce qui exige VoiceStudio en marche ----------------------------------------

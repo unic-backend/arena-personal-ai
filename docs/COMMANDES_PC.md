@@ -112,6 +112,33 @@ Chaque installateur vérifie ce qu'il lance et **s'arrête au lieu d'annoncer un
 succès par-dessus un échec** — un défaut mesuré le 03/09/2026, où « Termine »
 s'affichait sur une installation entièrement ratée.
 
+**OmniVoice (moteur de clonage/voice design de VoiceStudio) n'a pas non plus
+d'installateur — et n'en a plus besoin.** Vérifié le 07/09/2026 sur le source
+de VoiceStudio (`debpalash/VoiceStudio`, commit `53ff367c`, 05/09/2026) : ce
+qui manquait le 01/09/2026 (« `omnivoice` : No module named 'transformers' »,
+`docs/audits/voicestudio_audit.md`) a changé — `torch`, `torchaudio` et
+`transformers>=5.5.0` sont maintenant des dépendances **de base** de
+VoiceStudio lui-même (`pyproject.toml`), plus une option a part. Le geste qui
+manquait est donc simplement de mettre VoiceStudio a jour :
+
+```
+cd VoiceStudio
+git pull
+uv sync
+```
+
+`uv sync` (jamais `pip install`) reste la regle du §7 ci-dessus. Les poids du
+modele (`k2-fsa/OmniVoice` sur Hugging Face, plusieurs Go) restent
+telecharges **au premier usage reel**, pas par cette commande — c'est
+VoiceStudio qui gere ce telechargement et son cache, ARENA n'y touche pas
+(meme raison que le paragraphe sur la VRAM au §5 : une politique de
+telechargement/eviction qui existe deja, ARENA n'en cree pas une seconde).
+Cette machine-ci (l'assistant, dans le cloud) n'a ni GPU ni acces a
+Hugging Face — verifie, pas suppose : `huggingface.co` y est bloque par la
+politique reseau. Aucune synthese OmniVoice reelle n'a donc pu etre generee
+depuis cette session ; seul le routage cote ARENA (`core/connectors/audio_voix.py`)
+a ete verifie, avec un VoiceStudio simule.
+
 Xaar Kaname (Deep-Live-Cam) n'a pas d'installateur : il s'installe à la main
 dans `tools/video/xaar_kaname/`, hors du dépôt parce qu'il est en AGPL-3.0.
 

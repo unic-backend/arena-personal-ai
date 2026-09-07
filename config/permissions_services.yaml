@@ -187,6 +187,11 @@ services:
   audio_voix:
     read:        {decision: ALLOWED,      risque: LOW}
     document:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+    # Cloner une voix risque l'usurpation, jamais seulement un fichier de
+    # plus : risque HIGH, distinct de "document". Le connecteur exige en
+    # plus une autorisation explicite dans son propre code, avant meme cette
+    # confirmation (`core/connectors/audio_voix.py::_cloner`).
+    cloner:      {decision: CONFIRMATION, risque: HIGH,   interrupteur: WRITE_FILES}
 
   # OpenTakeoff : mesurer un plan PDF ne touche a rien hors du processus qui
   # le lit. Exporter ecrit le rapport et le plan marque a cote du plan source
