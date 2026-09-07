@@ -114,6 +114,18 @@ class TestLaBoucleCorrigeUnVraiBug:
 
         resultat = await agent.run(DEMANDE)
 
+        # **Le remplacement a-t-il eu lieu ?** Trou de ma premiere version :
+        # elle sautait directement au second pytest. Si `remplacer` echoue —
+        # passage introuvable, present deux fois, ecriture impossible — le
+        # fichier reste bugge et le second pytest echoue LEGITIMEMENT. Le test
+        # accusait alors « le test ne passe pas apres correction », c'est-a-dire
+        # la mauvaise etape. Mesure du 07/09/2026, sur une CI rouge illisible.
+        corrections = [a for a in resultat["actions"] if a["action"] == "remplacer"]
+        assert corrections and corrections[0]["ok"] is True, (
+            f"la correction n'a pas ete appliquee :\n{_sortie(corrections[0])}"
+            if corrections else "aucun remplacement n'a ete tente")
+        assert "largeur * hauteur" in (depot / "calcul.py").read_text(encoding="utf-8")
+
         commandes = [a for a in resultat["actions"] if a["action"] == "executer"]
         assert len(commandes) == 2, "les deux passages de tests n'ont pas eu lieu"
 
