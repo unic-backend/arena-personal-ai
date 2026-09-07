@@ -177,7 +177,27 @@ class ConnecteurAudioVoix(Connecteur):
                 nom="parler", action="document",
                 description="Synthétise un texte en fichier audio, vérifié après écriture.",
                 ecriture=True),
+            # Action distincte de "parler", et pas une simple variante : cloner
+            # une voix risque l'usurpation, jamais seulement un fichier de plus.
+            # `config/permissions_services.yaml` lui donne un risque HIGH la ou
+            # "parler" reste MEDIUM — la meme confirmation ne doit pas couvrir
+            # les deux. Voir `_cloner` : l'autorisation est en plus exigee dans
+            # le code meme, avant toute confirmation.
+            "cloner": Capacite(
+                nom="cloner", action="cloner",
+                description=("Clone une voix a partir d'un enregistrement de reference. "
+                             "Exige que l'appelant declare qui a autorise cette voix."),
+                ecriture=True),
         }
+
+    def resultat_attendu(self, capacite: Capacite, **parametres: Any) -> str:
+        """Precise, pour "cloner", la source et l'autorisation avant confirmation."""
+        if capacite.nom == "cloner":
+            source = parametres.get("ref_audio") or "(aucune reference)"
+            autorisation = parametres.get("autorisation") or "(non precisee)"
+            return (f"Une voix clonee a partir de « {source} » va parler. "
+                    f"Autorisation declaree : {autorisation}.")
+        return super().resultat_attendu(capacite, **parametres)
 
     # --- Sante ----------------------------------------------------------------
 
@@ -222,6 +242,8 @@ class ConnecteurAudioVoix(Connecteur):
             return self._moteurs(url)
         if capacite.nom == "transcrire":
             return self._transcrire(url, **parametres)
+        if capacite.nom == "cloner":
+            return self._cloner(url, **parametres)
         return self._parler(url, **parametres)
 
     def _moteurs(self, url: str) -> ResultatAction:
@@ -324,7 +346,8 @@ class ConnecteurAudioVoix(Connecteur):
         return disponibles[0]
 
     def _parler(self, url: str, texte: str = "", moteur: str = "",
-                voix: str = "default", langue: str = "fr", **_: Any) -> ResultatAction:
+                voix: str = "default", langue: str = "fr",
+                instruct: str = "", **_: Any) -> ResultatAction:
         propre = (texte or "").strip()
         if not propre:
             return echec(action="parler", cible=self.nom,
@@ -343,6 +366,14 @@ class ConnecteurAudioVoix(Connecteur):
         sortie = self.dossier / f"voix-{uuid.uuid4().hex[:8]}.wav"
         corps = {"input": propre, "voice": voix, "response_format": "wav",
                  "language": langue, "model": choisi}
+        if instruct:
+            # Voix design (genre/age/pitch/accent...) : un champ que
+            # VoiceStudio transmet tel quel au moteur actif (verifie dans son
+            # source, `SpeechRequest.instruct`), jamais invente ici. ARENA ne
+            # sait pas quels moteurs l'honorent reellement (le champ n'est pas
+            # expose par `/engines/tts`) : demander un moteur precis reste a
+            # l'appelant, `_choisir_la_voix` ne devine pas lequel le supporte.
+            corps["instruct"] = instruct
 
         try:
             with httpx.Client(timeout=DELAI_SECONDES, trust_env=False) as client:
@@ -387,3 +418,139 @@ class ConnecteurAudioVoix(Connecteur):
             message="VoiceStudio a repondu, mais le fichier n'a aucune duree "
                     "lisible : rien n'a ete garde.",
             **mesures)
+
+    # --- Clonage de voix -------------------------------------------------------
+    #
+    # Deux appels a VoiceStudio, jamais un : son API cree d'abord un « profil
+    # de voix » a partir de l'enregistrement de reference (`POST /profiles`),
+    # puis ce profil se demande comme n'importe quelle voix a `/v1/audio/speech`
+    # (`voice=<profile_id>`). Verifie dans son source (`debpalash/VoiceStudio`,
+    # `backend/api/routers/profiles.py` et `openai_compat.py`, audite le
+    # 07/09/2026) — jamais suppose : un clonage n'est pas une simple option de
+    # `_parler`, une hypothese fausse ici enverrait un fichier ou un champ que
+    # VoiceStudio n'attend pas.
+
+    def _moteurs_capables_de_clonage(self, url: str) -> List[str]:
+        """Les moteurs DISPONIBLES qui declarent `supports_cloning`.
+
+        `supports_cloning` est un champ reel de `/engines/tts` (verifie dans
+        `backend/services/tts_backend.py::list_backends`), pas une hypothese.
+        `None` (capacite dependant du modele charge, ex. mlx-audio) compte
+        comme non prouve : ARENA ne clone que ce qui l'annonce sans ambiguite.
+        """
+        with httpx.Client(timeout=30.0, trust_env=False) as client:
+            donnees = client.get(f"{url}/engines/tts").json()
+        return [b.get("id") for b in donnees.get("backends", [])
+                if b.get("available") and b.get("supports_cloning") is True]
+
+    def _choisir_pour_clonage(self, url: str, demande: str) -> str:
+        """Le moteur qui clonera. Refuse ce qui ne declare pas `supports_cloning`.
+
+        Raises:
+            ErreurDeMoteur: aucun moteur disponible ne clone, ou celui demande
+                n'en fait pas partie.
+        """
+        capables = self._moteurs_capables_de_clonage(url)
+        if not capables:
+            raise ErreurDeMoteur(
+                "aucun moteur disponible dans VoiceStudio ne declare le clonage "
+                "de voix (`supports_cloning`) : rien ne peut cloner.")
+        if demande:
+            if demande not in capables:
+                raise ErreurDeMoteur(
+                    f"le moteur « {demande} » n'est pas disponible ou ne clone pas. "
+                    f"Capables de clonage ici : {', '.join(capables)}.")
+            return demande
+        return capables[0]
+
+    def _cloner(self, url: str, texte: str = "", ref_audio: str = "",
+                ref_text: str = "", autorisation: str = "", moteur: str = "",
+                langue: str = "fr", nom_profil: str = "", **_: Any) -> ResultatAction:
+        propre = (texte or "").strip()
+        if not propre:
+            return echec(action="cloner", cible=self.nom,
+                         message="Aucun texte a lire : rien a synthetiser.")
+
+        # L'autorisation est exigee ICI, dans le code de la capacite — pas
+        # seulement dans le message de confirmation. Meme un appel direct
+        # (test, script, futur agent) qui sauterait la lecture du message ne
+        # peut pas cloner sans avoir declare qui a autorise cette voix.
+        qui = (autorisation or "").strip()
+        if not qui:
+            return echec(
+                action="cloner", cible=self.nom,
+                message="Autorisation manquante : indique qui a autorise cette "
+                        "voix avant de la cloner. Rien n'a ete tente.")
+
+        source = Path(ref_audio) if ref_audio else None
+        if source is None or not source.is_file():
+            return echec(action="cloner", cible=self.nom,
+                         message=f"Enregistrement de reference introuvable : "
+                                 f"« {ref_audio or '(aucun)'} ».")
+
+        try:
+            choisi = self._choisir_pour_clonage(url, moteur)
+        except ErreurDeMoteur as erreur:
+            return non_configure(action="cloner", cible=self.nom,
+                                 ce_qui_manque=str(erreur))
+        except (httpx.HTTPError, ValueError) as erreur:
+            return echec(action="cloner", cible=self.nom,
+                         message=f"VoiceStudio n'a pas dit quels moteurs il a : {erreur}")
+
+        try:
+            with httpx.Client(timeout=DELAI_SECONDES, trust_env=False) as client:
+                with source.open("rb") as flux:
+                    creation = client.post(
+                        f"{url}/profiles",
+                        data={"name": nom_profil or f"arena-{uuid.uuid4().hex[:8]}",
+                              "ref_text": ref_text, "language": langue, "kind": "clone"},
+                        files={"ref_audio": (source.name, flux)})
+        except httpx.HTTPError as erreur:
+            return echec(action="cloner", cible=self.nom,
+                         message=f"VoiceStudio n'a pas repondu (creation du profil) : {erreur}")
+
+        if creation.status_code not in (200, 201):
+            return echec(action="cloner", cible=self.nom,
+                         message=f"Creation du profil de voix refusee "
+                                 f"({creation.status_code}) : {creation.text[:200]}")
+
+        profil = (creation.json() or {}).get("id")
+        if not profil:
+            return echec(action="cloner", cible=self.nom,
+                         message="VoiceStudio n'a rendu aucun identifiant de profil.")
+
+        self.dossier.mkdir(parents=True, exist_ok=True)
+        sortie = self.dossier / f"clone-{uuid.uuid4().hex[:8]}.wav"
+        corps = {"input": propre, "voice": profil, "response_format": "wav",
+                 "language": langue, "model": choisi}
+
+        try:
+            with httpx.Client(timeout=DELAI_SECONDES, trust_env=False) as client:
+                reponse = client.post(f"{url}/v1/audio/speech", json=corps)
+        except httpx.HTTPError as erreur:
+            return echec(action="cloner", cible=self.nom,
+                         message=f"VoiceStudio n'a pas repondu (synthese) : {erreur}")
+
+        if reponse.status_code != 200:
+            return echec(action="cloner", cible=self.nom,
+                         message=f"Synthese clonee refusee ({reponse.status_code}) : "
+                                 f"{reponse.text[:200]}")
+
+        sortie.write_bytes(reponse.content)
+        mesures = sonder_le_fichier(sortie)
+        preuve_de_son = mesures["duree_ms"] or (
+            mesures["sonde_disponible"] is False and ressemble_a_du_wav(sortie))
+        if not preuve_de_son:
+            sortie.unlink(missing_ok=True)
+            return echec(
+                action="cloner", cible=self.nom,
+                message="VoiceStudio a repondu, mais le fichier clone n'a aucune "
+                        "duree lisible : rien n'a ete garde.",
+                **mesures)
+
+        return succes(
+            action="cloner", cible=self.nom,
+            message=(f"Voix clonee par « {choisi} » a partir de « {source.name} », "
+                     f"autorisee par : {qui}."),
+            preuve=str(sortie), moteur=choisi, profil=profil,
+            ref_audio=str(source), autorisation=qui, **mesures)

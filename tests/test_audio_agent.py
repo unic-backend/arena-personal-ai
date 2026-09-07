@@ -57,6 +57,15 @@ class TestLeClassement:
         """« transcris ce qu'il dit » contient « dis » : l'écoute prime."""
         assert genre_de_demande("transcris ce qu'il dit à voix haute") == "ecouter"
 
+    @pytest.mark.parametrize("phrase", [
+        "clone cette voix et dis bonjour",
+        "clone la voix de ce client",
+        "cloner cette voix pour la narration",
+        "clonage vocal de cet enregistrement",
+    ])
+    def test_ce_qui_demande_de_cloner(self, phrase):
+        assert genre_de_demande(phrase) == "cloner"
+
 
 class TestLeTexteALire:
     def test_ce_qui_est_entre_guillemets_gagne(self):
@@ -145,6 +154,49 @@ class TestLaChaine:
         agent = audio()
         r = await agent.run("transcris ça", context={"medias": [str(texte)]})
         assert r["status"] == "error"
+
+
+class TestLeClonage:
+    """L'agent ne devine ni la reference, ni le texte, ni l'autorisation."""
+
+    @pytest.mark.asyncio
+    async def test_sans_reference_audio_il_le_dit(self, audio):
+        agent = audio()
+        r = await agent.run("clone cette voix et dis bonjour",
+                            context={"medias": []})
+        assert r["status"] == "error"
+        assert agent.registre.appels == []
+
+    @pytest.mark.asyncio
+    async def test_sans_autorisation_il_refuse_avant_d_appeler_le_connecteur(
+        self, audio, tmp_path
+    ):
+        media = tmp_path / "reference.wav"
+        media.write_bytes(b"x")
+        agent = audio()
+        r = await agent.run('clone cette voix, dis « Bonjour »',
+                            context={"medias": [str(media)]})
+        assert r["status"] == "error"
+        assert "autorisation" in r["response"].lower()
+        assert agent.registre.appels == [], (
+            "le connecteur ne doit jamais etre appele sans autorisation declaree"
+        )
+
+    @pytest.mark.asyncio
+    async def test_avec_reference_texte_et_autorisation_le_connecteur_est_appele(
+        self, audio, tmp_path
+    ):
+        media = tmp_path / "reference.wav"
+        media.write_bytes(b"x")
+        agent = audio()
+        await agent.run('clone cette voix, dis « Bonjour Dakar »', context={
+            "medias": [str(media)], "autorisation": "Fatou, proprietaire de la voix",
+        })
+        connecteur, capacite, parametres = agent.registre.appels[0]
+        assert (connecteur, capacite) == ("audio", "cloner")
+        assert parametres["texte"] == "Bonjour Dakar"
+        assert parametres["ref_audio"] == str(media)
+        assert parametres["autorisation"] == "Fatou, proprietaire de la voix"
 
 
 class TestPasDeDoublon:
