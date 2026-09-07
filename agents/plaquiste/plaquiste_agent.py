@@ -510,20 +510,51 @@ def lignes_presence_en_ligne(entreprise: Dict[str, Any]) -> List[str]:
 
 
 #: Le regime NORMAL : un devis part chez quelqu'un, donc on ne devine personne.
-#: Inchange depuis le 31/08/2026 — les formulations exactes des trois questions
-#: sont lues par `destinataire_depuis_l_historique`, les reecrire casserait
-#: l'association entre la question posee et la reponse suivante.
+#:
+#: **Ce qui a change le 07/09/2026, et pourquoi.** Sa capture d'ecran : il
+#: ecrit « Fais-moi une cloison de 5 m sur 2,5 m, avec une porte de 80 x 210
+#: cm » — toutes les cotes y sont — et recoit les trois questions, rien
+#: d'autre. Son mot : « il se base toujours sur une conduite de reponse alors
+#: qu'il devrait reflechir et se baser sur mes reponses ».
+#:
+#: Il a raison, et le defaut a deux etages. Le premier etait la lecture :
+#: `metre.py` ne reconnaissait pas une cloison unique ni le mot « sur », donc
+#: AUCUN chiffre n'etait calcule et le modele n'avait rien a dire. Le second
+#: est ici : les trois questions etaient posees des que le client etait
+#: inconnu, meme quand on ne lui demandait pas de document.
+#:
+#: Un metre n'a pas de destinataire. Demander « quel est le nom du client ? »
+#: pour calculer une surface, c'est un formulaire, pas un metier. Les trois
+#: questions restent — un devis part vraiment chez quelqu'un — mais elles
+#: deviennent la DERNIERE etape, apres avoir repondu, et seulement quand un
+#: document doit reellement etre emis.
+#:
+#: Les formulations exactes sont lues par `destinataire_depuis_l_historique` :
+#: les reecrire casserait l'association entre la question posee et la reponse
+#: suivante. Ce qui change est QUAND on les pose, jamais COMMENT.
 BLOC_VRAI_CLIENT = (
+    "REPONDS D'ABORD. LES QUESTIONS VIENNENT APRES, ET SEULEMENT SI ELLES SERVENT.",
+    "S'il te donne des dimensions, des surfaces ou une description de "
+    "chantier, tu as de quoi travailler : tu calcules et tu reponds "
+    "immediatement. Un metre, une quantite de plaques, un nombre de rails, "
+    "une hauteur sous plafond, un conseil de pose : rien de tout cela n'a de "
+    "destinataire. Ne demande JAMAIS le nom d'un client pour repondre a une "
+    "question technique — c'est un formulaire, pas ton metier.",
     "LE CLIENT EST CELUI QU'ON TE DONNE.",
     "Tu n'inventes ni nom, ni adresse, ni chantier, et tu ne reprends jamais "
-    "ceux d'une affaire passee. S'il te manque le nom du client, le lieu "
-    "du chantier ou les prestations souhaitees, tu les demandes EXACTEMENT "
-    "ainsi, une question par ligne, au lieu de les supposer : « Quel est "
-    "le nom du client ? », « Quel est le lieu du chantier ? », « Quelles "
-    "sont les prestations souhaitees ? ». Ces formulations exactes sont "
-    "lues par un systeme automatique qui associe ta prochaine reponse au "
-    "bon champ — une autre formulation ferait echouer cette association "
-    "et tout redemander.",
+    "ceux d'une affaire passee. Quand — et seulement quand — il demande un "
+    "DOCUMENT qui partira chez quelqu'un (devis, facture, bon de commande) et "
+    "qu'il te manque le nom du client, le lieu du chantier ou les prestations "
+    "souhaitees, tu poses les questions manquantes A LA FIN de ta reponse, "
+    "apres avoir chiffre ce que tu pouvais chiffrer, EXACTEMENT ainsi, une "
+    "par ligne : « Quel est le nom du client ? », « Quel est le lieu du "
+    "chantier ? », « Quelles sont les prestations souhaitees ? ». Ces "
+    "formulations exactes sont lues par un systeme automatique qui associe ta "
+    "prochaine reponse au bon champ — une autre formulation ferait echouer "
+    "cette association et tout redemander.",
+    "Tu ne poses que les questions dont la reponse te manque VRAIMENT. S'il a "
+    "deja dit le lieu, ne le redemande pas. S'il decrit les travaux, les "
+    "prestations sont connues : ne les redemande pas non plus.",
 )
 
 #: Le regime DEMONSTRATION. Le proprietaire veut VOIR un devis, pas en envoyer
