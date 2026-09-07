@@ -50,7 +50,26 @@ def _depot_avec_un_bug(dossier: Path) -> Path:
         def test_surface():
             assert surface(5, 2.5) == 12.5
     ''').strip() + "\n", encoding="utf-8")
+    # **Sa propre configuration pytest, et c'est ce qui rend le test fiable.**
+    # Sans elle, le pytest lance DANS ce depot remonte les dossiers parents a
+    # la recherche d'une configuration et peut tomber sur celle d'ARENA — dont
+    # les `addopts`, le `testpaths` et le `conftest.py` n'ont aucun sens ici.
+    # Le comportement depend alors de l'emplacement du dossier temporaire,
+    # donc de la machine : vert ici, rouge en CI (mesure du 07/09/2026).
+    # Un vrai projet porte sa configuration ; celui-ci aussi.
+    (dossier / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
     return dossier
+
+
+def _sortie(action: dict) -> str:
+    """Tout ce que la commande a ecrit, message compris.
+
+    Un code de retour ne dit pas POURQUOI. Quand ce test rougit — il l'a fait
+    en CI le 07/09/2026 en passant ici —, c'est cette chaine qui doit
+    apparaitre dans l'echec, pas un `assert False is True`.
+    """
+    return "\n".join(str(action.get(cle) or "")
+                     for cle in ("message", "sortie", "erreur")).strip()
 
 
 class ModeleScripte:
@@ -97,8 +116,20 @@ class TestLaBoucleCorrigeUnVraiBug:
 
         commandes = [a for a in resultat["actions"] if a["action"] == "executer"]
         assert len(commandes) == 2, "les deux passages de tests n'ont pas eu lieu"
-        assert commandes[0]["ok"] is False, "le bug n'a pas ete reproduit"
-        assert commandes[1]["ok"] is True, "le test ne passe pas apres correction"
+
+        # **On lit la SORTIE, pas seulement le code de retour.** Mesure du
+        # 07/09/2026 : ce test a rougi en CI alors qu'il passait ici, et
+        # `assert ok is False` ne disait pas pourquoi. Pire, il aurait pu
+        # passer pour la mauvaise raison — une erreur de collecte fait
+        # echouer pytest exactement comme un test faux. La sortie tranche.
+        avant = _sortie(commandes[0])
+        apres = _sortie(commandes[1])
+        assert commandes[0]["ok"] is False, f"le bug n'a pas ete reproduit :\n{avant}"
+        assert "1 failed" in avant or "assert" in avant, (
+            f"pytest a echoue pour une autre raison que le bug :\n{avant}")
+        assert commandes[1]["ok"] is True, (
+            f"le test ne passe pas apres correction :\n{apres}")
+        assert "1 passed" in apres, f"la correction n'a pas rendu le test vert :\n{apres}"
         assert resultat["status"] == "success"
 
     async def test_le_fichier_sur_disque_est_vraiment_modifie(self, tmp_path):
