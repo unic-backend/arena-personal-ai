@@ -511,7 +511,7 @@ browser_agent = BrowserAgent(provider=fast_provider, memory=memory, registre=reg
 formel_agent = FormelAgent(provider=deep_provider, memory=memory, registre=registre)
 # Agent d'information fraiche : il lit le web avant de repondre.
 fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)
-repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory)
+repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory, registre=registre)
 swe_agent = SWEAgent(provider=coder_provider, memory=memory)
 # Dioumtoukay : celui qui AGIT sur la machine (DEC-0038). Il recoit le
 # modele de code, et le journal — chacune de ses actions y laisse une trace,
