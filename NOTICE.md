@@ -56,6 +56,29 @@ Les modèles réellement utilisés à travers lui portent leurs propres licences
 `kittentts` 0.8.1 (Apache-2.0, KittenML), `faster-whisper` (MIT) et
 `Systran/faster-whisper-base` (MIT). Aucun n'est redistribué ici.
 
+### La licence d'un modèle n'est pas celle de son code (DEC-0069)
+
+Vérifié le 07/09/2026 sur le fichier de licences de VoiceStudio (commit
+`53ff367`) et sur le dépôt d'OmniVoice (commit `08be0b4`), tous deux lus, pas
+supposés :
+
+| | Licence | Ce qu'elle gouverne |
+|---|---|---|
+| Code d'OmniVoice | Apache-2.0 (son propre fichier de licence) | le programme |
+| **Poids pré-entraînés d'OmniVoice** | **CC-BY-NC** | **l'audio produit** |
+| Tokenizer audio (modèle tiers, dérivé de Higgs Audio v2) | termes Boson Higgs Audio 2 + Meta Llama | l'audio produit |
+| Application VoiceStudio | AGPL-3.0-only | le service, jamais l'audio |
+
+Le dépôt d'OmniVoice ne porte **qu'un** fichier de licence Apache-2.0, qui
+couvre le code, et aucune mention de la licence des poids : le lire seul mène
+à la conclusion fausse « Apache-2.0, donc libre pour le commerce ».
+
+ARENA ne redistribue aucun de ces poids et n'en télécharge aucun. Son routeur
+de voix (`core/audio/routage_tts.py`) refuse d'employer un modèle marqué non
+commercial pour un travail commercial, et porte la source de chaque
+affirmation de licence de sa table. Détail →
+`docs/audits/omnivoice_licence_et_routage_2026-09-07.md`.
+
 
 ---
 

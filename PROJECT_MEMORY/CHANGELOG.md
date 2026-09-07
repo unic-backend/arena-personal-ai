@@ -144,3 +144,34 @@ dépendances, index des décisions, ce journal.
 distinction « logique vérifiée » / « bout en bout » est posée explicitement dans
 `COMPLETED_SYSTEMS.md`, parce que rien de ce qui dépend d'Ollama, de ffmpeg, de
 Docker ou de Google n'a jamais tourné sur la machine de l'assistant.
+
+---
+
+## 2026-09-07 — audit OmniVoice : la licence des poids, et un seul routeur de voix
+
+**DEC-0069.** Le moteur par défaut d'ARENA allait devenir OmniVoice — dont les
+**poids** sont CC-BY-NC, usage commercial interdit — sur les vidéos d'une
+entreprise. Trois faits qui ne se recoupaient qu'ensemble : `omnivoice` est la
+première entrée du registre de VoiceStudio, ARENA prenait le premier
+disponible, et le dépôt d'OmniVoice ne porte qu'une licence Apache-2.0 pour son
+**code**, sans un mot sur ses poids.
+
+| Livré | Preuve |
+|---|---|
+| `core/audio/routage_tts.py` — **un seul** routeur (parler *et* cloner), qui connaît les licences | 37 tests |
+| refus du commercial sur poids non commerciaux, porte `usage="recherche"` ouverte | 7 tests bout en bout au connecteur |
+| `effective_device` / `routing_status` lus et rapportés — VoiceStudio les publiait, ARENA les jetait | 4 tests |
+| `scripts/verifier_voix.py` — la chaîne réelle sur SA machine, amplitude comprise | 4 tests |
+| `scripts/doctor.py` ne dit plus `[OK]` si tous les moteurs sont non commerciaux | 2 tests |
+
+**Sept sabotages joués, six ont cassé un test. Le septième est passé** : le
+contrôle de licence de `doctor.py` n'avait aucun test. Il en a deux
+maintenant. Quatrième fois en trois jours qu'une garantie de ce dépôt se
+révèle non tenue jusqu'à ce qu'on la sabote.
+
+`ruff` propre, **4085 passed / 25 skipped** (etait 4030), 212 modules dont 168 atteints.
+
+> **Dette de mémoire, signalée sans être corrigée** : `PROJECT_MEMORY/DECISIONS.md`
+> s'arrête à DEC-0020 et se date du 29/08/2026 — il lui manque 49 décisions.
+> `docs/DECISIONS.md` reste l'autorité et est à jour. Rattraper l'index est un
+> travail à part, pas un effet de bord de cette mission.

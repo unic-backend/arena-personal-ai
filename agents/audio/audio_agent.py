@@ -160,10 +160,16 @@ class AudioAgent(BaseAgent):
         if not texte:
             return self._erreur("Dis-moi quoi lire : je ne devine pas le texte.")
         # Ecriture : le connecteur la fait passer par la file de confirmation.
+        # `usage` absent = commercial (DEC-0069). UniC est une entreprise, et
+        # une voix off de chantier est un usage commercial : c'est le defaut
+        # sur : se tromper dans ce sens coute une gene, dans l'autre une
+        # violation de licence silencieuse. La porte « recherche » existe
+        # quand meme, sinon elle serait une capacite morte de plus.
         resultat = self.registre.executer(
             CONNECTEUR, "parler", texte=texte,
             langue=str(contexte.get("langue") or "fr"),
             voix=str(contexte.get("voix") or "default"),
+            usage=str(contexte.get("usage") or ""),
             instruct=str(contexte.get("voice_design") or ""))
         return self._depuis(resultat, action="parler", texte_lu=texte)
 
@@ -196,6 +202,7 @@ class AudioAgent(BaseAgent):
             CONNECTEUR, "cloner", texte=texte, ref_audio=str(ref_audio),
             ref_text=str(contexte.get("ref_text") or ""),
             autorisation=autorisation,
+            usage=str(contexte.get("usage") or ""),
             langue=str(contexte.get("langue") or "fr"))
         return self._depuis(resultat, action="cloner", ref_audio=str(ref_audio))
 

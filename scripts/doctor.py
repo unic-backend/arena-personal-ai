@@ -426,9 +426,29 @@ def verifier_voicestudio(lecteur: Optional[Callable[[str], Any]] = None) -> Veri
             "Voix (VoiceStudio)", NON_CONFIGURE,
             f"transcription possible ({', '.join(ecoute)}), mais aucun moteur de voix",
             "Installer un moteur TTS cote VoiceStudio.")
+    # DEC-0069 : « un moteur de voix est installe » ne veut pas dire « ARENA
+    # peut s'en servir pour UniC ». Les poids d'OmniVoice sont CC-BY-NC, et
+    # c'est le moteur par defaut de VoiceStudio : un rapport [OK] qui ne le
+    # dirait pas laisserait croire a une capacite qu'ARENA refusera d'exercer.
+    from core.audio.routage_tts import Commercial, licence_de
+
+    utilisables = [m for m in voix
+                   if licence_de(m).commercial is not Commercial.INTERDIT]
+    interdits = [m for m in voix if m not in utilisables]
+    if not utilisables:
+        return Verification(
+            "Voix (VoiceStudio)", NON_CONFIGURE,
+            f"seuls des moteurs a usage non commercial sont installes "
+            f"({', '.join(interdits)}) : ARENA ne les utilisera pas pour UniC",
+            "Installer un moteur a licence permissive cote VoiceStudio "
+            "(ex. cosyvoice, voxcpm2, kittentts, sherpa-onnx).")
+
+    detail = f"voix : {', '.join(voix)}"
+    if interdits:
+        detail += f" (non commercial, ecarte : {', '.join(interdits)})"
     return Verification(
         "Voix (VoiceStudio)", OK,
-        f"voix : {', '.join(voix)} | transcription : {', '.join(ecoute) or 'aucune'}")
+        f"{detail} | transcription : {', '.join(ecoute) or 'aucune'}")
 
 
 def verifier_moneyprinter(lecteur: Optional[Callable[[str], Any]] = None) -> Verification:

@@ -28,6 +28,11 @@ Detail complet du raisonnement → `docs/audits/voicestudio_audit.md`.
 4. **Parler est une ecriture.** Transcrire lit un fichier deja la ; produire
    de l'audio ecrit sur le disque et passe par la confirmation, comme le
    devis PDF ou le rendu video.
+
+5. **Un seul routeur choisit le moteur, et il connait les licences.**
+   `core/audio/routage_tts.py` — parler et cloner passent tous les deux par
+   lui. Il refuse les poids CC-BY-NC pour un travail commercial : le moteur
+   par defaut de VoiceStudio en est un, et UniC est une entreprise (DEC-0069).
 """
 from __future__ import annotations
 
@@ -42,6 +47,14 @@ from urllib.parse import urlparse
 import httpx
 
 from core.actions.resultat import ResultatAction, echec, non_configure, succes
+from core.audio.routage_tts import (
+    Commercial,
+    ErreurDeMoteur,
+    MoteurTTS,
+    Usage,
+    choisir,
+    moteurs_depuis,
+)
 from core.connectors.base import Capacite, Connecteur, EtatSante, Sante
 
 logger = logging.getLogger("usman.connecteurs.audio")
@@ -64,10 +77,6 @@ CE_QUI_MANQUE = (
     "VoiceStudio ne repond pas sur {url}. C'est un programme separe (AGPL-3.0) "
     "qu'ARENA pilote, jamais un module d'ARENA : demarre-le, puis reessaie."
 )
-
-
-class ErreurDeMoteur(RuntimeError):
-    """Aucun moteur ne peut faire ce travail, et on dit lesquels existent."""
 
 
 class AdresseNonLocale(ValueError):
@@ -151,6 +160,43 @@ def sonder_le_fichier(chemin: Path, ffprobe: str = "ffprobe") -> Dict[str, Any]:
             if inconnu["duree_ms"] is None:
                 inconnu["duree_ms"] = int(round(duree * 1000))
     return inconnu
+
+
+def usage_demande(valeur: str) -> Usage:
+    """Traduit ce que l'appelant declare. Un mot inconnu n'est PAS commercial.
+
+    Accepter en silence un `usage` mal orthographie reviendrait a choisir a sa
+    place, et dans le seul sens qui coute : celui qui ouvre les poids
+    CC-BY-NC. Un mot que ce module ne connait pas est donc refuse.
+
+    Raises:
+        ValueError: la valeur ne correspond a aucun usage declare.
+    """
+    propre = (valeur or "").strip().lower()
+    if not propre:
+        return Usage.COMMERCIAL
+    try:
+        return Usage(propre)
+    except ValueError:
+        connus = ", ".join(u.value for u in Usage)
+        raise ValueError(
+            f"usage « {valeur} » inconnu. Valeurs possibles : {connus}.") from None
+
+
+def _tracer(moteur: MoteurTTS) -> Dict[str, Any]:
+    """Ce qui doit rester dans le journal a cote d'un fichier audio produit.
+
+    Un WAV retrouve dans six mois ne dit ni sous quelle licence il a ete
+    fabrique, ni sur quel appareil. Ces champs le disent, et ils sont mesures :
+    `appareil` et `routage` viennent de VoiceStudio a l'instant du choix.
+    """
+    return {
+        "moteur": moteur.identifiant,
+        "appareil": moteur.appareil,
+        "routage": moteur.routage,
+        "licence": moteur.licence.licence,
+        "usage_commercial": moteur.licence.commercial.value,
+    }
 
 
 class ConnecteurAudioVoix(Connecteur):
@@ -247,30 +293,52 @@ class ConnecteurAudioVoix(Connecteur):
         return self._parler(url, **parametres)
 
     def _moteurs(self, url: str) -> ResultatAction:
-        """Ce que la machine sait faire, demande a la machine."""
-        trouves: Dict[str, List[str]] = {}
+        """Ce que la machine sait faire, demande a la machine.
+
+        Rend aussi, pour chaque moteur de voix, **l'appareil qu'il utilise
+        vraiment** (`effective_device`) et son etat d'acceleration
+        (`routing_status`). VoiceStudio les publiait deja ; ARENA les jetait.
+        C'est la reponse mesuree a « quel appareil sert reellement ? », et
+        elle ne se deduit pas de la presence d'un GPU : un moteur compatible
+        CUDA peut retomber sur le processeur faute de VRAM, et c'est
+        exactement ce que `cpu_fallback` dit.
+        """
         try:
-            with httpx.Client(timeout=30.0, trust_env=False) as client:
-                for genre in ("tts", "asr"):
-                    donnees = client.get(f"{url}/engines/{genre}").json()
-                    trouves[genre] = [b.get("id") for b in donnees.get("backends", [])
-                                      if b.get("available")]
+            moteurs_voix = self._entrees_tts(url)
+            ecoute = self._moteurs_disponibles(url, "asr")
         except (httpx.HTTPError, ValueError) as erreur:
             return echec(action="moteurs", cible=self.nom,
                          message=f"VoiceStudio n'a pas repondu : {erreur}")
 
-        voix, ecoute = trouves.get("tts", []), trouves.get("asr", [])
+        actifs = [m for m in moteurs_voix if m.disponible]
+        voix = [m.identifiant for m in actifs]
         if not voix and not ecoute:
             return non_configure(
                 action="moteurs", cible=self.nom,
                 ce_qui_manque=("aucun moteur installe dans VoiceStudio : ni voix, "
                                "ni transcription. Installe-les de son cote."))
+
+        detail = [{"id": m.identifiant, "appareil": m.appareil,
+                   "routage": m.routage, "accelere": m.accelere,
+                   "licence": m.licence.licence,
+                   "usage_commercial": m.licence.commercial.value}
+                  for m in actifs]
+        interdits = [m.identifiant for m in actifs
+                     if m.licence.commercial is Commercial.INTERDIT]
+        appareils = sorted({m.appareil for m in actifs if m.appareil})
+
+        message = (f"Voix : {', '.join(voix) or 'aucune'}. "
+                   f"Transcription : {', '.join(ecoute) or 'aucune'}.")
+        if appareils:
+            message += f" Appareil(s) reellement utilise(s) : {', '.join(appareils)}."
+        if interdits:
+            message += (f" Usage commercial interdit pour : {', '.join(interdits)} "
+                        "— ARENA ne les choisira pas pour un travail d'UniC.")
         return succes(
-            action="moteurs", cible=self.nom,
-            message=(f"Voix : {', '.join(voix) or 'aucune'}. "
-                     f"Transcription : {', '.join(ecoute) or 'aucune'}."),
+            action="moteurs", cible=self.nom, message=message,
             preuve=f"{len(voix)} moteur(s) de voix, {len(ecoute)} de transcription",
-            tts=voix, asr=ecoute)
+            tts=voix, asr=ecoute, voix=detail, appareils=appareils,
+            non_commerciaux=interdits)
 
     def _transcrire(self, url: str, chemin: str = "", langue: str = "fr",
                     moteur: str = "whisper-1", **_: Any) -> ResultatAction:
@@ -314,47 +382,61 @@ class ConnecteurAudioVoix(Connecteur):
                       preuve=f"{len(texte)} caracteres depuis {source.name}",
                       texte=texte, source=str(source), moteur=moteur)
 
+    def _entrees_tts(self, url: str) -> List[MoteurTTS]:
+        """Ce que VoiceStudio dit de ses moteurs de voix, MAINTENANT.
+
+        Une seule requete rend tout ce dont le routeur a besoin :
+        disponibilite, `supports_cloning`, `effective_device` et
+        `routing_status`. Ces deux derniers sont la reponse mesuree a
+        « quel appareil est reellement utilise ? » — ARENA les lisait
+        jusqu'ici sans jamais s'en servir (DEC-0069).
+        """
+        with httpx.Client(timeout=30.0, trust_env=False) as client:
+            return moteurs_depuis(client.get(f"{url}/engines/tts").json())
+
     def _moteurs_disponibles(self, url: str, genre: str) -> List[str]:
         """Les moteurs que VoiceStudio declare DISPONIBLES, dans son ordre."""
         with httpx.Client(timeout=30.0, trust_env=False) as client:
             donnees = client.get(f"{url}/engines/{genre}").json()
         return [b.get("id") for b in donnees.get("backends", []) if b.get("available")]
 
-    def _choisir_la_voix(self, url: str, demande: str) -> str:
-        """Le moteur qui parlera. Jamais le defaut de VoiceStudio les yeux fermes.
+    def _choisir_la_voix(self, url: str, demande: str,
+                         usage: Usage = Usage.COMMERCIAL,
+                         voice_design: bool = False) -> MoteurTTS:
+        """Le moteur qui parlera — decide par le routeur unique.
 
         VoiceStudio garde `omnivoice` comme moteur actif meme quand son
         paquet n'est pas installe : une demande sans `model` partait donc
-        vers un moteur absent et revenait en 400. ARENA choisit parmi ce qui
-        est REELLEMENT disponible — c'est le routage par capacite que la
-        mission demande, et il tient parce qu'il interroge la machine.
+        vers un moteur absent et revenait en 400. Et quand il EST installe,
+        c'est la premiere entree de son registre — donc le moteur par defaut
+        d'ARENA, alors que ses poids sont CC-BY-NC.
+
+        Le choix ne se fait plus ici : `core/audio/routage_tts.py` le fait,
+        pour parler comme pour cloner (DEC-0069).
 
         Raises:
-            ErreurDeMoteur: aucun moteur de voix installe, ou celui qu'on
-                demande n'en fait pas partie.
+            ErreurDeMoteur: aucun moteur ne convient, avec la raison de
+                chaque ecarte.
         """
-        disponibles = self._moteurs_disponibles(url, "tts")
-        if not disponibles:
-            raise ErreurDeMoteur(
-                "aucun moteur de voix installe dans VoiceStudio : rien ne peut parler.")
-        if demande:
-            if demande not in disponibles:
-                raise ErreurDeMoteur(
-                    f"le moteur « {demande} » n'est pas disponible. "
-                    f"Installes : {', '.join(disponibles)}.")
-            return demande
-        return disponibles[0]
+        return choisir(self._entrees_tts(url), usage=usage,
+                       voice_design=voice_design, demande=demande)
 
     def _parler(self, url: str, texte: str = "", moteur: str = "",
                 voix: str = "default", langue: str = "fr",
-                instruct: str = "", **_: Any) -> ResultatAction:
+                instruct: str = "", usage: str = "", **_: Any) -> ResultatAction:
         propre = (texte or "").strip()
         if not propre:
             return echec(action="parler", cible=self.nom,
                          message="Aucun texte a lire : rien a synthetiser.")
 
         try:
-            choisi = self._choisir_la_voix(url, moteur)
+            pour = usage_demande(usage)
+        except ValueError as erreur:
+            return echec(action="parler", cible=self.nom, message=str(erreur))
+
+        try:
+            choisi = self._choisir_la_voix(url, moteur, usage=pour,
+                                           voice_design=bool(instruct))
         except ErreurDeMoteur as erreur:
             return non_configure(action="parler", cible=self.nom,
                                  ce_qui_manque=str(erreur))
@@ -365,7 +447,7 @@ class ConnecteurAudioVoix(Connecteur):
         self.dossier.mkdir(parents=True, exist_ok=True)
         sortie = self.dossier / f"voix-{uuid.uuid4().hex[:8]}.wav"
         corps = {"input": propre, "voice": voix, "response_format": "wav",
-                 "language": langue, "model": choisi}
+                 "language": langue, "model": choisi.identifiant}
         if instruct:
             # Voix design (genre/age/pitch/accent...) : un champ que
             # VoiceStudio transmet tel quel au moteur actif (verifie dans son
@@ -394,9 +476,10 @@ class ConnecteurAudioVoix(Connecteur):
         mesures = sonder_le_fichier(sortie)
         if mesures["duree_ms"]:
             return succes(action="parler", cible=self.nom,
-                          message=(f"Voix produite par « {choisi} » : "
+                          message=(f"Voix produite par « {choisi.identifiant} » "
+                                   f"sur {choisi.appareil or 'un appareil non precise'} : "
                                    f"{mesures['duree_ms']} ms, {mesures['octets']} octets."),
-                          preuve=str(sortie), moteur=choisi, **mesures)
+                          preuve=str(sortie), **_tracer(choisi), **mesures)
 
         # `ffprobe` absent n'est PAS le fichier en cause. Confondre les deux
         # supprimait un son valide et annoncait un echec : mesure du
@@ -407,10 +490,11 @@ class ConnecteurAudioVoix(Connecteur):
         if mesures["sonde_disponible"] is False and ressemble_a_du_wav(sortie):
             return succes(
                 action="parler", cible=self.nom,
-                message=(f"Voix produite par « {choisi} » : {mesures['octets']} octets. "
-                         "Duree non verifiee — ffprobe n'est pas installe sur cette "
-                         "machine, donc rien ne l'a mesuree."),
-                preuve=str(sortie), moteur=choisi, **mesures)
+                message=(f"Voix produite par « {choisi.identifiant} » : "
+                         f"{mesures['octets']} octets. Duree non verifiee — ffprobe "
+                         "n'est pas installe sur cette machine, donc rien ne l'a "
+                         "mesuree."),
+                preuve=str(sortie), **_tracer(choisi), **mesures)
 
         sortie.unlink(missing_ok=True)
         return echec(
@@ -430,42 +514,26 @@ class ConnecteurAudioVoix(Connecteur):
     # `_parler`, une hypothese fausse ici enverrait un fichier ou un champ que
     # VoiceStudio n'attend pas.
 
-    def _moteurs_capables_de_clonage(self, url: str) -> List[str]:
-        """Les moteurs DISPONIBLES qui declarent `supports_cloning`.
+    def _choisir_pour_clonage(self, url: str, demande: str,
+                              usage: Usage = Usage.COMMERCIAL) -> MoteurTTS:
+        """Le moteur qui clonera — le MEME routeur, avec `clonage=True`.
 
         `supports_cloning` est un champ reel de `/engines/tts` (verifie dans
         `backend/services/tts_backend.py::list_backends`), pas une hypothese.
         `None` (capacite dependant du modele charge, ex. mlx-audio) compte
         comme non prouve : ARENA ne clone que ce qui l'annonce sans ambiguite.
-        """
-        with httpx.Client(timeout=30.0, trust_env=False) as client:
-            donnees = client.get(f"{url}/engines/tts").json()
-        return [b.get("id") for b in donnees.get("backends", [])
-                if b.get("available") and b.get("supports_cloning") is True]
-
-    def _choisir_pour_clonage(self, url: str, demande: str) -> str:
-        """Le moteur qui clonera. Refuse ce qui ne declare pas `supports_cloning`.
 
         Raises:
             ErreurDeMoteur: aucun moteur disponible ne clone, ou celui demande
                 n'en fait pas partie.
         """
-        capables = self._moteurs_capables_de_clonage(url)
-        if not capables:
-            raise ErreurDeMoteur(
-                "aucun moteur disponible dans VoiceStudio ne declare le clonage "
-                "de voix (`supports_cloning`) : rien ne peut cloner.")
-        if demande:
-            if demande not in capables:
-                raise ErreurDeMoteur(
-                    f"le moteur « {demande} » n'est pas disponible ou ne clone pas. "
-                    f"Capables de clonage ici : {', '.join(capables)}.")
-            return demande
-        return capables[0]
+        return choisir(self._entrees_tts(url), usage=usage, clonage=True,
+                       demande=demande)
 
     def _cloner(self, url: str, texte: str = "", ref_audio: str = "",
                 ref_text: str = "", autorisation: str = "", moteur: str = "",
-                langue: str = "fr", nom_profil: str = "", **_: Any) -> ResultatAction:
+                langue: str = "fr", nom_profil: str = "", usage: str = "",
+                **_: Any) -> ResultatAction:
         propre = (texte or "").strip()
         if not propre:
             return echec(action="cloner", cible=self.nom,
@@ -489,7 +557,12 @@ class ConnecteurAudioVoix(Connecteur):
                                  f"« {ref_audio or '(aucun)'} ».")
 
         try:
-            choisi = self._choisir_pour_clonage(url, moteur)
+            pour = usage_demande(usage)
+        except ValueError as erreur:
+            return echec(action="cloner", cible=self.nom, message=str(erreur))
+
+        try:
+            choisi = self._choisir_pour_clonage(url, moteur, usage=pour)
         except ErreurDeMoteur as erreur:
             return non_configure(action="cloner", cible=self.nom,
                                  ce_qui_manque=str(erreur))
@@ -522,7 +595,7 @@ class ConnecteurAudioVoix(Connecteur):
         self.dossier.mkdir(parents=True, exist_ok=True)
         sortie = self.dossier / f"clone-{uuid.uuid4().hex[:8]}.wav"
         corps = {"input": propre, "voice": profil, "response_format": "wav",
-                 "language": langue, "model": choisi}
+                 "language": langue, "model": choisi.identifiant}
 
         try:
             with httpx.Client(timeout=DELAI_SECONDES, trust_env=False) as client:
@@ -550,7 +623,7 @@ class ConnecteurAudioVoix(Connecteur):
 
         return succes(
             action="cloner", cible=self.nom,
-            message=(f"Voix clonee par « {choisi} » a partir de « {source.name} », "
-                     f"autorisee par : {qui}."),
-            preuve=str(sortie), moteur=choisi, profil=profil,
-            ref_audio=str(source), autorisation=qui, **mesures)
+            message=(f"Voix clonee par « {choisi.identifiant} » a partir de "
+                     f"« {source.name} », autorisee par : {qui}."),
+            preuve=str(sortie), profil=profil, ref_audio=str(source),
+            autorisation=qui, **_tracer(choisi), **mesures)
