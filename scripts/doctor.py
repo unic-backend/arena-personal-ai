@@ -572,6 +572,19 @@ def verifier_ui_ux_pro_max() -> Verification:
         "scripts/installer_ui_ux_pro_max.ps1 (moteur MIT, installe a cote)")
 
 
+def verifier_lean() -> Verification:
+    """Le verificateur formel (Apache-2.0), interroge pour de vrai.
+
+    Le toolchain vit HORS du depot : 2,9 Go decompresses (DEC-0067). Sans
+    lui, ARENA ne peut RIEN prouver — et le dit, plutot que de laisser un
+    modele affirmer qu'une demonstration tient.
+    """
+    return _ligne_connecteur(
+        "Preuve formelle (Lean)", "core.connectors.lean_formel", "ConnecteurLeanFormel",
+        "Installer Lean 4 hors du depot (voir docs/COMMANDES_PC.md), "
+        "ou pointer LEAN_BIN sur un binaire existant.")
+
+
 def verifier_gardien() -> Verification:
     """La memoire de maintenance du gardien (DEC-0014) — ce qu'elle contient
     deja, jamais « aucun probleme » invente si aucun cycle n'a encore tourne.
@@ -822,6 +835,7 @@ def diagnostiquer() -> Rapport:
         mesurer("Xaar Kaname (visage)", verifier_xaar_kaname),
         mesurer("Visages (Faceplugin)", verifier_faceplugin),
         mesurer("Design (UI/UX Pro Max)", verifier_ui_ux_pro_max),
+        mesurer("Preuve formelle (Lean)", verifier_lean),
         mesurer("Gardien (maintenance)", verifier_gardien),
         mesurer("Courrier (Gmail)", lambda: verifier_google(
             "Courrier (Gmail)", "ARENA ne lit pas ton courrier",

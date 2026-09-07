@@ -322,6 +322,20 @@ services:
   browser:
     browse:      {decision: ALLOWED,      risque: MEDIUM, interrupteur: SEARCH_WEB}
 
+  # Verification formelle (Lean, DEC-0067). Verifier une preuve ne modifie
+  # rien : le verdict est une lecture. Mais Lean est un langage a
+  # METAPROGRAMMATION — une source peut s'executer a la compilation — et la
+  # source vient souvent d'un modele. C'est donc de l'execution de code, et
+  # elle passe sous le meme coupe-circuit qu'elle : EXECUTE_COMMANDS, eteint
+  # par defaut. Le connecteur refuse en plus les constructions d'execution
+  # directe (`core/connectors/lean_formel.py`), mais une barriere n'est pas
+  # un bac a sable : c'est l'interrupteur qui decide.
+  # ALLOWED plutot que CONFIRMATION : une preuve se verifie en boucle
+  # (candidat -> diagnostic -> correction), et une confirmation par tour
+  # rendrait la boucle inutilisable. Le proprietaire peut resserrer ici.
+  lean_formel:
+    verifier:    {decision: ALLOWED,      risque: MEDIUM, interrupteur: EXECUTE_COMMANDS}
+
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail

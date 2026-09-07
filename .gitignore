@@ -126,3 +126,21 @@ tools/design/ui_ux_pro_max/
 # fonction et fichier du depot. Rien de secret en soi, mais rien d'utile a
 # versionner non plus — reconstruit en une commande, chez qui en a besoin.
 graphify-out/
+
+# --- Lean 4 : moteur externe de verification formelle, hors du depot -------
+#
+# Celui-ci est Apache-2.0, donc rien n'interdirait de le versionner. Il reste
+# dehors par CONVENTION — la meme que pour UI/UX Pro Max juste au-dessus —
+# et pour une raison de poids qui, elle, ne se discute pas : le toolchain
+# decompresse fait **2,9 Go**. Un depot PUBLIC (DEC-0039) ne porte pas un
+# compilateur.
+#
+# Ce que le depot porte : `core/connectors/lean_formel.py`, l'agent qui
+# l'appelle, leurs tests, et la commande d'installation dans
+# `docs/COMMANDES_PC.md`. La licence Apache-2.0 voyage avec le moteur, dans
+# son propre LICENSE, jamais separee de lui.
+tools/formel/
+
+# Les preuves verifiees : des artefacts produits par la machine, refaits a
+# chaque verification. Comme `data/audio/` et `data/montages/`.
+data/preuves/

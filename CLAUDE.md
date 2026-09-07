@@ -18,7 +18,7 @@ vraiment.
 
 ```
 python scripts/orphelins.py
-→ 207 modules, 165 atteints. Aucun module réel endormi.   (mesuré le 06/09/2026)
+→ 210 modules, 167 atteints. Aucun module réel endormi.   (mesuré le 07/09/2026)
 ```
 
 C'est la mesure, et elle ne se raconte pas — **elle se refait**. Ce bloc a
@@ -121,7 +121,7 @@ Ce que la machine a vraiment, où qu'elle soit, se mesure :
 python scripts/doctor.py
 ```
 
-**27 vérifications** réelles, chacune avec la commande qui la répare. Aucun
+**28 vérifications** réelles, chacune avec la commande qui la répare. Aucun
 `[OK]` n'y est affirmé sans mesure — ce fichier l'a fait, une fois, et un test
 l'en empêche désormais.
 
