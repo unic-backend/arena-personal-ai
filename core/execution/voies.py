@@ -135,6 +135,12 @@ VOIE_PAR_INTENTION: Dict[str, Voie] = {
     "SWE_FIX": Voie.PROFONDE,
     "REPO_ENGINEERING": Voie.PROFONDE,
     "DEEP_REASONING": Voie.PROFONDE,
+    # Ecrire du Lean juste est la tache de raisonnement la plus exigeante
+    # d'ARENA : l'enonce doit etre formalise, et le moindre detail faux fait
+    # rejeter la preuve par le compilateur. S'y ajoutent une compilation reelle
+    # et, en cas de rejet, une correction avec le diagnostic (DEC-0067) —
+    # plusieurs passes par construction, donc PROFONDE.
+    "PREUVE_FORMELLE": Voie.PROFONDE,
     # Dioumtoukay enchaine plusieurs actions reelles, chacune suivie d'un
     # retour a lire avant la suivante (DEC-0038) : par construction, plusieurs
     # passes sur la machine. Il ne sort pas chercher dehors — ce qu'il lit vient

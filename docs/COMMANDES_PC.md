@@ -139,6 +139,36 @@ politique reseau. Aucune synthese OmniVoice reelle n'a donc pu etre generee
 depuis cette session ; seul le routage cote ARENA (`core/connectors/audio_voix.py`)
 a ete verifie, avec un VoiceStudio simule.
 
+**Lean 4 — la vérification formelle (DEC-0067).** Sans lui, ARENA ne peut
+*rien* prouver : elle le dit au lieu de laisser un modèle l'affirmer. Le
+toolchain est Apache-2.0 mais fait **2,9 Go** décompressé, donc il reste hors
+du dépôt. Une seule fois, dans ton dossier ARENA :
+
+```
+mkdir tools\formel
+cd tools\formel
+curl -L -o lean.tar.zst https://github.com/leanprover/lean4/releases/download/v4.33.1/lean-4.33.1-linux.tar.zst
+```
+
+Puis décompresse-le et renomme le dossier obtenu en `lean` (il doit exister
+un `tools\formel\lean\bin\lean`). Sous Windows, la version à prendre est
+`lean-4.33.1-windows.zip` sur la même page de releases.
+
+`v4.33.1` n'est pas un choix au hasard : c'est **exactement** la version que
+le dépôt de référence (`anthropics/fermats-last-theorem`) épingle dans son
+`lean-toolchain`. Si tu as déjà Lean installé autrement (elan), inutile de
+retélécharger : mets son chemin dans `LEAN_BIN` et ARENA le prendra.
+
+**Mathlib n'est pas installé, et c'est voulu** : c'est une bibliothèque de
+plusieurs gigaoctets qui demande des heures de compilation. Sans elle, Lean
+vérifie les preuves qui n'utilisent que sa bibliothèque standard — largement
+de quoi trancher un raisonnement, jamais de quoi refaire Fermat.
+
+**Le clic qui manque** : `EXECUTE_COMMANDS` est à `false` dans
+`config/permissions.yaml`. Tant qu'il y est, ARENA refusera de lancer Lean —
+et c'est normal : vérifier une preuve écrite par un modèle, c'est exécuter du
+code. Mets-le à `true` quand tu veux t'en servir.
+
 Xaar Kaname (Deep-Live-Cam) n'a pas d'installateur : il s'installe à la main
 dans `tools/video/xaar_kaname/`, hors du dépôt parce qu'il est en AGPL-3.0.
 

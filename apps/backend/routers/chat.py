@@ -27,6 +27,7 @@ from apps.backend.runtime import (
     editor_agent,
     email_agent,
     fast_provider,
+    formel_agent,
     fresh_agent,
     graphrag_tool,
     lightrag_tool,
@@ -431,6 +432,12 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         })
     elif intent == "BROWSER":
         result = await browser_agent.run(request.prompt)
+    elif intent == "PREUVE_FORMELLE":
+        # Lean tranche, jamais le modele (DEC-0067). L'agent est mince : il
+        # traduit la phrase en capacite du connecteur `formel` et rend le
+        # verdict tel quel — un `status` de succes ici veut dire qu'un
+        # binaire a compile la preuve, pas qu'un modele l'a affirmee.
+        result = await formel_agent.run(request.prompt)
     elif intent == "SWE_FIX":
         result = await swe_agent.run(request.prompt)
     elif intent == "REPO_ENGINEERING":

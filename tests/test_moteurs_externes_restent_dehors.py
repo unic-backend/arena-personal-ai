@@ -53,6 +53,15 @@ MOTEURS = {
         "src/ui-ux-pro-max/data/styles.csv",
         "cli/node_modules/quelque-chose.js",
     ),
+    # Lean 4 (DEC-0067) : **Apache-2.0**, donc rien n'interdirait de le
+    # versionner — il reste dehors par convention, comme UI/UX Pro Max, et
+    # parce qu'un toolchain decompresse pese 2,9 Go. Un depot public ne porte
+    # pas un compilateur.
+    "tools/formel": (
+        "lean/bin/lean",
+        "lean/lib/lean/library/Init/Prelude.olean",
+        "lean/bin/lake",
+    ),
 }
 
 
@@ -118,6 +127,7 @@ def test_la_regle_vaut_pour_tous_les_moteurs():
     ("tools/video/xaar_kaname", "agpl"),
     ("tools/vision/faceplugin", "licence"),
     ("tools/design/ui_ux_pro_max", "convention"),
+    ("tools/formel", "convention"),
 ])
 def test_chaque_regle_porte_sa_raison(dossier, mot):
     """Une règle d'ignore sans sa raison se fait retirer par le prochain qui

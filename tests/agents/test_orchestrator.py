@@ -436,6 +436,44 @@ class TestLeClonageVocalEstJoignable:
         assert agent._classer_par_mots_cles(phrase) == attendu
 
 
+class TestLaPreuveFormelleEstJoignable:
+    """DEC-0067. La leçon de DEC-0066, appliquée avant qu'elle ne coûte :
+    une capacité qu'aucune phrase n'atteint est morte, quels que soient ses
+    tests unitaires.
+
+    `DEEP_REASONING` porte déjà « preuve » et « démontre » — la vérification
+    formelle est le cas PLUS ÉTROIT, et doit donc passer avant lui, sans
+    pour autant lui prendre le calcul ordinaire.
+    """
+
+    @pytest.mark.parametrize("phrase", [
+        "prouve formellement que 2+2=4",
+        "vérifie ce théorème Lean",
+        "preuve formelle de cette propriété",
+        "vérifie cette preuve",
+        "démontre formellement cette inégalité",
+        "voici du code lean à vérifier",
+    ])
+    def test_une_demande_de_preuve_va_a_la_verification_formelle(
+        self, fake_provider, phrase
+    ):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == "PREUVE_FORMELLE"
+
+    @pytest.mark.parametrize("phrase,attendu", [
+        # Le calcul reste au calcul : il n'a jamais eu besoin de Lean.
+        ("résous cette équation du second degré", "DEEP_REASONING"),
+        ("démontre que la suite converge", "DEEP_REASONING"),
+        # Et le métier reste le métier : « prouve-moi » y veut dire « montre-moi ».
+        ("prouve-moi que ce devis est juste", "PLAQUISTE"),
+    ])
+    def test_la_preuve_formelle_ne_capture_pas_ses_voisins(
+        self, fake_provider, phrase, attendu
+    ):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == attendu
+
+
 class TestAiguillageDuProjetVideo:
     """DEC-0037 : une phrase composite (« analyse ces photos et fais-en une
     vidéo avec narration ») porte aussi les mots de VISION/AUDIO — sans ce

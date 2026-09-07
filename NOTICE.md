@@ -79,3 +79,33 @@ français, réduits à ce qui se vérifie, et reliés à des chemins d'exécutio
 existaient déjà dans ARENA.
 
 Raisonnement complet → `docs/DECISIONS.md`, DEC-0028.
+
+---
+
+## Lean 4 et le dépôt Fermat — la vérification formelle
+
+`core/connectors/lean_formel.py` pilote **Lean 4** comme processus séparé.
+
+- Moteur : Lean 4 — https://github.com/leanprover/lean4
+- Licence : **Apache-2.0**
+- Version installée : `v4.33.1` — celle qu'épingle le `lean-toolchain` du
+  dépôt Fermat ci-dessous, pour que ce qui est vérifié ici le soit avec le
+  même compilateur.
+- **Aucune ligne de Lean n'est copiée dans ce dépôt.** Le toolchain vit hors
+  du dépôt (2,9 Go), et sa licence voyage avec lui.
+
+De `anthropics/fermats-last-theorem` (Apache-2.0, « Copyright 2026 Anthropic,
+PBC », étudié le 07/09/2026), ARENA reprend **une discipline, pas du code** :
+son `FinalCheck.lean` n'accepte son théorème qu'après avoir imprimé la liste
+de ses axiomes et l'avoir comparée aux trois axiomes de la logique de Lean.
+
+C'est ce contrôle-là qui est ici, et il est nécessaire : une preuve trouée
+(`sorry`) **compile avec le code de sortie 0**. Sans lire les axiomes, ARENA
+aurait déclaré vérifiée une démonstration vide.
+
+**Ce qui n'a PAS été repris** : la formalisation de Fermat elle-même (des
+milliers de fichiers Lean), Mathlib, le comparateur, et l'environnement de
+compilation d'Anthropic (96 tâches parallèles, ~153 Go de RAM). Rien de tout
+cela n'a d'usage sur la machine du propriétaire, et rien n'en a été copié.
+
+Raisonnement complet → `docs/DECISIONS.md`, DEC-0067.

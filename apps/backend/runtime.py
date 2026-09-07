@@ -15,6 +15,7 @@ from agents.coder.coder_agent import CoderAgent
 from agents.dioumtoukay.dioumtoukay_agent import DioumtoukayAgent
 from agents.editor.editor_agent import EditorAgent
 from agents.email.email_agent import EmailAgent
+from agents.formel.formel_agent import FormelAgent
 from agents.fresh_info.fresh_info_agent import FreshInfoAgent
 from agents.montage.montage_agent import MontageAgent
 from agents.orchestrator.orchestrator_agent import OrchestratorAgent
@@ -62,6 +63,7 @@ from core.connectors.hermes_evolution import ConnecteurHermesEvolution
 from core.connectors.ifc import ConnecteurIfc
 from core.connectors.ifc_generation import ConnecteurIfcGeneration
 from core.connectors.krillinai import ConnecteurKrillinAI
+from core.connectors.lean_formel import ConnecteurLeanFormel
 from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.montage import ConnecteurMontage
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
@@ -322,6 +324,17 @@ registre.declarer(
     lambda: ConnecteurBrowser(acces=acces, journal=journal, file_attente=file_attente,
                               crochets=crochets),
 )
+# Verification FORMELLE (DEC-0067) : Lean tranche, jamais le modele. ARENA
+# savait calculer (bac a sable Python, sympy) ; elle ne savait pas prouver.
+# La discipline vient du depot `anthropics/fermats-last-theorem` (Apache-2.0)
+# et tient en une ligne : une preuve trouee COMPILE (code 0), donc le verdict
+# se lit dans les axiomes, jamais dans le code de sortie.
+# Voir core/connectors/lean_formel.py.
+registre.declarer(
+    "formel",
+    lambda: ConnecteurLeanFormel(acces=acces, journal=journal,
+                                 file_attente=file_attente, crochets=crochets),
+)
 # Generation d'interface : la technique d'OpenUI (prompt -> HTML/React/
 # Svelte/Web-Component), jamais son serveur (connexion GitHub requise,
 # weave/boto3/peewee/fastapi-sso qu'ARENA n'a pas besoin d'heberger). Ce
@@ -491,6 +504,11 @@ publisher_agent = PublisherAgent(
     provider=fast_provider, memory=memory, journal=journal, registre=registre
 )
 browser_agent = BrowserAgent(provider=fast_provider, memory=memory, registre=registre)
+# Preuve formelle (DEC-0067) : agent MINCE — il traduit la phrase en
+# capacite du connecteur `formel`, il ne raisonne pas a la place du
+# moteur existant. `deep_provider` : ecrire du Lean juste est une tache
+# de raisonnement, pas de conversation.
+formel_agent = FormelAgent(provider=deep_provider, memory=memory, registre=registre)
 # Agent d'information fraiche : il lit le web avant de repondre.
 fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)
 repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory)

@@ -92,6 +92,7 @@ INTENTIONS = {
     "VISAGE",
     "DESIGN_UI",
     "UI_GENERATE",
+    "PREUVE_FORMELLE",
 }
 
 #: Ce qui parle de ses RESEAUX SOCIAUX. Teste avant le metier : « une
@@ -254,6 +255,24 @@ AUDIO = (
 CLONAGE_VOCAL = (
     "clone cette voix", "clone la voix", "cloner cette voix",
     "cloner la voix", "clonage vocal", "clone ma voix", "clone sa voix",
+)
+
+#: DEMONTRER, au sens strict : Lean compile la preuve et refuse ce qui n'en
+#: est pas une (DEC-0067). Distinct du calcul, qui existe deja et reste ou il
+#: est : « combien fait 12 % de 340 » se calcule dans le bac a sable
+#: (`core/reasoning/reasoning_engine.py`), il ne se demontre pas.
+#:
+#: Chaque entree porte donc soit le mot « Lean », soit une demande explicite
+#: de RIGUEUR — jamais « prouve » tout seul, qui veut dire « montre-moi » dans
+#: la langue de tous les jours (« prouve-moi que ce devis est juste »).
+PREUVE_FORMELLE = (
+    "preuve formelle", "prouve formellement",
+    "démontre formellement", "demontre formellement",
+    "vérification formelle", "verification formelle",
+    "en lean", "code lean", "preuve lean", "theoreme lean", "théorème lean",
+    "verifie cette preuve", "vérifie cette preuve",
+    "verifie ce theoreme", "vérifie ce théorème",
+    "demonstration rigoureuse", "démonstration rigoureuse",
 )
 
 #: ANALYSER des visages sur une image : compter, situer, reperer, comparer.
@@ -688,6 +707,16 @@ class OrchestratorAgent(BaseAgent):
         # Trend Search UNIQUEMENT si demande explicite de vidéo/tendances
         if "idée de vidéo" in text or "tendance tiktok" in text or "sujet chaud" in text or "stratégie vidéo" in text:
             return "TREND_SEARCH"
+
+        # Preuve FORMELLE (DEC-0067). Teste AVANT le raisonnement profond, qui
+        # porte deja « preuve » et « demontre » : la verification formelle est
+        # le cas PLUS ETROIT des deux — « vérifie cette preuve » et « preuve
+        # formelle » partaient sinon ecrire un script Python (mesure du
+        # 07/09/2026), alors que seul Lean peut trancher.
+        # Le raisonnement profond garde tout le reste : un calcul n'est pas une
+        # demonstration, et il reste dans le bac a sable ou il est deja.
+        if any(k in text for k in PREUVE_FORMELLE):
+            return "PREUVE_FORMELLE"
 
         # Raisonnement profond & Maths complexes
         reasoning_keywords = ["équation", "equation", "résous", "resous", "matrice", "intégrale", "dérivée", "démontre", "démontrer", "calcul complexe", "preuve"]

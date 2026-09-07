@@ -5216,3 +5216,127 @@ maintenance ; un compteur périmé dans `CLAUDE.md` oriente chaque session
 suivante sur un état qui n'existe plus. Aucun des trois n'aurait été trouvé
 par la suite de tests telle qu'elle était : ils vivaient tous dans l'espace
 entre deux morceaux corrects.
+
+---
+
+## DEC-0067 — ARENA savait calculer ; elle sait maintenant prouver
+
+**2026-09-07.** Mission reçue : évaluer `anthropics/fermats-last-theorem` et,
+si c'est justifié, en tirer une capacité de vérification formelle réellement
+opérationnelle — jamais un dépôt de plus qui dort.
+
+### Ce qu'ARENA avait déjà (audit avant toute modification)
+
+`core/reasoning/reasoning_engine.py` planifie, **exécute réellement** du
+Python (sympy, numpy) dans le bac à sable, puis synthétise. C'est du calcul,
+et il marche. Aucun module, en revanche, ne savait **prouver** : un modèle
+qui écrit « démonstration : CQFD » produisait une phrase, et rien dans ARENA
+ne pouvait la contredire. Recherche faite sur tout le dépôt : ni Lean, ni
+Coq, ni Isabelle, ni le moindre vérificateur.
+
+Le manque était donc réel, et la couche à ajouter était nette :
+
+    raisonnement ordinaire   -> le modèle
+    calcul exact             -> bac à sable Python (sympy) — INCHANGÉ
+    preuve                   -> Lean
+
+### Ce que le dépôt Fermat apporte vraiment
+
+**Pas sa preuve.** La formalisation de Fermat est un corpus de milliers de
+fichiers qui exige Mathlib et un environnement de compilation démesuré (96
+tâches parallèles, ~153 Go de RAM d'après Anthropic). Rien de cela n'a
+d'usage sur une RTX A2000, et rien n'en a été copié.
+
+**Sa discipline**, tenue dans son `FinalCheck.lean` en trois lignes : le
+théorème final n'est accepté qu'après impression de ses axiomes, comparés
+aux trois axiomes de la logique de Lean.
+
+**Pourquoi ce contrôle est nécessaire — mesuré ici, pas supposé** :
+
+```
+theorem avec_trou (n : Nat) : n + 0 = n := by sorry
+→ code de sortie 0, « depends on axioms: [sorryAx] »
+```
+
+Une preuve **trouée compile**. Un module qui aurait jugé sur le code de
+sortie — le réflexe naturel — aurait déclaré VÉRIFIÉE une démonstration
+vide. C'est exactement le `SUCCESS` sans preuve que `core/actions/resultat.py`
+refuse de construire, et c'est la seule chose qu'il fallait reprendre.
+
+### Ce qui a été intégré
+
+- `core/connectors/lean_formel.py` : capacité `verifier`. Lance le vrai
+  binaire, ajoute lui-même le `#print axioms` (jamais laissé à la bonne
+  volonté de l'appelant), lit les axiomes, et rend un verdict structuré —
+  `VERIFIE`, `REJETE`, `DELAI` ou `INDETERMINE`. Un silence de Lean sur les
+  axiomes rend `INDETERMINE`, jamais un succès par défaut.
+- `agents/formel/formel_agent.py` : agent **mince**, sur le modèle de
+  `agents/audio/audio_agent.py`. Il traduit la phrase en capacité, il ne
+  raisonne pas à la place du moteur existant. Boucle de réparation **bornée
+  à une correction**, nourrie du diagnostic réel de Lean.
+- Intention `PREUVE_FORMELLE`, testée **avant** `DEEP_REASONING` : celui-ci
+  porte déjà « preuve » et « démontre », et captait tout. Le calcul lui
+  reste entier — « résous cette équation » n'a jamais eu besoin de Lean.
+- Permission `lean_formel.verifier` sous `EXECUTE_COMMANDS`, **éteint par
+  défaut**. Lean est un langage à métaprogrammation : vérifier une source
+  qu'un modèle a écrite, c'est exécuter du code. Le connecteur refuse en
+  plus les constructions d'exécution directe — une barrière, pas un bac à
+  sable, et le module le dit.
+- Bornes : délai dur, **groupe de processus tué en entier** (même forme que
+  `tools/atelier/atelier.py`, DEC-0063), source plafonnée.
+
+### Ce qui a été délibérément écarté
+
+Mathlib (des gigaoctets, des heures de compilation), le comparateur et le
+vérificateur indépendant du dépôt Fermat, sa formalisation, et toute idée de
+reproduire son environnement de build. Lean seul, avec sa bibliothèque
+standard, suffit à trancher un raisonnement — et tient sur sa machine.
+
+### Ce qui a réellement tourné
+
+Le chemin complet, par le vrai registre et les vraies permissions :
+
+```
+PERMISSION PAR DÉFAUT  -> DENIED (coupe-circuit EXECUTE_COMMANDS)
+PREUVE VALIDE          -> SUCCESS | VERIFIE | axiomes []
+PREUVE FAUSSE          -> FAILED  | REJETE  | « égalité non vérifiable par calcul »
+PREUVE À TROU (sorry)  -> FAILED  | REJETE  | axiomes [sorryAx], code de sortie 0
+SOURCE QUI VEUT S'EXÉCUTER -> refusée avant même de lancer Lean
+```
+
+Et au niveau agent, avec Lean réel :
+
+```
+a) Lean fourni dans la demande  -> VERIFIE, aucun modèle dérangé
+b) Modèle propose FAUX, corrige -> VERIFIE en 2 tentatives
+c) Modèle s'entête avec `sorry` -> REJETÉ. Il ne peut pas se déclarer vérifié.
+```
+
+69 tests neufs (4044 collectés contre 3975), deux sabotages confirmés puis
+restaurés : contrôle des axiomes neutralisé (3 tests tombent, dont le
+central), barrière d'exécution retirée (3 tests tombent). `ruff` propre,
+4019 passed / 25 skipped.
+`orphelins.py` : 210 modules, 167 atteints, **aucun module réel endormi**.
+
+Deux régressions attrapées par les tests existants et corrigées : l'intention
+neuve n'avait pas de voie d'exécution, et le compteur de `CLAUDE.md` avait
+bougé.
+
+### Licence et provenance
+
+Lean 4 : Apache-2.0, hors du dépôt (2,9 Go), sa licence voyage avec lui.
+Dépôt Fermat : Apache-2.0, « Copyright 2026 Anthropic, PBC » — **aucune ligne
+copiée**, seule la discipline reprise, citée dans `NOTICE.md` et en
+commentaire à l'endroit exact où elle s'applique.
+
+### Ce que ça coûte si c'est faux
+
+Si le verdict venait du code de sortie, ARENA signerait des preuves vides —
+et une preuve fausse signée vaut moins que pas de preuve du tout, parce
+qu'elle se croit. C'est la raison d'être du module, et c'est le seul endroit
+où il ne transige pas : Lean tranche, le modèle propose, et jamais l'inverse.
+
+**La limite honnête** : sans Mathlib, seule la bibliothèque standard est
+disponible. ARENA vérifie des raisonnements, elle ne refait pas Fermat — et
+le connecteur rapporte `import manquant` quand une preuve demande plus, au
+lieu de faire semblant.
