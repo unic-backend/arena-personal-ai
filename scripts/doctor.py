@@ -605,6 +605,20 @@ def verifier_lean() -> Verification:
         "ou pointer LEAN_BIN sur un binaire existant.")
 
 
+def verifier_architecture_3d() -> Verification:
+    """Le moteur d'architecture, interroge pour de vrai (DEC-0070).
+
+    Il vit HORS du depot : 205 Mo de `node_modules`, et ARENA est un projet
+    Python. Sans lui, aucun batiment ne se dessine — et la sonde dit ce qui
+    manque : Bun, le dossier, ou le paquet. **Pas Node** : le paquet publie
+    ne tourne pas sous Node, mesure du 07/09/2026.
+    """
+    return _ligne_connecteur(
+        "Architecture 3D", "core.connectors.architecture_3d",
+        "ConnecteurArchitecture3D",
+        "Installer Bun puis le backend (voir docs/COMMANDES_PC.md).")
+
+
 def verifier_gardien() -> Verification:
     """La memoire de maintenance du gardien (DEC-0014) — ce qu'elle contient
     deja, jamais « aucun probleme » invente si aucun cycle n'a encore tourne.
@@ -856,6 +870,7 @@ def diagnostiquer() -> Rapport:
         mesurer("Visages (Faceplugin)", verifier_faceplugin),
         mesurer("Design (UI/UX Pro Max)", verifier_ui_ux_pro_max),
         mesurer("Preuve formelle (Lean)", verifier_lean),
+        mesurer("Architecture 3D", verifier_architecture_3d),
         mesurer("Gardien (maintenance)", verifier_gardien),
         mesurer("Courrier (Gmail)", lambda: verifier_google(
             "Courrier (Gmail)", "ARENA ne lit pas ton courrier",

@@ -53,6 +53,17 @@ MOTEURS = {
         "src/ui-ux-pro-max/data/styles.csv",
         "cli/node_modules/quelque-chose.js",
     ),
+    # Pascal Editor (DEC-0070) : **MIT**, donc rien n'interdirait non plus de
+    # le versionner. Il reste dehors parce que `node_modules` pese 205 Mo et
+    # qu'ARENA est un projet Python : melanger un arbre npm au depot ferait
+    # cohabiter deux ecosystemes sans besoin. Seul `package.json` entre — il
+    # epingle `zod`, et cet epinglage est ce qui fait marcher les ecritures.
+    "tools/architecture/pascal": (
+        "node_modules/@pascal-app/mcp/dist/bin/pascal-mcp.js",
+        "node_modules/@pascal-app/core/dist/index.js",
+        "node_modules/zod/package.json",
+        "package-lock.json",
+    ),
     # Lean 4 (DEC-0067) : **Apache-2.0**, donc rien n'interdirait de le
     # versionner — il reste dehors par convention, comme UI/UX Pro Max, et
     # parce qu'un toolchain decompresse pese 2,9 Go. Un depot public ne porte

@@ -141,6 +141,7 @@ VOIE_PAR_INTENTION: Dict[str, Voie] = {
     # et, en cas de rejet, une correction avec le diagnostic (DEC-0067) —
     # plusieurs passes par construction, donc PROFONDE.
     "PREUVE_FORMELLE": Voie.PROFONDE,
+    "ARCHITECTURE_3D": Voie.INSTANTANEE,
     # Dioumtoukay enchaine plusieurs actions reelles, chacune suivie d'un
     # retour a lire avant la suivante (DEC-0038) : par construction, plusieurs
     # passes sur la machine. Il ne sort pas chercher dehors — ce qu'il lit vient

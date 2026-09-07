@@ -144,3 +144,20 @@ tools/formel/
 # Les preuves verifiees : des artefacts produits par la machine, refaits a
 # chaque verification. Comme `data/audio/` et `data/montages/`.
 data/preuves/
+
+# --- Pascal Editor : moteur d'architecture 3D, hors du depot (DEC-0070) -----
+#
+# `@pascal-app/mcp` + `@pascal-app/core` sont **MIT**, donc rien n'interdirait
+# de les versionner. Ils restent dehors pour deux raisons mesurees :
+# `node_modules` pese 205 Mo, et ARENA est un projet Python — y faire entrer
+# un arbre npm melangerait deux ecosystemes dans le meme depot.
+#
+# Ce que le depot porte : `core/architecture/` (la capacite, le vocabulaire,
+# le plan), `core/connectors/architecture_3d.py` et ses tests. Aucune ligne
+# de Pascal.
+#
+# Ce dossier ne porte RIEN de versionne, comme tous les moteurs externes.
+# Ce qu'il faut installer est declare par ARENA elle-meme dans
+# `core/architecture/paquets.json` — il epingle `zod` a 4.3.5, sans quoi
+# toutes les ecritures de Pascal echouent. Voir `docs/COMMANDES_PC.md`.
+tools/architecture/pascal/

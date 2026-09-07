@@ -47,6 +47,7 @@ from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
 from core.agent.capacites import RegistreCapacites, adaptateur_synchrone
+from core.connectors.architecture_3d import ConnecteurArchitecture3D
 from core.connectors.audio_voix import ConnecteurAudioVoix
 from core.connectors.browser import ConnecteurBrowser
 from core.connectors.calendrier import CalendrierConnector
@@ -334,6 +335,17 @@ registre.declarer(
     "formel",
     lambda: ConnecteurLeanFormel(acces=acces, journal=journal,
                                  file_attente=file_attente, crochets=crochets),
+)
+# Architecture 3D (DEC-0070) : une CAPACITE d'ARENA, pas un moteur a elle.
+# Le vocabulaire est le sien (`core/architecture/capacite.py`, 21 operations
+# en francais) ; Pascal Editor (MIT, hors du depot) n'est qu'un backend
+# possible, et c'est le seul endroit du runtime ou son nom n'apparait meme
+# pas. Aucun modele ne l'atteint directement : intention -> connecteur ->
+# permission -> capacite -> backend.
+registre.declarer(
+    "architecture_3d",
+    lambda: ConnecteurArchitecture3D(acces=acces, journal=journal,
+                                     file_attente=file_attente, crochets=crochets),
 )
 # Generation d'interface : la technique d'OpenUI (prompt -> HTML/React/
 # Svelte/Web-Component), jamais son serveur (connexion GitHub requise,

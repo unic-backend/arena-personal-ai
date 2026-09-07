@@ -51,6 +51,7 @@ from apps.backend.runtime import (
 )
 from apps.backend.security import limiter_debit, validate_media_path, verify_api_key
 from apps.backend.studio import lancer_studio
+from core.architecture.plan import executer as executer_architecture
 from core.context.recherche_unifiee import MOTS_MEMOIRE
 from tools.documents.indexer import (
     DOSSIER_DOCUMENTS,
@@ -432,6 +433,14 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         })
     elif intent == "BROWSER":
         result = await browser_agent.run(request.prompt)
+    elif intent == "ARCHITECTURE_3D":
+        # DEC-0070 : **aucun agent ici**, et c'est voulu. La mission interdit
+        # d'en creer un quand la capacite se suffit : la phrase devient un
+        # plan deterministe (`core/architecture/plan.py`, sans modele), et le
+        # plan devient des appels au connecteur, qui applique permissions,
+        # confirmation et journal. Un modele peut produire le meme plan sans
+        # rien changer en aval — c'est ce qui rend la capacite agnostique.
+        result = executer_architecture(registre, request.prompt, session=session_id)
     elif intent == "PREUVE_FORMELLE":
         # Lean tranche, jamais le modele (DEC-0067). L'agent est mince : il
         # traduit la phrase en capacite du connecteur `formel` et rend le

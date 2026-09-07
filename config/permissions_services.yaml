@@ -336,6 +336,22 @@ services:
   lean_formel:
     verifier:    {decision: ALLOWED,      risque: MEDIUM, interrupteur: EXECUTE_COMMANDS}
 
+  # architecture_3d (DEC-0070) : le moteur d'architecture, quel qu'il soit.
+  #
+  # **Trois actions, pas vingt-deux.** La politique interrogee par
+  # `core/connectors/base.py` recoit `capacite.action`, jamais le nom de la
+  # capacite : une regle par operation (`creer_mur:`, `inspecter:`...) ne
+  # matchait rien et faisait tomber TOUTES les operations sur le refus par
+  # defaut. Mesure du 07/09/2026, sur la premiere execution bout en bout.
+  #
+  # `read`    : inspecter, lister, mesurer, valider, exporter — ne change rien.
+  # `batir`   : tracer, percer, cloisonner, enregistrer — modifie la scene.
+  # `demolir` : supprimer un element, le seul geste qui detruit du travail.
+  architecture_3d:
+    read:      {decision: ALLOWED,      risque: LOW,    interrupteur: WRITE_FILES}
+    batir:     {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+    demolir:   {decision: CONFIRMATION, risque: HIGH,   interrupteur: WRITE_FILES}
+
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail

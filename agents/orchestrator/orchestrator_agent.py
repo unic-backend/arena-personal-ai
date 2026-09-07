@@ -93,7 +93,21 @@ INTENTIONS = {
     "DESIGN_UI",
     "UI_GENERATE",
     "PREUVE_FORMELLE",
+    "ARCHITECTURE_3D",
 }
+
+#: Ce qui demande de CONSTRUIRE ou d'INSPECTER un batiment en 3D. Teste
+#: avant le metier : « une cloison de 4 m » est un devis, « dessine une
+#: maison de 20 m x 15 m » est un modele — et le PLAQUISTE ne sait pas
+#: dessiner. Les deux se distinguent par le VERBE, pas par le sujet.
+ARCHITECTURE_3D = (
+    "dessine une maison", "dessine un batiment", "dessine un bâtiment",
+    "modelise", "modélise", "maquette 3d", "plan 3d", "modele 3d",
+    "modèle 3d", "en 3d", "architecture 3d",
+    "cree une maison", "crée une maison", "creer une maison", "créer une maison",
+    "construis une maison", "construis un batiment", "construis un bâtiment",
+    "trace les murs", "trace un mur", "scene 3d", "scène 3d",
+)
 
 #: Ce qui parle de ses RESEAUX SOCIAUX. Teste avant le metier : « une
 #: publication sur mon chantier » contient « chantier » et partirait chez
@@ -717,6 +731,14 @@ class OrchestratorAgent(BaseAgent):
         # demonstration, et il reste dans le bac a sable ou il est deja.
         if any(k in text for k in PREUVE_FORMELLE):
             return "PREUVE_FORMELLE"
+
+        # Architecture 3D (DEC-0070). Teste AVANT le metier, qui porte deja
+        # « mur », « cloison » et « plan » : « dessine une maison de 20 m x
+        # 15 m » partait sinon chez l'assistant devis, qui ne sait pas
+        # dessiner. Ce qui les separe est le VERBE, pas le sujet — chiffrer
+        # une cloison reste du metier, la tracer est un modele.
+        if any(k in text for k in ARCHITECTURE_3D):
+            return "ARCHITECTURE_3D"
 
         # Raisonnement profond & Maths complexes
         reasoning_keywords = ["équation", "equation", "résous", "resous", "matrice", "intégrale", "dérivée", "démontre", "démontrer", "calcul complexe", "preuve"]
