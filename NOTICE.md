@@ -160,3 +160,25 @@ paquet publié importe ses modules sans extension, ce que Node refuse
 
 `architecture_3d` est une capacité d'ARENA ; **Pascal en est une
 implémentation**, remplaçable sans toucher aux appelants.
+
+---
+
+## Open SWE — deux idées, aucune ligne
+
+`langchain-ai/open-swe` (**MIT**, « Copyright (c) LangChain, Inc. », `LICENSE`
+lu au commit `2ad5524` le 07/09/2026) n'est **ni installé, ni cloné, ni copié**
+dans ce dépôt.
+
+Deux de ses idées ont été **réécrites** pour ARENA dans
+`core/execution/reprise.py` (DEC-0072) : un journal d'étapes durable qui permet
+à une tâche interrompue de reprendre, et un balayage des tâches bloquées —
+l'idée de son `reconcile.py`. Sa mécanique à lui est indissociable de LangGraph
+et de sa plateforme.
+
+Son installation était de toute façon impossible ici : il exige
+`Python >= 3.14` quand ARENA tourne sur 3.11, et ses dépendances apporteraient
+un second moteur d'orchestration, quatre sandbox cloud et des paquets liés à un
+fournisseur de modèle — trois choses qu'ARENA a déjà ou refuse par principe.
+
+Sa licence MIT aurait permis la copie. C'est l'architecture, pas le droit, qui
+s'y opposait.

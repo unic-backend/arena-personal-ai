@@ -227,3 +227,34 @@ Un test cassé par le correctif vérifiait la chaîne « tu les demandes » : un
 
 Quatre sabotages joués, quatre ont cassé un test. `ruff` propre,
 **4156 passed / 25 skipped**.
+
+---
+
+## 2026-09-07 (suite) — Open SWE : rien d'installé, la reprise gagnée
+
+**DEC-0072.** Mission : fusionner les meilleures capacités de
+`langchain-ai/open-swe` dans le génie logiciel d'ARENA, sans deuxième agent.
+
+**Refusé, mesuré** : Open SWE exige `Python >= 3.14`, ARENA tourne sur
+**3.11.15**. Et ses dépendances apporteraient un second moteur d'orchestration
+(LangGraph + deepagents), **quatre sandbox cloud** et des paquets liés à un
+fournisseur — exactement les doublons que la mission interdit. Licence MIT :
+la copie était permise, elle n'était pas utile.
+
+**Le seul manque réel** : `DioumtoukayAgent` s'arrêtait à 12 actions / 20 min
+en rendant « la suite reste à faire », et ne gardait qu'un **résumé en prose**.
+`FileDeTravaux` est purement en mémoire. « Reprends ce que tu faisais »
+repartait de zéro.
+
+| Livré | Preuve |
+|---|---|
+| `core/execution/reprise.py` — journal d'étapes durable, écriture atomique après **chaque** action | 16 tests |
+| `balayer()` — l'idée de leur `reconcile.py` : une tâche morte cesse de se déclarer vivante | 4 tests |
+| Reprise branchée dans l'agent **existant** — aucun agent, aucune file de plus | 11 tests bout en bout |
+
+**Mesuré sur un vrai dépôt buggé** : `pytest` échoue, le fichier est vraiment
+modifié, `pytest` passe. Interruption puis reprise : 2 étapes + 1, **même
+`task_id`**. Seul le modèle est doublé, et c'est dit.
+
+Cinq sabotages joués, **cinq ont cassé un test**. `ruff` propre,
+**4183 passed / 25 skipped**, 218 modules dont 173 atteints.

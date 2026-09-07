@@ -40,6 +40,7 @@ from datetime import date
 from typing import Any, Dict, List, Optional
 
 from core.agent.base_agent import BaseAgent
+from core.execution.reprise import JournalDeReprise
 from core.memory.conversation import retenir_l_echange
 from core.memory.memory_manager import MemoryManager
 from core.memory.personnelle import MemoirePersonnelle
@@ -221,7 +222,8 @@ class DioumtoukayAgent(BaseAgent):
 
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
                  atelier: Optional[Atelier] = None,
-                 memoire_longue: Optional[MemoirePersonnelle] = None):
+                 memoire_longue: Optional[MemoirePersonnelle] = None,
+                 reprises: Optional[JournalDeReprise] = None):
         super().__init__(
             name="DioumtoukayAgent",
             description="Agent qui travaille reellement sur les fichiers, "
@@ -235,6 +237,12 @@ class DioumtoukayAgent(BaseAgent):
         # differents dans ce projet, et les confondre reviendrait a n'ecrire
         # nulle part.
         self.memoire_longue = memoire_longue
+        # Le journal DURABLE de ce qu'il a deja fait (DEC-0072). La memoire
+        # longue garde un RESUME de chaque travail ; celui-ci garde les ETAPES,
+        # pour qu'une tache arretee a la 12e action reprenne a la 13e au lieu
+        # de tout refaire. Les deux ne font pas double emploi : l'une sert a se
+        # souvenir, l'autre a continuer.
+        self.reprises = reprises if reprises is not None else JournalDeReprise()
 
     # --- Exécution d'une action ---------------------------------------------------
 
@@ -306,7 +314,15 @@ class DioumtoukayAgent(BaseAgent):
         methode = bloc_de_methode(choisir(user_input, "ATELIER"))
         consigne = f"{CONSIGNE}\n\n{methode}" if methode else CONSIGNE
 
-        journal_du_travail: List[str] = []
+        # Une tache interrompue reprend ici, avec ses etapes deja faites en
+        # guise de journal de depart : le modele voit ce qui a tourne et
+        # enchaine, au lieu de relire et rechercher ce qu'il avait deja lu.
+        tache = self.reprises.ouvrir(user_input)
+        journal_du_travail: List[str] = list(tache.deja_fait())
+        reprise = bool(journal_du_travail)
+        if reprise:
+            logger.info("Reprise de la tache %s : %d etapes deja faites.",
+                        tache.identifiant, len(journal_du_travail))
         rendu: List[Dict[str, Any]] = []
         conclusion = ""
         arrete_par_lui_meme = False
@@ -347,10 +363,19 @@ class DioumtoukayAgent(BaseAgent):
                 arrete_par_lui_meme = True
                 break
 
+            debut_action = time.monotonic()
             resultat = self._executer_action(action)
+            duree_ms = int((time.monotonic() - debut_action) * 1000)
             rendu.append({"action": action.nom, "champs": action.champs,
                           **resultat.to_dict()})
             journal_du_travail.append(self._compte_rendu(action, resultat))
+            # Ecrit MAINTENANT, pas a la fin : une tache tuee au milieu doit
+            # laisser exactement ce qu'elle avait fait.
+            self.reprises.noter(
+                tache, action.nom,
+                cible=str(action.champs.get("CHEMIN") or action.champs.get("MOTIF") or ""),
+                ok=resultat.ok, resume=self._compte_rendu(action, resultat),
+                duree_ms=duree_ms)
 
         if not arrete_par_lui_meme and not conclusion:
             # La borne est atteinte. Le dire : un rapport qui s'arrete sans
@@ -362,12 +387,22 @@ class DioumtoukayAgent(BaseAgent):
 
         self._retenir(user_input, conclusion, rendu)
 
+        # Terminee, ou interrompue donc REPRENABLE. C'est cette distinction qui
+        # fait la difference entre « la suite reste a faire » (une phrase) et
+        # « la suite reprendra ici » (un etat).
+        if arrete_par_lui_meme:
+            self.reprises.terminer(tache, conclusion)
+        else:
+            self.reprises.interrompre(tache, conclusion)
+
         return {
             "status": "success" if arrete_par_lui_meme else "partial",
             "agent": self.name,
             "actions": rendu,
             "fichiers_modifies": self.fichiers_touches(rendu),
             "response": self._rapport(conclusion, rendu),
+            "tache": tache.journal(),
+            "reprise": reprise,
         }
 
     # --- Ce qu'il voit, et ce qu'il rend ---------------------------------------------

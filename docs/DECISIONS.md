@@ -5774,3 +5774,123 @@ obligatoire et son affichage non négociable.
 Quand une ouverture est **plus grande que la paroi**, rien n'est déduit et la
 réponse le dit : mieux vaut un métré trop haut, visible et discutable, qu'un
 zéro qui passerait pour une mesure.
+
+---
+
+## DEC-0072 — Open SWE : rien d'installé, une seule idée reprise — la reprise
+
+**2026-09-07.** Mission reçue : exploiter les meilleures capacités de
+`langchain-ai/open-swe` pour renforcer le génie logiciel d'ARENA — **sans créer
+un deuxième agent de code**, sans deuxième sandbox, deuxième client GitHub,
+deuxième gestionnaire de tâches.
+
+### Ce qu'ARENA avait déjà (audit avant toute modification)
+
+| Existant | Ce qu'il fait | Verdict |
+|---|---|---|
+| `DioumtoukayAgent` (483 l.) + `Atelier` (372 l.) | AGIT : lit, écrit, remplace, cherche, liste, déplace, exécute, git. Boucle bornée à 12 actions / 20 min, 3 réponses illisibles max, journal par action | **BETTER ARENA** — déjà la boucle demandée |
+| `SWEAgent` | analyse chirurgicale de bug, lecture seule (protocole ACI) | conservé |
+| `RepoEngineerAgent` | architecture, lecture seule, via `gitingest` (DEC-0068) | conservé |
+| `CoderAgent` | génération de code | conservé |
+| Connecteur GitHub, permissions, confirmation, journal, MCP | déjà en place | **aucun doublon créé** |
+
+L'exécution des commandes sans garde-fou est une **décision du propriétaire**,
+pas un défaut : DEC-0038, *« Il doit tout faire pas de limite »*. Elle n'a pas
+été re-litigée ici.
+
+### Ce qui a été refusé, et pourquoi — mesuré, pas supposé
+
+**Open SWE ne peut pas être installé dans ARENA.** Son `pyproject.toml` exige
+`requires-python = ">=3.14"` ; ARENA tourne sur **Python 3.11.15** (mesuré).
+Ce n'est pas une préférence, c'est un mur.
+
+Et même sans ce mur, ses dépendances contredisent trois règles de la mission :
+
+- `langchain-anthropic`, `langchain-openai`, `langchain-fireworks` — des
+  paquets **liés à un fournisseur**, dans un système qui doit rester
+  agnostique au modèle ;
+- `langchain-daytona`, `langchain-modal`, `langchain-runloop`, `langchain-e2b`
+  — **quatre sandbox cloud**, là où ARENA en a déjà une, locale, sous son
+  contrôle ;
+- `langgraph` + `deepagents` — un **second moteur d'orchestration** complet.
+
+Installer tout cela pour en tirer une idée aurait été le contraire de ce que la
+mission demande.
+
+**Rien n'a donc été cloné, installé, ni copié.** Son code est MIT (`LICENSE`,
+commit `2ad5524`, lu sur cette machine), donc la copie aurait été permise — elle
+n'était simplement pas utile.
+
+### Le seul manque réel, et il est vrai
+
+`DioumtoukayAgent` s'arrête à douze actions ou vingt minutes et rend
+honnêtement :
+
+> *« Arrêté après N minutes sans avoir conclu. Ce qui a été fait est ci-dessous ;
+> la suite reste à faire. »*
+
+Puis il garde un **résumé en prose** dans la mémoire longue. Un résumé n'est pas
+un état : « reprends ce que tu faisais » relançait le travail **depuis zéro** —
+mêmes lectures, mêmes recherches, mêmes commandes. Et
+`core/execution/travaux.py` ne pouvait pas aider : sa file est purement en
+mémoire (deux dictionnaires dans `__init__`), donc un redémarrage efface tout.
+
+C'est exactement ce que la section 9 de la mission demandait.
+
+### Ce qui a été écrit — `core/execution/reprise.py`
+
+Deux idées d'Open SWE, réécrites pour ARENA sans une ligne de leur code :
+
+1. **Un journal d'étapes durable**, sur disque, écrit **après chaque action** —
+   pas à la fin. Une tâche tuée au milieu laisse exactement ce qu'elle avait
+   fait. L'écriture est atomique (fichier temporaire puis `os.replace`) : un
+   journal à moitié écrit serait illisible dans le seul moment où il sert.
+2. **Un balayage** (`balayer`) qui marque interrompue une tâche « en cours »
+   qui n'avance plus depuis une heure. C'est l'idée de leur `reconcile.py` :
+   sans ce filet, une tâche dont le processus est mort reste « en cours » pour
+   toujours — elle est **perdue en se déclarant vivante**.
+
+`DioumtoukayAgent` l'utilise directement : il rouvre sa tâche, repart avec son
+journal d'étapes, et se marque `INTERROMPUE` au lieu de perdre l'état. **Aucun
+agent, aucun orchestrateur, aucune file de plus.**
+
+### Quatre décisions qui ont un coût si elles sont fausses
+
+- **Reprendre exige la demande identique.** Rapprocher deux demandes voisines
+  ferait continuer un travail sur un autre sujet — pire que recommencer, parce
+  que personne ne le verrait.
+- **Une tâche ÉCHOUÉE ne se reprend pas.** Rejouer un échec dont la cause n'a
+  pas changé (aucun moteur, dépôt absent) le referait à l'identique.
+- **Un horodatage illisible est traité comme ANCIEN.** Se tromper dans ce sens
+  libère une tâche vivante, qui reprendra au pire en double ; dans l'autre, on
+  garderait pour toujours une tâche morte.
+- **La purge n'oublie que les TERMINÉES.** Une tâche reprenable ne se purge
+  jamais : ce serait perdre du travail pour économiser des octets.
+
+### Ce qui a été mesuré, pas supposé
+
+Un vrai dépôt écrit sur disque, avec un vrai bug (`return largeur + hauteur`
+au lieu de `*`), un vrai `pytest` :
+
+| Étape | Mesure |
+|---|---|
+| Premier `pytest` | **échoue** — le bug est reproduit |
+| Remplacement | le fichier sur disque contient `largeur * hauteur` |
+| Second `pytest` | **passe** |
+| Interruption puis reprise | 2 étapes au premier passage, la 3ᵉ au second, **même `task_id`** |
+| Sans moteur | `NOT_CONFIGURED`, et **aucune tâche ouverte** — un faux départ serait pire |
+
+Seul le **modèle de langue** est doublé (script d'actions fixes) : Ollama
+n'existe pas sur cette machine, et un modèle réel rendrait le test non
+reproductible. Tout le reste est du vrai travail.
+
+### Ce qui n'a PAS été fait, et se dit
+
+- **Aucune PR créée par l'agent**, aucune boucle CI autonome. `git` passe déjà
+  par l'atelier ; brancher une création de PR autonome est une décision qui
+  n'a pas été demandée ici.
+- **Aucun sous-agent** ajouté (Analyzer / Coder / Reviewer). ARENA a déjà ces
+  rôles — `RepoEngineer` analyse, `Coder` écrit, `SWEAgent` diagnostique — et
+  en ajouter trois de plus serait l'armée que la mission interdit.
+- **Aucune parallélisation** de tâches. `FileDeTravaux` existe et n'a pas été
+  touchée : la reprise se branche sur l'agent, pas sur une nouvelle file.

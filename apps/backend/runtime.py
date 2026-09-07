@@ -82,6 +82,7 @@ from core.conversations.depot import DepotConversations
 from core.execution.disjoncteur import Disjoncteur
 from core.execution.hooks import RegistreDeCrochets
 from core.execution.mesures import Rapport
+from core.execution.reprise import JournalDeReprise
 from core.execution.travaux import FileDeTravaux
 from core.guardian.file_maintenance import FileDeMaintenance
 from core.guardian.gardien import Gardien
@@ -528,10 +529,14 @@ swe_agent = SWEAgent(provider=coder_provider, memory=memory)
 # Dioumtoukay : celui qui AGIT sur la machine (DEC-0038). Il recoit le
 # modele de code, et le journal — chacune de ses actions y laisse une trace,
 # qui est ce que le proprietaire relit apres coup.
+# `reprises` : le journal DURABLE de ses etapes (DEC-0072). Sans lui, une
+# tache arretee a la 12e action repartait de zero au tour suivant — la memoire
+# longue en gardait un resume en prose, pas un etat reprenable.
 dioumtoukay_agent = DioumtoukayAgent(
     provider=coder_provider, memory=memory,
     atelier=Atelier(journal=journal),
-    memoire_longue=memoire_personnelle)
+    memoire_longue=memoire_personnelle,
+    reprises=JournalDeReprise())
 # Raisonnement profond : plan, calcul reellement execute en bac a sable, puis
 # synthese. Le modele profond, parce que c'est la voie PROFONDE qui l'emprunte.
 # `/health` annoncait « ReasoningEngine » parmi les agents actifs alors qu'aucun
