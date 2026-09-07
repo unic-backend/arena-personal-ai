@@ -5548,3 +5548,131 @@ se dé-produit pas.
 
 C'est cette asymétrie, et elle seule, qui justifie que le défaut par défaut
 soit le refus.
+
+---
+
+## DEC-0070 — `architecture_3d` : une capacité d'ARENA, Pascal n'en est qu'un moteur
+
+**2026-09-07.** Mission reçue : intégrer Pascal Editor comme capacité
+d'architecture 3D **transversale**, accessible à tous les modèles autorisés,
+routée et sécurisée par ARENA — jamais câblée dans un modèle, jamais un dépôt
+dormant, jamais un doublon.
+
+### Ce qu'ARENA avait déjà (audit avant toute modification)
+
+Un sous-système BIM réel, et il **n'a pas été touché** :
+
+| Existant | Ce qu'il fait | Décision |
+|---|---|---|
+| connecteur `ifc` | lit un IFC : niveaux, éléments, métré des murs | **conservé** |
+| connecteur `ifc_generation` | écrit un croquis IFC d'une cloison | **conservé** |
+| `agents/plaquiste/` (métré, matériaux, plans) | le métier UniC | **conservé** |
+
+Ce qui manquait, et que rien ne rendait : **construire**. Aucun graphe de
+scène, aucun niveau, aucune pièce, aucun annuler/refaire, aucun export 3D.
+Pascal ne remplace donc rien — il comble un trou, et la frontière est nette :
+le moteur s'arrête au mur, ce qu'on en déduit (BA13, ossature, isolation,
+quantités, prix) reste au métier.
+
+### L'architecture retenue
+
+```
+n'importe quel modele autorise
+  -> orchestrateur ARENA          (intention ARCHITECTURE_3D)
+  -> connecteur architecture_3d   (permission -> confirmation -> journal)
+  -> Capacite3D                   (22 operations en francais, sessions isolees)
+  -> BackendPascal                (traduction vers les 46 outils reels)
+  -> serveur MCP de Pascal        (processus separe, MIT, hors du depot)
+```
+
+**Aucun agent n'a été créé.** La mission l'interdit quand la capacité se
+suffit : la phrase devient un plan déterministe
+(`core/architecture/plan.py`, **sans modèle**), et le plan devient des appels
+au connecteur. Un modèle qui produirait le même plan ne changerait rien en
+aval — c'est ce qui rend la capacité agnostique, et un test le prouve en
+faisant passer trois appelants imaginaires par le même chemin.
+
+**Aucun nom de modèle n'existe dans la couche architecture**, et un test
+échoue si `qwen`, `claude`, `mistral`, `llama`, `gpt`, `gemini` ou `deepseek`
+y décide quoi que ce soit.
+
+### Trois pannes réelles, trouvées en exécutant
+
+**1. Le paquet publié ne tourne pas sous Node, malgré son README.**
+`@pascal-app/mcp@1.0.0-beta.6` importe ses modules sans extension
+(`from '../server'`) : le résolveur ESM de Node refuse
+(`ERR_MODULE_NOT_FOUND`), Bun accepte. Mesuré sous Node v22.22.2, au-dessus
+du minimum annoncé. **Le moteur d'exécution est Bun**, et la sonde le dit.
+
+**2. `zod` 4.5.4 cassait toutes les écritures — et rien ne le montrait.**
+Pascal demande `zod ^4.3.5` ; npm installe 4.5.4, dont `discriminatedUnion`
+refuse une option au discriminant `undefined`. Résultat : le serveur démarre,
+`inspecter` répond parfaitement, et **chaque** mutation rend
+`Duplicate discriminator value "undefined"`. Une sonde « le processus
+répond » aurait déclaré la capacité opérationnelle. `zod` est épinglé à
+4.3.5 dans `core/architecture/paquets.json`, et le test crée un vrai mur.
+
+**3. Les permissions ne matchaient rien, donc tout était refusé.**
+`core/connectors/base.py` interroge la politique avec `capacite.action`,
+jamais avec le nom de la capacité. Une première version déclarait 22 règles
+nommées `creer_mur:`, `inspecter:`… : aucune ne pouvait matcher, toutes
+tombaient sur le refus par défaut. Le symptôme était parfait — permissions
+écrites, moteur prêt, `DENIED` sur la première opération. Trois actions
+(`read`, `batir`, `demolir`) ont remplacé 22 règles mortes.
+
+Deux autres, plus petites, corrigées de la même façon : le paramètre `nom`
+entrait en collision avec le premier argument du registre des connecteurs
+(renommé `titre`), et le journal d'observabilité, étalé dans `succes()`,
+écrasait son argument `action` — **toutes les lectures levaient**, sur le
+premier appel réel.
+
+### Ce qui a été mesuré, pas supposé
+
+Sur la phrase exacte de la mission — *« Crée une maison de 20m x 15m avec
+3 chambres, un salon, une cuisine, 2 salles de bain et une terrasse. »* :
+
+| | |
+|---|---|
+| Plan compris | emprise 20 × 15 m, 8 pièces nommées, hauteur 2,5 m annoncée |
+| Confirmation | **une seule**, montrant le plan entier avant d'agir |
+| Construction | 11 opérations en **476 ms** |
+| Scène réelle | **36 murs** (4 de pourtour : 20, 15, 20, 15 — puis 32 de cloisonnement) et **8 pièces** aux noms demandés |
+| Démarrage du moteur | 396 ms · opération courante 1 à 14 ms |
+
+Deux sessions ouvertes en même temps ne partagent jamais une scène : vérifié
+sur deux chantiers réels, un mur créé dans l'un n'apparaît pas dans l'autre.
+
+### Ce qui n'a PAS été intégré, et pourquoi
+
+- **`create_house_from_brief`** de Pascal accepte une phrase entière. Mesuré :
+  sur « maison 20x15 avec 3 chambres », il rend un projet bâti sur le gabarit
+  `empty-studio` — il **choisit un gabarit** au lieu d'honorer la demande. Le
+  brancher aurait donné une maison plausible et fausse.
+- **Les 24 autres outils** de Pascal (vision, variantes, gabarits, collisions,
+  synchronisation live) : réels, mais aucun besoin d'ARENA ne les appelle
+  aujourd'hui. Les exposer aurait créé des chemins que personne n'emprunte —
+  le défaut que DEC-0068 vient de fermer.
+- **Aucune interface graphique.** Pascal a son éditeur React/WebGPU ; ARENA
+  ne l'héberge pas. La capacité rend une scène JSON et un export GLB.
+  `SUGGESTION — NON IMPLÉMENTÉE`.
+- **Aucun pont IFC ↔ scène Pascal.** Techniquement possible (Pascal a un
+  paquet `ifc-converter`), mais ni mesuré ni demandé. Prétendre un support
+  BIM non vérifié serait exactement le faux support que la mission interdit.
+
+### Licence et provenance
+
+`pascalorg/editor` est **MIT** (vérifié dans son `LICENSE`, commit `505013b`).
+Les deux paquets installés le sont aussi : `@pascal-app/mcp@1.0.0-beta.6` et
+`@pascal-app/core@1.0.0-beta.5`, `"license": "MIT"` lu dans leurs manifestes.
+**Aucune ligne de Pascal n'entre dans ce dépôt** — 205 Mo de `node_modules`
+hors du dépôt, comme Lean et les moteurs vidéo, et un test le tient.
+
+### Ce que ça coûte si c'est faux
+
+**Si Pascal disparaît ou change**, le coût est borné par construction : le
+vocabulaire d'ARENA et tout ce qui l'appelle ne bougent pas, seul
+`backend_pascal.py` est à remplacer. C'est la raison d'être de la capacité.
+
+**Si l'épinglage de `zod` saute**, le coût est plus sournois : lectures
+parfaites, écritures muettes. C'est pourquoi le test ne se contente pas d'un
+serveur qui démarre — il crée un mur.

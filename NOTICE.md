@@ -132,3 +132,31 @@ compilation d'Anthropic (96 tâches parallèles, ~153 Go de RAM). Rien de tout
 cela n'a d'usage sur la machine du propriétaire, et rien n'en a été copié.
 
 Raisonnement complet → `docs/DECISIONS.md`, DEC-0067.
+
+---
+
+## Pascal Editor — le moteur d'architecture 3D, piloté à distance
+
+ARENA sait construire un bâtiment en pilotant **Pascal Editor** par MCP sur
+l'entrée/sortie standard d'un processus séparé
+(`core/architecture/backend_pascal.py`).
+
+- Projet : Pascal Editor — https://github.com/pascalorg/editor
+- Licence : **MIT**, « Copyright (c) 2026 Pascal Group Inc. »
+- Version auditée : dépôt au commit `505013b` ; paquets installés
+  `@pascal-app/mcp` 1.0.0-beta.6 et `@pascal-app/core` 1.0.0-beta.5, tous
+  deux `"license": "MIT"` dans leurs manifestes (lus le 07/09/2026)
+
+**Aucune ligne de Pascal n'est présente dans ce dépôt.** MIT n'aurait rien
+interdit : il reste dehors parce que son arbre npm pèse 205 Mo et qu'ARENA
+est un projet Python. Ce que le dépôt porte est à lui : la capacité
+(`core/architecture/`), son connecteur, ses tests, et la liste épinglée de ce
+qu'il faut installer (`core/architecture/paquets.json`).
+
+Le serveur MCP tourne **sans navigateur, sans WebGPU, sans React et sans base
+de données** — vérifié dans son README et mesuré ici. Il exige **Bun** : son
+paquet publié importe ses modules sans extension, ce que Node refuse
+(DEC-0070). Bun est sous licence MIT.
+
+`architecture_3d` est une capacité d'ARENA ; **Pascal en est une
+implémentation**, remplaçable sans toucher aux appelants.

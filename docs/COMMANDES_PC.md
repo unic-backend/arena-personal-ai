@@ -173,6 +173,40 @@ python scripts/verifier_voix.py --ref-audio media/ma_voix.wav \
     --autorisation "Ousmane Diop, proprietaire de la voix"
 ```
 
+**Pascal — l'architecture 3D (DEC-0070).** Sans lui, ARENA ne peut dessiner
+aucun batiment : elle le dit au lieu de faire semblant. Le moteur est
+**MIT**, mais son arbre npm pese 205 Mo, donc il reste hors du depot.
+
+Il exige **Bun**, pas Node — mesure du 07/09/2026 : le paquet publie importe
+ses modules sans extension, ce que Node refuse et que Bun accepte. Une seule
+fois :
+
+```
+curl -fsSL https://bun.sh/install | bash
+mkdir tools\architecture\pascal
+copy core\architecture\paquets.json tools\architecture\pascal\package.json
+cd tools\architecture\pascal
+npm install
+```
+
+`core/architecture/paquets.json` **epingle `zod` a 4.3.5**, et ce n'est pas
+un detail : avec 4.5.4, le serveur demarre, les lectures marchent, et
+**toutes les ecritures echouent en silence**. Ne releve pas cette version
+sans relancer `python -m pytest tests/core/test_architecture_3d.py`.
+
+Verifier que ca marche :
+
+```
+python scripts/doctor.py
+```
+
+La ligne « Architecture 3D » doit dire `[OK]` et compter les operations. Si
+elle dit `[CONF]`, elle nomme ce qui manque : Bun, le dossier, ou le paquet.
+
+Ensuite, une phrase suffit : « Cree une maison de 20m x 15m avec 3 chambres,
+un salon, une cuisine, 2 salles de bain et une terrasse. » ARENA montre le
+plan complet, attend **une** confirmation, puis construit.
+
 **Lean 4 — la vérification formelle (DEC-0067).** Sans lui, ARENA ne peut
 *rien* prouver : elle le dit au lieu de laisser un modèle l'affirmer. Le
 toolchain est Apache-2.0 mais fait **2,9 Go** décompressé, donc il reste hors

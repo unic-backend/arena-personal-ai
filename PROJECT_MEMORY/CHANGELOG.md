@@ -175,3 +175,32 @@ révèle non tenue jusqu'à ce qu'on la sabote.
 > s'arrête à DEC-0020 et se date du 29/08/2026 — il lui manque 49 décisions.
 > `docs/DECISIONS.md` reste l'autorité et est à jour. Rattraper l'index est un
 > travail à part, pas un effet de bord de cette mission.
+
+---
+
+## 2026-09-07 (suite) — `architecture_3d` : ARENA sait construire un bâtiment
+
+**DEC-0070.** ARENA savait **lire** un IFC et chiffrer une cloison ; elle ne
+savait pas **construire**. Pascal Editor (MIT) comble ce trou — comme
+**backend** d'une capacité d'ARENA, jamais comme propriété d'un modèle.
+
+| Livré | Preuve |
+|---|---|
+| `core/architecture/` — capacité, vocabulaire de 22 opérations, plan déterministe | 44 tests |
+| `core/connectors/architecture_3d.py` — permissions, confirmation unique, journal | 3 actions (`read`/`batir`/`demolir`) |
+| intention `ARCHITECTURE_3D`, voie instantanée, routage — **aucun agent créé** | la mission l'interdit quand la capacité suffit |
+| ligne « Architecture 3D » dans `doctor.py` | 28 → **29 vérifications** |
+
+**Mesuré sur la phrase de la mission** : 11 opérations en 476 ms, **36 murs**
+(4 de pourtour : 20, 15, 20, 15 m) et **8 pièces** aux noms demandés. Deux
+sessions ouvertes en même temps ne partagent jamais une scène.
+
+**Trois pannes trouvées en exécutant, pas en lisant** : le paquet publié ne
+tourne pas sous Node malgré son README (Bun exigé) ; `zod` 4.5.4 cassait
+**toutes** les écritures pendant que les lectures restaient parfaites ; et
+22 règles de permission nommées par capacité ne matchaient rien — la
+politique interroge l'**action**, pas le nom.
+
+Cinq sabotages joués, **cinq ont cassé un test**.
+
+`ruff` propre, **4137 passed / 25 skipped**, 217 modules dont 172 atteints.
