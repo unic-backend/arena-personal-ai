@@ -11,6 +11,13 @@ from core.actions.resultat import Statut
 from core.connectors.base import EtatSante
 from core.connectors.browser import ConnecteurBrowser
 
+#: La VRAIE règle du moteur de base, capturée avant que la fixture autouse
+#: ne la remplace par un double. Sans cette référence, aucun test de ce
+#: fichier ne peut vérifier que `_verifier_moteur_de_base` consulte
+#: réellement `_verifier_navigateur_installe` — et un sabotage du
+#: branchement passait inaperçu (mesuré le 07/09/2026).
+_MOTEUR_DE_BASE_REEL = module._verifier_moteur_de_base
+
 
 class FauxOutil:
     """Remplace `BrowserUseTool` — note les appels, rend un résultat scripté
@@ -52,6 +59,70 @@ class TestSante:
         monkeypatch.setattr(module, "_verifier_moteur_de_base",
                             lambda: "No module named 'browser_use'")
         assert ConnecteurBrowser(outil=FauxOutil()).sonder().etat is EtatSante.NON_CONFIGURE
+
+    def test_un_navigateur_absent_rend_la_sonde_non_configuree(self, monkeypatch):
+        """Le refus du navigateur doit remonter jusqu'à la santé, pas rester
+        dans une fonction que personne ne consulte."""
+        monkeypatch.setattr(
+            module, "_verifier_moteur_de_base",
+            lambda: "aucun navigateur dans /x : "
+                    "« playwright install chromium » n'a jamais été lancé.")
+        sante = ConnecteurBrowser(outil=FauxOutil()).sonder()
+        assert sante.etat is EtatSante.NON_CONFIGURE
+        assert "playwright install chromium" in sante.message
+
+
+class TestLaSondeNAnnoncePasUnNavigateurAbsent:
+    """**Défaut mesuré le 07/09/2026**, sur demande de vérification.
+
+    `_verifier_moteur_de_base` ne testait que l'import de `browser_use` et
+    `langchain_openai`. En pointant `PLAYWRIGHT_BROWSERS_PATH` sur un dossier
+    vide, la sonde annonçait encore « Navigation autonome disponible (Chromium
+    local) » — et un lancement réel échouait aussitôt
+    (`Executable doesn't exist at ...`). `pip install playwright` n'installe
+    aucun navigateur : `playwright install chromium` est une seconde étape.
+    """
+
+    def test_un_dossier_de_navigateurs_vide_est_refuse(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
+        erreur = module._verifier_navigateur_installe()
+        assert erreur is not None, (
+            "un dossier sans le moindre navigateur s'est déclaré prêt à naviguer")
+        assert "playwright install chromium" in erreur, (
+            "un refus doit nommer la commande qui le répare")
+
+    def test_l_emplacement_vient_de_playwright_jamais_devine(self, monkeypatch, tmp_path):
+        """Le chemin annoncé doit être celui que Playwright résout lui-même —
+        il diffère entre Linux, macOS et le Windows du propriétaire."""
+        monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
+        erreur = module._verifier_navigateur_installe()
+        assert str(tmp_path) in erreur, (
+            "la sonde a ignoré PLAYWRIGHT_BROWSERS_PATH : elle devine un chemin")
+
+    def test_le_moteur_de_base_consulte_vraiment_le_navigateur(self, monkeypatch):
+        """**Le test qui manquait.** Les deux d'au-dessus vérifient la règle
+        du navigateur ; celui-ci vérifie qu'elle est BRANCHÉE.
+
+        Sans lui, retirer l'appel à `_verifier_navigateur_installe` dans
+        `_verifier_moteur_de_base` laissait les quinze tests de ce fichier au
+        vert — sabotage mesuré le 07/09/2026, exactement la même faute que
+        celle trouvée le même jour sur le filtre de clonage vocal : un test
+        qui remplace la fonction qu'il prétend vérifier ne vérifie rien.
+        """
+        appele = []
+
+        def refus():
+            appele.append(True)
+            return "aucun navigateur : « playwright install chromium » manque."
+
+        monkeypatch.setattr(module, "_verifier_navigateur_installe", refus)
+
+        erreur = _MOTEUR_DE_BASE_REEL()
+
+        assert appele, (
+            "`_verifier_moteur_de_base` ne consulte pas le navigateur : "
+            "les paquets Python suffisent de nouveau à s'annoncer prêt")
+        assert erreur is not None and "playwright install chromium" in erreur
 
 
 class TestSansLightpandaConfigure:
