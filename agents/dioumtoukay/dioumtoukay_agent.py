@@ -44,6 +44,7 @@ from core.memory.conversation import retenir_l_echange
 from core.memory.memory_manager import MemoryManager
 from core.memory.personnelle import MemoirePersonnelle
 from core.models.base import ModelProvider
+from core.specialistes.selection import bloc_de_methode, choisir
 from tools.atelier.atelier import Atelier, Resultat
 
 logger = logging.getLogger("usman.agent.dioumtoukay")
@@ -296,6 +297,15 @@ class DioumtoukayAgent(BaseAgent):
         # pour redire ce que le journal du travail raconte deja mieux.
         reperes = self._reperes()
 
+        # La methode d'un specialiste (`debugging`/`tests`/`architecture`...,
+        # `core/specialistes/catalogue.py`) n'atteignait jamais Dioumtoukay :
+        # ATELIER etait meme absent de l'audit qui verifie que chaque
+        # intention utile a une methode ou une raison ecrite. Calculee une
+        # fois, comme les reperes : la demande ne change pas en cours de
+        # travail.
+        methode = bloc_de_methode(choisir(user_input, "ATELIER"))
+        consigne = f"{CONSIGNE}\n\n{methode}" if methode else CONSIGNE
+
         journal_du_travail: List[str] = []
         rendu: List[Dict[str, Any]] = []
         conclusion = ""
@@ -313,7 +323,7 @@ class DioumtoukayAgent(BaseAgent):
 
             invite = self._invite(reperes, user_input, journal_du_travail)
             try:
-                reponse = await self.provider.generate(prompt=invite, system_prompt=CONSIGNE)
+                reponse = await self.provider.generate(prompt=invite, system_prompt=consigne)
             except Exception as erreur:  # noqa: BLE001 — l'echec se nomme
                 logger.warning("Dioumtoukay : le moteur n'a pas repondu : %s", erreur)
                 conclusion = f"Le moteur n'a pas repondu au tour {tour} : {erreur}"

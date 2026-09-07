@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 from core.agent.base_agent import BaseAgent
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
+from core.specialistes.selection import bloc_de_methode, choisir
 from tools.code.sandbox_interpreter import SandboxInterpreterTool
 
 logger = logging.getLogger("usman.agent.coder")
@@ -23,11 +24,19 @@ class CoderAgent(BaseAgent):
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         logger.info("CoderAgent au travail dans OpenSandbox...")
 
+        # Meme defaut que DEC-0061 (OpenViking) : une methode de specialiste
+        # declaree pour CODE_EXECUTION (`tests`, `frontend`, `donnees`,
+        # `core/specialistes/catalogue.py`) n'atteignait jamais cet agent —
+        # seul le repli conversationnel la composait, un chemin que
+        # CODE_EXECUTION ne prend jamais puisqu'il est deja aiguille ici.
+        methode = bloc_de_methode(choisir(user_input, "CODE_EXECUTION"))
+
         prompt = (
             "Tu es CoderAgent, un expert absolu en Python et programmation.\n"
             "Écris un script Python valide et autonome pour résoudre ce problème.\n"
             "Ne mets AUCUN texte explicatif, réponds UNIQUEMENT avec le bloc de code Python dans des balises ```python ... ```.\n\n"
             f"Problème: {user_input}"
+            + (f"\n\n{methode}" if methode else "")
         )
 
         raw_code = await self.provider.generate(prompt=prompt)

@@ -32,6 +32,16 @@ async def test_le_plan_est_renvoye_et_la_reserve_de_lecture_seule_affichee(agent
     assert "ne modifie aucun fichier" in res["response"]
 
 
+async def test_la_methode_de_specialiste_atteint_le_modele(agent):
+    """Le défaut de DEC-0061, sur un autre agent : `architecture`/`tests`
+    (catalogue de spécialistes) étaient déclarés pour REPO_ENGINEERING mais
+    n'atteignaient jamais cet agent — seul le repli conversationnel les
+    composait, un chemin que REPO_ENGINEERING ne prend jamais."""
+    await agent.run("quelle architecture pour ce module de logs")
+
+    assert "MÉTHODE DE SPÉCIALISTE" in agent.provider.appels[0]["prompt"]
+
+
 async def test_l_agent_n_ecrit_rien_sur_le_disque(agent, monkeypatch):
     """Lecture seule : toute écriture doit être absente, pas seulement annoncée."""
     def interdit(*args, **kwargs):
