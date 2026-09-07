@@ -241,6 +241,37 @@ def test_le_compteur_de_modules_de_CLAUDE_md_est_a_jour():
         "Relance `python scripts/orphelins.py` et reporte les deux nombres.")
 
 
+def test_le_nombre_de_verifications_de_CLAUDE_md_est_a_jour():
+    """`CLAUDE.md` annonce combien de vérifications fait `scripts/doctor.py`.
+
+    **Mesuré le 07/09/2026**, pendant la vérification demandée par le
+    propriétaire : le fichier annonçait « Vingt-deux vérifications réelles »
+    alors que le diagnostic en faisait **27**. Exactement la même faute que le
+    compteur de modules juste au-dessus — et elle avait échappé pour une
+    raison simple : ce compteur-là était tenu par un test, celui-ci ne
+    l'était pas.
+
+    Le compte est **statique** : lire le source suffit, et lancer le vrai
+    diagnostic coûterait des dizaines de secondes d'attente réseau à chaque
+    exécution de la suite.
+    """
+    import inspect
+    import re
+    import sys
+
+    sys.path.insert(0, str(RACINE / "scripts"))
+    import doctor
+
+    # `mesurer("` — l'appel, jamais la mention `mesurer()` de la docstring.
+    combien = len(re.findall(r'mesurer\("', inspect.getsource(doctor.diagnostiquer)))
+    claude = (RACINE / "CLAUDE.md").read_text(encoding="utf-8")
+
+    assert combien > 0, "le comptage des vérifications ne trouve plus rien"
+    assert f"**{combien} vérifications**" in claude, (
+        f"CLAUDE.md annonce un nombre de vérifications périmé. Mesure du "
+        f"jour : {combien}. Corrige la phrase « **N vérifications** ».")
+
+
 # --- La fiche des commandes du proprietaire ---------------------------------------
 #
 # Ecrite le 04/09/2026 a sa demande : « garde en memoire toutes les commandes qui

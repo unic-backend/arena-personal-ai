@@ -399,6 +399,43 @@ class TestAiguillageDeLAudio:
         assert agent._classer_par_mots_cles(phrase) == attendu
 
 
+class TestLeClonageVocalEstJoignable:
+    """DEC-0065 était injoignable — mesuré le 07/09/2026, par la vérification
+    qu'il a demandée.
+
+    L'agent audio savait cloner, le connecteur savait cloner, la permission
+    existait, un test couvrait chaque morceau — et **aucune phrase du
+    propriétaire n'arrivait jusque-là** : « clone cette voix » partait chez le
+    PLAQUISTE, « clonage vocal » au CHAT, et « clone ma voix » chez SOCIAL,
+    parce que `RESEAUX` contient « ma voix » (son style d'écriture) et passe
+    avant l'audio. Exactement le défaut de DEC-0061, sur du code neuf.
+
+    C'est le test qui manquait : il part de la PHRASE, pas de la capacité.
+    """
+
+    @pytest.mark.parametrize("phrase", [
+        "clone cette voix avec l'autorisation du client",
+        "clone la voix de ce client",
+        "clonage vocal de cet enregistrement",
+        "cloner cette voix pour la narration",
+        # Celle-ci partait chez SOCIAL : « ma voix » est un mot des RESEAUX.
+        "clone ma voix pour la voix off",
+    ])
+    def test_une_demande_de_clonage_va_a_l_audio(self, fake_provider, phrase):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == "AUDIO"
+
+    @pytest.mark.parametrize("phrase,attendu", [
+        # « clone » seul n'est pas un mot d'audio : cloner un dépôt reste du code.
+        ("clone ce dépôt github", "REPO_ENGINEERING"),
+        # Son style d'écriture (`tools/social/voix.py`), pas sa parole.
+        ("écris ce post avec ma voix", "SOCIAL"),
+    ])
+    def test_le_clonage_ne_capture_pas_ses_voisins(self, fake_provider, phrase, attendu):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == attendu
+
+
 class TestAiguillageDuProjetVideo:
     """DEC-0037 : une phrase composite (« analyse ces photos et fais-en une
     vidéo avec narration ») porte aussi les mots de VISION/AUDIO — sans ce

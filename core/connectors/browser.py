@@ -63,6 +63,9 @@ au code — comme toute règle de ce fichier.
 import asyncio
 import logging
 import os
+import re
+import subprocess
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Optional
@@ -81,6 +84,10 @@ DELAI_SECONDES = 120.0
 #: La sonde Lightpanda doit répondre vite : sinon, ce n'est pas la peine
 #: d'attendre avant de basculer sur le moteur existant.
 DELAI_SONDE_LIGHTPANDA = 2.0
+#: `playwright install --dry-run` ne télécharge rien et ne lance aucun
+#: navigateur : mesuré à 0,4 s. La borne protège d'un environnement Python
+#: cassé, elle n'est pas un budget d'attente normal.
+DELAI_SONDE_NAVIGATEUR = 15.0
 
 CE_QUI_MANQUE = (
     "browser-use/Playwright ne sont pas installés : "
@@ -90,18 +97,63 @@ CE_QUI_MANQUE = (
 
 
 def _verifier_moteur_de_base() -> Optional[str]:
-    """`None` si browser-use + langchain-openai sont importables, sinon le
-    message d'erreur. Séparée de `sonder()` pour que les tests substituent
-    la disponibilité du moteur sans installer le vrai paquet : la CI hors
-    ligne (`.github/workflows/ci.yml`) n'installe jamais browser-use/
-    Playwright — volontairement, comme tout paquet lourd testé par un
-    connecteur plutôt que par lui-même — donc seul le ROUTAGE de ce
-    connecteur doit dépendre de sa présence, jamais ses propres tests."""
+    """`None` si browser-use + langchain-openai sont importables **et** qu'un
+    navigateur est réellement installé, sinon le message d'erreur.
+
+    Séparée de `sonder()` pour que les tests substituent la disponibilité du
+    moteur sans installer le vrai paquet : la CI hors ligne
+    (`.github/workflows/ci.yml`) n'installe jamais browser-use/Playwright —
+    volontairement, comme tout paquet lourd testé par un connecteur plutôt que
+    par lui-même — donc seul le ROUTAGE de ce connecteur doit dépendre de sa
+    présence, jamais ses propres tests."""
     try:
         import browser_use  # noqa: F401
         import langchain_openai  # noqa: F401
     except ImportError as erreur:
         return str(erreur)
+    return _verifier_navigateur_installe()
+
+
+def _verifier_navigateur_installe() -> Optional[str]:
+    """`None` si un navigateur existe là où Playwright le cherche.
+
+    **Défaut mesuré le 07/09/2026**, sur demande de vérification du
+    propriétaire. La sonde ne testait que l'import de deux paquets Python et
+    annonçait « Navigation autonome disponible (Chromium local) » — prouvé en
+    pointant `PLAYWRIGHT_BROWSERS_PATH` sur un dossier vide : la sonde disait
+    encore `OPERATIONAL`. Or `pip install playwright` **n'installe aucun
+    navigateur** : `playwright install chromium` est une seconde étape, et
+    c'est précisément celle qu'on oublie. La capacité s'annonçait donc
+    disponible pour échouer au premier usage réel.
+
+    L'emplacement n'est jamais DEVINÉ : il est demandé à Playwright
+    (`playwright install --dry-run`), qui applique ses propres règles
+    (`PLAYWRIGHT_BROWSERS_PATH`, défauts par système d'exploitation).
+    Réimplémenter cette résolution ici reviendrait à supposer — et elle
+    diffère entre Linux, macOS et le Windows du propriétaire.
+    """
+    try:
+        sortie = subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "--dry-run", "chromium"],
+            capture_output=True, text=True, timeout=DELAI_SONDE_NAVIGATEUR)
+    except (OSError, subprocess.SubprocessError) as erreur:
+        return f"playwright n'a pas répondu : {erreur}"
+
+    if sortie.returncode != 0:
+        detail = (sortie.stderr or sortie.stdout or "").strip()
+        return f"playwright install --dry-run a échoué : {detail[:200]}"
+
+    emplacements = re.findall(r"Install location:\s*(.+)", sortie.stdout)
+    if not emplacements:
+        return "playwright n'annonce aucun emplacement d'installation."
+
+    # La PREMIÈRE ligne est celle du navigateur demandé ; les suivantes sont
+    # ses compagnons (ffmpeg, headless shell), dont l'absence n'empêche pas
+    # de naviguer.
+    navigateur = emplacements[0].strip()
+    if not os.path.isdir(navigateur):
+        return (f"aucun navigateur dans {navigateur} : "
+                "« playwright install chromium » n'a jamais été lancé.")
     return None
 
 

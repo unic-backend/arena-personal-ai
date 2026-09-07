@@ -239,6 +239,23 @@ AUDIO = (
     "quelles voix", "quels moteurs audio", "moteurs de voix",
 )
 
+#: CLONER une voix (DEC-0065). Groupe distinct d'AUDIO, et teste bien plus
+#: tot — avant les RESEAUX — pour une raison mesuree le 07/09/2026 :
+#: `RESEAUX` contient « ma voix », qui parle de son STYLE D'ECRITURE
+#: (`tools/social/voix.py`), pas de parole. « clone ma voix pour la voix
+#: off » partait donc chez SOCIAL, et « clone cette voix » chez le
+#: PLAQUISTE : la capacite existait dans l'agent, dans le connecteur et
+#: dans les permissions, mais AUCUNE phrase du proprietaire ne l'atteignait.
+#: Meme defaut que DEC-0061, trouve sur du code neuf par la verification
+#: qu'il a demandee.
+#:
+#: Chaque entree porte « voix » ou « vocal » : « clone » seul capterait
+#: « clone ce depot github », qui n'a rien d'audio.
+CLONAGE_VOCAL = (
+    "clone cette voix", "clone la voix", "cloner cette voix",
+    "cloner la voix", "clonage vocal", "clone ma voix", "clone sa voix",
+)
+
 #: ANALYSER des visages sur une image : compter, situer, reperer, comparer.
 #: Distinct de VISION (comprendre une image en general) et de la generation de
 #: visage de Xaar Kaname : ici on MESURE, on ne fabrique rien.
@@ -690,6 +707,13 @@ class OrchestratorAgent(BaseAgent):
         research_keywords = ["étude complète", "rapport détaillé", "recherche approfondie", "étude de marché", "dossier complet"]
         if any(k in text for k in research_keywords):
             return "DEEP_RESEARCH"
+
+        # Cloner une voix. Teste AVANT les reseaux : « ma voix » y designe son
+        # style d ecriture, et captait « clone ma voix » (mesure du 07/09/2026).
+        # Cloner une voix. Teste AVANT les reseaux : « ma voix » y designe son
+        # style d ecriture, et captait « clone ma voix » (mesure du 07/09/2026).
+        if any(k in text for k in CLONAGE_VOCAL):
+            return "AUDIO"
 
         # Ses reseaux. Teste AVANT le metier, pour la meme raison que la video :
         # le sujet d une publication est souvent son metier.

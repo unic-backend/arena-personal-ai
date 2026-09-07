@@ -121,9 +121,13 @@ Ce que la machine a vraiment, où qu'elle soit, se mesure :
 python scripts/doctor.py
 ```
 
-Vingt-deux vérifications réelles, chacune avec la commande qui la répare. Aucun
+**27 vérifications** réelles, chacune avec la commande qui la répare. Aucun
 `[OK]` n'y est affirmé sans mesure — ce fichier l'a fait, une fois, et un test
 l'en empêche désormais.
+
+Ce nombre-ci avait vieilli pareil : il annonçait « vingt-deux » alors que le
+diagnostic en faisait 27 (mesuré le 07/09/2026). Un test le compte maintenant,
+comme celui des modules — les deux chiffres de ce fichier sont désormais tenus.
 
 ---
 

@@ -5135,3 +5135,84 @@ pourrait cloner une voix sans qu'aucune autorisation n'ait jamais été
 déclarée — exactement le risque d'usurpation que la mission signalait, et
 la raison pour laquelle ce refus vit dans `_cloner` et pas seulement dans
 `resultat_attendu`.
+
+---
+
+## DEC-0066 — Vérification demandée : trois capacités mentaient, dont une écrite une heure plus tôt
+
+**2026-09-07.** Le propriétaire demande de vérifier que tout ce qui a été
+installé, codé, ajouté est réellement opérationnel — « réveille ce qui dort,
+ce qui marche pas, ce qui bug, ce qui est mal exécuté ». Trois défauts réels
+trouvés, chacun prouvé avant d'être corrigé.
+
+### Ce qui allait bien, mesuré
+
+`python scripts/orphelins.py` → 207 modules, 165 atteints, **aucun module
+réel endormi** (les 42 restants sont des `__init__.py`, plus le pont
+Faceplugin lancé en sous-processus — exemption re-vérifiée : elle nomme son
+lanceur, et ce lanceur l'appelle toujours). Les **28 connecteurs enregistrés
+rapportent tous leur santé sans planter** ; `galsen` est en panne pour une
+raison honnête (le proxy de cette machine bloque son API), pas pour un
+défaut de code. `ruff` propre, 3938 tests verts avant cette passe.
+
+### Défaut 1 — le clonage vocal était injoignable (le plus grave)
+
+DEC-0065 avait été livré une heure plus tôt : capacité `cloner` dans le
+connecteur, déclencheurs dans l'agent audio, permission HIGH dédiée, 23 tests,
+deux sabotages. **Et aucune phrase du propriétaire ne pouvait l'atteindre.**
+L'orchestrateur — le seul classificateur quand Ollama est éteint — envoyait
+« clone cette voix » au PLAQUISTE, « clonage vocal » au CHAT, et « clone ma
+voix » à SOCIAL (parce que `RESEAUX` contient « ma voix », son style
+d'écriture, et passe avant l'audio).
+
+Chaque morceau était testé ; le chemin complet ne l'était pas. C'est
+exactement DEC-0061, et exactement ce que la mission « réveiller ce qui dort »
+prétendait avoir clos — sur du code neuf, écrit après elle. Correctif :
+`CLONAGE_VOCAL`, groupe distinct testé avant les réseaux, et un test qui part
+de **la phrase**, jamais de la capacité.
+
+### Défaut 2 — le navigateur s'annonçait prêt sans exister
+
+`ConnecteurBrowser.sonder()` rendait `OPERATIONAL` avec le message
+« Navigation autonome disponible (Chromium local) » alors que sa seule mesure
+était l'import de deux paquets Python. Prouvé en pointant
+`PLAYWRIGHT_BROWSERS_PATH` sur un dossier vide : la sonde disait encore
+`OPERATIONAL`. Et ce n'était pas théorique — sur cette machine, un lancement
+réel échouait : `Executable doesn't exist at .../chrome-headless-shell`.
+
+`pip install playwright` **n'installe aucun navigateur** ; `playwright install
+chromium` est une seconde étape, et c'est celle qu'on oublie. La sonde
+demande maintenant son emplacement à Playwright lui-même
+(`playwright install --dry-run`, 0,4 s) plutôt que de le deviner — la
+résolution diffère entre Linux, macOS et le Windows du propriétaire, et
+la réimplémenter ici aurait été une supposition de plus.
+
+### Défaut 3 — un compteur périmé dans le fichier lu en premier
+
+`CLAUDE.md` annonçait « Vingt-deux vérifications réelles » ; `doctor.py` en
+fait **27**. Même faute que le compteur de modules corrigé le 03/09/2026 — et
+elle avait survécu pour une raison nette : ce compteur-là était tenu par un
+test, celui-ci ne l'était pas. Il l'est maintenant.
+
+### Le sabotage qui a raté, et ce qu'il a appris
+
+Le premier sabotage de la sonde navigateur **est passé au vert** : les
+nouveaux tests vérifiaient la règle du navigateur, jamais son BRANCHEMENT
+dans `_verifier_moteur_de_base`. Un test qui remplace la fonction qu'il
+prétend vérifier ne vérifie rien — la même faute que celle attrapée la veille
+sur le filtre `supports_cloning`, deux fois en deux jours. Un test dédié au
+branchement a été ajouté ; le second sabotage tombe.
+
+12 tests neufs (3975 collectés contre 3963), `ruff` propre, 3950 passed /
+25 skipped, `orphelins.py` inchangé (207/165).
+
+### Ce que ça coûte si c'est faux
+
+Les trois défauts ont la même forme : **une capacité qui se déclare sans que
+personne n'ait joué son chemin complet**. Un connecteur qui s'annonce prêt
+envoie le propriétaire vers un échec au premier usage ; une capacité que
+l'orchestrateur n'aiguille pas est du code mort qui coûte quand même sa
+maintenance ; un compteur périmé dans `CLAUDE.md` oriente chaque session
+suivante sur un état qui n'existe plus. Aucun des trois n'aurait été trouvé
+par la suite de tests telle qu'elle était : ils vivaient tous dans l'espace
+entre deux morceaux corrects.

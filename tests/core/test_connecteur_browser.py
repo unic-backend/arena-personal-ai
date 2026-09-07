@@ -2,6 +2,9 @@
 tenté en premier quand configuré et sain, repli automatique et silencieux
 sur le moteur existant (Chromium/Playwright) sur tout échec.
 """
+import importlib.util
+import sys
+import types
 from typing import Any, Dict, Optional
 
 import pytest
@@ -10,6 +13,23 @@ import core.connectors.browser as module
 from core.actions.resultat import Statut
 from core.connectors.base import EtatSante
 from core.connectors.browser import ConnecteurBrowser
+
+#: La VRAIE règle du moteur de base, capturée avant que la fixture autouse
+#: ne la remplace par un double. Sans cette référence, aucun test de ce
+#: fichier ne peut vérifier que `_verifier_moteur_de_base` consulte
+#: réellement `_verifier_navigateur_installe` — et un sabotage du
+#: branchement passait inaperçu (mesuré le 07/09/2026).
+_MOTEUR_DE_BASE_REEL = module._verifier_moteur_de_base
+
+#: `playwright` n'est PAS installé sur le CI — volontairement, comme tout
+#: paquet lourd de ce dépôt. Les deux tests qui interrogent sa vraie
+#: résolution de chemins sont donc sautés là-bas ; **sauter n'est pas
+#: passer**, et le rapport de pytest le dit. Le test qui compte vraiment —
+#: celui du BRANCHEMENT, qui attrape le sabotage — n'a besoin d'aucun paquet
+#: et tourne partout.
+_SANS_PLAYWRIGHT = pytest.mark.skipif(
+    importlib.util.find_spec("playwright") is None,
+    reason="playwright absent : sa résolution de chemins ne peut pas être mesurée ici")
 
 
 class FauxOutil:
@@ -52,6 +72,98 @@ class TestSante:
         monkeypatch.setattr(module, "_verifier_moteur_de_base",
                             lambda: "No module named 'browser_use'")
         assert ConnecteurBrowser(outil=FauxOutil()).sonder().etat is EtatSante.NON_CONFIGURE
+
+    def test_un_navigateur_absent_rend_la_sonde_non_configuree(self, monkeypatch):
+        """Le refus du navigateur doit remonter jusqu'à la santé, pas rester
+        dans une fonction que personne ne consulte."""
+        monkeypatch.setattr(
+            module, "_verifier_moteur_de_base",
+            lambda: "aucun navigateur dans /x : "
+                    "« playwright install chromium » n'a jamais été lancé.")
+        sante = ConnecteurBrowser(outil=FauxOutil()).sonder()
+        assert sante.etat is EtatSante.NON_CONFIGURE
+        assert "playwright install chromium" in sante.message
+
+
+class TestLaSondeNAnnoncePasUnNavigateurAbsent:
+    """**Défaut mesuré le 07/09/2026**, sur demande de vérification.
+
+    `_verifier_moteur_de_base` ne testait que l'import de `browser_use` et
+    `langchain_openai`. En pointant `PLAYWRIGHT_BROWSERS_PATH` sur un dossier
+    vide, la sonde annonçait encore « Navigation autonome disponible (Chromium
+    local) » — et un lancement réel échouait aussitôt
+    (`Executable doesn't exist at ...`). `pip install playwright` n'installe
+    aucun navigateur : `playwright install chromium` est une seconde étape.
+    """
+
+    @_SANS_PLAYWRIGHT
+    def test_un_dossier_de_navigateurs_vide_est_refuse(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
+        erreur = module._verifier_navigateur_installe()
+        assert erreur is not None, (
+            "un dossier sans le moindre navigateur s'est déclaré prêt à naviguer")
+        assert "playwright install chromium" in erreur, (
+            "un refus doit nommer la commande qui le répare")
+
+    @_SANS_PLAYWRIGHT
+    def test_l_emplacement_vient_de_playwright_jamais_devine(self, monkeypatch, tmp_path):
+        """Le chemin annoncé doit être celui que Playwright résout lui-même —
+        il diffère entre Linux, macOS et le Windows du propriétaire."""
+        monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
+        erreur = module._verifier_navigateur_installe()
+        assert str(tmp_path) in erreur, (
+            "la sonde a ignoré PLAYWRIGHT_BROWSERS_PATH : elle devine un chemin")
+
+    @staticmethod
+    def _paquets_importables(monkeypatch):
+        """Fait réussir `import browser_use` / `import langchain_openai` sans
+        les installer.
+
+        Le CI ne les a pas — volontairement — et ce test-ci doit tourner
+        **là-bas aussi** : c'est lui qui attrape le sabotage. Substituer les
+        modules plutôt que la fonction testée garde la vraie règle en jeu.
+        """
+        for nom in ("browser_use", "langchain_openai"):
+            if nom not in sys.modules:
+                monkeypatch.setitem(sys.modules, nom, types.ModuleType(nom))
+
+    def test_le_moteur_de_base_consulte_vraiment_le_navigateur(self, monkeypatch):
+        """**Le test qui manquait.** Les deux d'au-dessus vérifient la règle
+        du navigateur ; celui-ci vérifie qu'elle est BRANCHÉE.
+
+        Sans lui, retirer l'appel à `_verifier_navigateur_installe` dans
+        `_verifier_moteur_de_base` laissait les quinze tests de ce fichier au
+        vert — sabotage mesuré le 07/09/2026, exactement la même faute que
+        celle trouvée le même jour sur le filtre de clonage vocal : un test
+        qui remplace la fonction qu'il prétend vérifier ne vérifie rien.
+        """
+        self._paquets_importables(monkeypatch)
+        appele = []
+
+        def refus():
+            appele.append(True)
+            return "aucun navigateur : « playwright install chromium » manque."
+
+        monkeypatch.setattr(module, "_verifier_navigateur_installe", refus)
+
+        erreur = _MOTEUR_DE_BASE_REEL()
+
+        assert appele, (
+            "`_verifier_moteur_de_base` ne consulte pas le navigateur : "
+            "les paquets Python suffisent de nouveau à s'annoncer prêt")
+        assert erreur is not None and "playwright install chromium" in erreur
+
+    def test_des_paquets_absents_priment_sur_le_navigateur(self, monkeypatch):
+        """L'ordre compte : sans `browser_use`, inutile de chercher un
+        navigateur — c'est le paquet qu'il faut installer d'abord, et c'est
+        son message que le propriétaire doit lire."""
+        monkeypatch.setattr(module, "_verifier_navigateur_installe",
+                            lambda: pytest.fail(
+                                "le navigateur a été sondé alors que le paquet manque"))
+        for nom in ("browser_use", "langchain_openai"):
+            monkeypatch.setitem(sys.modules, nom, None)  # force l'ImportError
+
+        assert _MOTEUR_DE_BASE_REEL() is not None
 
 
 class TestSansLightpandaConfigure:
