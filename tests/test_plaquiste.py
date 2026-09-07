@@ -1855,3 +1855,160 @@ class TestLePdfDeDemonstrationPasseSansQuestion:
         assert document.get("statut") == "INCOMPLET"
         assert sorted(document["manquants"]) == ["client", "lieu", "objet"]
         assert recu == {}, "rien ne doit partir au connecteur sans destinataire"
+
+
+class TestSesPhrasesReellesSontLues:
+    """Sa capture d'écran du 07/09/2026, et ce qu'elle a révélé.
+
+    Il écrit — toutes les cotes y sont :
+
+        « Fais-moi une cloison de 5 m sur 2,5 m, avec une porte de 80 × 210 cm. »
+
+    et reçoit trois questions de formulaire. Son mot : *« il se base toujours
+    sur une conduite de réponse alors qu'il devrait réfléchir et se baser sur
+    mes réponses »*.
+
+    Le défaut avait **deux étages**, et le premier expliquait le second :
+
+    1. `metre.py` exigeait un CHIFFRE avant le nom (« 18 parois de… ») et ne
+       connaissait pas le mot « sur ». Sa phrase la plus naturelle — une seule
+       cloison — n'était donc jamais lue, aucun calcul n'était injecté, et le
+       modèle n'avait **rien** à dire.
+    2. Sans chiffres, il retombait sur les trois questions.
+
+    Ces tests partent de ses phrases, jamais d'un cas de laboratoire.
+    """
+
+    SA_PHRASE = "Fais-moi une cloison de 5 m sur 2,5 m, avec une porte de 80 × 210 cm."
+
+    def test_sa_phrase_exacte_est_enfin_lue(self):
+        from agents.plaquiste.metre import lire_demande
+
+        demande = lire_demande(self.SA_PHRASE)
+
+        assert demande is not None, (
+            "sa phrase n'est toujours pas lue : il recevra encore un formulaire")
+
+    def test_la_porte_est_deduite_de_la_surface(self):
+        """12,5 m² de mur moins 1,68 m² de porte = 10,82 m² à plaquer.
+
+        Aucun module du dépôt ne déduisait une ouverture avant le 07/09/2026 :
+        une cloison avec porte était chiffrée comme une cloison pleine — plus
+        de plaques, plus de vis, plus d'enduit, et un prix trop haut.
+        """
+        from agents.plaquiste.metre import lire_demande
+
+        demande = lire_demande(self.SA_PHRASE)
+
+        assert demande.surface == 10.82
+        assert demande.ouvertures == 1.68
+
+    def test_la_lecture_est_dite_en_toutes_lettres(self):
+        """Il doit pouvoir démentir la lecture d'un coup d'œil."""
+        from agents.plaquiste.metre import lire_demande
+
+        lu = lire_demande(self.SA_PHRASE).lu
+
+        assert "12.5 m2" in lu, "la surface brute n'est pas montree"
+        assert "1.68 m2" in lu, "la porte deduite n'est pas montree"
+        assert "10.82 m2 a plaquer" in lu
+
+    @pytest.mark.parametrize("phrase,attendue", [
+        ("une cloison de 5 m sur 2,5 m", 12.5),
+        ("cloison de 5 m x 2,5 m", 12.5),
+        ("un mur de 4 par 2,5", 10.0),
+        ("deux cloisons de 3 sur 2,5 m", 15.0),
+        ("18 parois de 5,40 x 2,50 m", 243.0),
+    ])
+    def test_les_facons_dont_il_ecrit_une_paroi(self, phrase, attendue):
+        """« sur » manquait, et c'est le séparateur le plus courant à l'oral."""
+        from agents.plaquiste.metre import lire_demande
+
+        demande = lire_demande(phrase)
+
+        assert demande is not None, f"« {phrase} » n'est pas lue"
+        assert demande.surface == attendue
+
+    def test_sans_compte_c_est_une_paroi_pas_zero(self):
+        from agents.plaquiste.metre import lire_demande
+
+        assert lire_demande("cloison de 5 m sur 2,5 m").parois == 1
+
+    def test_une_phrase_sans_dimension_ne_fabrique_rien(self):
+        """Ne rien lire reste une réponse valide, pas un échec."""
+        from agents.plaquiste.metre import lire_demande
+
+        assert lire_demande("bonjour, ca va ?") is None
+        assert lire_demande("tu peux m'aider ?") is None
+
+
+class TestLesOuverturesNeSontPasDevinees:
+    def test_les_centimetres_sont_convertis(self):
+        from agents.plaquiste.metre import lire_ouvertures
+
+        surface, dit = lire_ouvertures("une porte de 80 × 210 cm")
+
+        assert surface == 1.68
+        assert "0.8 x 2.1 m" in dit
+
+    def test_sans_unite_une_grande_cote_est_lue_en_centimetres(self):
+        """Une porte ne fait jamais 80 metres. La lecture est dite, donc discutable."""
+        from agents.plaquiste.metre import lire_ouvertures
+
+        assert lire_ouvertures("une porte de 80 x 210")[0] == 1.68
+
+    def test_les_metres_restent_des_metres(self):
+        from agents.plaquiste.metre import lire_ouvertures
+
+        assert lire_ouvertures("deux fenetres de 1,2 x 1 m")[0] == 2.4
+
+    def test_aucune_ouverture_nommee_rend_zero_et_rien_d_autre(self):
+        """Un texte sans porte n'est pas une porte de surface nulle."""
+        from agents.plaquiste.metre import lire_ouvertures
+
+        assert lire_ouvertures("une cloison de 5 m sur 2,5 m") == (0.0, "")
+
+    def test_une_ouverture_plus_grande_que_le_mur_ne_donne_pas_une_surface_negative(self):
+        """Si les cotes disent l'impossible, c'est la LECTURE qui est fausse.
+
+        Mieux vaut un metre trop haut, visible et discutable, qu'un zero qui
+        passerait pour une mesure.
+        """
+        from agents.plaquiste.metre import lire_demande
+
+        demande = lire_demande("une cloison de 1 m sur 1 m avec une porte de 80 x 210 cm")
+
+        assert demande.surface == 1.0, "la surface brute doit etre gardee telle quelle"
+        assert demande.ouvertures == 0.0
+
+
+class TestLesTroisQuestionsNeBarrentPlusLaRoute:
+    """Elles protègent un document qui part. Pas un calcul."""
+
+    def test_l_instruction_dit_de_repondre_avant_de_questionner(self):
+        from agents.plaquiste.plaquiste_agent import charger_metier, composer_instruction
+
+        instruction = composer_instruction(charger_metier(), "cloison de 5 m sur 2,5 m")
+
+        assert "REPONDS D'ABORD" in instruction
+        assert "question technique" in instruction
+
+    def test_les_formulations_exactes_survivent(self):
+        """Elles sont lues par `destinataire_depuis_l_historique` : les réécrire
+        casserait l'association entre la question posée et la réponse suivante.
+        """
+        from agents.plaquiste.plaquiste_agent import charger_metier, composer_instruction
+
+        instruction = composer_instruction(charger_metier())
+
+        assert "Quel est le nom du client ?" in instruction
+        assert "Quel est le lieu du chantier ?" in instruction
+        assert "Quelles sont les prestations souhaitees ?" in instruction
+
+    def test_elles_sont_reservees_a_un_document_qui_part(self):
+        from agents.plaquiste.plaquiste_agent import charger_metier, composer_instruction
+
+        instruction = composer_instruction(charger_metier())
+
+        assert "DOCUMENT qui partira chez quelqu'un" in instruction
+        assert "A LA FIN de ta reponse" in instruction

@@ -5676,3 +5676,101 @@ vocabulaire d'ARENA et tout ce qui l'appelle ne bougent pas, seul
 **Si l'épinglage de `zod` saute**, le coût est plus sournois : lectures
 parfaites, écritures muettes. C'est pourquoi le test ne se contente pas d'un
 serveur qui démarre — il crée un mur.
+
+---
+
+## DEC-0071 — « Il se base sur une conduite de réponse » : le formulaire venait d'une lecture qui échouait
+
+**2026-09-07.** Capture d'écran du propriétaire, espace UniC Plaquiste. Il
+écrit — **toutes les cotes y sont** :
+
+> *« Fais-moi une cloison de 5 m sur 2,5 m, avec une porte de 80 × 210 cm. »*
+
+Réponse reçue, en 1,8 s :
+
+> *« Quel est le nom du client ? Quel est le lieu du chantier ? Quelles sont
+> les prestations souhaitées ? »*
+
+Ses mots : *« il se base toujours sur une conduite de réponse alors qu'il
+devrait réfléchir et se baser sur mes réponses »*.
+
+Il a raison, et le défaut n'était pas là où il en avait l'air.
+
+### Le défaut avait deux étages, et le premier expliquait le second
+
+**Étage 1 — la lecture échouait, donc il n'y avait rien à dire.**
+`agents/plaquiste/metre.py` exigeait un **chiffre** avant le nom
+(`(\d+)\s*(?:parois?|cloisons?|murs?)`, le motif de son devis de référence
+« 18 parois de 5,40 x 2,50 m ») et ne connaissait pas le séparateur
+**« sur »**. Mesuré sur sa phrase exacte : `lire_demande` rendait `None`.
+
+Conséquence : `calcul_materiaux` n'était pas appelé, aucune quantité n'était
+injectée dans l'instruction, et le modèle n'avait **aucun chiffre** en main.
+
+**Étage 2 — sans chiffres, il ne restait que le formulaire.**
+`BLOC_VRAI_CLIENT` faisait poser les trois questions dès que le client était
+inconnu. Elles existent pour une bonne raison — un devis part vraiment chez
+quelqu'un, et ARENA n'invente personne — mais elles étaient posées **à
+l'entrée**, y compris pour une question purement technique.
+
+Un métré n'a pas de destinataire. Demander « quel est le nom du client ? »
+pour calculer une surface, c'est un formulaire, pas un métier.
+
+**Étage 3, qu'il n'a pas eu besoin de nommer — la porte n'était déduite nulle
+part.** Aucun module du dépôt ne retirait une ouverture d'une surface. Une
+cloison avec porte était chiffrée comme une cloison pleine : plus de plaques,
+plus de vis, plus d'enduit, et **un prix trop haut**.
+
+### Ce qui a été corrigé
+
+**La lecture.** Le compte devient optionnel et s'écrit en lettres — « une
+cloison » est un compte, exactement comme « 1 cloison », et c'est ainsi qu'il
+parle. « sur » rejoint `x`, `par`, `*` et `×`. Sans compte du tout, c'est une
+paroi : c'est ce que la phrase dit.
+
+**Les ouvertures.** `lire_ouvertures` lit portes, fenêtres, baies, trémies,
+avec leur nombre, et convertit les centimètres. Sans unité, une cote au-delà
+de 10 est lue en centimètres — **une ouverture ne fait jamais 80 mètres** — et
+cette lecture est **dite**, donc démentable d'un coup d'œil.
+
+**Les questions.** Elles restent, mot pour mot (elles sont relues par
+`destinataire_depuis_l_historique` ; les réécrire casserait l'association
+entre la question posée et la réponse suivante). Ce qui change est **quand** :
+répondre d'abord, questionner ensuite, et seulement pour un document qui part
+réellement chez quelqu'un.
+
+### Ce que sa phrase donne maintenant, mesuré
+
+```
+Lecture : 1 paroi de 5 x 2.5 m = 12.5 m2 de surface simple,
+          moins 1 porte de 0.8 x 2.1 m = 1.68 m2,
+          soit 10.82 m2 a plaquer
+```
+
+Puis le calcul réel, avec **sa** grille de prix : 11 plaques BA13, 13 montants
+de 70 mm, 3 rails, enduit, Katex, laine, vis, bandes. Aucune question.
+
+### Un test qui vérifiait une formulation, pas une garantie
+
+`test_l_instruction_demande_au_lieu_de_supposer` cherchait la chaîne
+littérale « tu les demandes ». Réécrire la consigne l'a cassé **sans qu'aucune
+garantie ne soit perdue** — il mesurait des mots, pas un comportement. Il
+vérifie désormais que les trois formulations exactes sont présentes, et un
+second test vérifie qu'elles ne barrent plus une question technique.
+
+C'est le même défaut de fond que les quatre précédents de la semaine, sous une
+autre forme : **un test qui ne mesure pas ce qu'il prétend protéger**.
+
+### Ce que ça coûte si c'est faux
+
+**Si la déduction d'ouverture se trompe**, il voit la lecture en toutes
+lettres dans la réponse et la corrige d'un mot. Une cote mal lue est visible.
+
+**Si elle n'existait pas** — l'état d'avant — le métré était silencieusement
+trop haut sur chaque cloison portant une porte, et rien dans la réponse ne
+permettait de s'en apercevoir. C'est cette asymétrie qui rend la déduction
+obligatoire et son affichage non négociable.
+
+Quand une ouverture est **plus grande que la paroi**, rien n'est déduit et la
+réponse le dit : mieux vaut un métré trop haut, visible et discutable, qu'un
+zéro qui passerait pour une mesure.

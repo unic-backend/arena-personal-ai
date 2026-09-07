@@ -204,3 +204,26 @@ politique interroge l'**action**, pas le nom.
 Cinq sabotages joués, **cinq ont cassé un test**.
 
 `ruff` propre, **4137 passed / 25 skipped**, 217 modules dont 172 atteints.
+
+---
+
+## 2026-09-07 (suite) — le formulaire venait d'une lecture qui échouait
+
+**DEC-0071.** Sa capture : « Fais-moi une cloison de 5 m sur 2,5 m, avec une
+porte de 80 × 210 cm » → trois questions de formulaire. Son mot : *« il se
+base toujours sur une conduite de réponse alors qu'il devrait réfléchir »*.
+
+| Défaut | Correctif |
+|---|---|
+| `metre.py` exigeait un CHIFFRE avant le nom et ignorait « sur » → sa phrase n'était **jamais lue** | compte optionnel et en lettres, « sur » ajouté |
+| **Aucune ouverture n'était déduite** nulle part → cloison avec porte chiffrée comme pleine | `lire_ouvertures` : portes, fenêtres, baies, cm→m |
+| Les trois questions étaient posées **à l'entrée** | répondre d'abord ; questionner à la fin, et seulement pour un document qui part |
+
+Sa phrase donne maintenant : 12,5 m² − 1,68 m² = **10,82 m² à plaquer**, puis
+11 plaques BA13, 13 montants, 3 rails — avec sa grille de prix.
+
+Un test cassé par le correctif vérifiait la chaîne « tu les demandes » : une
+**formulation**, pas une garantie. Réécrit pour mesurer le comportement.
+
+Quatre sabotages joués, quatre ont cassé un test. `ruff` propre,
+**4156 passed / 25 skipped**.
