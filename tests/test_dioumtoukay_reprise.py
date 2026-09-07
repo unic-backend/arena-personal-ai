@@ -61,6 +61,25 @@ def _depot_avec_un_bug(dossier: Path) -> Path:
     return dossier
 
 
+#: **`-B` n'est pas un detail de confort : sans lui ce test est faux.**
+#:
+#: Cause demontree le 07/09/2026, apres deux hypotheses erronees de ma part.
+#: Le premier `pytest` importe `calcul.py` et ecrit `__pycache__/
+#: calcul.cpython-311.pyc`. L'agent remplace ensuite `largeur + hauteur` par
+#: `largeur * hauteur` — **un seul caractere echange, donc une taille de
+#: fichier IDENTIQUE** — et l'ecriture tombe dans le meme tic d'horloge.
+#:
+#: Python valide un `.pyc` sur (mtime, taille). Les deux etant inchanges, le
+#: second `pytest` charge le bytecode PERIME et calcule encore une addition :
+#: `assert 7.5 == 12.5`, l'erreur exacte vue en CI. Vert ici parce que la
+#: granularite du mtime y suffisait a invalider le cache ; rouge la-bas.
+#:
+#: Reproduit deliberement en forcant `os.utime` a l'identique, puis corrige :
+#: `-B` sur les DEUX passages, car il empeche d'ECRIRE le cache, pas de le
+#: lire — le mettre au seul second passage laisse le `.pyc` du premier.
+PYTEST_INTERNE = "ACTION: executer\nCOMMANDE: python -B -m pytest test_calcul.py -q"
+
+
 def _sortie(action: dict) -> str:
     """Tout ce que la commande a ecrit, message compris.
 
@@ -106,9 +125,9 @@ class TestLaBoucleCorrigeUnVraiBug:
         depot = _depot_avec_un_bug(tmp_path / "depot")
         agent = _agent(depot, tmp_path / "j.json", [
             "ACTION: lire\nCHEMIN: calcul.py",
-            "ACTION: executer\nCOMMANDE: python -m pytest test_calcul.py -q",
+            PYTEST_INTERNE,
             REMPLACER,
-            "ACTION: executer\nCOMMANDE: python -m pytest test_calcul.py -q",
+            PYTEST_INTERNE,
             "ACTION: terminer\nCONTENU: bug corrige, tests verts",
         ])
 
@@ -176,7 +195,7 @@ class TestUneTacheInterrompueReprendVraiment:
         # s'arrete sans conclure, donc la tache est INTERROMPUE.
         premier = _agent(depot, fichier, [
             "ACTION: lire\nCHEMIN: calcul.py",
-            "ACTION: executer\nCOMMANDE: python -m pytest test_calcul.py -q",
+            PYTEST_INTERNE,
         ] + ["reponse illisible"] * 3)
         rendu = await premier.run(DEMANDE)
 
