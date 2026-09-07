@@ -5340,3 +5340,89 @@ où il ne transige pas : Lean tranche, le modèle propose, et jamais l'inverse.
 disponible. ARENA vérifie des raisonnements, elle ne refait pas Fermat — et
 le connecteur rapporte `import manquant` quand une preuve demande plus, au
 lieu de faire semblant.
+
+---
+
+## DEC-0068 — Six connecteurs que rien n'atteignait, et un garde-fou qui a dû être écrit trois fois
+
+**2026-09-07.** Audit opérationnel profond demandé par le propriétaire :
+« est-ce qu'ARENA fonctionne réellement, et quelles parties sont réellement
+opérationnelles aujourd'hui ? ». Rapport complet →
+`docs/audits/audit_operationnel_profond_2026-09-07.md`.
+
+### Ce qui allait bien, mesuré
+
+25 intentions déclarées, 25 atteignables par une vraie phrase, 24 aiguillées
+(`CHAT` est le repli). **23 agents sur 23** joignables. Aucun module réel
+endormi (210 modules, 167 atteints). Aucun secret en dur, aucun `shell=True`,
+aucun `TODO`/`FIXME`/placeholder en production, et les quatre `except: pass`
+du dépôt sont typés et légitimes. Les chaînes testables ici — routage,
+permissions, mémoire, vérification formelle, authentification — passent
+toutes, et tout ce qui dépend d'un moteur absent le **dit** au lieu
+d'inventer.
+
+### Le défaut : 6 connecteurs sur 29 qu'aucun code n'appelle
+
+`scripts/orphelins.py` ne pouvait pas les voir : leur fichier **est** importé
+par `runtime.py`, donc jamais orphelin — alors qu'aucun appelant ne les
+exécute. C'est DEC-0061 et DEC-0066 une troisième fois, à l'échelle :
+`gitingest`, `formbricks`, `galsen`, `graphify`, `txtai_search`,
+`workflow_guide`.
+
+**Corrigé : `gitingest`.** `RepoEngineerAgent` — l'agent qui analyse des
+architectures — le faisait avec **30 lignes d'arborescence tronquée**,
+pendant que le connecteur fait pour ça (« transforme un dépôt en résumé,
+arbre et contenu ») dormait. Il l'appelle désormais, avec repli honnête, et
+le prompt dit sa source (`gitingest` ou `arborescence`).
+
+**Non corrigés : les cinq autres, et c'est une décision.** Les brancher
+demande de choisir *où*, et ce choix appartient au propriétaire — un
+connecteur de sondages ou de données publiques n'a pas d'emplacement
+évident. Les câbler au jugé aurait créé des chemins que personne n'emprunte,
+c'est-à-dire le même défaut sous une autre forme.
+
+**Ce qui empêche la récidive** : `tests/test_connecteurs_dormants.py` mesure,
+pour chaque connecteur enregistré, s'il est nommé en argument d'un appel
+réel, et échoue **dans les deux sens** — un connecteur neuf qui s'endort sans
+être déclaré, et un dormant réveillé qu'on aurait oublié de sortir de la
+liste.
+
+### Le résultat le plus utile : trois tests verts sur du code sabordé
+
+Ce garde-fou a dû être réécrit **trois fois**, chaque version passant sur un
+sabotage réel :
+
+1. **`grep`** — comptait les commentaires. Débrancher l'appel laissait le
+   test vert : le mot restait dans la docstring au-dessus.
+2. **AST, égalité exacte** — comptait une étiquette d'affichage
+   (`return vu, "gitingest"`), qui n'appelle rien.
+3. **AST, premier argument du registre** — déclarait mort `claude_context`,
+   qui est appelé via une fonction intermédiaire. Un faux « dormant » sur une
+   capacité vivante est pire que pas de garde-fou.
+
+La règle qui tient : **le nom exact en argument d'un appel**.
+
+Troisième fois en deux jours qu'un test de ce dépôt passe pour la mauvaise
+raison (filtre `supports_cloning`, sonde du navigateur, ici). Le point commun
+est toujours le même : **le test remplaçait ou contournait ce qu'il prétendait
+vérifier**. Seul le sabotage l'a montré, à chaque fois.
+
+### Ce qui a été signalé sans être corrigé
+
+Quatre agents (`plaquiste`, `coder`, `repo_engineer`, `swe`) lèvent une
+`RuntimeError` brute quand aucun modèle ne répond, là où six autres rendent
+un statut avec la raison. **Les deux points d'entrée réels s'en protègent
+déjà** — vérifié en exécution : `/api/chat` teste la disponibilité avant tout
+et enveloppe le reste, `/agent/stream` passe par `chronometrer` qui rend
+l'échec visible. Le propriétaire reçoit un message propre, jamais une 500.
+Corriger quatre agents pour un gain nul sur les chemins réels serait élargir
+le risque sans bénéfice mesuré : signalé, pas maquillé.
+
+### Ce que ça coûte si c'est faux
+
+Un connecteur qui dort coûte sa maintenance, occupe une ligne du diagnostic,
+et se lit comme une capacité disponible dans chaque document qui l'énumère —
+jusqu'au jour où quelqu'un compte dessus. La mesure des modules ne pouvait
+pas l'attraper, et c'est précisément pour ça qu'il fallait une mesure
+séparée : **une garantie qu'aucun test ne tient finit toujours par ne plus
+être vraie.**
