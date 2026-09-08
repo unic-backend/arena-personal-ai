@@ -286,3 +286,38 @@ défaut ailleurs dans le dépôt.
 0 failed** (522.77s, `gitingest`/`txtai`/`ifcopenshell` installés — leur
 absence donnait 57 échecs `ModuleNotFoundError`, aucun lié à cette fusion).
 220 modules dont 175 atteints.
+
+---
+
+## 2026-09-08 (suite) — File_Converter_Pro : une capacité de conversion, pas une deuxième application
+
+**DEC-0074.** Mission : exploiter les capacités utiles de
+`Hyacinthe-primus/File_Converter_Pro` (GPLv3, app de bureau Windows) pour
+ARENA — sans deuxième application, deuxième système documentaire, ou
+deuxième moteur vidéo/PDF.
+
+**Le manque réel, mesuré avant tout code** : aucune conversion générale
+n'existait. `Pillow` n'était même pas une dépendance.
+
+| Livré | Preuve |
+|---|---|
+| `core/connectors/file_conversion.py` — 6 capacités, contrat `Connecteur` existant | 44 tests, conversions réellement exécutées |
+| `core/production/conversion/registre.py` — disponibilité/version/limites de qualité MESURÉES, ce que File_Converter_Pro lui-même ne fait pas | matrice de 156 couples de formats |
+| 6 moteurs : LibreOffice, Pillow, CairoSVG, WeasyPrint+Markdown, pypdfium2 (déjà une dépendance), `FFmpegTool` étendu (jamais dupliqué) | chaque famille testée sans mock |
+| `ACTION: convertir` dans Dioumtoukay | 5 tests, un end-to-end sans mock (DOCX->PDF réel) |
+| Lot via `FileDeTravaux` déjà existante | 2e usage réel après `suivi_video.py` |
+
+**Deux vrais défauts trouvés en construisant** : `soffice --infilter` en
+deux arguments séparés (liste `subprocess.run`) est refusé silencieusement
+par LibreOffice (code 0, rien écrit) — corrigé en un seul jeton
+`--infilter=X`. Un `.docx` corrompu devenait, via LibreOffice, un PDF
+« réussi » sans rien prouver sur l'entrée — `format_source_coherent()`
+(octets magiques) refuse maintenant ce cas avant tout moteur.
+
+**Non intégré, sciemment** : watch folders/scheduler (aucun n'existe dans
+ARENA — en ajouter un serait le deuxième ordonnanceur interdit),
+HEIC/AVIF/RAW/PSD/EPUB (dépendances non mesurées ou non demandées),
+Windows-only (`docx2pdf`, menu contextuel), interface/gamification.
+
+`ruff` propre. Tests ciblés au vert (53 nouveaux, aucun mock sur les
+moteurs réels).

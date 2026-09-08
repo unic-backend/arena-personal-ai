@@ -2,6 +2,48 @@
 
 ## [Non publié]
 
+### Ajouté — 08/09/2026 — Capacité de conversion de fichiers, via File_Converter_Pro audité (DEC-0074)
+
+Mission du propriétaire : exploiter les capacités utiles de
+`Hyacinthe-primus/File_Converter_Pro` (GPLv3) pour renforcer ARENA en
+conversion de fichiers — sans deuxième application, sans deuxième système
+documentaire, sans deuxième moteur vidéo/PDF. Audit complet des deux
+côtés d'abord — `docs/audits/file_converter_pro_audit.md` — puis fusion.
+
+**Ce qui manquait, mesuré avant tout code** : aucune capacité de
+conversion générale n'existait. `tools/documents/reader.py` lit des
+documents pour le RAG sans jamais écrire de fichier converti ; `Pillow`
+n'était même pas une dépendance du dépôt.
+
+**Ce qui a été construit** : `core/connectors/file_conversion.py` (contrat
+`Connecteur`, six capacités), un registre déclaratif
+(`core/production/conversion/registre.py`) qui sait pour chaque couple de
+formats quel moteur sert, sa disponibilité RÉELLEMENT mesurée, ses limites
+de qualité — ce que le registre de File_Converter_Pro lui-même ne fait pas.
+Six moteurs : LibreOffice headless, Pillow, CairoSVG, WeasyPrint+Markdown,
+pypdfium2 (déjà une dépendance), et `FFmpegTool` **existant**, étendu d'une
+méthode générique plutôt que dupliqué. Le lot passe par `FileDeTravaux`,
+déjà existant. `ACTION: convertir` dans la boucle de Dioumtoukay — le
+chemin par lequel n'importe quel modèle atteint la capacité.
+
+**Deux défauts réels trouvés en construisant, sabotage-vérifiés** :
+`soffice --infilter` refuse la forme en deux arguments d'un `subprocess.run`
+par liste (code 0, rien écrit) ; LibreOffice « récupère » un `.docx`
+corrompu en PDF plausible sans rien prouver sur l'entrée — une vérification
+de cohérence source (octets magiques) refuse maintenant ce cas avant tout
+moteur.
+
+**Délibérément non intégré** : watch folders/tâches planifiées (aucun
+scheduler n'existe dans ARENA à étendre — en ajouter un serait le deuxième
+ordonnanceur que la mission interdit), HEIC/AVIF/RAW/PSD/EPUB (dépendances
+non mesurées fonctionnelles ou non demandées), `docx2pdf`/menu contextuel
+Windows (Windows-only), interface graphique et gamification (hors sujet).
+
+`ruff check .` propre. Suite ciblée : 44 tests connecteur + 4 tests
+disponibilité + 5 tests Dioumtoukay, toutes conversions réellement
+exécutées (aucun mock sur LibreOffice/Pillow/CairoSVG/WeasyPrint/
+pypdfium2/ffmpeg).
+
 ### Ajouté — 08/09/2026 — Fusion Open SWE : une capacité, pas un deuxième agent (DEC-0073)
 
 Mission du propriétaire : exploiter les meilleures capacités d'Open SWE

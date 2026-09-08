@@ -5965,3 +5965,110 @@ gardes redondantes. Si la fusion de `RepoEngineerAgent`/`SWEAgent` casse un
 chemin qui marchait, les quatre routes historiques (`ATELIER`,
 `CODE_EXECUTION`, `SWE_FIX`, `REPO_ENGINEERING`) restent atteignables : rien
 n'a été retiré, seulement relié.
+
+---
+
+## DEC-0074 — File_Converter_Pro : une capacité de conversion, pas une deuxième application
+
+**Date** : 08/09/2026
+**Statut** : accepté
+
+### La mission
+
+Exploiter les capacités utiles de `Hyacinthe-primus/File_Converter_Pro`
+(application de bureau Windows, GPLv3) pour renforcer ARENA en conversion
+de fichiers — sans deuxième application, sans deuxième système
+documentaire, sans deuxième moteur vidéo/PDF. Audit complet : `docs/
+audits/file_converter_pro_audit.md`.
+
+### Ce qu'ARENA n'avait pas, mesuré avant tout code
+
+Aucune capacité de conversion générale. `tools/documents/reader.py`
+**lit** des documents pour le RAG, il n'écrit jamais de fichier converti ;
+`agents/plaquiste/devis_pdf.py` génère un PDF depuis un gabarit fixe, un
+cas d'usage métier précis. Aucune image, aucune archive, aucun format
+audio/vidéo ne se convertissait. `Pillow` n'était même pas une dépendance
+du dépôt.
+
+### Ce qui a été construit
+
+- **`core/connectors/file_conversion.py`** — un connecteur, sur le contrat
+  `Connecteur` déjà en place : capacités `convertir`, `convertir_lot`,
+  `compresser`, `extraire`, `etat_lot`, `formats_disponibles`. Écriture
+  toujours vers un nom neuf sous `media/rendered/conversions/` — jamais le
+  chemin de l'appelant, ce qui ferme l'écrasement de fichier et la
+  traversée de chemin en écriture sans avoir à les détecter.
+- **`core/production/conversion/registre.py`** — la table que la mission
+  demandait (§3) et que File_Converter_Pro lui-même n'a pas : pour chaque
+  couple (format source, format cible), le ou les moteurs réellement
+  disponibles, leur version, leurs limites de qualité mesurées, jamais un
+  fallback fabriqué là où un seul moteur existe vraiment.
+- **Six moteurs, tous déjà présents sur cette machine ou ajoutés avec une
+  licence compatible avec un dépôt propriétaire** (voir l'audit, §5) :
+  LibreOffice headless (Office ↔ PDF), Pillow (images), CairoSVG (SVG),
+  WeasyPrint + Markdown (HTML/Markdown/TXT → PDF), pypdfium2 — déjà une
+  dépendance d'ARENA — (PDF → image), et `FFmpegTool` **existant**, étendu
+  d'une méthode générique `convertir()` plutôt que dupliqué.
+- **`core/production/conversion/securite.py`** et **`validation.py`** —
+  chemin sensible refusé, cohérence réelle entre l'extension déclarée et le
+  contenu (sabotage : un `.docx` de bytes arbitraires devenait, via
+  LibreOffice, un PDF « réussi » sans rien prouver sur le fichier
+  d'origine), zip-bomb et évasion de chemin à l'extraction, et surtout :
+  **un succès exige un fichier relu dans son propre format**, jamais
+  seulement un code de retour à 0 — LibreOffice en a fourni la preuve en
+  cours de construction (voir « Ce qui a été trouvé » ci-dessous).
+- **Le lot passe par `core/execution/travaux.py` (`FileDeTravaux`), déjà
+  existant** — deuxième usage réel après `suivi_video.py`, pas un nouvel
+  ordonnanceur.
+- **`ACTION: convertir` dans la boucle de Dioumtoukay** — le chemin par
+  lequel n'importe quel modèle atteint la capacité (`core/connectors/
+  file_conversion.py` via `self.connecteur_file_conversion.executer(...)`),
+  sans savoir qu'un moteur en particulier tourne derrière.
+- **`core/production/disponibilite_conversion.py`**, branché sur
+  `/agent/capabilities` — la capacité dit ce qu'elle sait vraiment faire,
+  jamais devinée d'un paquet installé.
+
+### Ce qui a été trouvé en construisant, pas supposé
+
+Deux défauts réels, chacun tenu par un sabotage dans
+`tests/core/test_connecteur_file_conversion.py` :
+
+1. **`soffice --convert-to docx` sur un PDF rend le code 0 sans avoir rien
+   écrit**, sauf à passer `--infilter=writer_pdf_import` **en un seul
+   jeton** (`--infilter X` en deux arguments séparés est refusé par
+   `soffice` avec `Error in option`, une erreur qui n'apparaît que passée
+   par une LISTE `subprocess.run`, jamais au shell où `=` est habituel).
+   Sans la validation qui rouvre réellement la sortie, ce défaut aurait pu
+   se déclarer un succès.
+2. **LibreOffice « récupère » un `.docx` corrompu** (des octets arbitraires
+   renommés `.docx`) en PDF de plusieurs Ko parfaitement lisible — une
+   sortie valide, qui ne prouve pourtant rien sur la validité de l'entrée.
+   `securite.format_source_coherent()` vérifie maintenant que le contenu
+   ressemble au format annoncé (octets magiques ZIP/PDF) AVANT tout moteur.
+
+### Ce qui n'a délibérément PAS été intégré, et pourquoi
+
+- **Watch folders et tâches planifiées** (`watchdog` + `APScheduler` chez
+  File_Converter_Pro) : ARENA ne porte aujourd'hui **aucun** scheduler ni
+  surveillance de dossier. Les adopter pour cette seule capacité serait le
+  deuxième moteur d'orchestration que la mission interdit au niveau le
+  plus profond. Reste un besoin non construit, pas un défaut caché.
+- **HEIC/AVIF/RAW/PSD/EPUB** : dépendances non mesurées fonctionnelles sur
+  cette machine, ou non demandées explicitement. Absents du registre —
+  jamais silencieusement cassés.
+- **`docx2pdf` (COM Windows), l'intégration menu contextuel Windows,
+  `external_binaries.py` (pensé pour un `.exe` PyInstaller gelé)** :
+  Windows-only ou spécifiques à un packaging qu'ARENA n'a pas.
+- **Interface graphique, gamification, thèmes, dons, sons** : hors sujet
+  pour une capacité d'ARENA (mission §24).
+
+### Ce que ça coûte si c'est faux
+
+Une conversion mal validée écrirait un fichier plausible mais faux dans
+`media/rendered/conversions/` — le propriétaire le découvrirait en
+l'ouvrant, jamais avant, si `validation.py` avait un trou. Les deux
+sabotages ci-dessus visaient précisément ce risque avant qu'il ne se
+présente en usage réel. Un moteur absent (LibreOffice non installé
+ailleurs que sur cette machine de test, par exemple) rapporte
+`NOT_CONFIGURED` avec ce qui manque — jamais un plantage ni un succès
+inventé.

@@ -211,6 +211,15 @@ services:
     write:       {decision: ALLOWED,      risque: LOW}
     create_pr:   {decision: CONFIRMATION, risque: HIGH}
 
+  # Conversion de fichiers (DEC-0074) : un fichier FOURNI par le proprietaire,
+  # ecrit dans un format different, sous media/rendered/conversions/ — meme
+  # logique que le devis/ifc_generation/ui_generate : le fichier reste local,
+  # relu avant d'etre partage, ALLOWED sous WRITE_FILES, pas de confirmation
+  # prealable. `etat_lot`/`formats_disponibles` sont de pures lectures.
+  file_conversion:
+    document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+    lecture:     {decision: ALLOWED,      risque: LOW}
+
   # Graphify : le graphe structurel du depot (DEC-0046). Interroger un graphe
   # deja construit ne touche a rien — meme lecture que `takeoff.read`.
   # Construire ecrit graphify-out/ (graph.json, graph.html, GRAPH_REPORT.md) :

@@ -55,6 +55,7 @@ from core.connectors.claude_context import ConnecteurClaudeContext
 from core.connectors.devis import DevisConnector
 from core.connectors.drift import ConnecteurDrift
 from core.connectors.faceplugin import ConnecteurFaceplugin
+from core.connectors.file_conversion import ConnecteurFileConversion
 from core.connectors.formbricks import ConnecteurFormbricks
 from core.connectors.galsen import GalsenConnector
 from core.connectors.github import ConnecteurGitHub
@@ -441,6 +442,18 @@ graphrag_tool = GraphRAGTool()
 # attende la carte.
 travaux = FileDeTravaux()
 
+# Conversion de fichiers (mission « File_Converter_Pro », DEC-0074) :
+# LibreOffice/Pillow/CairoSVG/WeasyPrint/pypdfium2/ffmpeg, choisis par le
+# registre selon le couple de formats demande — jamais un deuxieme moteur
+# video/PDF parallele a ce qu'ARENA a deja. `travaux` est deja construite
+# ci-dessus : un lot converti passe par la meme file de fond que le suivi
+# video, pas une deuxieme.
+registre.declarer(
+    "file_conversion",
+    lambda: ConnecteurFileConversion(acces=acces, journal=journal, file_attente=file_attente,
+                                     crochets=crochets, travaux=travaux),
+)
+
 # --- Mesures d'execution ------------------------------------------------------
 # Les voies declarent des cibles ; ce rapport garde ce que les reponses ont
 # reellement coute, pour que les deux soient confrontables. Il est lu par
@@ -549,6 +562,7 @@ dioumtoukay_agent = DioumtoukayAgent(
     memoire_longue=memoire_personnelle,
     analyste=repo_engineer, chercheur_de_bug=swe_agent,
     connecteur_github=registre.obtenir("github"),
+    connecteur_file_conversion=registre.obtenir("file_conversion"),
     reprises=JournalDeReprise())
 # Raisonnement profond : plan, calcul reellement execute en bac a sable, puis
 # synthese. Le modele profond, parce que c'est la voie PROFONDE qui l'emprunte.

@@ -86,8 +86,13 @@ ILLISIBLES_CONSECUTIVES_MAX = 3
 #: seul `git` en shell nu, sans PR ni CI. `ouvrir_pr` passe par la meme
 #: confirmation que toute autre ecriture externe (config/permissions_
 #: services.yaml) : Dioumtoukay ne peut pas la contourner en l'appelant.
+#: `convertir` : le connecteur `file_conversion` (DEC-0074, mission
+#: « File_Converter_Pro »). Chemin d'entree GENERIQUE de cette capacite —
+#: n'importe quel modele qui pilote Dioumtoukay peut demander une conversion
+#: sans savoir que LibreOffice/Pillow/ffmpeg existent derriere.
 ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
-           "executer", "analyser", "diagnostiquer", "ouvrir_pr", "etat_ci", "terminer")
+           "executer", "analyser", "diagnostiquer", "ouvrir_pr", "etat_ci",
+           "convertir", "terminer")
 
 #: Les actions qui modifient quelque chose. Elles sont comptées à part dans le
 #: rapport : « j'ai lu quatre fichiers » et « j'ai modifié quatre fichiers » ne
@@ -97,11 +102,15 @@ ACTIONS_QUI_MODIFIENT = frozenset({"ecrire", "remplacer", "deplacer"})
 #: Les actions dont la SORTIE est le résultat qui compte, pas seulement le
 #: message. `_rapport()` ne montre le détail complet que de celles-ci : pour
 #: `lire` ou `chercher`, le message suffit et la sortie serait du bruit.
-ACTIONS_QUI_ANALYSENT = frozenset({"analyser", "diagnostiquer", "etat_ci"})
+#: `convertir` y entre pour la même raison qu'`etat_ci` : le détail (moteur
+#: utilisé, URL du fichier écrit, tailles avant/après) est ce que le
+#: propriétaire veut voir, pas seulement « converti ».
+ACTIONS_QUI_ANALYSENT = frozenset({"analyser", "diagnostiquer", "etat_ci", "convertir"})
 
 _ETIQUETTE = re.compile(r"^\s*ACTION\s*:\s*(\w+)", re.IGNORECASE | re.MULTILINE)
 _CHAMP = re.compile(
-    r"^\s*(CHEMIN|SOURCE|DESTINATION|COMMANDE|DOSSIER|TEXTE|DEPOT|TITRE|TETE|BASE|REF)\s*:\s*(.+)$",
+    r"^\s*(CHEMIN|SOURCE|DESTINATION|COMMANDE|DOSSIER|TEXTE|DEPOT|TITRE|TETE|BASE|REF|FORMAT)"
+    r"\s*:\s*(.+)$",
     re.IGNORECASE | re.MULTILINE)
 
 #: Les blocs multilignes, chacun fermé par une ligne `FIN`. `remplacer` en
@@ -167,6 +176,10 @@ ACTION: etat_ci
 DEPOT: owner/repo
 REF: ta-branche
 
+ACTION: convertir
+CHEMIN: documents/devis.pdf
+FORMAT: docx
+
 ACTION: terminer
 CONTENU:
 ce que tu as fait, en francais simple, pour le proprietaire
@@ -199,6 +212,10 @@ COMMENT TRAVAILLER
    proprietaire avant de partir : elle peut donc rendre « en attente » au lieu
    d'un lien tout de suite. Ne la retente pas plusieurs fois pour la meme
    branche en esperant un autre resultat.
+7. `convertir` choisit elle-meme le moteur (LibreOffice, Pillow, ffmpeg...) —
+   tu donnes juste CHEMIN et FORMAT (l'extension cible, sans le point). Un
+   couple de formats que rien ne convertit encore te le dit clairement ;
+   n'invente jamais un fichier converti que tu n'as pas reellement obtenu.
 
 REGLES
 
@@ -270,6 +287,7 @@ class DioumtoukayAgent(BaseAgent):
                  memoire_longue: Optional[MemoirePersonnelle] = None,
                  analyste: Optional[Any] = None, chercheur_de_bug: Optional[Any] = None,
                  connecteur_github: Optional[Any] = None,
+                 connecteur_file_conversion: Optional[Any] = None,
                  reprises: Optional[JournalDeReprise] = None):
         super().__init__(
             name="DioumtoukayAgent",
@@ -294,6 +312,11 @@ class DioumtoukayAgent(BaseAgent):
         # y passe par la meme confirmation que toute autre ecriture externe —
         # Dioumtoukay ne contourne rien en l'appelant, il herite de la garde.
         self.connecteur_github = connecteur_github
+        # Le connecteur de conversion de fichiers (DEC-0074) : meme discipline
+        # que le connecteur GitHub — Dioumtoukay ne sait pas quel moteur
+        # tourne derriere, il herite juste de la garde (confirmation, coupe-
+        # circuit WRITE_FILES) deja portee par le connecteur lui-meme.
+        self.connecteur_file_conversion = connecteur_file_conversion
         # Le journal DURABLE de ce qu'il a deja fait (DEC-0072). La memoire
         # longue garde un RESUME de chaque travail ; celui-ci garde les ETAPES,
         # pour qu'une tache arretee a la 12e action reprenne a la 13e au lieu
@@ -354,6 +377,22 @@ class DioumtoukayAgent(BaseAgent):
             return Resultat(True, resultat.message, sortie=detail)
         return Resultat(False, resultat.message)
 
+    def _via_file_conversion(self, capacite: str, **parametres: Any) -> Resultat:
+        """Meme pont que `_via_github`, vers le connecteur `file_conversion`
+        (DEC-0074) — un seul type de resultat pour Dioumtoukay, quelle que
+        soit la source."""
+        if self.connecteur_file_conversion is None:
+            return Resultat(False, "Le connecteur de conversion n'est pas branche sur cette machine.")
+        try:
+            resultat = self.connecteur_file_conversion.executer(capacite, **parametres)
+        except Exception as erreur:  # noqa: BLE001 — un connecteur qui leve ne casse pas la tache
+            return Resultat(False, f"Conversion impossible : {type(erreur).__name__}: {erreur}")
+
+        if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
+            detail = "\n".join(f"{cle}: {valeur}" for cle, valeur in resultat.detail.items())
+            return Resultat(True, resultat.message, sortie=detail)
+        return Resultat(False, resultat.message)
+
     async def _executer_action(self, action: Action) -> Resultat:
         """Fait ce que l'action demande, via l'atelier — ou un specialiste."""
         champs = action.champs
@@ -396,6 +435,13 @@ class DioumtoukayAgent(BaseAgent):
             if not depot or not ref:
                 return Resultat(False, "Il manque DEPOT (owner/repo) ou REF (SHA ou branche).")
             return self._via_github("etat_ci", depot=depot, ref=ref)
+        if action.nom == "convertir":
+            chemin, format_cible = champs.get("CHEMIN", ""), champs.get("FORMAT", "")
+            if not chemin or not format_cible:
+                return Resultat(False, "Il manque CHEMIN (le fichier a convertir) ou "
+                                       "FORMAT (l'extension cible, sans le point).")
+            return self._via_file_conversion(
+                "convertir", entree=chemin, format_cible=format_cible)
         # `executer` : la ligne devient une LISTE d'arguments. Ce n'est pas une
         # restriction de ce qu'il peut lancer — c'est ce qui empeche un nom de
         # fichier contenant une espace ou un `;` de devenir deux commandes.

@@ -67,6 +67,7 @@ from core.memory.conversation import retenir_l_echange
 from core.memory.recuperation import recuperer
 from core.memory.semantique import recuperer_semantique
 from core.production.disponibilite import disponibilite_video
+from core.production.disponibilite_conversion import disponibilite_conversion
 from core.production.disponibilite_swe import disponibilite_swe
 from core.relecture import relire
 from core.reseau.adresse_machine import AdresseMachine
@@ -796,6 +797,9 @@ async def capacites_disponibles() -> Dict[str, Any]:
         # unifiee, jamais devines depuis le seul fait que le processus tourne.
         "software_engineering": await disponibilite_swe(
             dioumtoukay_agent.provider, registre.obtenir("github"), dioumtoukay_agent),
+        # DEC-0074 : la capacite file_conversion, avec la matrice reelle des
+        # couples de formats que CETTE machine sait convertir maintenant.
+        "file_conversion": await disponibilite_conversion(registre.obtenir("file_conversion")),
     }
 
 

@@ -69,9 +69,24 @@ numpy==2.4.6              # core/production/txtai_recherche.py — le backend nu
 ifcopenshell==0.8.5       # core/connectors/ifc.py — lecture BIM/IFC (DEC-0053).
                           # LGPL-3.0-or-later, wheels precompiles (aucun compilateur requis).
                           # Bibliotheque Python appelee, jamais du code copie.
+Pillow==12.0.0            # core/production/conversion/moteurs.py — conversion d'images
+                          # (DEC-0074). MIT-CMU. Absente du depot avant cette mission : aucune
+                          # capacite ARENA ne convertissait une image jusqu'ici.
+weasyprint==68.1           # core/production/conversion/moteurs.py — HTML/Markdown/TXT -> PDF
+                          # (DEC-0074). BSD-3-Clause. Exige libcairo/libpango SYSTEME (mesure
+                          # presents dans l'image de ce depot) ; absents, `sonder()` rapporte
+                          # NON_CONFIGURE au lieu de planter au demarrage.
+Markdown==3.10.3          # core/production/conversion/moteurs.py — Markdown -> HTML, avant
+                          # WeasyPrint (DEC-0074). BSD-3-Clause.
+CairoSVG==2.9.0            # core/production/conversion/moteurs.py — SVG -> PNG/PDF (DEC-0074).
+                          # LGPL-3.0-or-later (meme regime qu'ifcopenshell ci-dessus) :
+                          # bibliotheque Python appelee, jamais du code copie. Exige libcairo
+                          # SYSTEME ; absente, `sonder()` le rapporte au lieu de planter.
 
 # Non liste ici, et volontairement :
 # - ffmpeg : binaire systeme, pas un paquet pip (voir Dockerfile)
+# - libreoffice (soffice) : binaire systeme, pas un paquet pip — DOCX/PPTX/XLSX <-> PDF
+#   (DEC-0074, core/production/conversion/moteurs.py). Absent, `sonder()` le rapporte.
 # - sympy, numpy : installes dans l'image du bac a sable (tools/code/sandbox_image)
 # - pywin32 : plus aucun import dans le code ; il faisait echouer le build Docker Linux
 # - git-filter-repo : outil en ligne de commande, pas une dependance d'execution

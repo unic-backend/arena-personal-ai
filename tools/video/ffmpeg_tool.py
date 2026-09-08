@@ -64,6 +64,43 @@ class FFmpegTool:
     def get_executable(self) -> str:
         return self.ffmpeg_path
 
+    def convertir(self, entree: str, sortie: str, timeout: float = 120.0) -> "tuple[bool, str]":
+        """Conversion generique, format devine par l'extension de `sortie`.
+
+        Ajoute a l'outil FFmpeg deja existant plutot que d'en creer un
+        second (mission « File_Converter_Pro », 08/09/2026, §14) : c'est le
+        seul moteur audio/video d'ARENA, `core/production/conversion/
+        moteurs.py` l'appelle exactement comme `extract_audio`/`cut_video`
+        le font deja depuis les agents video.
+
+        Contrairement aux methodes ci-dessus (booleennes, deja appelees
+        ailleurs — signature inchangee), celle-ci rend la RAISON reelle de
+        l'echec : `core.production.conversion` la transporte jusqu'au
+        ResultatAction que le proprietaire lit, un booleen seul n'aurait
+        rien a y mettre.
+        """
+        if not self.is_available():
+            return False, f"ffmpeg introuvable ou ne repond pas ({self.ffmpeg_path})"
+
+        cmd = [self.ffmpeg_path, "-y", "-i", str(entree), str(sortie)]
+        try:
+            resultat = subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return False, f"ffmpeg n'a pas repondu en {timeout:.0f} s"
+
+        if resultat.returncode != 0:
+            erreur = resultat.stderr.decode("utf-8", errors="ignore").strip()
+            # Les dernieres lignes portent la cause reelle ; le debut n'est
+            # que la banniere de version, sans interet pour le diagnostic.
+            return False, erreur.splitlines()[-1] if erreur else "ffmpeg a echoue sans message"
+
+        if not Path(sortie).is_file() or Path(sortie).stat().st_size == 0:
+            return False, "ffmpeg a rendu 0 mais n'a ecrit aucun fichier reel"
+
+        return True, ""
+
     def extract_audio(self, video_path: str, output_audio_path: str) -> bool:
         """Extrait l'audio d'une vidéo en WAV 16kHz mono pour Whisper."""
         if not self.is_available():
