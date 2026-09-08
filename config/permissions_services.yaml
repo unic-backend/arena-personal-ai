@@ -136,13 +136,33 @@ services:
   design_ui:
     read:        {decision: ALLOWED,      risque: LOW}
 
-  # Devis UniC Plaquiste. Chiffrer ne coute rien et n'ecrit rien. Produire le
-  # PDF ecrit un document qui partira chez un client : confirmation, et
-  # coupe-circuit WRITE_FILES. Ce n'est pas irreversible — un fichier s'efface —
-  # donc pas de place dans INTERRUPTEURS_OBLIGATOIRES.
+  # Devis UniC Plaquiste. Chiffrer ne coute rien et n'ecrit rien.
+  #
+  # Produire le PDF est passe de CONFIRMATION a ALLOWED le 04/09/2026, sur
+  # demande explicite du proprietaire : « si tu demandes un pdf il le fait
+  # simplement [...] je veux ca a tout prix ». La distinction qui rend ce
+  # choix tenable, et qui ne s'applique qu'ici :
+  #
+  #   ecrire un PDF chez lui n'est PAS un effet qui quitte la machine.
+  #
+  # Le fichier atterrit dans `media/rendered/`, il le relit, et c'est LUI qui
+  # decide ensuite de l'envoyer. Rien ne part chez un client, rien ne coute,
+  # rien n'est irreversible — un fichier s'efface. La confirmation ne le
+  # protegeait donc de rien ici : elle ajoutait une etape entre « fais-moi le
+  # devis » et le devis.
+  #
+  # Ce qui garde sa confirmation, et pourquoi : envoyer un e-mail (part chez
+  # un client), publier sur ses reseaux (public), generer une video
+  # (des minutes de GPU), parler (VoiceStudio ecrit puis peut etre diffuse).
+  # La regle n'est pas « les ecritures sont libres » : elle est « ce qui
+  # reste sur sa machine et qu'il relit avant d'agir ne demande pas d'accord
+  # prealable ».
+  #
+  # `interrupteur: WRITE_FILES` reste : couper cet interrupteur coupe encore
+  # la production du PDF, comme toute ecriture de fichier.
   plaquiste:
-    read:        {decision: ALLOWED,      risque: LOW}
-    document:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+    read:        {decision: ALLOWED, risque: LOW}
+    document:    {decision: ALLOWED, risque: MEDIUM, interrupteur: WRITE_FILES}
 
   # Montage video. Batir une timeline et la relire ne touche a rien : c'est
   # une structure en memoire, pas un fichier. Rendre ecrit une video sur le
@@ -167,6 +187,11 @@ services:
   audio_voix:
     read:        {decision: ALLOWED,      risque: LOW}
     document:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+    # Cloner une voix risque l'usurpation, jamais seulement un fichier de
+    # plus : risque HIGH, distinct de "document". Le connecteur exige en
+    # plus une autorisation explicite dans son propre code, avant meme cette
+    # confirmation (`core/connectors/audio_voix.py::_cloner`).
+    cloner:      {decision: CONFIRMATION, risque: HIGH,   interrupteur: WRITE_FILES}
 
   # OpenTakeoff : mesurer un plan PDF ne touche a rien hors du processus qui
   # le lit. Exporter ecrit le rapport et le plan marque a cote du plan source
@@ -175,7 +200,7 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     export:      {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
 
-  # GitHub (DEC-0041). Une branche creee n'est visible que dans le depot lui
+  # GitHub (DEC-0073). Une branche creee n'est visible que dans le depot lui
   # meme et se supprime sans consequence — meme risque que le `git push` deja
   # sans confirmation sous DEC-0038. Une Pull Request, elle, est visible sur
   # un depot PUBLIC (DEC-0039) : confirmation, ET elle s'ouvre en brouillon
@@ -185,6 +210,158 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     write:       {decision: ALLOWED,      risque: LOW}
     create_pr:   {decision: CONFIRMATION, risque: HIGH}
+
+  # Graphify : le graphe structurel du depot (DEC-0046). Interroger un graphe
+  # deja construit ne touche a rien — meme lecture que `takeoff.read`.
+  # Construire ecrit graphify-out/ (graph.json, graph.html, GRAPH_REPORT.md) :
+  # coupe-circuit WRITE_FILES, comme toute ecriture de ce depot.
+  graphify:
+    read:        {decision: ALLOWED,      risque: LOW}
+    document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+
+  # GitIngest : un depot (local ou une URL) transforme en resume+arbre+contenu
+  # (DEC-0047). Aucune ecriture durable (le clone temporaire d'une URL est
+  # nettoye par GitIngest lui-meme) : une lecture, comme la recherche web deja
+  # libre dans ce depot. Risque MEDIUM, pas LOW : une URL clone un contenu
+  # tiers, potentiellement hostile, meme brievement.
+  gitingest:
+    read:        {decision: ALLOWED,      risque: MEDIUM}
+
+  # Guide de procedure : un workflow deja decrit (jamais capture en direct),
+  # ecrit en PDF/DOCX/HTML/Markdown (DEC-0048). Meme logique que le devis
+  # (DEC-0041) : le fichier reste local, il est relu avant d'etre partage —
+  # coupe-circuit WRITE_FILES, pas de confirmation prealable.
+  workflow_guide:
+    document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+
+  # KrillinAI : traduction/doublage/rendu d'une video EXISTANTE (DEC-0049).
+  # Meme traitement que `video_generation.generate` (wangp/moneyprinter/xaar
+  # kaname) : une generation reste une generation, jamais confirmee a la
+  # place du proprietaire — risque MEDIUM (fournisseurs de traduction/TTS/
+  # image externes possibles selon la config du moteur amont), coupe-circuit
+  # WRITE_FILES. Un seul service pour ses six capacites (subtitle/tts/
+  # render_horizontal/render_vertical/cover/pipeline) : toutes ecrivent,
+  # aucune n'est une lecture.
+  krillinai:
+    generate:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+
+  # Generation d'interface (DEC-0050) : la technique d'OpenUI (prompt ->
+  # HTML/React/Svelte/Web-Component), jamais son serveur. Meme logique que
+  # workflow_guide/devis : le fichier reste local, relu avant d'etre
+  # partage (et jamais execute par ARENA) — ALLOWED sous WRITE_FILES, pas
+  # de confirmation prealable.
+  ui_generate:
+    document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+
+  # Recherche semantique txtai (DEC-0051) : une lecture pure — les documents
+  # sont FOURNIS par l'appelant dans le meme appel, rien n'est persiste, rien
+  # n'est recupere a distance. Meme niveau que Graphify.interroger.
+  txtai_search:
+    read:        {decision: ALLOWED,      risque: LOW}
+
+  # IFC/BIM (DEC-0053) : lecture d'un fichier IFC fourni par le proprietaire
+  # (IfcOpenShell, bibliotheque). Rien n'est ecrit, rien n'est recupere a
+  # distance — meme niveau que Graphify/txtai_search.
+  ifc:
+    read:        {decision: ALLOWED,      risque: LOW}
+
+  # Generation IFC (DEC-0056) : un croquis local (media/rendered/), relu
+  # avant d'etre partage — meme logique que le devis (DEC-0041) et
+  # ui_generate (DEC-0050).
+  ifc_generation:
+    document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+
+  # Securite chantier (DEC-0054) : detection EPI sur une photo, appelee via
+  # SiteGuard en local (127.0.0.1 uniquement, jamais un service distant par
+  # defaut). Une lecture, rien n'est ecrit ni publie.
+  securite_chantier:
+    read:        {decision: ALLOWED,      risque: LOW}
+
+  # Hermes Agent Self-Evolution (DEC-0055) : fait evoluer un depot CIBLE,
+  # jamais ARENA (garde structurelle dans le connecteur). Un sous-processus
+  # qui peut ouvrir une PR sur un vrai depot : CONFIRMATION, risque HIGH,
+  # sous EXECUTE_COMMANDS (eteint par defaut).
+  hermes_evolution:
+    execute:     {decision: CONFIRMATION, risque: HIGH, interrupteur: EXECUTE_COMMANDS}
+
+  # Formbricks (DEC-0052) : sondages/feedback via une instance externe
+  # (auto-hebergee de preference, DEC-0002) — jamais du code copie (coeur
+  # AGPLv3), toujours par son API REST publique. Lire ses propres sondages/
+  # reponses deja configures reste une lecture ordinaire ; publier un
+  # sondage est visible d'un tiers, donc une confirmation, comme le devis.
+  formbricks:
+    read:        {decision: ALLOWED,      risque: LOW}
+    survey:      {decision: CONFIRMATION, risque: MEDIUM, interrupteur: PUBLISH}
+
+  # Drift (DEC-0057) : editeur video pilote par son propre serveur MCP,
+  # local (127.0.0.1 uniquement, jamais un service distant par defaut) —
+  # meme niveau que WanGP (video_generation). Lire le catalogue/schema d'une
+  # toolbox/l'etat du projet/une capture ne modifie rien ; appliquer une
+  # liste d'operations mute un projet reel, donc confirmation, comme
+  # video_generation.generate.
+  video_drift:
+    read:        {decision: ALLOWED,      risque: LOW}
+    apply:       {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+
+  # Claude Context (DEC-0058) : recherche semantique de code, par son propre
+  # serveur MCP (Milvus auto-heberge + Ollama local, jamais Zilliz Cloud/
+  # OpenAI par defaut cote ARENA). Indexer/vider l'index restent des
+  # ecritures LOCALES et rebatissables (comme graphify.construire,
+  # DEC-0046) : ALLOWED sous WRITE_FILES, pas de confirmation par appel.
+  claude_context:
+    read:        {decision: ALLOWED,      risque: LOW}
+    index:       {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+
+  # OpenViking (DEC-0058) : contexte hierarchique/memoire/competences, via
+  # son propre serveur HTTP (AGPLv3, jamais importe) auto-heberge par le
+  # proprietaire. Lire (contexte assemble, recherche, competences) ne coute
+  # rien ; ajouter une ressource ecrit sur SON serveur, comme le devis PDF
+  # (DEC-0041) : ALLOWED sous WRITE_FILES, pas de confirmation par appel.
+  openviking:
+    read:        {decision: ALLOWED,      risque: LOW}
+    document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+
+  # Navigation Web autonome (DEC-0059) : browser-use + Playwright/Chromium
+  # local, avec Lightpanda (AGPLv3, service externe, jamais importe) comme
+  # moteur optionnel plus leger derriere le meme contrat. Une navigation
+  # peut cliquer/remplir un formulaire (effet externe reel) : risque MEDIUM,
+  # coupe-circuit SEARCH_WEB (deja le bon regroupement "web" existant,
+  # jamais un second coupe-circuit invente). ALLOWED par defaut — c'est le
+  # comportement DEJA en place avant ce connecteur (BrowserAgent appelait
+  # BrowserUseTool en direct, sans confirmation) ; le proprietaire peut
+  # resserrer en CONFIRMATION ici, sans toucher au code.
+  browser:
+    browse:      {decision: ALLOWED,      risque: MEDIUM, interrupteur: SEARCH_WEB}
+
+  # Verification formelle (Lean, DEC-0067). Verifier une preuve ne modifie
+  # rien : le verdict est une lecture. Mais Lean est un langage a
+  # METAPROGRAMMATION — une source peut s'executer a la compilation — et la
+  # source vient souvent d'un modele. C'est donc de l'execution de code, et
+  # elle passe sous le meme coupe-circuit qu'elle : EXECUTE_COMMANDS, eteint
+  # par defaut. Le connecteur refuse en plus les constructions d'execution
+  # directe (`core/connectors/lean_formel.py`), mais une barriere n'est pas
+  # un bac a sable : c'est l'interrupteur qui decide.
+  # ALLOWED plutot que CONFIRMATION : une preuve se verifie en boucle
+  # (candidat -> diagnostic -> correction), et une confirmation par tour
+  # rendrait la boucle inutilisable. Le proprietaire peut resserrer ici.
+  lean_formel:
+    verifier:    {decision: ALLOWED,      risque: MEDIUM, interrupteur: EXECUTE_COMMANDS}
+
+  # architecture_3d (DEC-0070) : le moteur d'architecture, quel qu'il soit.
+  #
+  # **Trois actions, pas vingt-deux.** La politique interrogee par
+  # `core/connectors/base.py` recoit `capacite.action`, jamais le nom de la
+  # capacite : une regle par operation (`creer_mur:`, `inspecter:`...) ne
+  # matchait rien et faisait tomber TOUTES les operations sur le refus par
+  # defaut. Mesure du 07/09/2026, sur la premiere execution bout en bout.
+  #
+  # `read`    : inspecter, lister, mesurer, valider, exporter — ne change rien.
+  # `batir`   : tracer, percer, cloisonner, enregistrer — modifie la scene.
+  # `demolir` : supprimer un element, le seul geste qui detruit du travail.
+  architecture_3d:
+    read:      {decision: ALLOWED,      risque: LOW,    interrupteur: WRITE_FILES}
+    batir:     {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+    demolir:   {decision: CONFIRMATION, risque: HIGH,   interrupteur: WRITE_FILES}
 
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #

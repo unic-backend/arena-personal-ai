@@ -2,7 +2,7 @@
 
 Même défaut à éviter que `test_disponibilite_video.py` (03/09/2026) : une
 capacité annoncée disponible parce qu'un processus tourne, jamais parce
-qu'une sonde a réellement répondu. DEC-0041 introduit trois backends —
+qu'une sonde a réellement répondu. DEC-0073 introduit trois backends —
 `dioumtoukay`, `specialistes`, `github` — et chacun doit pouvoir tomber
 indépendamment sans que les deux autres mentent sur leur propre état.
 """

@@ -106,7 +106,11 @@ class TestMontageSurEcritureRefuse:
     qu'apres confirmation du proprietaire, jamais dans le meme passage —
     un montage qui en dependrait directement est refuse au moment du plan."""
 
-    @pytest.mark.parametrize("capacite_ecriture", ["wangp", "moneyprinter", "narration"])
+    @pytest.mark.parametrize("capacite_ecriture", [
+        "wangp", "moneyprinter", "narration",
+        "krillin_subtitle", "krillin_tts", "krillin_render_horizontal",
+        "krillin_render_vertical", "krillin_cover",
+    ])
     def test_un_montage_qui_depend_d_une_ecriture_est_refuse(self, capacite_ecriture):
         etapes, refus = valider_graphe([
             {"id": "generer", "capacite": capacite_ecriture},

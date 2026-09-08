@@ -79,6 +79,11 @@ SURFACE_ATTENDUE = {
     # VideoProductionAgent, construit et teste depuis le 01/09/2026 sans
     # jamais avoir ete joignable avant cette route.
     "/api/video/projet": (["POST"], ["verify_api_key", "limiter_debit"]),
+    # Hermes Agent Self-Evolution (DEC-0055) : cible toujours un depot
+    # EXTERNE, jamais ARENA (garde dans le connecteur, pas ici) — outil de
+    # developpement, pas une capacite metier, pas d'aiguillage chat.
+    "/api/hermes-evolution/evoluer": (["POST"], ["verify_api_key", "limiter_debit"]),
+    "/api/contexte/rechercher": (["POST"], ["verify_api_key", "limiter_debit"]),
     # Dictee vocale reelle (Faster-Whisper), a la place de la reconnaissance
     # gratuite et sans wolof du navigateur — demande le 02/09/2026.
     "/api/speech/transcribe": (["POST"], ["verify_api_key", "limiter_debit"]),

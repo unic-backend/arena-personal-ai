@@ -77,6 +77,21 @@ async def test_un_code_faux_est_corrige_puis_reexecute(provider_factory, monkeyp
     assert "ZeroDivisionError" in provider.appels[1]["prompt"]
 
 
+async def test_la_methode_de_specialiste_atteint_le_modele(provider_factory, monkeypatch):
+    """Le défaut de DEC-0061, sur un autre agent : `tests`/`frontend`/`donnees`
+    (catalogue de spécialistes) étaient déclarés pour CODE_EXECUTION mais
+    n'atteignaient jamais cet agent — seul le repli conversationnel les
+    composait, un chemin que CODE_EXECUTION ne prend jamais."""
+    monkeypatch.setenv("ALLOW_UNSAFE_EXEC", "true")
+    provider = provider_factory("```python\nprint(1)\n```")
+    agent = CoderAgent(provider=provider, memory=None)
+    monkeypatch.setattr(agent.interpreter, "docker_available", False)
+
+    await agent.run("écris les tests de cette fonction")
+
+    assert "MÉTHODE DE SPÉCIALISTE" in provider.appels[0]["prompt"]
+
+
 async def test_l_auto_correction_s_arrete_apres_deux_essais(provider_factory, monkeypatch):
     monkeypatch.setenv("ALLOW_UNSAFE_EXEC", "true")
     provider = provider_factory(*["```python\nprint(1 / 0)\n```"] * 3)

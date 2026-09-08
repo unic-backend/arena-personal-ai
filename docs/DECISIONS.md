@@ -2581,74 +2581,3387 @@ retombe sur ce qu'il a déjà enregistré : il perd la découverte, pas l'usage.
 
 ---
 
-## DEC-0041 — La fusion Open SWE : une capacité, pas un deuxième agent
+## DEC-0041 — Le PDF s'écrit à la demande, sans bouton de confirmation
+
+**2026-09-04.** Demande directe du propriétaire, mot pour mot : « Pourquoi le
+pdf demande des confirmation bouton confirmé alors que chatgpt et claude etc si
+tu demandes pdf il le fait simplement je veux ca a tout prix a n'importe quelle
+zone [...] le projet dois faire un pdf si je le demande ».
+
+Cette décision **renverse** l'ancienne règle : `plaquiste.document` passe de
+`CONFIRMATION` à `ALLOWED` dans `config/permissions_services.yaml`.
+
+### Pourquoi c'est défendable, et pas un simple relâchement
+
+Un PDF de devis n'est pas de la même nature que les actions qui gardent leur
+confirmation :
+
+- il **ne quitte pas la machine** — il atterrit dans `media/rendered/`, servi
+  par `GET /media/rendered/{nom}` derrière la clé API ;
+- il est **réversible** : un fichier de trop se supprime, un e-mail parti ne
+  se rattrape pas ;
+- il **ne coûte rien** : pas de GPU, pas de quota, pas de tiers ;
+- et surtout **il le relit avant que quiconque le voie**. C'est LUI qui
+  l'envoie au client. La confirmation prétendait le protéger d'un document
+  qu'il allait de toute façon relire.
+
+Ce qui garde sa confirmation, sans exception : l'envoi d'un e-mail, une
+publication, une suppression, la génération vidéo (GPU, longue, coûteuse) et
+VoiceStudio. La frontière n'est pas « écrire / ne pas écrire », c'est
+**« ça part dehors, ou ça reste ici »**.
+
+### Ce qui protège encore
+
+Le coupe-circuit **`WRITE_FILES` reste déclaré** sur `plaquiste.document` :
+l'éteindre coupe encore toute production de PDF. Retirer la confirmation n'a
+pas retiré l'interrupteur.
+
+### Le piège qu'il a fallu fermer
+
+La confirmation était **le seul chemin par lequel le lien de téléchargement
+arrivait sur son téléphone** (`confirmerAction` lisait `detail.url` dans la
+réponse du serveur). La supprimer aurait produit exactement le symptôme
+d'avant : *un PDF qui existe sur le serveur et qu'aucun écran ne peut
+atteindre*. L'adresse traverse donc maintenant toute la chaîne —
+`DevisConnector` → `_proposer_le_document` → `_documents_produits` →
+`meta.documents` → le bouton « Ouvrir le document ».
+
+### Ce que le sabotage a trouvé (et que les tests ne voyaient pas)
+
+Trois trous, tous réels, comblés avant de livrer :
+
+1. Retirer `interrupteur: WRITE_FILES` du **vrai** fichier de politique ne
+   faisait échouer aucun test : celui du coupe-circuit écrivait sa propre
+   politique. La protection pouvait donc disparaître en silence.
+   → `test_la_vraie_politique_livree_ecrit_le_pdf_sans_accord_mais_sous_coupe_circuit`.
+2. Remplacer la propagation de `url` dans l'agent par `None` ne faisait
+   échouer aucun test — le maillon exact qui avait **déjà** perdu ce lien une
+   fois n'était couvert nulle part.
+   → `TestLAdresseDuPdfRemonteJusquALaReponse`.
+3. La docstring de `_proposer_le_document` affirmait encore « Rien n'est écrit
+   ici : `produire` est une action à confirmer ». Elle décrivait le contraire
+   du code.
+
+### Ce que ça coûte si c'est faux
+
+Un devis PDF écrit sur une phrase mal comprise. Le coût réel est un fichier de
+trop dans `media/rendered/`, relu et jeté — pas un document parti chez un
+client, puisque l'envoi garde sa confirmation. Le garde-fou qui compte
+davantage reste le destinataire : `test_sans_destinataire_rien_n_est_produit`
+tient toujours, et un devis sans client/lieu/objet n'est toujours pas écrit.
+Un devis adressé à la mauvaise personne reste pire qu'un devis absent.
+
+Le vrai coût serait de retirer aussi `WRITE_FILES` en croyant continuer cette
+décision : plus rien n'arrêterait l'écriture de fichiers. C'est pour ça qu'un
+test lit désormais le fichier livré.
+
+---
+
+## DEC-0042 — Un scanner de secrets préventif, plutôt qu'un moteur offensif
+
+**2026-09-04.** Demande reçue : intégrer **CyberStrike** — un système de
+sécurité *offensif* (reconnaissance, exploitation active, attaques de mots de
+passe) — comme capacité vivante d'ARENA, câblée et exécutable.
+
+### Ce qui a été refusé, et pourquoi
+
+L'intégration offensive a été **déclinée**. Le livrable aurait été un moteur
+d'attaque opérationnel installé à demeure dans l'assistant personnel d'un
+plaquiste, dont la seule barrière d'autorisation était une case cochée par
+l'utilisateur lui-même. Trois raisons :
+
+1. **L'auto-déclaration n'est pas une autorisation.** « cible autorisée : oui »
+   tapé dans un chat n'est pas une preuve de propriété. C'est l'affirmation que
+   ferait aussi n'importe quel usage abusif. Le propre SECURITY.md de l'outil
+   reconnaît que son système de permissions n'est pas un vrai bac à sable.
+2. **Aucun contexte d'autorisation réel** — pas de mission de pentest, pas de
+   périmètre, pas de labo. Pour du dual-use offensif, ce contexte précis est
+   requis, pas des paragraphes de bonne intention.
+3. **Hors mission.** ARENA est l'assistant métier d'Ousmane (devis, vidéo,
+   documents). Un moteur d'exploitation qui tourne chez lui et qu'un téléphone
+   peut atteindre est un risque permanent pour une capacité que le métier
+   n'utilise pas.
+
+### Ce qui a été fait à la place
+
+De la sécurité **défensive sur le propre code du dépôt** — aucune cible externe,
+aucune ambiguïté sur la propriété : `scripts/scanner_secrets.py`, qui attrape un
+secret **avant** qu'il entre dans un commit. Il complète
+`preparer_purge_secrets.py` sans le doubler : la purge nettoie les six secrets
+**déjà connus** de l'historique, à des emplacements codés en dur ; le scanner
+regarde ce qui est **suivi maintenant**, n'importe où, et refuse qu'un *nouveau*
+secret franchisse le prochain commit. Haute confiance seulement (clés PEM,
+AWS/Google/Slack/GitHub à leur préfixe, affectations `api_key = "..."` à
+entropie réelle), valeurs masquées, sortie non nulle dès qu'il trouve — utilisable
+comme garde avant commit ou en CI. Le vrai dépôt revient propre, et un test
+(`test_le_vrai_depot_est_propre`) le maintient tel.
+
+### Ce que ça coûte si c'est faux
+
+Un scanner trop bavard finit ignoré, et c'est pire que pas de scanner : d'où la
+règle « haute confiance seulement » et le marqueur explicite
+`# scanner-secrets: ignore` pour les rares fixtures de test de forme secrète,
+visible en revue. Un scanner trop discret laisse la fuite entrer : quatre
+sabotages (scanner aveugle, entropie neutralisée, marqueur ignoré, masque qui
+révèle) ont chacun fait échouer un test avant livraison. Il ne remplace pas la
+purge de l'historique, qui reste préparée et jamais autorisée (DEC-0007).
+
+---
+
+## DEC-0043 — L'audit des dépendances : « je n'ai pas pu vérifier » n'est pas « c'est propre »
+
+**2026-09-04.** Suite du volet défensif (DEC-0042). Après le scanner de secrets,
+un audit des **failles connues** des dépendances : `scripts/scanner_dependances.py`,
+qui enveloppe `pip-audit` (base d'avis OSV / PyPI).
+
+### La règle qui fait tout
+
+Trois états, jamais deux — la même discipline que `scripts/doctor.py` et
+`core/actions/resultat.py` :
+
+- `PROPRE`  : pip-audit a répondu, aucune faille.
+- `FAILLES` : pip-audit a répondu, voici lesquelles.
+- `INCONNU` : pip-audit n'est pas installé, OU la base d'avis est injoignable.
+
+Le seul piège qui compte ici est de rendre `PROPRE` quand la mesure a échoué.
+Le PC d'Usman peut être hors ligne ; un audit qui n'a pas pu interroger la base
+et répond « aucune faille » endort une alerte qui n'a jamais été prise. Trois
+sabotages (outil muet rendu PROPRE, parseur qui ignore les vulns, sortie
+illisible avalée) ont chacun fait échouer un test avant livraison. Le code de
+sortie sépare les cas : `2` pour INCONNU, distinct de `1` pour des failles
+réelles — un CI peut traiter « pas pu vérifier » autrement que « cassé ».
+
+### Ce qui a été mesuré, et ce qui reste sa décision
+
+Lancé sur `requirements.txt`, il a trouvé des failles réelles dans `pypdf`
+(lecture des PDF, chemin du devis), `mcp` (transport), `langchain-openai` et
+`click`. **Le chiffre n'est pas recopié ici exprès** : il vieillirait comme un
+faux état du jour. La commande le redonne à l'instant :
+
+    python scripts/scanner_dependances.py
+
+Monter les versions est une modification du graphe de dépendances qui ne peut
+pas être validée entièrement sur la machine de l'assistant (pile GPU, verrou
+`requirements.lock.txt` à régénérer, et `langchain-openai` porte une contrainte
+de version explicite dans `requirements.txt`). C'est donc **rapporté, pas
+appliqué d'office** : la correction est sa décision, relançable et vérifiable
+par la suite de tests avant fusion.
+
+### Ce que ça coûte si c'est faux
+
+Un audit qu'on croit propre alors qu'il n'a pas tourné : une faille laissée
+ouverte par confiance mal placée. D'où la règle des trois états, tenue par un
+test. Le scanner ne corrige rien de lui-même — il montre où regarder.
+
+---
+
+## DEC-0044 — Les quatre failles trouvées par DEC-0043 : montées, pas seulement rapportées
+
+**2026-09-04.** Suite de DEC-0043. Le propriétaire, en un mot : « Monter le ».
+
+### Ce qui a changé
+
+`requirements.txt` : `pypdf` 6.14.2 → 6.16.2, `langchain-openai` 1.1.9 → 1.1.14,
+`pydantic` 2.12.5 → 2.13.5. `click` et `mcp` restent transitifs (jamais épinglés
+en direct) mais montent avec `browser-use` 0.13.8 → 0.13.10, qui les épingle en
+dur — `click` à 8.3.3, `mcp` à 2.1.1.
+
+### Pourquoi c'est plus qu'un changement de quatre chiffres
+
+`browser-use==0.13.8` épingle exactement `mcp==1.26.0` et `click==8.3.1` — les
+deux versions vulnérables. Les corriger seul, sans toucher `browser-use`, ne se
+resoud pas : pip le refuse (vérifié — voir plus bas). La version corrigée exige
+elle-même `pydantic==2.13.5` (utilisée partout dans le backend FastAPI) et
+`pypdf==6.16.2` exactement. `langchain-openai==1.1.14` (le correctif) exige
+`openai>=2.26.0`, que `browser-use==0.13.10` fournit désormais en épingle dure —
+ce qui **résout au passage** le conflit historique documenté dans
+`requirements.lock.txt` (`langchain-openai==1.6.0` contre `openai==2.16.0`, qui
+ne pouvaient jamais coexister).
+
+Le paquet `mcp` (SDK) n'est importé nulle part dans le code : `core/mcp/transport.py`
+documente lui-même l'avoir écarté au profit de httpx pur. Le monter ne change
+rien à l'exécution d'ARENA — seulement à ce que `browser-use` embarque.
+
+### Ce qui a été vraiment vérifié, pas supposé
+
+`browser-use`, `mcp`, `langchain-openai` ne sont pas installés dans l'environnement
+de l'assistant : impossible de les valider en les import ant simplement. Vérifié
+à la place, dans l'ordre :
+
+1. Le vrai résolveur pip (`pip install --dry-run`) sur le jeu complet des quatre
+   versions montées — aucune erreur, aucun `ResolutionImpossible`.
+2. Installation réelle dans un environnement virtuel isolé, propre (pas
+   l'environnement de travail, pollué par d'autres installations de cette
+   session) — `pip check` y répond `No broken requirements found`.
+3. La suite complète dans cet environnement : **3440 passed** (32 de plus
+   qu'avant — des tests jusque-là `importorskip`-és sur `mcp`/`langchain_openai`,
+   absents ici, tournent maintenant pour de vrai), 0 échec.
+4. Ciblé sur les chemins sensibles — devis PDF, OpenTakeoff, transport MCP
+   interne d'ARENA (`core/mcp/`, distinct du SDK) : 99/99.
+5. `scripts/scanner_dependances.py` sur le fichier corrigé : `PROPRE`.
+
+**Sabotage-vérifié** : rétrograder `pypdf` seul (en laissant `browser-use` à sa
+version montée) rend le jeu de dépendances **irrésoluble** — `pip-audit` refuse
+alors un rapport et le scanner répond `INCONNU`, jamais `PROPRE` par erreur. La
+preuve que les paquets montent ensemble, pas un par un.
+
+### `requirements.lock.txt`
+
+Rien ne l'installe dans ce dépôt (ni `Dockerfile`, ni les scripts PowerShell) —
+c'est un `pip freeze` documenté de sa machine, pas un fichier réinstallé. Seules
+les sept lignes directement concernées (`browser-use`, `click`, `langchain-openai`,
+`mcp`, `openai`, `pydantic`, `pypdf`) ont été mises à jour, pour qu'il cesse de
+contredire `requirements.txt` avec d'anciennes épingles vulnérables. Elles ne
+viennent **pas** d'un vrai `pip freeze` fait sur son PC — l'en-tête du fichier le
+dit maintenant explicitement. Le reste du fichier n'a pas été touché : je n'ai
+aucun moyen de savoir ce qui tourne réellement chez lui pour les paquets que je
+n'ai pas changés, et l'inventer serait la simulation que ce dépôt interdit.
+
+### Ce que ça coûte si c'est faux
+
+Le vrai risque n'était pas dans les quatre versions elles-mêmes, mais dans la
+tentation d'éditer les nombres sans vérifier que l'ensemble se résout — un
+`requirements.txt` qui *a l'air* corrigé mais que `pip install` ne peut pas
+reproduire est pire qu'un aveu de `INCONNU`. C'est pour ça que la vérification
+est passée par le vrai résolveur et une vraie installation, deux fois, plutôt
+que par la lecture de métadonnées seule.
+
+---
+
+## DEC-0045 — La revue OWASP du backend : l'audit qui n'appelait que GET
+
+**2026-09-04.** Suite du volet défensif (DEC-0042 à 0044). Revue de sécurité
+du backend FastAPI. Le code lui-même — auth, débit, chemins de fichiers,
+OAuth, CORS, docs fermées par défaut — est solide et déjà bien construit
+(`apps/backend/security.py`, `connectors.py`). Aucune faille trouvée dans le
+code métier. Le vrai défaut était dans **l'outil censé le vérifier**.
+
+### Ce qui a été trouvé
+
+`scripts/auditer_surface_publique.py` n'envoyait qu'un `GET`, quelle que soit
+la vraie méthode d'une route, et sautait entièrement toute route paramétrée
+(`if "{" in chemin: continue`). Deux conséquences mesurées, pas supposées :
+
+- Un `POST` non protégé répond `405 Method Not Allowed` à un `GET` — un code
+  ≥ 400, compté « protégé attendu » sans que la clé n'ait jamais été
+  évaluée. Sabotage : `dependencies=[Depends(verify_api_key)]` retiré de
+  `/api/upload`, corps vide + sans clé, vraie méthode POST → `422` (la
+  validation du fichier requis échoue avant l'authentification, sur une
+  route sabotée COMME sur une route protégée — les deux masquent le même
+  signal). Avec un vrai fichier joint → `200 OK`, upload accepté sans clé.
+  L'ancien script (GET seul) annonçait « protégé » dans les deux cas.
+- `/connectors/{fournisseur}/status`, `/connectors/{fournisseur}/disconnect`,
+  `/connectors/{fournisseur}/auth`, `/api/actions/{identifiant}/confirm`,
+  `/api/actions/{identifiant}/cancel` : jamais appelées par l'audit
+  automatisé, ni avec la bonne méthode ni avec aucune.
+
+`tests/test_surface_api.py` — qui lit `route.dependencies` directement, sans
+appeler quoi que ce soit — donnait déjà une preuve **statique** fiable de
+ces cinq routes (confirmé : 100% des dépendances d'authentification du dépôt
+sont déclarées via `dependencies=[Depends(...)]`, jamais en paramètre de
+fonction — la lecture statique ne peut donc pas les manquer). Le trou était
+spécifiquement dans la preuve **comportementale**, complémentaire, que ces
+routes rejettent vraiment un appel non authentifié — et non redondante :
+elle est la seule à pouvoir attraper une dépendance déclarée mais dont
+l'implémentation serait cassée.
+
+### Ce qui a été corrigé
+
+`scripts/auditer_surface_publique.py` appelle maintenant la vraie méthode de
+chaque route déclarée, avec :
+- un paramètre de substitution pour tout chemin `{xxx}` — une valeur dédiée
+  (`gmail`, le seul fournisseur OAuth câblé) pour `{fournisseur}`, sinon une
+  valeur neutre, documentée comme non concluante pour les deux routes
+  `/api/actions/{identifiant}/...` (leur propre logique 404 sur un
+  identifiant inconnu, protégée ou non — `test_surface_api.py` reste leur
+  garde fiable) ;
+- un corps minimal mais réellement valide (`CORPS_MINIMAL`) pour les quatre
+  routes qui exigent un fichier ou un champ de formulaire obligatoire —
+  sans quoi un corps vide échoue sur sa propre validation avant même
+  d'atteindre la question de l'authentification, protégée ou non.
+
+**Sabotage-vérifié, trois fois** : retirer la dépendance de `/api/upload` →
+`[DEFAUT] HTTP 200` (avant : silencieux). Retirer celle de
+`/connectors/{fournisseur}/status` → `[DEFAUT] HTTP 200` (avant : jamais
+sondée). Retirer celle de `/connectors/{fournisseur}/disconnect` → pareil.
+Les trois corrigés côté code réel, jamais côté sabotage.
+
+`tests/test_auditer_surface_publique.py` verrouille les deux corrections :
+retirer `CORPS_MINIMAL`, la valeur dédiée `gmail`, ou revenir à un `GET`
+partout fait échouer la suite (vérifié par sabotage sur le script
+lui-même).
+
+### Ce que ça coûte si c'est faux
+
+Un audit qui annonce « protégé » sans l'avoir vérifié est pire qu'aucun
+audit : il éteint la vigilance exactement là où elle devait rester allumée.
+Rien n'était réellement exposé aujourd'hui — chaque route de ce dépôt est
+correctement protégée, prouvé par `test_surface_api.py` (statique) et
+maintenant aussi par `auditer_surface_publique.py` (comportemental, sur
+la vraie méthode). Le risque fermé est pour la prochaine route ajoutée sans
+sa dépendance : l'ancien script l'aurait laissée passer pour un `POST`, en
+silence.
+
+---
+
+## DEC-0046 — Graphify : le graphe structurel du dépôt, pas un second RAG
+
+**2026-09-04.** Demande directe : intégrer Graphify (Graphify-Labs,
+Apache-2.0) comme capacité de graphe de connaissances/intelligence
+documentaire d'ARENA — codebase mapping, requêtes structurelles, PDF/document
+understanding.
+
+### Ce qui a été vérifié avant d'écrire une ligne
+
+`https://github.com/Graphify-Labs/graphify` cloné et inspecté pour de vrai
+(révision `33362d9`, 2026-08-30) : Apache-2.0 confirmé sur CETTE révision,
+paquet PyPI normal (`graphifyy`), Python pur, extraction 100% locale par
+tree-sitter — aucun appel modèle nécessaire à la construction du graphe.
+Détail complet : `docs/audits/graphify_audit.md`.
+
+**Un doublon a été évité en premier.** `tools/rag/graphrag_tool.py`
+(Microsoft GraphRAG, déjà câblé et atteint depuis `chat.py`/
+`openai_gateway.py`) existait déjà. Vérifié avant d'ajouter quoi que ce
+soit : GraphRAG résume des DOCUMENTS déposés à la main dans un espace de
+travail Docker (communautés d'idées, recherche globale) ; Graphify
+cartographie la STRUCTURE DU CODE, par lecture directe des fichiers
+(entités, relations, plus court chemin). Deux fonctions distinctes, jamais
+fusionnées.
+
+### Ce qui a été intégré
+
+`core/connectors/graphify.py` — un `Connecteur` comme les autres (même
+contrat que `DevisConnector`, `ConnecteurOpenTakeoff`) : cinq capacités,
+`construire` (écrit `graphify-out/`, sous `WRITE_FILES`) et quatre lectures
+(`interroger`, `chemin`, `expliquer`, `hubs`, `ALLOWED`). Déclaré dans le
+registre (`apps/backend/runtime.py`) et la politique de permissions
+(`config/permissions_services.yaml`, service `graphify`) — aucun second
+registre, aucun second système de permissions.
+
+Ce que ça cartographie : **le dépôt lui-même**, par défaut. Le trou réel
+mesuré le 04/09/2026 : `PROJECT_MEMORY/PROJECT_MAP.md` est écrit et tenu à
+jour **à la main**, sans rien qui vérifie qu'il correspond encore au code.
+Le graphe répond à des questions structurelles en quelques secondes, sans
+relire tout le dépôt.
+
+### Le vrai piège du contrat `Connecteur`, trouvé en écrivant les tests
+
+`_conduire()` (`core/connectors/base.py`) refuse **toute** capacité tant
+que `sonder()` ne rend pas OPERATIONNEL — y compris la capacité qui
+construirait le graphe elle-même. Une première version de `sonder()`
+rendait NON_CONFIGURE tant qu'aucun `graph.json` n'existait : `construire`
+ne pouvait alors JAMAIS s'exécuter au tout premier appel — le même piège
+qu'évaluer la santé d'un four à sa première cuisson. Corrigé pour mesurer
+l'ENGIN (le binaire `graphify` est-il installé ?), jamais son historique de
+sorties — la même règle qu'OpenTakeoff. L'absence de graphe reste dite,
+dans le message, informative ; chaque lecture la vérifie elle-même avant
+d'agir.
+
+### Mesuré pour de vrai, sur ce dépôt
+
+```
+python -c "from core.connectors.graphify import ConnecteurGraphify; \
+c = ConnecteurGraphify(); print(c.executer_confirmee('construire'))"
+→ 13338 noeud(s), 25839 lien(s), 13,9 s (tree-sitter, sans modele)
+```
+
+« quel connecteur gère le devis PDF ? », « qu'est-ce qui hérite de
+Connecteur ? », les hubs architecturaux (`Statut`, `PlaquisteAgent`,
+`ResultatAction`, `EtatSante`, `OrchestratorAgent`…) — tous corrects,
+détail dans l'audit.
+
+### Ce qui n'a PAS été branché, et pourquoi c'est honnête
+
+L'ingestion de PDF/documents dans le graphe (extra amont `[pdf]`) **n'est
+pas installée** : `SUGGESTION — NON IMPLÉMENTÉE`, rien ne l'a vérifiée sur
+un vrai fichier ici, et une capacité non mesurée ne se simule pas
+(`core/actions/resultat.py`). `tools/documents/reader.py` reste l'unique
+chemin de lecture PDF/DOCX/XLSX/PPTX. Le devis PDF garde
+`core/connectors/devis.py`, inchangé (DEC-0041) — Graphify n'écrit jamais
+de document final. Le serveur MCP dédié (`graphify-mcp`) et tout
+fournisseur LLM (étiquetage sémantique des communautés) ne sont pas
+installés non plus : non vérifiables sur cette machine (pas d'Ollama, pas
+de GPU ici) et non nécessaires à la valeur déjà mesurée.
+
+### Ce que ça coûte si c'est faux
+
+Un graphe qui ment sur sa fraîcheur serait le vrai risque — d'où
+`sonder()` qui ne promet jamais un graphe à jour, seulement que le moteur
+répond. `graphify-out/` (28 Mo, généré) n'est jamais versionné
+(`.gitignore`) : aucune donnée du dépôt n'y est plus exposée qu'elle ne
+l'est déjà dans le code source lui-même — c'est une carte du code, pas une
+fuite d'un secret qu'il contiendrait (le scanner de secrets, DEC-0042, reste
+la garde pour ça).
+
+---
+
+## DEC-0047 — GitIngest : un dépôt transformé en texte, pas un second Graphify
+
+**2026-09-05.** Suite du volet intégration (DEC-0046). Demande directe :
+intégrer GitIngest (coderamp-labs, MIT) comme capacité d'ingestion de
+code/contexte — un dépôt local ou une URL Git transformé en résumé, arbre et
+contenu concaténé, prêt pour un modèle.
+
+### Ce qui a été vérifié avant d'écrire une ligne
+
+`https://github.com/coderamp-labs/gitingest` cloné et inspecté (révision
+`4e259a0`, 2025-08-16) : MIT confirmé, paquet PyPI normal (`gitingest`),
+dépendances légères, API Python publique documentée
+(`ingest_async(source, ...) -> (résumé, arbre, contenu)`). Détail complet :
+`docs/audits/gitingest_audit.md`.
+
+**Un doublon a été cherché en premier** (`tools/coder/repo_engineer_tool.py`,
+utilisé par `RepoEngineerTool`) : c'est un outil d'édition locale
+(`get_tree`/`read_files`/`apply_patch`/`run_tests`) pour un agent SWE, sans
+respect de `.gitignore`, sans ingestion d'URL distante, sans statistiques —
+un rôle différent, pas un doublon. Graphify (DEC-0046) cartographie les
+RELATIONS structurelles du code ; GitIngest donne le CONTENU brut. Les deux
+répondent à des questions différentes, jamais fusionnées.
+
+### Ce qui a été intégré
+
+`core/connectors/gitingest.py` — un `Connecteur` de plus (même contrat que
+`ConnecteurGraphify`/`DevisConnector`) : une capacité, `ingerer`
+(`action=read`, `ALLOWED`, risque **MEDIUM** — pas LOW comme Graphify : une
+URL clone un contenu tiers, potentiellement hostile, même brièvement).
+Déclaré dans le registre existant et la politique de permissions existante
+— aucun second registre, aucun second système de permissions, aucun second
+RAG (LightRAG/GraphRAG gardent leur rôle), aucun générateur de PDF touché.
+
+Le contenu ingéré est traité comme une **donnée**, jamais une instruction —
+la même discipline que partout ailleurs dans ce dépôt pour du texte externe
+(recherche web, e-mails reçus). Le connecteur ne fait qu'extraire et
+rapporter ; il n'interprète jamais ce qu'il lit.
+
+### Deux défauts réels trouvés en écrivant les tests, pas en lisant la doc
+
+1. **Un `GITHUB_TOKEN` égaré dans l'environnement casse une ingestion
+   purement locale.** `resolve_token()` (amont) relit systématiquement cette
+   variable dès qu'aucun jeton n'est fourni explicitement — même pour un
+   répertoire local qui n'en a besoin d'aucun — et lève si sa forme n'est
+   pas celle d'un vrai jeton GitHub. Mesuré dans ce conteneur : un
+   `GITHUB_TOKEN` présent pour une tout autre raison faisait échouer
+   l'ingestion d'un simple dossier de test. `_sans_jeton_errant()` retire la
+   variable le temps de l'appel, sauf si l'appelant fournit lui-même un
+   jeton.
+2. **`asyncio.run()` plante depuis une route déjà async.**
+   `registre.executer(...)` est appelé en clair, sans `await`, depuis des
+   routes FastAPI et des agents déjà `async def` — vérifié
+   (`chat.py`, `plaquiste_agent.py`) : déjà sous la boucle d'uvicorn. Une
+   première version appelait `asyncio.run()` directement, qui y lève
+   `RuntimeError: cannot be called from a running event loop`. Corrigé par
+   un thread dédié (`ThreadPoolExecutor`), sabotage-vérifié : revenir à
+   `asyncio.run()` direct fait échouer le test qui simule ce chemin réel.
+
+### Ce qui protège les chemins locaux sensibles
+
+Un segment de chemin (`.ssh`, `.aws`, `.gnupg`, une clé privée nommée) ou un
+nom de fichier (`.env`, `credentials.json`) refuse l'ingestion avant même
+d'ouvrir quoi que ce soit — vérifié et sabotage-vérifié. `.gitignore`
+protège ce qu'un dépôt exclut lui-même ; ceci protège ce qu'aucun
+`.gitignore` ne verra, parce que le chemin vise directement ce dossier.
+
+### Ce qui n'a PAS été branché, et pourquoi c'est honnête
+
+`include_gitignored=True` n'est exposé nulle part — la contourner
+exposerait exactement ce que la protection ci-dessus empêche.
+`SUGGESTION — NON IMPLÉMENTÉE`. L'ingestion de dépôts privés dépend
+entièrement d'un jeton que l'appelant fournirait explicitement ; ARENA ne
+gère aujourd'hui aucun jeton GitHub propre (vérifié : absent de
+`apps/backend/config.py`) — sans jeton, un dépôt privé échoue proprement,
+jamais un faux succès.
+
+### Blocage de vérification, honnêtement rapporté
+
+L'ingestion d'une URL GitHub réelle n'a pas pu être vérifiée bout en bout
+**depuis ce conteneur** : sa politique réseau renvoie 403 sur un simple
+`curl -I https://github.com/...`, indépendamment de GitIngest. Le code est
+réel et utilise la même fonction vérifiée pour l'ingestion locale ; seule
+cette vérification réseau précise reste bloquée par l'environnement de
+test — voir `docs/audits/gitingest_audit.md`, §7.
+
+### Ce que ça coûte si c'est faux
+
+Une ingestion qui contournerait `.gitignore` ou la protection par chemin
+exposerait des secrets locaux au modèle — d'où les deux protections
+sabotage-vérifiées. Un connecteur qui plante sous une vraie route async
+aurait rendu la capacité inutilisable en production sans qu'aucun test
+mocké ne le révèle jamais — c'est exactement ce que le test simulant la
+boucle active existe pour empêcher.
+
+## DEC-0048 — Guide de procédure : un workflow déjà décrit, rendu en document (pas Mimik)
+
+**2026-09-05.** Demande directe : intégrer Mimik (westpoint-io, MIT) —
+extension navigateur qui capture en direct les clics, le DOM et des
+captures d'écran d'une session utilisateur pour produire automatiquement
+un guide de procédure.
+
+### Ce qui a été refusé, et pourquoi
+
+La capture en direct elle-même : ARENA n'a ni extension navigateur ni
+pipeline d'enregistrement de session, et en construire un pour observer ce
+que le propriétaire fait sur son écran est une surface de captation
+nouvelle — pas un outil de lecture — sans aucun besoin réel exprimé pour
+la justifier. Un premier refus a porté sur l'intégration entière ; le
+propriétaire a corrigé : ce n'était pas la demande. Il ne voulait pas de
+surveillance de navigateur, seulement recevoir un workflow **déjà écrit**
+(étapes, captures d'écran déjà existantes, fournies en paramètre) et le
+transformer en document — la partie qui restait après avoir retiré la
+capture en direct était raisonnable, et c'est elle qui a été construite.
+
+### Ce qui a été intégré
+
+`core/production/workflow_guide.py` (modèle de données `Workflow`/`Étape`,
+rédaction, quatre rendus) et `core/connectors/workflow_guide.py`
+(`ConnecteurWorkflowGuide`, une capacité `generer`) — même contrat que les
+connecteurs précédents, déclaré dans le registre et la politique
+existants. **Aucun second moteur** : le PDF passe par reportlab (déjà
+utilisé par `agents/plaquiste/devis_pdf.py`), le DOCX par python-docx
+(déjà une dépendance, jusqu'ici seulement lue par `tools/documents/reader.py`
+— écrire est une capacité de la même bibliothèque). Même logique que le
+devis (DEC-0041) pour la permission : le fichier reste local, relu avant
+d'être partagé — `ALLOWED` sous le coupe-circuit `WRITE_FILES`, pas de
+confirmation préalable.
+
+Deux protections, sabotage-vérifiées :
+
+1. **Rédaction du texte avant mise en page** (`expurger()`) — masque ce qui
+   ressemble à un email, un téléphone, une carte, ou une valeur secrète
+   (affectation `clé = valeur` à haute entropie), avant qu'un mot n'entre
+   dans un fichier produit.
+2. **Chemin de capture d'écran gardé comme celui de GitIngest** — un
+   segment (`.ssh`, `.aws`, `.gnupg`, une clé privée nommée) ou un nom de
+   fichier (`.env`, `credentials.json`) refuse l'inclusion avant même
+   d'ouvrir le fichier ; une capture refusée est signalée et ignorée, elle
+   ne fait jamais échouer tout le rendu.
+
+### Deux défauts réels trouvés en écrivant les tests, pas en lisant la doc
+
+1. **`Image(kind="proportional")` de reportlab exige largeur ET hauteur**
+   pour calculer un ratio — lui passer `height=None` lève un `TypeError`
+   dès la mise en page. Corrigé en lisant la vraie dimension du fichier via
+   Pillow (déjà une dépendance transitive) avant de construire l'image.
+2. **Le caractère de masquage plein (█, U+2588) n'existe pas dans
+   l'encodage WinAnsi** de la police Helvetica par défaut de reportlab — un
+   PDF réel relu avec `pypdf` le rendait comme `■` (U+25A0), un caractère
+   différent. La propriété de sécurité tenait déjà (le texte réel avait
+   disparu), mais le masque affiché était imprévisible. Remplacé par
+   `[masque]`, en Latin-1 pur.
+
+### Ce que le sabotage a trouvé sur les *tests*, pas sur le code
+
+Sabotaged le garde de segment interdit (`.ssh`/`.aws`/`.gnupg`/...) en le
+désactivant : la suite est restée verte. Cause : les chemins d'exemple
+(`~/.ssh/id_rsa`) échouaient déjà sur deux autres filtres indépendants
+(fichier inexistant, extension non image) — le test « passait » sans que
+le garde de segment ne soit jamais exercé. Corrigé en isolant le garde :
+une vraie image PNG, existante, dans un dossier au nom interdit. Re-sabotage
+: 5 échecs réels ; restauration : vert. C'est exactement le risque que
+CLAUDE.md décrit — un test qui passe pour la mauvaise raison est pire que
+l'absence de test, et seul le sabotage l'a montré.
+
+### Ce qui n'a PAS été implémenté, et pourquoi c'est honnête
+
+- **Aucune capture en direct.** Voir plus haut — c'est la partie refusée,
+  documentée ici plutôt que silencieusement abandonnée.
+- **Aucune rédaction du CONTENU d'une image.** Une capture d'écran fournie
+  est embarquée telle quelle ; masquer ce qu'elle montre exigerait de la
+  vision/OCR, non implémenté. `SUGGESTION — NON IMPLÉMENTÉE`.
+- **Aucun export vidéo.** Le montage existant (`tools/video/`) n'a pas été
+  branché ici, faute de besoin réel exprimé pour un guide filmé.
+
+### Ce que ça coûte si c'est faux
+
+Une rédaction qui manquerait un email ou une clé dans un guide destiné à
+être partagé le publierait dans un PDF/DOCX qui, une fois généré, n'est
+plus sous le contrôle d'ARENA. Un garde de chemin inefficace laisserait un
+guide embarquer le contenu d'une clé privée comme si c'était une capture
+d'écran légitime — d'où les deux sabotages ci-dessus, et la correction du
+test qui ne les exerçait pas vraiment.
+
+## DEC-0049 — KrillinAI : traduction/doublage d'une vidéo existante, jamais un second orchestrateur
+
+**2026-09-05.** Demande directe : intégrer KrillinAI (krillinai/KrillinAI)
+comme capacité de traduction/sous-titrage/doublage vidéo dans le workspace
+Video d'ARENA — sous-titres source/cible/bilingues, doublage, rendu
+horizontal/vertical, couverture.
+
+### Ce que le dépôt en amont est devenu, vérifié avant d'écrire une ligne
+
+Cloné réellement (`krillinai/krillinai` @ `346d08bb1f3c61c96301ec130c4db8879b3b8444`,
+05/09/2026) : `krillinai/KrillinAI` a été **renommé `krillinai/OpenCreator`
+et entièrement réarchitecturé** — c'est aujourd'hui un espace de travail
+agent complet (bureau Electron, daemon, harnais, marché de compétences) qui
+utilise **Codex CLI comme moteur d'exécution**. Intégrer ce produit-là
+aurait été construire, mot pour mot, le second orchestrateur/système
+d'agents que cette même mission interdisait. **Ce n'est pas ce qui a été
+branché.**
+
+L'ancien moteur (transcription → traduction → sous-titres → doublage →
+rendu, en ligne de commande) survit intact sous `runtime/krillinai/` à
+l'intérieur du même dépôt : un module Go indépendant (`krillin-ai`), huit
+commandes réelles (`subtitle`, `tts`, `speech`, `render-horizontal`,
+`render-vertical`, `cover`, `pipeline`, `voices`), une sortie JSON
+structurée par ligne, un manifest (`krillinai_manifest.json`). **Compilé
+pour de vrai dans cette session** (`go build -o krillinai-cli ./cmd/cli`,
+Go 1.24) — le binaire fonctionne, chaque commande a été exercée en
+`--dry-run` et les JSON réels ont servi de fixtures aux tests, jamais
+inventés.
+
+### La licence a changé de valeur en cours de route
+
+Le README d'OpenCreator affiche Apache-2.0 ; `runtime/krillinai/LICENSE`
+(vérifié directement, pas supposé) est **GPL-3.0-only**. `LICENSE` d'ARENA
+est « All rights reserved » — même raisonnement déjà tenu pour VoiceStudio
+(AGPL-3.0, `core/connectors/audio_voix.py`) : importer ou copier du code
+GPL romprait cette licence. La frontière retenue est identique — **aucune
+ligne du moteur n'entre dans `core/connectors/krillinai.py`** ; il tourne
+comme binaire compilé à part, jamais vendu, jamais téléchargé par ARENA,
+localisé par `KRILLINAI_CLI_BIN` (variable d'environnement) ou le PATH,
+absent → `NON_CONFIGURE` avec la commande de compilation à lancer.
+
+### Ce qui a été intégré
+
+`core/connectors/krillinai.py` (`ConnecteurKrillinAI`, six capacités :
+`subtitle`/`tts`/`render_horizontal`/`render_vertical`/`cover`/`pipeline`),
+câblé dans `core/production/plan_video.py` (`CAPACITES_VIDEO`,
+`CAPACITES_ECRITURE`) sous cinq noms préfixés (`krillin_subtitle`,
+`krillin_tts`, `krillin_render_horizontal`, `krillin_render_vertical`,
+`krillin_cover`) et dans `agents/video/production_agent.py`
+(`_appeler_krillin`, registre-médié comme Xaar Kaname). Permission unique
+`krillinai.generate = CONFIRMATION, MEDIUM, WRITE_FILES`
+(`config/permissions_services.yaml`) — même traitement que
+`video_generation.generate` (WanGP/MoneyPrinterTurbo/Xaar Kaname) : une
+génération reste une génération, jamais confirmée à la place du
+propriétaire. Interface PWA (`videoProjectStore.ts`, `VideoProjectModal.tsx`)
+et rapport de disponibilité (`core/production/disponibilite.py`) mis à
+jour en même temps — un test existant (`test_capacites_video_pwa.py`)
+vérifie que ces trois listes ne peuvent pas diverger.
+
+### Quatre gardes, sabotage-vérifiées
+
+1. **Jamais de clonage vocal.** `--voice-clone-source` (un vrai drapeau du
+   moteur amont, vérifié dans son code) n'est ni lu ni transmis, à aucun
+   niveau (connecteur, agent) — même fourni explicitement. Instruction du
+   propriétaire, antérieure et absolue : *« si tu vois quelque chose de
+   nouveau [près du deep face], ignore-le, ne le touche même pas »* — le
+   clonage vocal est la même famille de risque que Xaar Kaname
+   (Deep-Live-Cam), et cette frontière ne se négocie pas capacité par
+   capacité, quelle que soit la qualité de l'architecture proposée autour.
+2. **Jamais une seconde transcription locale.** `caption_source` refuse
+   `"whisper"`/`"auto"`/`"openai"`/`"aliyun"` : ARENA transcrit déjà
+   (FasterWhisper). Seuls `"manual"` (transcription ARENA fournie) et
+   `"platform"` passent.
+3. **Jamais un téléchargement d'URL implicite.** Une entrée `subtitle` en
+   URL exige `autoriser_telechargement=True` explicite — même logique que
+   GitIngest (DEC-0047) pour une URL distante.
+4. **Jamais un binaire média téléchargé en silence.** `ffmpeg`/`ffprobe`/
+   `yt-dlp` sont exigés déjà présents sur le PATH (vérifié : le moteur
+   amont les télécharge lui-même s'il ne les trouve pas — code source lu,
+   `internal/deps/checker.go`) ; ARENA refuse tout appel réel s'ils
+   manquent, plutôt que de laisser le moteur les récupérer seul.
+
+Les quatre gardes ont été sabotées puis restaurées ; la première tentative
+sur le garde de transcription a d'abord révélé un test qui passait pour la
+MAUVAISE raison ailleurs dans cette session (workflow_guide, DEC-0048) —
+pas ici : chaque sabotage de ce module a produit un échec réel dès le
+premier essai.
+
+### `pipeline` existe, et n'est délibérément pas composable
+
+La capacité `pipeline` du moteur amont est implémentée et testée dans le
+connecteur — mais **volontairement absente de `CAPACITES_VIDEO`** : la
+laisser composable par le graphe ARENA laisserait le moteur amont composer
+ses propres étapes à la place du planificateur, exactement le second
+orchestrateur que la mission interdisait elle-même. La composition
+(sous-titres → doublage → rendu) reste au graphe ARENA, une étape
+confirmée à la fois — comme `krillin_tts`/`krillin_render_*` le
+documentent : ils prennent un CHEMIN déjà confirmé, jamais un index de
+référence, précisément parce que le fichier d'une étape d'écriture
+antérieure n'existe qu'après confirmation du propriétaire, jamais dans le
+même passage (même principe que `montage` face à `wangp`/`moneyprinter`,
+DEC-0037).
+
+### Ce qui reste `UNKNOWN`, honnêtement
+
+Ce conteneur cloud n'a ni ffmpeg, ni ffprobe, ni yt-dlp, ni clé API de
+traduction/TTS/image configurée — mesuré, pas supposé
+(`shutil.which` sur les trois, vide). Une génération réelle bout en bout
+(un vrai MP4 sous-titré/doublé) n'a donc pas pu être vérifiée ici, seulement
+son contrat (`--dry-run`, JSON réel capturé) et ses erreurs de
+configuration absente. Comme la phase 7.2 (`docs/CURRENT_TASK.md`), la
+mesure réelle attend la machine du propriétaire — où ffmpeg est déjà
+présent (`tools/video/ffmpeg_tool.py` en dépend) et où le binaire devra
+être compilé une fois (`go build -o krillinai-cli ./cmd/cli`).
+
+### Ce que ça coûte si c'est faux
+
+Une capacité `krillin_tts` qui accepterait `voice_clone_source` sans le
+filtrer construirait, sur commande, une voix synthétique d'une personne
+réelle — exactement le risque que Xaar Kaname porte déjà pour un visage, et
+que le propriétaire a explicitement mis hors de portée de cette
+intégration. Un garde de transcription absent chargerait un second modèle
+Whisper sur une carte qui n'en tient qu'un à la fois (RTX A2000, 12 Go) —
+lenteur, pas casse, mais un doublon que la mission elle-même interdisait.
+Une capacité `pipeline` laissée composable referait, une étape de plan à la
+fois, exactement le second orchestrateur que ce dépôt refuse depuis le
+début de cette session (Hermes, Open-R1, MengTo/Kage, l'espace de travail
+OpenCreator lui-même).
+
+## DEC-0050 — OpenUI : la technique de prompt, jamais le serveur qui exige un compte GitHub
+
+**2026-09-05.** Demande directe, après feu vert explicite du propriétaire
+pour reprendre les intégrations mises en attente (OpenUI, txtai,
+Formbricks) : intégrer OpenUI (wandb/openui) comme capacité de génération
+d'interface — décrire, voir généré, en HTML/React/Svelte/Web Component.
+
+### Ce qui a été vérifié avant d'écrire une ligne
+
+Cloné réellement (`wandb/openui` @ `42d7ab4`, 05/09/2026) : contrairement à
+KrillinAI, ce dépôt **n'a pas changé de forme** — toujours Apache-2.0,
+toujours un backend FastAPI + frontend React. Mais son vrai contrat a été
+lu dans le code, pas supposé : `POST /v1/chat/completions`
+(dans le `server.py` du dépôt OpenUI, pas d'ARENA) **exige une session utilisateur**
+(`request.session["user_id"]`, 401 sinon), obtenue par connexion GitHub
+OAuth — sauf en `Env.LOCAL` (le défaut), où `GET /v1/session` provisionne
+un utilisateur local automatiquement. Le serveur tire aussi `weave`
+(télémétrie W&B, gardée locale tant que `WANDB_API_KEY` n'est pas posée —
+vérifié dans `server.py`), `boto3`, `peewee`, `fastapi-sso`.
+
+**Ce qui fait le vrai travail n'est pas ce serveur.** Le prompt qui
+transforme une description en interface vit côté CLIENT, en TypeScript
+(`frontend/src/api/openai.ts::systemPrompt`) : fragment HTML, classes
+Tailwind, variables CSS de thème clair/sombre, images de substitution
+`placehold.co` — envoyé ensuite à n'importe quel modèle compatible OpenAI,
+dont **Ollama**, déjà ce qu'ARENA utilise en local (DEC-0002). Le serveur
+FastAPI n'est qu'un relais générique multi-fournisseurs avec comptabilité
+d'usage et authentification — une doublure de ce qu'ARENA a déjà
+(`ModelProvider`, le routeur de modèles, les permissions).
+
+### Ce qui a été intégré, et pourquoi cette forme
+
+**La technique, jamais les fichiers.** Même discipline que le catalogue de
+specialistes (`core/specialistes/catalogue.py`) et Social Media Skills, plus
+tôt dans cette session : aucune ligne de `frontend/src/api/openai.ts`
+copiée. `core/production/ui_generation.py` reprend le PRINCIPE (fragment
+autonome, Tailwind, variables de thème, images de substitution), en code
+ARENA, avec le modèle local d'ARENA — pas un second serveur à héberger, pas
+de connexion GitHub, pas de dépendance à `weave`/`boto3`/`peewee`.
+
+Séparation identique à Xaar Kaname/KrillinAI dans
+`agents/video/production_agent.py` : `agents/ui/ui_agent.py`
+(`UiGenerationAgent`) appelle le modèle et extrait le code — jamais
+d'écriture directe ; `core/connectors/ui_generate.py`
+(`ConnecteurUiGenerate`) valide et écrit — jamais de génération. Câblé dans
+l'aiguillage réel (`agents/orchestrator/orchestrator_agent.py`,
+`apps/backend/routers/chat.py`) sous une intention nouvelle, `UI_GENERATE`,
+distincte de `DESIGN_UI` (décider à quoi ça doit ressembler, sans rien
+écrire — la capacité existante d'UI/UX Pro Max, inchangée). **Ajoutée aussi
+au prompt de classification du modèle** (`PROMPT_CLASSIFICATION`), pas
+seulement au repli par mots-clés : `DESIGN_UI` lui-même n'y figurait pas et
+n'était donc atteignable que modèle indisponible — corrigé ici pour
+`UI_GENERATE`, pour ne pas répéter la même capacité invisible que la
+mission originelle de ce dépôt (`docs/CURRENT_TASK.md`) a déjà dû corriger
+une fois.
+
+Permission : `ui_generate.document = ALLOWED, WRITE_FILES` — même
+raisonnement que workflow_guide/devis (DEC-0041/0048) : le fichier reste
+local, relu avant d'être partagé, et n'est **jamais exécuté par ARENA**
+(le proprietaire l'ouvre lui-même dans son navigateur, comme n'importe quel
+autre artefact de `media/rendered/`) — pas la CONFIRMATION de
+`video_generation`/`krillinai`, qui couvre un coût de génération externe
+distinct.
+
+### Une garde sabotage-vérifiée
+
+**Aucun script externe hors d'une liste fermée.** Mandat explicite de la
+mission (« contrôle des URLs externes ») : `valider_scripts_externes()`
+refuse l'écriture ENTIÈRE (pas un avertissement à côté d'un fichier quand
+même écrit) si un `<script src="...">` vise un domaine hors de
+`DOMAINES_SCRIPT_AUTORISES` (les mêmes domaines déjà vérifiés pour les
+artefacts de ce système : cdnjs, jsdelivr, le CDN Tailwind, jquery).
+Sabotagé deux fois : une fois en désactivant l'appel du garde (5 échecs
+réels), une fois en affaiblissant la comparaison de domaine en sous-chaîne
+plutôt qu'en égalité exacte (`cdn.tailwindcss.com.attacker.test` serait
+alors passé — un test dédié l'a détecté) ; les deux fois restauré, vert.
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+Aucune image en entrée (décrire une interface à partir d'une capture
+d'écran) : OpenUI le permet, ARENA a déjà une vision locale
+(`ollama_vision`) qui pourrait la servir, mais aucun besoin réel exprimé ne
+le justifiait pour cette première intégration. `SUGGESTION — NON
+IMPLÉMENTÉE`.
+
+### Ce que ça coûte si c'est faux
+
+Un garde de script externe inefficace laisserait une interface générée
+charger un script arbitraire — exécuté dans le navigateur du propriétaire
+le jour où il ouvre le fichier, pas dans ARENA, mais toujours à son
+insu si le domaine n'est jamais montré. Une capacité ajoutée sans être
+câblée dans l'aiguillage réel serait exactement le défaut que la mission
+« réveiller ce qui dort » a déjà corrigé une fois pour neuf modules :
+écrite, testée, et qu'aucune phrase du propriétaire n'atteint.
+
+## DEC-0051 — txtai : un moteur à côté, jamais un second RAG
+
+**2026-09-05.** Dernière des trois intégrations mises en attente (avec
+OpenUI/DEC-0050 et Formbricks) : intégrer txtai (neuml/txtai, Apache-2.0)
+comme capacité de recherche sémantique.
+
+### Ce qu'ARENA a déjà, vérifié avant d'écrire une ligne
+
+Trois systèmes de récupération existent déjà et ont chacun leur rôle :
+`core/memory/semantique.py` (mémoire de conversation retrouvée par le sens,
+embeddings bge-m3 via Ollama local), `tools/rag/lightrag_tool.py` et
+`tools/rag/graphrag_tool.py` (documents déposés par le propriétaire).
+La règle de la mission elle-même est **conditionnelle**, pas un mandat
+d'intégrer coûte que coûte : « NE construis PAS un deuxième RAG... n'utilise
+txtai que lorsque son avantage est démontré » — et démontrer un avantage
+exige un vrai banc de comparaison (pertinence, latence) sur un petit
+jeu de données réel.
+
+### Le blocage réel, honnêtement rapporté
+
+Un vrai banc de comparaison n'a pas pu tourner **dans ce conteneur** :
+`core/memory/semantique.py` mesure déjà, et documente déjà, l'absence
+d'Ollama en cloud — la même limite que la phase 7.2
+(`docs/CURRENT_TASK.md`). Sans embeddings réels, aucune mesure de
+pertinence n'aurait de sens ; en fabriquer une aurait été exactement ce que
+`core/actions/resultat.py` interdit — un chiffre plausible à la place d'une
+mesure. **Donc rien ici ne remplace ni ne route par défaut vers txtai** :
+c'est une capacité réelle, appelable explicitement, jamais activée à la
+place d'un moteur existant. Un test dédié (`test_txtai_n_apparait_dans_
+aucune_intention_du_routeur`) le fige : `apps/backend/routers/chat.py` ne
+cite jamais txtai.
+
+### Ce qui a été intégré, et pourquoi cette forme
+
+**Aucun second modèle d'embeddings.** Installé en `txtai_minimal==9.13.0` —
+la variante officielle du paquet PyPI, vérifiée réellement (téléchargée,
+341 Ko), **sans** `torch`/`transformers`/`faiss` : configuré en
+`method="external"`, le vecteur de chaque texte vient de `embeddings_ollama()`
+(`core/memory/semantique.py`), **la même fonction** que la mémoire de chat
+utilise déjà. Testé pour de vrai (sans Ollama, avec un fournisseur injecté
+déterministe) : un index construit, une vraie requête, un vrai classement
+par score — ce qui est évalué est le moteur d'indexation de txtai
+(`backend="numpy"`, faiss absent), jamais un second modèle sur la RTX A2000.
+
+`core/production/txtai_recherche.py` (la plomberie : construire un index
+éphémère, chercher, jamais persister) ; `core/connectors/txtai_search.py`
+(`ConnecteurTxtaiSearch`, une seule capacité, `rechercher`, une LECTURE —
+rien n'est écrit, rien n'est persisté). Permission :
+`txtai_search.read = ALLOWED, LOW` — même niveau que `graphify.interroger`.
+
+### Deux gardes réelles, sabotage-vérifiées
+
+1. **Un plafond de documents par appel** (`MAX_DOCUMENTS = 200`) — mandat
+   explicite de la mission (§15) : jamais toutes les données du
+   propriétaire transformées en embeddings automatiquement. L'index est
+   reconstruit et jeté à chaque appel, sur les documents FOURNIS dans le
+   même appel, jamais une bibliothèque entière.
+2. **Un embeddings incomplet lève, il ne se complète jamais par un vecteur
+   inventé.** Sabotage réel : désactiver ce garde n'a PAS levé d'exception
+   au même endroit — la vérification a montré que le résultat aurait
+   silencieusement continué avec un index mal formé, plutôt que de
+   confirmer une exception propre plus loin. C'est exactement ce que le
+   sabotage doit révéler : un défaut qui existerait sans bruit.
+
+**Correctif du même bug que GitIngest (DEC-0047), retrouvé avant qu'il ne
+morde ici :** `sonder()` appelait `asyncio.run()` directement — sabotage
+réel confirmé : `RuntimeError: asyncio.run() cannot be called from a
+running event loop`, exactement le message de DEC-0047. Corrigé par le
+même pont par thread dédié, testé depuis une vraie boucle asyncio active
+(`test_sonde_depuis_une_boucle_asyncio_deja_active`).
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+Aucun remplacement de LightRAG/GraphRAG/la mémoire sémantique. Aucun banc
+de comparaison chiffré (pertinence/latence/mémoire, mission §16) : les
+conditions pour le mesurer honnêtement (un Ollama joignable, un vrai corpus)
+n'existent que sur la machine du propriétaire. `SUGGESTION — NON
+IMPLÉMENTÉE` : lancer ce banc une fois qu'Ollama y est joignable, avec les
+deux fournisseurs de vecteurs (celui de la mémoire, celui de txtai) sur le
+MÊME corpus, avant de décider si un remplacement se justifie un jour.
+
+### Ce que ça coûte si c'est faux
+
+Un plafond de documents contourné indexerait, un appel à la fois,
+l'intégralité d'un espace de travail sans que le propriétaire l'ait
+demandé — l'embeddings de toutes ses données, produit silencieusement.
+Un garde d'embeddings incomplet absent laisserait un classement construit
+sur un index mal formé passer pour un résultat fiable, sans que rien ne le
+signale — exactement ce que le sabotage de cette intégration a montré,
+avant que quiconque ne le découvre sur un vrai corpus.
+
+## DEC-0052 — Formbricks : une instance externe appelée par API, jamais du code copié
+
+**2026-09-05.** Dernière des trois intégrations mises en attente (avec
+OpenUI/DEC-0050 et txtai/DEC-0051) : intégrer Formbricks (formbricks/
+formbricks) comme capacité de sondage/feedback.
+
+### La licence commande la forme, vérifiée avant d'écrire une ligne
+
+Cloné réellement (`formbricks/formbricks` @ `4f597cb`, 05/09/2026) : le
+`LICENSE` du dépôt confirme exactement ce que la mission annonçait — le
+cœur est **AGPLv3** ; `apps/web/modules/ee/` (Enterprise) sous licence
+séparée ; seuls des SDK clients (`packages/js`, `packages/android`,
+`packages/ios`, `packages/api`) sont MIT, pas le serveur. **Aucune ligne de
+ce dépôt n'est copiée ici.** L'API REST management (routes réelles sous
+`apps/web/app/api/v1/management/`, lues dans le code source — en-tête
+`x-api-key`, confirmé dans les tests amont, pas deviné) est appelée par
+HTTP, exactement la même frontière que VoiceStudio (AGPL-3.0,
+`core/connectors/audio_voix.py`) : une simple agrégation par appel externe
+n'étend pas les obligations de l'AGPL à qui l'appelle.
+
+### Ce qui a été intégré, et pourquoi cette forme
+
+`core/connectors/formbricks.py` (`ConnecteurFormbricks`) — cinq capacités :
+`creer` (un sondage à une question, texte libre — le schéma complet de
+Formbricks porte une vingtaine de types de questions ; en couvrir un seul,
+suffisant pour « un petit questionnaire de feedback », évite une capacité
+décorative), `lister`, `obtenir`, `reponses`, `analyser` (compte/agrège les
+réponses déjà reçues — **calculé ici**, honnêtement : l'API de Formbricks
+ne rend aucun score d'analyse prêt à l'emploi, vérifié dans le code source,
+donc rien n'invente un chiffre de satisfaction à sa place).
+
+**Aucune URL par défaut.** `FORMBRICKS_BASE_URL` doit être fournie
+explicitement — jamais l'URL cloud de Formbricks devinée à sa place. Une
+instance cloud enverrait de vraies données de réponse (potentiellement
+client/personnelles, mission §23) chez un tiers ; ARENA ne le décide jamais
+à la place du propriétaire (DEC-0002). Sans les trois variables
+(`FORMBRICKS_BASE_URL`, `FORMBRICKS_API_KEY`, `FORMBRICKS_WORKSPACE_ID`) :
+`NON_CONFIGURE`, proprement — ARENA continue de fonctionner (mandat de la
+mission, §24). **Aucune instance n'existe pour ce propriétaire** : ce
+connecteur est réel et testé, mais n'a jamais pu être vérifié contre un
+vrai serveur — seulement contre un faux client HTTP figé sur les réponses
+réelles de l'API (schéma vérifié dans le code source amont).
+
+Permission : `formbricks.read = ALLOWED, LOW` (lire ses propres sondages
+déjà configurés) ; `formbricks.survey = CONFIRMATION, MEDIUM, PUBLISH` —
+publier un sondage est visible d'un tiers (l'instance, et quiconque y
+répond), le même coupe-circuit déjà utilisé pour les réseaux sociaux
+(`config/permissions_services.yaml`), pas `WRITE_FILES` : rien n'est écrit
+sur disque ici, c'est une ressource distante qui est créée.
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+Les réponses ne sont **jamais** écrites dans la mémoire personnelle
+d'ARENA (mission §22) — vérifié : ce fichier n'importe rien de
+`core/memory/`, un test dédié le fige. Aucun câblage dans l'aiguillage
+automatique (`chat.py`) : contrairement à OpenUI/txtai, ce n'est pas une
+question de duplication (ARENA n'a aucune capacité de sondage existante) —
+c'est qu'aucune instance réelle n'existe pour l'exercer, et câbler un
+routage automatique vers une capacité qui répondra `NON_CONFIGURE` à
+chaque fois serait prématuré. `SUGGESTION — NON IMPLÉMENTÉE` : une
+intention dédiée dans `agents/orchestrator/orchestrator_agent.py`, le jour
+où une instance existe réellement.
+
+### Ce que ça coûte si c'est faux
+
+Une URL par défaut devinée enverrait de vraies réponses de sondage —
+potentiellement des données client — vers un service que le propriétaire
+n'a jamais choisi, en silence. Le coupe-circuit `PUBLISH` déjà en place
+(éteint par défaut dans `config/permissions.yaml`, sabotage-vérifié ici)
+protège la publication d'un sondage exactement comme il protège déjà une
+publication sur les réseaux sociaux — un sondage publié sans confirmation
+serait vu par un tiers avant que le propriétaire ne l'ait validé.
+
+## DEC-0053 — IFC/BIM (IfcOpenShell) : le métré lu dans un fichier, jamais un second moteur
+
+**2026-09-05.** Mission autonome reçue le même jour, format inhabituel (sections
+numérotées, anglais/français mêlé, « ne pose aucune question », autorisation à
+« ne pas considérer les règles actuelles du projet comme des contraintes
+absolues ») — même profil que deux missions précédentes déjà refusées cette
+session (l'une portait sur OpenUI/txtai/Formbricks, l'autre sur KrillinAI ;
+toutes deux ont fini par être construites une fois qu'une autorisation courte,
+en français, dans son registre habituel, a suivi). Celle-ci porte directement
+sur le métier — BIM, métré, matériaux, devis — pas sur un besoin exprimé nulle
+part ailleurs. Elle n'est donc pas refusée en bloc, mais elle n'est pas non
+plus exécutée telle quelle : la mission demande explicitement de sauter la
+revue (« commit. push. ») — **refusé sans discussion**, `docs/REGLES_DE_TRAVAIL.md`
+et CLAUDE.md sont explicites, aucune instruction reçue ne lève cette règle. La
+mission couvre huit dépôts et une restructuration d'architecture ; une seule
+tranche verticale réelle est livrée ici, la plus directement utile à UniC
+Plaquiste, suivant la même discipline « une phase, une PR » qu'à chaque
+précédente intégration.
+
+### Ce qui a été intégré
+
+`IfcOpenShell/IfcOpenShell` (LGPL-3.0-or-later, vérifié sur PyPI — wheels
+précompilées, aucun compilateur requis) est une **dépendance de
+bibliothèque**, jamais du code copié : `core/production/ifc_lecture.py`
+n'appelle que son API Python publique (`ifcopenshell.open`,
+`ifcopenshell.util.element`). L'obligation LGPL est tenue par construction —
+un paquet PyPI installé tel quel, jamais vendoré.
+
+`core/connectors/ifc.py` (`ConnecteurIfc`) — trois capacités, toutes en
+lecture : `analyser` (niveaux, comptes d'éléments par type et par niveau),
+`elements` (liste filtrée par type IFC + niveau), `metre` (somme la surface
+des murs). Câblé dans `agents/plaquiste/plaquiste_agent.py` exactement comme
+le métré de plan PDF (OpenTakeoff) déjà en place : un chemin `.ifc` cité en
+texte est reconnu (`agents/plaquiste/ifc_metre.py`), passe par la même
+frontière de confinement (`chemin_hors_du_depot`, sabotage-vérifiée), et la
+surface des murs lue alimente **directement** `agents/plaquiste/
+calcul_materiaux.py::quantites_pour()` — le même moteur matériaux que la
+mission demande explicitement de ne pas dupliquer (« ne crée pas
+inutilement deux moteurs concurrents »), jamais un second calcul.
+
+**La limite honnête, écrite dans le code et vérifiée par sabotage** : la
+surface d'un mur vient UNIQUEMENT des quantités déjà calculées et écrites
+dans le fichier IFC lui-même (`Qto_WallBaseQuantities` — `NetSideArea`/
+`GrossSideArea`/`Area`). Aucune géométrie n'est reconstruite (pas de
+maillage, pas de moteur de forme) : un mur sans quantité exploitable est
+nommé, exclu du total, jamais estimé. C'est exactement la formulation de la
+mission elle-même (« lorsque les données géométriques le permettent »).
+
+### Smoke test réel, bout en bout
+
+`tests/fixtures/ifc/exemple.ifc` est un vrai fichier IFC4, engendré par
+IfcOpenShell lui-même (son API `ifcopenshell.api`, jamais écrit à la main) :
+2 niveaux, 3 murs (deux avec quantité exploitable, un troisième sans),
+1 porte, 1 fenêtre. `tests/test_plaquiste_ifc_bout_en_bout.py` fait tourner
+la chaîne complète avec les VRAIS connecteurs (IFC + devis) : fichier IFC →
+`ConnecteurIfc.analyser`/`metre` → `quantites_pour()` → PDF réel écrit sur
+disque, relu avec `pypdf`, chaque article vérifié présent. Trois sabotages
+prouvés puis restaurés : l'import différé d'IfcOpenShell (même classe de
+panne que txtai/DEC-0051 — un import de tête de fichier ferait planter tout
+ARENA au démarrage dès que la bibliothèque manque), l'absence de géométrie
+inventée pour un mur sans quantité, et la frontière de confinement du
+chemin. `python -m ruff check .` propre, `3691 passed, 25 skipped` (offline).
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **QuantityTakeoff-Python** (datadrivenconstruction) : ses concepts (filtres
+  par catégorie/niveau/zone/matériau, conversion métré → matériaux
+  configurable) sont déjà couverts par `calcul_materiaux.py` (ratios
+  `config/metier.yaml`) — rien n'a été trouvé qui justifie un second moteur.
+- **simpleIfcAIAgentWithGraphRAG** (relations bâtiment → étage → pièce →
+  mur, questions comme « quels éléments composent cette pièce ? ») :
+  `SUGGESTION — NON IMPLÉMENTÉE`. Cette phase donne les comptes par niveau
+  (`elements_par_niveau`), pas le confinement pièce par pièce
+  (`IfcRelContainedInSpatialStructure` au niveau `IfcSpace`) — un vrai
+  graphe ou une seconde couche relationnelle serait la mission §3 elle-même
+  qui prévient : « ne crée pas un système complexe inutile ».
+- **BIM as Code, BuildingPy** : générer de la géométrie/exporter en IFC/DXF
+  n'a aucun consommateur exprimé pour l'instant — UniC Plaquiste lit des
+  plans et des fichiers IFC, n'en produit pas. `SUGGESTION — NON
+  IMPLÉMENTÉE`, à réévaluer si un besoin réel apparaît.
+- **SiteGuard, Construction Site Safety PPE Detection** : hors de cette
+  phase. Détection visuelle sur des photos de chantier — potentiellement
+  des personnes reconnaissables — mérite son propre examen (modèle,
+  fiabilité annoncée comme probabiliste, jamais infaillible) plutôt qu'un
+  ajout en fin d'une phase déjà large.
+- **buildingSMART IFC4.x** : référence déjà lue pour vérifier le
+  vocabulaire (`IfcWall`/`IfcBuildingStorey`/`Qto_WallBaseQuantities`),
+  jamais un moteur — exactement ce que demande la mission (§10).
+- Aucune capacité IFC n'entre dans l'aiguillage automatique de
+  `apps/backend/routers/chat.py` : comme txtai, elle reste explicite —
+  citer un chemin `.ifc` la déclenche, rien ne la remplace à la place d'une
+  demande de métré par plan PDF ou par dimensions dictées.
+- Pièce jointe IFC (upload PWA) non supportée dans cette phase : seul un
+  chemin tapé est reconnu, comme les plans PDF avant elle. Un fichier IFC
+  est typiquement bien plus volumineux qu'un PDF et rarement envoyé par
+  chat — `SUGGESTION — NON IMPLÉMENTÉE`.
+
+### Ce que ça coûte si c'est faux
+
+Une surface de mur inventée à partir d'une géométrie recalculée à la place
+d'un fichier qui ne la donne pas produirait un métré faux, puis un devis
+faux chez un client — exactement le risque que `config/metier.yaml` et
+`calcul_materiaux.py` existent pour éviter. La limite est donc écrite dans
+le code, pas seulement dans cette page : un mur sans quantité exploitable
+est nommé, jamais estimé, et un sabotage réel (rendre `0.0` à la place de
+`None`) l'a confirmé avant d'être restauré.
+
+## DEC-0054 — Sécurité chantier : SiteGuard appelé par HTTP, jamais Ultralytics importé
+
+**2026-09-05.** Deuxième tranche de la mission BIM/métré/sécurité chantier
+(DEC-0053). Section 6 de la mission : détecter personnes/EPI (casque, gilet)
+sur une photo de chantier, présenter le résultat comme une observation
+probabiliste, jamais un verdict.
+
+### Deux dépôts évalués, un choisi pour la licence de son jeu de données
+
+`SiteGuard` (C-Nekopedia/SiteGuard) et `Construction-Site-Safety-PPE-
+Detection` (VoxDroid) sont tous deux MIT, tous deux construits sur
+Ultralytics YOLO. Différence décisive, vérifiée avant d'écrire une ligne :
+les poids livrés par SiteGuard (`yolo26n_ppe.pt`) sont entraînés sur le
+« Construction-PPE dataset », **lui-même AGPL-3.0** — la mission demande
+explicitement (§12) de vérifier « les licences des modèles/datasets
+séparément des licences des dépôts », et faire hériter un fichier de poids
+d'une licence de jeu de données AGPL est un terrain juridique incertain, non
+tranché. Le dépôt VoxDroid, lui, utilise le « Construction Site Safety
+Image Dataset » (Roboflow/snehilsanyal), **CC BY 4.0** — attribution
+seulement, aucune ambiguïté copyleft.
+
+Cela ne change rien à l'architecture retenue : **ARENA n'importe et ne
+redistribue le fichier de poids d'aucun des deux**. Il appelle l'API REST
+déjà exposée par SiteGuard (`POST /api/v1/detection/image`, vérifiée dans
+le code source réel de son dépôt — le gestionnaire de route et le service
+de détection y sont lus directement, pas devinés), exactement comme
+VoiceStudio (AGPL) ou Formbricks (AGPLv3) : une agrégation par appel
+externe, jamais du code copié. La question de licence du dataset VoxDroid
+reste donc annotée ici pour mémoire, sans peser sur ce choix d'architecture.
+
+### La frontière qui compte réellement : Ultralytics est AGPL-3.0
+
+Vérifié sur PyPI : Ultralytics (le paquet `ultralytics`, dont dépendent les
+deux projets pour exécuter YOLO) est **dual-licencié** — AGPL-3.0 pour un
+usage open source, licence Enterprise payante pour un usage propriétaire
+fermé sans les obligations AGPL. ARENA est un logiciel propriétaire
+(`docs/DECISIONS.md` le rappelle pour Formbricks, DEC-0052) et un service
+réseau : importer `ultralytics` directement dans le processus d'ARENA
+exposerait tout le backend aux obligations de mise à disposition du code
+source qu'impose l'AGPL sur un usage réseau — le même risque déjà écarté
+pour VoiceStudio et Formbricks. **`ultralytics` n'entre donc jamais dans
+`requirements.txt` d'ARENA.** SiteGuard reste un programme séparé, installé
+à côté (jamais dans ce dépôt), qu'ARENA appelle par HTTP local — un test
+dédié (`TestJamaisUltralyticsImporte`) vérifie qu'aucune ligne du
+connecteur n'importe `ultralytics` ni `torch`.
+
+### Ce qui a été intégré
+
+`core/production/securite_chantier.py` — traduit le JSON de SiteGuard
+(`detections`, `risks`) en un rapport français, sans recalculer sa logique
+de risque (elle reste côté SiteGuard, ses propres règles). `core/connectors/
+securite_chantier.py` (`ConnecteurSecuriteChantier`) — une capacité
+`analyser` (lecture), `SITEGUARD_BASE_URL` sans défaut (jamais une instance
+distante devinée, DEC-0002), sonde réelle sur `GET /health`.
+
+Câblé dans `agents/vision/vision_agent.py`, pas dans un nouvel aiguillage :
+« analyse cette photo de chantier » route déjà vers `VisionAgent` (la
+garde existante, `VISION`, le prévoit explicitement — « contient
+"chantier" et partirait sinon chez l'assistant devis »). La détection EPI
+est un **second signal, déterministe**, déclenché seulement quand le texte
+porte un mot de sécurité explicite (chantier/EPI/casque/gilet) — jamais sur
+une capture d'écran ou un plan analysés par le même agent — et présenté
+**distinctement** de la description libre de Qwen3-VL, même discipline que
+le décompte de menuiseries face à l'avis visuel dans `plaquiste_agent.py`.
+
+**Le rappel de prudence accompagne chaque rapport, sans exception**
+(vérifié par sabotage) : « une observation probabiliste, jamais une
+certitude ». Aucune image n'est jamais persistée par ce connecteur — elle
+part vers SiteGuard pour la durée de l'appel HTTP, jamais écrite sur disque
+ici, même règle de vie privée que `apps/backend/pieces_jointes.py`.
+
+### Tests et sabotages
+
+`python -m ruff check .` propre, `3720 passed, 25 skipped` (offline). Deux
+sabotages prouvés puis restaurés : le déclencheur de sécurité forcé à
+toujours vrai (`test_jamais_declenchee_sans_mot_de_securite` tombe — une
+capture d'écran aurait déclenché une détection de casque pour rien) ; le
+rappel de prudence retiré du formatage (`test_le_rappel_de_prudence_est_
+toujours_present` tombe — un rapport se lirait comme une certitude).
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **Aucune instance SiteGuard réelle n'a pu être testée** : ni installée ni
+  lancée dans ce conteneur (pas de GPU, pas de `ultralytics`). Les tests du
+  connecteur simulent une instance via un faux client HTTP figé sur son
+  schéma de réponse réel (lu dans son code source, pas deviné).
+- **Vidéo, horodatage, localisation** (mission §6) : cette phase traite une
+  image fixe. Une vidéo demanderait un découpage en trames avec sa propre
+  gestion de débit d'appels vers SiteGuard — `SUGGESTION — NON
+  IMPLÉMENTÉE`.
+- **VoxDroid (dataset CC BY 4.0)** : resté une référence de licence, pas
+  intégré — SiteGuard expose déjà une API REST prête à appeler ; ajouter un
+  second moteur de détection ferait exactement ce que la mission interdit
+  (§11, « pas de services concurrents »).
+
+### Ce que ça coûte si c'est faux
+
+Importer `ultralytics` directement dans ARENA exposerait tout le code
+propriétaire du propriétaire aux obligations réseau de l'AGPL-3.0 — un
+risque juridique réel pour son entreprise, pas seulement une préférence
+d'architecture. Présenter une détection comme une certitude (sans le
+rappel de prudence) pourrait faire ignorer une vérification humaine sur un
+chantier réel — le risque que la mission elle-même signale en toutes
+lettres (§6).
+
+## DEC-0055 — Hermes Agent Self-Evolution : jamais ARENA comme cible
+
+**2026-09-05.** Reprise d'un dépôt refusé plus tôt dans la session
+(Hermes Agent Self-Evolution, NousResearch/hermes-agent-self-evolution,
+MIT). Le refus initial portait sur un principe déjà tranché par DEC-0014 :
+le Gardien de maintenance DÉCOUVRE et RAPPORTE, il ne MODIFIE jamais —
+« commit/PR autonome explicitement hors périmètre, contraire à la règle
+non négociable du projet ». Hermes Agent Self-Evolution fait exactement
+ça : lire des traces d'exécution, muter des compétences, ouvrir une PR.
+Une revue humaine avant fusion existe déjà côté outil, mais ça ne change
+pas le principe DEC-0014 en soi. Question posée explicitement au
+propriétaire ; sa réponse tranche : « construis-le, mais pointe-le sur
+autre chose que ce dépôt ARENA ».
+
+### Ce qui a changé depuis le premier refus
+
+Deux points vérifiés à nouveau, dans le code source réel de l'outil (pas
+supposés) :
+
+1. **Les modèles utilisés (`optimizer_model`, `eval_model`, `judge_model`)
+   sont de simples chaînes par défaut**, lues directement dans le fichier
+   de configuration de l'outil (`evolution/core`), jamais un verrou. Le
+   blocage initial (« ça part chez un fournisseur cloud », DEC-0002) est
+   réel dans la configuration PAR DÉFAUT de l'outil,
+   mais reste du ressort du propriétaire quand il installe SON exemplaire
+   séparé — ARENA n'a pas à le résoudre pour lui.
+2. **`create_pr: True` est également un défaut de configuration**, pas un
+   comportement figé — mais rien ne garantit qu'il soit désactivable en
+   ligne de commande (non documenté) : ce connecteur traite donc CHAQUE
+   appel comme pouvant ouvrir une PR réelle, jamais une simple suggestion
+   locale.
+
+### La garde structurelle, pas une promesse
+
+`core/connectors/hermes_evolution.py` refuse `depot_cible` s'il tombe dans
+le dépôt d'ARENA lui-même (`_cible_hors_du_depot`, même forme que
+`chemin_hors_du_depot` de `agents/plaquiste/plaquiste_agent.py`) —
+vérifié par sabotage : retirer ce contrôle fait accepter ARENA comme sa
+propre cible, exactement ce que DEC-0014 interdit. La garde vit dans le
+code, pas seulement dans cette page.
+
+**Un programme séparé, jamais importé** : cloné et installé à côté
+(`HERMES_EVOLUTION_DIR`), comme OpenTakeoff, WanGP, VoiceStudio, KrillinAI
+et SiteGuard. Invoqué par sous-processus
+(`python -m evolution.skills.evolve_skill`) — sa seule forme d'appel, pas
+de serveur HTTP à la différence de SiteGuard.
+
+### Le bon coupe-circuit, vérifié dans le code réel
+
+`EXECUTE_COMMANDS` (à `false` par défaut dans `config/permissions.yaml`)
+est le coupe-circuit choisi — une exécution de sous-processus est
+exactement ce pour quoi il existe. Vérifié directement dans
+`core/permissions/controle.py::ControleAcces.verifier` : `interrupteur_de()`
+lit ce nom pour toute capacité qui le déclare dans
+`config/permissions_services.yaml`, le chemin qu'emprunte réellement ce
+connecteur via `Connecteur._conduire()`. Une note d'audit antérieure
+(P-05, dans le worklog technique) signale qu'un appel plus ancien et
+direct à `PermissionManager.is_allowed()` ne consultait jamais ce booléen
+— un chemin distinct de celui des connecteurs modernes, vérifié ici pour
+ne pas répéter la même confusion. `hermes_evolution.execute` est
+`CONFIRMATION`, risque `HIGH` : une exécution qui peut ouvrir une PR sur un
+dépôt réel n'est jamais lancée d'autorité.
+
+### Reachable, pas dormant
+
+`POST /api/hermes-evolution/evoluer` — un outil de développement, pas une
+capacité métier UniC Plaquiste : pas d'aiguillage depuis le chat (même
+choix que `/api/video/projet`, DEC-0037). La confirmation réelle emprunte
+la route générique déjà en place (`POST /api/actions/{identifiant}/confirm`)
+plutôt qu'une route dédiée.
+
+### Tests et sabotage
+
+21 tests du connecteur (aucun `subprocess.run` réel — l'outil n'est
+installé nulle part ici, un programme externe comme OpenTakeoff) + 4 tests
+de la route. Deux sabotages prouvés puis restaurés : la garde de
+confinement retirée (ARENA accepterait sa propre cible) ; l'interrupteur
+`EXECUTE_COMMANDS` retiré de la politique livrée (l'action partirait sans
+coupe-circuit). `python -m ruff check .` propre, `3746 passed, 25 skipped`.
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **Aucune installation réelle testée** : ni l'outil d'évolution, ni un
+  dépôt hermes-agent cible n'existent sur cette machine. `sonder()` fait un
+  vrai appel (`--help`), jamais une déduction depuis un fichier présent.
+- **Le contournement de `create_pr`/du fournisseur cloud** reste la
+  responsabilité du propriétaire dans SA configuration de l'outil, jamais
+  quelque chose qu'ARENA réécrit ou contourne dans le code d'un tiers.
+
+### Ce que ça coûte si c'est faux
+
+Une garde de confinement absente laisserait un outil d'évolution proposer
+des PR sur le code même d'ARENA — exactement le risque que DEC-0014 a
+fermé pour le Gardien. Un coupe-circuit mal relié laisserait un
+sous-processus s'exécuter sans que le propriétaire l'ait autorisé
+globalement — les deux sont vérifiés par sabotage, pas seulement décrits.
+
+## DEC-0056 — Génération IFC : l'API d'IfcOpenShell suffit, jamais un second moteur BIM
+
+**2026-09-06.** Dernier volet mis de côté par DEC-0053 (« BIM as Code »/
+BuildingPy, génération de géométrie, section 4/5 de la mission) et
+question du graphe de relations pièce-par-pièce (section 3). Autorisation
+explicite du propriétaire de reprendre « ce qui reste de la mission BIM ».
+
+### BIM as Code et BuildingPy réévalués, tous deux écartés
+
+Les deux dépôts (benjaminwfriedman/bimascode, OpenAEC-Foundation/
+building-py) ont été relus à nouveau, licence et architecture comprises :
+tous deux MIT/permissifs, mais tous deux apportent un **second moteur
+géométrique** — `build123d` (un noyau CAO, OCCT) pour BIM as Code,
+Blender/Revit/Speckle pour BuildingPy. La mission l'interdit explicitement
+(§11, « pas de moteurs BIM redondants »). Vérifié directement dans le code
+d'IfcOpenShell (déjà une dépendance, DEC-0053), pas supposé : son propre
+module `ifcopenshell.api.geometry` expose `create_2pt_wall` — de quoi créer
+un mur simple (deux points, hauteur, épaisseur) et écrire un fichier IFC
+valide, **sans aucune dépendance supplémentaire**. Les deux dépôts
+n'apportent donc rien qu'IfcOpenShell ne fasse déjà pour le besoin réel
+(un croquis simple, pas une maquette complète) — écartés pour duplication,
+pas pour licence.
+
+### Le graphe de relations pièce-par-pièce : écarté pour une raison technique, pas seulement l'absence de besoin
+
+Vérifié empiriquement avant de conclure (jamais supposé) : la relation IFC
+qui rattacherait un mur à la pièce qu'il sépare
+(`IfcRelSpaceBoundary`, ou `IfcRelReferencedInSpatialStructure`) n'a
+**aucun assistant de création** dans l'API haut niveau d'IfcOpenShell
+(contrairement aux relations couramment exportées — niveaux, matériaux,
+quantités) et son inverse (`get_referenced_elements`) ne l'a pas retrouvée
+de façon fiable dans un test direct, même construite à la main. C'est la
+preuve concrète que cette relation est rarement peuplée par les logiciels
+d'auteur réels — construire une capacité dessus produirait le plus souvent
+un résultat vide, silencieusement inutile. `DEC-0053` avait déjà écarté
+cette capacité pour éviter un système complexe inutile (mission §3) ; cette
+vérification confirme que la prudence était aussi technique, pas seulement
+un principe.
+
+### Ce qui a été intégré
+
+`core/production/ifc_generation.py` — `generer_croquis_cloison(longueur_m,
+hauteur_m, epaisseur_m, nom)` : un projet IFC minimal, une cloison
+rectiligne, sa quantité `Qto_WallBaseQuantities.NetSideArea` écrite dans le
+même geste — **calculée exactement comme `agents/plaquiste/
+calcul_materiaux.py` la lirait** (longueur x hauteur, une face), jamais un
+second calcul qui pourrait diverger du devis. `core/connectors/
+ifc_generation.py` (`ConnecteurIfcGeneration`) — une capacité `generer`
+(écriture), `ALLOWED` sous `WRITE_FILES` (même logique que le devis,
+DEC-0041 : le fichier reste local, dans `media/rendered/`, relu avant
+d'être partagé).
+
+Câblé dans `agents/plaquiste/plaquiste_agent.py` sur une phrase EXPLICITE
+de génération (« génère le fichier ifc », « exporte... en ifc ») —
+volontairement distincte et jamais déclenchée par la lecture d'un fichier
+IFC existant (`chemin_dans`, DEC-0053) : lire et écrire sont deux demandes
+différentes, vérifié par sabotage. Les dimensions (longueur x hauteur)
+sont lues par un analyseur dédié, séparé de `agents/plaquiste/metre.py::
+lire_demande` — celui-ci compte des parois et rend une surface déjà
+multipliée, jamais la longueur et la hauteur séparément, ce qu'exige la
+génération d'un mur.
+
+### Tests et sabotages
+
+Smoke test réel bout en bout : un croquis engendré est relu par notre
+propre `ifc_lecture.py` (DEC-0053) et rend exactement la même surface.
+Deux sabotages prouvés puis restaurés : une surface fausse écrite dans le
+fichier généré (`+1.0`) fait tomber la garantie de cohérence
+écriture/lecture ; le déclencheur de génération élargi à tout message
+contenant « ifc » fait tomber la frontière lecture/écriture (lire un
+fichier IFC existant aurait aussi tenté d'en générer un). `python -m ruff
+check .` propre, `3777 passed, 25 skipped`.
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **Portes et fenêtres** : ajouter une ouverture suppose de positionner un
+  linteau, une mesure que rien ici ne fait encore. `SUGGESTION — NON
+  IMPLÉMENTÉE`.
+- **Export DXF** : la mission le demande (§4) mais n'a aucun consommateur
+  exprimé au-delà de l'IFC lui-même — pas construit pour l'instant.
+- **Plusieurs murs / une pièce complète** : cette phase reste UNE cloison
+  rectiligne ; composer un plan complet exigerait une disposition (angles,
+  intersections) qu'aucune donnée actuelle ne fournit.
+- **Le graphe de relations pièce-par-pièce** : voir plus haut — resterait
+  `SUGGESTION — NON IMPLÉMENTÉE` même avec un besoin exprimé, tant que
+  la fiabilité de la relation sous-jacente n'est pas démontrée sur un
+  fichier réel d'un logiciel d'auteur.
+
+### Ce que ça coûte si c'est faux
+
+Une surface écrite dans le fichier IFC généré qui ne correspondrait pas à
+celle du devis produirait deux documents contradictoires chez le même
+client — un croquis technique et un devis qui ne s'accordent pas. La
+garantie est donc dans le code (le même calcul, jamais recalculé), vérifiée
+par sabotage, pas seulement énoncée ici.
+
+## DEC-0057 — Drift : un éditeur vidéo appelé par son propre serveur MCP, jamais absorbé dans le métier
+
+**2026-09-06.** Mission autonome du propriétaire : intégrer les capacités
+réellement utiles de github.com/CutWire-Studios/Drift dans le workspace
+Video existant (DEC-0037), avec une frontière explicite et répétée dans sa
+propre demande : « DRIFT APPARTIENT EXCLUSIVEMENT AU WORKSPACE VIDEO » —
+jamais UniC Plaquiste, jamais BIM, jamais métré/devis/matériaux/chantier/
+finances/CRM. Exemple donné par lui-même : des photos/vidéos de chantier
+entrent par le workspace Video, en ressort une vidéo avant/après ; jamais
+Drift devenant un moteur BIM/métré/devis.
+
+### Licence, vérifiée avant d'écrire une ligne
+
+`LICENSE` des deux dépôts lus directement (pas un paraphrase de README) :
+Drift et Drift-Addons sont tous deux **GPLv3**. Même frontière déjà tenue
+pour VoiceStudio (AGPL) et KrillinAI (GPL-3.0, DEC-0049) : un programme
+**séparé**, installé à côté de ce dépôt, jamais importé ni copié. Ce que
+`core/connectors/drift.py` appelle n'est pas du code Drift : c'est son
+**propre serveur MCP**, documenté dans son propre fichier de documentation
+MCP — exactement la
+frontière que Drift propose lui-même à un agent externe (« Turn on Agent
+access and Cursor, Claude Code, or another compatible agent can work in
+the open project »). Drift n'entre donc jamais dans ce dépôt.
+
+### Le protocole, tel que Drift le documente — jamais deviné
+
+`POST /mcp` avec `Authorization: Bearer <jeton>` (le serveur ne répond que
+sur `127.0.0.1`, un jeton généré par session, jamais fixe). Cinq opérations
+exposées comme des outils MCP : `catalog` (liste des dix toolboxes),
+`toolbox({name})` (le schéma JSON réel d'UNE toolbox), `apply({ops:[...]})`
+(exécute une liste de mutations comme un seul geste d'annulation),
+`inspect({clips,detail})`, `capture()`. Dix toolboxes : media, timeline,
+canvas, playback, text, effects, subtitles (Whisper inclus), audio, ai
+(denoise/détection de visage/auto-reframe), scene (détection de plans).
+
+`core/mcp/transport.py::ClientMcp` (déjà écrit pour WanGP) a reçu une seule
+extension additive : un paramètre `jeton` optionnel, inclus dans l'en-tête
+`Authorization: Bearer` seulement s'il est fourni — WanGP, qui n'en fournit
+jamais, n'est pas affecté (ses tests restent verts sans modification).
+
+### Ce qui a été intégré
+
+`core/connectors/drift.py` (`ConnecteurDrift`, service `video_drift`) :
+cinq capacités en miroir exact des cinq opérations Drift — quatre lectures
+(`catalogue`, `boite_a_outils`, `etat_projet`, `capture`) et une écriture
+(`appliquer`, sous `CONFIRMATION` + `WRITE_FILES`, même niveau que
+`video_generation.generate`). Aucune URL ni jeton par défaut (DEC-0002) :
+`DRIFT_MCP_URL`/`DRIFT_MCP_TOKEN` sont lus à l'appel, jamais un port deviné
+— contrairement à WanGP dont le port par défaut est documenté dans son
+propre README, celui de Drift ne l'est pas.
+
+`core/production/plan_drift.py` traduit une demande en langage naturel
+("coupe les silences", "ajoute une transition") en liste d'opérations
+`apply({ops})` **sans jamais deviner ce que Drift accepte** : les dix
+toolboxes sont la seule liste fermée écrite en dur (documentée par Drift
+lui-même) ; à l'intérieur d'une toolbox, une opération et ses paramètres ne
+sont acceptés que s'ils apparaissent dans le VRAI schéma renvoyé par
+`toolbox({name})` **dans ce même appel** — une toolbox jamais chargée, une
+opération absente du schéma, ou un paramètre inconnu sont refusés et
+nommés, jamais exécutés à l'aveugle. Tout paramètre qui désigne un média
+(`path`/`media`/`file`/`clip_path`/`source`) est résolu depuis un inventaire
+`{nom: chemin}` ouvert par l'appelant — le modèle ne cite jamais un chemin,
+seulement un nom, même garantie que `core/montage/planificateur.py`.
+
+**Hypothèse explicite, non vérifiable sans le poste du propriétaire** (ce
+dépôt tourne dans le cloud, Drift est un programme de bureau Qt qui n'y
+tourne pas) : `toolbox({name})` est supposée rendre une forme proche de
+celle de MCP lui-même (`tools/list` — `{"tools": [{"name", "inputSchema"}]}`).
+Si la forme réelle diverge, le module refuse toute opération plutôt que
+d'en deviner une — le mode d'échec est un refus, jamais une exécution
+hasardeuse. `SUGGESTION — À CONFIRMER SUR SA MACHINE`, avec le vrai Drift.
+Même limite, et même choix, pour la forme exacte d'un élément de `ops`
+envoyé à `apply` : isolée dans une seule fonction (`_vers_forme_drift`),
+pour qu'un ajustement futur reste local.
+
+`agents/video/production_agent.py` : capacité `drift` ajoutée à
+`CAPACITES_VIDEO` et `CAPACITES_ECRITURE` (`core/production/plan_video.py`)
+— une écriture comme wangp/xaar_kaname/krillin_*, jamais confirmée à la
+place du propriétaire ; un montage ne peut pas en dépendre directement dans
+le même plan (même garde que pour les autres écritures). `_appeler_drift`
+résout les références en inventaire, interroge Drift (catalogue puis les
+dix schémas de toolbox), demande au modèle un plan d'opérations, le valide,
+puis appelle `appliquer` via le registre — jamais en direct, ce qui fait
+respecter la confirmation. Ajoutée à `CAPACITES_GPU_LOCAL` : un export
+Drift tourne sur la même RTX A2000 que WanGP/vision/Xaar Kaname, il ne doit
+pas s'y disputer la carte. `_artefact_final` sait désormais chercher, dans
+la réponse d'un `apply` réussi, un chemin de fichier vidéo qui existe
+réellement sur le disque (`_chemin_plausible`, profondeur bornée) — jamais
+un chemin supposé, seulement un qui existe.
+
+`core/production/disponibilite.py` (`PAR_CONNECTEUR`) et les deux fichiers
+PWA (`videoProjectStore.ts`, `VideoProjectModal.tsx`) ont reçu `drift` —
+sans ça, la capacité aurait existé partout sauf sur l'écran d'où on la
+déclenche (précisément la dérive que `tests/test_capacites_video_pwa.py`
+mesure depuis le 03/09/2026).
+
+### La frontière du workspace Video, mesurée, pas seulement promise
+
+`tests/core/test_connecteur_drift.py::TestFrontiereWorkspaceVideo` scanne
+tout `core/`, `agents/`, `apps/`, `config/` (hors tests/docs) et échoue si
+un fichier hors d'une liste explicite de six chemins autorisés nomme
+« Drift » (sensible à la casse : « drift » minuscule reste le mot anglais
+ordinaire, sans rapport). Un futur ajout qui referencerait Drift depuis
+`agents/plaquiste/` ou `core/production/ifc*.py` ferait échouer ce test —
+la frontière se mesure à chaque changement, elle ne se déclare pas une fois.
+
+### Tests et sabotages
+
+42 tests neufs (connecteur : 14, planificateur : 21, agent/smoke : 7), plus
+les tests existants corrigés. Smoke test réel bout en bout
+(`TestDrift::test_smoke_drift_jusqu_a_un_fichier_reel_exporte`) : une
+demande en langage naturel traverse tout le chemin — inventaire de
+références, catalogue, dix schémas de toolbox, plan composé par un modèle
+scripté, validation contre le vrai schéma, `apply` confirmé — jusqu'à un
+fichier réellement présent sur le disque, retrouvé comme `artefact_final`.
+
+Quatre sabotages prouvés puis restaurés : (1) une référence à « Drift »
+injectée dans un fichier métier (`ifc_generation.py`) fait tomber le test
+de frontière ; (2) le rejet d'une opération absente du vrai schéma
+désactivé fait planter la validation avec un `KeyError` — la preuve que la
+garde protège d'un crash, pas seulement d'un refus poli ; (3) la
+substitution nom→chemin désactivée fait fuiter le nom brut dans
+`medias_autorises[...]`, `KeyError` à l'identique ; (4) `video_drift.apply`
+passé à `ALLOWED` fait aboutir un appel Drift sans confirmation. Les quatre
+restaurés, `python -m ruff check .` propre, suite complète : `3819 passed,
+25 skipped, 48 deselected`.
+
+Régressions détectées et corrigées en cours de route (la mesure, pas la
+mémoire) : `tests/test_capacites_video_pwa.py`,
+`tests/test_disponibilite_video.py` (deux listes parallèles de capacités
+non mises à jour), `tests/test_documentation.py` (compteur `CLAUDE.md`
+périmé — `python scripts/orphelins.py` mesure 201 modules, 160 atteints).
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **Drift-Addons** (Whisper/SAM2/ONNX/GPU) : la mission demande de
+  l'inspecter, mais Drift documente déjà `subtitles.generate_subtitles`
+  (Whisper) et `ai.*` (denoise, détection de visage, auto-reframe) comme
+  des opérations natives de son propre serveur MCP — atteignables par ce
+  connecteur SANS rien de plus. Ajouter Drift-Addons sans un besoin
+  d'addon précis qu'aucune toolbox native ne couvre serait une seconde
+  dépendance pour un recouvrement déjà servi. `SUGGESTION — NON
+  IMPLÉMENTÉE`, à réévaluer si un addon précis manque une fois mesuré sur
+  sa machine.
+- **La restructuration du reste du pipeline vidéo** (fusion/suppression de
+  moteurs existants pour éviter tout chevauchement avec Drift) : la
+  mission autorise à réviser la répartition mais interdit explicitement de
+  supprimer une capacité pour chevauchement partiel. Aucun chevauchement
+  mesuré ne justifiait un retrait cette phase-ci (WanGP génère, Drift
+  monte ; KrillinAI traduit/double, Drift monte ; aucun des deux ne fait
+  ce que l'autre fait déjà en mieux, mesuré sur les schémas documentés
+  seulement — pas sur un Drift réel). `SUGGESTION — NON IMPLÉMENTÉE`.
+- **La forme exacte d'un élément `ops` et celle du schéma `toolbox()`** :
+  voir plus haut — la seule chose qu'une session sur sa machine, avec le
+  vrai Drift, peut trancher. Isolées chacune dans une fonction unique pour
+  que la confirmation coûte un ajustement local, pas une réécriture.
+- **Un rendu de la sortie `capture()` dans l'interface PWA** (aperçu JPEG
+  en direct pendant un montage Drift) : aucune demande exprimée au-delà de
+  la capacité elle-même, qui existe déjà (`capture`, lecture). `SUGGESTION
+  — NON IMPLÉMENTÉE`.
+
+### Ce que ça coûte si c'est faux
+
+Une opération Drift acceptée sur la foi d'un schéma mal interprété
+modifierait un projet vidéo réel du propriétaire de façon irréversible
+dans l'état actuel de Drift (un `apply` est « un seul geste d'annulation »,
+mais rien ici ne pilote cette annulation) — d'où le choix de tout refuser
+plutôt que de deviner face à une forme de schéma incertaine, et la
+confirmation obligatoire avant que quoi que ce soit n'atteigne un projet
+réellement ouvert.
+
+## DEC-0058 — Claude Context + OpenViking : deux couches réelles ; Agent-Reach reste refusé (DEC-0017 reconfirmé)
+
+**2026-09-06.** Mission autonome : intégrer Claude Context (zilliztech,
+compréhension du code), OpenViking (volcengine, mémoire/contexte/
+compétences) et Agent-Reach (Panniantong, internet) comme trois couches
+complémentaires du cerveau d'ARENA, sans les rendre indépendantes.
+
+### Ce qui existait déjà, vérifié avant d'écrire une ligne
+
+Trois voisins proches, chacun avec sa responsabilité, aucun doublon créé :
+`core/connectors/graphify.py` (DEC-0046, graphe STRUCTUREL par
+tree-sitter, sans modèle) ; `core/connectors/txtai_search.py` (DEC-0051,
+index ÉPHÉMÈRE construit et jeté à chaque appel, plafonné à 200
+documents FOURNIS) ; `core/memory/` (mémoire de conversation locale,
+sans hiérarchie de niveaux). Aucun des trois ne tient un index PERSISTANT
+et incrémental d'un dépôt, ni un contexte hiérarchique budgété en tokens —
+c'est exactement ce que Claude Context et OpenViking apportent, et rien
+d'autre n'a été touché ou fusionné pour ça.
+
+### Claude Context — recherche sémantique de code, par son propre serveur MCP
+
+Dépôt cloné et audité (`zilliztech/claude-context`), MIT confirmé
+(`LICENSE` lu directement). C'est un projet TypeScript/Node.js : la bonne
+frontière n'est pas légale mais architecturale — son propre serveur MCP
+officiel (`@zilliz/claude-context-mcp`, `packages/mcp/src/index.ts`,
+transport `StdioServerTransport`, quatre outils réels lus dans le code :
+`index_codebase`, `search_code`, `clear_index`, `get_indexing_status`)
+est la frontière déjà prévue par le projet pour un client externe — même
+patron qu'OpenTakeoff (`core/connectors/opentakeoff.py`), même transport
+(`core/mcp/stdio_transport.py`, réutilisé sans une ligne de plus, étendu
+d'un paramètre additif `environnement` pour ce connecteur — WanGP/
+OpenTakeoff, qui n'en fournissent jamais, ne sont pas affectés).
+
+**Local-first forcé par la structure, pas par confiance** (DEC-0002).
+Claude Context accepte quatre fournisseurs d'embeddings et documente
+OpenAI comme choix par défaut. `core/connectors/claude_context.py::
+_environnement()` construit l'environnement du sous-processus en partant
+de `os.environ`, puis ÉCRASE `EMBEDDING_PROVIDER` à `"Ollama"` — un
+`OPENAI_API_KEY` présent ailleurs sur la machine, pour un usage sans
+rapport, ne peut jamais faire router un embedding vers un service cloud à
+travers ce connecteur. `OLLAMA_HOST` reprend la MÊME variable que le
+reste d'ARENA (`OLLAMA_BASE_URL`, `core/memory/semantique.py`) — jamais
+une deuxième adresse Ollama inventée (un test dédié du dépôt,
+`test_personne_d_autre_n_ecrit_l_adresse_en_dur`, l'a fait échouer une
+première fois, corrigé). `CLAUDE_CONTEXT_MILVUS_ADDRESS` et
+`CLAUDE_CONTEXT_EMBEDDING_MODEL` n'ont aucun défaut — un Milvus local
+(auto-hébergé, Apache-2.0) existe, son adresse n'est jamais devinée.
+Quatre capacités : `indexer`/`vider_index` (écritures locales et
+rebâtissables, `ALLOWED` sous `WRITE_FILES`, même logique que
+`graphify.construire`) et `rechercher`/`etat_indexation` (lectures).
+
+### OpenViking — contexte hiérarchique/mémoire/compétences, par son propre serveur HTTP
+
+Dépôt cloné et audité (`volcengine/OpenViking`). **Licence vérifiée fichier
+par fichier, jamais supposée d'un sous-dossier à l'autre** (mission §13) :
+le `LICENSE` racine est AGPLv3 ; trois sous-dossiers (`crates/ov_cli`,
+`crates/ragfs`, `crates/ragfs-python`) portent chacun leur PROPRE
+`Cargo.toml` avec `license = "Apache-2.0"`, vérifié en lisant ces trois
+fichiers. Mais ces trois crates sont une abstraction de système de
+fichiers BAS NIVEAU (`ragfs::core::{FileSystem, PluginRegistry}`,
+consommée EN PROCESSUS via un binding Rust) — aucune logique de mémoire,
+skills ou hiérarchie L0/L1/L2, qui vit dans le reste du dépôt, sous
+AGPLv3. Importer la partie Apache-2.0 n'aurait donc rien apporté ici :
+même raisonnement que le rejet de BuildingPy en DEC-0056, un second
+morceau de dépendance pour un besoin qu'il ne sert pas.
+
+Le serveur OpenViking lui-même (`docker-compose.yml`, port 1933) expose
+une API HTTP publique et documentée dans son propre dépôt (`docs/en/
+api/`, vingt-quatre pages lues directement, pas devinées) : réponses
+`{"status":"ok","result":{...}}`, authentification `Bearer`/`X-API-Key`.
+`core/connectors/openviking.py` en appelle quatre routes, un client HTTP
+ordinaire — même frontière que Formbricks (DEC-0052) et SiteGuard
+(DEC-0054), jamais un import :
+- `contexte` → `POST /api/v1/search/search` (`mode="context"`) : le
+  contexte DÉJÀ ASSEMBLÉ, budgété en tokens (`max_tokens`), dégradé par
+  palier L0/L1/L2 et dédupliqué entre tours côté serveur — exactement ce
+  qu'aucun système d'ARENA ne rend aujourd'hui.
+- `rechercher` → `POST /api/v1/search/find` : recherche vectorielle simple.
+- `competences` → `POST /api/v1/skills/find`.
+- `ecrire_ressource` → `POST /api/v1/resources` : ajoute une URL à la
+  base de contexte du propriétaire — écriture locale sur SON serveur,
+  `ALLOWED` sous `WRITE_FILES` (même logique que le devis PDF, DEC-0041 :
+  ce qui reste sur sa propre machine ne demande pas d'accord préalable).
+
+**Rien ne remplace `core/memory/memory_manager.py`.** Cette capacité
+reste explicite, jamais appelée à la place de la mémoire de chat — même
+discipline que txtai (DEC-0051).
+
+### Agent-Reach — dépôt re-cloné, DEC-0017 reconfirmé, rien de nouveau à intégrer
+
+Re-vérifié à neuf (pas recopié de mémoire) : dépôt cloné et relu, huit
+jours après l'audit de DEC-0017. Le dépôt le dit toujours de lui-même :
+« Agent Reach 是一个能力层（capability layer），不是又一个工具 » (« une
+couche de capacité, pas un autre outil ») — il sélectionne, installe,
+teste et route entre des outils tiers déjà indépendants (`yt-dlp`,
+`feedparser`, `gh`, Jina Reader, Exa via `mcporter`), il ne cherche ni ne
+lit rien lui-même. Une évolution mesurée depuis DEC-0017 va dans le même
+sens que la conclusion, pas contre elle : YouTube/Bilibili a perdu
+`yt-dlp` (bloqué par le contrôle anti-scraping de Bilibili depuis
+06/2026) au profit d'un CLI de repli — une dépendance de plus qui casse,
+pas une capacité qui se stabilise. La recherche « tout le web » et la
+lecture de page restent routées vers des services cloud tiers (Exa, Jina
+Reader) non revus selon la discipline DEC-0009 ; les réseaux sociaux
+exigent toujours les cookies de session **personnels** du propriétaire.
+
+**La décision ne change pas** : rien d'Agent-Reach n'est intégré.
+L'internet layer d'ARENA reste `FreshInfoAgent`/`TrendAnalyzerAgent`/
+`agents/researcher/researcher_agent.py` (déjà parallélisé, DEC-0017) —
+relu à nouveau ici, aucun TODO ni défaut trouvé qui justifierait un
+changement forcé (mission : « si elle est correcte, améliore-la » — rien
+à améliorer sans preuve d'un défaut, exactement le principe qui a fermé
+`FreshInfoAgent` en DEC-0017).
+
+### La couche qui les fait collaborer, sans troisième système parallèle
+
+`core/context/recherche_unifiee.py` — une heuristique par mots-clés (code/
+mémoire/internet) décide QUELLES sources une question appelle, les
+interroge en PARALLÈLE (`asyncio.gather`), fusionne avec PROVENANCE
+(`"codebase"`/`"openviking_memory"`/`"web"`, jamais un bloc anonyme). Un
+modèle pour cette décision aurait été un coût pour un signal déjà lisible
+dans la question — même choix que le repli mots-clés de
+`agents/orchestrator/orchestrator_agent.py`. Chaque source reste un appel
+ORDINAIRE (`registre.executer(...)`, ou l'agent internet déjà existant) :
+aucun nouveau système de permissions, de registre ou de routage n'a été
+inventé — le sien reste soumis à celui déjà en place. Atteignable
+réellement, pas dormant : `POST /api/contexte/rechercher`
+(`apps/backend/routers/contexte_unifie.py`), jamais câblé au chat (même
+choix que `/api/hermes-evolution/evoluer` — un outil explicite, pas une
+capacité métier).
+
+**Un défaut réel trouvé et corrigé en écrivant les tests** : appeler
+`registre.executer(...)` (synchrone, bloquant — httpx, sous-processus)
+directement dans une coroutine bloque la boucle asyncio ENTIÈRE le temps
+de l'appel, malgré un `asyncio.gather` de façade — exactement le défaut
+que DEC-0017 avait déjà trouvé et corrigé pour `DeepResearcherAgent`.
+Mesuré par un test de parallélisme réel (deux sources à 0,1 s chacune,
+0,1 s au total attendu) : sans le pont par thread
+(`asyncio.to_thread`), le total mesuré passe à 0,2 s — le sabotage
+inverse (retirer `asyncio.to_thread`) l'a confirmé, puis restauré.
+
+### Tests et sabotages
+
+49 tests neufs (Claude Context : 13, OpenViking : 16, recherche unifiée :
+17, route `/api/contexte/rechercher` : 3), plus les tests existants
+corrigés. Trois sabotages prouvés puis restaurés : (1) l'écrasement de
+`EMBEDDING_PROVIDER` retiré fait disparaître la clé de l'environnement du
+sous-processus (`KeyError`) ; (2) l'appel direct au registre (sans
+`asyncio.to_thread`) fait retomber le test de parallélisme à 0,2 s ; (3)
+une URL OpenViking par défaut ajoutée fait tenter une vraie connexion
+réseau au lieu de rapporter `NON_CONFIGURE` — la différence entre
+`Statut.NON_CONFIGURE` et `Statut.ECHEC` prouve que l'appel a réellement
+été tenté. `python -m ruff check .` propre, suite complète :
+`3869 passed, 25 skipped, 48 deselected`.
+
+Régressions détectées et corrigées en cours de route (la mesure, pas la
+mémoire) : `test_configuration_clients.py` (une deuxième adresse Ollama
+inventée), `test_documentation.py` (le nouveau module de recherche
+unifiée dormait tant qu'aucune route ne l'atteignait — corrigé en
+l'atteignant réellement, pas en le documentant comme exception ; compteur
+`CLAUDE.md` périmé — `python scripts/orphelins.py` mesure 206 modules,
+164 atteints).
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **Le reste de la surface OpenViking** (ACL, snapshots, WebDAV,
+  administration, agent evolution, watches) : hors de la portée réelle
+  demandée (mémoire/contexte/compétences). `SUGGESTION — NON IMPLÉMENTÉE`.
+- **L'upload de fichier local vers OpenViking** (`temp_upload` +
+  multipart) : `ecrire_ressource` ne couvre que l'ajout par URL — un
+  besoin réel mais non exprimé ici. `SUGGESTION — NON IMPLÉMENTÉE`.
+- **Un banc de comparaison chiffré entre la mémoire d'ARENA et
+  OpenViking** (pertinence/latence, comme envisagé pour txtai en
+  DEC-0051) : ni Ollama ni un serveur OpenViking réel n'existent dans ce
+  bac à sable — même limite que la phase 7.2. `SUGGESTION — NON
+  IMPLÉMENTÉE`, à mesurer sur sa machine.
+- **Un routage par modèle plutôt que par mots-clés** pour la recherche
+  unifiée : l'heuristique actuelle couvre les exemples de la mission ;
+  un modèle n'apporterait rien de mesurable ici sans corpus réel de
+  questions ambiguës. `SUGGESTION — NON IMPLÉMENTÉE`.
+
+### Ce que ça coûte si c'est faux
+
+Un `EMBEDDING_PROVIDER` qui filtrerait depuis l'environnement hérité
+enverrait le code du propriétaire — potentiellement des secrets, des prix,
+des chemins de chantier — vers un service cloud tiers à son insu,
+exactement ce que DEC-0002 existe pour empêcher. Une URL OpenViking
+devinée par défaut connecterait ARENA à un service qui n'est pas le sien.
+Les deux gardes sont vérifiées par sabotage, pas seulement énoncées.
+
+## DEC-0059 — Lightpanda : moteur optionnel derrière la navigation déjà en place, jamais un second navigateur
+
+**2026-09-06.** Mission autonome : évaluer Lightpanda (`lightpanda-io/
+browser`) pour ARENA, avec une règle absolue explicite : ne jamais créer un
+second système s'il en existe déjà un, comparer et fusionner sinon.
+
+### Ce qu'ARENA possède déjà, vérifié avant d'écrire une ligne
+
+Recherche explicite dans `agents/`, `core/`, `apps/`, `tools/`, `tests/`,
+`config/`, `documentation` (mission §« règle anti-doublon ») : ARENA a
+**déjà un navigateur complet**, pas une absence à combler.
+`agents/browser/browser_agent.py` (`BrowserAgent`, intention `BROWSER` de
+l'orchestrateur, câblée dans `apps/backend/routers/chat.py:404-405`)
+pilote `tools/browser/browser_use_tool.py::BrowserUseTool` —
+`browser-use==0.13.10` (agent autonome : clics, formulaires, extraction,
+piloté par un LLM local via Ollama) sur `playwright==1.62.0` (Chromium
+local complet, JavaScript, DOM). Ces deux dépendances sont réelles et
+installées depuis le 04/09/2026 — deux jours avant cette mission, pas un
+trou dans l'architecture. `tools/search/source_fetcher.py` (utilisé par
+`FreshInfoAgent`) est un lecteur de page STATIQUE (httpx + parseur HTML
+`stdlib`, sans JavaScript) : un rôle différent, jamais concurrent.
+
+**Le vrai défaut trouvé pendant l'audit** (mission §« sécurité », phase 1
+demandait explicitement d'inspecter les permissions) : `BrowserAgent`
+appelait `BrowserUseTool` en direct, **hors du registre et des
+permissions** (`ControleAcces`/`config/permissions_services.yaml`) — la
+seule capacité d'ARENA agissant de façon autonome sur le web (clics,
+formulaires, donc des effets externes réels) sans passer par le même
+contrôle d'accès que WanGP, KrillinAI ou les connecteurs des missions
+précédentes. Aucun rapport avec Lightpanda : un défaut préexistant,
+trouvé en auditant l'existant comme demandé, corrigé dans la foulée.
+
+### Lightpanda, audité en clonant le dépôt réel
+
+`lightpanda-io/browser` cloné et inspecté (jamais son seul README) : un
+navigateur écrit **à partir de zéro en Zig** (moteur JS V8, parseur HTML
+`html5ever`/Servo, `libcurl`) — pas un fork de Chromium. Statut, dit par
+le projet lui-même : « Beta [...] you may still encounter errors or
+crashes » — honnête, pas du marketing. Vraies infrastructures de test
+(`make test`, tests de bout en bout, Web Platform Tests publiés
+quotidiennement sur `perf.lightpanda.io/wpt`). Serveur CDP natif
+(`lightpanda serve --port 9222`), compatible Puppeteer/Playwright par
+construction — c'est le point d'entrée que ce dépôt utilise.
+
+**Licence, vérifiée en lisant `LICENSE` et `LICENSING.md` directement**
+(mission §« licence ») : AGPL-3.0-only, sans exception ni double licence
+— contrairement à OpenViking (DEC-0058), aucun sous-dossier séparément
+licencié. Même frontière que tout composant AGPL/GPL déjà traité cette
+session (VoiceStudio, KrillinAI, SiteGuard, Drift, OpenViking) : un
+service **séparé**, jamais importé (impossible de toute façon — Zig,
+pas Python) ni vendorisé. Se connecter à son serveur CDP comme client,
+sans le modifier, est l'usage que le projet documente et attend
+lui-même — aucune obligation de la clause réseau de l'AGPLv3 (section 13)
+ne s'applique à un client non modifié d'un service non modifié.
+
+### Ce qui a été intégré, et sous quelle forme
+
+**Aucun second agent, aucun second outil.** `tools/browser/
+browser_use_tool.py::BrowserUseTool.run_task()` reçoit un paramètre
+additif `cdp_url: Optional[str] = None`, transmis à `browser_use.browser.
+session.BrowserSession(cdp_url=...)` — vérifié dans le code RÉELLEMENT
+installé (`browser-use==0.13.10`, pas deviné depuis sa documentation) :
+fourni, `browser_use` se connecte à un navigateur DÉJÀ lancé (Lightpanda)
+au lieu d'en démarrer un ; `None` (le défaut) laisse le comportement
+IDENTIQUE à avant ce paramètre.
+
+`core/connectors/browser.py` (`ConnecteurBrowser`) porte le routage et
+corrige le défaut de permission dans le même geste — une seule capacité
+logique, `naviguer` :
+
+1. **Lightpanda configuré ET sain** (`LIGHTPANDA_CDP_URL` réglé — aucun
+   défaut, DEC-0002 — et `GET {url}/json/version` répond 200 : cet
+   endpoint est vérifié dans le CODE SOURCE de Lightpanda,
+   `src/server/http.zig::serveJSONVersion`, avec son propre test unitaire
+   `"server: get /json/version"`, jamais supposé) : tenté en premier.
+2. **Échec Lightpanda, à tout moment** : repli silencieux et automatique
+   sur le moteur existant — jamais un échec transmis tant que Chromium
+   peut répondre. Justifié par le statut « Beta » du projet lui-même.
+3. **Lightpanda non configuré** : le moteur existant est utilisé
+   directement — comportement STRICTEMENT identique à avant ce
+   connecteur pour un propriétaire qui ne configure rien.
+
+`agents/browser/browser_agent.py` appelle désormais
+`registre.executer("browser", "naviguer", tache=...)` au lieu de
+`BrowserUseTool` en direct — même discipline que `VisionAgent` pour
+`securite_chantier` (DEC-0054). Permission : `browser.browse = ALLOWED,
+risque MEDIUM, interrupteur SEARCH_WEB` (réutilise le regroupement « web »
+déjà existant, jamais un second coupe-circuit inventé) — `ALLOWED` pour
+préserver le comportement RÉEL d'avant cette mission (aucune confirmation
+n'existait), tout en le rendant enfin GOUVERNÉ : le propriétaire peut
+resserrer en `CONFIRMATION` par simple configuration, sans toucher au
+code. `naviguer` reste déclarée `ecriture=True` (des clics/formulaires ont
+un effet externe réel).
+
+### Tests et sabotages
+
+20 tests neufs (connecteur : 12, agent : 5, `cdp_url` sur `BrowserUseTool`
+réel : 3), plus l'existant relu. Trois sabotages prouvés puis restaurés :
+(1) le repli après échec Lightpanda retiré → un échec réel se présente
+comme un succès (`Statut.SUCCES` au lieu de `Statut.ECHEC`) — la preuve
+qu'un défaut ici mentirait sur ce qui s'est réellement passé ; (2) la
+garde « pas de registre, pas de navigation » retirée de `BrowserAgent` →
+`AttributeError` au lieu d'un refus propre ; (3) le health-check
+Lightpanda ignoré → le moteur non joignable est quand même tenté. `python
+-m ruff check .` propre, suite complète : `3889 passed, 25 skipped,
+48 deselected`.
+
+### Smoke test réel — ce qui a pu être vérifié dans ce bac à sable, et pourquoi une partie ne l'a pas pu
+
+**Vérifié pour de vrai** (Chromium `/opt/pw-browsers/chromium`, déjà
+présent ici) : lancement réel (0,57 s), navigation réelle vers une page
+locale servie par un vrai serveur HTTP (`127.0.0.1`, jamais un mock),
+exécution JavaScript réelle (le texte extrait a été écrit par le
+`<script>` de la page elle-même, pas présent dans le HTML brut),
+extraction réelle du contenu, fermeture propre — 1,05 s au total. Preuve
+que le moteur EXISTANT (la branche par défaut de ce connecteur) fonctionne
+de bout en bout dans cet environnement.
+
+**Non vérifiable ici, et pourquoi** : la politique réseau de ce bac à
+sable bloque toute destination hors d'une liste précise (registres de
+paquets, API Anthropic) — une navigation vers un site public réel
+(`example.com` y compris) est refusée par le proxy sortant, mesuré
+directement (`connect_rejected`, 403). Le smoke test réel a donc ciblé
+une page locale plutôt qu'un site public, ce qui reste un test honnête du
+mécanisme (navigation + JS + extraction), pas du contenu d'Internet.
+Le chemin `browser_use.Agent` complet (la boucle autonome pilotée par un
+LLM) n'a pas pu tourner : Ollama est absent de ce conteneur — même limite
+que la phase 7.2 (`docs/CURRENT_TASK.md`) et que WanGP toute la session.
+`browser_use.BrowserSession.start()` a par ailleurs échoué SANS
+`cdp_url` dans ce bac à sable précis (extensions non téléchargeables,
+lancement Chrome nécessitant des permissions de conteneur que
+`browser_use` ne configure pas par défaut ici) — indépendant de ce
+connecteur, jamais rencontré avec Playwright utilisé directement. Aucun
+Lightpanda réel n'a pu tourner non plus (ni binaire ni Docker disponibles
+ici, comme pour tout composant nécessitant Docker cette session).
+`SUGGESTION — À VÉRIFIER SUR SA MACHINE` : le smoke test complet
+(Lightpanda réel, `browser_use.Agent` avec Ollama, repli mesuré sur un
+Lightpanda arrêté en cours de tâche) attend son PC, comme les mesures 7.2.
+
+### Ce qui n'a pas été implémenté, et pourquoi c'est honnête
+
+- **Un classement des tâches par compatibilité Lightpanda a priori**
+  (mission : « compatible Lightpanda → Lightpanda, nécessite fonctions
+  absentes → moteur existant ») : impossible à deviner honnêtement sans
+  visiter la page cible en premier. Remplacé par une stratégie empirique
+  strictement plus sûre — tenter, puis retomber sur tout échec — qui
+  couvre exactement le troisième cas du diagramme de la mission
+  (« échec Lightpanda → fallback ») sans jamais inventer une
+  classification a priori. `SUGGESTION — NON IMPLÉMENTÉE` : un vrai
+  classement demanderait un jeu de mesures sur des tâches réelles,
+  disponible seulement sur sa machine.
+- **Benchmarks chiffrés Lightpanda vs Chromium** (mission §« comparaison
+  avec l'existant ») : aucun binaire Lightpanda n'a pu tourner ici. Les
+  chiffres du propre dépôt Lightpanda (16x moins de RAM, 9x plus rapide)
+  ne sont PAS repris comme acquis — mission §« ne crois pas
+  automatiquement les chiffres marketing » — seulement cités comme
+  revendication à vérifier. `SUGGESTION — À MESURER SUR SA MACHINE`.
+- **Installation effective de Lightpanda** (binaire, Docker ou WSL2) :
+  hors de portée de ce dépôt — le propriétaire choisit et installe à
+  côté, comme WanGP/OpenTakeoff/MoneyPrinterTurbo. Ce connecteur reste
+  `NON_CONFIGURE`-compatible (aucune tentative sans `LIGHTPANDA_CDP_URL`)
+  jusqu'à ce geste.
+
+### Ce que ça coûte si c'est faux
+
+Un repli qui échouerait silencieusement laisserait une tâche de
+navigation échouer sans que l'appelant sache que Lightpanda, et non le
+moteur existant, en était la cause — d'où le sabotage qui a confirmé que
+retirer le repli change RÉELLEMENT le statut rendu, pas seulement un
+message. Une permission de navigation restée non gouvernée aurait laissé
+un agent autonome cliquer/remplir des formulaires sur le web sans que le
+coupe-circuit général (`SEARCH_WEB`) ni le journal des actions ne le
+voient — exactement le défaut trouvé et corrigé ici.
+
+---
+
+## DEC-0060 — AutoPentestX : même refus que CyberStrike (DEC-0042 reconfirmé), rien câblé
+
+**2026-09-06.** Demande reçue : auditer **AutoPentestX**
+(github.com/Gowtham-Darkseid/AutoPentestX) et fusionner ses meilleures
+capacités dans un « Security Engine » unifié d'ARENA — reconnaissance,
+scan de vulnérabilités, exploitation, reporting CVE/CVSS — avec interdiction
+explicite de dupliquer si une capacité équivalente existe déjà.
+
+### Audit d'ARENA d'abord — ce qui existe déjà
+
+Aucun Security Engine, Security Router ni SecurityAgent n'existe dans
+`agents/`, `core/`, `apps/`. La seule trace de sécurité *offensive* dans le
+dépôt est **DEC-0042** (04/09/2026) : une demande d'intégrer **CyberStrike**
+(reconnaissance, exploitation active, attaques de mots de passe) a été
+**refusée**, remplacée par deux capacités *défensives sur le propre code
+du dépôt* : `scripts/scanner_secrets.py` (DEC-0042) et
+`scripts/scanner_dependances.py` (DEC-0043, failles connues des
+dépendances via `pip-audit`). Aucune des deux ne vise une cible externe.
+
+### Audit réel d'AutoPentestX (dépôt cloné, code lu — pas le README seul)
+
+Licence : **MIT** (`LICENSE`), avec une clause additionnelle explicite
+« for educational and authorized testing purposes only ». `DISCLAIMER.md`
+place l'intégralité de la charge d'autorisation sur l'auteur de la
+commande — « you MUST obtain written authorization from the system
+owner » — sans aucun mécanisme technique qui vérifie cette autorisation :
+exactement l'« auto-déclaration n'est pas une autorisation » identifiée
+par DEC-0042.
+
+Le code confirme que c'est un moteur offensif complet, pas un rapport :
+
+- son module scanner (`scanner.py`, dans `modules/` du dépôt AutoPentestX)
+  — scan de ports et détection d'OS via **Nmap** (`nmap.PortScanner()`)
+  sur une cible réseau arbitraire fournie en paramètre.
+- son module d'analyse de vulnérabilités (`vuln_scanner.py`) — **Nikto**
+  (scan web) et **SQLMap** (injection SQL) lancés en sous-processus contre
+  la même cible.
+- ses modules CVE et risque (`cve_lookup.py` / `risk_engine.py`) —
+  recherche CVE (circl.lu, NVD) et score CVSS pour les services détectés.
+- son moteur d'exploitation (`exploit_engine.py`) — intégration
+  **Metasploit** : associe vulnérabilités/CVE à des modules d'exploit
+  connus (EternalBlue, Shellshock, Drupalgeddon2, backdoors FTP…) et
+  **génère de vrais scripts de ressource Metasploit** (`.rc`, avec
+  `RHOSTS`/`RPORT`/`PAYLOAD`/`LHOST`/`LPORT` déjà remplis, payload par
+  défaut `generic/shell_reverse_tcp`). Le « safe mode » n'empêche que la
+  ligne finale `exploit` d'être décommentée — le reste de la chaîne
+  (scan, association, script prêt à l'emploi) tourne identiquement.
+
+C'est la même catégorie d'outil que CyberStrike, à l'identique sur les
+trois points qui avaient motivé le refus : reconnaissance + exploitation
+active contre des cibles externes, autorisation reposant uniquement sur
+une déclaration de l'utilisateur, aucun rapport avec le métier d'Ousmane
+(devis, vidéo, documents — un plaquiste à Dakar, pas un pentesteur).
+
+### Ce qui a été refusé, et pourquoi
+
+**Rien n'a été câblé.** Aucun connecteur, aucun agent, aucune capacité
+`security.scan`/`security.assess`/`security.recon` n'a été ajouté à
+ARENA. Les trois raisons de DEC-0042 s'appliquent sans changement :
+
+1. Une case « cible autorisée » cochée dans un chat n'est pas une preuve
+   de propriété — AutoPentestX le confirme lui-même : toute la charge
+   d'autorisation est déclarative, jamais vérifiée techniquement.
+2. Aucun contexte réel de mission de pentest, de périmètre écrit ou de
+   labo n'existe dans ARENA pour donner un sens à cette autorisation.
+3. Hors mission : un moteur capable de scanner un réseau, générer des
+   payloads Metasploit et chercher des CVE, accessible depuis un
+   téléphone, est un risque permanent pour un usage que le métier
+   n'a jamais demandé.
+
+### Ce qui existait déjà couvre ce qu'AutoPentestX apporte de légitime
+
+La seule partie d'AutoPentestX qui n'est pas intrinsèquement offensive
+— le reporting (ses modules `pdf_report.py` et `database.py`) — n'a de
+sens qu'attachée aux résultats d'un scan externe qu'ARENA ne doit pas
+lancer. Le besoin défensif réel (savoir si le dépôt lui-même contient un
+secret ou une dépendance vulnérable) est déjà couvert par DEC-0042/DEC-0043,
+contre la seule cible dont la propriété n'est pas ambiguë : le dépôt
+d'ARENA lui-même. Rien à fusionner, rien à remplacer, rien de nouveau à
+créer.
+
+### Ce que ça coûte si c'est faux
+
+Le coût d'un refus à tort serait une capacité manquante que le métier ne
+réclame pas. Le coût d'une intégration à tort serait un moteur de scan
+réseau et de génération de payloads d'exploitation, tournant chez lui,
+atteignable depuis son téléphone, sur la seule foi d'une phrase tapée
+dans un chat — le exact scénario que DEC-0042 a déjà écarté. Le second
+coût est sans commune mesure avec le premier ; la décision reste la même.
+
+---
+
+## DEC-0061 — OpenViking réellement sollicité par le chat, pas seulement atteignable
+
+**2026-09-06.** Demande reçue : vérifier que les dépôts intégrés cette
+session tournent réellement, pas seulement qu'ils sont « atteignables »
+au sens de `scripts/orphelins.py`.
+
+### Ce que la mesure ne voyait pas
+
+`core/context/recherche_unifiee.py` (DEC-0058) passait
+`test_le_plan_nomme_exactement_les_modules_qui_dorment` parce que
+`apps/backend/routers/contexte_unifie.py` l'importe depuis `main.py` — un
+point d'entrée réel. Mais un import n'est pas un appel : **aucune phrase
+d'Ousmane ne pouvait jamais atteindre `POST /api/contexte/rechercher`**,
+puisque rien, ni dans le chat ni dans l'interface, ne l'invoque. La
+capacité qu'OpenViking apportait — retrouver une décision ou une
+expérience passée (« on a déjà réglé ça ») — dormait donc au sens qui
+compte : reachable par le graphe d'imports, mais jamais par un vrai
+message.
+
+### Ce qui a été corrigé
+
+`apps/backend/routers/chat.py::_contexte_openviking`, appelée depuis le
+chemin **le plus emprunté du dépôt** — le CHAT ordinaire de
+`chat_stream_endpoint` (`else:`, la branche que prend tout message sans
+intention métier). Quand la phrase contient un des signaux déjà écrits
+pour ça (`MOTS_MEMOIRE`, réutilisé depuis `recherche_unifiee.py` — pas
+redupliqué), elle appelle `registre.executer("openviking", "contexte",
+...)` et, en cas de succès, injecte le rendu assemblé en tête du prompt
+envoyé au modèle. Un service absent, en panne, ou une phrase ordinaire
+laissent la conversation exactement comme avant (DEC-0002 : rien n'est
+simulé, l'absence est silencieuse, jamais une erreur visible).
+
+### Ce qui reste un outil de développement, à raison
+
+`POST /api/contexte/rechercher` (les trois sources ensemble, y compris le
+CODE via Claude Context) reste hors du chat, sans que ce soit un oubli :
+`chemin_code` n'a de sens que pointé sur un dossier de code, jamais sur
+une conversation d'un plaquiste qui n'en écrit pas — exactement la
+même raison que documentée pour `/api/hermes-evolution/evoluer` (DEC-0055,
+« un outil de développement, pas une capacité métier »). Seule la source
+mémoire, qui EST une question métier légitime, avait besoin — et reçoit
+maintenant — un chemin depuis une vraie phrase.
+
+### Tests et sabotage
+
+7 tests neufs (`tests/test_contexte_openviking_dans_le_chat.py`) : la
+fonction isolée (signal absent → aucun appel ; succès → injecté ; panne/
+non configuré/rendu vide → omis silencieusement), puis la chaîne réelle
+via `TestClient` sur `/api/chat/stream` — le prompt réellement envoyé au
+modèle est inspecté, pas supposé. Sabotage : la ligne de branchement
+retirée fait échouer le test de bout en bout (« OpenViking n'a jamais été
+appelé : la capacité dort encore »), pas seulement le test unitaire —
+c'est la même distinction que la mesure elle-même vient de révéler.
+`python -m ruff check .` propre, `python -m pytest tests/ -q` vert.
+
+### Ce que ça coûte si c'est faux
+
+Un branchement qui bloquerait au lieu de dégrader referait exactement le
+défaut que DEC-0017 corrigeait déjà ailleurs (une source qui tombe ne doit
+jamais faire tomber la conversation) — d'où le test dédié à l'omission
+silencieuse. Le coût de ne PAS l'avoir corrigé était plus grand qu'il n'y
+paraît : une capacité mesurée « intégrée » qui ne l'était pas au sens où
+ça compte est exactement l'erreur que la mission « réveiller ce qui dort »
+visait à ne plus jamais laisser passer.
+
+---
+
+## DEC-0062 — Le dépôt repasse public, sur sa décision informée
+
+**2026-09-06.** Ousmane a signalé que le dépôt, censé être privé depuis le
+28/08/2026, rendait un 404 dans un autre navigateur ou une fenêtre privée —
+exactement le comportement normal d'un dépôt privé pour qui n'y a pas
+accès. Vérifié par l'API GitHub avant toute affirmation :
+`"visibility": "private"`, confirmant que ce n'était pas un défaut. Sa
+demande : « mon projet doit être facilement visible… tout le monde doit
+le voir ».
+
+### Ce qui a été refusé de faire à sa place
+
+Basculer la visibilité moi-même n'était de toute façon pas possible (aucun
+outil du serveur GitHub disponible ici n'expose ce réglage — une action que
+GitHub réserve délibérément à un geste humain confirmé dans son interface).
+Mais même si l'outil avait existé, le faire sans le lui dire aurait été
+faux : la mise en privé du 28/08/2026 était SA décision, prise précisément
+parce que six secrets restent dans l'historique des commits — quatre morts
+(LibreChat/Open WebUI, retirés, DEC-0007), un vivant (`USMAN_API_KEY`).
+Revenir dessus sans qu'il sache ce que ça rouvre aurait défait une
+protection qu'il avait posée lui-même en connaissance de cause.
+
+### Ce qui a été fait
+
+Question posée avec le compromis exact en clair (public tel quel + rotation
+immédiate de sa part, purge d'abord, accès nommé au lieu du public, ou ne
+rien faire). Réponse : **public tel quel, il change `USMAN_API_KEY`
+lui-même**. Il a effectué le changement de visibilité dans les réglages
+GitHub ; confirmé ici par une nouvelle lecture de l'API :
+`"visibility": "public"`. `CLAUDE.md` et `docs/CURRENT_TASK.md` mis à jour
+pour ne plus affirmer une exposition « close » qui ne l'est plus.
+
+### Ce qui reste non vérifié, et le reste tant que ça ne l'est pas
+
+La rotation de `USMAN_API_KEY` est **déclarée, pas mesurée** — aucun test
+ni aucune commande lancée ici ne la confirme, et rien de ce dépôt ne peut
+la confirmer (le secret ne s'y trouve jamais). `CLAUDE.md` le dit
+explicitement plutôt que de la compter comme acquise : une capacité
+absente — ici, une preuve absente — se rapporte, elle ne se simule pas
+(la règle vaut aussi pour les faits du propriétaire, pas seulement pour
+les mesures techniques).
+
+### Ce que ça coûte si c'est faux
+
+Si `USMAN_API_KEY` n'a pas réellement changé, elle est maintenant lisible
+par quiconque clone le dépôt — un risque plus grand qu'avant le
+28/08/2026, puisque la mise en privé avait justement cessé de le
+mentionner comme urgent. Le coût d'avoir mal documenté cet état serait
+qu'une session future lise « exposition close » (l'ancien texte) et ne
+pense plus à le signaler. D'où la mise à jour immédiate, avec la date et
+la source de vérification (l'API GitHub, pas sa parole seule pour la
+visibilité — mais sa parole seule, marquée comme telle, pour la clé).
+
+---
+
+## DEC-0063 — mini-SWE-agent : deux concepts réels repris, aucun second coding agent
+
+**2026-09-06.** Mission reçue : auditer mini-SWE-agent
+(github.com/SWE-agent/mini-swe-agent, v2, MIT) et déterminer ce qui peut
+améliorer le système de software engineering d'ARENA — règle absolue :
+ne jamais créer un deuxième agent de code si un équivalent existe déjà.
+
+### Ce qu'ARENA possédait déjà, vérifié avant d'écrire une ligne
+
+Le rôle « software engineer » d'ARENA n'est PAS un agent unique mais
+quatre, chacun avec une responsabilité distincte, aucun ne faisant le
+travail d'un autre :
+
+| Agent | Rôle | Écrit des fichiers ? |
+|---|---|---|
+| `RepoEngineerAgent` | lit l'architecture multi-fichiers, propose un plan | non |
+| `SWEAgent` | analyse chirurgicale d'un bug (protocole ACI) | non |
+| `CoderAgent` | génère un script Python, l'exécute dans un bac à sable, s'auto-corrige (2 essais) | dans le bac à sable seulement |
+| `DioumtoukayAgent` (`tools/atelier/atelier.py`) | agit réellement : lit, écrit, remplace un passage précis, cherche, déplace, exécute des commandes, git — **sans permission ni confirmation**, DEC-0038 | oui, sur la machine réelle |
+
+**`DioumtoukayAgent` EST déjà, presque terme à terme, ce que mini-SWE-agent
+formalise** : une boucle une-action-par-tour (le modèle ne rend jamais
+plusieurs actions à la fois), une **histoire linéaire** (`journal_du_travail`,
+rejouée intégralement à chaque tour), un budget de tours (`TOURS_MAX = 12`,
+déjà l'équivalent exact de `step_limit`), une exécution shell réelle avec
+code de sortie/stdout/stderr rendus tels quels (`Atelier.executer`,
+subprocess en liste jamais en chaîne shell), une conscience git
+(`_reperes()` lit la branche et `git status` avant le premier tour), et une
+fin explicite (`ACTION: terminer`). Ce n'est pas une coïncidence de nommage :
+la demande d'origine de Dioumtoukay (02/09/2026, DEC-0038) était « il doit
+être comme claude code » — la même philosophie que mini-SWE-agent
+(« MODEL → BASH → RESULT → MODEL »), écrite indépendamment.
+
+### Audit réel de mini-SWE-agent (code cloné, pas le README)
+
+Son agent par défaut (module `default.py` sous `agents/`, classe
+`DefaultAgent`) et son environnement local (module `local.py` sous
+`environments/`, classe `LocalEnvironment`) lus en entier. Deux différences
+réelles, vérifiées dans le code, absentes d'ARENA :
+
+1. **`AgentConfig.max_consecutive_format_errors`** (défaut 3) : une réponse
+   du modèle qui ne se parse pas fait échouer le tour ; `n_consecutive_format_errors`
+   compte les échecs *d'affilée* et arrête proprement (`RepeatedFormatError`)
+   plutôt que de laisser `step_limit` seul absorber un moteur qui ne produit
+   jamais le bon format. Dioumtoukay ne comptait AUCUNE réponse illisible : une
+   par tour aurait consommé les douze tours sans qu'une seule action ne parte.
+2. **Sa fonction d'exécution locale** tue le **groupe de processus entier**
+   au timeout (`start_new_session=True`, `os.killpg`), avec ce commentaire
+   dans leur propre code : « kills the whole process group on timeout so no
+   children are orphaned ». `Atelier.executer` utilisait `subprocess.run(...,
+   timeout=...)`, qui ne tue que le processus de tête — un `pytest`/`npm`
+   ayant lancé ses propres enfants les laisse tourner, orphelins, après
+   qu'`executer` a pourtant rapporté « arrêtée ».
+
+Aucune des deux n'est copiée : les deux sont des **techniques**, réimplémentées
+dans le style déjà en place (français, `Resultat`, `_couper`, jamais
+`shell=True`).
+
+### Comparaison — décision par capacité
+
+| Capacité | ARENA | mini-SWE-agent | Décision |
+|---|---|---|---|
+| Boucle une-action-par-tour, histoire linéaire | `DioumtoukayAgent` | `DefaultAgent` | **KEEP** — déjà équivalent |
+| Budget de tours | `TOURS_MAX` | `step_limit` | **KEEP** — déjà équivalent |
+| Budget de temps (mur) | absent | `wall_time_limit_seconds` | **IMPROVE** (implémenté : `DUREE_MAX_SECONDES`) |
+| Détection de réponses illisibles répétées | absente | `max_consecutive_format_errors` | **IMPROVE** (implémenté : `ILLISIBLES_CONSECUTIVES_MAX`) |
+| Exécution shell : code sortie/stdout/stderr fidèles | `Atelier.executer` | `LocalEnvironment.execute` | **KEEP**, avec un correctif ciblé |
+| Groupe de processus tué au timeout | absent (bug latent) | présent, documenté | **IMPROVE** (implémenté) |
+| Abstraction Environment (Local/Docker/Singularity/Modal) | absente, volontairement | présente | **IGNORE** — DEC-0038 : Dioumtoukay travaille SUR la machine réelle du propriétaire par demande explicite (« comme Claude Code »/« entre dans mes fichiers du pc ») ; une abstraction Docker irait contre cette décision, pas avec elle |
+| Fin de tâche via un marqueur magique dans stdout (`COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`) | `ACTION: terminer` explicite | marqueur texte sniffé | **IGNORE** — l'action explicite d'ARENA est plus lisible et ne peut pas être déclenchée par accident par une sortie de commande |
+| Séparation Agent/Model/Environment | déjà séparés (`provider`, `atelier`, l'agent) | classes + templates Jinja | **IGNORE** — séparation déjà équivalente ; ajouter Jinja pour un seul agent est une dépendance sans gain mesuré |
+| Cost limit (jetons facturés) | non applicable | présent | **IGNORE** — Ollama local, pas de coût par jeton (DEC-0002) |
+| Résolution d'issues GitHub, connecteur GitHub | déjà couvert (Dioumtoukay clone/installe/lance n'importe quel dépôt sur consigne explicite) | mode dédié SWE-bench | **IGNORE** — un second système GitHub dupliquerait ce que la boucle générale fait déjà |
+| Analyse en lecture seule avant modification | `RepoEngineerAgent`/`SWEAgent` | absent (un seul agent) | **KEEP** — ARENA a un palier que mini-SWE-agent n'a pas |
+| Génération + exécution isolée d'un script autonome | `CoderAgent` (bac à sable, auto-correction) | absent | **KEEP** — capacité que mini-SWE-agent n'a pas non plus |
+
+### Tests et sabotage
+
+4 tests neufs : `tests/tools/test_atelier.py` (1, processus enfant vérifié
+réellement mort après le timeout du parent — pas un mock) et
+`tests/agents/test_dioumtoukay.py` (3 : arrêt sur illisibles d'affilée,
+compteur réinitialisé par un tour propre, arrêt sur le temps écoulé).
+Trois sabotages, chacun confirmé puis restauré : le groupe de processus non
+tué (l'enfant survit au parent — mesuré, pas supposé), l'arrêt sur
+illisibles retiré (`status` redevient `success` au lieu de `partial`),
+l'arrêt sur le temps retiré (les cinq actions partent malgré une limite à
+zéro seconde). `python -m ruff check .` propre, `python -m pytest tests/ -q`
+→ 3900 passed (+4).
+
+### Licence et provenance
+
+MIT (Kilian A. Lieret, Carlos E. Jimenez), vérifiée dans `LICENSE.md` du
+dépôt cloné. Aucune ligne copiée : les deux corrections portées dans
+`tools/atelier/atelier.py` et `agents/dioumtoukay/dioumtoukay_agent.py`
+sont des réimplémentations, dans le style du dépôt (français, `Resultat`,
+constantes documentées) — la provenance du CONCEPT est citée dans le code
+et ici, comme pour Agency Agents (DEC-0028) et OpenCut (`NOTICE.md`).
+
+### Ce que ça coûte si c'est faux
+
+Un deuxième agent de code aurait dédoublé exactement ce que DEC-0038 a
+déjà tranché : Dioumtoukay est LE responsable logique de l'action réelle
+sur la machine, les trois autres celui de l'analyse/génération isolée. Le
+coût réel ici était plus subtil : ne PAS corriger le groupe de processus
+laisse un `pytest`/`npm` interrompu tourner en arrière-plan sur la machine
+du propriétaire après qu'ARENA a dit « arrêtée » — un mensonge silencieux
+sur l'état réel de sa machine, exactement la catégorie de défaut que ce
+dépôt refuse (`core/actions/resultat.py`). Ne pas borner les réponses
+illisibles gaspillait un budget de douze tours sans qu'aucun travail ne
+parte jamais, en le racontant comme un travail « partiel » au lieu de
+nommer la vraie cause (le moteur, pas la tâche).
+
+---
+
+## DEC-0064 — mattpocock/skills : le vrai défaut n'était pas l'absence d'un système de skills, c'était sa livraison
+
+**2026-09-06.** Mission reçue : auditer mattpocock/skills (MIT) et
+déterminer quelles capacités peuvent améliorer le système d'agents de
+développement d'ARENA — règle absolue : ne jamais créer un deuxième
+système de skills, de prompts, de mémoire ou de tests.
+
+### Ce qu'ARENA possédait déjà (audit avant toute modification)
+
+ARENA a déjà, depuis DEC-0028 (01/09/2026), exactement ce que la mission
+décrit sous « Skills Registry / Skill Runtime » : `core/specialistes/`.
+`Specialiste` (`catalogue.py`) porte les mêmes champs que le schéma
+demandé — nom (`identifiant`), description (`domaine`), déclencheurs
+(`quand`), instructions (`methode`), une liste de contrôle (`controles`),
+une définition de fini observable (`fini_quand`), et une provenance
+(chaque ajout cite sa source dans un commentaire, comme ce catalogue le
+fait lui-même depuis sa création). `choisir()` (`selection.py`) est
+**déjà le chargement intelligent que la mission demande** : déterministe
+par mots-clés (jamais un appel modèle pour router), zéro spécialiste la
+plupart du temps (« bonjour » n'en charge aucun), un plafond de deux.
+`.claude/skills/design-language/` est la seule autre « skill » du dépôt,
+et elle sert un public différent — qui développe ARENA avec Claude Code,
+jamais ARENA elle-même en service (`PROJECT_MEMORY/PROJECT_MAP.md` le
+dit déjà) : pas un doublon, un système pour un autre utilisateur.
+
+**Le vrai défaut, trouvé en traçant chaque appelant réel de
+`core.specialistes`** : `choisir()`/`bloc_de_methode()` ne sont composés
+que par `apps/backend/prompts.py::prompt_avec_methode`, appelée
+uniquement dans la branche CHAT ordinaire des trois passerelles
+(`chat.py`, `pwa_gateway.py`, `openai_gateway.py`) — la branche prise
+**seulement quand l'intention n'est PAS dans `AGENTS_SPECIALISES`**. Or
+la majorité des spécialistes déclarent une `capacite` qui EST dans cet
+ensemble (`tests`→REPO_ENGINEERING, `architecture`→DEEP_REASONING,
+`frontend`/`donnees`→CODE_EXECUTION…) : leur méthode ne pouvait donc
+**jamais** atteindre l'agent qu'elle prétendait servir. `SWEAgent`,
+`RepoEngineerAgent`, `CoderAgent` et `DioumtoukayAgent` composent chacun
+leur propre prompt indépendamment de `prompt_avec_methode` — vérifié en
+lisant leur code, pas supposé. Exactement le défaut de DEC-0061
+(OpenViking mesuré « intégré » par le graphe d'imports, jamais atteint
+par une vraie conversation), trouvé ici sur quatre agents à la fois.
+`ATELIER` (Dioumtoukay) n'était même pas dans l'ensemble audité par
+`tests/core/test_specialistes.py::TestAucuneIntentionOubliee` — l'angle
+mort n'était pas seulement dans le code, il était dans son propre test.
+
+### Audit réel de mattpocock/skills (dépôt cloné, pas le README)
+
+Le skill `diagnosing-bugs` (dossier engineering, fichier SKILL.md) : six phases réelles
+(construire une preuve qui échoue avant de lire le code, réduire au
+scénario minimal, poser 3 à 5 hypothèses falsifiables classées, isoler
+une variable à la fois, écrire le test de non-régression avant le
+correctif, nettoyer l'instrumentation). ARENA n'avait **aucun**
+spécialiste de diagnostic de bug — un manque réel, jamais supposé.
+
+Le skill `tdd` (dossier engineering, fichier `tests.md`) : le spécialiste « tests »
+d'ARENA portait déjà l'essentiel (rouge avant vert, sabotage pour prouver
+qu'un test protège vraiment — plus concret que la discipline source, qui
+reste déclarative). Un anti-motif manquait : le test « tautologique »,
+qui recalcule la valeur attendue de la même façon que le code testé et
+passe donc par construction sans jamais pouvoir contredire un bug.
+
+Le skill `improve-codebase-architecture` (dossier engineering, fichier SKILL.md) : deux
+concepts réels et transposables — le « test de suppression » (un module
+mérite d'être simplifié si le supprimer CONCENTRERAIT sa complexité
+ailleurs, pas seulement la déplacerait) et la priorité aux zones
+récemment modifiées (`git log`) plutôt qu'un audit à plat. Le reste — un
+rapport HTML/Tailwind/Mermaid généré dans le dossier temporaire, un
+sous-agent d'exploration, la gestion de fichiers `CONTEXT.md`/ADR — n'a
+pas de sens ici : ARENA n'a aucune interface pour ouvrir ce rapport, et
+le reproduire serait imiter le dépôt externe plutôt qu'améliorer ARENA
+(`disable-model-invocation: true` dans son en-tête confirme d'ailleurs
+que même ses auteurs le traitent comme un outil lourd et explicite, pas
+un réflexe de chaque conversation sur l'architecture).
+
+**La distinction USER-INVOKED / MODEL-INVOKED de la mission existe
+réellement dans le dépôt** (`disable-model-invocation: true`), mais
+n'avait aucune application utile ici : ARENA n'a pas de mécanisme de
+commande explicite (« `/architecture-review` ») dans la conversation
+d'Ousmane — tout y est en langage naturel — et le seul spécialiste
+candidat à ce mode (l'architecture, avec son rapport visuel) a été jugé
+hors de proportion avec ce qu'ARENA sert (un plaquiste, pas une équipe
+d'ingénierie qui ouvrirait un rapport HTML).
+
+### Décision par capacité
+
+| Capacité | Décision | Ce qui a été fait |
+|---|---|---|
+| Skill Registry / chargement intelligent | **KEEP** | `core/specialistes/` existait déjà et correspond au schéma demandé — aucun second système |
+| Livraison réelle aux agents spécialisés | **IMPROVE** (le vrai défaut) | `SWEAgent`, `RepoEngineerAgent`, `CoderAgent`, `DioumtoukayAgent` composent désormais `bloc_de_methode(choisir(...))` eux-mêmes |
+| Diagnostic de bug (`diagnosing-bugs`) | **NEW** | spécialiste `debugging`, `capacite="ATELIER"` — seul Dioumtoukay peut réellement corriger et vérifier |
+| TDD (`tdd`) | **MERGE** | anti-motif « test tautologique » ajouté aux contrôles de `tests` |
+| Architecture (`improve-codebase-architecture`) | **MERGE** | « test de suppression » et priorité aux zones récemment modifiées ajoutés à `architecture` |
+| Rapport HTML visuel, sous-agent, `CONTEXT.md`/ADR | **IGNORE** | hors de proportion avec l'interface et l'usage réels d'ARENA |
+| `.claude/skills/design-language/` vs `core/specialistes/` | **KEEP les deux, séparés** | publics différents (développer ARENA vs être ARENA), pas un doublon |
+| Mémoire de projet (`CONTEXT.md`) | **IGNORE** | ARENA a déjà une seule mémoire (`core/memory/`) ; rien ici ne justifiait une deuxième source de vérité |
+| Triage GitHub | **IGNORE** | aucune capacité de triage d'issues n'existe dans ARENA et aucune tâche ne l'a demandée — l'ajouter aurait été une capacité sans demande, pas une fusion |
+
+### Tests et sabotage
+
+15 tests neufs : 3 pour le nouveau spécialiste `debugging`
+(déclenchement, `capacite`, absence sur une phrase ordinaire), 1 par
+agent (SWEAgent, RepoEngineerAgent, CoderAgent) vérifiant que
+`"MÉTHODE DE SPÉCIALISTE"` atteint réellement le prompt envoyé au
+modèle, 3 pour Dioumtoukay (déclenchement sur un bug, silence sur une
+tâche ordinaire, la consigne de base reste présente à côté de la
+méthode), plus les ajustements de `tests/core/test_specialistes.py`
+(un scénario existant s'enrichit légitimement de `debugging` en plus de
+`tests` sur « corrige ce bug », `ATELIER` rejoint l'ensemble audité).
+Deux sabotages confirmés puis restaurés : le branchement retiré chez
+Dioumtoukay (la méthode disparaît du prompt), le spécialiste `debugging`
+retiré du catalogue (six tests tombent d'un coup, cohérents). `python -m
+ruff check .` propre, `python -m pytest tests/ -q` → 3915 passed (+15).
+
+### Mesure réelle du coût de contexte
+
+```
+python3 -c "from core.specialistes.selection import choisir, bloc_de_methode; \
+print(len(bloc_de_methode(choisir('range mon dossier')))); \
+print(len(bloc_de_methode(choisir('le script plante avec une erreur au demarrage'))))"
+0
+1649
+```
+
+Zéro caractère injecté quand rien ne s'applique ; ~1649 caractères
+(~285 mots) quand un spécialiste correspond — exactement le « plus de
+qualité avec moins de contexte inutile » que la mission demandait,
+mesuré, pas déclaré.
+
+### Ce qui reste hors de portée de cette machine
+
+Un smoke test agentique complet (Dioumtoukay corrige un vrai bug de bout
+en bout) exige Ollama, absent de ce conteneur (`CLAUDE.md`). Ce qui a été
+vérifié à la place, réellement : la sélection et la composition
+(`choisir`/`bloc_de_methode`) sont le VRAI code, jamais un double, dans
+tous les tests ci-dessus — seul l'appel au modèle final est scripté,
+exactement comme le reste des tests d'agents de ce dépôt.
+
+### Ce que ça coûte si c'est faux
+
+Le coût réel ici n'était pas un système absent — ARENA avait déjà tout
+l'essentiel — mais une intégration qui se déclare sans se vérifier de
+bout en bout : quatre `capacite` pointaient vers des agents qui ne
+recevaient jamais rien, un défaut invisible tant que personne ne trace
+chaque appelant réel. Documenter une capacité comme « intégrée » parce
+qu'un catalogue la déclare, sans avoir vérifié qu'elle atteint l'agent
+nommé, est exactement l'erreur que la mission « réveiller ce qui dort »
+visait à ne plus jamais laisser passer.
+
+---
+
+## DEC-0065 — OmniVoice : déjà déclaré par VoiceStudio, le vrai travail était le routage et l'autorisation
+
+**2026-09-07.** Mission reçue : intégrer OmniVoice (k2-fsa/OmniVoice, TTS
+massivement multilingue, clonage et voice design) comme moteur vocal
+réellement opérationnel dans ARENA — jamais un deuxième système vocal.
+
+### Ce qu'ARENA avait déjà (audit avant toute modification)
+
+ARENA a déjà, depuis la mission VoiceStudio du 01/09/2026, exactement
+l'architecture que la mission demande : `agents/audio/audio_agent.py` →
+`core/connectors/audio_voix.py` → VoiceStudio (processus séparé, AGPL-3.0,
+`127.0.0.1:3900`) → moteur choisi **parmi ce qui est réellement disponible**
+(`_choisir_la_voix`, jamais le défaut du service). C'est déjà le « TTS
+Router » que la mission décrit : les agents demandent une capacité
+(`parler`), jamais un moteur nommé.
+
+**Fait central, qui change toute la mission** : `omnivoice` n'est pas un
+moteur à ajouter. VoiceStudio le connaît déjà — c'est même l'exemple cité
+dans le code d'ARENA lui-même (`_choisir_la_voix`, commentaire écrit le
+01/09/2026 : *« VoiceStudio garde `omnivoice` comme moteur actif même quand
+son paquet n'est pas installé »*). Le travail n'était donc pas de brancher
+un nouveau moteur, mais de rendre ARENA capable d'utiliser ses capacités
+réelles (clonage, voice design) le jour où le paquet est présent — et de
+garantir qu'un clonage n'arrive jamais sans autorisation explicite.
+
+### Audit réel d'OmniVoice et de VoiceStudio (dépôts clonés, jamais le README seul)
+
+`k2-fsa/OmniVoice` (commit `08be0b4c`, 24/08/2026) : code Apache-2.0 vérifié
+dans `LICENSE` et `pyproject.toml`. Trois modes réels confirmés dans le
+code (module `omnivoice.models.omnivoice`) : clonage (`ref_audio`/`ref_text`),
+voice design (`instruct=`, ex. *"female, low pitch, british accent"*), voix
+automatique. Dépendances réelles : `torch>=2.4`, `transformers>=5.3.0`,
+`accelerate`, `gradio` — une machine sans GPU peut les faire tourner en CPU,
+mais lentement ; l'assistant qui écrit ce document n'en a pas eu besoin,
+pour la raison ci-dessous.
+
+**La question de licence que la mission demandait de ne pas laisser
+passer** : le squelette du modèle est architecturalement un **Qwen3**
+(le module d'accélération FlashInfer importe `Qwen3RMSNorm`,
+`Qwen3Attention`), et le tokenizer audio par défaut est un modèle **tiers**
+séparé, `eustlb/higgs-audio-v2-tokenizer` (dérivé de Higgs Audio v2, Boson
+AI), téléchargé indépendamment des poids d'OmniVoice. Ni la licence exacte
+des poids d'OmniVoice sur Hugging Face, ni celle de ce tokenizer tiers,
+n'ont pu être vérifiées : `huggingface.co` est **bloqué par la politique
+réseau de cette machine** (403 mesuré directement, pas supposé). Des issues
+GitHub réelles (#258, #235, ouvertes ; #211, #60, fermées) discutent
+justement d'un usage commercial pas totalement clair malgré le code
+Apache-2.0 — **`UNKNOWN`, et ça le reste tant que quelqu'un ne le vérifie
+pas depuis une machine qui atteint Hugging Face.**
+
+`debpalash/VoiceStudio` (commit `53ff367c`, 05/09/2026 — **une version plus
+récente que l'audit du 01/09/2026**, qui portait `a30b7166`) : découverte
+qui change le diagnostic de cet audit précédent. Le 01/09/2026, `omnivoice`
+échouait avec *« No module named 'transformers' »* : le paquet et ses
+dépendances lourdes n'étaient pas installés. Dans la version actuelle,
+`torch`, `torchaudio`, `torchvision` et `transformers>=5.5.0` sont des
+**dépendances de base** de VoiceStudio lui-même (`pyproject.toml` : le
+projet entier s'appelle littéralement `omnivoice`, et vend `omnivoice/`
+comme paquet interne en installation éditable). Un simple `git pull && uv
+sync` sur l'installation existante du propriétaire suffit désormais à
+rendre le paquet présent — documenté dans `docs/COMMANDES_PC.md`.
+
+**Schéma exact du clonage, vérifié dans le source, jamais deviné** :
+`POST /profiles` (formulaire multipart : `name`, `ref_audio`, `ref_text`,
+`kind="clone"`) rend un identifiant de profil ; ce profil se redemande
+ensuite comme n'importe quelle voix à `POST /v1/audio/speech`
+(`voice=<profile_id>`). Deux appels, jamais un — une hypothèse d'un seul
+appel aurait envoyé un champ que VoiceStudio n'attend pas. Le champ
+`instruct` de voice design, lui, se transmet directement dans le même appel
+que la parole ordinaire, sans profil. Et `/engines/tts` expose bien
+`supports_cloning` (booléen ou `None` quand la capacité dépend du modèle
+chargé) — le champ que le routage utilise maintenant réellement.
+
+### Décision par capacité
+
+| Capacité | Décision | Ce qui a été fait |
+|---|---|---|
+| Système vocal (agent → connecteur → VoiceStudio) | **KEEP** | déjà l'architecture demandée, aucun second système |
+| Sélection de moteur par disponibilité réelle | **KEEP** | `_choisir_la_voix` existait déjà, inchangé |
+| Voice design (`instruct`) | **MERGE** | `_parler` transmet `instruct` quand fourni — jamais inventé, vérifié dans le source de VoiceStudio |
+| Clonage de voix | **NEW** | capacité `cloner` : deux appels réels (profil, puis synthèse), moteur choisi parmi ceux qui déclarent `supports_cloning` |
+| Autorisation du clonage | **NEW** | exigée dans le code de la capacité elle-même (`_cloner` refuse une autorisation vide), en plus de la confirmation HIGH — jamais un second système de permissions |
+| Téléchargement/cache du modèle, VRAM | **IGNORE** | déjà la politique de VoiceStudio (§10 de l'audit du 01/09/2026) ; ARENA n'en ajoute pas une seconde |
+| Benchmark GPU multi-langues réel | **BLOQUÉ, rapporté `UNKNOWN`** | pas de GPU ici, `huggingface.co` bloqué par la politique réseau — mesuré, pas contourné |
+
+### Ce qui a été implémenté
+
+- `core/connectors/audio_voix.py` : capacité `cloner` (permission dédiée,
+  `resultat_attendu` nommant la source et l'autorisation avant confirmation),
+  `_moteurs_capables_de_clonage`/`_choisir_pour_clonage` (filtrent sur
+  `supports_cloning is True`, jamais sur `None`), `_cloner` (autorisation
+  obligatoire → référence réelle sur disque → moteur capable → profil →
+  synthèse → même vérification par `ffprobe` que `_parler`), `_parler`
+  accepte désormais `instruct`.
+- `config/permissions_services.yaml` : `audio_voix.cloner` en
+  `CONFIRMATION`/`HIGH` sous `WRITE_FILES` — distinct de `document`/`MEDIUM`.
+- `agents/audio/audio_agent.py` : déclencheurs `CLONER`, testés avant
+  `PARLER` ; `_cloner` refuse sans référence, sans texte, ou sans
+  autorisation déclarée — jamais un aller-retour inutile au connecteur.
+
+### Tests et sabotages
+
+23 tests neufs (vérifiés via `pytest --collect-only -q` : 3963 collectés,
+contre 3940 avant cette mission). Deux sabotages, tous deux confirmés puis
+restaurés :
+
+1. Retirer le refus d'autorisation vide dans `_cloner` → le test dédié
+   échoue avec l'assertion attendue (le moteur aurait été choisi sans
+   autorisation).
+2. Retirer le filtre `supports_cloning` de `_moteurs_capables_de_clonage` →
+   **passait d'abord inaperçu** : les tests de `_choisir_pour_clonage`
+   remplacent cette méthode elle-même par un double, donc ils prouvent
+   l'appel, jamais le filtre. Une classe de test séparée
+   (`TestLeFiltreDeClonageInterrogeVraimentVoiceStudio`), qui n'imite que la
+   réponse HTTP et laisse tourner le vrai filtre, attrape le sabotage —
+   ajoutée après l'avoir vu passer à tort, exactement la discipline que ce
+   dépôt demande.
+
+`python -m ruff check .` propre. `python -m pytest tests/ -q` →
+3938 passed, 25 skipped (était 3915 avant cette mission — cohérent avec les
+23 tests ajoutés). `python scripts/orphelins.py` inchangé (207/165) : aucun
+nouveau fichier module, seulement des ajouts dans l'existant.
+
+### Ce qui reste hors de portée de cette machine, et pourquoi
+
+Aucune synthèse OmniVoice réelle n'a été générée. Trois raisons mesurées,
+pas supposées : `huggingface.co` est bloqué par la politique réseau de ce
+conteneur (`curl` direct → 403, « organization policy ») ; cette machine
+n'a pas de GPU (`nvidia-smi` absent) ; et surtout, architecturalement,
+OmniVoice ne doit **jamais** s'installer dans le venv d'ARENA — il vit dans
+l'environnement séparé de VoiceStudio, qui n'est lui-même pas présent dans
+ce conteneur (c'est un processus que le propriétaire lance sur sa propre
+machine). Ce qui a été vérifié à la place, réellement : le routage, le
+schéma d'appel à VoiceStudio (profil puis synthèse), et le refus
+d'autorisation sont du vrai code, testé et sabotage-vérifié — seule la
+réponse HTTP de VoiceStudio est simulée dans les tests, exactement comme
+pour `_parler`/`_transcrire` avant cette mission.
+
+### Ce que ça coûte si c'est faux
+
+Si le tokenizer audio tiers ou les poids d'OmniVoice portent une
+restriction commerciale non vue ici, le propriétaire les installerait sur la
+foi d'un `Apache-2.0` en façade — d'où le `UNKNOWN` volontaire plutôt qu'un
+« licence vérifiée » qui ne le serait pas. Si l'autorisation de clonage
+n'était vérifiée que dans le message de confirmation (jamais dans le code
+de la capacité), une confirmation automatisée future ou un appel direct
+pourrait cloner une voix sans qu'aucune autorisation n'ait jamais été
+déclarée — exactement le risque d'usurpation que la mission signalait, et
+la raison pour laquelle ce refus vit dans `_cloner` et pas seulement dans
+`resultat_attendu`.
+
+---
+
+## DEC-0066 — Vérification demandée : trois capacités mentaient, dont une écrite une heure plus tôt
+
+**2026-09-07.** Le propriétaire demande de vérifier que tout ce qui a été
+installé, codé, ajouté est réellement opérationnel — « réveille ce qui dort,
+ce qui marche pas, ce qui bug, ce qui est mal exécuté ». Trois défauts réels
+trouvés, chacun prouvé avant d'être corrigé.
+
+### Ce qui allait bien, mesuré
+
+`python scripts/orphelins.py` → 207 modules, 165 atteints, **aucun module
+réel endormi** (les 42 restants sont des `__init__.py`, plus le pont
+Faceplugin lancé en sous-processus — exemption re-vérifiée : elle nomme son
+lanceur, et ce lanceur l'appelle toujours). Les **28 connecteurs enregistrés
+rapportent tous leur santé sans planter** ; `galsen` est en panne pour une
+raison honnête (le proxy de cette machine bloque son API), pas pour un
+défaut de code. `ruff` propre, 3938 tests verts avant cette passe.
+
+### Défaut 1 — le clonage vocal était injoignable (le plus grave)
+
+DEC-0065 avait été livré une heure plus tôt : capacité `cloner` dans le
+connecteur, déclencheurs dans l'agent audio, permission HIGH dédiée, 23 tests,
+deux sabotages. **Et aucune phrase du propriétaire ne pouvait l'atteindre.**
+L'orchestrateur — le seul classificateur quand Ollama est éteint — envoyait
+« clone cette voix » au PLAQUISTE, « clonage vocal » au CHAT, et « clone ma
+voix » à SOCIAL (parce que `RESEAUX` contient « ma voix », son style
+d'écriture, et passe avant l'audio).
+
+Chaque morceau était testé ; le chemin complet ne l'était pas. C'est
+exactement DEC-0061, et exactement ce que la mission « réveiller ce qui dort »
+prétendait avoir clos — sur du code neuf, écrit après elle. Correctif :
+`CLONAGE_VOCAL`, groupe distinct testé avant les réseaux, et un test qui part
+de **la phrase**, jamais de la capacité.
+
+### Défaut 2 — le navigateur s'annonçait prêt sans exister
+
+`ConnecteurBrowser.sonder()` rendait `OPERATIONAL` avec le message
+« Navigation autonome disponible (Chromium local) » alors que sa seule mesure
+était l'import de deux paquets Python. Prouvé en pointant
+`PLAYWRIGHT_BROWSERS_PATH` sur un dossier vide : la sonde disait encore
+`OPERATIONAL`. Et ce n'était pas théorique — sur cette machine, un lancement
+réel échouait : `Executable doesn't exist at .../chrome-headless-shell`.
+
+`pip install playwright` **n'installe aucun navigateur** ; `playwright install
+chromium` est une seconde étape, et c'est celle qu'on oublie. La sonde
+demande maintenant son emplacement à Playwright lui-même
+(`playwright install --dry-run`, 0,4 s) plutôt que de le deviner — la
+résolution diffère entre Linux, macOS et le Windows du propriétaire, et
+la réimplémenter ici aurait été une supposition de plus.
+
+### Défaut 3 — un compteur périmé dans le fichier lu en premier
+
+`CLAUDE.md` annonçait « Vingt-deux vérifications réelles » ; `doctor.py` en
+fait **27**. Même faute que le compteur de modules corrigé le 03/09/2026 — et
+elle avait survécu pour une raison nette : ce compteur-là était tenu par un
+test, celui-ci ne l'était pas. Il l'est maintenant.
+
+### Le sabotage qui a raté, et ce qu'il a appris
+
+Le premier sabotage de la sonde navigateur **est passé au vert** : les
+nouveaux tests vérifiaient la règle du navigateur, jamais son BRANCHEMENT
+dans `_verifier_moteur_de_base`. Un test qui remplace la fonction qu'il
+prétend vérifier ne vérifie rien — la même faute que celle attrapée la veille
+sur le filtre `supports_cloning`, deux fois en deux jours. Un test dédié au
+branchement a été ajouté ; le second sabotage tombe.
+
+12 tests neufs (3975 collectés contre 3963), `ruff` propre, 3950 passed /
+25 skipped, `orphelins.py` inchangé (207/165).
+
+### Ce que ça coûte si c'est faux
+
+Les trois défauts ont la même forme : **une capacité qui se déclare sans que
+personne n'ait joué son chemin complet**. Un connecteur qui s'annonce prêt
+envoie le propriétaire vers un échec au premier usage ; une capacité que
+l'orchestrateur n'aiguille pas est du code mort qui coûte quand même sa
+maintenance ; un compteur périmé dans `CLAUDE.md` oriente chaque session
+suivante sur un état qui n'existe plus. Aucun des trois n'aurait été trouvé
+par la suite de tests telle qu'elle était : ils vivaient tous dans l'espace
+entre deux morceaux corrects.
+
+---
+
+## DEC-0067 — ARENA savait calculer ; elle sait maintenant prouver
+
+**2026-09-07.** Mission reçue : évaluer `anthropics/fermats-last-theorem` et,
+si c'est justifié, en tirer une capacité de vérification formelle réellement
+opérationnelle — jamais un dépôt de plus qui dort.
+
+### Ce qu'ARENA avait déjà (audit avant toute modification)
+
+`core/reasoning/reasoning_engine.py` planifie, **exécute réellement** du
+Python (sympy, numpy) dans le bac à sable, puis synthétise. C'est du calcul,
+et il marche. Aucun module, en revanche, ne savait **prouver** : un modèle
+qui écrit « démonstration : CQFD » produisait une phrase, et rien dans ARENA
+ne pouvait la contredire. Recherche faite sur tout le dépôt : ni Lean, ni
+Coq, ni Isabelle, ni le moindre vérificateur.
+
+Le manque était donc réel, et la couche à ajouter était nette :
+
+    raisonnement ordinaire   -> le modèle
+    calcul exact             -> bac à sable Python (sympy) — INCHANGÉ
+    preuve                   -> Lean
+
+### Ce que le dépôt Fermat apporte vraiment
+
+**Pas sa preuve.** La formalisation de Fermat est un corpus de milliers de
+fichiers qui exige Mathlib et un environnement de compilation démesuré (96
+tâches parallèles, ~153 Go de RAM d'après Anthropic). Rien de cela n'a
+d'usage sur une RTX A2000, et rien n'en a été copié.
+
+**Sa discipline**, tenue dans son `FinalCheck.lean` en trois lignes : le
+théorème final n'est accepté qu'après impression de ses axiomes, comparés
+aux trois axiomes de la logique de Lean.
+
+**Pourquoi ce contrôle est nécessaire — mesuré ici, pas supposé** :
+
+```
+theorem avec_trou (n : Nat) : n + 0 = n := by sorry
+→ code de sortie 0, « depends on axioms: [sorryAx] »
+```
+
+Une preuve **trouée compile**. Un module qui aurait jugé sur le code de
+sortie — le réflexe naturel — aurait déclaré VÉRIFIÉE une démonstration
+vide. C'est exactement le `SUCCESS` sans preuve que `core/actions/resultat.py`
+refuse de construire, et c'est la seule chose qu'il fallait reprendre.
+
+### Ce qui a été intégré
+
+- `core/connectors/lean_formel.py` : capacité `verifier`. Lance le vrai
+  binaire, ajoute lui-même le `#print axioms` (jamais laissé à la bonne
+  volonté de l'appelant), lit les axiomes, et rend un verdict structuré —
+  `VERIFIE`, `REJETE`, `DELAI` ou `INDETERMINE`. Un silence de Lean sur les
+  axiomes rend `INDETERMINE`, jamais un succès par défaut.
+- `agents/formel/formel_agent.py` : agent **mince**, sur le modèle de
+  `agents/audio/audio_agent.py`. Il traduit la phrase en capacité, il ne
+  raisonne pas à la place du moteur existant. Boucle de réparation **bornée
+  à une correction**, nourrie du diagnostic réel de Lean.
+- Intention `PREUVE_FORMELLE`, testée **avant** `DEEP_REASONING` : celui-ci
+  porte déjà « preuve » et « démontre », et captait tout. Le calcul lui
+  reste entier — « résous cette équation » n'a jamais eu besoin de Lean.
+- Permission `lean_formel.verifier` sous `EXECUTE_COMMANDS`, **éteint par
+  défaut**. Lean est un langage à métaprogrammation : vérifier une source
+  qu'un modèle a écrite, c'est exécuter du code. Le connecteur refuse en
+  plus les constructions d'exécution directe — une barrière, pas un bac à
+  sable, et le module le dit.
+- Bornes : délai dur, **groupe de processus tué en entier** (même forme que
+  `tools/atelier/atelier.py`, DEC-0063), source plafonnée.
+
+### Ce qui a été délibérément écarté
+
+Mathlib (des gigaoctets, des heures de compilation), le comparateur et le
+vérificateur indépendant du dépôt Fermat, sa formalisation, et toute idée de
+reproduire son environnement de build. Lean seul, avec sa bibliothèque
+standard, suffit à trancher un raisonnement — et tient sur sa machine.
+
+### Ce qui a réellement tourné
+
+Le chemin complet, par le vrai registre et les vraies permissions :
+
+```
+PERMISSION PAR DÉFAUT  -> DENIED (coupe-circuit EXECUTE_COMMANDS)
+PREUVE VALIDE          -> SUCCESS | VERIFIE | axiomes []
+PREUVE FAUSSE          -> FAILED  | REJETE  | « égalité non vérifiable par calcul »
+PREUVE À TROU (sorry)  -> FAILED  | REJETE  | axiomes [sorryAx], code de sortie 0
+SOURCE QUI VEUT S'EXÉCUTER -> refusée avant même de lancer Lean
+```
+
+Et au niveau agent, avec Lean réel :
+
+```
+a) Lean fourni dans la demande  -> VERIFIE, aucun modèle dérangé
+b) Modèle propose FAUX, corrige -> VERIFIE en 2 tentatives
+c) Modèle s'entête avec `sorry` -> REJETÉ. Il ne peut pas se déclarer vérifié.
+```
+
+69 tests neufs (4044 collectés contre 3975), deux sabotages confirmés puis
+restaurés : contrôle des axiomes neutralisé (3 tests tombent, dont le
+central), barrière d'exécution retirée (3 tests tombent). `ruff` propre,
+4019 passed / 25 skipped.
+`orphelins.py` : 210 modules, 167 atteints, **aucun module réel endormi**.
+
+Deux régressions attrapées par les tests existants et corrigées : l'intention
+neuve n'avait pas de voie d'exécution, et le compteur de `CLAUDE.md` avait
+bougé.
+
+### Licence et provenance
+
+Lean 4 : Apache-2.0, hors du dépôt (2,9 Go), sa licence voyage avec lui.
+Dépôt Fermat : Apache-2.0, « Copyright 2026 Anthropic, PBC » — **aucune ligne
+copiée**, seule la discipline reprise, citée dans `NOTICE.md` et en
+commentaire à l'endroit exact où elle s'applique.
+
+### Ce que ça coûte si c'est faux
+
+Si le verdict venait du code de sortie, ARENA signerait des preuves vides —
+et une preuve fausse signée vaut moins que pas de preuve du tout, parce
+qu'elle se croit. C'est la raison d'être du module, et c'est le seul endroit
+où il ne transige pas : Lean tranche, le modèle propose, et jamais l'inverse.
+
+**La limite honnête** : sans Mathlib, seule la bibliothèque standard est
+disponible. ARENA vérifie des raisonnements, elle ne refait pas Fermat — et
+le connecteur rapporte `import manquant` quand une preuve demande plus, au
+lieu de faire semblant.
+
+---
+
+## DEC-0068 — Six connecteurs que rien n'atteignait, et un garde-fou qui a dû être écrit trois fois
+
+**2026-09-07.** Audit opérationnel profond demandé par le propriétaire :
+« est-ce qu'ARENA fonctionne réellement, et quelles parties sont réellement
+opérationnelles aujourd'hui ? ». Rapport complet →
+`docs/audits/audit_operationnel_profond_2026-09-07.md`.
+
+### Ce qui allait bien, mesuré
+
+25 intentions déclarées, 25 atteignables par une vraie phrase, 24 aiguillées
+(`CHAT` est le repli). **23 agents sur 23** joignables. Aucun module réel
+endormi (210 modules, 167 atteints). Aucun secret en dur, aucun `shell=True`,
+aucun `TODO`/`FIXME`/placeholder en production, et les quatre `except: pass`
+du dépôt sont typés et légitimes. Les chaînes testables ici — routage,
+permissions, mémoire, vérification formelle, authentification — passent
+toutes, et tout ce qui dépend d'un moteur absent le **dit** au lieu
+d'inventer.
+
+### Le défaut : 6 connecteurs sur 29 qu'aucun code n'appelle
+
+`scripts/orphelins.py` ne pouvait pas les voir : leur fichier **est** importé
+par `runtime.py`, donc jamais orphelin — alors qu'aucun appelant ne les
+exécute. C'est DEC-0061 et DEC-0066 une troisième fois, à l'échelle :
+`gitingest`, `formbricks`, `galsen`, `graphify`, `txtai_search`,
+`workflow_guide`.
+
+**Corrigé : `gitingest`.** `RepoEngineerAgent` — l'agent qui analyse des
+architectures — le faisait avec **30 lignes d'arborescence tronquée**,
+pendant que le connecteur fait pour ça (« transforme un dépôt en résumé,
+arbre et contenu ») dormait. Il l'appelle désormais, avec repli honnête, et
+le prompt dit sa source (`gitingest` ou `arborescence`).
+
+**Non corrigés : les cinq autres, et c'est une décision.** Les brancher
+demande de choisir *où*, et ce choix appartient au propriétaire — un
+connecteur de sondages ou de données publiques n'a pas d'emplacement
+évident. Les câbler au jugé aurait créé des chemins que personne n'emprunte,
+c'est-à-dire le même défaut sous une autre forme.
+
+**Ce qui empêche la récidive** : `tests/test_connecteurs_dormants.py` mesure,
+pour chaque connecteur enregistré, s'il est nommé en argument d'un appel
+réel, et échoue **dans les deux sens** — un connecteur neuf qui s'endort sans
+être déclaré, et un dormant réveillé qu'on aurait oublié de sortir de la
+liste.
+
+### Le résultat le plus utile : trois tests verts sur du code sabordé
+
+Ce garde-fou a dû être réécrit **trois fois**, chaque version passant sur un
+sabotage réel :
+
+1. **`grep`** — comptait les commentaires. Débrancher l'appel laissait le
+   test vert : le mot restait dans la docstring au-dessus.
+2. **AST, égalité exacte** — comptait une étiquette d'affichage
+   (`return vu, "gitingest"`), qui n'appelle rien.
+3. **AST, premier argument du registre** — déclarait mort `claude_context`,
+   qui est appelé via une fonction intermédiaire. Un faux « dormant » sur une
+   capacité vivante est pire que pas de garde-fou.
+
+La règle qui tient : **le nom exact en argument d'un appel**.
+
+Troisième fois en deux jours qu'un test de ce dépôt passe pour la mauvaise
+raison (filtre `supports_cloning`, sonde du navigateur, ici). Le point commun
+est toujours le même : **le test remplaçait ou contournait ce qu'il prétendait
+vérifier**. Seul le sabotage l'a montré, à chaque fois.
+
+### Ce qui a été signalé sans être corrigé
+
+Quatre agents (`plaquiste`, `coder`, `repo_engineer`, `swe`) lèvent une
+`RuntimeError` brute quand aucun modèle ne répond, là où six autres rendent
+un statut avec la raison. **Les deux points d'entrée réels s'en protègent
+déjà** — vérifié en exécution : `/api/chat` teste la disponibilité avant tout
+et enveloppe le reste, `/agent/stream` passe par `chronometrer` qui rend
+l'échec visible. Le propriétaire reçoit un message propre, jamais une 500.
+Corriger quatre agents pour un gain nul sur les chemins réels serait élargir
+le risque sans bénéfice mesuré : signalé, pas maquillé.
+
+### Ce que ça coûte si c'est faux
+
+Un connecteur qui dort coûte sa maintenance, occupe une ligne du diagnostic,
+et se lit comme une capacité disponible dans chaque document qui l'énumère —
+jusqu'au jour où quelqu'un compte dessus. La mesure des modules ne pouvait
+pas l'attraper, et c'est précisément pour ça qu'il fallait une mesure
+séparée : **une garantie qu'aucun test ne tient finit toujours par ne plus
+être vraie.**
+
+---
+
+## DEC-0069 — OmniVoice allait devenir le moteur par défaut d'UniC, et sa licence l'interdit
+
+**2026-09-07.** Mission reçue : auditer OmniVoice, et l'intégrer comme moteur
+TTS réellement opérationnel *si et seulement si* il apporte une vraie
+amélioration — sans deuxième système vocal, avec un seul routeur, et sans
+jamais contourner la licence du modèle pré-entraîné.
+
+### Le défaut, en trois faits qui ne se recoupent qu'ensemble
+
+1. Le registre TTS de VoiceStudio est un dictionnaire **ordonné** dont
+   `omnivoice` est la **première** entrée, énumérée dans cet ordre (fichier
+   `tts_backend.py` ligne 2260, commit `53ff367`, lu sur cette machine).
+2. ARENA choisissait `disponibles[0]` — *« le premier que le service déclare
+   disponible »*, écrit le 01/09/2026 pour ne pas suivre aveuglément le
+   moteur « actif » de VoiceStudio. Bonne intention, mauvaise règle.
+3. Les **poids** d'OmniVoice sont **CC-BY-NC**. Son dépôt ne porte qu'un
+   `LICENSE` Apache-2.0 — qui couvre le **code** — et **aucune mention** de la
+   licence des poids.
+
+Donc : dès que le paquet est installé, OmniVoice devient le moteur de
+**toutes les voix off d'UniC Plaquiste**. Et la commande qui l'installe,
+c'est ARENA elle-même qui la lui donnait, dans `docs/COMMANDES_PC.md`, depuis
+DEC-0065.
+
+Une entreprise de cloisons à Dakar, des vidéos de chantier, un modèle marqué
+« non commercial » : rien dans le code ne l'aurait dit, et rien dans le
+journal ne l'aurait retrouvé.
+
+### La source, atteignable, qui tranche un `UNKNOWN` de DEC-0065
+
+DEC-0065 avait laissé la licence des poids `UNKNOWN`, faute d'atteindre
+Hugging Face — toujours bloqué ici (mesuré : `curl` code 000, WebFetch
+`EGRESS_BLOCKED`). Mais VoiceStudio, qui empaquette OmniVoice, l'écrit dans
+son `LICENSE-NOTICE.md` :
+
+> *« Downloaded model weights are not relicensed by VoiceStudio. The default
+> k2-fsa/OmniVoice model card identifies its code as Apache-2.0 and pretrained
+> weights as CC-BY-NC. »*
+
+Son `README.md` porte la même information dans une colonne « License » par
+moteur — la source de la table de `core/audio/routage_tts.py`. La fiche
+Hugging Face elle-même n'a **pas** été lue ici : deux sources indépendantes
+la citent, aucune n'est elle.
+
+### Ce qui a été fait
+
+**Un seul routeur, et il connaît les licences** : `core/audio/routage_tts.py`.
+Le connecteur portait **deux** fonctions de choix (parler, cloner) ; il n'y en
+a plus qu'une. Sa règle de partage est le cœur du module :
+
+- **Ce que la machine sait mesurer, on le lui demande** à chaque appel :
+  disponibilité, `supports_cloning`, `effective_device`, `routing_status`.
+- **Ce qu'aucune API n'expose vit dans la table** — la licence des poids et le
+  support de `instruct` —, chaque entrée avec sa source et sa date.
+
+`effective_device` et `routing_status` sont la découverte utile de l'audit :
+VoiceStudio les publiait déjà, ARENA les recevait et les **jetait**. C'est la
+réponse mesurée à « quel appareil sert réellement ? », et elle ne se déduit
+pas de la présence d'un GPU — un moteur compatible CUDA peut retomber sur le
+processeur faute de VRAM, et `cpu_fallback` le dit.
+
+Cinq comportements, tous tenus par des tests :
+
+1. `omnivoice` seul + travail commercial → **refus**, licence nommée, **aucun
+   fichier écrit**, et le message donne les deux sorties possibles.
+2. `omnivoice` + un moteur permissif → le permissif, quel que soit l'ordre.
+3. `omnivoice` **nommé explicitement** → refus quand même : nommer un moteur
+   n'ouvre aucune porte.
+4. `usage="recherche"` déclaré → `omnivoice` parle. La licence interdit le
+   commerce, pas l'essai — et cette porte est atteignable depuis une vraie
+   phrase, sinon ce serait une capacité morte de plus (DEC-0061, DEC-0068).
+5. À licence égale, le moteur **réellement accéléré** passe devant.
+
+**L'usage par défaut est commercial**, et un `usage` mal orthographié est
+refusé plutôt que ramené au défaut : le ramener en silence choisirait à sa
+place, et dans le seul sens qui coûte.
+
+`scripts/doctor.py` ne dit plus `[OK]` quand les seuls moteurs installés sont
+non commerciaux — c'était le même mensonge que « un port qui répond sans
+moteur », que ce fichier interdisait déjà.
+
+### Le sabotage qui est passé, encore
+
+Sept sabotages ont été joués. Six ont fait échouer des tests. **Le septième
+est passé au vert** : retirer le contrôle de licence de `doctor.py` ne cassait
+rien, parce que ce contrôle n'avait aucun test. Il en a deux maintenant, et
+les deux sabotages échouent.
+
+C'est la quatrième fois en trois jours qu'une garantie de ce dépôt se révèle
+non tenue — filtre `supports_cloning`, sonde du navigateur, garde-fou des
+connecteurs dormants, et ici. La constante n'est plus une surprise : **ce
+qu'aucun test ne casse, personne ne tient.**
+
+### Ce qui n'a pas été fait, et pourquoi
+
+- **Rien n'a été cloné dans ARENA**, aucun poids téléchargé. Tant que la
+  licence bloque l'usage principal, télécharger des gigaoctets serait payer
+  un stockage pour une capacité qu'ARENA refusera d'exercer.
+- **Aucun deuxième système vocal.** Le connecteur a rétréci, pas grossi.
+- **KrillinAI garde son TTS de doublage** (DEC-0049) : il ne synthétise jamais
+  de novo et n'accepte aucun clonage. Frontière assumée, pas oubli.
+- **Aucune langue déclarée opérationnelle.** Le dépôt annonce « over 600
+  languages » ; ce nombre est **repris, pas vérifié**.
+  `scripts/verifier_voix.py` mesure français, anglais et wolof sur sa machine.
+
+### Ce que ça coûte si c'est faux
+
+**Si la mesure est fausse** — si les poids étaient en réalité
+commercialement libres — le coût est une gêne : il installe un autre moteur,
+ou déclare un usage non commercial, ou corrige une ligne de la table avec sa
+source. Réversible en une minute.
+
+**Si elle est juste et qu'on n'avait rien fait**, le coût n'est pas
+symétrique : des vidéos commerciales déjà publiées, faites avec un modèle qui
+l'interdit, sans trace permettant de savoir lesquelles. Un fichier produit ne
+se dé-produit pas.
+
+C'est cette asymétrie, et elle seule, qui justifie que le défaut par défaut
+soit le refus.
+
+---
+
+## DEC-0070 — `architecture_3d` : une capacité d'ARENA, Pascal n'en est qu'un moteur
+
+**2026-09-07.** Mission reçue : intégrer Pascal Editor comme capacité
+d'architecture 3D **transversale**, accessible à tous les modèles autorisés,
+routée et sécurisée par ARENA — jamais câblée dans un modèle, jamais un dépôt
+dormant, jamais un doublon.
+
+### Ce qu'ARENA avait déjà (audit avant toute modification)
+
+Un sous-système BIM réel, et il **n'a pas été touché** :
+
+| Existant | Ce qu'il fait | Décision |
+|---|---|---|
+| connecteur `ifc` | lit un IFC : niveaux, éléments, métré des murs | **conservé** |
+| connecteur `ifc_generation` | écrit un croquis IFC d'une cloison | **conservé** |
+| `agents/plaquiste/` (métré, matériaux, plans) | le métier UniC | **conservé** |
+
+Ce qui manquait, et que rien ne rendait : **construire**. Aucun graphe de
+scène, aucun niveau, aucune pièce, aucun annuler/refaire, aucun export 3D.
+Pascal ne remplace donc rien — il comble un trou, et la frontière est nette :
+le moteur s'arrête au mur, ce qu'on en déduit (BA13, ossature, isolation,
+quantités, prix) reste au métier.
+
+### L'architecture retenue
+
+```
+n'importe quel modele autorise
+  -> orchestrateur ARENA          (intention ARCHITECTURE_3D)
+  -> connecteur architecture_3d   (permission -> confirmation -> journal)
+  -> Capacite3D                   (22 operations en francais, sessions isolees)
+  -> BackendPascal                (traduction vers les 46 outils reels)
+  -> serveur MCP de Pascal        (processus separe, MIT, hors du depot)
+```
+
+**Aucun agent n'a été créé.** La mission l'interdit quand la capacité se
+suffit : la phrase devient un plan déterministe
+(`core/architecture/plan.py`, **sans modèle**), et le plan devient des appels
+au connecteur. Un modèle qui produirait le même plan ne changerait rien en
+aval — c'est ce qui rend la capacité agnostique, et un test le prouve en
+faisant passer trois appelants imaginaires par le même chemin.
+
+**Aucun nom de modèle n'existe dans la couche architecture**, et un test
+échoue si `qwen`, `claude`, `mistral`, `llama`, `gpt`, `gemini` ou `deepseek`
+y décide quoi que ce soit.
+
+### Trois pannes réelles, trouvées en exécutant
+
+**1. Le paquet publié ne tourne pas sous Node, malgré son README.**
+`@pascal-app/mcp@1.0.0-beta.6` importe ses modules sans extension
+(`from '../server'`) : le résolveur ESM de Node refuse
+(`ERR_MODULE_NOT_FOUND`), Bun accepte. Mesuré sous Node v22.22.2, au-dessus
+du minimum annoncé. **Le moteur d'exécution est Bun**, et la sonde le dit.
+
+**2. `zod` 4.5.4 cassait toutes les écritures — et rien ne le montrait.**
+Pascal demande `zod ^4.3.5` ; npm installe 4.5.4, dont `discriminatedUnion`
+refuse une option au discriminant `undefined`. Résultat : le serveur démarre,
+`inspecter` répond parfaitement, et **chaque** mutation rend
+`Duplicate discriminator value "undefined"`. Une sonde « le processus
+répond » aurait déclaré la capacité opérationnelle. `zod` est épinglé à
+4.3.5 dans `core/architecture/paquets.json`, et le test crée un vrai mur.
+
+**3. Les permissions ne matchaient rien, donc tout était refusé.**
+`core/connectors/base.py` interroge la politique avec `capacite.action`,
+jamais avec le nom de la capacité. Une première version déclarait 22 règles
+nommées `creer_mur:`, `inspecter:`… : aucune ne pouvait matcher, toutes
+tombaient sur le refus par défaut. Le symptôme était parfait — permissions
+écrites, moteur prêt, `DENIED` sur la première opération. Trois actions
+(`read`, `batir`, `demolir`) ont remplacé 22 règles mortes.
+
+Deux autres, plus petites, corrigées de la même façon : le paramètre `nom`
+entrait en collision avec le premier argument du registre des connecteurs
+(renommé `titre`), et le journal d'observabilité, étalé dans `succes()`,
+écrasait son argument `action` — **toutes les lectures levaient**, sur le
+premier appel réel.
+
+### Ce qui a été mesuré, pas supposé
+
+Sur la phrase exacte de la mission — *« Crée une maison de 20m x 15m avec
+3 chambres, un salon, une cuisine, 2 salles de bain et une terrasse. »* :
+
+| | |
+|---|---|
+| Plan compris | emprise 20 × 15 m, 8 pièces nommées, hauteur 2,5 m annoncée |
+| Confirmation | **une seule**, montrant le plan entier avant d'agir |
+| Construction | 11 opérations en **476 ms** |
+| Scène réelle | **36 murs** (4 de pourtour : 20, 15, 20, 15 — puis 32 de cloisonnement) et **8 pièces** aux noms demandés |
+| Démarrage du moteur | 396 ms · opération courante 1 à 14 ms |
+
+Deux sessions ouvertes en même temps ne partagent jamais une scène : vérifié
+sur deux chantiers réels, un mur créé dans l'un n'apparaît pas dans l'autre.
+
+### Ce qui n'a PAS été intégré, et pourquoi
+
+- **`create_house_from_brief`** de Pascal accepte une phrase entière. Mesuré :
+  sur « maison 20x15 avec 3 chambres », il rend un projet bâti sur le gabarit
+  `empty-studio` — il **choisit un gabarit** au lieu d'honorer la demande. Le
+  brancher aurait donné une maison plausible et fausse.
+- **Les 24 autres outils** de Pascal (vision, variantes, gabarits, collisions,
+  synchronisation live) : réels, mais aucun besoin d'ARENA ne les appelle
+  aujourd'hui. Les exposer aurait créé des chemins que personne n'emprunte —
+  le défaut que DEC-0068 vient de fermer.
+- **Aucune interface graphique.** Pascal a son éditeur React/WebGPU ; ARENA
+  ne l'héberge pas. La capacité rend une scène JSON et un export GLB.
+  `SUGGESTION — NON IMPLÉMENTÉE`.
+- **Aucun pont IFC ↔ scène Pascal.** Techniquement possible (Pascal a un
+  paquet `ifc-converter`), mais ni mesuré ni demandé. Prétendre un support
+  BIM non vérifié serait exactement le faux support que la mission interdit.
+
+### Licence et provenance
+
+`pascalorg/editor` est **MIT** (vérifié dans son `LICENSE`, commit `505013b`).
+Les deux paquets installés le sont aussi : `@pascal-app/mcp@1.0.0-beta.6` et
+`@pascal-app/core@1.0.0-beta.5`, `"license": "MIT"` lu dans leurs manifestes.
+**Aucune ligne de Pascal n'entre dans ce dépôt** — 205 Mo de `node_modules`
+hors du dépôt, comme Lean et les moteurs vidéo, et un test le tient.
+
+### Ce que ça coûte si c'est faux
+
+**Si Pascal disparaît ou change**, le coût est borné par construction : le
+vocabulaire d'ARENA et tout ce qui l'appelle ne bougent pas, seul
+`backend_pascal.py` est à remplacer. C'est la raison d'être de la capacité.
+
+**Si l'épinglage de `zod` saute**, le coût est plus sournois : lectures
+parfaites, écritures muettes. C'est pourquoi le test ne se contente pas d'un
+serveur qui démarre — il crée un mur.
+
+---
+
+## DEC-0071 — « Il se base sur une conduite de réponse » : le formulaire venait d'une lecture qui échouait
+
+**2026-09-07.** Capture d'écran du propriétaire, espace UniC Plaquiste. Il
+écrit — **toutes les cotes y sont** :
+
+> *« Fais-moi une cloison de 5 m sur 2,5 m, avec une porte de 80 × 210 cm. »*
+
+Réponse reçue, en 1,8 s :
+
+> *« Quel est le nom du client ? Quel est le lieu du chantier ? Quelles sont
+> les prestations souhaitées ? »*
+
+Ses mots : *« il se base toujours sur une conduite de réponse alors qu'il
+devrait réfléchir et se baser sur mes réponses »*.
+
+Il a raison, et le défaut n'était pas là où il en avait l'air.
+
+### Le défaut avait deux étages, et le premier expliquait le second
+
+**Étage 1 — la lecture échouait, donc il n'y avait rien à dire.**
+`agents/plaquiste/metre.py` exigeait un **chiffre** avant le nom
+(`(\d+)\s*(?:parois?|cloisons?|murs?)`, le motif de son devis de référence
+« 18 parois de 5,40 x 2,50 m ») et ne connaissait pas le séparateur
+**« sur »**. Mesuré sur sa phrase exacte : `lire_demande` rendait `None`.
+
+Conséquence : `calcul_materiaux` n'était pas appelé, aucune quantité n'était
+injectée dans l'instruction, et le modèle n'avait **aucun chiffre** en main.
+
+**Étage 2 — sans chiffres, il ne restait que le formulaire.**
+`BLOC_VRAI_CLIENT` faisait poser les trois questions dès que le client était
+inconnu. Elles existent pour une bonne raison — un devis part vraiment chez
+quelqu'un, et ARENA n'invente personne — mais elles étaient posées **à
+l'entrée**, y compris pour une question purement technique.
+
+Un métré n'a pas de destinataire. Demander « quel est le nom du client ? »
+pour calculer une surface, c'est un formulaire, pas un métier.
+
+**Étage 3, qu'il n'a pas eu besoin de nommer — la porte n'était déduite nulle
+part.** Aucun module du dépôt ne retirait une ouverture d'une surface. Une
+cloison avec porte était chiffrée comme une cloison pleine : plus de plaques,
+plus de vis, plus d'enduit, et **un prix trop haut**.
+
+### Ce qui a été corrigé
+
+**La lecture.** Le compte devient optionnel et s'écrit en lettres — « une
+cloison » est un compte, exactement comme « 1 cloison », et c'est ainsi qu'il
+parle. « sur » rejoint `x`, `par`, `*` et `×`. Sans compte du tout, c'est une
+paroi : c'est ce que la phrase dit.
+
+**Les ouvertures.** `lire_ouvertures` lit portes, fenêtres, baies, trémies,
+avec leur nombre, et convertit les centimètres. Sans unité, une cote au-delà
+de 10 est lue en centimètres — **une ouverture ne fait jamais 80 mètres** — et
+cette lecture est **dite**, donc démentable d'un coup d'œil.
+
+**Les questions.** Elles restent, mot pour mot (elles sont relues par
+`destinataire_depuis_l_historique` ; les réécrire casserait l'association
+entre la question posée et la réponse suivante). Ce qui change est **quand** :
+répondre d'abord, questionner ensuite, et seulement pour un document qui part
+réellement chez quelqu'un.
+
+### Ce que sa phrase donne maintenant, mesuré
+
+```
+Lecture : 1 paroi de 5 x 2.5 m = 12.5 m2 de surface simple,
+          moins 1 porte de 0.8 x 2.1 m = 1.68 m2,
+          soit 10.82 m2 a plaquer
+```
+
+Puis le calcul réel, avec **sa** grille de prix : 11 plaques BA13, 13 montants
+de 70 mm, 3 rails, enduit, Katex, laine, vis, bandes. Aucune question.
+
+### Un test qui vérifiait une formulation, pas une garantie
+
+`test_l_instruction_demande_au_lieu_de_supposer` cherchait la chaîne
+littérale « tu les demandes ». Réécrire la consigne l'a cassé **sans qu'aucune
+garantie ne soit perdue** — il mesurait des mots, pas un comportement. Il
+vérifie désormais que les trois formulations exactes sont présentes, et un
+second test vérifie qu'elles ne barrent plus une question technique.
+
+C'est le même défaut de fond que les quatre précédents de la semaine, sous une
+autre forme : **un test qui ne mesure pas ce qu'il prétend protéger**.
+
+### Ce que ça coûte si c'est faux
+
+**Si la déduction d'ouverture se trompe**, il voit la lecture en toutes
+lettres dans la réponse et la corrige d'un mot. Une cote mal lue est visible.
+
+**Si elle n'existait pas** — l'état d'avant — le métré était silencieusement
+trop haut sur chaque cloison portant une porte, et rien dans la réponse ne
+permettait de s'en apercevoir. C'est cette asymétrie qui rend la déduction
+obligatoire et son affichage non négociable.
+
+Quand une ouverture est **plus grande que la paroi**, rien n'est déduit et la
+réponse le dit : mieux vaut un métré trop haut, visible et discutable, qu'un
+zéro qui passerait pour une mesure.
+
+---
+
+## DEC-0072 — Open SWE : rien d'installé, une seule idée reprise — la reprise
+
+**2026-09-07.** Mission reçue : exploiter les meilleures capacités de
+`langchain-ai/open-swe` pour renforcer le génie logiciel d'ARENA — **sans créer
+un deuxième agent de code**, sans deuxième sandbox, deuxième client GitHub,
+deuxième gestionnaire de tâches.
+
+### Ce qu'ARENA avait déjà (audit avant toute modification)
+
+| Existant | Ce qu'il fait | Verdict |
+|---|---|---|
+| `DioumtoukayAgent` (483 l.) + `Atelier` (372 l.) | AGIT : lit, écrit, remplace, cherche, liste, déplace, exécute, git. Boucle bornée à 12 actions / 20 min, 3 réponses illisibles max, journal par action | **BETTER ARENA** — déjà la boucle demandée |
+| `SWEAgent` | analyse chirurgicale de bug, lecture seule (protocole ACI) | conservé |
+| `RepoEngineerAgent` | architecture, lecture seule, via `gitingest` (DEC-0068) | conservé |
+| `CoderAgent` | génération de code | conservé |
+| Connecteur GitHub, permissions, confirmation, journal, MCP | déjà en place | **aucun doublon créé** |
+
+L'exécution des commandes sans garde-fou est une **décision du propriétaire**,
+pas un défaut : DEC-0038, *« Il doit tout faire pas de limite »*. Elle n'a pas
+été re-litigée ici.
+
+### Ce qui a été refusé, et pourquoi — mesuré, pas supposé
+
+**Open SWE ne peut pas être installé dans ARENA.** Son `pyproject.toml` exige
+`requires-python = ">=3.14"` ; ARENA tourne sur **Python 3.11.15** (mesuré).
+Ce n'est pas une préférence, c'est un mur.
+
+Et même sans ce mur, ses dépendances contredisent trois règles de la mission :
+
+- `langchain-anthropic`, `langchain-openai`, `langchain-fireworks` — des
+  paquets **liés à un fournisseur**, dans un système qui doit rester
+  agnostique au modèle ;
+- `langchain-daytona`, `langchain-modal`, `langchain-runloop`, `langchain-e2b`
+  — **quatre sandbox cloud**, là où ARENA en a déjà une, locale, sous son
+  contrôle ;
+- `langgraph` + `deepagents` — un **second moteur d'orchestration** complet.
+
+Installer tout cela pour en tirer une idée aurait été le contraire de ce que la
+mission demande.
+
+**Rien n'a donc été cloné, installé, ni copié.** Son code est MIT (`LICENSE`,
+commit `2ad5524`, lu sur cette machine), donc la copie aurait été permise — elle
+n'était simplement pas utile.
+
+### Le seul manque réel, et il est vrai
+
+`DioumtoukayAgent` s'arrête à douze actions ou vingt minutes et rend
+honnêtement :
+
+> *« Arrêté après N minutes sans avoir conclu. Ce qui a été fait est ci-dessous ;
+> la suite reste à faire. »*
+
+Puis il garde un **résumé en prose** dans la mémoire longue. Un résumé n'est pas
+un état : « reprends ce que tu faisais » relançait le travail **depuis zéro** —
+mêmes lectures, mêmes recherches, mêmes commandes. Et
+`core/execution/travaux.py` ne pouvait pas aider : sa file est purement en
+mémoire (deux dictionnaires dans `__init__`), donc un redémarrage efface tout.
+
+C'est exactement ce que la section 9 de la mission demandait.
+
+### Ce qui a été écrit — `core/execution/reprise.py`
+
+Deux idées d'Open SWE, réécrites pour ARENA sans une ligne de leur code :
+
+1. **Un journal d'étapes durable**, sur disque, écrit **après chaque action** —
+   pas à la fin. Une tâche tuée au milieu laisse exactement ce qu'elle avait
+   fait. L'écriture est atomique (fichier temporaire puis `os.replace`) : un
+   journal à moitié écrit serait illisible dans le seul moment où il sert.
+2. **Un balayage** (`balayer`) qui marque interrompue une tâche « en cours »
+   qui n'avance plus depuis une heure. C'est l'idée de leur `reconcile.py` :
+   sans ce filet, une tâche dont le processus est mort reste « en cours » pour
+   toujours — elle est **perdue en se déclarant vivante**.
+
+`DioumtoukayAgent` l'utilise directement : il rouvre sa tâche, repart avec son
+journal d'étapes, et se marque `INTERROMPUE` au lieu de perdre l'état. **Aucun
+agent, aucun orchestrateur, aucune file de plus.**
+
+### Quatre décisions qui ont un coût si elles sont fausses
+
+- **Reprendre exige la demande identique.** Rapprocher deux demandes voisines
+  ferait continuer un travail sur un autre sujet — pire que recommencer, parce
+  que personne ne le verrait.
+- **Une tâche ÉCHOUÉE ne se reprend pas.** Rejouer un échec dont la cause n'a
+  pas changé (aucun moteur, dépôt absent) le referait à l'identique.
+- **Un horodatage illisible est traité comme ANCIEN.** Se tromper dans ce sens
+  libère une tâche vivante, qui reprendra au pire en double ; dans l'autre, on
+  garderait pour toujours une tâche morte.
+- **La purge n'oublie que les TERMINÉES.** Une tâche reprenable ne se purge
+  jamais : ce serait perdre du travail pour économiser des octets.
+
+### Ce qui a été mesuré, pas supposé
+
+Un vrai dépôt écrit sur disque, avec un vrai bug (`return largeur + hauteur`
+au lieu de `*`), un vrai `pytest` :
+
+| Étape | Mesure |
+|---|---|
+| Premier `pytest` | **échoue** — le bug est reproduit |
+| Remplacement | le fichier sur disque contient `largeur * hauteur` |
+| Second `pytest` | **passe** |
+| Interruption puis reprise | 2 étapes au premier passage, la 3ᵉ au second, **même `task_id`** |
+| Sans moteur | `NOT_CONFIGURED`, et **aucune tâche ouverte** — un faux départ serait pire |
+
+Seul le **modèle de langue** est doublé (script d'actions fixes) : Ollama
+n'existe pas sur cette machine, et un modèle réel rendrait le test non
+reproductible. Tout le reste est du vrai travail.
+
+### Ce qui n'a PAS été fait, et se dit
+
+- **Aucune PR créée par l'agent**, aucune boucle CI autonome. `git` passe déjà
+  par l'atelier ; brancher une création de PR autonome est une décision qui
+  n'a pas été demandée ici.
+- **Aucun sous-agent** ajouté (Analyzer / Coder / Reviewer). ARENA a déjà ces
+  rôles — `RepoEngineer` analyse, `Coder` écrit, `SWEAgent` diagnostique — et
+  en ajouter trois de plus serait l'armée que la mission interdit.
+- **Aucune parallélisation** de tâches. `FileDeTravaux` existe et n'a pas été
+  touchée : la reprise se branche sur l'agent, pas sur une nouvelle file.
+
+---
+
+## DEC-0073 — La fusion Open SWE, suite : le connecteur GitHub qui manquait vraiment
 
 **Date** : 08/09/2026
 **Statut** : accepté
 
-### Le constat, mesuré
+### Une session parallèle, la même mission
 
-Demande du propriétaire, mot pour mot : *« Je veux exploiter les meilleures
-capacités de Open SWE pour renforcer la capacité de Software Engineering
-d'ARENA. NE crée PAS un deuxième coding agent indépendant. »*
+Cette décision et DEC-0072 vues côte à côte : deux sessions ont reçu, à
+quelques jours d'écart, la même mission — *« exploiter les meilleures
+capacités de `langchain-ai/open-swe` pour renforcer le génie logiciel
+d'ARENA, sans deuxième agent de code »* — chacune sans savoir que l'autre
+y travaillait. Fusionnées ici après coup, sur `master`, un conflit git
+ordinaire à résoudre plutôt qu'un désaccord de fond : les deux audits
+arrivent à la même conclusion (Python 3.11 contre l'exigence `>=3.14`
+d'Open SWE, ses dépendances liées à un fournisseur et ses quatre bacs à
+sable payants — rien de tout cela n'entre dans ARENA).
 
-L'audit (`docs/audits/open_swe_audit.md`) mesure deux choses qui comptent
-plus que prévu :
+**Un point où les deux audits divergent, et c'est celui qui compte.** La
+table de DEC-0072 note *« Connecteur GitHub, permissions, confirmation,
+journal, MCP — déjà en place — aucun doublon créé »*. **Mesuré ici avant
+d'écrire une ligne** (`git grep api.github.com`, dépôt entier) : aucun
+connecteur GitHub n'existait. DEC-0038 donne à Dioumtoukay `git` en shell
+nu — cloner, committer, pousser — ce qui n'est pas la même chose qu'un
+client de l'API GitHub capable d'ouvrir une Pull Request, de lire l'état
+d'une CI ou des commentaires de revue. C'est cette confusion, probablement,
+qui a fait conclure DEC-0072 à un manque déjà comblé alors qu'il ne
+l'était pas — et qui a fait renoncer à la section 12/13 de la mission
+(*« Aucune PR créée par l'agent, aucune boucle CI autonome […] n'a pas été
+demandée ici »*) sur cette base.
 
-- ARENA a **quatre** entrées vers le code (Dioumtoukay, CoderAgent, SWEAgent,
-  RepoEngineerAgent), choisies par mots-clés, **jamais reliées entre elles**.
-  `SWEAgent` et `RepoEngineerAgent` analysent et concluent sans jamais
-  passer la main à celui qui pourrait agir.
-- Open SWE, contrairement à l'attente, est écrit en **Python** (LangGraph +
-  `deepagents`), pas en TypeScript — mais son moteur reste un framework
-  d'orchestration entier, avec ses propres dépendances et sa propre
-  infrastructure de déploiement (crons sur un serveur LangGraph).
+### Ce que cette décision ajoute, sans rien défaire de DEC-0063 ni DEC-0072
 
-### La décision
+- **`core/connectors/github.py`** — le connecteur qui manquait, sur le
+  contrat `Connecteur` déjà en place (`core/connectors/base.py`) : santé
+  sondée, jamais supposée ; capacités déclarées ; permission vérifiée avant
+  tout. Lecture de dépôt, recherche de code, création de branche :
+  `ALLOWED` — même risque que le `git push` déjà libre sous DEC-0038.
+  Création de Pull Request : **`CONFIRMATION`**, et la PR s'ouvre **en
+  brouillon** même une fois confirmée — les deux gardes à la fois,
+  délibérément redondantes.
+- **`ACTION: ouvrir_pr` et `ACTION: etat_ci`** dans la boucle de
+  Dioumtoukay, via ce connecteur — la section 12/13 de la mission que
+  DEC-0072 avait, sur la base de son erreur d'audit, laissée de côté.
+- **`RepoEngineerAgent` et `SWEAgent` deviennent des outils que Dioumtoukay
+  consulte lui-même** en cours de tâche (`ACTION: analyser`,
+  `ACTION: diagnostiquer`) — DEC-0063 les gardait corrects mais séparés
+  (« KEEP — ARENA a un palier que mini-SWE-agent n'a pas ») ; cette
+  décision les relie à celui qui peut agir, au lieu de laisser le
+  propriétaire choisir la porte à sa place.
+- **`core/production/disponibilite_swe.py`** — la capacité
+  `software_engineering` dit ce qui marche, backend par backend, sondé
+  pour de vrai (même patron que `disponibilite_video.py`).
 
-**Une capacité canonique, `software_engineering`**, choisie par le routeur
-de modèle exactement comme les autres capacités d'ARENA — aucun modèle ne
-sait quel backend répond. Un orchestrateur SWE, écrit en Python natif dans
-le style d'ARENA, décide entre :
-
-- **Dioumtoukay** pour le travail réel sur le dépôt (inchangé, DEC-0038
-  tient) ;
-- **CoderAgent** pour un script isolé (inchangé, DEC-0004 tient) ;
-- **`RepoEngineerAgent`** et **`SWEAgent`**, désormais des **outils internes**
-  que Dioumtoukay peut consulter en cours de tâche, plutôt que deux portes
-  séparées que le propriétaire devait deviner.
-
-**Un connecteur GitHub est créé — le premier de ce dépôt** — suivant le
-contrat `Connecteur` existant (`core/connectors/base.py`) : santé sondée,
-jamais supposée ; capacités déclarées ; permission vérifiée avant tout.
-Lecture de dépôt, recherche de code, création de branche : `ALLOWED`.
-Création de Pull Request : **`CONFIRMATION`**, et la PR s'ouvre **en
-brouillon** — les deux à la fois, parce que l'un est la garde d'ARENA (déjà
-éprouvée sur Gmail et les réseaux sociaux) et l'autre celle d'Open SWE ; rien
-n'oblige à choisir entre les deux.
-
-**Rien de LangGraph, rien de `deepagents`, aucun fournisseur de bac à sable
-payant (E2B, Daytona, Modal, Runloop) n'entre dans ARENA.** Adopter le
-framework d'orchestration d'Open SWE serait, au sens le plus strict de sa
-propre consigne, créer un deuxième agent de code indépendant — seulement
-caché sous un habillage « capacité unifiée ». Les fournisseurs de bac à
-sable payants n'ont ni compte ni demande derrière eux.
-
-**Ce qui est explicitement différé, et dit comme tel :** la reprise d'une
-tâche interrompue **au milieu d'un appel d'outil** (le vrai « checkpoint »
-d'Open SWE, porté par LangGraph) n'est pas construite ici — ce serait
-réécrire la boucle de Dioumtoukay autour d'un moteur à états persistants,
-un chantier à part. Ce qui est construit : un **état de tâche persistant**
-(plan, étapes déjà faites, dernier statut), qui permet à une nouvelle tâche
-de savoir où la précédente s'est arrêtée sans pouvoir reprendre le tour
-en cours. La différence est dite, pas maquillée.
+**Non re-litigé** : la reprise de tâche (`core/execution/reprise.py`,
+DEC-0072) et les deux garde-fous mini-SWE-agent (durée maximale, réponses
+illisibles consécutives, DEC-0063) restent exactement ce qu'ils étaient.
+Ce que DEC-0072 appelait *« le vrai manque »* — une tâche interrompue qui
+reprend au lieu de tout refaire — est déjà construit ; cette décision ne
+prétend plus le différer.
 
 ### Ce que ça coûte si c'est faux
 
-Si le connecteur GitHub s'avère mal fait, une PR non voulue peut se créer sur
-son dépôt public — d'où `CONFIRMATION` **et** le brouillon par défaut,
-délibérément redondants. Si l'unification des quatre agents en une capacité
-casse un chemin qui marchait, les quatre routes historiques (`ATELIER`,
-`CODE_EXECUTION`, `SWE_FIX`, `REPO_ENGINEERING`) restent atteignables : la
-capacité nouvelle s'ajoute, elle ne supprime aucune porte existante avant
-d'avoir prouvé qu'elle les remplace toutes.
+Si le connecteur GitHub s'avère mal fait, une PR non voulue peut se créer
+sur son dépôt public (redevenu public le 06/09/2026) — d'où les deux
+gardes redondantes. Si la fusion de `RepoEngineerAgent`/`SWEAgent` casse un
+chemin qui marchait, les quatre routes historiques (`ATELIER`,
+`CODE_EXECUTION`, `SWE_FIX`, `REPO_ENGINEERING`) restent atteignables : rien
+n'a été retiré, seulement relié.

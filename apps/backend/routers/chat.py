@@ -27,6 +27,7 @@ from apps.backend.runtime import (
     editor_agent,
     email_agent,
     fast_provider,
+    formel_agent,
     fresh_agent,
     graphrag_tool,
     lightrag_tool,
@@ -43,12 +44,15 @@ from apps.backend.runtime import (
     subtitle_agent,
     swe_agent,
     trend_agent,
+    ui_agent,
     video_agent,
     video_production_agent,
     vision_agent,
 )
 from apps.backend.security import limiter_debit, validate_media_path, verify_api_key
 from apps.backend.studio import lancer_studio
+from core.architecture.plan import executer as executer_architecture
+from core.context.recherche_unifiee import MOTS_MEMOIRE
 from tools.documents.indexer import (
     DOSSIER_DOCUMENTS,
     FICHIER_INVENTAIRE,
@@ -146,6 +150,33 @@ def _issue_en_reponse(issue: Any) -> Dict[str, Any]:
         "statut_connecteur": issue.statut.value,
         "detail": issue.detail or {},
     }
+
+
+def _contexte_openviking(prompt: str, session_id: str) -> Optional[str]:
+    """Un souvenir pertinent, injecte dans la conversation ordinaire — jamais
+    interroge par reflexe, seulement quand la phrase le demande elle-meme
+    ("on a deja regle ca", `MOTS_MEMOIRE`, `core/context/recherche_unifiee.py`).
+
+    C'etait la capacite qu'OpenViking apportait (DEC-0058) sans qu'aucun
+    chemin de conversation reel ne l'appelle jamais : reachable pour
+    `scripts/orphelins.py` via `/api/contexte/rechercher`, mais aucune
+    phrase d'Ousmane ne pouvait l'atteindre. C'est ici, dans le CHAT
+    ordinaire — le seul chemin que chaque message sans intention metier
+    emprunte — qu'elle sert reellement.
+
+    Un service absent ou en panne ne casse jamais la conversation :
+    `registre.executer` rend NON_CONFIGURE/FAILED sans lever, et ce
+    contexte est alors silencieusement omis, comme le reste de cette
+    integration (DEC-0002 : une capacite absente se rapporte, jamais
+    simulee).
+    """
+    if not any(mot in prompt.lower() for mot in MOTS_MEMOIRE):
+        return None
+    issue = registre.executer("openviking", "contexte", requete=prompt, session_id=session_id)
+    if issue.statut.value not in {"SUCCESS", "PARTIAL"}:
+        return None
+    rendu = (issue.detail or {}).get("rendu")
+    return f"[Contexte pertinent de vos echanges precedents]\n{rendu}" if rendu else None
 
 
 def _analyse_de_visages(demande: str, images: List[str]) -> Dict[str, Any]:
@@ -402,6 +433,20 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         })
     elif intent == "BROWSER":
         result = await browser_agent.run(request.prompt)
+    elif intent == "ARCHITECTURE_3D":
+        # DEC-0070 : **aucun agent ici**, et c'est voulu. La mission interdit
+        # d'en creer un quand la capacite se suffit : la phrase devient un
+        # plan deterministe (`core/architecture/plan.py`, sans modele), et le
+        # plan devient des appels au connecteur, qui applique permissions,
+        # confirmation et journal. Un modele peut produire le meme plan sans
+        # rien changer en aval — c'est ce qui rend la capacite agnostique.
+        result = executer_architecture(registre, request.prompt, session=session_id)
+    elif intent == "PREUVE_FORMELLE":
+        # Lean tranche, jamais le modele (DEC-0067). L'agent est mince : il
+        # traduit la phrase en capacite du connecteur `formel` et rend le
+        # verdict tel quel — un `status` de succes ici veut dire qu'un
+        # binaire a compile la preuve, pas qu'un modele l'a affirmee.
+        result = await formel_agent.run(request.prompt)
     elif intent == "SWE_FIX":
         result = await swe_agent.run(request.prompt)
     elif intent == "REPO_ENGINEERING":
@@ -470,6 +515,10 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         capacite = "design_system" if _veut_un_design_system(request.prompt) else "chercher"
         issue = registre.executer("ui_ux_pro_max", capacite, requete=request.prompt)
         result = _issue_en_reponse(issue)
+    elif intent == "UI_GENERATE":
+        # Generer une interface EN CODE, distinct de DESIGN_UI (decider a
+        # quoi ca doit ressembler, sans rien ecrire) — DEC-0050.
+        result = await ui_agent.run(request.prompt)
     elif intent == "VIDEO_ANALYSIS":
         # « ou en est ma video ? » ne parle d aucun fichier. Reclamer un chemin
         # ici renvoyait une erreur a une question parfaitement claire.
@@ -540,6 +589,9 @@ async def chat_stream_endpoint(request: ChatRequest):
         system_prompt = prompt_avec_methode(request.prompt, intent)
 
         prompt_lines = []
+        contexte_memoire = _contexte_openviking(request.prompt, session_id)
+        if contexte_memoire:
+            prompt_lines.append(contexte_memoire)
         for msg in history:
             role_label = memory.get_fact("owner") or "Ousmane" if msg["role"] == "user" else "Usman"
             prompt_lines.append(f"{role_label}: {msg['content']}")

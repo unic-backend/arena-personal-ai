@@ -423,6 +423,31 @@ def _etat_du_moteur(nom_connecteur: str) -> Dict[str, Any]:
     return {"disponible": False, "indisponible_raison": raison}
 
 
+def _documents_produits(resultat: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Les documents REELLEMENT ecrits pendant ce tour, avec leur adresse.
+
+    Depuis le 04/09/2026, le devis PDF ne passe plus par la confirmation
+    (`config/permissions_services.yaml`, demande du proprietaire) : il est
+    ecrit tout de suite. Le bouton de confirmation, qui portait jusqu'ici le
+    lien de telechargement, ne s'affiche donc plus — et sans ce champ le
+    fichier existerait sans qu'aucun ecran ne puisse l'ouvrir.
+
+    Seul un document dont l'ecriture a REUSSI et qui porte une adresse entre
+    ici. Un `NEEDS_CONFIRMATION`, un `INCOMPLET` ou un echec n'a pas de
+    fichier a offrir : il n'en fabrique pas un.
+    """
+    document = resultat.get("document")
+    if not isinstance(document, dict):
+        return []
+    if document.get("statut") != "SUCCESS" or not document.get("url"):
+        return []
+    return [{
+        "url": document["url"],
+        "action": "produire",
+        "message": document.get("message") or "",
+    }]
+
+
 def _actions_en_attente() -> List[Dict[str, Any]]:
     """Ce qui attend un accord, en clair, pour l'interface.
 
@@ -604,6 +629,10 @@ async def flux_agent(demande: DemandeAgent):
                     # dans le texte de la reponse, et rien ne pouvait le
                     # confirmer (defaut du 02/09/2026).
                     "en_attente": _actions_en_attente(),
+                    # Ce qui vient d'etre ecrit et qu'il peut ouvrir tout de
+                    # suite — un devis PDF, depuis qu'il ne passe plus par la
+                    # confirmation (04/09/2026).
+                    "documents": _documents_produits(resultat),
                 })
                 return
 

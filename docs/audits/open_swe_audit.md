@@ -8,6 +8,13 @@ renforcer le Software Engineering d'ARENA, sans créer un deuxième agent de
 code indépendant. Ce document est l'étape 2, 3 et 4 de cette mission — audit
 ARENA, audit Open SWE, comparaison — avant tout code.
 
+**Note ajoutée après coup, en fusionnant sur `master` (voir DEC-0073) :** une
+session parallèle a reçu la même mission et l'a déjà travaillée sous
+DEC-0063 et DEC-0072 — mini-SWE-agent (garde-fous de boucle) et la reprise
+de tâche interrompue. Ce document reste tel qu'écrit le 08/09/2026 ; la
+décision finale, avec les deux fusionnées, est DEC-0073 dans
+`docs/DECISIONS.md`.
+
 ---
 
 ## 1. Audit ARENA — ce qui existe déjà
@@ -134,7 +141,7 @@ d'orchestration.
 
 ## 4. Décision
 
-Voir `docs/DECISIONS.md`, **DEC-0041**.
+Voir `docs/DECISIONS.md`, **DEC-0073**.
 
 Résumé : une capacité canonique `software_engineering`, portée par un
 orchestrateur SWE propre à ARENA (pas LangGraph, pas `deepagents`), qui

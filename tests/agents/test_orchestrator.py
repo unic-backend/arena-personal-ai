@@ -399,6 +399,81 @@ class TestAiguillageDeLAudio:
         assert agent._classer_par_mots_cles(phrase) == attendu
 
 
+class TestLeClonageVocalEstJoignable:
+    """DEC-0065 était injoignable — mesuré le 07/09/2026, par la vérification
+    qu'il a demandée.
+
+    L'agent audio savait cloner, le connecteur savait cloner, la permission
+    existait, un test couvrait chaque morceau — et **aucune phrase du
+    propriétaire n'arrivait jusque-là** : « clone cette voix » partait chez le
+    PLAQUISTE, « clonage vocal » au CHAT, et « clone ma voix » chez SOCIAL,
+    parce que `RESEAUX` contient « ma voix » (son style d'écriture) et passe
+    avant l'audio. Exactement le défaut de DEC-0061, sur du code neuf.
+
+    C'est le test qui manquait : il part de la PHRASE, pas de la capacité.
+    """
+
+    @pytest.mark.parametrize("phrase", [
+        "clone cette voix avec l'autorisation du client",
+        "clone la voix de ce client",
+        "clonage vocal de cet enregistrement",
+        "cloner cette voix pour la narration",
+        # Celle-ci partait chez SOCIAL : « ma voix » est un mot des RESEAUX.
+        "clone ma voix pour la voix off",
+    ])
+    def test_une_demande_de_clonage_va_a_l_audio(self, fake_provider, phrase):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == "AUDIO"
+
+    @pytest.mark.parametrize("phrase,attendu", [
+        # « clone » seul n'est pas un mot d'audio : cloner un dépôt reste du code.
+        ("clone ce dépôt github", "REPO_ENGINEERING"),
+        # Son style d'écriture (`tools/social/voix.py`), pas sa parole.
+        ("écris ce post avec ma voix", "SOCIAL"),
+    ])
+    def test_le_clonage_ne_capture_pas_ses_voisins(self, fake_provider, phrase, attendu):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == attendu
+
+
+class TestLaPreuveFormelleEstJoignable:
+    """DEC-0067. La leçon de DEC-0066, appliquée avant qu'elle ne coûte :
+    une capacité qu'aucune phrase n'atteint est morte, quels que soient ses
+    tests unitaires.
+
+    `DEEP_REASONING` porte déjà « preuve » et « démontre » — la vérification
+    formelle est le cas PLUS ÉTROIT, et doit donc passer avant lui, sans
+    pour autant lui prendre le calcul ordinaire.
+    """
+
+    @pytest.mark.parametrize("phrase", [
+        "prouve formellement que 2+2=4",
+        "vérifie ce théorème Lean",
+        "preuve formelle de cette propriété",
+        "vérifie cette preuve",
+        "démontre formellement cette inégalité",
+        "voici du code lean à vérifier",
+    ])
+    def test_une_demande_de_preuve_va_a_la_verification_formelle(
+        self, fake_provider, phrase
+    ):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == "PREUVE_FORMELLE"
+
+    @pytest.mark.parametrize("phrase,attendu", [
+        # Le calcul reste au calcul : il n'a jamais eu besoin de Lean.
+        ("résous cette équation du second degré", "DEEP_REASONING"),
+        ("démontre que la suite converge", "DEEP_REASONING"),
+        # Et le métier reste le métier : « prouve-moi » y veut dire « montre-moi ».
+        ("prouve-moi que ce devis est juste", "PLAQUISTE"),
+    ])
+    def test_la_preuve_formelle_ne_capture_pas_ses_voisins(
+        self, fake_provider, phrase, attendu
+    ):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == attendu
+
+
 class TestAiguillageDuProjetVideo:
     """DEC-0037 : une phrase composite (« analyse ces photos et fais-en une
     vidéo avec narration ») porte aussi les mots de VISION/AUDIO — sans ce
@@ -501,4 +576,37 @@ class TestNommerUnConnecteurLOuvre:
     def test_l_elargissement_ne_vole_pas_les_voisins(self, fake_provider, phrase, attendu):
         agent = OrchestratorAgent(provider=fake_provider, memory=None)
 
+        assert agent._classer_par_mots_cles(phrase) == attendu
+
+
+class TestAiguillageUiGenerate:
+    """DEC-0050 : generer le CODE d'une interface, distinct de DESIGN_UI
+    (decider a quoi ca doit ressembler, sans rien ecrire)."""
+
+    @pytest.mark.parametrize("phrase", [
+        "Crée une interface moderne de tableau de bord pour une entreprise",
+        "génère une interface de connexion",
+        "code-moi une interface de profil utilisateur",
+        "développe une interface pour afficher mes chantiers",
+        "génère un tableau de bord avec des statistiques",
+        "crée un dashboard pour suivre mes devis",
+        "un composant react pour une carte de profil",
+        "prototype d'interface pour mon appli",
+    ])
+    def test_une_demande_de_generation_va_a_ui_generate(self, fake_provider, phrase):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+        assert agent._classer_par_mots_cles(phrase) == "UI_GENERATE"
+
+    @pytest.mark.parametrize("phrase,attendu", [
+        ("quelle palette pour mon site vitrine ?", "DESIGN_UI"),
+        ("améliore l'ux de cette page", "DESIGN_UI"),
+        ("propose-moi une maquette", "DESIGN_UI"),
+        ("écris un script python pour trier des fichiers", "CODE_EXECUTION"),
+        ("fais-moi un devis pour le chantier de Ouakam", "PLAQUISTE"),
+    ])
+    def test_ui_generate_ne_capture_pas_les_voisins(self, fake_provider, phrase, attendu):
+        """Decider a quoi ca doit ressembler (DESIGN_UI), ecrire un script
+        generique (CODE_EXECUTION) et chiffrer un chantier (PLAQUISTE) ne
+        sont pas generer le code d'une interface."""
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
         assert agent._classer_par_mots_cles(phrase) == attendu

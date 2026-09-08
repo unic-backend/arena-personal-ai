@@ -123,6 +123,13 @@ CATALOGUE: Tuple[Specialiste, ...] = (
         controles=(
             "Le test échoue-t-il si on casse ce qu'il protège ?",
             "Assertion sur un comportement, jamais sur une valeur fabriquée",
+            # Concept de mattpocock/skills (MIT), skill `tdd` (`tests.md`),
+            # audite le 06/09/2026 : un test « tautologique » recalcule la
+            # valeur attendue de la meme facon que le code — il passe alors
+            # par construction et ne peut jamais contredire un bug. La
+            # valeur attendue doit venir d'ailleurs que du code teste.
+            "La valeur attendue vient-elle d'une source indépendante du code "
+            "testé — jamais recalculée de la même façon que lui ?",
             "Dépendance externe absente : le test saute-t-il, ou échoue-t-il à tort ?",
             "Le test dépend-il d'une chose présente sur cette machine seulement ?",
             "Un test supprimé ou affaibli est une régression, pas un nettoyage",
@@ -133,18 +140,80 @@ CATALOGUE: Tuple[Specialiste, ...] = (
         outils=("pytest", "ruff"),
     ),
     Specialiste(
+        identifiant="debugging",
+        domaine="Diagnostic de bug",
+        # Origine du CONCEPT (jamais du texte) : mattpocock/skills (MIT),
+        # skill `diagnosing-bugs`, auditee le 06/09/2026 — six phases
+        # (preuve qui echoue -> reduction -> hypotheses classees et
+        # falsifiables -> instrumentation d'une seule variable a la fois ->
+        # correctif + test de non-regression -> nettoyage). Condense ici a
+        # la discipline qui compte pour ARENA : la preuve avant la lecture
+        # de code, plusieurs causes avant d'en corriger une, le nettoyage
+        # apres coup. `capacite="ATELIER"` et non `SWE_FIX` : diagnostiquer
+        # ne suffit pas, la boucle se termine par un correctif REELLEMENT
+        # applique et verifie — seul Dioumtoukay peut le faire (DEC-0038).
+        quand=("bug", "plante", "plantage", "crash", "stacktrace",
+               "ne marche pas", "ne fonctionne pas", "ne fonctionne plus",
+               "reproduire le bug", "diagnostiquer"),
+        methode=(
+            "Construire une preuve qui échoue sur CE bug précis avant de lire "
+            "le code — un test, une commande, une requête qui redevient rouge "
+            "sur la panne exacte décrite. Sans cette preuve, aucune lecture de "
+            "code ne remplace la mesure.",
+            "Réduire au plus petit scénario qui reste rouge — retirer un "
+            "élément à la fois jusqu'à ce que chaque élément restant soit "
+            "nécessaire à la panne.",
+            "Poser plusieurs causes possibles, chacune falsifiable (« si "
+            "c'est X, changer Y fait disparaître le bug ») — jamais une "
+            "seule hypothèse adoptée d'instinct.",
+            "Isoler une variable à la fois pour départager les hypothèses — "
+            "jamais un journal qui affiche tout.",
+            "Écrire le test de non-régression sur la preuve qui échouait, "
+            "avant le correctif — puis vérifier qu'il échoue, corriger, "
+            "vérifier qu'il passe.",
+            "Nettoyer : retirer toute instrumentation temporaire, et rejouer "
+            "la preuve d'origine pour confirmer qu'elle ne casse plus.",
+        ),
+        controles=(
+            "La preuve du bug a-t-elle été vue échouer, pas seulement supposée ?",
+            "Le scénario a-t-il été réduit au minimum qui reste rouge ?",
+            "Plusieurs causes ont-elles été envisagées avant d'en corriger une seule ?",
+            "Le correctif est-il vérifié par un test qui échouait avant lui ?",
+            "Toute instrumentation temporaire a-t-elle été retirée ?",
+        ),
+        fini_quand=("la preuve d'origine a été vue échouer puis réussir, dans "
+                    "la même session, et le test de non-régression le tient"),
+        capacite="ATELIER",
+        outils=(),
+    ),
+    Specialiste(
         identifiant="architecture",
         domaine="Architecture logicielle",
+        # Deux etapes ci-dessous portent un concept (jamais le texte) de
+        # mattpocock/skills (MIT), skill `improve-codebase-architecture`,
+        # auditee le 06/09/2026 : le "test de suppression" (un module vaut
+        # la peine d'etre simplifie si le supprimer CONCENTRERAIT la
+        # complexite ailleurs, pas seulement la deplacerait) et la priorite
+        # aux zones recemment modifiees (`git log`) plutot qu'un audit a
+        # plat de tout le depot. Le rapport HTML/Mermaid/sous-agent du
+        # depot source n'a pas ete repris : ARENA n'a ni interface pour
+        # l'ouvrir ni demande pour ce format, et l'ajouter serait reproduire
+        # le depot externe plutot qu'ameliorer ARENA.
         quand=("architecture", "concevoir", "conception", "structurer",
                "refactor", "refactoriser", "dette technique", "couplage",
                "modulaire", "scalab", "monolithe", "microservice"),
         methode=(
             "Nommer la contrainte réelle : volume, équipe, délai, coût. Sans elle, "
             "toute architecture se vaut.",
+            "Regarder d'abord ce qui a bougé récemment (`git log --oneline`) : "
+            "un module stable depuis un an ne paie pas l'effort d'une revue.",
             "Choisir la forme la plus simple qui la tient — le découpage se paie "
             "en exploitation.",
             "Rendre chaque frontière explicite : ce qui entre, ce qui sort, ce qui "
             "est refusé.",
+            "Avant de simplifier un module : le supprimer concentrerait-il sa "
+            "complexité ailleurs, ou la déplacerait-il seulement ? Seule la "
+            "première réponse justifie d'y toucher.",
             "Décider ce qui est remplaçable, et le prouver en nommant le remplaçant.",
             "Écrire ce que la décision coûte si elle est fausse.",
         ),

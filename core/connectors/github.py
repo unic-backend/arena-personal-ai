@@ -1,4 +1,4 @@
-"""Connecteur GitHub — le premier de ce dépôt (DEC-0041).
+"""Connecteur GitHub — le premier de ce dépôt (DEC-0073).
 
 Jusqu'ici, le seul accès à un dépôt distant passait par `Atelier.git()` : du
 `git` en ligne de commande, sans aucune vue sur l'API GitHub elle-même — pas
@@ -16,7 +16,7 @@ en échec, jamais une exception qui remonte.
 déclarée dans `config/permissions_services.yaml`, et la PR s'ouvre **en
 brouillon par défaut** (`draft=True`) même une fois confirmée. Les deux à la
 fois, délibérément redondants — l'un est la garde d'ARENA, l'autre celle
-d'Open SWE, et rien n'oblige à choisir entre les deux (DEC-0041).
+d'Open SWE, et rien n'oblige à choisir entre les deux (DEC-0073).
 
 **Authentification : un jeton personnel, dans `USMAN_GITHUB_TOKEN`.** Pas de
 flux OAuth pour ce connecteur — DEC-0038 a déjà réglé la question de la
@@ -263,7 +263,7 @@ class ConnecteurGitHub(Connecteur):
             return echec("creer_pull_request", self.nom,
                          "depot, titre et tete (la branche source) sont requis.")
         try:
-            # Toujours en brouillon : la seconde garde de DEC-0041, redondante
+            # Toujours en brouillon : la seconde garde de DEC-0073, redondante
             # avec la CONFIRMATION deja passee pour arriver jusqu'ici.
             reponse = self._requete("POST", f"/repos/{depot}/pulls", json={
                 "title": titre, "head": tete, "base": base, "body": corps, "draft": True,

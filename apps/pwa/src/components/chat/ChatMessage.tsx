@@ -6,7 +6,8 @@ import {
 } from 'lucide-react';
 import type { ChatMessage as Msg } from '../../lib/store/chatStore';
 import type { AttachmentSummary } from '../../lib/attachments';
-import { annulerAction, confirmerAction } from '../../lib/actions/confirmer';
+import { adresseOuvrable, annulerAction, confirmerAction } from '../../lib/actions/confirmer';
+import { activeRemoteCfg } from '../../lib/store/backendStore';
 import { formatDuration } from '../../lib/activity/types';
 import { fmtBytes, fmtTime } from '../../lib/agent/video';
 import { AIActivity } from '../activity/ActivityTimeline';
@@ -28,6 +29,47 @@ import { cn } from '../../utils/cn';
  *
  * Le bouton nomme ce qu'il valide : c'est ce qui le rend sur la ou une phrase
  * ne suffit pas (envoi d'un mail, publication, suppression). */
+/* Les documents ECRITS pendant ce tour — un devis PDF, depuis qu'il ne passe
+   plus par la confirmation (04/09/2026, demande du proprietaire : « si tu
+   demandes un pdf il le fait simplement »).
+
+   Le bouton de confirmation portait jusqu'ici le lien de telechargement.
+   Sans ce composant, le fichier serait ecrit et resterait sur le disque du
+   serveur, inatteignable depuis le telephone — le meme cul-de-sac, deplace. */
+function DocumentsProduits({ msg }: { msg: Msg }) {
+  const { t } = useI18n();
+  const documents = msg.meta?.documents ?? [];
+  if (!documents.length) return null;
+
+  const cfg = activeRemoteCfg();
+  // Sans backend connu, on ne fabrique pas une adresse qui ne menerait nulle
+  // part : mieux vaut ne rien afficher qu'un lien mort.
+  if (!cfg) return null;
+  const base = cfg.url.replace(/\/+$/, '');
+
+  return (
+    <div className="space-y-2 pt-1">
+      {documents.map((doc) => {
+        const adresse = adresseOuvrable(doc.url, base, cfg.apiKey);
+        if (!adresse) return null;
+        return (
+          <a
+            key={doc.url}
+            href={adresse}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => triggerHaptic('success')}
+            className="inline-flex items-center gap-1.5 rounded-md border border-accent-500/25 bg-accent-500/[0.06] px-3 py-1.5 text-[11.5px] text-accent-200 transition hover:bg-accent-500/[0.12]"
+          >
+            <FileText size={12} />
+            {t('action.openDocument')}
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
 function ActionsEnAttente({ msg }: { msg: Msg }) {
   const { t } = useI18n();
   const [etat, setEtat] = useState<Record<string, string>>({});
@@ -530,6 +572,7 @@ export const ChatMessage = memo(function ChatMessage({
         <SourcesStrip msg={msg} />
 
         <ActionsEnAttente msg={msg} />
+        <DocumentsProduits msg={msg} />
 
         {msg.status === 'done' && bodyText && (
           <div className="flex flex-wrap items-center gap-1 pt-1 opacity-90 transition-opacity sm:opacity-0 sm:group-hover/msg:opacity-100">

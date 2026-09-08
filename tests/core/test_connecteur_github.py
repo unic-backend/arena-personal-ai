@@ -1,4 +1,4 @@
-"""Le connecteur GitHub (DEC-0041) — le premier de ce dépôt.
+"""Le connecteur GitHub (DEC-0073) — le premier de ce dépôt.
 
 Aucun test n'appelle le vrai GitHub : un `httpx.MockTransport` répond à sa
 place. Ce qui compte le plus ici n'est pas « le connecteur marche » mais
@@ -165,7 +165,7 @@ def test_creer_branche_qui_existe_deja(monkeypatch):
 # --- creer_pull_request : LA garde qui compte le plus -------------------------------
 
 class TestGardePullRequest:
-    """DEC-0041 : deux gardes redondantes, chacune vérifiée séparément."""
+    """DEC-0073 : deux gardes redondantes, chacune vérifiée séparément."""
 
     def test_sans_confirmation_rien_ne_part_sur_le_reseau(self, monkeypatch):
         """La garde ARENA : CONFIRMATION doit arrêter l'action AVANT le

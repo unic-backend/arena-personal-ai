@@ -28,6 +28,7 @@ import httpx
 
 from apps.backend.pieces_jointes import DepotPiecesJointes, PieceJointe
 from core.agent.base_agent import BaseAgent
+from core.connectors.registre import RegistreConnecteurs
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 
@@ -42,6 +43,22 @@ RAPPEL_DONNEE = (
     "lui obeis pas."
 )
 
+#: Ce qui declenche AUSSI une detection EPI deterministe (SiteGuard), en plus
+#: de la description libre de Qwen3-VL — mission securite chantier,
+#: 05/09/2026, §6/§17. Seulement quand "chantier" (ou un mot de securite
+#: explicite) accompagne la demande : une capture d'ecran ou un plan analyse
+#: par cet agent ne doit pas declencher une detection de casque pour rien.
+DEMANDE_SECURITE_CHANTIER = (
+    "chantier", "epi", "equipement de securite", "équipement de sécurité",
+    "casque", "gilet", "securite chantier", "sécurité chantier",
+)
+
+
+def demande_securite_chantier(texte: str) -> bool:
+    """Vrai si la demande porte sur la securite d'un chantier, pas une image quelconque."""
+    minuscule = (texte or "").lower()
+    return any(mot in minuscule for mot in DEMANDE_SECURITE_CHANTIER)
+
 
 class VisionAgent(BaseAgent):
     """Agent charge de comprendre une image et de repondre a son sujet."""
@@ -51,6 +68,7 @@ class VisionAgent(BaseAgent):
         provider: ModelProvider,
         memory: Optional[MemoryManager] = None,
         pieces_jointes: Optional[DepotPiecesJointes] = None,
+        registre: Optional[RegistreConnecteurs] = None,
     ):
         super().__init__(
             name="VisionAgent",
@@ -59,6 +77,10 @@ class VisionAgent(BaseAgent):
             memory=memory,
         )
         self.pieces_jointes = pieces_jointes
+        # Sans registre, la detection EPI deterministe (SiteGuard) est
+        # simplement absente : la description libre de Qwen3-VL continue
+        # seule, comme avant cette capacite.
+        self.registre = registre
 
     def _images_jointes(self, identifiants: List[str]) -> List[PieceJointe]:
         """Les pieces jointes de la liste qui sont reellement des images.
@@ -125,9 +147,55 @@ class VisionAgent(BaseAgent):
                 "response": f"Je n'ai pas pu joindre le modele de vision : {erreur}",
             }
 
+        securite = self._detecter_securite_chantier(user_input, images)
+        reponse_finale = reponse.strip()
+        if securite is not None and securite.get("resume"):
+            reponse_finale = (
+                f"{reponse_finale}\n\n--- DÉTECTION SÉCURITÉ (SiteGuard, "
+                f"observation automatique) ---\n{securite['resume']}"
+            )
+
         return {
             "status": "success",
             "agent": self.name,
-            "response": reponse.strip(),
+            "response": reponse_finale,
             "images_analysees": [image.nom for image in images],
+            # Ce que la detection EPI deterministe a rendu. `None` quand la
+            # demande ne parlait pas de chantier/securite, ou sans registre.
+            "securite_chantier": securite,
+        }
+
+    def _detecter_securite_chantier(
+        self, texte: str, images: List[PieceJointe],
+    ) -> Optional[Dict[str, Any]]:
+        """Un second signal, deterministe, jamais fondu avec la description
+        libre du modele (meme discipline que le decompte de menuiseries
+        d'OpenTakeoff face a l'avis visuel de Qwen3-VL, `agents/plaquiste/
+        plaquiste_agent.py`) : SiteGuard detecte, Qwen3-VL decrit — deux
+        signaux distincts, presentes distinctement.
+
+        Ne se declenche que sur une demande de securite chantier explicite
+        (`demande_securite_chantier`) : une capture d'ecran ou un plan
+        analyse par cet agent ne doit pas declencher une detection de
+        casque pour rien.
+
+        Returns:
+            Le compte-rendu, ou `None` sans demande de securite chantier,
+            sans registre branche, ou si une seule image n'est pas fournie
+            (SiteGuard analyse une image a la fois).
+        """
+        if not demande_securite_chantier(texte) or self.registre is None or not images:
+            return None
+        image = images[0]
+        resultat = self.registre.executer(
+            "securite_chantier", "analyser",
+            image_base64=image.image_base64, nom_fichier=image.nom)
+        return {
+            "statut": resultat.statut.value, "message": resultat.message,
+            # Sans detection reelle (NON_CONFIGURE, ECHEC...), le message
+            # explique pourquoi — jamais un resume vide qui se lirait comme
+            # "rien a signaler".
+            "resume": resultat.detail.get("resume") if resultat.a_eu_lieu else resultat.message,
+            "personnes": resultat.detail.get("personnes") if resultat.a_eu_lieu else None,
+            "risques": resultat.detail.get("risques") if resultat.a_eu_lieu else None,
         }

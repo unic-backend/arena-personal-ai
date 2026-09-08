@@ -25,6 +25,15 @@ from agents.plaquiste.calcul_materiaux import Calcul, quantites_pour
 from agents.plaquiste.calcul_materiaux import formater as formater_calcul
 from agents.plaquiste.chemins import fichier_metier
 from agents.plaquiste.controle_prix import avertissement, verifier_prix
+from agents.plaquiste.ifc_metre import chemin_dans as chemin_ifc_dans
+from agents.plaquiste.ifc_metre import (
+    demande_de_croquis_ifc,
+    depuis_analyse,
+    depuis_metre,
+    dimensions_pour_croquis,
+    formater_analyse,
+    formater_metre,
+)
 from agents.plaquiste.metre import lire_demande
 from agents.plaquiste.metre_plan import (
     chemin_dans,
@@ -501,20 +510,51 @@ def lignes_presence_en_ligne(entreprise: Dict[str, Any]) -> List[str]:
 
 
 #: Le regime NORMAL : un devis part chez quelqu'un, donc on ne devine personne.
-#: Inchange depuis le 31/08/2026 — les formulations exactes des trois questions
-#: sont lues par `destinataire_depuis_l_historique`, les reecrire casserait
-#: l'association entre la question posee et la reponse suivante.
+#:
+#: **Ce qui a change le 07/09/2026, et pourquoi.** Sa capture d'ecran : il
+#: ecrit « Fais-moi une cloison de 5 m sur 2,5 m, avec une porte de 80 x 210
+#: cm » — toutes les cotes y sont — et recoit les trois questions, rien
+#: d'autre. Son mot : « il se base toujours sur une conduite de reponse alors
+#: qu'il devrait reflechir et se baser sur mes reponses ».
+#:
+#: Il a raison, et le defaut a deux etages. Le premier etait la lecture :
+#: `metre.py` ne reconnaissait pas une cloison unique ni le mot « sur », donc
+#: AUCUN chiffre n'etait calcule et le modele n'avait rien a dire. Le second
+#: est ici : les trois questions etaient posees des que le client etait
+#: inconnu, meme quand on ne lui demandait pas de document.
+#:
+#: Un metre n'a pas de destinataire. Demander « quel est le nom du client ? »
+#: pour calculer une surface, c'est un formulaire, pas un metier. Les trois
+#: questions restent — un devis part vraiment chez quelqu'un — mais elles
+#: deviennent la DERNIERE etape, apres avoir repondu, et seulement quand un
+#: document doit reellement etre emis.
+#:
+#: Les formulations exactes sont lues par `destinataire_depuis_l_historique` :
+#: les reecrire casserait l'association entre la question posee et la reponse
+#: suivante. Ce qui change est QUAND on les pose, jamais COMMENT.
 BLOC_VRAI_CLIENT = (
+    "REPONDS D'ABORD. LES QUESTIONS VIENNENT APRES, ET SEULEMENT SI ELLES SERVENT.",
+    "S'il te donne des dimensions, des surfaces ou une description de "
+    "chantier, tu as de quoi travailler : tu calcules et tu reponds "
+    "immediatement. Un metre, une quantite de plaques, un nombre de rails, "
+    "une hauteur sous plafond, un conseil de pose : rien de tout cela n'a de "
+    "destinataire. Ne demande JAMAIS le nom d'un client pour repondre a une "
+    "question technique — c'est un formulaire, pas ton metier.",
     "LE CLIENT EST CELUI QU'ON TE DONNE.",
     "Tu n'inventes ni nom, ni adresse, ni chantier, et tu ne reprends jamais "
-    "ceux d'une affaire passee. S'il te manque le nom du client, le lieu "
-    "du chantier ou les prestations souhaitees, tu les demandes EXACTEMENT "
-    "ainsi, une question par ligne, au lieu de les supposer : « Quel est "
-    "le nom du client ? », « Quel est le lieu du chantier ? », « Quelles "
-    "sont les prestations souhaitees ? ». Ces formulations exactes sont "
-    "lues par un systeme automatique qui associe ta prochaine reponse au "
-    "bon champ — une autre formulation ferait echouer cette association "
-    "et tout redemander.",
+    "ceux d'une affaire passee. Quand — et seulement quand — il demande un "
+    "DOCUMENT qui partira chez quelqu'un (devis, facture, bon de commande) et "
+    "qu'il te manque le nom du client, le lieu du chantier ou les prestations "
+    "souhaitees, tu poses les questions manquantes A LA FIN de ta reponse, "
+    "apres avoir chiffre ce que tu pouvais chiffrer, EXACTEMENT ainsi, une "
+    "par ligne : « Quel est le nom du client ? », « Quel est le lieu du "
+    "chantier ? », « Quelles sont les prestations souhaitees ? ». Ces "
+    "formulations exactes sont lues par un systeme automatique qui associe ta "
+    "prochaine reponse au bon champ — une autre formulation ferait echouer "
+    "cette association et tout redemander.",
+    "Tu ne poses que les questions dont la reponse te manque VRAIMENT. S'il a "
+    "deja dit le lieu, ne le redemande pas. S'il decrit les travaux, les "
+    "prestations sont connues : ne les redemande pas non plus.",
 )
 
 #: Le regime DEMONSTRATION. Le proprietaire veut VOIR un devis, pas en envoyer
@@ -780,12 +820,16 @@ class PlaquisteAgent(BaseAgent):
 
     def _proposer_le_document(self, texte: str, context: Dict[str, Any],
                               metre: Optional[Calcul] = None) -> Optional[Dict[str, Any]]:
-        """Soumet la production du PDF quand un fichier est explicitement demande.
+        """Produit le PDF quand un fichier est explicitement demande.
 
-        Rien n'est ecrit ici : `produire` est une action a confirmer, et le
-        proprietaire garde la main. Le destinataire vient du contexte de la
-        conversation, jamais d'une lecture de la phrase — un devis adresse a la
-        mauvaise personne est pire qu'un devis absent.
+        **Le fichier est ecrit ici**, sans accord prealable, depuis le
+        04/09/2026 (decision du proprietaire, DEC-0041) : « le projet dois
+        faire un pdf si je le demande ». La docstring disait le contraire
+        jusqu'a ce jour-la — `produire` etait une action a confirmer. Ce qui
+        protege encore : le coupe-circuit `WRITE_FILES`, et le fait que le
+        document reste chez lui — c'est LUI qui l'envoie. Le destinataire vient
+        du contexte de la conversation, jamais d'une lecture de la phrase — un
+        devis adresse a la mauvaise personne est pire qu'un devis absent.
 
         `metre` est le calcul deja fait par `run()` (dimensions dictees OU
         surface mesuree sur un plan) : quand il existe, ses lignes sont
@@ -830,8 +874,19 @@ class PlaquisteAgent(BaseAgent):
         resultat = self.registre.executer(
             "devis", "produire", demande=texte,
             type_document=type_document_demande(texte), **destinataire, **parametres_lignes)
-        return {"statut": resultat.statut.value, "message": resultat.message,
-                "preuve": resultat.preuve}
+        # `url` est l'adresse par laquelle son telephone OUVRE le document
+        # (`core/connectors/devis.py`). Elle vivait dans `detail` et s'arretait
+        # ici : la reponse portait le chemin sur le disque du serveur, qui ne
+        # veut rien dire sur un telephone. Depuis que le PDF ne passe plus par
+        # la confirmation (04/09/2026), c'est le SEUL chemin par lequel le lien
+        # peut lui parvenir — sans elle, le fichier existe et reste
+        # inatteignable.
+        compte_rendu = {"statut": resultat.statut.value, "message": resultat.message,
+                        "preuve": resultat.preuve}
+        adresse = (resultat.detail or {}).get("url")
+        if adresse:
+            compte_rendu["url"] = adresse
+        return compte_rendu
 
     async def _destinataire_par_modele(
         self, historique: List[Dict[str, str]], message_actuel: str,
@@ -894,6 +949,92 @@ class PlaquisteAgent(BaseAgent):
             "complet": metre.complet,
             "export": export,
         }
+
+    def _analyser_ifc(self, texte: str) -> Optional[Dict[str, Any]]:
+        """Lit un fichier IFC dont le chemin est cite dans le texte, sans rien
+        ecrire — niveaux, comptes d'elements, et la surface des murs telle
+        que le fichier IFC la donne (jamais recalculee).
+
+        Meme frontiere que `_mesurer_le_plan` : un chemin qui tombe dans le
+        depot d'ARENA est refuse, et sans connecteur branche l'etat le dit
+        au lieu de faire semblant de lire le fichier. Seul un chemin TAPE
+        est reconnu dans cette premiere phase — pas de piece jointe IFC,
+        bien plus volumineuse qu'un plan PDF et rarement envoyee par chat.
+
+        Returns:
+            Le compte-rendu, ou `None` quand aucun chemin `.ifc` n'a ete lu
+            dans le texte.
+        """
+        chemin = chemin_ifc_dans(texte)
+        if chemin is None:
+            return None
+        if not chemin_hors_du_depot(chemin):
+            logger.warning("Chemin IFC refuse (dans le depot d'ARENA) : %s", chemin)
+            return {"statut": "REFUSE", "chemin": chemin,
+                    "message": "Ce chemin n'est pas ouvert : il tombe dans le depot d'ARENA."}
+        if self.registre is None:
+            return {"statut": "NOT_CONFIGURED", "chemin": chemin,
+                    "message": ("Je peux chiffrer, pas lire un fichier IFC : aucun "
+                                "connecteur n'est branche sur cet agent.")}
+
+        resultat = self.registre.executer("ifc", "analyser", chemin=chemin)
+        if not resultat.a_eu_lieu:
+            return {"statut": resultat.statut.value, "chemin": chemin, "message": resultat.message}
+
+        analyse = depuis_analyse(chemin, resultat.detail or {})
+        compte_rendu: Dict[str, Any] = {
+            "statut": resultat.statut.value,
+            "chemin": chemin,
+            "resume": formater_analyse(analyse),
+            "comptes": analyse.comptes,
+        }
+
+        resultat_metre = self.registre.executer("ifc", "metre", chemin=chemin)
+        if resultat_metre.a_eu_lieu:
+            metre_ifc = depuis_metre(chemin, resultat_metre.detail or {})
+            compte_rendu["resume_metre"] = formater_metre(metre_ifc)
+            if metre_ifc.surface_m2 > 0:
+                compte_rendu["surface_m2"] = metre_ifc.surface_m2
+
+        return compte_rendu
+
+    def _generer_croquis_ifc(self, texte: str) -> Optional[Dict[str, Any]]:
+        """Écrit un croquis IFC minimal (une cloison) sur demande EXPLICITE,
+        jamais parce qu'un métré a été calculé ce tour — mesurer et générer
+        un fichier IFC sont deux demandes différentes.
+
+        Les dimensions viennent UNIQUEMENT d'une lecture directe de longueur
+        x hauteur (`dimensions_pour_croquis`) : jamais reprises d'un métré
+        multi-parois déjà calculé (`quantites_pour`), qui ne porte plus la
+        longueur et la hauteur séparément une fois converties en surface.
+
+        Returns:
+            Le compte-rendu, ou `None` sans demande explicite ou sans
+            dimensions exploitables.
+        """
+        if not demande_de_croquis_ifc(texte):
+            return None
+        dimensions = dimensions_pour_croquis(texte)
+        if dimensions is None:
+            return {"statut": "INCOMPLET",
+                    "message": ("Le croquis IFC n'est pas généré : donne la longueur et la "
+                                "hauteur de la cloison, par exemple « 5,40 x 2,50 m ».")}
+        if self.registre is None:
+            return {"statut": "NOT_CONFIGURED",
+                    "message": ("Je peux chiffrer, pas écrire de fichier IFC : aucun "
+                                "connecteur n'est branché sur cet agent.")}
+
+        longueur_m, hauteur_m = dimensions
+        resultat = self.registre.executer(
+            "ifc_generation", "generer", longueur_m=longueur_m, hauteur_m=hauteur_m)
+        compte_rendu: Dict[str, Any] = {
+            "statut": resultat.statut.value, "message": resultat.message,
+            "preuve": resultat.preuve,
+        }
+        adresse = (resultat.detail or {}).get("url")
+        if adresse:
+            compte_rendu["url"] = adresse
+        return compte_rendu
 
     def _piece_plan_pdf(self, identifiants: Optional[List[str]]):
         """La premiere piece jointe qui porte un PDF, ou None.
@@ -1287,6 +1428,46 @@ class PlaquisteAgent(BaseAgent):
                 f"{plan.get('message', '')}\nDis-le-lui tel quel, n'invente aucune surface."
             )
 
+        # Un fichier IFC : LU (pas mesure), niveaux/elements/surface des murs
+        # tels que le fichier les donne deja (mission BIM, 05/09/2026). Jamais
+        # confondu avec le metre de plan PDF ci-dessus : deux sources, jamais
+        # fondues en un seul chiffre. Priorite au metre par dimensions
+        # dictees ou par plan PDF (deja calcules ci-dessus) : `metre is None`
+        # ne recalcule que si rien d'autre n'a deja chiffre ce tour.
+        ifc = self._analyser_ifc(message_actuel)
+        if ifc is not None and ifc.get("resume"):
+            instruction = (
+                f"{instruction}\n\nCE QUE LE FICHIER IFC DONNE (lecture reelle, pas "
+                f"une opinion) :\n{ifc['resume']}\nReprends ces chiffres tels quels ; "
+                "ne recompte rien toi-meme."
+            )
+            if metre is None and ifc.get("surface_m2"):
+                faces = faces_du_mur(user_input)
+                metre = quantites_pour(ifc["surface_m2"], self.metier, faces=faces)
+                source_lu = f"murs IFC de {ifc['chemin']} : {ifc.get('resume_metre', '')}"
+                instruction = (
+                    f"{instruction}\n\n{formater_calcul(metre)}\n\n"
+                    "Ces quantites viennent d'etre calculees a partir de ses ratios "
+                    f"reels, sur une surface LUE dans le fichier IFC (jamais dictee) : "
+                    f"{ifc['surface_m2']:g} m2 (une face, telle que le fichier la "
+                    f"donne) x {faces} face(s). Reprends-les telles quelles : ne les "
+                    "recalcule pas, ne les arrondis pas, n'en ajoute aucune."
+                )
+        elif ifc is not None:
+            instruction = (
+                f"{instruction}\n\nLE FICHIER IFC {ifc['chemin']} N'A PAS PU ETRE LU : "
+                f"{ifc.get('message', '')}\nDis-le-lui tel quel, n'invente aucun element."
+            )
+
+        # Un croquis IFC (mission BIM, 06/09/2026) : GENERER un fichier, sur
+        # demande explicite, jamais lie a la lecture d'un fichier IFC ci-dessus.
+        croquis_ifc = self._generer_croquis_ifc(message_actuel)
+        if croquis_ifc is not None:
+            instruction = (
+                f"{instruction}\n\nCROQUIS IFC DEMANDE : {croquis_ifc['message']}\n"
+                "Dis-le-lui tel quel."
+            )
+
         # Un decompte de menuiseries (DEC-0022) : seulement sur demande
         # explicite (DEMANDE_DE_DECOMPTE), jamais parce qu'un plan a ete
         # mesure — mesurer des m2 et compter des portes sont deux demandes
@@ -1413,6 +1594,12 @@ class PlaquisteAgent(BaseAgent):
             # Ce qu'un plan PDF joint a rendu. `None` quand aucun chemin de
             # plan n'a ete lu dans la demande.
             "plan": plan,
+            # Ce qu'un fichier IFC cite a rendu. `None` quand aucun chemin
+            # `.ifc` n'a ete lu dans la demande.
+            "ifc": ifc,
+            # Ce qu'une demande de croquis IFC a rendu. `None` sans demande
+            # explicite de generation.
+            "croquis_ifc": croquis_ifc,
             # Ce qu'un decompte de menuiseries a rendu. `None` quand aucun
             # decompte n'a ete demande (DEMANDE_DE_DECOMPTE).
             "marques": marques,

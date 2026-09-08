@@ -15,6 +15,7 @@ from agents.coder.coder_agent import CoderAgent
 from agents.dioumtoukay.dioumtoukay_agent import DioumtoukayAgent
 from agents.editor.editor_agent import EditorAgent
 from agents.email.email_agent import EmailAgent
+from agents.formel.formel_agent import FormelAgent
 from agents.fresh_info.fresh_info_agent import FreshInfoAgent
 from agents.montage.montage_agent import MontageAgent
 from agents.orchestrator.orchestrator_agent import OrchestratorAgent
@@ -26,6 +27,7 @@ from agents.social.social_agent import SocialAgent
 from agents.subtitle.subtitle_agent import SubtitleAgent
 from agents.swe_agent.swe_agent import SWEAgent
 from agents.trend_analyzer.trend_analyzer_agent import TrendAnalyzerAgent
+from agents.ui.ui_agent import UiGenerationAgent
 from agents.video.production_agent import VideoProductionAgent
 from agents.video_analyzer.video_analyzer_agent import VideoAnalyzerAgent
 from agents.vision.vision_agent import VisionAgent
@@ -45,25 +47,43 @@ from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
 from core.agent.capacites import RegistreCapacites, adaptateur_synchrone
+from core.connectors.architecture_3d import ConnecteurArchitecture3D
 from core.connectors.audio_voix import ConnecteurAudioVoix
+from core.connectors.browser import ConnecteurBrowser
 from core.connectors.calendrier import CalendrierConnector
+from core.connectors.claude_context import ConnecteurClaudeContext
 from core.connectors.devis import DevisConnector
+from core.connectors.drift import ConnecteurDrift
 from core.connectors.faceplugin import ConnecteurFaceplugin
+from core.connectors.formbricks import ConnecteurFormbricks
 from core.connectors.galsen import GalsenConnector
 from core.connectors.github import ConnecteurGitHub
+from core.connectors.gitingest import ConnecteurGitIngest
 from core.connectors.gmail import GmailConnector
+from core.connectors.graphify import ConnecteurGraphify
+from core.connectors.hermes_evolution import ConnecteurHermesEvolution
+from core.connectors.ifc import ConnecteurIfc
+from core.connectors.ifc_generation import ConnecteurIfcGeneration
+from core.connectors.krillinai import ConnecteurKrillinAI
+from core.connectors.lean_formel import ConnecteurLeanFormel
 from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.montage import ConnecteurMontage
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
+from core.connectors.openviking import ConnecteurOpenViking
 from core.connectors.registre import RegistreConnecteurs
+from core.connectors.securite_chantier import ConnecteurSecuriteChantier
 from core.connectors.stockage_jetons import charger_tout as _charger_jetons_persistants
+from core.connectors.txtai_search import ConnecteurTxtaiSearch
+from core.connectors.ui_generate import ConnecteurUiGenerate
 from core.connectors.ui_ux_pro_max import ConnecteurUiUxProMax
 from core.connectors.wan2gp import Wan2GPConnector
+from core.connectors.workflow_guide import ConnecteurWorkflowGuide
 from core.connectors.xaar_kaname import XaarKanameConnector
 from core.conversations.depot import DepotConversations
 from core.execution.disjoncteur import Disjoncteur
 from core.execution.hooks import RegistreDeCrochets
 from core.execution.mesures import Rapport
+from core.execution.reprise import JournalDeReprise
 from core.execution.travaux import FileDeTravaux
 from core.guardian.file_maintenance import FileDeMaintenance
 from core.guardian.gardien import Gardien
@@ -151,6 +171,14 @@ registre.declarer(
     lambda: DevisConnector(acces=acces, journal=journal, file_attente=file_attente,
                            crochets=crochets),
 )
+# Guide de procedure : un workflow deja decrit (jamais capture en direct)
+# transforme en PDF/DOCX/HTML/Markdown. Voir core/connectors/workflow_guide.py,
+# DEC-0048.
+registre.declarer(
+    "workflow_guide",
+    lambda: ConnecteurWorkflowGuide(acces=acces, journal=journal, file_attente=file_attente,
+                                    crochets=crochets),
+)
 registre.declarer(
     "xaar_kaname",
     lambda: XaarKanameConnector(acces=acces, journal=journal, file_attente=file_attente,
@@ -177,6 +205,171 @@ registre.declarer(
 registre.declarer(
     "opentakeoff",
     lambda: ConnecteurOpenTakeoff(acces=acces, journal=journal, file_attente=file_attente,
+                                  crochets=crochets),
+)
+# Graphe structurel du depot : Graphify (Apache-2.0), tree-sitter, hors ligne.
+# Cartographie CE depot (agents/, core/, apps/, tools/) — pas un second RAG,
+# pas un generateur de PDF. Voir core/connectors/graphify.py, DEC-0046.
+registre.declarer(
+    "graphify",
+    lambda: ConnecteurGraphify(acces=acces, journal=journal, file_attente=file_attente,
+                               crochets=crochets),
+)
+# Un depot (local ou une URL) transforme en resume+arbre+contenu : GitIngest
+# (MIT), API Python directe, aucun processus a surveiller. Complementaire a
+# Graphify (structure) : celui-ci donne le contenu brut. Voir
+# core/connectors/gitingest.py, DEC-0047.
+registre.declarer(
+    "gitingest",
+    lambda: ConnecteurGitIngest(acces=acces, journal=journal, file_attente=file_attente,
+                                crochets=crochets),
+)
+# BIM/IFC (mission BIM/metre/securite chantier, 05/09/2026) : lecture d'un
+# fichier IFC via IfcOpenShell (LGPL-3.0-or-later), en bibliotheque Python
+# jamais en code copie. Complementaire au metre de plan PDF (OpenTakeoff) :
+# un plan PDF est mesure, un fichier IFC est LU — ses quantites (surface des
+# murs) viennent du fichier lui-meme, jamais recalculees par geometrie dans
+# cette phase. Voir core/connectors/ifc.py, DEC-0053.
+registre.declarer(
+    "ifc",
+    lambda: ConnecteurIfc(acces=acces, journal=journal, file_attente=file_attente,
+                          crochets=crochets),
+)
+# Generation IFC (mission BIM, 06/09/2026) : un croquis minimal de cloison
+# (une face, longueur x hauteur), via l'API d'ecriture d'IfcOpenShell
+# elle-meme — jamais un second moteur BIM (BIM as Code/BuildingPy refuses,
+# DEC-0056). Ecrit dans media/rendered/, comme le devis. Voir
+# core/connectors/ifc_generation.py.
+registre.declarer(
+    "ifc_generation",
+    lambda: ConnecteurIfcGeneration(acces=acces, journal=journal, file_attente=file_attente,
+                                    crochets=crochets),
+)
+# Securite chantier (mission BIM/metre/securite chantier, 05/09/2026) :
+# detection EPI (casque, gilet...) sur une photo, appelee via SiteGuard
+# (C-Nekopedia/SiteGuard, MIT) — un programme SEPARE installe a cote, jamais
+# dans ce depot (SiteGuard depend lui-meme d'Ultralytics YOLO, AGPL-3.0).
+# Consomme par VisionAgent, jamais un aiguillage automatique dedie. Voir
+# core/connectors/securite_chantier.py.
+registre.declarer(
+    "securite_chantier",
+    lambda: ConnecteurSecuriteChantier(acces=acces, journal=journal, file_attente=file_attente,
+                                       crochets=crochets),
+)
+# Hermes Agent Self-Evolution (DEC-0055) : fait evoluer un depot CIBLE
+# (hermes-agent, NousResearch/hermes-agent-self-evolution, MIT) — jamais
+# ARENA lui-meme, garde structurelle dans le connecteur (DEC-0014 :
+# aucune PR autonome sur ce depot, meme relue avant fusion). Sous-processus
+# externe, jamais importe. Voir core/connectors/hermes_evolution.py.
+registre.declarer(
+    "hermes_evolution",
+    lambda: ConnecteurHermesEvolution(acces=acces, journal=journal, file_attente=file_attente,
+                                      crochets=crochets),
+)
+# Sondages/feedback (DEC-0052) : une instance Formbricks EXTERNE, appelee par
+# son API REST publique — aucune ligne de son code (coeur AGPLv3) n'est
+# copiee ici, meme frontiere que VoiceStudio. Aucune URL par defaut : sans
+# FORMBRICKS_BASE_URL/API_KEY/WORKSPACE_ID explicitement configures, ce
+# connecteur reste NON_CONFIGURE proprement — ARENA continue de fonctionner.
+# Voir core/connectors/formbricks.py.
+registre.declarer(
+    "formbricks",
+    lambda: ConnecteurFormbricks(acces=acces, journal=journal, file_attente=file_attente,
+                                 crochets=crochets),
+)
+# Traduction/doublage d'une video EXISTANTE (sous-titres, TTS, rendu, cover) :
+# l'ancien moteur KrillinAI, GPL-3.0, appele par sous-processus isole — jamais
+# importe (meme frontiere que VoiceStudio/AGPL, core/connectors/audio_voix.py).
+# Jamais de clonage vocal, jamais une seconde transcription locale : voir
+# core/connectors/krillinai.py, DEC-0049.
+registre.declarer(
+    "krillinai",
+    lambda: ConnecteurKrillinAI(acces=acces, journal=journal, file_attente=file_attente,
+                                crochets=crochets),
+)
+# Drift (DEC-0057) : editeur video (GPLv3) pilote par son PROPRE serveur MCP,
+# jamais importe ni copie — meme frontiere que KrillinAI/VoiceStudio. Reserve
+# EXCLUSIVEMENT au workspace Video (agents/video/production_agent.py) : aucun
+# chemin plaquiste/BIM/metier n'y touche. Aucune URL ni jeton par defaut
+# (DEC-0002) : NON_CONFIGURE tant que DRIFT_MCP_URL/DRIFT_MCP_TOKEN ne sont
+# pas dans le .env. Voir core/connectors/drift.py.
+registre.declarer(
+    "drift",
+    lambda: ConnecteurDrift(acces=acces, journal=journal, file_attente=file_attente,
+                            crochets=crochets),
+)
+# Claude Context (DEC-0058) : recherche semantique de code, par son propre
+# serveur MCP (@zilliz/claude-context-mcp, MIT) — Milvus auto-heberge +
+# Ollama local forces par le connecteur lui-meme, jamais Zilliz Cloud/OpenAI
+# par defaut. Voir core/connectors/claude_context.py.
+registre.declarer(
+    "claude_context",
+    lambda: ConnecteurClaudeContext(acces=acces, journal=journal, file_attente=file_attente,
+                                    crochets=crochets),
+)
+# OpenViking (DEC-0058) : contexte hierarchique/memoire/competences, par son
+# propre serveur HTTP (AGPLv3) — un service SEPARE, auto-heberge par le
+# proprietaire, jamais importe. Explicite, jamais appele a la place de
+# core/memory/ (meme discipline que txtai, DEC-0051). Voir
+# core/connectors/openviking.py.
+registre.declarer(
+    "openviking",
+    lambda: ConnecteurOpenViking(acces=acces, journal=journal, file_attente=file_attente,
+                                 crochets=crochets),
+)
+# Navigation Web autonome (DEC-0059) : browser-use + Playwright/Chromium
+# local, Lightpanda (AGPLv3, service externe, jamais importe) comme moteur
+# optionnel plus leger derriere le meme contrat, avec repli automatique.
+# Corrige au passage le seul chemin d'ARENA qui agissait sur le web sans
+# passer par ce registre. Voir core/connectors/browser.py.
+registre.declarer(
+    "browser",
+    lambda: ConnecteurBrowser(acces=acces, journal=journal, file_attente=file_attente,
+                              crochets=crochets),
+)
+# Verification FORMELLE (DEC-0067) : Lean tranche, jamais le modele. ARENA
+# savait calculer (bac a sable Python, sympy) ; elle ne savait pas prouver.
+# La discipline vient du depot `anthropics/fermats-last-theorem` (Apache-2.0)
+# et tient en une ligne : une preuve trouee COMPILE (code 0), donc le verdict
+# se lit dans les axiomes, jamais dans le code de sortie.
+# Voir core/connectors/lean_formel.py.
+registre.declarer(
+    "formel",
+    lambda: ConnecteurLeanFormel(acces=acces, journal=journal,
+                                 file_attente=file_attente, crochets=crochets),
+)
+# Architecture 3D (DEC-0070) : une CAPACITE d'ARENA, pas un moteur a elle.
+# Le vocabulaire est le sien (`core/architecture/capacite.py`, 21 operations
+# en francais) ; Pascal Editor (MIT, hors du depot) n'est qu'un backend
+# possible, et c'est le seul endroit du runtime ou son nom n'apparait meme
+# pas. Aucun modele ne l'atteint directement : intention -> connecteur ->
+# permission -> capacite -> backend.
+registre.declarer(
+    "architecture_3d",
+    lambda: ConnecteurArchitecture3D(acces=acces, journal=journal,
+                                     file_attente=file_attente, crochets=crochets),
+)
+# Generation d'interface : la technique d'OpenUI (prompt -> HTML/React/
+# Svelte/Web-Component), jamais son serveur (connexion GitHub requise,
+# weave/boto3/peewee/fastapi-sso qu'ARENA n'a pas besoin d'heberger). Ce
+# connecteur ne genere rien lui-meme : agents/ui/ui_agent.py appelle le
+# modele, ceci valide (aucun script externe hors liste fermee) et ecrit.
+# Voir core/connectors/ui_generate.py, DEC-0050.
+registre.declarer(
+    "ui_generate",
+    lambda: ConnecteurUiGenerate(acces=acces, journal=journal, file_attente=file_attente,
+                                 crochets=crochets),
+)
+# Recherche semantique txtai (DEC-0051) : un moteur A COTE, jamais un
+# remplacement — ARENA a deja une memoire retrouvee par le sens et deux
+# moteurs de documents (LightRAG, GraphRAG). Aucune branche d'aiguillage
+# automatique ne pointe ici : c'est une capacite explicite, pour un banc de
+# comparaison, jamais appelee a la place d'un moteur existant. Le vecteur
+# vient d'Ollama (embeddings_ollama, deja utilise par la memoire de chat) —
+# aucun second modele. Voir core/connectors/txtai_search.py.
+registre.declarer(
+    "txtai_search",
+    lambda: ConnecteurTxtaiSearch(acces=acces, journal=journal, file_attente=file_attente,
                                   crochets=crochets),
 )
 # Montage video : batir une timeline (lecture) et la rendre (ecriture, donc
@@ -312,7 +505,8 @@ trend_agent = TrendAnalyzerAgent(provider=deep_provider, memory=memory)
 # de la derniere generation acceptee.
 video_agent = VideoAnalyzerAgent(provider=deep_provider, memory=memory,
                                  registre=registre, travaux=travaux, journal=journal)
-vision_agent = VisionAgent(provider=ollama_vision, memory=memory, pieces_jointes=pieces_jointes)
+vision_agent = VisionAgent(provider=ollama_vision, memory=memory, pieces_jointes=pieces_jointes,
+                          registre=registre)
 # Montage : la phrase du proprietaire devient un plan d operations validees
 # (`core/montage/planificateur.py`), jamais un pilotage direct de la timeline.
 # Le modele profond, parce que produire un JSON structure et coherent est une
@@ -331,22 +525,31 @@ clip_selector = ClipSelectorAgent(provider=deep_provider, memory=memory)
 publisher_agent = PublisherAgent(
     provider=fast_provider, memory=memory, journal=journal, registre=registre
 )
-browser_agent = BrowserAgent(provider=fast_provider, memory=memory)
+browser_agent = BrowserAgent(provider=fast_provider, memory=memory, registre=registre)
+# Preuve formelle (DEC-0067) : agent MINCE — il traduit la phrase en
+# capacite du connecteur `formel`, il ne raisonne pas a la place du
+# moteur existant. `deep_provider` : ecrire du Lean juste est une tache
+# de raisonnement, pas de conversation.
+formel_agent = FormelAgent(provider=deep_provider, memory=memory, registre=registre)
 # Agent d'information fraiche : il lit le web avant de repondre.
 fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)
-repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory)
+repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory, registre=registre)
 swe_agent = SWEAgent(provider=coder_provider, memory=memory)
 # Dioumtoukay : celui qui AGIT sur la machine (DEC-0038). Il recoit le
 # modele de code, et le journal — chacune de ses actions y laisse une trace,
 # qui est ce que le proprietaire relit apres coup.
 # `repo_engineer` et `swe_agent` sont ici ses outils, pas seulement leur porte
-# separee dans /api/chat (DEC-0041) : construits avant lui, ci-dessus.
+# separee dans /api/chat (DEC-0073) : construits avant lui, ci-dessus.
+# `reprises` : le journal DURABLE de ses etapes (DEC-0072). Sans lui, une
+# tache arretee a la 12e action repartait de zero au tour suivant — la memoire
+# longue en gardait un resume en prose, pas un etat reprenable.
 dioumtoukay_agent = DioumtoukayAgent(
     provider=coder_provider, memory=memory,
     atelier=Atelier(journal=journal),
     memoire_longue=memoire_personnelle,
     analyste=repo_engineer, chercheur_de_bug=swe_agent,
-    connecteur_github=registre.obtenir("github"))
+    connecteur_github=registre.obtenir("github"),
+    reprises=JournalDeReprise())
 # Raisonnement profond : plan, calcul reellement execute en bac a sable, puis
 # synthese. Le modele profond, parce que c'est la voie PROFONDE qui l'emprunte.
 # `/health` annoncait « ReasoningEngine » parmi les agents actifs alors qu'aucun
@@ -379,6 +582,9 @@ video_production_agent = VideoProductionAgent(
     provider=deep_provider, memory=memory, provider_vision=ollama_vision,
     video_analyzer_agent=video_agent, audio_agent=audio_agent,
     montage_agent=montage_agent, registre=registre)
+# Generation d'interface (DEC-0050) : produire du code d'interface est une
+# redaction structuree (comme le montage/le devis), donc le modele profond.
+ui_agent = UiGenerationAgent(provider=deep_provider, memory=memory, registre=registre)
 
 memory.set_fact("user_profile", "owner", "Ousmane", {"role": "Propriétaire et créateur d'Usman"})
 

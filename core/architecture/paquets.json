@@ -1,0 +1,12 @@
+{
+  "_pourquoi": "Ce qu'ARENA demande d'installer pour le backend Pascal. Ce fichier vit dans core/ et non dans tools/architecture/pascal/, parce que le dossier d'un moteur externe ne porte RIEN de versionne (tests/test_moteurs_externes_restent_dehors.py). L'epinglage est une decision d'ARENA, pas un fichier du moteur.",
+  "_zod": "EPINGLE. Pascal demande ^4.3.5 ; npm installe 4.5.4, dont discriminatedUnion refuse une option au discriminant undefined. Mesure du 07/09/2026 : le serveur demarre, les lectures marchent, et CHAQUE ecriture rend « Duplicate discriminator value undefined ». Ne pas relever sans avoir relance tests/core/test_architecture_3d.py.",
+  "name": "arena-pascal-backend",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@pascal-app/core": "1.0.0-beta.5",
+    "@pascal-app/mcp": "1.0.0-beta.6",
+    "zod": "4.3.5"
+  }
+}

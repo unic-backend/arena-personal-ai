@@ -1,5 +1,5 @@
 """Dioumtoukay ouvre une Pull Request et lit l'état de CI, via le connecteur
-GitHub (DEC-0041) — jusqu'ici, seul `git` en shell nu.
+GitHub (DEC-0073) — jusqu'ici, seul `git` en shell nu.
 
 **La garde qui compte le plus** : `ouvrir_pr` passe par la même confirmation
 que n'importe quelle autre écriture externe. Dioumtoukay ne peut pas la

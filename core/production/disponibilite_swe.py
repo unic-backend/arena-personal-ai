@@ -2,7 +2,7 @@
 
 Même patron que `disponibilite_video.py` (VOLET vidéo, 03/09/2026) : chaque
 capacité est renvoyée à la sonde qui la mesure déjà, jamais à une seconde
-logique qui pourrait diverger. DEC-0041 unifie quatre entrées vers le code en
+logique qui pourrait diverger. DEC-0073 unifie quatre entrées vers le code en
 une capacité `software_engineering` — cette fonction est ce qui répond
 « qu'est-ce qui marche, là, maintenant ? » sans jamais le deviner.
 
@@ -15,7 +15,7 @@ Trois backends, jamais confondus :
   jeton (`USMAN_GITHUB_TOKEN`) et du réseau — sondé par `ConnecteurGitHub.
   sonder()`, jamais par la seule présence de la variable d'environnement.
 - `specialistes` : `RepoEngineerAgent` et `SWEAgent`, consultés en cours de
-  tâche (DEC-0041). Même moteur que `dioumtoukay` : les trois tombent
+  tâche (DEC-0073). Même moteur que `dioumtoukay` : les trois tombent
   ensemble quand le moteur de modèle ne répond pas.
 """
 from __future__ import annotations

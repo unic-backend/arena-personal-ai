@@ -46,6 +46,16 @@ async def test_la_reserve_de_lecture_seule_est_affichee(agent):
     assert "ne modifie aucun fichier" in res["response"]
 
 
+async def test_la_methode_de_specialiste_atteint_le_modele(agent):
+    """Le défaut de DEC-0061, sur un autre agent : `debugging`/`tests`
+    (catalogue de spécialistes) étaient déclarés pour SWE_FIX mais
+    n'atteignaient jamais SWEAgent — seul le repli conversationnel les
+    composait, un chemin que SWE_FIX ne prend jamais."""
+    await agent.run("le script plante avec une erreur dans main.py")
+
+    assert "MÉTHODE DE SPÉCIALISTE" in agent.provider.appels[0]["prompt"]
+
+
 async def test_l_agent_n_ecrit_rien_sur_le_disque(agent, monkeypatch):
     def interdit(*args, **kwargs):
         raise AssertionError("SWEAgent a tenté d'écrire un fichier.")

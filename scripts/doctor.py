@@ -426,9 +426,29 @@ def verifier_voicestudio(lecteur: Optional[Callable[[str], Any]] = None) -> Veri
             "Voix (VoiceStudio)", NON_CONFIGURE,
             f"transcription possible ({', '.join(ecoute)}), mais aucun moteur de voix",
             "Installer un moteur TTS cote VoiceStudio.")
+    # DEC-0069 : « un moteur de voix est installe » ne veut pas dire « ARENA
+    # peut s'en servir pour UniC ». Les poids d'OmniVoice sont CC-BY-NC, et
+    # c'est le moteur par defaut de VoiceStudio : un rapport [OK] qui ne le
+    # dirait pas laisserait croire a une capacite qu'ARENA refusera d'exercer.
+    from core.audio.routage_tts import Commercial, licence_de
+
+    utilisables = [m for m in voix
+                   if licence_de(m).commercial is not Commercial.INTERDIT]
+    interdits = [m for m in voix if m not in utilisables]
+    if not utilisables:
+        return Verification(
+            "Voix (VoiceStudio)", NON_CONFIGURE,
+            f"seuls des moteurs a usage non commercial sont installes "
+            f"({', '.join(interdits)}) : ARENA ne les utilisera pas pour UniC",
+            "Installer un moteur a licence permissive cote VoiceStudio "
+            "(ex. cosyvoice, voxcpm2, kittentts, sherpa-onnx).")
+
+    detail = f"voix : {', '.join(voix)}"
+    if interdits:
+        detail += f" (non commercial, ecarte : {', '.join(interdits)})"
     return Verification(
         "Voix (VoiceStudio)", OK,
-        f"voix : {', '.join(voix)} | transcription : {', '.join(ecoute) or 'aucune'}")
+        f"{detail} | transcription : {', '.join(ecoute) or 'aucune'}")
 
 
 def verifier_moneyprinter(lecteur: Optional[Callable[[str], Any]] = None) -> Verification:
@@ -570,6 +590,33 @@ def verifier_ui_ux_pro_max() -> Verification:
     return _ligne_connecteur(
         "Design (UI/UX Pro Max)", "core.connectors.ui_ux_pro_max", "ConnecteurUiUxProMax",
         "scripts/installer_ui_ux_pro_max.ps1 (moteur MIT, installe a cote)")
+
+
+def verifier_lean() -> Verification:
+    """Le verificateur formel (Apache-2.0), interroge pour de vrai.
+
+    Le toolchain vit HORS du depot : 2,9 Go decompresses (DEC-0067). Sans
+    lui, ARENA ne peut RIEN prouver — et le dit, plutot que de laisser un
+    modele affirmer qu'une demonstration tient.
+    """
+    return _ligne_connecteur(
+        "Preuve formelle (Lean)", "core.connectors.lean_formel", "ConnecteurLeanFormel",
+        "Installer Lean 4 hors du depot (voir docs/COMMANDES_PC.md), "
+        "ou pointer LEAN_BIN sur un binaire existant.")
+
+
+def verifier_architecture_3d() -> Verification:
+    """Le moteur d'architecture, interroge pour de vrai (DEC-0070).
+
+    Il vit HORS du depot : 205 Mo de `node_modules`, et ARENA est un projet
+    Python. Sans lui, aucun batiment ne se dessine — et la sonde dit ce qui
+    manque : Bun, le dossier, ou le paquet. **Pas Node** : le paquet publie
+    ne tourne pas sous Node, mesure du 07/09/2026.
+    """
+    return _ligne_connecteur(
+        "Architecture 3D", "core.connectors.architecture_3d",
+        "ConnecteurArchitecture3D",
+        "Installer Bun puis le backend (voir docs/COMMANDES_PC.md).")
 
 
 def verifier_gardien() -> Verification:
@@ -822,6 +869,8 @@ def diagnostiquer() -> Rapport:
         mesurer("Xaar Kaname (visage)", verifier_xaar_kaname),
         mesurer("Visages (Faceplugin)", verifier_faceplugin),
         mesurer("Design (UI/UX Pro Max)", verifier_ui_ux_pro_max),
+        mesurer("Preuve formelle (Lean)", verifier_lean),
+        mesurer("Architecture 3D", verifier_architecture_3d),
         mesurer("Gardien (maintenance)", verifier_gardien),
         mesurer("Courrier (Gmail)", lambda: verifier_google(
             "Courrier (Gmail)", "ARENA ne lit pas ton courrier",

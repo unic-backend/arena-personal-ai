@@ -91,7 +91,23 @@ INTENTIONS = {
     "ATELIER",
     "VISAGE",
     "DESIGN_UI",
+    "UI_GENERATE",
+    "PREUVE_FORMELLE",
+    "ARCHITECTURE_3D",
 }
+
+#: Ce qui demande de CONSTRUIRE ou d'INSPECTER un batiment en 3D. Teste
+#: avant le metier : « une cloison de 4 m » est un devis, « dessine une
+#: maison de 20 m x 15 m » est un modele — et le PLAQUISTE ne sait pas
+#: dessiner. Les deux se distinguent par le VERBE, pas par le sujet.
+ARCHITECTURE_3D = (
+    "dessine une maison", "dessine un batiment", "dessine un bâtiment",
+    "modelise", "modélise", "maquette 3d", "plan 3d", "modele 3d",
+    "modèle 3d", "en 3d", "architecture 3d",
+    "cree une maison", "crée une maison", "creer une maison", "créer une maison",
+    "construis une maison", "construis un batiment", "construis un bâtiment",
+    "trace les murs", "trace un mur", "scene 3d", "scène 3d",
+)
 
 #: Ce qui parle de ses RESEAUX SOCIAUX. Teste avant le metier : « une
 #: publication sur mon chantier » contient « chantier » et partirait chez
@@ -238,6 +254,41 @@ AUDIO = (
     "quelles voix", "quels moteurs audio", "moteurs de voix",
 )
 
+#: CLONER une voix (DEC-0065). Groupe distinct d'AUDIO, et teste bien plus
+#: tot — avant les RESEAUX — pour une raison mesuree le 07/09/2026 :
+#: `RESEAUX` contient « ma voix », qui parle de son STYLE D'ECRITURE
+#: (`tools/social/voix.py`), pas de parole. « clone ma voix pour la voix
+#: off » partait donc chez SOCIAL, et « clone cette voix » chez le
+#: PLAQUISTE : la capacite existait dans l'agent, dans le connecteur et
+#: dans les permissions, mais AUCUNE phrase du proprietaire ne l'atteignait.
+#: Meme defaut que DEC-0061, trouve sur du code neuf par la verification
+#: qu'il a demandee.
+#:
+#: Chaque entree porte « voix » ou « vocal » : « clone » seul capterait
+#: « clone ce depot github », qui n'a rien d'audio.
+CLONAGE_VOCAL = (
+    "clone cette voix", "clone la voix", "cloner cette voix",
+    "cloner la voix", "clonage vocal", "clone ma voix", "clone sa voix",
+)
+
+#: DEMONTRER, au sens strict : Lean compile la preuve et refuse ce qui n'en
+#: est pas une (DEC-0067). Distinct du calcul, qui existe deja et reste ou il
+#: est : « combien fait 12 % de 340 » se calcule dans le bac a sable
+#: (`core/reasoning/reasoning_engine.py`), il ne se demontre pas.
+#:
+#: Chaque entree porte donc soit le mot « Lean », soit une demande explicite
+#: de RIGUEUR — jamais « prouve » tout seul, qui veut dire « montre-moi » dans
+#: la langue de tous les jours (« prouve-moi que ce devis est juste »).
+PREUVE_FORMELLE = (
+    "preuve formelle", "prouve formellement",
+    "démontre formellement", "demontre formellement",
+    "vérification formelle", "verification formelle",
+    "en lean", "code lean", "preuve lean", "theoreme lean", "théorème lean",
+    "verifie cette preuve", "vérifie cette preuve",
+    "verifie ce theoreme", "vérifie ce théorème",
+    "demonstration rigoureuse", "démonstration rigoureuse",
+)
+
 #: ANALYSER des visages sur une image : compter, situer, reperer, comparer.
 #: Distinct de VISION (comprendre une image en general) et de la generation de
 #: visage de Xaar Kaname : ici on MESURE, on ne fabrique rien.
@@ -268,6 +319,27 @@ DESIGN_UI = (
     "ameliore l interface", "améliore l'interface", "regles ux", "règles ux",
     "charte graphique", "style d interface", "style d'interface",
     "maquette", "identite visuelle", "identité visuelle",
+)
+
+#: GENERER le CODE d'une interface, distinct de DESIGN_UI (decider a quoi ca
+#: doit ressembler, sans rien ecrire). Exige un verbe de generation combine
+#: a un nom d'interface : "maquette" seule reste DESIGN_UI, jamais confondue
+#: ici (DEC-0050).
+UI_GENERATE = (
+    "genere une interface", "génère une interface",
+    "genere le code d'une interface", "génère le code d'une interface",
+    "cree une interface", "crée une interface",
+    "cree-moi une interface", "crée-moi une interface",
+    "creer une interface", "créer une interface",
+    "code une interface", "code-moi une interface", "codemoi une interface",
+    "developpe une interface", "développe une interface",
+    "genere un tableau de bord", "génère un tableau de bord",
+    "cree un tableau de bord", "crée un tableau de bord",
+    "creer un tableau de bord", "créer un tableau de bord",
+    "genere un dashboard", "génère un dashboard",
+    "cree un dashboard", "crée un dashboard",
+    "composant react", "composant svelte", "web component pour",
+    "page html pour", "prototype d'interface", "prototype d interface",
 )
 
 #: MONTER une video a partir de fichiers qu il possede deja. Distinct de
@@ -428,6 +500,9 @@ GRAPHRAG        : question sur les liens entre les documents.
 VISION          : comprendre une image, une photo, un plan ou une capture
                   d'écran — décrire, lire un texte qui y figure (OCR),
                   extraire un tableau, analyser un dessin ou un schéma.
+UI_GENERATE     : générer le CODE d'une interface visuelle (page web, écran
+                  d'application, tableau de bord) à partir d'une description —
+                  pas la logique d'un programme, l'apparence d'une interface.
 
 Attention : parler DE code, DE maths ou D'une erreur n'est pas demander d'en produire.
 « Explique-moi le code de la route » est CHAT, pas CODE_EXECUTION.
@@ -619,6 +694,9 @@ class OrchestratorAgent(BaseAgent):
         if any(k in text for k in VISAGE):
             return "VISAGE"
 
+        if any(k in text for k in UI_GENERATE):
+            return "UI_GENERATE"
+
         if any(k in text for k in DESIGN_UI):
             return "DESIGN_UI"
 
@@ -644,6 +722,24 @@ class OrchestratorAgent(BaseAgent):
         if "idée de vidéo" in text or "tendance tiktok" in text or "sujet chaud" in text or "stratégie vidéo" in text:
             return "TREND_SEARCH"
 
+        # Preuve FORMELLE (DEC-0067). Teste AVANT le raisonnement profond, qui
+        # porte deja « preuve » et « demontre » : la verification formelle est
+        # le cas PLUS ETROIT des deux — « vérifie cette preuve » et « preuve
+        # formelle » partaient sinon ecrire un script Python (mesure du
+        # 07/09/2026), alors que seul Lean peut trancher.
+        # Le raisonnement profond garde tout le reste : un calcul n'est pas une
+        # demonstration, et il reste dans le bac a sable ou il est deja.
+        if any(k in text for k in PREUVE_FORMELLE):
+            return "PREUVE_FORMELLE"
+
+        # Architecture 3D (DEC-0070). Teste AVANT le metier, qui porte deja
+        # « mur », « cloison » et « plan » : « dessine une maison de 20 m x
+        # 15 m » partait sinon chez l'assistant devis, qui ne sait pas
+        # dessiner. Ce qui les separe est le VERBE, pas le sujet — chiffrer
+        # une cloison reste du metier, la tracer est un modele.
+        if any(k in text for k in ARCHITECTURE_3D):
+            return "ARCHITECTURE_3D"
+
         # Raisonnement profond & Maths complexes
         reasoning_keywords = ["équation", "equation", "résous", "resous", "matrice", "intégrale", "dérivée", "démontre", "démontrer", "calcul complexe", "preuve"]
         if any(k in text for k in reasoning_keywords) and not dit_le_metier:
@@ -662,6 +758,13 @@ class OrchestratorAgent(BaseAgent):
         research_keywords = ["étude complète", "rapport détaillé", "recherche approfondie", "étude de marché", "dossier complet"]
         if any(k in text for k in research_keywords):
             return "DEEP_RESEARCH"
+
+        # Cloner une voix. Teste AVANT les reseaux : « ma voix » y designe son
+        # style d ecriture, et captait « clone ma voix » (mesure du 07/09/2026).
+        # Cloner une voix. Teste AVANT les reseaux : « ma voix » y designe son
+        # style d ecriture, et captait « clone ma voix » (mesure du 07/09/2026).
+        if any(k in text for k in CLONAGE_VOCAL):
+            return "AUDIO"
 
         # Ses reseaux. Teste AVANT le metier, pour la meme raison que la video :
         # le sujet d une publication est souvent son metier.

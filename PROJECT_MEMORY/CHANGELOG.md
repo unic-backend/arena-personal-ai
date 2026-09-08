@@ -144,3 +144,117 @@ dépendances, index des décisions, ce journal.
 distinction « logique vérifiée » / « bout en bout » est posée explicitement dans
 `COMPLETED_SYSTEMS.md`, parce que rien de ce qui dépend d'Ollama, de ffmpeg, de
 Docker ou de Google n'a jamais tourné sur la machine de l'assistant.
+
+---
+
+## 2026-09-07 — audit OmniVoice : la licence des poids, et un seul routeur de voix
+
+**DEC-0069.** Le moteur par défaut d'ARENA allait devenir OmniVoice — dont les
+**poids** sont CC-BY-NC, usage commercial interdit — sur les vidéos d'une
+entreprise. Trois faits qui ne se recoupaient qu'ensemble : `omnivoice` est la
+première entrée du registre de VoiceStudio, ARENA prenait le premier
+disponible, et le dépôt d'OmniVoice ne porte qu'une licence Apache-2.0 pour son
+**code**, sans un mot sur ses poids.
+
+| Livré | Preuve |
+|---|---|
+| `core/audio/routage_tts.py` — **un seul** routeur (parler *et* cloner), qui connaît les licences | 37 tests |
+| refus du commercial sur poids non commerciaux, porte `usage="recherche"` ouverte | 7 tests bout en bout au connecteur |
+| `effective_device` / `routing_status` lus et rapportés — VoiceStudio les publiait, ARENA les jetait | 4 tests |
+| `scripts/verifier_voix.py` — la chaîne réelle sur SA machine, amplitude comprise | 4 tests |
+| `scripts/doctor.py` ne dit plus `[OK]` si tous les moteurs sont non commerciaux | 2 tests |
+
+**Sept sabotages joués, six ont cassé un test. Le septième est passé** : le
+contrôle de licence de `doctor.py` n'avait aucun test. Il en a deux
+maintenant. Quatrième fois en trois jours qu'une garantie de ce dépôt se
+révèle non tenue jusqu'à ce qu'on la sabote.
+
+`ruff` propre, **4085 passed / 25 skipped** (etait 4030), 212 modules dont 168 atteints.
+
+> **Dette de mémoire, signalée sans être corrigée** : `PROJECT_MEMORY/DECISIONS.md`
+> s'arrête à DEC-0020 et se date du 29/08/2026 — il lui manque 49 décisions.
+> `docs/DECISIONS.md` reste l'autorité et est à jour. Rattraper l'index est un
+> travail à part, pas un effet de bord de cette mission.
+
+---
+
+## 2026-09-07 (suite) — `architecture_3d` : ARENA sait construire un bâtiment
+
+**DEC-0070.** ARENA savait **lire** un IFC et chiffrer une cloison ; elle ne
+savait pas **construire**. Pascal Editor (MIT) comble ce trou — comme
+**backend** d'une capacité d'ARENA, jamais comme propriété d'un modèle.
+
+| Livré | Preuve |
+|---|---|
+| `core/architecture/` — capacité, vocabulaire de 22 opérations, plan déterministe | 44 tests |
+| `core/connectors/architecture_3d.py` — permissions, confirmation unique, journal | 3 actions (`read`/`batir`/`demolir`) |
+| intention `ARCHITECTURE_3D`, voie instantanée, routage — **aucun agent créé** | la mission l'interdit quand la capacité suffit |
+| ligne « Architecture 3D » dans `doctor.py` | 28 → **29 vérifications** |
+
+**Mesuré sur la phrase de la mission** : 11 opérations en 476 ms, **36 murs**
+(4 de pourtour : 20, 15, 20, 15 m) et **8 pièces** aux noms demandés. Deux
+sessions ouvertes en même temps ne partagent jamais une scène.
+
+**Trois pannes trouvées en exécutant, pas en lisant** : le paquet publié ne
+tourne pas sous Node malgré son README (Bun exigé) ; `zod` 4.5.4 cassait
+**toutes** les écritures pendant que les lectures restaient parfaites ; et
+22 règles de permission nommées par capacité ne matchaient rien — la
+politique interroge l'**action**, pas le nom.
+
+Cinq sabotages joués, **cinq ont cassé un test**.
+
+`ruff` propre, **4137 passed / 25 skipped**, 217 modules dont 172 atteints.
+
+---
+
+## 2026-09-07 (suite) — le formulaire venait d'une lecture qui échouait
+
+**DEC-0071.** Sa capture : « Fais-moi une cloison de 5 m sur 2,5 m, avec une
+porte de 80 × 210 cm » → trois questions de formulaire. Son mot : *« il se
+base toujours sur une conduite de réponse alors qu'il devrait réfléchir »*.
+
+| Défaut | Correctif |
+|---|---|
+| `metre.py` exigeait un CHIFFRE avant le nom et ignorait « sur » → sa phrase n'était **jamais lue** | compte optionnel et en lettres, « sur » ajouté |
+| **Aucune ouverture n'était déduite** nulle part → cloison avec porte chiffrée comme pleine | `lire_ouvertures` : portes, fenêtres, baies, cm→m |
+| Les trois questions étaient posées **à l'entrée** | répondre d'abord ; questionner à la fin, et seulement pour un document qui part |
+
+Sa phrase donne maintenant : 12,5 m² − 1,68 m² = **10,82 m² à plaquer**, puis
+11 plaques BA13, 13 montants, 3 rails — avec sa grille de prix.
+
+Un test cassé par le correctif vérifiait la chaîne « tu les demandes » : une
+**formulation**, pas une garantie. Réécrit pour mesurer le comportement.
+
+Quatre sabotages joués, quatre ont cassé un test. `ruff` propre,
+**4156 passed / 25 skipped**.
+
+---
+
+## 2026-09-07 (suite) — Open SWE : rien d'installé, la reprise gagnée
+
+**DEC-0072.** Mission : fusionner les meilleures capacités de
+`langchain-ai/open-swe` dans le génie logiciel d'ARENA, sans deuxième agent.
+
+**Refusé, mesuré** : Open SWE exige `Python >= 3.14`, ARENA tourne sur
+**3.11.15**. Et ses dépendances apporteraient un second moteur d'orchestration
+(LangGraph + deepagents), **quatre sandbox cloud** et des paquets liés à un
+fournisseur — exactement les doublons que la mission interdit. Licence MIT :
+la copie était permise, elle n'était pas utile.
+
+**Le seul manque réel** : `DioumtoukayAgent` s'arrêtait à 12 actions / 20 min
+en rendant « la suite reste à faire », et ne gardait qu'un **résumé en prose**.
+`FileDeTravaux` est purement en mémoire. « Reprends ce que tu faisais »
+repartait de zéro.
+
+| Livré | Preuve |
+|---|---|
+| `core/execution/reprise.py` — journal d'étapes durable, écriture atomique après **chaque** action | 16 tests |
+| `balayer()` — l'idée de leur `reconcile.py` : une tâche morte cesse de se déclarer vivante | 4 tests |
+| Reprise branchée dans l'agent **existant** — aucun agent, aucune file de plus | 11 tests bout en bout |
+
+**Mesuré sur un vrai dépôt buggé** : `pytest` échoue, le fichier est vraiment
+modifié, `pytest` passe. Interruption puis reprise : 2 étapes + 1, **même
+`task_id`**. Seul le modèle est doublé, et c'est dit.
+
+Cinq sabotages joués, **cinq ont cassé un test**. `ruff` propre,
+**4183 passed / 25 skipped**, 218 modules dont 173 atteints.

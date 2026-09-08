@@ -2,7 +2,7 @@
 
 ## [Non publié]
 
-### Ajouté — 08/09/2026 — Fusion Open SWE : une capacité, pas un deuxième agent (DEC-0041)
+### Ajouté — 08/09/2026 — Fusion Open SWE : une capacité, pas un deuxième agent (DEC-0073)
 
 Mission du propriétaire : exploiter les meilleures capacités d'Open SWE
 (`langchain-ai/open-swe`) pour renforcer le Software Engineering d'ARENA,

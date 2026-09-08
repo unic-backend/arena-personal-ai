@@ -37,6 +37,7 @@ from core.agent.base_agent import BaseAgent
 from core.execution.coordination import Coordination, Etape
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
+from core.production import plan_drift
 from core.production.etat_projet import EtapeProjet, EtatProjetVideo
 from core.production.plan_video import (
     CAPACITES_VIDEO,
@@ -54,7 +55,11 @@ logger = logging.getLogger("usman.agent.production_video")
 #: externes (HTTP) ; le montage est un travail ffmpeg (CPU). Aucun des trois
 #: n'entre dans ce groupe.
 RESSOURCE_GPU_LOCAL = "gpu_local"
-CAPACITES_GPU_LOCAL = frozenset({"vision", "wangp", "xaar_kaname"})
+#: Drift (DEC-0057) est un programme de bureau SEPARE : ARENA ne controle
+#: pas son usage GPU en interne, mais un export/rendu Drift tourne sur la
+#: meme RTX A2000. Le mettre dans ce groupe evite qu'il ne se dispute la
+#: carte graphique avec WanGP/vision/Xaar Kaname au meme instant.
+CAPACITES_GPU_LOCAL = frozenset({"vision", "wangp", "xaar_kaname", "drift"})
 
 #: Les statuts, dans les deux formes que porte le depot, qui disent qu'une
 #: etape a fait ce qu'elle pouvait honnetement faire — produit un resultat,
@@ -108,6 +113,41 @@ def _issue_favorable(resultat: Dict[str, Any]) -> Tuple[bool, str]:
                 str(resultat.get("message") or ""))
     return (resultat.get("status") in _STATUTS_EN_FAVORABLES,
             str(resultat.get("response") or ""))
+
+
+#: Extensions video reconnues pour reperer un export dans une reponse Drift
+#: dont la forme exacte n'est pas verifiable sans son poste (mission
+#: « Drift », machine de developpement sans Drift). Un chemin n'est JAMAIS
+#: suppose : `_chemin_plausible` ne rend que ce qui existe reellement.
+_EXTENSIONS_VIDEO = (".mp4", ".mov", ".mkv", ".webm")
+
+
+def _chemin_plausible(valeur: Any, profondeur: int = 0) -> Optional[str]:
+    """Cherche, dans une reponse JSON imbriquee, un chemin de fichier video
+    qui existe REELLEMENT sur le disque — jamais un nom plausible seul.
+
+    Necessaire pour Drift : `apply` peut porter un export dans sa reponse,
+    mais sous une cle non figee par la documentation disponible ici. Une
+    profondeur bornee (4) evite une recursion sans fin sur une reponse
+    hostile ou circulaire.
+    """
+    if profondeur > 4:
+        return None
+    if isinstance(valeur, str):
+        if valeur.lower().endswith(_EXTENSIONS_VIDEO) and Path(valeur).is_file():
+            return valeur
+        return None
+    if isinstance(valeur, dict):
+        for sous_valeur in valeur.values():
+            trouve = _chemin_plausible(sous_valeur, profondeur + 1)
+            if trouve:
+                return trouve
+    elif isinstance(valeur, list):
+        for element in valeur:
+            trouve = _chemin_plausible(element, profondeur + 1)
+            if trouve:
+                return trouve
+    return None
 
 
 class VideoProductionAgent(BaseAgent):
@@ -246,6 +286,29 @@ class VideoProductionAgent(BaseAgent):
                 return await self._appeler_montage(parametres, references)
             if capacite == "xaar_kaname":
                 return await self._appeler_xaar_kaname(parametres, references)
+            if capacite == "krillin_subtitle":
+                return await self._appeler_krillin(
+                    "subtitle", references,
+                    entree=self._reference(parametres, references),
+                    langue_origine=parametres.get("langue_origine"),
+                    langue_cible=parametres.get("langue_cible"),
+                    caption_source=parametres.get("caption_source"))
+            if capacite == "krillin_tts":
+                return await self._appeler_krillin(
+                    "tts", references, srt_cible=parametres.get("srt_cible"))
+            if capacite == "krillin_render_horizontal":
+                return await self._appeler_krillin(
+                    "render_horizontal", references,
+                    video=parametres.get("video"), sous_titres=parametres.get("sous_titres"))
+            if capacite == "krillin_render_vertical":
+                return await self._appeler_krillin(
+                    "render_vertical", references,
+                    video=parametres.get("video"), sous_titres=parametres.get("sous_titres"))
+            if capacite == "krillin_cover":
+                return await self._appeler_krillin(
+                    "cover", references, prompt=parametres.get("prompt"))
+            if capacite == "drift":
+                return await self._appeler_drift(parametres, references)
             # valider_graphe() ne laisse jamais passer autre chose que
             # CAPACITES_VIDEO : atteindre ceci serait un bug de ce module,
             # jamais une entree du modele.
@@ -394,6 +457,100 @@ class VideoProductionAgent(BaseAgent):
             resultat = await resultat
         return self._verifie(_depuis_resultat_action(resultat), "xaar_kaname")
 
+    async def _appeler_krillin(self, capacite_krillin: str, references: List[str],
+                               **parametres_krillin: Any) -> Dict[str, Any]:
+        """KrillinAI (DEC-0049), par son connecteur — jamais en direct.
+
+        Meme raisonnement que `_appeler_xaar_kaname` : passer par le registre
+        est ce qui fait respecter `krillinai.generate = CONFIRMATION`
+        (`config/permissions_services.yaml`). `voice_clone_source` n'est
+        jamais lu ici ni transmis plus loin — le connecteur lui-meme
+        (`core/connectors/krillinai.py`) le refuse aussi, en profondeur.
+        """
+        if self.registre is None:
+            raise RuntimeError("aucun registre de connecteurs branche")
+
+        parametres_krillin.pop("voice_clone_source", None)
+        parametres_krillin = {k: v for k, v in parametres_krillin.items() if v is not None}
+
+        resultat = self.registre.executer("krillinai", capacite_krillin, **parametres_krillin)
+        if inspect.isawaitable(resultat):
+            resultat = await resultat
+        return self._verifie(_depuis_resultat_action(resultat), f"krillin_{capacite_krillin}")
+
+    async def _appeler_drift(self, parametres: Dict[str, Any],
+                             references: List[str]) -> Dict[str, Any]:
+        """Drift (DEC-0057), par son connecteur MCP — jamais en direct.
+
+        Le modele ne pilote jamais Drift lui-meme : il propose un texte de
+        demande ("coupe les silences", "ajoute une transition"), et c'est
+        `core/production/plan_drift.py` qui traduit ce texte en operations
+        VALIDEES contre le VRAI schema que Drift a annonce dans ce meme
+        appel — jamais une liste d'operations devinee ou ecrite en dur ici.
+        `appliquer` passe par le registre, comme xaar_kaname/krillin_* :
+        c'est ce qui fait respecter `video_drift.apply = CONFIRMATION`.
+        """
+        if self.registre is None:
+            raise RuntimeError("aucun registre de connecteurs branche")
+
+        demande = str(parametres.get("demande") or "").strip()
+        if not demande:
+            raise RuntimeError("aucune demande de montage Drift fournie")
+
+        indices = parametres.get("references") or []
+        medias: List[str] = []
+        for brut in indices:
+            try:
+                index = int(brut)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= index < len(references) and Path(references[index]).is_file():
+                medias.append(references[index])
+        inventaire = plan_drift.inventaire_depuis(medias)
+
+        sonde = _depuis_resultat_action(await self._executer_drift("catalogue"))
+        self._verifie(sonde, "drift")
+
+        toolboxes_chargees: Dict[str, Any] = {}
+        for toolbox in plan_drift.TOOLBOXES_FERMEES:
+            resultat = await self._executer_drift("boite_a_outils", name=toolbox)
+            corps = resultat.to_dict() if hasattr(resultat, "to_dict") else dict(resultat or {})
+            statut = corps.get("statut", corps.get("status"))
+            if statut in _STATUTS_FR_FAVORABLES or statut in _STATUTS_EN_FAVORABLES:
+                toolboxes_chargees[toolbox] = (corps.get("detail") or {}).get("donnees") or {}
+
+        prompt = plan_drift.prompt_de_planification(demande, toolboxes_chargees, inventaire)
+        try:
+            brut_reponse = await self.provider.generate(prompt=prompt)
+        except Exception as erreur:  # noqa: BLE001 — un modele absent est un etat, pas un crash
+            raise RuntimeError(f"drift : le modele n'a pas repondu ({erreur})") from erreur
+
+        try:
+            ops, refus = plan_drift.valider_operations(
+                plan_drift.extraire_json(brut_reponse), toolboxes_chargees, inventaire)
+        except plan_drift.PlanDriftRefuse as erreur:
+            raise RuntimeError(f"drift : plan refuse ({erreur})") from erreur
+
+        resultat = await self._executer_drift("appliquer", ops=ops)
+        traduit = self._verifie(_depuis_resultat_action(resultat), "drift")
+        # `_depuis_resultat_action` ne porte que statut/message/preuve —
+        # `_artefact_final` a besoin de `donnees` pour retrouver un export
+        # eventuel (le `preuve` de Drift n'est jamais un chemin, voir
+        # `core/connectors/drift.py::_preuve`).
+        corps = resultat.to_dict() if hasattr(resultat, "to_dict") else dict(resultat or {})
+        traduit["donnees"] = (corps.get("detail") or {}).get("donnees")
+        if refus:
+            traduit["message"] = traduit.get("message", "") + "\nEcarte : " + " ".join(refus)
+        return traduit
+
+    async def _executer_drift(self, capacite: str, **parametres: Any) -> Any:
+        """Un appel `registre.executer("drift", ...)`, synchrone ou pas —
+        meme garde que `_appeler_xaar_kaname`/`_appeler_krillin`."""
+        resultat = self.registre.executer("drift", capacite, **parametres)
+        if inspect.isawaitable(resultat):
+            resultat = await resultat
+        return resultat
+
     async def _appeler_montage(self, parametres: Dict[str, Any],
                                references: List[str]) -> Dict[str, Any]:
         if self.montage_agent is None:
@@ -423,15 +580,29 @@ class VideoProductionAgent(BaseAgent):
         montage reussi — jamais suppose. Une generation/narration seulement
         SOUMISE (`NEEDS_CONFIRMATION`) n'a pas encore de fichier reel."""
         for etape in reversed(graphe):
-            if etape.capacite not in ("montage", "xaar_kaname"):
+            if etape.capacite not in (
+                "montage", "xaar_kaname", "krillin_render_horizontal", "krillin_render_vertical",
+                "drift",
+            ):
                 continue
             trace = resultat.trace_de(etape.id)
             if trace is None or trace.resultat is None:
                 continue
             sortie = trace.resultat
-            chemin = sortie.get("preuve") if isinstance(sortie, dict) else None
+            if not isinstance(sortie, dict):
+                continue
+            chemin = sortie.get("preuve")
             if chemin and Path(str(chemin)).is_file():
                 return str(chemin)
+            # Drift : `preuve` n'est jamais un chemin (c'est un compte
+            # d'operations, `core/connectors/drift.py::_preuve`) — un export
+            # eventuel vit dans `donnees`, sous une cle non figee sans son
+            # vrai serveur. `_chemin_plausible` ne rend un chemin QUE s'il
+            # existe reellement sur le disque — jamais suppose.
+            if etape.capacite == "drift":
+                chemin_drift = _chemin_plausible(sortie.get("donnees"))
+                if chemin_drift:
+                    return chemin_drift
         return None
 
     def _reponse(self, etat: EtatProjetVideo, refus: List[str]) -> Dict[str, Any]:

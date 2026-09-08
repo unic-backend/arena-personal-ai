@@ -2,3 +2,4 @@
 #   pip install -r requirements.txt -r requirements-dev.txt
 pytest==9.0.1
 pytest-asyncio==1.3.0
+pip-audit==2.10.1        # scripts/scanner_dependances.py — audit des failles connues

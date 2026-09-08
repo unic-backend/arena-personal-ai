@@ -41,6 +41,7 @@ class ModeleScripte:
     def __init__(self, *reponses: str, disponible: bool = True):
         self.reponses = list(reponses)
         self.vues = []
+        self.consignes_vues = []
         self._disponible = disponible
 
     async def is_available(self) -> bool:
@@ -48,6 +49,7 @@ class ModeleScripte:
 
     async def generate(self, prompt: str, system_prompt: str = None) -> str:
         self.vues.append(prompt)
+        self.consignes_vues.append(system_prompt)
         return self.reponses.pop(0) if self.reponses else "ACTION: terminer\nCONTENU:\nfini\nFIN"
 
 
@@ -181,6 +183,104 @@ class TestIlDitLaVerite:
         assert len(rendu["actions"]) == TOURS_MAX
         assert rendu["status"] == "partial"
         assert str(TOURS_MAX) in rendu["response"]
+
+
+# --- Ce que mattpocock/skills a fait mesurer ici (06/09/2026) -------------------------
+#
+# ATELIER etait absent de l'audit du catalogue de specialistes : aucune
+# methode de metier (tests, architecture, et desormais debugging) n'a
+# jamais atteint Dioumtoukay, alors qu'il est le seul agent qui peut
+# reellement reproduire un bug, le corriger et verifier — exactement ce que
+# la methode "debugging" decrit. Meme defaut que DEC-0061 (OpenViking),
+# trouve sur un quatrieme agent.
+
+class TestLaMethodeDeSpecialisteAtteintDioumtoukay:
+    @pytest.mark.asyncio
+    async def test_un_bug_convoque_la_methode_debugging(self, bac):
+        moteur = ModeleScripte("ACTION: terminer\nCONTENU:\nfini\nFIN")
+
+        await DioumtoukayAgent(provider=moteur, atelier=Atelier(racine=bac)).run(
+            "le script plante avec une erreur au demarrage")
+
+        assert "MÉTHODE DE SPÉCIALISTE" in moteur.consignes_vues[0]
+        assert "Diagnostic de bug" in moteur.consignes_vues[0]
+
+    @pytest.mark.asyncio
+    async def test_une_demande_ordinaire_ne_gonfle_pas_la_consigne(self, bac):
+        moteur = ModeleScripte("ACTION: terminer\nCONTENU:\nfini\nFIN")
+
+        await DioumtoukayAgent(provider=moteur, atelier=Atelier(racine=bac)).run(
+            "range mon dossier telechargements")
+
+        assert "MÉTHODE DE SPÉCIALISTE" not in moteur.consignes_vues[0]
+
+    @pytest.mark.asyncio
+    async def test_la_consigne_de_base_reste_presente_avec_une_methode(self, bac):
+        """La méthode s'ajoute, elle ne remplace jamais la discipline de base."""
+        moteur = ModeleScripte("ACTION: terminer\nCONTENU:\nfini\nFIN")
+
+        await DioumtoukayAgent(provider=moteur, atelier=Atelier(racine=bac)).run(
+            "il y a un bug dans ce module")
+
+        assert "Tu es Dioumtoukay" in moteur.consignes_vues[0]
+
+
+# --- Ce que mini-SWE-agent a fait mesurer ici (06/09/2026) ---------------------------
+#
+# TOURS_MAX bornait deja les tours, mais rien ne detectait un moteur qui ne
+# produit jamais le format demande (il consommait tout le budget sans qu'une
+# seule action ne parte), et rien ne bornait le TEMPS (douze tours sur des
+# commandes lentes autorisent une session de plusieurs dizaines de minutes).
+# Concepts verifies dans le code source de mini-SWE-agent
+# (`AgentConfig.max_consecutive_format_errors`, `wall_time_limit_seconds`) —
+# jamais son code, jamais un deuxieme systeme de limites : les memes
+# compteurs que `TOURS_MAX`, dans la meme boucle.
+
+class TestIlSArreteAussiSurLesReponsesIllisibles:
+    @pytest.mark.asyncio
+    async def test_illisibles_d_affilee_arretent_avant_tours_max(self, bac):
+        from agents.dioumtoukay.dioumtoukay_agent import ILLISIBLES_CONSECUTIVES_MAX
+
+        illisibles = ["n'importe quoi, pas une action"] * ILLISIBLES_CONSECUTIVES_MAX
+
+        rendu = await agent(bac, *illisibles).run("vas-y")
+
+        assert rendu["actions"] == [], "aucune action n'a pu partir d'un moteur illisible"
+        assert rendu["status"] == "partial"
+        assert "illisible" in rendu["response"].lower()
+
+    @pytest.mark.asyncio
+    async def test_une_action_propre_reinitialise_le_compteur(self, bac):
+        """Illisible, puis une action propre, puis illisible : deux illisibles
+        NON consecutives ne doivent pas declencher l'arret anticipe."""
+        from agents.dioumtoukay.dioumtoukay_agent import ILLISIBLES_CONSECUTIVES_MAX
+
+        assert ILLISIBLES_CONSECUTIVES_MAX >= 2, "le test suppose au moins deux"
+        rendu = await agent(
+            bac,
+            "n'importe quoi",
+            "ACTION: lister\nCHEMIN: .",
+            "n'importe quoi",
+            "ACTION: terminer\nCONTENU:\nfini\nFIN",
+        ).run("vas-y")
+
+        assert rendu["status"] == "success"
+        assert len(rendu["actions"]) == 1
+
+
+class TestIlSArreteAussiSurLeTemps:
+    @pytest.mark.asyncio
+    async def test_le_temps_ecoule_arrete_le_travail(self, bac, monkeypatch):
+        import agents.dioumtoukay.dioumtoukay_agent as module
+
+        monkeypatch.setattr(module, "DUREE_MAX_SECONDES", 0)
+        boucle = ["ACTION: lister\nCHEMIN: ."] * 5
+
+        rendu = await agent(bac, *boucle).run("vas-y")
+
+        assert rendu["actions"] == [], "le temps est deja ecoule avant le premier tour"
+        assert rendu["status"] == "partial"
+        assert "minute" in rendu["response"].lower()
 
 
 # --- Le branchement --------------------------------------------------------------------

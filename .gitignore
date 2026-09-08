@@ -34,6 +34,12 @@ data/database/adresse_machine.json
 data/sauvegardes/*.db
 data/cache/*
 data/embeddings/*
+
+# Le journal durable des travaux de Dioumtoukay (DEC-0072). Il porte les
+# DEMANDES du proprietaire et les chemins de ses fichiers : c'est de la donnee
+# personnelle, jamais du source. Le depot porte le module qui l'ecrit
+# (`core/execution/reprise.py`), pas son contenu.
+data/travaux/*
 data/documents/*
 !data/documents/.gitkeep
 data/rag/*
@@ -118,3 +124,46 @@ tools/vision/faceplugin/
 # son installeur. La notice MIT voyage avec le moteur, dans son propre
 # LICENSE, jamais separee de lui.
 tools/design/ui_ux_pro_max/
+
+# --- Graphify : graphe structurel du depot, jamais commite ----------------
+#
+# graph.json/graph.html/GRAPH_REPORT.md a la racine sont GENERES par la
+# capacite "construire" (DEC-0046) : un cache local qui peut nommer chaque
+# fonction et fichier du depot. Rien de secret en soi, mais rien d'utile a
+# versionner non plus — reconstruit en une commande, chez qui en a besoin.
+graphify-out/
+
+# --- Lean 4 : moteur externe de verification formelle, hors du depot -------
+#
+# Celui-ci est Apache-2.0, donc rien n'interdirait de le versionner. Il reste
+# dehors par CONVENTION — la meme que pour UI/UX Pro Max juste au-dessus —
+# et pour une raison de poids qui, elle, ne se discute pas : le toolchain
+# decompresse fait **2,9 Go**. Un depot PUBLIC (DEC-0039) ne porte pas un
+# compilateur.
+#
+# Ce que le depot porte : `core/connectors/lean_formel.py`, l'agent qui
+# l'appelle, leurs tests, et la commande d'installation dans
+# `docs/COMMANDES_PC.md`. La licence Apache-2.0 voyage avec le moteur, dans
+# son propre LICENSE, jamais separee de lui.
+tools/formel/
+
+# Les preuves verifiees : des artefacts produits par la machine, refaits a
+# chaque verification. Comme `data/audio/` et `data/montages/`.
+data/preuves/
+
+# --- Pascal Editor : moteur d'architecture 3D, hors du depot (DEC-0070) -----
+#
+# `@pascal-app/mcp` + `@pascal-app/core` sont **MIT**, donc rien n'interdirait
+# de les versionner. Ils restent dehors pour deux raisons mesurees :
+# `node_modules` pese 205 Mo, et ARENA est un projet Python — y faire entrer
+# un arbre npm melangerait deux ecosystemes dans le meme depot.
+#
+# Ce que le depot porte : `core/architecture/` (la capacite, le vocabulaire,
+# le plan), `core/connectors/architecture_3d.py` et ses tests. Aucune ligne
+# de Pascal.
+#
+# Ce dossier ne porte RIEN de versionne, comme tous les moteurs externes.
+# Ce qu'il faut installer est declare par ARENA elle-meme dans
+# `core/architecture/paquets.json` — il epingle `zod` a 4.3.5, sans quoi
+# toutes les ecritures de Pascal echouent. Voir `docs/COMMANDES_PC.md`.
+tools/architecture/pascal/

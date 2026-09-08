@@ -125,6 +125,9 @@ VOIE_PAR_INTENTION: Dict[str, Voie] = {
     # de design, en tirer des choix, les justifier. Plusieurs passes sur la
     # machine, jamais un aller dehors.
     "DESIGN_UI": Voie.PROFONDE,
+    # Generer du CODE d'interface est une redaction structuree (comme
+    # DESIGN_UI), pas une classification par mots-cles — la voie PROFONDE.
+    "UI_GENERATE": Voie.PROFONDE,
     # Le son ne demande aucun raisonnement au modele : la capacite se
     # choisit par mots-cles et c'est VoiceStudio qui travaille. La voie
     # LEGERE, donc — attendre le modele profond serait du temps perdu.
@@ -132,6 +135,13 @@ VOIE_PAR_INTENTION: Dict[str, Voie] = {
     "SWE_FIX": Voie.PROFONDE,
     "REPO_ENGINEERING": Voie.PROFONDE,
     "DEEP_REASONING": Voie.PROFONDE,
+    # Ecrire du Lean juste est la tache de raisonnement la plus exigeante
+    # d'ARENA : l'enonce doit etre formalise, et le moindre detail faux fait
+    # rejeter la preuve par le compilateur. S'y ajoutent une compilation reelle
+    # et, en cas de rejet, une correction avec le diagnostic (DEC-0067) —
+    # plusieurs passes par construction, donc PROFONDE.
+    "PREUVE_FORMELLE": Voie.PROFONDE,
+    "ARCHITECTURE_3D": Voie.INSTANTANEE,
     # Dioumtoukay enchaine plusieurs actions reelles, chacune suivie d'un
     # retour a lire avant la suivante (DEC-0038) : par construction, plusieurs
     # passes sur la machine. Il ne sort pas chercher dehors — ce qu'il lit vient

@@ -13,8 +13,9 @@
 import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  AlertTriangle, Ban, Check, Clapperboard, Eye, FileVideo2, Film, Loader2,
-  Mic2, Paperclip, Scissors, Sparkles, Subtitles, UserRoundCog, Video, X,
+  AlertTriangle, AudioLines, Ban, Check, Clapperboard, Eye, FileVideo2, Film,
+  Image, Languages, Loader2, Mic2, Paperclip, RectangleHorizontal,
+  RectangleVertical, Scissors, Sparkles, Subtitles, UserRoundCog, Video, Wand2, X,
 } from 'lucide-react';
 import {
   CapaciteVideo, CAPACITES_VIDEO, EtapeProjetResultat, useVideoProject,
@@ -31,6 +32,12 @@ const ICONE_CAPACITE: Record<CapaciteVideo, typeof Eye> = {
   narration: Mic2,
   xaar_kaname: UserRoundCog,
   montage: Scissors,
+  krillin_subtitle: Languages,
+  krillin_tts: AudioLines,
+  krillin_render_horizontal: RectangleHorizontal,
+  krillin_render_vertical: RectangleVertical,
+  krillin_cover: Image,
+  drift: Wand2,
 };
 
 function labelCapacite(c: CapaciteVideo, fr: boolean): string {
@@ -42,6 +49,12 @@ function labelCapacite(c: CapaciteVideo, fr: boolean): string {
     xaar_kaname: ['Visage (Xaar Kaname)', 'Face (Xaar Kaname)'],
     narration: ['Narration', 'Narration'],
     montage: ['Montage', 'Editing'],
+    krillin_subtitle: ['Sous-titres traduits (KrillinAI)', 'Translated subtitles (KrillinAI)'],
+    krillin_tts: ['Doublage (KrillinAI)', 'Dubbing (KrillinAI)'],
+    krillin_render_horizontal: ['Rendu horizontal (KrillinAI)', 'Horizontal render (KrillinAI)'],
+    krillin_render_vertical: ['Rendu vertical (KrillinAI)', 'Vertical render (KrillinAI)'],
+    krillin_cover: ['Couverture (KrillinAI)', 'Cover image (KrillinAI)'],
+    drift: ['Montage IA (Drift)', 'AI editing (Drift)'],
   };
   return fr ? labels[c][0] : labels[c][1];
 }

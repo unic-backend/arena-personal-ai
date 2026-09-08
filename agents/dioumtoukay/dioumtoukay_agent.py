@@ -34,16 +34,19 @@ from __future__ import annotations
 import logging
 import re
 import shlex
+import time
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Dict, List, Optional
 
 from core.actions.resultat import Statut
 from core.agent.base_agent import BaseAgent
+from core.execution.reprise import JournalDeReprise
 from core.memory.conversation import retenir_l_echange
 from core.memory.memory_manager import MemoryManager
 from core.memory.personnelle import MemoirePersonnelle
 from core.models.base import ModelProvider
+from core.specialistes.selection import bloc_de_methode, choisir
 from tools.atelier.atelier import Atelier, Resultat
 
 logger = logging.getLogger("usman.agent.dioumtoukay")
@@ -53,16 +56,33 @@ logger = logging.getLogger("usman.agent.dioumtoukay")
 #: et on le dit, plutôt que de continuer indéfiniment.
 TOURS_MAX = 12
 
+#: Au-delà, le travail s'arrête même si `TOURS_MAX` n'est pas atteint. Une
+#: action peut coûter jusqu'à `DELAI_PAR_DEFAUT` (`Atelier`, 120s) : sans
+#: plafond de temps, douze tours sur des commandes lentes autorisent une
+#: session de plusieurs dizaines de minutes. Concept vérifié dans le code
+#: source de mini-SWE-agent (`AgentConfig.wall_time_limit_seconds`) — 0
+#: désactiverait la limite, comme chez eux, mais rien ici n'a demandé à la
+#: désactiver.
+DUREE_MAX_SECONDES = 20 * 60
+
+#: Au-delà, une réponse illisible D'AFFILÉE n'est plus une réponse à renvoyer
+#: une fois de plus : c'est un moteur qui ne sait pas produire le format
+#: demandé, et continuer jusqu'à `TOURS_MAX` ne ferait que consommer le budget
+#: sans qu'aucune action ne parte jamais. Concept vérifié dans le code source
+#: de mini-SWE-agent (`AgentConfig.max_consecutive_format_errors`, défaut 3,
+#: `DefaultAgent.run` : le compteur revient à zéro dès qu'un tour est propre).
+ILLISIBLES_CONSECUTIVES_MAX = 3
+
 #: Les actions qu'il sait faire. Toute autre étiquette est refusée et lui est
 #: renvoyée telle quelle — corriger sa faute à sa place lui apprendrait à
 #: écrire n'importe quoi.
 #:
-#: `analyser` et `diagnostiquer` datent de DEC-0041 : avant, `RepoEngineerAgent`
+#: `analyser` et `diagnostiquer` datent de DEC-0073 : avant, `RepoEngineerAgent`
 #: et `SWEAgent` étaient deux portes séparées que le propriétaire devait choisir
 #: à la place de Dioumtoukay — leur analyse ne lui servait jamais. Elles
 #: deviennent ici des outils qu'il consulte lui-même, en cours de tâche.
 #: `ouvrir_pr` et `etat_ci` : le connecteur GitHub (core/connectors/github.py,
-#: DEC-0041), le premier acces de Dioumtoukay a l'API GitHub — jusqu'ici,
+#: DEC-0073), le premier acces de Dioumtoukay a l'API GitHub — jusqu'ici,
 #: seul `git` en shell nu, sans PR ni CI. `ouvrir_pr` passe par la meme
 #: confirmation que toute autre ecriture externe (config/permissions_
 #: services.yaml) : Dioumtoukay ne peut pas la contourner en l'appelant.
@@ -249,7 +269,8 @@ class DioumtoukayAgent(BaseAgent):
                  atelier: Optional[Atelier] = None,
                  memoire_longue: Optional[MemoirePersonnelle] = None,
                  analyste: Optional[Any] = None, chercheur_de_bug: Optional[Any] = None,
-                 connecteur_github: Optional[Any] = None):
+                 connecteur_github: Optional[Any] = None,
+                 reprises: Optional[JournalDeReprise] = None):
         super().__init__(
             name="DioumtoukayAgent",
             description="Agent qui travaille reellement sur les fichiers, "
@@ -263,7 +284,7 @@ class DioumtoukayAgent(BaseAgent):
         # differents dans ce projet, et les confondre reviendrait a n'ecrire
         # nulle part.
         self.memoire_longue = memoire_longue
-        # DEC-0041 : deux specialistes en lecture seule, consultes en cours de
+        # DEC-0073 : deux specialistes en lecture seule, consultes en cours de
         # tache plutot que d'etre deux portes separees. Optionnels — sans eux,
         # `analyser`/`diagnostiquer` repondent qu'ils manquent, comme toute
         # capacite non branchee ailleurs dans ARENA.
@@ -273,6 +294,12 @@ class DioumtoukayAgent(BaseAgent):
         # y passe par la meme confirmation que toute autre ecriture externe —
         # Dioumtoukay ne contourne rien en l'appelant, il herite de la garde.
         self.connecteur_github = connecteur_github
+        # Le journal DURABLE de ce qu'il a deja fait (DEC-0072). La memoire
+        # longue garde un RESUME de chaque travail ; celui-ci garde les ETAPES,
+        # pour qu'une tache arretee a la 12e action reprenne a la 13e au lieu
+        # de tout refaire. Les deux ne font pas double emploi : l'une sert a se
+        # souvenir, l'autre a continuer.
+        self.reprises = reprises if reprises is not None else JournalDeReprise()
 
     # --- Exécution d'une action ---------------------------------------------------
 
@@ -404,15 +431,41 @@ class DioumtoukayAgent(BaseAgent):
         # pour redire ce que le journal du travail raconte deja mieux.
         reperes = self._reperes()
 
-        journal_du_travail: List[str] = []
+        # La methode d'un specialiste (`debugging`/`tests`/`architecture`...,
+        # `core/specialistes/catalogue.py`) n'atteignait jamais Dioumtoukay :
+        # ATELIER etait meme absent de l'audit qui verifie que chaque
+        # intention utile a une methode ou une raison ecrite. Calculee une
+        # fois, comme les reperes : la demande ne change pas en cours de
+        # travail.
+        methode = bloc_de_methode(choisir(user_input, "ATELIER"))
+        consigne = f"{CONSIGNE}\n\n{methode}" if methode else CONSIGNE
+
+        # Une tache interrompue reprend ici, avec ses etapes deja faites en
+        # guise de journal de depart : le modele voit ce qui a tourne et
+        # enchaine, au lieu de relire et rechercher ce qu'il avait deja lu.
+        tache = self.reprises.ouvrir(user_input)
+        journal_du_travail: List[str] = list(tache.deja_fait())
+        reprise = bool(journal_du_travail)
+        if reprise:
+            logger.info("Reprise de la tache %s : %d etapes deja faites.",
+                        tache.identifiant, len(journal_du_travail))
         rendu: List[Dict[str, Any]] = []
         conclusion = ""
         arrete_par_lui_meme = False
+        debut = time.monotonic()
+        illisibles_consecutives = 0
 
         for tour in range(1, TOURS_MAX + 1):
+            ecoule = time.monotonic() - debut
+            if ecoule >= DUREE_MAX_SECONDES:
+                conclusion = (
+                    f"Arrete apres {int(ecoule // 60)} minutes sans avoir conclu. "
+                    "Ce qui a ete fait est ci-dessous ; la suite reste a faire.")
+                break
+
             invite = self._invite(reperes, user_input, journal_du_travail)
             try:
-                reponse = await self.provider.generate(prompt=invite, system_prompt=CONSIGNE)
+                reponse = await self.provider.generate(prompt=invite, system_prompt=consigne)
             except Exception as erreur:  # noqa: BLE001 — l'echec se nomme
                 logger.warning("Dioumtoukay : le moteur n'a pas repondu : %s", erreur)
                 conclusion = f"Le moteur n'a pas repondu au tour {tour} : {erreur}"
@@ -420,19 +473,35 @@ class DioumtoukayAgent(BaseAgent):
 
             action = analyser_action(reponse)
             if action is None:
+                illisibles_consecutives += 1
                 journal_du_travail.append(
                     "Reponse illisible : il faut UNE action au format demande.")
+                if illisibles_consecutives >= ILLISIBLES_CONSECUTIVES_MAX:
+                    conclusion = (
+                        f"Arrete apres {illisibles_consecutives} reponses illisibles "
+                        "d'affilee : le moteur ne produit pas le format demande.")
+                    break
                 continue
+            illisibles_consecutives = 0
 
             if action.nom == "terminer":
                 conclusion = action.contenu.strip() or reponse.strip()
                 arrete_par_lui_meme = True
                 break
 
+            debut_action = time.monotonic()
             resultat = await self._executer_action(action)
+            duree_ms = int((time.monotonic() - debut_action) * 1000)
             rendu.append({"action": action.nom, "champs": action.champs,
                           **resultat.to_dict()})
             journal_du_travail.append(self._compte_rendu(action, resultat))
+            # Ecrit MAINTENANT, pas a la fin : une tache tuee au milieu doit
+            # laisser exactement ce qu'elle avait fait.
+            self.reprises.noter(
+                tache, action.nom,
+                cible=str(action.champs.get("CHEMIN") or action.champs.get("MOTIF") or ""),
+                ok=resultat.ok, resume=self._compte_rendu(action, resultat),
+                duree_ms=duree_ms)
 
         if not arrete_par_lui_meme and not conclusion:
             # La borne est atteinte. Le dire : un rapport qui s'arrete sans
@@ -444,12 +513,22 @@ class DioumtoukayAgent(BaseAgent):
 
         self._retenir(user_input, conclusion, rendu)
 
+        # Terminee, ou interrompue donc REPRENABLE. C'est cette distinction qui
+        # fait la difference entre « la suite reste a faire » (une phrase) et
+        # « la suite reprendra ici » (un etat).
+        if arrete_par_lui_meme:
+            self.reprises.terminer(tache, conclusion)
+        else:
+            self.reprises.interrompre(tache, conclusion)
+
         return {
             "status": "success" if arrete_par_lui_meme else "partial",
             "agent": self.name,
             "actions": rendu,
             "fichiers_modifies": self.fichiers_touches(rendu),
             "response": self._rapport(conclusion, rendu),
+            "tache": tache.journal(),
+            "reprise": reprise,
         }
 
     # --- Ce qu'il voit, et ce qu'il rend ---------------------------------------------

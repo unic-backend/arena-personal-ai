@@ -103,7 +103,33 @@ class TestLeClientEstCeluiQuOnDonne:
         assert "jamais ceux d'une affaire passee" in instruction
 
     def test_l_instruction_demande_au_lieu_de_supposer(self):
-        assert "tu les demandes" in composer_instruction(METIER)
+        """La garantie : ARENA demande le destinataire au lieu de l'inventer.
+
+        Ce test cherchait la chaine litterale « tu les demandes » — donc une
+        FORMULATION, pas un comportement. Reecrire la consigne le cassait sans
+        qu'aucune garantie ne soit perdue (mesure du 07/09/2026, DEC-0071).
+        Il verifie desormais ce qu'il pretend proteger : que les trois
+        questions exactes sont bien la, celles que
+        `destinataire_depuis_l_historique` sait relire.
+        """
+        instruction = composer_instruction(METIER)
+
+        assert "Quel est le nom du client ?" in instruction
+        assert "Quel est le lieu du chantier ?" in instruction
+        assert "Quelles sont les prestations souhaitees ?" in instruction
+
+    def test_les_questions_ne_barrent_pas_une_question_technique(self):
+        """Un metre n'a pas de destinataire (DEC-0071).
+
+        Sa capture du 07/09/2026 : toutes les cotes donnees, et trois questions
+        de formulaire en retour. Les questions restent — un devis part vraiment
+        chez quelqu'un — mais apres avoir repondu, et seulement pour un
+        document qui part.
+        """
+        instruction = composer_instruction(METIER)
+
+        assert "REPONDS D'ABORD" in instruction
+        assert "DOCUMENT qui partira chez quelqu'un" in instruction
 
 
 class TestLesMetiersQuiNeSontPasLesSiens:

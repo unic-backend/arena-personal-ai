@@ -459,6 +459,30 @@ class TestVoiceStudioEstDiagnostique:
         import inspect
         assert 'mesurer("Voix (VoiceStudio)"' in inspect.getsource(doctor)
 
+    def test_un_moteur_non_commercial_seul_n_est_pas_OK(self):
+        """DEC-0069 : « installé » ne veut pas dire « utilisable pour UniC ».
+
+        Les poids d'OmniVoice sont CC-BY-NC, et c'est le moteur par défaut de
+        VoiceStudio. Un `[OK]` ici lui ferait croire à une capacité qu'ARENA
+        refusera d'exercer sur ses vidéos — le mensonge exact que le reste de
+        cette classe empêche déjà pour un port qui répond sans moteur.
+        """
+        v = doctor.verifier_voicestudio(
+            self._lecteur(tts=("omnivoice",), asr=("faster-whisper",)))
+
+        assert v.etat is NON_CONFIGURE
+        assert "non commercial" in v.detail
+        assert "cosyvoice" in v.remede, "le remède doit nommer une porte de sortie"
+
+    def test_un_moteur_permissif_a_cote_rend_le_diagnostic_OK_mais_dit_l_ecart(self):
+        """Il peut travailler : ARENA écarte OmniVoice et le lui dit."""
+        v = doctor.verifier_voicestudio(
+            self._lecteur(tts=("omnivoice", "cosyvoice"), asr=()))
+
+        assert v.etat is OK
+        assert "cosyvoice" in v.detail
+        assert "omnivoice" in v.detail and "non commercial" in v.detail
+
 
 class TestModeleEmbeddings:
     """Le diagnostic doit nommer le modèle qu'ARENA demande, pas un autre.

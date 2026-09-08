@@ -57,6 +57,15 @@ class TestLeClassement:
         """« transcris ce qu'il dit » contient « dis » : l'écoute prime."""
         assert genre_de_demande("transcris ce qu'il dit à voix haute") == "ecouter"
 
+    @pytest.mark.parametrize("phrase", [
+        "clone cette voix et dis bonjour",
+        "clone la voix de ce client",
+        "cloner cette voix pour la narration",
+        "clonage vocal de cet enregistrement",
+    ])
+    def test_ce_qui_demande_de_cloner(self, phrase):
+        assert genre_de_demande(phrase) == "cloner"
+
 
 class TestLeTexteALire:
     def test_ce_qui_est_entre_guillemets_gagne(self):
@@ -147,6 +156,49 @@ class TestLaChaine:
         assert r["status"] == "error"
 
 
+class TestLeClonage:
+    """L'agent ne devine ni la reference, ni le texte, ni l'autorisation."""
+
+    @pytest.mark.asyncio
+    async def test_sans_reference_audio_il_le_dit(self, audio):
+        agent = audio()
+        r = await agent.run("clone cette voix et dis bonjour",
+                            context={"medias": []})
+        assert r["status"] == "error"
+        assert agent.registre.appels == []
+
+    @pytest.mark.asyncio
+    async def test_sans_autorisation_il_refuse_avant_d_appeler_le_connecteur(
+        self, audio, tmp_path
+    ):
+        media = tmp_path / "reference.wav"
+        media.write_bytes(b"x")
+        agent = audio()
+        r = await agent.run('clone cette voix, dis « Bonjour »',
+                            context={"medias": [str(media)]})
+        assert r["status"] == "error"
+        assert "autorisation" in r["response"].lower()
+        assert agent.registre.appels == [], (
+            "le connecteur ne doit jamais etre appele sans autorisation declaree"
+        )
+
+    @pytest.mark.asyncio
+    async def test_avec_reference_texte_et_autorisation_le_connecteur_est_appele(
+        self, audio, tmp_path
+    ):
+        media = tmp_path / "reference.wav"
+        media.write_bytes(b"x")
+        agent = audio()
+        await agent.run('clone cette voix, dis « Bonjour Dakar »', context={
+            "medias": [str(media)], "autorisation": "Fatou, proprietaire de la voix",
+        })
+        connecteur, capacite, parametres = agent.registre.appels[0]
+        assert (connecteur, capacite) == ("audio", "cloner")
+        assert parametres["texte"] == "Bonjour Dakar"
+        assert parametres["ref_audio"] == str(media)
+        assert parametres["autorisation"] == "Fatou, proprietaire de la voix"
+
+
 class TestPasDeDoublon:
     """ARENA fabrique déjà les sous-titres (studio). L'audio ne les reprend pas."""
 
@@ -158,3 +210,66 @@ class TestPasDeDoublon:
         assert genre_de_demande(phrase) != "ecouter", (
             "l'audio a repris une capacité que le studio fait déjà de bout en bout"
         )
+
+
+class TestLUsageCommercialEstLeDefaut:
+    """DEC-0069 : la licence des poids remonte jusqu'à la phrase du propriétaire.
+
+    Le routeur (`core/audio/routage_tts.py`) refuse les poids CC-BY-NC pour un
+    travail commercial. Encore faut-il que l'agent lui dise de quel travail il
+    s'agit — et qu'il ne le dise jamais de travers.
+    """
+
+    @pytest.mark.asyncio
+    async def test_une_voix_off_ordinaire_est_un_travail_commercial(self, audio):
+        """UniC est une entreprise : le défaut ne peut pas être « recherche »."""
+        agent = audio()
+
+        await agent.run('lis-moi « Bonjour, ici UniC Plaquiste »')
+
+        _, capacite, parametres = agent.registre.appels[0]
+        assert capacite == "parler"
+        assert parametres["usage"] == "", (
+            "l'agent doit laisser le connecteur appliquer son defaut commercial, "
+            "jamais declarer un usage a sa place")
+
+    @pytest.mark.asyncio
+    async def test_la_porte_recherche_existe_vraiment(self, audio):
+        """Une capacité qu'aucune phrase n'atteint est morte (DEC-0061, DEC-0068)."""
+        agent = audio()
+
+        await agent.run("lis-moi « essai »", context={"usage": "recherche"})
+
+        assert agent.registre.appels[0][2]["usage"] == "recherche"
+
+    @pytest.mark.asyncio
+    async def test_la_narration_video_passe_par_la_meme_porte(self, audio):
+        """Le chemin exact de `production_agent._appeler_narration`.
+
+        La voix off d'une vidéo de chantier est le cas commercial par
+        excellence. Elle n'a pas de câblage à part : elle traverse cet agent,
+        donc le même routeur, donc la même règle de licence.
+        """
+        agent = audio()
+
+        await agent.run("narration", context={"texte": "Chantier Ouakam, jour 3",
+                                              "langue": "fr"})
+
+        _, capacite, parametres = agent.registre.appels[0]
+        assert capacite == "parler"
+        assert parametres["texte"] == "Chantier Ouakam, jour 3"
+        assert parametres["usage"] == ""
+
+    @pytest.mark.asyncio
+    async def test_le_clonage_declare_aussi_son_usage(self, audio, tmp_path):
+        media = tmp_path / "voix.wav"
+        media.write_bytes(b"x")
+        agent = audio()
+
+        await agent.run("clone cette voix", context={
+            "medias": [str(media)], "texte": "bonjour",
+            "autorisation": "Ousmane Diop, proprietaire de la voix"})
+
+        _, capacite, parametres = agent.registre.appels[0]
+        assert capacite == "cloner"
+        assert "usage" in parametres

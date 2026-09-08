@@ -51,6 +51,13 @@ PARLER = (
     "genere une voix", "génère une voix", "synthese vocale", "synthèse vocale",
 )
 
+#: Ce qui demande de CLONER une voix. Teste avant PARLER : "clone cette voix,
+#: dis bonjour" ne doit pas retomber sur la synthese ordinaire.
+CLONER = (
+    "clone cette voix", "clone la voix", "cloner cette voix", "cloner la voix",
+    "clonage vocal", "clone sa voix", "clone ma voix",
+)
+
 #: Les extensions qu'un moteur de transcription sait ouvrir. ffmpeg tire la
 #: piste audio d'une video, donc les conteneurs video en font partie.
 EXTENSIONS_ECOUTABLES = frozenset({
@@ -60,14 +67,16 @@ EXTENSIONS_ECOUTABLES = frozenset({
 
 
 def genre_de_demande(phrase: str) -> str:
-    """`ecouter`, `parler` ou `moteurs` — decide sans appeler le modele.
+    """`ecouter`, `cloner`, `parler` ou `moteurs` — decide sans appeler le modele.
 
     Le repli par mots-cles reste le SEUL classificateur quand Ollama est
-    eteint, et ces trois cas se distinguent sans modele.
+    eteint, et ces quatre cas se distinguent sans modele.
     """
     texte = (phrase or "").lower()
     if any(mot in texte for mot in ECOUTER):
         return "ecouter"
+    if any(mot in texte for mot in CLONER):
+        return "cloner"
     if any(mot in texte for mot in PARLER):
         return "parler"
     return "moteurs"
@@ -122,6 +131,8 @@ class AudioAgent(BaseAgent):
         genre = genre_de_demande(user_input)
         if genre == "ecouter":
             return self._ecouter(user_input, contexte)
+        if genre == "cloner":
+            return self._cloner(user_input, contexte)
         if genre == "parler":
             return self._parler(user_input, contexte)
         return self._moteurs()
@@ -149,11 +160,51 @@ class AudioAgent(BaseAgent):
         if not texte:
             return self._erreur("Dis-moi quoi lire : je ne devine pas le texte.")
         # Ecriture : le connecteur la fait passer par la file de confirmation.
+        # `usage` absent = commercial (DEC-0069). UniC est une entreprise, et
+        # une voix off de chantier est un usage commercial : c'est le defaut
+        # sur : se tromper dans ce sens coute une gene, dans l'autre une
+        # violation de licence silencieuse. La porte « recherche » existe
+        # quand meme, sinon elle serait une capacite morte de plus.
         resultat = self.registre.executer(
             CONNECTEUR, "parler", texte=texte,
             langue=str(contexte.get("langue") or "fr"),
-            voix=str(contexte.get("voix") or "default"))
+            voix=str(contexte.get("voix") or "default"),
+            usage=str(contexte.get("usage") or ""),
+            instruct=str(contexte.get("voice_design") or ""))
         return self._depuis(resultat, action="parler", texte_lu=texte)
+
+    def _cloner(self, phrase: str, contexte: Dict[str, Any]) -> Dict[str, Any]:
+        """Cloner une voix : jamais sans reference reelle ni autorisation declaree.
+
+        L'appelant fournit les trois — le fichier de reference (deja borne au
+        dossier `media/`, meme discipline que `_fichier_ecoutable`), le texte a
+        dire, et qui a autorise cette voix. Rien n'est devine : c'est le
+        connecteur lui-meme qui refuse en plus une autorisation vide
+        (`core/connectors/audio_voix.py::_cloner`), mais l'agent le dit tout de
+        suite pour ne pas faire attendre un aller-retour pour rien.
+        """
+        ref_audio = self._fichier_ecoutable(contexte)
+        if ref_audio is None:
+            return self._erreur(
+                "Je ne vois aucun enregistrement de reference a cloner. "
+                "Depose-le dans tes medias et redemande."
+            )
+        texte = str(contexte.get("texte") or "").strip() or texte_a_lire(phrase)
+        if not texte:
+            return self._erreur("Dis-moi ce que la voix clonee doit dire.")
+        autorisation = str(contexte.get("autorisation") or "").strip()
+        if not autorisation:
+            return self._erreur(
+                "Le clonage vocal exige une autorisation explicite : qui a "
+                "autorise l'usage de cette voix ?"
+            )
+        resultat = self.registre.executer(
+            CONNECTEUR, "cloner", texte=texte, ref_audio=str(ref_audio),
+            ref_text=str(contexte.get("ref_text") or ""),
+            autorisation=autorisation,
+            usage=str(contexte.get("usage") or ""),
+            langue=str(contexte.get("langue") or "fr"))
+        return self._depuis(resultat, action="cloner", ref_audio=str(ref_audio))
 
     # --- Outils ---------------------------------------------------------------
 
