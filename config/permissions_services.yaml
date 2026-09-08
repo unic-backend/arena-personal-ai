@@ -175,6 +175,17 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     export:      {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
 
+  # GitHub (DEC-0041). Une branche creee n'est visible que dans le depot lui
+  # meme et se supprime sans consequence — meme risque que le `git push` deja
+  # sans confirmation sous DEC-0038. Une Pull Request, elle, est visible sur
+  # un depot PUBLIC (DEC-0039) : confirmation, ET elle s'ouvre en brouillon
+  # meme une fois confirmee (core/connectors/github.py). Les deux gardes sont
+  # deliberement redondantes.
+  github:
+    read:        {decision: ALLOWED,      risque: LOW}
+    write:       {decision: ALLOWED,      risque: LOW}
+    create_pr:   {decision: CONFIRMATION, risque: HIGH}
+
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail

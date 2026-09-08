@@ -2,6 +2,60 @@
 
 ## [Non publié]
 
+### Ajouté — 08/09/2026 — Fusion Open SWE : une capacité, pas un deuxième agent (DEC-0041)
+
+Mission du propriétaire : exploiter les meilleures capacités d'Open SWE
+(`langchain-ai/open-swe`) pour renforcer le Software Engineering d'ARENA,
+sans créer un deuxième agent de code indépendant. Audit complet des deux
+côtés d'abord — `docs/audits/open_swe_audit.md` — puis fusion.
+
+**Le défaut trouvé par l'audit** : ARENA avait déjà quatre entrées vers le
+code, choisies par mots-clés, jamais reliées entre elles. `RepoEngineerAgent`
+et `SWEAgent` analysaient et concluaient sans jamais passer la main à
+Dioumtoukay, qui est le seul à pouvoir agir — le propriétaire devait deviner
+laquelle des quatre portes ouvrir.
+
+**Ce qui a changé :**
+
+- `core/connectors/github.py` — le premier connecteur GitHub de ce dépôt.
+  Lecture de fichier, recherche de code, création de branche (`ALLOWED`,
+  même risque que le `git push` déjà libre sous DEC-0038), Pull Request
+  (**`CONFIRMATION` et brouillon par défaut, délibérément redondants**),
+  état de CI, commentaires de revue. Chaque appel best-effort — une panne
+  réseau devient un échec rapporté, jamais une exception.
+- `RepoEngineerAgent` et `SWEAgent` deviennent des **outils que Dioumtoukay
+  consulte lui-même** en cours de tâche (`ACTION: analyser`,
+  `ACTION: diagnostiquer`) — plutôt que deux portes séparées que le
+  propriétaire choisissait à sa place. Leur réponse apparaît en entier dans
+  le rapport final ; un premier jet la cachait derrière « a répondu », défaut
+  trouvé par le test avant tout usage réel.
+- Dioumtoukay ouvre des Pull Requests et lit l'état de CI
+  (`ACTION: ouvrir_pr`, `ACTION: etat_ci`), via le même connecteur —
+  aucun raccourci qui contournerait sa confirmation.
+- `core/production/disponibilite_swe.py` — la capacité `software_engineering`
+  dit ce qui marche, backend par backend, sondé pour de vrai
+  (`GET /agent/capabilities`), jamais deviné de la présence d'un processus.
+
+**Ce qui n'entre pas dans ARENA, et pourquoi** : ni LangGraph ni `deepagents`
+(le framework d'orchestration d'Open SWE — l'adopter aurait été, au sens le
+plus strict de la consigne du propriétaire, créer un deuxième agent de code
+caché sous un habillage unifié), ni les fournisseurs de bac à sable payants
+(E2B, Daytona, Modal, Runloop — aucun compte, aucune demande).
+
+**Explicitement différé, et dit comme tel** : un rôle de revue dédié
+(le graphe `reviewer` d'Open SWE) et la reprise d'une tâche interrompue **au
+milieu d'un appel d'outil** — le vrai « checkpoint » d'Open SWE, qui suppose
+de réécrire la boucle de Dioumtoukay autour d'un moteur à états persistants.
+
+Quatre sabotages ont trouvé de vrais défauts avant que ce travail ne soit
+poussé : un client HTTP injecté se fermait après le premier appel dans les
+tests (donc en usage réel aussi) ; le rapport de Dioumtoukay montrait
+« a répondu » au lieu de l'analyse elle-même ; la disponibilité des
+spécialistes se calculait par OR au lieu d'AND. Les quatre corrigés,
+re-sabotés, tiennent.
+
+44 tests nouveaux. Suite complète : voir le commit.
+
 ### Audit — 04/09/2026 — Travail de nuit : cinq défauts sur une suite verte
 
 Demande : *« verify ce qui est cassé, ce qui n'est pas testé, ce qui marche

@@ -50,6 +50,7 @@ from core.connectors.calendrier import CalendrierConnector
 from core.connectors.devis import DevisConnector
 from core.connectors.faceplugin import ConnecteurFaceplugin
 from core.connectors.galsen import GalsenConnector
+from core.connectors.github import ConnecteurGitHub
 from core.connectors.gmail import GmailConnector
 from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.montage import ConnecteurMontage
@@ -217,6 +218,14 @@ registre.declarer(
     lambda: GmailConnector(acces=acces, journal=journal, file_attente=file_attente,
                            crochets=crochets),
 )
+# GitHub (DEC-0041) : lecture de depot, recherche, branche, Pull Request en
+# brouillon, etat de CI, commentaires de revue. Le premier connecteur GitHub
+# de ce depot — jusqu'ici, seul Atelier.git() parlait a git, en shell nu.
+registre.declarer(
+    "github",
+    lambda: ConnecteurGitHub(acces=acces, journal=journal, file_attente=file_attente,
+                             crochets=crochets),
+)
 # Journal des actions a effet externe. Meme fichier que la memoire, table a part.
 journal = JournalDesActions(db_path=str(DB_PATH))
 # Memoire personnelle (souvenirs, entites, relations). Construite en phase 6.1
@@ -330,10 +339,14 @@ swe_agent = SWEAgent(provider=coder_provider, memory=memory)
 # Dioumtoukay : celui qui AGIT sur la machine (DEC-0038). Il recoit le
 # modele de code, et le journal — chacune de ses actions y laisse une trace,
 # qui est ce que le proprietaire relit apres coup.
+# `repo_engineer` et `swe_agent` sont ici ses outils, pas seulement leur porte
+# separee dans /api/chat (DEC-0041) : construits avant lui, ci-dessus.
 dioumtoukay_agent = DioumtoukayAgent(
     provider=coder_provider, memory=memory,
     atelier=Atelier(journal=journal),
-    memoire_longue=memoire_personnelle)
+    memoire_longue=memoire_personnelle,
+    analyste=repo_engineer, chercheur_de_bug=swe_agent,
+    connecteur_github=registre.obtenir("github"))
 # Raisonnement profond : plan, calcul reellement execute en bac a sable, puis
 # synthese. Le modele profond, parce que c'est la voie PROFONDE qui l'emprunte.
 # `/health` annoncait « ReasoningEngine » parmi les agents actifs alors qu'aucun

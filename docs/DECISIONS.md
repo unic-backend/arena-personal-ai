@@ -2578,3 +2578,77 @@ rien.**
 
 Si le serveur permanent tombe, le téléphone ne sait plus où est la machine et
 retombe sur ce qu'il a déjà enregistré : il perd la découverte, pas l'usage.
+
+---
+
+## DEC-0041 — La fusion Open SWE : une capacité, pas un deuxième agent
+
+**Date** : 08/09/2026
+**Statut** : accepté
+
+### Le constat, mesuré
+
+Demande du propriétaire, mot pour mot : *« Je veux exploiter les meilleures
+capacités de Open SWE pour renforcer la capacité de Software Engineering
+d'ARENA. NE crée PAS un deuxième coding agent indépendant. »*
+
+L'audit (`docs/audits/open_swe_audit.md`) mesure deux choses qui comptent
+plus que prévu :
+
+- ARENA a **quatre** entrées vers le code (Dioumtoukay, CoderAgent, SWEAgent,
+  RepoEngineerAgent), choisies par mots-clés, **jamais reliées entre elles**.
+  `SWEAgent` et `RepoEngineerAgent` analysent et concluent sans jamais
+  passer la main à celui qui pourrait agir.
+- Open SWE, contrairement à l'attente, est écrit en **Python** (LangGraph +
+  `deepagents`), pas en TypeScript — mais son moteur reste un framework
+  d'orchestration entier, avec ses propres dépendances et sa propre
+  infrastructure de déploiement (crons sur un serveur LangGraph).
+
+### La décision
+
+**Une capacité canonique, `software_engineering`**, choisie par le routeur
+de modèle exactement comme les autres capacités d'ARENA — aucun modèle ne
+sait quel backend répond. Un orchestrateur SWE, écrit en Python natif dans
+le style d'ARENA, décide entre :
+
+- **Dioumtoukay** pour le travail réel sur le dépôt (inchangé, DEC-0038
+  tient) ;
+- **CoderAgent** pour un script isolé (inchangé, DEC-0004 tient) ;
+- **`RepoEngineerAgent`** et **`SWEAgent`**, désormais des **outils internes**
+  que Dioumtoukay peut consulter en cours de tâche, plutôt que deux portes
+  séparées que le propriétaire devait deviner.
+
+**Un connecteur GitHub est créé — le premier de ce dépôt** — suivant le
+contrat `Connecteur` existant (`core/connectors/base.py`) : santé sondée,
+jamais supposée ; capacités déclarées ; permission vérifiée avant tout.
+Lecture de dépôt, recherche de code, création de branche : `ALLOWED`.
+Création de Pull Request : **`CONFIRMATION`**, et la PR s'ouvre **en
+brouillon** — les deux à la fois, parce que l'un est la garde d'ARENA (déjà
+éprouvée sur Gmail et les réseaux sociaux) et l'autre celle d'Open SWE ; rien
+n'oblige à choisir entre les deux.
+
+**Rien de LangGraph, rien de `deepagents`, aucun fournisseur de bac à sable
+payant (E2B, Daytona, Modal, Runloop) n'entre dans ARENA.** Adopter le
+framework d'orchestration d'Open SWE serait, au sens le plus strict de sa
+propre consigne, créer un deuxième agent de code indépendant — seulement
+caché sous un habillage « capacité unifiée ». Les fournisseurs de bac à
+sable payants n'ont ni compte ni demande derrière eux.
+
+**Ce qui est explicitement différé, et dit comme tel :** la reprise d'une
+tâche interrompue **au milieu d'un appel d'outil** (le vrai « checkpoint »
+d'Open SWE, porté par LangGraph) n'est pas construite ici — ce serait
+réécrire la boucle de Dioumtoukay autour d'un moteur à états persistants,
+un chantier à part. Ce qui est construit : un **état de tâche persistant**
+(plan, étapes déjà faites, dernier statut), qui permet à une nouvelle tâche
+de savoir où la précédente s'est arrêtée sans pouvoir reprendre le tour
+en cours. La différence est dite, pas maquillée.
+
+### Ce que ça coûte si c'est faux
+
+Si le connecteur GitHub s'avère mal fait, une PR non voulue peut se créer sur
+son dépôt public — d'où `CONFIRMATION` **et** le brouillon par défaut,
+délibérément redondants. Si l'unification des quatre agents en une capacité
+casse un chemin qui marchait, les quatre routes historiques (`ATELIER`,
+`CODE_EXECUTION`, `SWE_FIX`, `REPO_ENGINEERING`) restent atteignables : la
+capacité nouvelle s'ajoute, elle ne supprime aucune porte existante avant
+d'avoir prouvé qu'elle les remplace toutes.

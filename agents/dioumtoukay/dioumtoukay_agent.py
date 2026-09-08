@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Dict, List, Optional
 
+from core.actions.resultat import Statut
 from core.agent.base_agent import BaseAgent
 from core.memory.conversation import retenir_l_echange
 from core.memory.memory_manager import MemoryManager
@@ -55,17 +56,32 @@ TOURS_MAX = 12
 #: Les actions qu'il sait faire. Toute autre étiquette est refusée et lui est
 #: renvoyée telle quelle — corriger sa faute à sa place lui apprendrait à
 #: écrire n'importe quoi.
+#:
+#: `analyser` et `diagnostiquer` datent de DEC-0041 : avant, `RepoEngineerAgent`
+#: et `SWEAgent` étaient deux portes séparées que le propriétaire devait choisir
+#: à la place de Dioumtoukay — leur analyse ne lui servait jamais. Elles
+#: deviennent ici des outils qu'il consulte lui-même, en cours de tâche.
+#: `ouvrir_pr` et `etat_ci` : le connecteur GitHub (core/connectors/github.py,
+#: DEC-0041), le premier acces de Dioumtoukay a l'API GitHub — jusqu'ici,
+#: seul `git` en shell nu, sans PR ni CI. `ouvrir_pr` passe par la meme
+#: confirmation que toute autre ecriture externe (config/permissions_
+#: services.yaml) : Dioumtoukay ne peut pas la contourner en l'appelant.
 ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
-           "executer", "terminer")
+           "executer", "analyser", "diagnostiquer", "ouvrir_pr", "etat_ci", "terminer")
 
 #: Les actions qui modifient quelque chose. Elles sont comptées à part dans le
 #: rapport : « j'ai lu quatre fichiers » et « j'ai modifié quatre fichiers » ne
 #: se lisent pas pareil, et c'est la seconde phrase qui demande une vérification.
 ACTIONS_QUI_MODIFIENT = frozenset({"ecrire", "remplacer", "deplacer"})
 
+#: Les actions dont la SORTIE est le résultat qui compte, pas seulement le
+#: message. `_rapport()` ne montre le détail complet que de celles-ci : pour
+#: `lire` ou `chercher`, le message suffit et la sortie serait du bruit.
+ACTIONS_QUI_ANALYSENT = frozenset({"analyser", "diagnostiquer", "etat_ci"})
+
 _ETIQUETTE = re.compile(r"^\s*ACTION\s*:\s*(\w+)", re.IGNORECASE | re.MULTILINE)
 _CHAMP = re.compile(
-    r"^\s*(CHEMIN|SOURCE|DESTINATION|COMMANDE|DOSSIER|TEXTE)\s*:\s*(.+)$",
+    r"^\s*(CHEMIN|SOURCE|DESTINATION|COMMANDE|DOSSIER|TEXTE|DEPOT|TITRE|TETE|BASE|REF)\s*:\s*(.+)$",
     re.IGNORECASE | re.MULTILINE)
 
 #: Les blocs multilignes, chacun fermé par une ligne `FIN`. `remplacer` en
@@ -112,6 +128,25 @@ ACTION: executer
 COMMANDE: python -m pytest -q
 DOSSIER: .
 
+ACTION: analyser
+TEXTE: comment est organisee la gestion des connecteurs dans ce depot ?
+
+ACTION: diagnostiquer
+TEXTE: la route /machine/adresse rend 500 au lieu de 401 sans cle
+
+ACTION: ouvrir_pr
+DEPOT: owner/repo
+TETE: ta-branche
+BASE: main
+TITRE: Corrige la route /machine/adresse
+CONTENU:
+ce que le correctif change, pour qui va relire
+FIN
+
+ACTION: etat_ci
+DEPOT: owner/repo
+REF: ta-branche
+
 ACTION: terminer
 CONTENU:
 ce que tu as fait, en francais simple, pour le proprietaire
@@ -120,9 +155,14 @@ FIN
 COMMENT TRAVAILLER
 
 1. TROUVER avant de corriger. `chercher` te dit dans quel fichier est le
-   probleme ; deviner le fichier fait perdre des tours.
+   probleme ; deviner le fichier fait perdre des tours. Sur une tache large ou
+   floue (« comment est fait ce depot », « ou est le bug »), `analyser` et
+   `diagnostiquer` peuvent trouver plus vite qu'une suite de `chercher` a
+   l'aveugle — ce sont deux specialistes, consulte-les, ne les remplace pas.
 2. LIRE avant de modifier. Tu ne modifies jamais un fichier que tu n'as pas lu
-   dans cette conversation.
+   dans cette conversation. `analyser` et `diagnostiquer` NE MODIFIENT RIEN
+   eux-memes : ils proposent, c'est toujours toi qui appliques par `remplacer`
+   ou `ecrire`, apres avoir lu le fichier concerne.
 3. `remplacer` est la BONNE facon de corriger : tu cites le passage exact et il
    change, le reste du fichier ne bouge pas. `ecrire` remplace TOUT le fichier
    et sert a en creer un nouveau — l'utiliser pour corriger une ligne t'oblige
@@ -134,6 +174,11 @@ COMMENT TRAVAILLER
 5. Une erreur se comprend avant de se corriger. Lis le message en entier,
    trouve la cause, corrige la cause. Ne contourne pas, ne desactive pas un
    test, n'attrape pas une exception pour la faire taire.
+6. `ouvrir_pr` s'ouvre TOUJOURS en brouillon, meme si tu ne l'as pas demande —
+   ce n'est pas un defaut a contourner. Elle demande une confirmation au
+   proprietaire avant de partir : elle peut donc rendre « en attente » au lieu
+   d'un lien tout de suite. Ne la retente pas plusieurs fois pour la meme
+   branche en esperant un autre resultat.
 
 REGLES
 
@@ -202,7 +247,9 @@ class DioumtoukayAgent(BaseAgent):
 
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
                  atelier: Optional[Atelier] = None,
-                 memoire_longue: Optional[MemoirePersonnelle] = None):
+                 memoire_longue: Optional[MemoirePersonnelle] = None,
+                 analyste: Optional[Any] = None, chercheur_de_bug: Optional[Any] = None,
+                 connecteur_github: Optional[Any] = None):
         super().__init__(
             name="DioumtoukayAgent",
             description="Agent qui travaille reellement sur les fichiers, "
@@ -216,11 +263,72 @@ class DioumtoukayAgent(BaseAgent):
         # differents dans ce projet, et les confondre reviendrait a n'ecrire
         # nulle part.
         self.memoire_longue = memoire_longue
+        # DEC-0041 : deux specialistes en lecture seule, consultes en cours de
+        # tache plutot que d'etre deux portes separees. Optionnels — sans eux,
+        # `analyser`/`diagnostiquer` repondent qu'ils manquent, comme toute
+        # capacite non branchee ailleurs dans ARENA.
+        self.analyste = analyste
+        self.chercheur_de_bug = chercheur_de_bug
+        # Le connecteur GitHub (core/connectors/github.py) : la creation de PR
+        # y passe par la meme confirmation que toute autre ecriture externe —
+        # Dioumtoukay ne contourne rien en l'appelant, il herite de la garde.
+        self.connecteur_github = connecteur_github
 
     # --- Exécution d'une action ---------------------------------------------------
 
-    def _executer_action(self, action: Action) -> Resultat:
-        """Fait ce que l'action demande, via l'atelier."""
+    async def _consulter(self, specialiste: Optional[Any], nom_specialiste: str,
+                         question: str) -> Resultat:
+        """Interroge un specialiste en lecture seule (RepoEngineerAgent ou
+        SWEAgent) et rend ce qu'il a repondu comme un `Resultat` ordinaire.
+
+        DEC-0041 : ces deux agents ne modifient jamais rien eux-memes — c'est
+        pour ca qu'ils sont surs a appeler en cours de boucle, sans passer par
+        les autres actions de l'atelier. Un appel qui leve (le modele n'a pas
+        repondu, par exemple) devient un echec rapporte, jamais une exception
+        qui casserait la tache entiere de Dioumtoukay pour la faute d'un
+        outil consulte en chemin.
+        """
+        if not question:
+            return Resultat(False, "Le champ TEXTE (la question) est vide.")
+        if specialiste is None:
+            return Resultat(False, f"{nom_specialiste} n'est pas branche sur cette machine.")
+        try:
+            reponse = await specialiste.run(question)
+        except Exception as erreur:  # noqa: BLE001 — un outil consulte ne casse pas la tache
+            return Resultat(False, f"{nom_specialiste} n'a pas repondu : "
+                                   f"{type(erreur).__name__}: {erreur}")
+        if reponse.get("status") not in ("success", None):
+            return Resultat(False, reponse.get("response") or
+                            f"{nom_specialiste} a echoue sans detail.")
+        return Resultat(True, f"{nom_specialiste} a repondu.",
+                        sortie=reponse.get("response", ""))
+
+    def _via_github(self, capacite: str, **parametres: Any) -> Resultat:
+        """Appelle le connecteur GitHub et rend son `ResultatAction` comme un
+        `Resultat` ordinaire — Dioumtoukay ne voit qu'un seul type de resultat,
+        quelle que soit la source.
+
+        **La confirmation n'est pas contournee ici.** `connecteur.executer()`
+        est le meme point d'entree que `/connectors/github/...` : une capacite
+        `CONFIRMATION` (creer_pull_request) rend `A_CONFIRMER` sans avoir
+        touche le reseau, exactement comme si le propriétaire l'avait demande
+        depuis l'interface. `A_CONFIRMER` est rapporte comme un succes
+        PARTIEL — l'action a bien ete deposee, mais rien n'est encore parti.
+        """
+        if self.connecteur_github is None:
+            return Resultat(False, "Le connecteur GitHub n'est pas branche sur cette machine.")
+        try:
+            resultat = self.connecteur_github.executer(capacite, **parametres)
+        except Exception as erreur:  # noqa: BLE001 — un connecteur qui leve ne casse pas la tache
+            return Resultat(False, f"GitHub n'a pas repondu : {type(erreur).__name__}: {erreur}")
+
+        if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
+            detail = "\n".join(f"{cle}: {valeur}" for cle, valeur in resultat.detail.items())
+            return Resultat(True, resultat.message, sortie=detail)
+        return Resultat(False, resultat.message)
+
+    async def _executer_action(self, action: Action) -> Resultat:
+        """Fait ce que l'action demande, via l'atelier — ou un specialiste."""
         champs = action.champs
         if action.nom == "lire":
             return self.atelier.lire(champs.get("CHEMIN", ""))
@@ -243,6 +351,24 @@ class DioumtoukayAgent(BaseAgent):
         if action.nom == "deplacer":
             return self.atelier.deplacer(champs.get("SOURCE", ""),
                                          champs.get("DESTINATION", ""))
+        if action.nom == "analyser":
+            return await self._consulter(self.analyste, "RepoEngineerAgent",
+                                         champs.get("TEXTE", ""))
+        if action.nom == "diagnostiquer":
+            return await self._consulter(self.chercheur_de_bug, "SWEAgent",
+                                         champs.get("TEXTE", ""))
+        if action.nom == "ouvrir_pr":
+            depot, tete = champs.get("DEPOT", ""), champs.get("TETE", "")
+            if not depot or not tete:
+                return Resultat(False, "Il manque DEPOT (owner/repo) ou TETE (la branche source).")
+            return self._via_github(
+                "creer_pull_request", depot=depot, titre=champs.get("TITRE", "Sans titre"),
+                tete=tete, base=champs.get("BASE") or "main", corps=action.contenu)
+        if action.nom == "etat_ci":
+            depot, ref = champs.get("DEPOT", ""), champs.get("REF", "")
+            if not depot or not ref:
+                return Resultat(False, "Il manque DEPOT (owner/repo) ou REF (SHA ou branche).")
+            return self._via_github("etat_ci", depot=depot, ref=ref)
         # `executer` : la ligne devient une LISTE d'arguments. Ce n'est pas une
         # restriction de ce qu'il peut lancer — c'est ce qui empeche un nom de
         # fichier contenant une espace ou un `;` de devenir deux commandes.
@@ -303,7 +429,7 @@ class DioumtoukayAgent(BaseAgent):
                 arrete_par_lui_meme = True
                 break
 
-            resultat = self._executer_action(action)
+            resultat = await self._executer_action(action)
             rendu.append({"action": action.nom, "champs": action.champs,
                           **resultat.to_dict()})
             journal_du_travail.append(self._compte_rendu(action, resultat))
@@ -413,7 +539,16 @@ class DioumtoukayAgent(BaseAgent):
         modifies = ("\n\n**Fichiers modifies :** "
                     + ", ".join(f"`{f}`" for f in touches)) if touches else ""
 
-        return f"{entete}\n\n{detail}{modifies}\n\n{conclusion}".strip()
+        # La sortie d'un `analyser`/`diagnostiquer` REUSSI est le resultat
+        # lui-meme — la cacher derriere « RepoEngineerAgent a repondu » serait
+        # exactement le defaut que ces deux actions existent pour corriger :
+        # une analyse produite et jamais lue par le proprietaire.
+        analyses = "\n\n".join(
+            f"**{a['action']} :**\n{a['sortie']}"
+            for a in rendu if a["ok"] and a["action"] in ACTIONS_QUI_ANALYSENT and a.get("sortie"))
+        analyses = f"\n\n{analyses}" if analyses else ""
+
+        return f"{entete}\n\n{detail}{modifies}{analyses}\n\n{conclusion}".strip()
 
     def _retenir(self, demande: str, conclusion: str, rendu: List[Dict[str, Any]]) -> None:
         """Garde une trace de ce travail dans la mémoire longue.

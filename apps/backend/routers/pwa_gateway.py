@@ -42,6 +42,7 @@ from apps.backend.routers.chat import (
     garantir_un_texte,
 )
 from apps.backend.runtime import (
+    dioumtoukay_agent,
     fast_provider,
     file_attente,
     index_semantique,
@@ -66,6 +67,7 @@ from core.memory.conversation import retenir_l_echange
 from core.memory.recuperation import recuperer
 from core.memory.semantique import recuperer_semantique
 from core.production.disponibilite import disponibilite_video
+from core.production.disponibilite_swe import disponibilite_swe
 from core.relecture import relire
 from core.reseau.adresse_machine import AdresseMachine
 from core.security.trust import TrustLevel, wrap
@@ -759,7 +761,13 @@ async def capacites_disponibles() -> Dict[str, Any]:
     Une capacite indisponible porte **toujours** sa raison. « Indisponible »
     sans dire pourquoi renvoie chercher une panne sans la nommer.
     """
-    return {"video": await disponibilite_video(registre, ollama_vision)}
+    return {
+        "video": await disponibilite_video(registre, ollama_vision),
+        # DEC-0041 : trois backends d'une capacite Software Engineering
+        # unifiee, jamais devines depuis le seul fait que le processus tourne.
+        "software_engineering": await disponibilite_swe(
+            dioumtoukay_agent.provider, registre.obtenir("github"), dioumtoukay_agent),
+    }
 
 
 #: Ou l'annonce est gardee. A cote de la base : sur Railway c'est le volume
