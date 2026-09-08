@@ -258,3 +258,31 @@ modifié, `pytest` passe. Interruption puis reprise : 2 étapes + 1, **même
 
 Cinq sabotages joués, **cinq ont cassé un test**. `ruff` propre,
 **4183 passed / 25 skipped**, 218 modules dont 173 atteints.
+
+---
+
+## 2026-09-08 — Open SWE, suite : le connecteur GitHub qui manquait vraiment
+
+**DEC-0073.** Une session parallèle a reçu la même mission (fusionner Open
+SWE) au même moment, sans le savoir. Son audit affirmait qu'un connecteur
+GitHub existait déjà côté ARENA — mesuré faux : `git grep` sur `origin/master`
+ne trouvait rien. Cette session a construit ce qui manquait réellement, sans
+défaire DEC-0063 (garde-fous de boucle) ni DEC-0072 (reprise de tâche).
+
+| Livré | Preuve |
+|---|---|
+| `core/connectors/github.py` — premier connecteur GitHub du dépôt, contrat `Connecteur` existant | 22 tests, sabotage sur la garde de PR (confirmation avant tout réseau, brouillon forcé dans le vrai corps POST, client injecté jamais fermé) |
+| `DioumtoukayAgent` : `analyser`/`diagnostiquer` (consultent `RepoEngineerAgent`/`SWEAgent` comme outils, plus des culs-de-sac séparés), `ouvrir_pr`/`etat_ci` | 14 tests |
+| `core/production/disponibilite_swe.py` — la capacité `software_engineering`, sondée pour de vrai sur 3 backends | 8 tests |
+
+**Corrigé en route** : `tests/test_connecteurs_dormants.py` (code de l'autre
+session) parcourait `tools/vision/faceplugin/.../.venv/` — un SDK tiers
+vendored — une fois par connecteur enregistré, `ast.parse` sur `sympy` entier
+compris. La suite complète ne terminait jamais sur cette machine. Exclusion
+via `scripts/orphelins.py::MOTEURS_EXTERNES`, déjà éprouvée pour le même
+défaut ailleurs dans le dépôt.
+
+`ruff` propre, **suite complète : 4219 passed, 31 skipped, 48 deselected,
+0 failed** (522.77s, `gitingest`/`txtai`/`ifcopenshell` installés — leur
+absence donnait 57 échecs `ModuleNotFoundError`, aucun lié à cette fusion).
+220 modules dont 175 atteints.
