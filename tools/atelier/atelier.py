@@ -32,7 +32,7 @@ import os
 import shutil
 import signal
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -68,6 +68,8 @@ class Resultat:
         sortie: ce que la commande a écrit, tel quel.
         erreur: ce qu'elle a écrit sur la sortie d'erreur, tel quel.
         code: le code de sortie. `None` quand aucune commande n'a tourné.
+        donnees: structure typée, quand l'action en produit une
+            (`metadonnees()`) — vide pour toutes les autres actions.
     """
 
     ok: bool
@@ -75,10 +77,14 @@ class Resultat:
     sortie: str = ""
     erreur: str = ""
     code: Optional[int] = None
+    donnees: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"ok": self.ok, "message": self.message, "sortie": self.sortie,
+        corps = {"ok": self.ok, "message": self.message, "sortie": self.sortie,
                 "erreur": self.erreur, "code": self.code}
+        if self.donnees:
+            corps["donnees"] = self.donnees
+        return corps
 
 
 def _couper(texte: str) -> str:
@@ -303,6 +309,116 @@ class Atelier:
         else:
             r = Resultat(True, f"{a} deplace vers {b}.")
         self._noter("deplacer", f"{a} -> {b}", r)
+        return r
+
+    def copier(self, source: str, destination: str) -> Resultat:
+        """Copie un fichier. La source reste en place, contrairement a `deplacer`.
+
+        DEC-0038 comme le reste de ce module : aucune garde ici. Une
+        capacite qui a besoin de confirmer avant de copier (`file_
+        organization`, mission « AI File Sorter ») la demande a son propre
+        niveau, avant d'appeler cette methode — jamais dedans.
+        """
+        a, b = self._chemin(source), self._chemin(destination)
+        try:
+            b.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(a), str(b))
+        except Exception as erreur:  # noqa: BLE001
+            r = Resultat(False, f"Copie impossible ({type(erreur).__name__}) : {a} -> {b}")
+        else:
+            r = Resultat(True, f"{a} copie vers {b}.")
+        self._noter("copier", f"{a} -> {b}", r)
+        return r
+
+    def supprimer(self, chemin: str) -> Resultat:
+        """Supprime un fichier (jamais un dossier — `deplacer`/`copier`
+        suffisent pour ranger ; supprimer un dossier entier n'a jamais ete
+        demande et resterait a construire deliberement s'il l'etait).
+
+        Meme absence de garde que le reste du module. Un appelant qui veut
+        une suppression protegee (confirmation, corbeille) la construit
+        au-dessus — c'est exactement ce que fait le connecteur `file_
+        organization`.
+        """
+        p = self._chemin(chemin)
+        try:
+            if p.is_dir():
+                raise IsADirectoryError(f"{p} est un dossier, pas un fichier")
+            p.unlink()
+        except Exception as erreur:  # noqa: BLE001
+            r = Resultat(False, f"Suppression impossible ({type(erreur).__name__}) : {p}")
+        else:
+            r = Resultat(True, f"{p} supprime.")
+        self._noter("supprimer", str(p), r)
+        return r
+
+    def creer_dossier(self, chemin: str) -> Resultat:
+        """Cree un dossier, avec ses parents manquants. Idempotent."""
+        p = self._chemin(chemin)
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+        except Exception as erreur:  # noqa: BLE001
+            r = Resultat(False, f"Creation de dossier impossible ({type(erreur).__name__}) : {p}")
+        else:
+            r = Resultat(True, f"{p} cree (ou deja present).")
+        self._noter("creer_dossier", str(p), r)
+        return r
+
+    def supprimer_dossier_vide(self, chemin: str) -> Resultat:
+        """Retire un dossier — SEULEMENT s'il est deja vide.
+
+        Deliberement etroit, a la difference de `supprimer()` (qui refuse
+        tout dossier) : c'est l'inverse exact de `creer_dossier()`, utile a
+        `core/production/organisation/application.py` pour annuler une
+        creation de dossier sans jamais risquer d'emporter un contenu que
+        le plan n'a pas cree lui-meme. Un dossier non-vide reste refuse.
+        """
+        p = self._chemin(chemin)
+        try:
+            p.rmdir()  # leve OSError si non vide ou absent -- jamais recursif
+        except Exception as erreur:  # noqa: BLE001
+            r = Resultat(False, f"Suppression de dossier impossible ({type(erreur).__name__}) : {p}")
+        else:
+            r = Resultat(True, f"{p} supprime (etait vide).")
+        self._noter("supprimer_dossier_vide", str(p), r)
+        return r
+
+    def metadonnees(self, chemin: str, hachage: bool = False) -> Resultat:
+        """Taille, dates, type — et un SHA-256 si `hachage` (couteux sur un
+        gros fichier, jamais calcule par defaut).
+
+        Rendues dans `sortie` comme un texte lisible (meme convention que
+        `lister`) ET dans `Resultat` via un dictionnaire accessible par
+        l'appelant Python — `to_dict()` les transporte telles quelles.
+        """
+        p = self._chemin(chemin)
+        try:
+            stat = p.stat()
+        except Exception as erreur:  # noqa: BLE001
+            r = Resultat(False, f"Metadonnees illisibles ({type(erreur).__name__}) : {p}")
+            self._noter("metadonnees", str(p), r)
+            return r
+
+        from datetime import datetime, timezone
+        donnees: Dict[str, Any] = {
+            "taille_octets": stat.st_size,
+            "modifie_le": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+            "type": "dossier" if p.is_dir() else "fichier",
+            "extension": p.suffix.lstrip(".").lower() if p.is_file() else "",
+        }
+        if hachage and p.is_file():
+            import hashlib
+            sha = hashlib.sha256()
+            with open(p, "rb") as f:
+                for bloc in iter(lambda: f.read(1 << 20), b""):
+                    sha.update(bloc)
+            donnees["sha256"] = sha.hexdigest()
+
+        r = Resultat(True, f"{p} : {donnees['taille_octets']} octets, "
+                           f"modifie le {donnees['modifie_le']}.",
+                     sortie="\n".join(f"{cle}: {valeur}" for cle, valeur in donnees.items()),
+                     donnees=donnees)
+        self._noter("metadonnees", str(p), r)
         return r
 
     # --- Terminal ------------------------------------------------------------------

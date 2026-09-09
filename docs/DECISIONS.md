@@ -6072,3 +6072,99 @@ présente en usage réel. Un moteur absent (LibreOffice non installé
 ailleurs que sur cette machine de test, par exemple) rapporte
 `NOT_CONFIGURED` avec ce qui manque — jamais un plantage ni un succès
 inventé.
+
+---
+
+## DEC-0075 — AI File Sorter : classer des fichiers, avec un plan revu avant d'être appliqué
+
+**Date** : 09/09/2026
+**Statut** : accepté
+
+### La mission, en deux parties
+
+(1) Intégrer les capacités utiles d'AI File Sorter (`hyperfield/
+ai-file-sorter`, Qt/C++, AGPLv3) dans une capacité `file_organization`.
+(2) Vérifier EXPÉRIMENTALEMENT ce qu'ARENA peut réellement faire —
+filesystem, terminal, code, Git — code exécuté pour de vrai, jamais
+supposé. Audit complet : `docs/audits/ai_file_sorter_audit.md`.
+
+### Ce que la partie 2 a mesuré, avant tout code neuf
+
+Filesystem, terminal, boucle complète de correction de bug (read → run
+tests → fail → fix → rerun → pass, vérifié indépendamment sur disque),
+Git (status/diff/branche/commit, jamais de push), permissions
+(DENY-par-défaut/ALLOW/CONFIRMATION/CONFIRMED réels), tâches de fond
+(progression réelle, annulation réelle) : **tous CAPABLE, avec preuve
+d'exécution**. Quatre primitives filesystem étaient ABSENTES —
+`copier`, `supprimer`, `creer_dossier`, `metadonnees`/hash — mesuré par
+`hasattr()` avant d'écrire une ligne. Le détail complet, capacité par
+capacité, est dans l'audit.
+
+**Un vrai manque trouvé, hors du périmètre direct de cette mission** :
+`core/security/trust.py` existait déjà, mais aucun chemin de lecture de
+fichier de Dioumtoukay ne l'utilisait — un fichier lu par `ACTION: lire`
+entre tel quel dans la conversation. DEC-0038 couvre Dioumtoukay
+lui-même (le propriétaire fait confiance à ses propres fichiers) ; ce
+n'est plus vrai pour une capacité qui lit du contenu spécifiquement
+pour catégoriser — `file_organization` l'utilise dès sa première
+version.
+
+### Ce qui a été construit
+
+- **Quatre méthodes ajoutées à `Atelier`** (`tools/atelier/atelier.py`,
+  DEC-0038 : toujours aucune garde) : `copier`, `supprimer` (refuse
+  explicitement un dossier), `creer_dossier`/`supprimer_dossier_vide`,
+  `metadonnees` (taille, date, type, SHA-256 optionnel).
+- **`core/production/organisation/`** — `plan.py` (vocabulaire FERMÉ de
+  quatre opérations : déplacer, copier, créer_dossier, supprimer — jamais
+  une commande arbitraire), `securite.py` (chaque opération confinée au
+  dossier confié, chemin sensible refusé, écrasement refusé sauf
+  autorisation explicite — sabotage-vérifié : source hors dossier,
+  destination hors dossier, `.ssh` en source comme en destination),
+  `inspection.py` (inventaire réel via `Atelier`, extrait de contenu via
+  `tools/documents/reader.py` — jamais un second lecteur documentaire —
+  marqué par `trust.wrap()`), `application.py` (applique via `Atelier`
+  uniquement, construit l'annulation au passage), `memoire.py` (apprend
+  dans `MemoirePersonnelle` existante, jamais une deuxième mémoire,
+  jamais un ré-entraînement).
+- **`core/connectors/file_organization.py`** — cinq capacités :
+  `inspecter`/`etat` (lecture), `planifier` (valide, ne mute rien),
+  `appliquer`/`annuler` (CONFIRMATION, plus un accord SÉPARÉ pour toute
+  suppression — irréversible, jamais couverte par la confirmation
+  ordinaire).
+- **Quatre actions dans la boucle de Dioumtoukay**
+  (`organiser_inspecter`/`_planifier`/`_appliquer`/`_annuler`) — un plan
+  se propose en texte (`type|source|destination|raison`, une ligne par
+  opération), se valide côté connecteur, et ne s'applique que sur son
+  identifiant déjà validé.
+
+### Ce qui n'a délibérément PAS été intégré, et pourquoi
+
+- **Watch folders / scheduler** : ni le dépôt audité (threads Qt natifs)
+  ni ARENA n'ont de mécanisme transportable — en construire un serait le
+  second ordonnanceur que la mission interdit.
+- **Description visuelle réelle d'une image** : le moteur vision d'ARENA
+  existe mais dépend d'Ollama, absent de cette machine cloud
+  (`CLAUDE.md`). Le connecteur signale `est_image=True` (mesuré,
+  fonctionnel) ; la description reste **UNKNOWN, à mesurer sur son PC**.
+- **Renommage automatique sans plan** : refusé par construction —
+  `planifier()` ne mute jamais.
+
+### Un bug réel trouvé en construisant
+
+`ConnecteurFileOrganization._annuler()` comptait les opérations
+irréversibles en cherchant la sous-chaîne `"reversible"` dans le message
+rapporté — qui contient en réalité `"réversible"`, avec l'accent. Le
+compte rendait toujours zéro. Trouvé par le test qui vérifiait le message
+exact (`test_annuler_une_suppression_est_impossible_et_le_dit`), corrigé
+en testant le TYPE de l'opération d'origine plutôt qu'un texte.
+
+### Ce que ça coûte si c'est faux
+
+Un plan mal validé pourrait déplacer un fichier hors du dossier confié —
+`securite.valider_plan()` est le seul rempart, sabotage-vérifié trois
+fois (source hors dossier, destination hors dossier, chemin sensible).
+Une suppression mal gardée serait irréversible — d'où l'accord séparé,
+en plus de la confirmation ordinaire. Si `Atelier` lui-même se révèle un
+jour trop permissif pour une capacité future, c'est DEC-0038 qui devrait
+être revisitée, jamais une capacité qui en hérite en silence.

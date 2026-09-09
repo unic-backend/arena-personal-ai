@@ -90,9 +90,15 @@ ILLISIBLES_CONSECUTIVES_MAX = 3
 #: « File_Converter_Pro »). Chemin d'entree GENERIQUE de cette capacite —
 #: n'importe quel modele qui pilote Dioumtoukay peut demander une conversion
 #: sans savoir que LibreOffice/Pillow/ffmpeg existent derriere.
+#: `organiser_*` : le connecteur `file_organization` (DEC-0075, mission
+#: « AI File Sorter »). Quatre actions, jamais une mutation directe : un
+#: plan se propose (`organiser_planifier`), puis s'applique seulement sur
+#: son identifiant deja valide (`organiser_appliquer`) — jamais une liste
+#: d'operations fournie une deuxieme fois, non revue.
 ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "executer", "analyser", "diagnostiquer", "ouvrir_pr", "etat_ci",
-           "convertir", "terminer")
+           "convertir", "organiser_inspecter", "organiser_planifier",
+           "organiser_appliquer", "organiser_annuler", "terminer")
 
 #: Les actions qui modifient quelque chose. Elles sont comptées à part dans le
 #: rapport : « j'ai lu quatre fichiers » et « j'ai modifié quatre fichiers » ne
@@ -104,12 +110,19 @@ ACTIONS_QUI_MODIFIENT = frozenset({"ecrire", "remplacer", "deplacer"})
 #: `lire` ou `chercher`, le message suffit et la sortie serait du bruit.
 #: `convertir` y entre pour la même raison qu'`etat_ci` : le détail (moteur
 #: utilisé, URL du fichier écrit, tailles avant/après) est ce que le
-#: propriétaire veut voir, pas seulement « converti ».
-ACTIONS_QUI_ANALYSENT = frozenset({"analyser", "diagnostiquer", "etat_ci", "convertir"})
+#: propriétaire veut voir, pas seulement « converti ». `organiser_inspecter`/
+#: `organiser_planifier` de même : l'inventaire et le plan JSON complet sont
+#: ce qu'il doit lire pour décider — jamais `organiser_appliquer`/`_annuler`,
+#: dont le message résume déjà les comptages (même choix qu'`ouvrir_pr`).
+ACTIONS_QUI_ANALYSENT = frozenset({
+    "analyser", "diagnostiquer", "etat_ci", "convertir",
+    "organiser_inspecter", "organiser_planifier",
+})
 
 _ETIQUETTE = re.compile(r"^\s*ACTION\s*:\s*(\w+)", re.IGNORECASE | re.MULTILINE)
 _CHAMP = re.compile(
-    r"^\s*(CHEMIN|SOURCE|DESTINATION|COMMANDE|DOSSIER|TEXTE|DEPOT|TITRE|TETE|BASE|REF|FORMAT)"
+    r"^\s*(CHEMIN|SOURCE|DESTINATION|COMMANDE|DOSSIER|TEXTE|DEPOT|TITRE|TETE|BASE|REF|FORMAT"
+    r"|PLAN_ID|CONFIRMER_SUPPRESSION)"
     r"\s*:\s*(.+)$",
     re.IGNORECASE | re.MULTILINE)
 
@@ -180,6 +193,22 @@ ACTION: convertir
 CHEMIN: documents/devis.pdf
 FORMAT: docx
 
+ACTION: organiser_inspecter
+DOSSIER: vrac
+
+ACTION: organiser_planifier
+DOSSIER: vrac
+CONTENU:
+creer_dossier|Images||photos a trier
+deplacer|IMG_2048.jpg|Images/clouds_over_lake.jpg|photo de nuages
+FIN
+
+ACTION: organiser_appliquer
+PLAN_ID: identifiant rendu par organiser_planifier
+
+ACTION: organiser_annuler
+PLAN_ID: identifiant d'un plan deja applique
+
 ACTION: terminer
 CONTENU:
 ce que tu as fait, en francais simple, pour le proprietaire
@@ -216,6 +245,15 @@ COMMENT TRAVAILLER
    tu donnes juste CHEMIN et FORMAT (l'extension cible, sans le point). Un
    couple de formats que rien ne convertit encore te le dit clairement ;
    n'invente jamais un fichier converti que tu n'as pas reellement obtenu.
+8. Pour ranger des fichiers : `organiser_inspecter` d'abord (regarde ce qu'il
+   y a vraiment avant de proposer quoi que ce soit), PUIS `organiser_
+   planifier` — un plan par ligne `type|source|destination|raison`
+   (`destination` vide pour `supprimer`). `organiser_planifier` NE DEPLACE
+   RIEN : il rend un identifiant de plan valide. Seul `organiser_appliquer`
+   avec cet identifiant deplace reellement — et une suppression dans le plan
+   exige en plus `CONFIRMER_SUPPRESSION: oui`, sans quoi elle est refusee.
+   `organiser_annuler` defait un plan applique, sauf ses suppressions
+   (jamais reversibles). N'invente jamais un identifiant de plan.
 
 REGLES
 
@@ -288,6 +326,7 @@ class DioumtoukayAgent(BaseAgent):
                  analyste: Optional[Any] = None, chercheur_de_bug: Optional[Any] = None,
                  connecteur_github: Optional[Any] = None,
                  connecteur_file_conversion: Optional[Any] = None,
+                 connecteur_file_organization: Optional[Any] = None,
                  reprises: Optional[JournalDeReprise] = None):
         super().__init__(
             name="DioumtoukayAgent",
@@ -317,6 +356,11 @@ class DioumtoukayAgent(BaseAgent):
         # tourne derriere, il herite juste de la garde (confirmation, coupe-
         # circuit WRITE_FILES) deja portee par le connecteur lui-meme.
         self.connecteur_file_conversion = connecteur_file_conversion
+        # Le connecteur de classement de fichiers (DEC-0075, mission « AI
+        # File Sorter ») : meme discipline encore — un plan se propose,
+        # SE VALIDE (le connecteur, jamais Dioumtoukay), et ne s'applique
+        # que sur son identifiant deja valide, sous confirmation.
+        self.connecteur_file_organization = connecteur_file_organization
         # Le journal DURABLE de ce qu'il a deja fait (DEC-0072). La memoire
         # longue garde un RESUME de chaque travail ; celui-ci garde les ETAPES,
         # pour qu'une tache arretee a la 12e action reprenne a la 13e au lieu
@@ -393,6 +437,41 @@ class DioumtoukayAgent(BaseAgent):
             return Resultat(True, resultat.message, sortie=detail)
         return Resultat(False, resultat.message)
 
+    def _via_file_organization(self, capacite: str, **parametres: Any) -> Resultat:
+        """Meme pont, vers le connecteur `file_organization` (DEC-0075)."""
+        if self.connecteur_file_organization is None:
+            return Resultat(False, "Le connecteur de classement n'est pas branche sur cette machine.")
+        try:
+            resultat = self.connecteur_file_organization.executer(capacite, **parametres)
+        except Exception as erreur:  # noqa: BLE001 — un connecteur qui leve ne casse pas la tache
+            return Resultat(False, f"Classement impossible : {type(erreur).__name__}: {erreur}")
+
+        if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
+            detail = "\n".join(f"{cle}: {valeur}" for cle, valeur in resultat.detail.items())
+            return Resultat(True, resultat.message, sortie=detail)
+        return Resultat(False, resultat.message)
+
+    @staticmethod
+    def _lire_operations(contenu: str) -> Optional[List[Dict[str, str]]]:
+        """`type|source|destination|raison` par ligne, `destination` vide
+        pour `supprimer`. `None` si une ligne est illisible — jamais une
+        supposition sur ce qu'elle voulait dire."""
+        operations = []
+        for ligne in (contenu or "").splitlines():
+            ligne = ligne.strip()
+            if not ligne:
+                continue
+            morceaux = ligne.split("|")
+            if len(morceaux) < 2:
+                return None
+            morceaux += [""] * (4 - len(morceaux))
+            type_op, source, destination, raison = (m.strip() for m in morceaux[:4])
+            if not type_op or not source:
+                return None
+            operations.append({"type": type_op, "source": source,
+                              "destination": destination, "raison": raison})
+        return operations or None
+
     async def _executer_action(self, action: Action) -> Resultat:
         """Fait ce que l'action demande, via l'atelier — ou un specialiste."""
         champs = action.champs
@@ -442,6 +521,29 @@ class DioumtoukayAgent(BaseAgent):
                                        "FORMAT (l'extension cible, sans le point).")
             return self._via_file_conversion(
                 "convertir", entree=chemin, format_cible=format_cible)
+        if action.nom == "organiser_inspecter":
+            return self._via_file_organization(
+                "inspecter", dossier=champs.get("DOSSIER", "."), avec_contenu=True)
+        if action.nom == "organiser_planifier":
+            operations = self._lire_operations(action.contenu)
+            if operations is None:
+                return Resultat(False, "Il manque le bloc CONTENU: … FIN avec au moins une "
+                                       "ligne `type|source|destination|raison`.")
+            return self._via_file_organization(
+                "planifier", dossier=champs.get("DOSSIER", "."), operations=operations)
+        if action.nom == "organiser_appliquer":
+            plan_id = champs.get("PLAN_ID", "")
+            if not plan_id:
+                return Resultat(False, "Il manque PLAN_ID — l'identifiant rendu par organiser_planifier.")
+            confirmer_suppression = champs.get("CONFIRMER_SUPPRESSION", "").strip().lower() in (
+                "oui", "true", "yes")
+            return self._via_file_organization(
+                "appliquer", plan_id=plan_id, confirmer_suppression=confirmer_suppression)
+        if action.nom == "organiser_annuler":
+            plan_id = champs.get("PLAN_ID", "")
+            if not plan_id:
+                return Resultat(False, "Il manque PLAN_ID — l'identifiant d'un plan deja applique.")
+            return self._via_file_organization("annuler", plan_id=plan_id)
         # `executer` : la ligne devient une LISTE d'arguments. Ce n'est pas une
         # restriction de ce qu'il peut lancer — c'est ce qui empeche un nom de
         # fichier contenant une espace ou un `;` de devenir deux commandes.

@@ -56,6 +56,7 @@ from core.connectors.devis import DevisConnector
 from core.connectors.drift import ConnecteurDrift
 from core.connectors.faceplugin import ConnecteurFaceplugin
 from core.connectors.file_conversion import ConnecteurFileConversion
+from core.connectors.file_organization import ConnecteurFileOrganization
 from core.connectors.formbricks import ConnecteurFormbricks
 from core.connectors.galsen import GalsenConnector
 from core.connectors.github import ConnecteurGitHub
@@ -454,6 +455,22 @@ registre.declarer(
                                      crochets=crochets, travaux=travaux),
 )
 
+# Meme Atelier que Dioumtoukay (DEC-0038 : aucune garde sur ses mains
+# directes) — partage, pas duplique. `file_organization`, lui, borne CHAQUE
+# plan au dossier confie (core/production/organisation/securite.py) : la
+# meme main, une garde differente au-dessus, portee par le connecteur.
+atelier_dioumtoukay = Atelier(journal=journal)
+
+# Classement de fichiers (mission « AI File Sorter », DEC-0075) : inspecter/
+# planifier/appliquer/annuler, jamais un deuxieme moteur de fichiers — toute
+# mutation reelle passe par `atelier_dioumtoukay` ci-dessus.
+registre.declarer(
+    "file_organization",
+    lambda: ConnecteurFileOrganization(acces=acces, journal=journal, file_attente=file_attente,
+                                       crochets=crochets, atelier=atelier_dioumtoukay,
+                                       memoire_longue=memoire_personnelle),
+)
+
 # --- Mesures d'execution ------------------------------------------------------
 # Les voies declarent des cibles ; ce rapport garde ce que les reponses ont
 # reellement coute, pour que les deux soient confrontables. Il est lu par
@@ -558,11 +575,12 @@ swe_agent = SWEAgent(provider=coder_provider, memory=memory)
 # longue en gardait un resume en prose, pas un etat reprenable.
 dioumtoukay_agent = DioumtoukayAgent(
     provider=coder_provider, memory=memory,
-    atelier=Atelier(journal=journal),
+    atelier=atelier_dioumtoukay,
     memoire_longue=memoire_personnelle,
     analyste=repo_engineer, chercheur_de_bug=swe_agent,
     connecteur_github=registre.obtenir("github"),
     connecteur_file_conversion=registre.obtenir("file_conversion"),
+    connecteur_file_organization=registre.obtenir("file_organization"),
     reprises=JournalDeReprise())
 # Raisonnement profond : plan, calcul reellement execute en bac a sable, puis
 # synthese. Le modele profond, parce que c'est la voie PROFONDE qui l'emprunte.

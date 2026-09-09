@@ -321,3 +321,45 @@ Windows-only (`docx2pdf`, menu contextuel), interface/gamification.
 
 `ruff` propre. Tests ciblés au vert (53 nouveaux, aucun mock sur les
 moteurs réels).
+
+---
+
+## 2026-09-09 — AI File Sorter + audit expérimental complet de l'agentivité
+
+**DEC-0075.** Mission en deux parties : classer des fichiers (`file_
+organization`, inspiré de `hyperfield/ai-file-sorter`, AGPLv3, Qt/C++) et
+vérifier EXPÉRIMENTALEMENT ce qu'ARENA sait vraiment faire — filesystem,
+terminal, code, Git — jamais supposé.
+
+| Vérifié pour de vrai | Preuve |
+|---|---|
+| Filesystem (Atelier) | lister/lire/écrire/modifier/déplacer, chacun vérifié sur disque indépendamment du rapport de l'agent |
+| Terminal | args/stdout/stderr/exit code/timeout (arrêt réel à 2.0s sur une commande de 30s), pas de shell=True |
+| Boucle de correction de bug | lire → tests échouent → corrige → tests passent, vérifié par un `pytest` relancé séparément |
+| Git | status/diff/branche/commit réels, aucun push |
+| Permissions | DENY par défaut, ALLOW, CONFIRMATION — les trois mesurés live |
+| Tâches de fond | progression réelle, annulation réelle (pas seulement marquée) |
+
+**Quatre primitives filesystem manquaient** (copier/supprimer/créer
+dossier/metadata+hash) — mesuré par `hasattr()` avant d'écrire une ligne,
+ajoutées à `Atelier`. **Un vrai manque de sécurité trouvé** : aucun
+chemin de lecture de Dioumtoukay n'utilisait `core/security/trust.py`
+(déjà existant) — fermé pour la nouvelle capacité.
+
+| Livré | Preuve |
+|---|---|
+| `core/production/organisation/` — plan à vocabulaire FERMÉ, sécurité confinée au dossier, mémoire réutilisant `MemoirePersonnelle` | 28 tests connecteur |
+| `core/connectors/file_organization.py` — inspecter/planifier/appliquer/annuler/etat | suppression : accord SÉPARÉ de la confirmation ordinaire |
+| 4 actions Dioumtoukay | 8 tests, un end-to-end réel (inspecter→planifier→appliquer→annuler, vérifié sur disque) |
+
+**Bug trouvé et corrigé** : comptage d'irréversibles cherchait
+`"reversible"` sans accent — toujours zéro. Corrigé sur le type
+d'opération.
+
+**Non intégré** : watch folders/scheduler (aucun n'existe — deuxième
+ordonnanceur interdit), vision réelle sur image (Ollama absent ici —
+UNKNOWN, à mesurer sur son PC).
+
+`ruff` propre. Restart testé (import frais du runtime) : filesystem,
+shell, git, file_conversion, file_organization, github, permissions —
+tous confirmés opérationnels après coup.

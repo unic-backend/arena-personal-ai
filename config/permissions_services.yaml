@@ -220,6 +220,17 @@ services:
     document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
     lecture:     {decision: ALLOWED,      risque: LOW}
 
+  # Classement de fichiers (DEC-0075, mission « AI File Sorter ») : inspecter
+  # un dossier et proposer/valider un plan sont de pures lectures — rien ne
+  # bouge. Appliquer (ou annuler) deplace/copie/supprime reellement des
+  # fichiers du proprietaire : CONFIRMATION, risque MEDIUM (une suppression
+  # a l'interieur d'un plan demande en plus son propre accord explicite,
+  # verifie par le connecteur avant tout acces disque — voir core/
+  # connectors/file_organization.py).
+  file_organization:
+    lecture:     {decision: ALLOWED,      risque: LOW}
+    document:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+
   # Graphify : le graphe structurel du depot (DEC-0046). Interroger un graphe
   # deja construit ne touche a rien — meme lecture que `takeoff.read`.
   # Construire ecrit graphify-out/ (graph.json, graph.html, GRAPH_REPORT.md) :

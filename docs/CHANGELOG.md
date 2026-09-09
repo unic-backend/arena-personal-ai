@@ -2,6 +2,49 @@
 
 ## [Non publié]
 
+### Ajouté — 09/09/2026 — Classement de fichiers + audit expérimental complet de l'agentivité (DEC-0075)
+
+Mission en deux parties : (1) exploiter AI File Sorter (`hyperfield/
+ai-file-sorter`, Qt/C++, AGPLv3) pour une capacité `file_organization` ;
+(2) vérifier EXPÉRIMENTALEMENT — exécution réelle, jamais supposée — ce
+qu'ARENA peut faire sur le filesystem, le terminal, le code, Git. Audit
+complet : `docs/audits/ai_file_sorter_audit.md`.
+
+**Vérification expérimentale (avant tout code neuf)** : filesystem,
+terminal, boucle complète de correction de bug (lire → tests échouent →
+corrige → tests passent, vérifié indépendamment sur disque), Git,
+permissions (DENY/ALLOW/CONFIRMATION/CONFIRMED réels), tâches de fond —
+tous CAPABLE, avec preuve d'exécution dans le message qui les rapporte.
+Quatre primitives filesystem étaient ABSENTES (copier/supprimer/créer
+dossier/metadata-hash), mesuré par `hasattr()`. Un vrai manque trouvé :
+aucun chemin de lecture de fichier de Dioumtoukay n'utilisait
+`core/security/trust.py` (déjà existant) — fermé pour `file_organization`.
+
+**Construit** : quatre méthodes ajoutées à `Atelier` (jamais un second
+moteur de fichiers) ; `core/production/organisation/` (plan à vocabulaire
+FERMÉ, sécurité — confinement au dossier confié, sabotage-vérifié —,
+inspection avec `trust.wrap()`, application/annulation, mémoire des
+préférences réutilisant `MemoirePersonnelle` existante) ;
+`core/connectors/file_organization.py` (inspecter/planifier/appliquer/
+annuler/etat, une suppression exige un accord SÉPARÉ de la confirmation
+ordinaire) ; quatre actions dans la boucle de Dioumtoukay.
+
+**Un bug réel trouvé et corrigé** : le comptage des opérations
+irréversibles cherchait `"reversible"` sans accent dans un message qui
+l'a (`"réversible"`) — toujours zéro. Corrigé en testant le type
+d'opération, jamais un texte.
+
+**Délibérément non intégré** : watch folders/scheduler (aucun n'existe
+dans ARENA — deuxième ordonnanceur interdit), description visuelle réelle
+d'une image (moteur vision dépend d'Ollama, absent de cette machine —
+UNKNOWN, à mesurer sur son PC), renommage automatique sans plan (refusé
+par construction).
+
+`ruff check .` propre. Tests ciblés : 28 connecteur + 8 Dioumtoukay + 8
+Atelier (nouvelles primitives) + 3 disponibilité, aucun mock sur les
+mutations réelles. Suite complète relancée, redémarrage testé (import
+frais du runtime), `file_organization` confirmée non-dormante.
+
 ### Ajouté — 08/09/2026 — Capacité de conversion de fichiers, via File_Converter_Pro audité (DEC-0074)
 
 Mission du propriétaire : exploiter les capacités utiles de

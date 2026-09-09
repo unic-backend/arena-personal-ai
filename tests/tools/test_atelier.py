@@ -84,6 +84,81 @@ class TestLesFichiers:
             ailleurs.unlink(missing_ok=True)
 
 
+# --- Copier, supprimer, creer_dossier, metadonnees (mission « AI File Sorter », DEC-0075) --
+
+class TestNouvellesPrimitives:
+    """Ajoutees pour `file_organization` : Atelier savait deja lire, ecrire,
+    lister, deplacer — il manquait copier, supprimer un fichier, creer/retirer
+    un dossier vide, et lire des metadonnees. Meme discipline DEC-0038 :
+    aucune garde ici, la protection vit dans le connecteur qui les appelle."""
+
+    def test_copier_laisse_la_source_en_place(self, atelier, bac):
+        atelier.ecrire("original.txt", "contenu")
+
+        resultat = atelier.copier("original.txt", "copie/original.txt")
+
+        assert resultat.ok
+        assert (bac / "original.txt").read_text() == "contenu"
+        assert (bac / "copie" / "original.txt").read_text() == "contenu"
+
+    def test_supprimer_un_fichier(self, atelier, bac):
+        atelier.ecrire("jetable.txt", "x")
+
+        resultat = atelier.supprimer("jetable.txt")
+
+        assert resultat.ok
+        assert not (bac / "jetable.txt").exists()
+
+    def test_supprimer_refuse_un_dossier(self, atelier, bac):
+        atelier.ecrire("dossier/fichier.txt", "x")
+
+        resultat = atelier.supprimer("dossier")
+
+        assert resultat.ok is False
+        assert (bac / "dossier").is_dir()
+
+    def test_creer_dossier_et_le_retirer_vide(self, atelier, bac):
+        r1 = atelier.creer_dossier("nouveau")
+        assert r1.ok and (bac / "nouveau").is_dir()
+
+        r2 = atelier.supprimer_dossier_vide("nouveau")
+        assert r2.ok and not (bac / "nouveau").exists()
+
+    def test_supprimer_dossier_vide_refuse_un_dossier_non_vide(self, atelier, bac):
+        atelier.ecrire("plein/fichier.txt", "x")
+
+        resultat = atelier.supprimer_dossier_vide("plein")
+
+        assert resultat.ok is False
+        assert (bac / "plein").is_dir()
+        assert (bac / "plein" / "fichier.txt").exists()
+
+    def test_metadonnees_taille_et_type(self, atelier):
+        atelier.ecrire("mesure.txt", "douze caracteres")  # 17 caracteres en realite
+
+        resultat = atelier.metadonnees("mesure.txt")
+
+        assert resultat.ok
+        assert resultat.donnees["taille_octets"] == len("douze caracteres")
+        assert resultat.donnees["type"] == "fichier"
+        assert resultat.donnees["extension"] == "txt"
+        assert "sha256" not in resultat.donnees  # jamais calcule par defaut
+
+    def test_metadonnees_avec_hachage_reel(self, atelier):
+        import hashlib
+        atelier.ecrire("hache.txt", "contenu stable")
+        attendu = hashlib.sha256(b"contenu stable").hexdigest()
+
+        resultat = atelier.metadonnees("hache.txt", hachage=True)
+
+        assert resultat.donnees["sha256"] == attendu
+
+    def test_metadonnees_fichier_absent(self, atelier):
+        resultat = atelier.metadonnees("n-existe-pas.bin")
+
+        assert resultat.ok is False
+
+
 # --- Le terminal --------------------------------------------------------------------
 
 class TestLeTerminal:
