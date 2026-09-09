@@ -175,8 +175,14 @@ class TestIlDitLaVerite:
 
     @pytest.mark.asyncio
     async def test_il_s_arrete(self, bac):
-        """Une boucle sans fin est la première façon dont un agent devient nuisible."""
-        boucle = ["ACTION: lister\nCHEMIN: ."] * (TOURS_MAX + 5)
+        """Une boucle sans fin est la première façon dont un agent devient nuisible.
+
+        Deux actions DIFFERENTES en alternance : la même action reprise
+        d'affilée est désormais coupée plus tôt par la garde anti-répétition
+        (`TestIlSArreteAussiSurLaRepetition`) — ce test-ci vise `TOURS_MAX`
+        spécifiquement, pas cette autre garde.
+        """
+        boucle = ["ACTION: lister\nCHEMIN: .", "ACTION: chercher\nTEXTE: x\nCHEMIN: ."] * (TOURS_MAX + 5)
 
         rendu = await agent(bac, *boucle).run("tourne en rond")
 
@@ -281,6 +287,101 @@ class TestIlSArreteAussiSurLeTemps:
         assert rendu["actions"] == [], "le temps est deja ecoule avant le premier tour"
         assert rendu["status"] == "partial"
         assert "minute" in rendu["response"].lower()
+
+
+class TestIlSArreteAussiSurLaRepetition:
+    """Idee extraite de Cline (`runtime/safety/loop-detection.ts`), Apache-2.0 —
+    voir docs/audits/cline_audit.md. Une action LISIBLE peut quand meme etre
+    inutile si c'est toujours la meme."""
+
+    @pytest.mark.asyncio
+    async def test_la_meme_action_d_affilee_arrete_avant_tours_max(self, bac):
+        from agents.dioumtoukay.dioumtoukay_agent import (
+            ACTIONS_IDENTIQUES_CONSECUTIVES_MAX,
+        )
+
+        repetee = ["ACTION: lister\nCHEMIN: ."] * ACTIONS_IDENTIQUES_CONSECUTIVES_MAX
+
+        rendu = await agent(bac, *repetee).run("vas-y")
+
+        # La Nieme repetition est detectee AVANT d'etre rejouee : N-1 sont
+        # deja parties, la derniere est bloquee.
+        assert len(rendu["actions"]) == ACTIONS_IDENTIQUES_CONSECUTIVES_MAX - 1
+        assert rendu["status"] == "partial"
+        assert "identique" in rendu["response"].lower()
+
+    @pytest.mark.asyncio
+    async def test_des_champs_differents_ne_comptent_pas_comme_repetes(self, bac):
+        """Meme nom d'action, CHEMIN different a chaque fois : jamais une
+        repetition, meme au-dela du seuil."""
+        from agents.dioumtoukay.dioumtoukay_agent import (
+            ACTIONS_IDENTIQUES_CONSECUTIVES_MAX,
+        )
+
+        for i in range(ACTIONS_IDENTIQUES_CONSECUTIVES_MAX + 1):
+            (bac / f"fichier_{i}.txt").write_text("contenu", encoding="utf-8")
+        lectures = [f"ACTION: lire\nCHEMIN: fichier_{i}.txt"
+                    for i in range(ACTIONS_IDENTIQUES_CONSECUTIVES_MAX + 1)]
+
+        rendu = await agent(bac, *lectures,
+                             "ACTION: terminer\nCONTENU:\nfini\nFIN").run("vas-y")
+
+        assert rendu["status"] == "success"
+        assert len(rendu["actions"]) == ACTIONS_IDENTIQUES_CONSECUTIVES_MAX + 1
+
+    @pytest.mark.asyncio
+    async def test_une_action_differente_reinitialise_le_compteur(self, bac):
+        from agents.dioumtoukay.dioumtoukay_agent import (
+            ACTIONS_IDENTIQUES_CONSECUTIVES_MAX,
+        )
+
+        assert ACTIONS_IDENTIQUES_CONSECUTIVES_MAX >= 2, "le test suppose au moins deux"
+        rendu = await agent(
+            bac,
+            "ACTION: lister\nCHEMIN: .",
+            "ACTION: chercher\nTEXTE: rien\nCHEMIN: .",
+            "ACTION: lister\nCHEMIN: .",
+            "ACTION: terminer\nCONTENU:\nfini\nFIN",
+        ).run("vas-y")
+
+        assert rendu["status"] == "success"
+        assert len(rendu["actions"]) == 3
+
+
+class TestIlSArreteAussiSurLesEchecsRepetes:
+    """Idee extraite de Cline (`runtime/safety/mistake-tracker.ts`), Apache-2.0 —
+    voir docs/audits/cline_audit.md. L'action change a chaque tour, mais rien
+    ne marche : continuer ne repare rien tout seul."""
+
+    @pytest.mark.asyncio
+    async def test_des_echecs_differents_d_affilee_arretent(self, bac):
+        from agents.dioumtoukay.dioumtoukay_agent import ECHECS_CONSECUTIFS_MAX
+
+        echecs = [f"ACTION: lire\nCHEMIN: absent_{i}.txt"
+                  for i in range(ECHECS_CONSECUTIFS_MAX)]
+
+        rendu = await agent(bac, *echecs).run("vas-y")
+
+        assert len(rendu["actions"]) == ECHECS_CONSECUTIFS_MAX
+        assert all(not a["ok"] for a in rendu["actions"]), "les trois lectures doivent echouer"
+        assert rendu["status"] == "partial"
+        assert "echec" in rendu["response"].lower()
+
+    @pytest.mark.asyncio
+    async def test_un_succes_reinitialise_le_compteur_d_echecs(self, bac):
+        from agents.dioumtoukay.dioumtoukay_agent import ECHECS_CONSECUTIFS_MAX
+
+        assert ECHECS_CONSECUTIFS_MAX >= 2, "le test suppose au moins deux"
+        rendu = await agent(
+            bac,
+            "ACTION: lire\nCHEMIN: absent_1.txt",
+            "ACTION: lister\nCHEMIN: .",
+            "ACTION: lire\nCHEMIN: absent_2.txt",
+            "ACTION: terminer\nCONTENU:\nfini\nFIN",
+        ).run("vas-y")
+
+        assert rendu["status"] == "success"
+        assert len(rendu["actions"]) == 3
 
 
 # --- Le branchement --------------------------------------------------------------------

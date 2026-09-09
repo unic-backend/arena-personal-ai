@@ -6262,3 +6262,111 @@ et le bug ci-dessus montre qu'un chemin de code peut échapper à une garde
 sans un sabotage qui le prouve. Un PDF chiffré ou corrompu mal géré
 resterait un `ECHEC` propre dans tous les cas mesurés — jamais un
 plantage, jamais un succès inventé.
+
+## DEC-0077 — Cline : deux gardes anti-blocage pour Dioumtoukay, rien de plus
+
+**Date** : 09/09/2026
+**Statut** : accepté
+
+### La mission
+
+Étudier `cline/cline` (Apache-2.0) — plus une extension VS Code, un
+monorepo Bun avec compte cloud, ordonnanceur (`cron/`), démon (`hub/`),
+partage d'équipe (`session/team/`) — et déterminer ce qui renforce
+Dioumtoukay (Usman Coder), l'agent de codage existant. Jamais un second
+agent de codage. Audit complet : `docs/audits/cline_audit.md`.
+
+### Ce qu'ARENA n'avait pas, mesuré avant tout code
+
+`agents/dioumtoukay/dioumtoukay_agent.py` a deux gardes contre une boucle
+qui ne progresse pas (DEC-0063) : `DUREE_MAX_SECONDES` (plafond de temps)
+et `ILLISIBLES_CONSECUTIVES_MAX` (réponses au mauvais format, d'affilée).
+**Aucune des deux ne détecte un modèle qui produit des actions parfaitement
+lisibles mais inutiles** : la même action rejouée mot pour mot, ou une
+action différente à chaque tour qui échoue systématiquement. Vérifié en
+relisant la boucle : rien entre le tour 1 et `TOURS_MAX`/`DUREE_MAX_SECONDES`
+ne regarde si un tour a fait progresser quoi que ce soit.
+
+`core/mcp/transport.py` et `core/mcp/stdio_transport.py` existent déjà,
+utilisés réellement par deux connecteurs (`opentakeoff.py`, `wan2gp.py`) —
+recherché avant de conclure quoi que ce soit sur le MCP de Cline (§4F de la
+mission) : ARENA a déjà cette capacité, rien à dupliquer.
+
+### Ce qui a été construit
+
+Dans `agents/dioumtoukay/dioumtoukay_agent.py`, au même niveau que les
+gardes DEC-0063 (deux constantes, une comparaison inline dans `run()`,
+aucune classe ni fichier neuf) :
+
+- `Action.signature()` — identité d'une action (nom + champs triés + blocs
+  triés). Deux `ecrire` sur le même CHEMIN mais un CONTENU différent NE
+  SONT PAS une répétition : le contenu entre dans la signature.
+- `ACTIONS_IDENTIQUES_CONSECUTIVES_MAX = 3` — la même signature 3 fois
+  d'affilée arrête la boucle **avant** de rejouer l'action une fois de
+  trop (2 exécutions réelles ont déjà eu lieu, la 3ᵉ tentative est
+  bloquée).
+- `ECHECS_CONSECUTIFS_MAX = 3` — 3 échecs d'exécution d'affilée
+  (`resultat.ok is False`), remis à zéro dès un succès, arrêtent la
+  boucle ; la dernière tentative reste dans le rendu, rien n'est caché.
+
+Idée extraite de Cline (`sdk/packages/core/src/runtime/safety/
+loop-detection.ts` et `mistake-tracker.ts`, Apache-2.0, commit `fee4fb9`) :
+**rien copié**, les deux fichiers sources sont du TypeScript avec un canal
+d'événements typé et des hooks qui n'ont pas de sens sur la boucle Python
+à une action par tour de Dioumtoukay. Ce qui est repris, c'est le principe
+des deux compteurs.
+
+### Un bug réel trouvé en construisant
+
+Le test `TestIlDitLaVerite::test_il_s_arrete` rejouait la MÊME action
+`TOURS_MAX + 5` fois pour vérifier le plafond `TOURS_MAX`. La nouvelle
+garde anti-répétition l'interceptait avant `TOURS_MAX` (après 2 exécutions
+au lieu de 12) — le test ne mesurait plus ce qu'il prétendait mesurer.
+Corrigé : il alterne désormais deux actions différentes, pour que ce soit
+bien `TOURS_MAX`, seul, qui l'arrête.
+
+### Ce qui n'a délibérément PAS été intégré, et pourquoi
+
+- **`cron/`, `hub/`, `session/team/`, `auth/` (WorkOS), `remote-config/`,
+  `telemetry/`** : machinerie multi-utilisateur/plateforme d'équipe —
+  ARENA est un assistant mono-propriétaire, mono-processus, avec déjà son
+  propre ordonnanceur de tâches (`core/execution/travaux.py`).
+- **`tool-approval.ts`** (variante Desktop) : un pont par fichiers, écrit
+  puis relu par polling, pour relier un agent headless à une UI séparée.
+  `core/actions/attente.py` résout déjà ce problème dans un seul
+  processus, sans polling, avec confirmation persistée.
+- **`sdk/packages/agents/`, `sdk/packages/llms/`, `extensions/mcp/`,
+  `apps/cli/`** : non relus ligne à ligne — ARENA a déjà, mesuré, chacun
+  de leurs équivalents (`Atelier`, routage de modèles hybride, `core/mcp/`,
+  Dioumtoukay lui-même comme surface headless). Le détail ligne par ligne
+  est dans la matrice de comparaison, `docs/audits/cline_audit.md` §3 :
+  19 des 20 capacités listées restent `KEEP ARENA`.
+- **Les checkpoints/snapshots de session** : conçus pour rembobiner une
+  UI Desktop qu'ARENA n'a pas ; git fait déjà ce travail pour un dépôt
+  suivi.
+
+### Vérification : trois défauts pré-existants trouvés, aucun corrigé ici
+
+`44/44` tests dédiés passent, sabotage compris. La suite complète a été
+tentée quatre fois pour écarter une régression ailleurs : à chaque fois,
+verte jusqu'à 57-58 %, puis bloquée sur une E/S disque réelle (état
+processus `D`, insensible à tout délai d'expiration testé, jusqu'à 120 s)
+— jamais un échec. Isolé : `tests/agents/test_repo_engineer.py`
+(`gitingest` sur le dépôt réel, très probablement le SDK Faceplugin
+vendoré de 1,2 Go, non exclu là où `scripts/orphelins.py` l'exclut déjà).
+Deux autres blocages pré-existants, sans rapport, trouvés en chemin et
+nommés dans `docs/audits/cline_audit.md` §6bis : un appel LibreOffice réel
+dans un test qui attend un court-circuit, et le pont subprocess du
+connecteur Faceplugin. Les trois sont hors périmètre de cette mission —
+aucun ne touche `agents/dioumtoukay/` ni `tools/atelier/` — et ne sont pas
+corrigés ici.
+
+### Ce que ça coûte si c'est faux
+
+Un seuil de répétition trop bas (3) arrêterait un travail légitime qui
+répète la même vérification par prudence — coût mesuré et accepté : le
+rapport dit explicitement pourquoi il s'est arrêté, et « la suite reste à
+faire » n'est jamais un échec silencieux. Un seuil trop haut laisserait un
+modèle bloqué consommer des tours pour rien jusqu'à `TOURS_MAX` — c'était
+déjà le risque avant cette mission ; les deux gardes ne font que le
+réduire, jamais l'aggraver.
