@@ -69,8 +69,22 @@ from core.connectors.base import Capacite, Connecteur, EtatSante, Sante, _mainte
 
 logger = logging.getLogger("usman.connecteurs.gitingest")
 
-#: Delai maximum d'une ingestion. Un depot distant volumineux clone puis
-#: lit tous ses fichiers ; un dossier local est quasi instantane.
+#: Delai maximum d'une ingestion, PAR DEFAUT — un appelant peut le reduire
+#: via le parametre `delai` (jamais l'augmenter au-dela : ce plafond reste
+#: le maximum absolu). Un depot distant volumineux clone puis lit tous ses
+#: fichiers ; un dossier local est en general quasi instantane.
+#:
+#: **Mesure le 09/09/2026** : `gitingest` construit ses motifs `.gitignore`
+#: via `Path.rglob(".gitignore")` sur TOUT l'arbre AVANT de pouvoir exclure
+#: quoi que ce soit — un moteur externe volumineux (`tools/vision/
+#: faceplugin/.../.venv/`, plusieurs milliers de fichiers, gitignore mais
+#: bien present sur une machine qui l'a installe) rend donc une ingestion
+#: locale bien plus lente que « quasi instantanee ». Rien ne le corrige ici
+#: (bibliotheque tierce, `include_gitignored=True` exposerait des donnees
+#: clients que `.gitignore` protege explicitement — hors de question) : le
+#: delai reste le seul levier cote ARENA, et chaque appelant choisit le
+#: sien selon ce qu'il attend reellement (un `RepoEngineerAgent` qui veut un
+#: simple coup d'oeil n'a pas besoin d'attendre 180 s avant son repli).
 DELAI_SECONDES = 180.0
 
 #: Segments de chemin qui refusent l'ingestion, quel que soit l'appelant —
@@ -197,11 +211,17 @@ class ConnecteurGitIngest(Connecteur):
 
         jeton = parametres.get("jeton") or None
         branche = parametres.get("branche") or None
+        delai_demande = parametres.get("delai")
+        try:
+            delai = min(float(delai_demande), DELAI_SECONDES) if delai_demande else DELAI_SECONDES
+        except (TypeError, ValueError):
+            delai = DELAI_SECONDES
 
-        return self._ingerer(capacite, source, jeton, branche)
+        return self._ingerer(capacite, source, jeton, branche, delai)
 
     def _ingerer(
         self, capacite: Capacite, source: str, jeton: Optional[str], branche: Optional[str],
+        delai: float = DELAI_SECONDES,
     ) -> ResultatAction:
         """Execute `ingest_async` (une coroutine) depuis `_executer()`, qui ne
         l'est pas.
@@ -224,16 +244,16 @@ class ConnecteurGitIngest(Connecteur):
             async def _appel():
                 with _sans_jeton_errant(jeton):
                     return await asyncio.wait_for(
-                        ingest_async(source, token=jeton, branch=branche), timeout=DELAI_SECONDES)
+                        ingest_async(source, token=jeton, branch=branche), timeout=delai)
             return asyncio.run(_appel())
 
         try:
             with ThreadPoolExecutor(max_workers=1) as bassin:
                 resume, arbre, contenu = bassin.submit(_dans_son_propre_fil).result(
-                    timeout=DELAI_SECONDES + 5)
+                    timeout=delai + 5)
         except (asyncio.TimeoutError, TimeoutError):
             return echec(action=capacite.nom, cible=self.nom,
-                         message=f"L'ingestion a depasse {DELAI_SECONDES:.0f} s.")
+                         message=f"L'ingestion a depasse {delai:.0f} s.")
         except InvalidGitHubTokenError:
             return echec(action=capacite.nom, cible=self.nom,
                          message="Le jeton GitHub fourni n'a pas une forme valide.")

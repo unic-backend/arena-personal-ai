@@ -429,3 +429,26 @@ a déjà chacun de leurs équivalents — matrice 20 lignes dans
 
 `ruff` propre sur les fichiers touchés. Suite complète relancée après
 modification (voir le rapport final pour le résultat).
+
+---
+
+## 2026-09-09 (suite) — Les trois défauts de DEC-0077, séparément
+
+Un des trois n'en était pas un : `test_meme_format_source_et_cible_est_un_
+echec` (file_conversion) accusé à tort — vérifié en isolation, propre,
+6,2 s. Le court-circuit « déjà au bon format » existe et fonctionne avant
+tout moteur ; l'investigation précédente avait mal isolé le test fautif au
+milieu de plusieurs `pytest` bloqués en parallèle.
+
+| Corrigé | Cause réelle | Preuve |
+|---|---|---|
+| `RepoEngineerAgent` attend jusqu'à 180 s de `gitingest` | délai trop généreux pour un « coup d'œil » — sous contention, très lent | nouveau paramètre `delai` (plafonné), ingestion réelle du dépôt mesurée à 14 s en isolation ; tests + sabotage |
+| `test_le_rapport_survit_a_n_importe_quelle_sonde_qui_leve` rejouait ~10× les vraies sondes | Faceplugin (sous-processus, 120 s prévus pour un 1er chargement sans GPU) invoqué pour de vrai à chaque itération | rendu hermétique (témoin par sonde non testée), sabotage vérifié : 0,1 s au lieu de plusieurs minutes |
+
+**Incident en cours de route** : disque de la machine cloud plein (0 octet
+disponible) pendant la vérification — fichiers temporaires accumulés dans
+`/tmp` (logs `pytest`, copies `.bak` de sabotage) sur plusieurs missions.
+Nettoyé (2314 fichiers), 4 Go libérés. Sans rapport avec le code du dépôt.
+
+Suite complète, après nettoyage : **4372 passed, 31 skipped, 48 deselected,
+0 failed** (456 s). `ruff check .` propre.

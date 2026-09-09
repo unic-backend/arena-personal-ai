@@ -2,6 +2,37 @@
 
 ## [Non publié]
 
+### Corrigé — 09/09/2026 — Trois lenteurs/blocages trouvés pendant DEC-0077
+
+Suite à DEC-0077, sur demande du propriétaire : correction séparée des trois
+défauts trouvés en marge de cette mission-là, aucun lié à Dioumtoukay.
+
+**Un des trois n'était pas un vrai défaut.** `test_meme_format_source_et_
+cible_est_un_echec` (`core/connectors/file_conversion.py`) avait été accusé
+de bloquer sur un appel LibreOffice réel — vérifié en isolation, propre,
+6,2 s : le court-circuit « déjà au bon format » a lieu AVANT tout moteur,
+exactement comme prévu. Mauvais diagnostic initial (investigation confuse
+sur plusieurs `pytest` bloqués en parallèle) — corrigé ici en le disant,
+pas en inventant un correctif à un code qui marche déjà.
+
+**Les deux autres sont réels, mesurés précisément :**
+
+- `RepoEngineerAgent` (`agents/repo_engineer/repo_engineer_agent.py`) attend
+  jusqu'à 180 s de `gitingest` avant son repli sur l'arborescence — bien
+  trop pour un « coup d'œil ». Un délai plus court est maintenant passé au
+  connecteur (`core/connectors/gitingest.py`, nouveau paramètre `delai`,
+  plafonné à `DELAI_SECONDES`, jamais au-delà). Une ingestion réelle de ce
+  dépôt (1548 fichiers) mesurée à 14 s en isolation ; sous contention (suite
+  complète), le nouveau délai de 20 s fait tomber sur le repli fiable au
+  lieu d'attendre.
+- `test_le_rapport_survit_a_n_importe_quelle_sonde_qui_leve`
+  (`tests/test_doctor.py`) rejouait ~10 fois les VRAIES sondes (dont
+  Faceplugin, un sous-processus qui charge un modèle sans GPU — 120 s prévus
+  par conception pour un premier chargement) au lieu de les remplacer. Rendu
+  hermétique : chaque sonde non testée est un témoin immédiat, la garantie
+  testée (le rapport survit à une sonde qui lève) reste intacte, sabotage
+  vérifié. 0,1 s au lieu de plusieurs minutes.
+
 ### Ajouté — 09/09/2026 — Deux gardes anti-blocage pour Dioumtoukay, via Cline (DEC-0077)
 
 Mission du propriétaire : étudier `cline/cline` (Apache-2.0, désormais un
