@@ -73,6 +73,28 @@ DUREE_MAX_SECONDES = 20 * 60
 #: `DefaultAgent.run` : le compteur revient à zéro dès qu'un tour est propre).
 ILLISIBLES_CONSECUTIVES_MAX = 3
 
+#: Au-delà, la MÊME action valide, avec les MÊMES champs, demandée d'affilée
+#: n'est plus une action à rejouer : c'est un modèle bloqué qui répète un geste
+#: sans effet nouveau (relire le même fichier, relancer la même commande qui ne
+#: changera pas). Distinct d'`ILLISIBLES_CONSECUTIVES_MAX` : une action répétée
+#: est parfaitement lisible, elle est juste inutile. Concept vérifié dans le
+#: code source de Cline (Apache-2.0, `cline/cline`, commit `fee4fb9`,
+#: `sdk/packages/core/src/runtime/safety/loop-detection.ts` —
+#: `checkRepeatedToolCall`/`toolCallSignature`) : rien copié, réimplémenté ici
+#: en Python sur la structure déjà en place pour `illisibles_consecutives`.
+ACTIONS_IDENTIQUES_CONSECUTIVES_MAX = 3
+
+#: Au-delà, un ÉCHEC D'EXÉCUTION (commande en erreur, remplacement introuvable,
+#: fichier absent...) répété d'affilée n'est plus une erreur à corriger au tour
+#: suivant : c'est une approche qui ne marche pas et que rejouer ne réparera
+#: pas seul. Distinct des deux gardes ci-dessus : l'action change à chaque
+#: tour, mais échoue à chaque fois. Concept vérifié dans le code source de
+#: Cline (Apache-2.0, `cline/cline`, commit `fee4fb9`,
+#: `sdk/packages/core/src/runtime/safety/mistake-tracker.ts` —
+#: `MistakeTracker.record`, raison `tool_execution_failed`) : rien copié,
+#: réimplémenté ici en Python sur la structure déjà en place.
+ECHECS_CONSECUTIFS_MAX = 3
+
 #: Les actions qu'il sait faire. Toute autre étiquette est refusée et lui est
 #: renvoyée telle quelle — corriger sa faute à sa place lui apprendrait à
 #: écrire n'importe quoi.
@@ -313,6 +335,17 @@ class Action:
     def contenu(self) -> str:
         """Le bloc `CONTENU:`, celui qu'écrivent `ecrire` et `terminer`."""
         return self.blocs.get("CONTENU", "")
+
+    def signature(self) -> tuple:
+        """Identité de l'action pour la garde anti-répétition.
+
+        Deux actions ont la même signature quand elles feraient exactement le
+        même geste — même nom, mêmes champs, mêmes blocs. Un `ecrire` sur le
+        même CHEMIN mais avec un CONTENU différent n'est PAS une répétition :
+        les blocs entrent dans la signature pour ça.
+        """
+        return (self.nom, tuple(sorted(self.champs.items())),
+                tuple(sorted(self.blocs.items())))
 
 
 def _lire_bloc(nom: str, texte: str) -> Optional[str]:
@@ -706,6 +739,9 @@ class DioumtoukayAgent(BaseAgent):
         arrete_par_lui_meme = False
         debut = time.monotonic()
         illisibles_consecutives = 0
+        derniere_signature: Optional[tuple] = None
+        repetitions_consecutives = 0
+        echecs_consecutifs = 0
 
         for tour in range(1, TOURS_MAX + 1):
             ecoule = time.monotonic() - debut
@@ -741,6 +777,22 @@ class DioumtoukayAgent(BaseAgent):
                 arrete_par_lui_meme = True
                 break
 
+            # Garde anti-repetition : la MEME action, pas seulement un tour de
+            # plus. Arrete AVANT de la rejouer une fois de trop — un geste
+            # sans effet nouveau ne merite pas une execution supplementaire.
+            signature = action.signature()
+            if signature == derniere_signature:
+                repetitions_consecutives += 1
+            else:
+                repetitions_consecutives = 1
+                derniere_signature = signature
+            if repetitions_consecutives >= ACTIONS_IDENTIQUES_CONSECUTIVES_MAX:
+                conclusion = (
+                    f"Arrete apres {repetitions_consecutives} '{action.nom}' identiques "
+                    "d'affilee : ca ne changera rien de la rejouer. Ce qui a ete fait "
+                    "est ci-dessous ; la suite reste a faire.")
+                break
+
             debut_action = time.monotonic()
             resultat = await self._executer_action(action)
             duree_ms = int((time.monotonic() - debut_action) * 1000)
@@ -754,6 +806,20 @@ class DioumtoukayAgent(BaseAgent):
                 cible=str(action.champs.get("CHEMIN") or action.champs.get("MOTIF") or ""),
                 ok=resultat.ok, resume=self._compte_rendu(action, resultat),
                 duree_ms=duree_ms)
+
+            # Garde anti-echecs : la meme garantie que ci-dessus, mais pour une
+            # action qui CHANGE a chaque tour tout en echouant a chaque fois.
+            # La derniere tentative reste dans `rendu` : rien n'est cache.
+            if resultat.ok:
+                echecs_consecutifs = 0
+            else:
+                echecs_consecutifs += 1
+                if echecs_consecutifs >= ECHECS_CONSECUTIFS_MAX:
+                    conclusion = (
+                        f"Arrete apres {echecs_consecutifs} echecs d'execution "
+                        "d'affilee : cette approche ne marche pas. Ce qui a ete "
+                        "fait est ci-dessous ; la suite reste a faire.")
+                    break
 
         if not arrete_par_lui_meme and not conclusion:
             # La borne est atteinte. Le dire : un rapport qui s'arrete sans

@@ -2,6 +2,40 @@
 
 ## [Non publié]
 
+### Ajouté — 09/09/2026 — Deux gardes anti-blocage pour Dioumtoukay, via Cline (DEC-0077)
+
+Mission du propriétaire : étudier `cline/cline` (Apache-2.0, désormais un
+monorepo avec compte cloud, ordonnanceur, démon et partage d'équipe) pour
+renforcer Dioumtoukay — jamais un second agent de codage. Audit complet :
+`docs/audits/cline_audit.md`.
+
+**Ce qui manquait, mesuré avant tout code** : les deux gardes existantes
+(DEC-0063 : plafond de temps, réponses illisibles d'affilée) ne
+détectaient ni une action valide rejouée à l'identique, ni des échecs
+d'exécution répétés sur des actions différentes.
+
+**Construit**, dans `agents/dioumtoukay/dioumtoukay_agent.py` — aucun
+fichier neuf : `Action.signature()`, `ACTIONS_IDENTIQUES_CONSECUTIVES_MAX = 3`
+(arrête avant de rejouer une action identique une fois de trop),
+`ECHECS_CONSECUTIFS_MAX = 3` (arrête après 3 échecs d'exécution d'affilée,
+remis à zéro dès un succès). Idée extraite de
+`runtime/safety/{loop-detection,mistake-tracker}.ts` de Cline — rien copié,
+réimplémenté en Python sur la structure déjà en place.
+
+**Recherché avant de conclure** : ARENA a déjà un client MCP réel
+(`core/mcp/transport.py`, `stdio_transport.py`, utilisé par 2 connecteurs) —
+rien à dupliquer côté MCP.
+
+**Un test existant corrigé** : `test_il_s_arrete` rejouait la même action
+pour tester `TOURS_MAX` — la nouvelle garde l'interceptait plus tôt.
+Corrigé pour alterner deux actions et viser à nouveau `TOURS_MAX` seul.
+
+**Délibérément non intégré** : l'ordonnanceur/démon/comptes d'équipe de
+Cline (aucun besoin correspondant, mono-propriétaire), le pont
+d'approbation par fichiers (`core/actions/attente.py` fait déjà mieux),
+les modules `agents/`/`llms/`/`mcp/`/`cli/` de Cline (ARENA a déjà chacun
+de leurs équivalents, mesuré — matrice complète dans l'audit).
+
 ### Ajouté — 09/09/2026 — Manipulation de pages PDF + format PDFx (DEC-0076)
 
 Mission du propriétaire : étudier `AlexandrosGounis/pdfx` (Electron, MIT)

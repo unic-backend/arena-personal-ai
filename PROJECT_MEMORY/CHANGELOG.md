@@ -395,3 +395,37 @@ donnée via `core/security/trust.py`, motifs relevés).
 
 `ruff` propre. 242 modules, 194 atteints, aucun module réel endormi.
 Restart testé.
+
+---
+
+## 2026-09-09 (suite) — Cline : deux gardes anti-blocage pour Dioumtoukay
+
+**DEC-0077.** Mission : étudier `cline/cline` (Apache-2.0, monorepo avec
+compte cloud/ordonnanceur/démon/équipe) pour renforcer Dioumtoukay — jamais
+un second agent de codage.
+
+**Le manque réel** : les gardes DEC-0063 (plafond de temps, réponses
+illisibles) ne détectaient ni une action valide rejouée à l'identique, ni
+des échecs d'exécution répétés sur des actions différentes.
+
+| Livré | Preuve |
+|---|---|
+| `Action.signature()` + `ACTIONS_IDENTIQUES_CONSECUTIVES_MAX = 3` | test dédié + sabotage (condition neutralisée → le test échoue) |
+| `ECHECS_CONSECUTIFS_MAX = 3` | test dédié + sabotage (condition neutralisée → le test échoue) |
+| Recherche MCP côté ARENA avant conclusion | `core/mcp/transport.py`+`stdio_transport.py` déjà réels, déjà utilisés — rien dupliqué |
+
+**Aucun fichier neuf** : les deux gardes vivent dans
+`agents/dioumtoukay/dioumtoukay_agent.py`, au même niveau que DEC-0063.
+
+**Un test existant corrigé** : `test_il_s_arrete` rejouait la même action
+pour tester `TOURS_MAX` — la nouvelle garde l'arrêtait avant. Corrigé pour
+alterner deux actions.
+
+**Non intégré** : ordonnanceur/démon/comptes d'équipe de Cline (aucun
+besoin correspondant), pont d'approbation par fichiers (`core/actions/
+attente.py` fait déjà mieux), modules `agents/llms/mcp/cli` de Cline (ARENA
+a déjà chacun de leurs équivalents — matrice 20 lignes dans
+`docs/audits/cline_audit.md`, 19/20 `KEEP ARENA`).
+
+`ruff` propre sur les fichiers touchés. Suite complète relancée après
+modification (voir le rapport final pour le résultat).
