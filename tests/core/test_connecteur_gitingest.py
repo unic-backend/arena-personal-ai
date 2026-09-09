@@ -155,6 +155,54 @@ class TestLeVraiMoteur:
         assert resultat.statut in (Statut.SUCCES, Statut.ECHEC)  # jamais une exception
 
 
+class TestLeDelaiEstConfigurable:
+    """Mesure du 09/09/2026 : un appelant qui veut « un coup d'oeil rapide »
+    (`RepoEngineerAgent`) n'a pas besoin d'attendre les 180 s par defaut
+    avant que son repli sur l'arborescence ne se declenche."""
+
+    def test_un_delai_plus_court_est_respecte(self, petit_depot, monkeypatch):
+        import asyncio
+
+        async def _lente(*args, **kwargs):
+            await asyncio.sleep(1.0)
+            return "resume", "arbre", "contenu"
+
+        monkeypatch.setattr(gitingest_mod, "DELAI_SECONDES", 180.0)
+        monkeypatch.setattr("gitingest.ingest_async", _lente)
+
+        resultat = ConnecteurGitIngest().executer_confirmee(
+            "ingerer", source=str(petit_depot), delai=0.2)
+
+        assert resultat.statut is Statut.ECHEC
+        assert "0" in resultat.message  # « a depasse 0 s » : le delai COURT, pas le defaut
+
+    def test_un_delai_demande_ne_depasse_jamais_le_plafond(self, petit_depot, monkeypatch):
+        """Demander plus que `DELAI_SECONDES` ne l'etend pas : le plafond
+        reste le maximum absolu, jamais un appelant qui en decide seul."""
+        import asyncio
+
+        async def _lente(*args, **kwargs):
+            await asyncio.sleep(1.0)
+            return "resume", "arbre", "contenu"
+
+        monkeypatch.setattr(gitingest_mod, "DELAI_SECONDES", 0.2)
+        monkeypatch.setattr("gitingest.ingest_async", _lente)
+
+        resultat = ConnecteurGitIngest().executer_confirmee(
+            "ingerer", source=str(petit_depot), delai=9999)
+
+        assert resultat.statut is Statut.ECHEC
+        assert "0" in resultat.message  # plafonne a DELAI_SECONDES (0.2s), pas 9999
+
+    def test_un_delai_invalide_retombe_sur_le_defaut(self, petit_depot):
+        """Une valeur qui ne se convertit pas en nombre ne doit jamais faire
+        lever le connecteur : elle retombe sur le comportement par defaut."""
+        resultat = ConnecteurGitIngest().executer_confirmee(
+            "ingerer", source=str(petit_depot), delai="pas-un-nombre")
+
+        assert resultat.statut is Statut.SUCCES, resultat.message
+
+
 class TestLeCoupeCircuitDePermission:
     def test_refuse_par_defaut_sans_politique(self, tmp_path):
         """Sans regle ecrite pour `gitingest.read`, `ControleAcces` refuse par

@@ -40,7 +40,14 @@ class RepoEngineerAgent(BaseAgent):
         avec le contenu pour que le prompt dise ce qu'il a réellement lu.
         """
         if self.registre is not None:
-            resultat = self.registre.executer("gitingest", "ingerer", source=".")
+            # `delai` court : un « coup d'oeil » n'a pas besoin des 180 s par
+            # defaut du connecteur — surtout que ce depot porte des moteurs
+            # externes volumineux mais gitignores (`tools/vision/faceplugin/`),
+            # que le parcours interne de gitingest doit quand meme traverser
+            # avant de pouvoir les exclure. Le repli sur l'arborescence,
+            # juste en dessous, reste rapide dans tous les cas — mesure le
+            # 09/09/2026.
+            resultat = self.registre.executer("gitingest", "ingerer", source=".", delai=20)
             if resultat.statut.value == "SUCCESS":
                 resume = str(resultat.detail.get("resume") or "").strip()
                 arbre = str(resultat.detail.get("arbre") or "").strip()

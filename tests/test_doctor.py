@@ -381,15 +381,34 @@ class TestAucuneSondeNEmporteLeRapport:
         assert doctor.mesurer("Ollama", lambda: attendue) is attendue
 
     def test_le_rapport_survit_a_n_importe_quelle_sonde_qui_leve(self, monkeypatch):
-        """Chaque sonde est cassée à son tour ; le rapport doit rester entier."""
+        """Chaque sonde est cassée à son tour ; le rapport doit rester entier.
+
+        Les AUTRES sondes sont ici remplacées par un témoin immédiat — ce test
+        vérifie une propriété STRUCTURELLE du rapport (rien ne disparaît,
+        la panne est signalée), pas les vraies valeurs mesurées. Sans ce
+        témoin, chacune des ~10 itérations rejoue pour de vrai les sondes
+        lourdes (Faceplugin notamment : `core/connectors/faceplugin.py`
+        lance un sous-processus qui peut légitimement prendre jusqu'à
+        `DELAI` = 120 s pour un premier chargement de modèle sans GPU) —
+        mesuré le 09/09/2026 : plusieurs minutes au lieu de quelques
+        secondes, sur une machine qui a ce moteur externe réellement
+        installé.
+        """
         sondes = [nom for nom in dir(doctor)
                   if nom.startswith("verifier_") and nom != "verifier_modele"]
         assert len(sondes) >= 10, "l'inventaire des sondes n'a rien trouvé"
 
-        entier = len(doctor.diagnostiquer().verifications)
+        temoin = lambda *a, **k: Verification("temoin", OK, "remplace pour ce test")  # noqa: E731
+
+        with monkeypatch.context() as reference:
+            for nom in sondes:
+                reference.setattr(doctor, nom, temoin)
+            entier = len(doctor.diagnostiquer().verifications)
 
         for nom in sondes:
             with monkeypatch.context() as contexte:
+                for autre in sondes:
+                    contexte.setattr(doctor, autre, temoin)
                 contexte.setattr(
                     doctor, nom,
                     lambda *a, **k: (_ for _ in ()).throw(OSError(10038, "pas un socket")))
