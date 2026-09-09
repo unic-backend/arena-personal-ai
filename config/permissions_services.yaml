@@ -231,6 +231,16 @@ services:
     lecture:     {decision: ALLOWED,      risque: LOW}
     document:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
 
+  # PDF (DEC-0076, mission « PDFx ») : fusionner/scinder/reordonner/
+  # supprimer/extraire des pages, extraire texte/images, lire/ecrire un
+  # manifeste PDFx. Chaque operation ecrit un fichier NEUF, jamais la
+  # source — meme logique que file_conversion : ALLOWED sous WRITE_FILES,
+  # pas de confirmation prealable, rien de destructif sur un fichier
+  # existant. `extraire_texte`/`manifeste` sont de pures lectures.
+  pdf:
+    document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+    lecture:     {decision: ALLOWED,      risque: LOW}
+
   # Graphify : le graphe structurel du depot (DEC-0046). Interroger un graphe
   # deja construit ne touche a rien — meme lecture que `takeoff.read`.
   # Construire ecrit graphify-out/ (graph.json, graph.html, GRAPH_REPORT.md) :

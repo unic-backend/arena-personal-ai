@@ -72,6 +72,7 @@ from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.montage import ConnecteurMontage
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
 from core.connectors.openviking import ConnecteurOpenViking
+from core.connectors.pdf import ConnecteurPdf
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.securite_chantier import ConnecteurSecuriteChantier
 from core.connectors.stockage_jetons import charger_tout as _charger_jetons_persistants
@@ -471,6 +472,15 @@ registre.declarer(
                                        memoire_longue=memoire_personnelle),
 )
 
+# PDF (mission « PDFx », DEC-0076) : fusionner/scinder/reordonner/pages,
+# manifeste PDFx — un seul moteur (pypdf, deja une dependance), jamais un
+# deuxieme (pas PyMuPDF, pas pdf-lib, pas Electron dans le coeur d'ARENA).
+registre.declarer(
+    "pdf",
+    lambda: ConnecteurPdf(acces=acces, journal=journal, file_attente=file_attente,
+                          crochets=crochets),
+)
+
 # --- Mesures d'execution ------------------------------------------------------
 # Les voies declarent des cibles ; ce rapport garde ce que les reponses ont
 # reellement coute, pour que les deux soient confrontables. Il est lu par
@@ -581,6 +591,7 @@ dioumtoukay_agent = DioumtoukayAgent(
     connecteur_github=registre.obtenir("github"),
     connecteur_file_conversion=registre.obtenir("file_conversion"),
     connecteur_file_organization=registre.obtenir("file_organization"),
+    connecteur_pdf=registre.obtenir("pdf"),
     reprises=JournalDeReprise())
 # Raisonnement profond : plan, calcul reellement execute en bac a sable, puis
 # synthese. Le modele profond, parce que c'est la voie PROFONDE qui l'emprunte.

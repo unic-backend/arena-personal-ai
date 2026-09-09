@@ -2,6 +2,49 @@
 
 ## [Non publié]
 
+### Ajouté — 09/09/2026 — Manipulation de pages PDF + format PDFx (DEC-0076)
+
+Mission du propriétaire : étudier `AlexandrosGounis/pdfx` (Electron, MIT)
+pour améliorer ARENA en PDF — sans cloner l'app, sans deuxième système PDF,
+sans deuxième architecture documentaire. Audit complet :
+`docs/audits/pdfx_audit.md`.
+
+**Ce qui manquait, mesuré avant tout code** : `pypdf` était déjà une
+dépendance (lecture seule, `tools/documents/reader.py`) mais jamais en
+écriture — aucune fusion, scission, réordonnancement, suppression/
+extraction de page, rotation, extraction d'image, aucun manifeste
+multi-documents.
+
+**Le format PDFx adopté (import+export)** : un manifeste JSON embarqué
+comme pièce jointe PDF standard — `pypdf.add_attachment`/`.attachments`
+suffisent, aucune dépendance neuve. Testé de bout en bout : fusionner 3
+PDF en `format_pdfx=True`, puis `demonter()` retrouve les documents
+d'origine, noms et contenu exacts — y compris à travers Dioumtoukay, sur
+le scénario exact de la mission (4 documents, ordre précis, artefact
+final).
+
+**Construit** : `core/production/documents_pdf/` (dix opérations via
+`pypdf`, sécurité — en-tête `%PDF-` vérifié, indices hors bornes —,
+validation par rouverture réelle) ; `core/connectors/pdf.py` (dix
+capacités, toutes `ALLOWED` — aucune ne touche jamais le fichier source) ;
+`extraire_texte` marqué par `core/security/trust.py` (contenu PDF = donnée,
+jamais une instruction, testé avec un vrai PDF piégé « Ignore previous
+instructions ») ; quatre actions dans la boucle de Dioumtoukay.
+
+**Un bug réel trouvé et corrigé** : le comptage de pages pour valider des
+indices appelait `PdfReader(...).pages` hors de la garde anti-chiffrement
+— un PDF chiffré faisait lever une exception non gérée au lieu d'un refus
+propre. Corrigé en centralisant le comptage dans une fonction gardée.
+
+**Délibérément non intégré** : Electron/rendu pdf.js/UI en grille (ARENA
+reste un backend Python), le sous-système de rédaction (non demandé),
+l'assistant IA propre à PDFx (ARENA route déjà ses propres modèles).
+
+`ruff check .` propre. Tests ciblés : 31 connecteur + 10 Dioumtoukay + 3
+disponibilité, aucun mock sur les vraies opérations PDF. Sécurité testée
+avec de vrais fichiers (corrompu, chiffré, avec JavaScript embarqué —
+jamais exécuté, `pypdf` n'a aucun moteur JS).
+
 ### Ajouté — 09/09/2026 — Classement de fichiers + audit expérimental complet de l'agentivité (DEC-0075)
 
 Mission en deux parties : (1) exploiter AI File Sorter (`hyperfield/

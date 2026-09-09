@@ -363,3 +363,35 @@ UNKNOWN, à mesurer sur son PC).
 `ruff` propre. Restart testé (import frais du runtime) : filesystem,
 shell, git, file_conversion, file_organization, github, permissions —
 tous confirmés opérationnels après coup.
+
+---
+
+## 2026-09-09 (suite) — PDFx : pages PDF + format multi-documents
+
+**DEC-0076.** Mission : étudier `AlexandrosGounis/pdfx` (Electron, MIT)
+pour ARENA — sans cloner l'app, sans deuxième système PDF.
+
+**Le manque réel** : `pypdf` déjà présent (lecture seule) mais jamais en
+écriture — aucune fusion/scission/pages/manifeste.
+
+| Livré | Preuve |
+|---|---|
+| `core/production/documents_pdf/` — dix opérations via `pypdf` seul | 31 tests, aucun mock |
+| Format PDFx adopté (import+export) — manifeste en pièce jointe PDF, `pypdf` seul, zéro dépendance neuve | round-trip complet vérifié : fusion 3 PDF → démontage → documents identiques |
+| `core/connectors/pdf.py` — 10 capacités, jamais destructif sur la source | ALLOWED sous WRITE_FILES |
+| 4 actions Dioumtoukay | scénario exact de la mission (4 docs, ordre précis) rejoué et vérifié |
+
+**Bug trouvé et corrigé** : comptage de pages hors de la garde
+anti-chiffrement — un PDF chiffré levait une exception non gérée au lieu
+d'un refus propre.
+
+**Sécurité testée avec de vrais fichiers** : corrompu (échec propre),
+chiffré (refusé explicitement), JavaScript embarqué (jamais exécuté —
+`pypdf` n'a aucun moteur JS), injection de prompt dans le texte (marquée
+donnée via `core/security/trust.py`, motifs relevés).
+
+**Non intégré** : Electron/UI (ARENA reste un backend Python), rédaction
+(non demandée), assistant IA propre à PDFx (ARENA route déjà ses modèles).
+
+`ruff` propre. 242 modules, 194 atteints, aucun module réel endormi.
+Restart testé.

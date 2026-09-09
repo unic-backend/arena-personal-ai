@@ -69,6 +69,7 @@ from core.memory.semantique import recuperer_semantique
 from core.production.disponibilite import disponibilite_video
 from core.production.disponibilite_conversion import disponibilite_conversion
 from core.production.disponibilite_organisation import disponibilite_organisation
+from core.production.disponibilite_pdf import disponibilite_pdf
 from core.production.disponibilite_swe import disponibilite_swe
 from core.relecture import relire
 from core.reseau.adresse_machine import AdresseMachine
@@ -804,6 +805,8 @@ async def capacites_disponibles() -> Dict[str, Any]:
         # DEC-0075 : file_organization, mesuree pour de vrai — jamais devinee
         # d'un objet construit.
         "file_organization": await disponibilite_organisation(registre.obtenir("file_organization")),
+        # DEC-0076 : pdf, mesuree pour de vrai — jamais devinee.
+        "pdf": await disponibilite_pdf(registre.obtenir("pdf")),
     }
 
 

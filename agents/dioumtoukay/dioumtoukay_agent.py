@@ -98,7 +98,9 @@ ILLISIBLES_CONSECUTIVES_MAX = 3
 ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "executer", "analyser", "diagnostiquer", "ouvrir_pr", "etat_ci",
            "convertir", "organiser_inspecter", "organiser_planifier",
-           "organiser_appliquer", "organiser_annuler", "terminer")
+           "organiser_appliquer", "organiser_annuler",
+           "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
+           "terminer")
 
 #: Les actions qui modifient quelque chose. Elles sont comptées à part dans le
 #: rapport : « j'ai lu quatre fichiers » et « j'ai modifié quatre fichiers » ne
@@ -114,15 +116,19 @@ ACTIONS_QUI_MODIFIENT = frozenset({"ecrire", "remplacer", "deplacer"})
 #: `organiser_planifier` de même : l'inventaire et le plan JSON complet sont
 #: ce qu'il doit lire pour décider — jamais `organiser_appliquer`/`_annuler`,
 #: dont le message résume déjà les comptages (même choix qu'`ouvrir_pr`).
+#: `pdf_fusionner`/`_demonter`/`_pages`/`_extraire_texte` de même : URL du
+#: fichier écrit, liste des documents (manifeste), ou texte lui-même sont
+#: ce que le propriétaire lit pour vérifier, pas un simple « fait ».
 ACTIONS_QUI_ANALYSENT = frozenset({
     "analyser", "diagnostiquer", "etat_ci", "convertir",
     "organiser_inspecter", "organiser_planifier",
+    "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
 })
 
 _ETIQUETTE = re.compile(r"^\s*ACTION\s*:\s*(\w+)", re.IGNORECASE | re.MULTILINE)
 _CHAMP = re.compile(
     r"^\s*(CHEMIN|SOURCE|DESTINATION|COMMANDE|DOSSIER|TEXTE|DEPOT|TITRE|TETE|BASE|REF|FORMAT"
-    r"|PLAN_ID|CONFIRMER_SUPPRESSION)"
+    r"|PLAN_ID|CONFIRMER_SUPPRESSION|OPERATION|PAGES|DEGRES|FORMAT_PDFX)"
     r"\s*:\s*(.+)$",
     re.IGNORECASE | re.MULTILINE)
 
@@ -209,6 +215,26 @@ PLAN_ID: identifiant rendu par organiser_planifier
 ACTION: organiser_annuler
 PLAN_ID: identifiant d'un plan deja applique
 
+ACTION: pdf_fusionner
+TITRE: Dossier client
+FORMAT_PDFX: oui
+CONTENU:
+contrat.pdf
+devis.pdf
+facture.pdf
+FIN
+
+ACTION: pdf_demonter
+CHEMIN: dossier-client.pdfx
+
+ACTION: pdf_pages
+CHEMIN: rapport.pdf
+OPERATION: extraire_pages
+PAGES: 3,4,5,6,7
+
+ACTION: pdf_extraire_texte
+CHEMIN: facture.pdf
+
 ACTION: terminer
 CONTENU:
 ce que tu as fait, en francais simple, pour le proprietaire
@@ -254,6 +280,14 @@ COMMENT TRAVAILLER
    exige en plus `CONFIRMER_SUPPRESSION: oui`, sans quoi elle est refusee.
    `organiser_annuler` defait un plan applique, sauf ses suppressions
    (jamais reversibles). N'invente jamais un identifiant de plan.
+9. `pdf_fusionner` prend un fichier par ligne dans CONTENU, DANS L'ORDRE
+   demande — c'est cet ordre qui range les documents dans le resultat.
+   `FORMAT_PDFX: oui` ajoute le manifeste (recuperable ensuite par
+   `pdf_demonter`) ; sans lui, c'est une simple concatenation de PDF.
+   `pdf_pages` : PAGES est une liste d'index a partir de 0 (page 1 du
+   document = index 0) — jamais a partir de 1. OPERATION choisit entre
+   `reordonner` (PAGES devient le nouvel ordre complet), `supprimer_pages`,
+   `extraire_pages`, ou `pivoter_pages` (ajoute DEGRES, multiple de 90).
 
 REGLES
 
@@ -327,6 +361,7 @@ class DioumtoukayAgent(BaseAgent):
                  connecteur_github: Optional[Any] = None,
                  connecteur_file_conversion: Optional[Any] = None,
                  connecteur_file_organization: Optional[Any] = None,
+                 connecteur_pdf: Optional[Any] = None,
                  reprises: Optional[JournalDeReprise] = None):
         super().__init__(
             name="DioumtoukayAgent",
@@ -361,6 +396,11 @@ class DioumtoukayAgent(BaseAgent):
         # SE VALIDE (le connecteur, jamais Dioumtoukay), et ne s'applique
         # que sur son identifiant deja valide, sous confirmation.
         self.connecteur_file_organization = connecteur_file_organization
+        # Le connecteur PDF (DEC-0076, mission « PDFx ») : fusionner/
+        # scinder/pages/manifeste. Chaque operation ecrit un fichier NEUF,
+        # jamais la source — aucune ne demande de confirmation pour cette
+        # raison meme.
+        self.connecteur_pdf = connecteur_pdf
         # Le journal DURABLE de ce qu'il a deja fait (DEC-0072). La memoire
         # longue garde un RESUME de chaque travail ; celui-ci garde les ETAPES,
         # pour qu'une tache arretee a la 12e action reprenne a la 13e au lieu
@@ -472,6 +512,36 @@ class DioumtoukayAgent(BaseAgent):
                               "destination": destination, "raison": raison})
         return operations or None
 
+    def _via_pdf(self, capacite: str, **parametres: Any) -> Resultat:
+        """Meme pont, vers le connecteur `pdf` (DEC-0076)."""
+        if self.connecteur_pdf is None:
+            return Resultat(False, "Le connecteur PDF n'est pas branche sur cette machine.")
+        try:
+            resultat = self.connecteur_pdf.executer(capacite, **parametres)
+        except Exception as erreur:  # noqa: BLE001 — un connecteur qui leve ne casse pas la tache
+            return Resultat(False, f"Operation PDF impossible : {type(erreur).__name__}: {erreur}")
+
+        if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
+            detail = "\n".join(f"{cle}: {valeur}" for cle, valeur in resultat.detail.items())
+            return Resultat(True, resultat.message, sortie=detail)
+        return Resultat(False, resultat.message)
+
+    @staticmethod
+    def _lire_fichiers(contenu: str) -> Optional[List[str]]:
+        """Un chemin de fichier par ligne, tel quel — `None` si vide."""
+        fichiers = [ligne.strip() for ligne in (contenu or "").splitlines() if ligne.strip()]
+        return fichiers or None
+
+    @staticmethod
+    def _lire_pages(texte: str) -> Optional[List[int]]:
+        """`"3,4,5"` -> `[3, 4, 5]`. `None` si un seul element n'est pas un entier."""
+        if not (texte or "").strip():
+            return None
+        try:
+            return [int(p.strip()) for p in texte.split(",") if p.strip()]
+        except ValueError:
+            return None
+
     async def _executer_action(self, action: Action) -> Resultat:
         """Fait ce que l'action demande, via l'atelier — ou un specialiste."""
         champs = action.champs
@@ -544,6 +614,40 @@ class DioumtoukayAgent(BaseAgent):
             if not plan_id:
                 return Resultat(False, "Il manque PLAN_ID — l'identifiant d'un plan deja applique.")
             return self._via_file_organization("annuler", plan_id=plan_id)
+        if action.nom == "pdf_fusionner":
+            fichiers = self._lire_fichiers(action.contenu)
+            if fichiers is None:
+                return Resultat(False, "Il manque le bloc CONTENU: … FIN avec un chemin de fichier par ligne.")
+            format_pdfx = champs.get("FORMAT_PDFX", "").strip().lower() in ("oui", "true", "yes")
+            return self._via_pdf("fusionner", fichiers=fichiers, titre=champs.get("TITRE", ""),
+                                 format_pdfx=format_pdfx)
+        if action.nom == "pdf_demonter":
+            chemin = champs.get("CHEMIN", "")
+            if not chemin:
+                return Resultat(False, "Il manque CHEMIN — le fichier PDF/PDFx à démonter.")
+            return self._via_pdf("demonter", fichier=chemin)
+        if action.nom == "pdf_pages":
+            chemin, operation = champs.get("CHEMIN", ""), champs.get("OPERATION", "")
+            pages = self._lire_pages(champs.get("PAGES", ""))
+            if not chemin or operation not in (
+                    "reordonner", "supprimer_pages", "extraire_pages", "pivoter_pages"):
+                return Resultat(False, "Il manque CHEMIN, ou OPERATION n'est pas l'une de : "
+                                       "reordonner, supprimer_pages, extraire_pages, pivoter_pages.")
+            if pages is None:
+                return Resultat(False, "Il manque PAGES — une liste d'index séparés par des virgules, à partir de 0.")
+            champ_pages = "ordre" if operation == "reordonner" else "pages"
+            parametres_pdf = {"fichier": chemin, champ_pages: pages}
+            if operation == "pivoter_pages":
+                try:
+                    parametres_pdf["degres"] = int(champs.get("DEGRES", "90"))
+                except ValueError:
+                    return Resultat(False, "DEGRES doit être un nombre (multiple de 90).")
+            return self._via_pdf(operation, **parametres_pdf)
+        if action.nom == "pdf_extraire_texte":
+            chemin = champs.get("CHEMIN", "")
+            if not chemin:
+                return Resultat(False, "Il manque CHEMIN — le fichier PDF à lire.")
+            return self._via_pdf("extraire_texte", fichier=chemin)
         # `executer` : la ligne devient une LISTE d'arguments. Ce n'est pas une
         # restriction de ce qu'il peut lancer — c'est ce qui empeche un nom de
         # fichier contenant une espace ou un `;` de devenir deux commandes.

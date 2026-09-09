@@ -6168,3 +6168,97 @@ Une suppression mal gardée serait irréversible — d'où l'accord séparé,
 en plus de la confirmation ordinaire. Si `Atelier` lui-même se révèle un
 jour trop permissif pour une capacité future, c'est DEC-0038 qui devrait
 être revisitée, jamais une capacité qui en hérite en silence.
+
+---
+
+## DEC-0076 — PDFx : manipuler des pages PDF, avec le format en prime
+
+**Date** : 09/09/2026
+**Statut** : accepté
+
+### La mission
+
+Étudier `AlexandrosGounis/pdfx` (application Electron, MIT) et déterminer
+quelles capacités améliorent ARENA — sans cloner l'application, sans
+deuxième système PDF, sans deuxième architecture documentaire. Audit
+complet : `docs/audits/pdfx_audit.md`.
+
+### Ce qu'ARENA n'avait pas, mesuré avant tout code
+
+`pypdf` était déjà une dépendance (lecture, `tools/documents/reader.py`,
+RAG), mais **jamais en écriture**. Aucune fusion, scission,
+réordonnancement, suppression/extraction de page, rotation, extraction
+d'image, aucun manifeste multi-documents — rien de tout ça n'existait.
+`core/production/conversion/` (DEC-0074) convertit des FORMATS, jamais des
+PAGES ; `core/production/organisation/` (DEC-0075) déplace des FICHIERS,
+jamais leur contenu — les trois domaines ne se recouvrent pas, vérifié en
+le mesurant.
+
+### Le format PDFx : décision D (import ET export)
+
+`SPEC.md` du dépôt externe, lu en entier : un `.pdfx` est un PDF ISO
+32000-1 valide dont les pages sont la concaténation ordonnée des documents
+membres, plus un manifeste JSON embarqué comme pièce jointe PDF standard
+(`pdfx-manifest.json`). « Un PDF sans manifeste est un PDFx valide à un
+seul document » — compatibilité totale dans les deux sens, par
+construction du format.
+
+**Coût mesuré : nul.** `pypdf.PdfWriter.add_attachment()` et `PdfReader.
+attachments` existaient déjà dans la version installée — aucune dépendance
+neuve. Testé de bout en bout : fusionner trois PDF avec `format_pdfx=True`,
+puis `demonter()` retrouve les trois documents d'origine, noms et contenu
+exacts, y compris à travers Dioumtoukay (scénario de la mission §25,
+reproduit mot pour mot et vérifié sur le fichier réel).
+
+### Ce qui a été construit
+
+- **`core/production/documents_pdf/`** — `operations.py` (dix opérations,
+  toutes via `pypdf`), `securite.py` (chemin sensible, en-tête `%PDF-`
+  vérifié avant tout appel au moteur, indices de page hors bornes),
+  `validation.py` (un PDF écrit est rouvert et compté avant d'être déclaré
+  un succès).
+- **`core/connectors/pdf.py`** — `fusionner`, `demonter`, `scinder`,
+  `reordonner`, `supprimer_pages`, `extraire_pages`, `pivoter_pages`,
+  `extraire_texte` (délègue à `tools/documents/reader.py`, jamais un
+  second lecteur), `extraire_images`, `manifeste`. Toutes `ALLOWED` sous
+  `WRITE_FILES` : aucune ne touche jamais le fichier source, chacune
+  écrit un fichier neuf — aucun risque d'écrasement à confirmer.
+- **`extraire_texte` marqué par `core/security/trust.py`** (même
+  discipline que `file_organization`, DEC-0075) : un PDF dont le texte
+  contient « Ignore previous instructions... » ressort annoncé comme
+  donnée, motifs suspects relevés, jamais silencieux — testé avec un vrai
+  PDF piégé.
+- **Quatre actions dans la boucle de Dioumtoukay** (`pdf_fusionner`,
+  `pdf_demonter`, `pdf_pages`, `pdf_extraire_texte`) — les six autres
+  capacités restent atteignables via `registre.executer("pdf", ...)`.
+
+### Un bug réel trouvé en construisant
+
+Le connecteur comptait les pages d'un PDF (pour valider des indices) en
+appelant `PdfReader(...).pages` directement, hors de la garde
+`_lire()` qui refuse un PDF chiffré. Sur un PDF chiffré, `len(...)` lève
+`FileNotDecryptedError` à cet endroit précis — remontée comme une panne
+non gérée plutôt qu'un refus propre. Trouvé par
+`test_pdf_chiffre_est_refuse_explicitement`, corrigé en ajoutant
+`operations.nombre_de_pages()`, qui passe par la même garde que toute
+autre opération.
+
+### Ce qui n'a délibérément PAS été intégré, et pourquoi
+
+- **Electron, le rendu `pdf.js`, l'UI en grille** : ARENA reste un backend
+  Python — forcer Electron dans son cœur pour une capacité aurait été
+  l'erreur explicitement interdite par la mission (§22).
+- **Le sous-système de rédaction/caviardage** (15 fichiers TypeScript
+  chez PDFx) : non demandé, non construit.
+- **L'assistant IA propre à PDFx** (`@ai-sdk`) : ARENA route déjà ses
+  propres modèles — en ajouter un second aurait été le deuxième assistant
+  IA que la mission interdit (§15).
+
+### Ce que ça coûte si c'est faux
+
+Une fusion ou une extraction mal validée écrirait un PDF plausible mais
+faux — `validation.py` (rouverture + comptage réel) est le seul rempart,
+et le bug ci-dessus montre qu'un chemin de code peut échapper à une garde
+sans un sabotage qui le prouve. Un PDF chiffré ou corrompu mal géré
+resterait un `ECHEC` propre dans tous les cas mesurés — jamais un
+plantage, jamais un succès inventé.
