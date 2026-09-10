@@ -6937,3 +6937,143 @@ compte, ou le noie dans le reste du contexte ?) n'a été vérifié que par
 construction du prompt (`moteur.vues[0]` contient bien le texte), jamais
 par une vraie génération. Le premier lancement du propriétaire sur son PC
 le montrera.
+
+## DEC-0083 — Compétences techniques dynamiques : détection de pile, sélection par tâche, AutoSkills audité
+
+**Date** : 10/09/2026
+**Statut** : accepté
+
+### Contexte
+
+Mission ARENA × AUTOSKILLS. Étudier `midudev/autoskills` (commit
+`0ec7253`, **CC-BY-NC-4.0**, vérifié dans le `LICENSE` racine ET dans
+`packages/autoskills/package.json`) et donner à Dioumtoukay la capacité de
+charger UNIQUEMENT les compétences techniques pertinentes pour un
+projet et une tâche — jamais un second agent, jamais un second système
+d'orchestration, jamais l'installation aveugle d'un registre tiers.
+Rapport complet → `docs/audits/autoskills_audit.md`.
+
+### Ce qui existait déjà, audité avant d'écrire une ligne
+
+`core/specialistes/` (14 domaines de MÉTIER — sécurité, tests,
+architecture… — mots-clés, plafond 2) reste ce qu'il est : une méthode
+professionnelle, pas une connaissance par TECHNOLOGIE. `.claude/skills/
+design-language/` est une compétence de développement consommée par
+Claude Code lui-même, jamais par le runtime ARENA. `core/context/
+instantane_projet.py` (DEC-0082) fournit déjà le précédent d'intégration
+(un bloc budgété, injecté dans `_reperes()`). **Aucun détecteur de pile
+technique n'existait** — mesuré par recherche exhaustive de
+`package.json`/`pyproject.toml`/`Cargo.toml`/`go.mod` dans `core/`,
+`agents/`, `tools/`.
+
+**AutoSkills étudié fait vérifier chaque compétence par un modèle**
+(`review.model: "gpt-5.4"` dans `skills-registry/index.json`) —
+**principe repris, mécanisme rejeté** : ARENA préfère partout un contrôle
+déterministe à un jugement de modèle quand l'un remplace l'autre
+(`tools/video/prompt_audit.py`, `core/security/trust.py`).
+
+### Décision
+
+**Un registre canonique, `core/skills/`, quatre modules, une seule
+intégration.**
+
+1. `core/skills/detection.py` — détection DÉTERMINISTE de la pile
+   technique (paquet npm déclaré, fichier de config présent, sous-chaîne
+   dans `requirements.txt`), catalogue volontairement restreint (11
+   technologies réellement pertinentes ici, pas les 218 d'AutoSkills —
+   même règle que `core/specialistes/catalogue.py` règle 1 : aucun
+   spécialiste décoratif). Sonde `apps/pwa/` (son propre `package.json`)
+   sans récursion générale.
+2. `core/skills/registry.py` — schéma JSON propre à ARENA (`skill.json` +
+   `SKILL.md` par compétence), empreinte SHA-256 comparée à chaque
+   évaluation, licence non-commerciale bloquée avant même le contrôle de
+   sécurité.
+3. `core/skills/selection.py` — **réutilise directement**
+   `core/specialistes/selection.py::_sans_accents`/`_reconnait` (import,
+   jamais une copie) ; filtre PROJET (technologie présente) puis TÂCHE
+   (mots pondérés), plafond 3.
+4. `core/skills/securite.py` — **réutilise directement**
+   `core/security/trust.py::inspect()` pour l'injection de consigne,
+   ajoute une détection déterministe propre aux commandes destructrices
+   (`rm -rf`, script distant en pipe, exfiltration) qu'`inspect()` ne
+   couvre pas (du CODE, pas du texte adressé à un lecteur).
+
+**Un seul point d'entrée**, `core/skills/instantane.py::instantane_competences()`
+— exclut `BLOCKED`/`OUTDATED` avant toute sélection, jamais après ; annonce
+`REVIEW_REQUIRED` dans le texte injecté au lieu de le cacher.
+
+**Un seul point d'intégration**, `agents/dioumtoukay/dioumtoukay_agent.py::
+_reperes()` (désormais paramétrée par la demande, nécessaire pour que la
+sélection connaisse la tâche) — le même endroit que l'instantané de projet
+(DEC-0082), une fois par tâche, jamais par tour.
+
+**Sept compétences, contenu ORIGINAL, écrites pour cette mission** (`python-
+fastapi`, `react-typescript`, `tailwindcss`, `vite`, `docker`,
+`github-actions`, `playwright`) : `licence: "ARENA (original)"`,
+`source: "ARENA"` — la question de la licence amont (mission §12) ne se
+pose donc pas pour ce contenu ; le champ existe et bloque déjà tout futur
+apport CC-BY-NC/PROPRIETARY/UNLICENSED.
+
+### Vérification
+
+`ruff check .` propre. Deux sabotages, deux restaurations :
+
+1. Le filtre projet de `choisir_competences` (technologie présente),
+   désactivé → trois tests échouent (le filtre projet et l'injection dans
+   Dioumtoukay laissent passer une technologie absente du dépôt).
+   Restauré.
+2. L'exclusion `BLOCKED` de `competences_utilisables()`, retirée → une
+   compétence malveillante de test (injection + `rm -rf /`) atteint le
+   registre utilisable. Restauré.
+
+Un vrai faux positif mesuré au premier passage, pas simulé : les
+compétences `docker`/`github-actions`/`tailwindcss`/`vite` ressortent
+`REVIEW_REQUIRED` — leur contenu parle légitimement de secrets/jetons, et
+`core/security/trust.py::inspect()` ne distingue pas une défense d'une
+attaque par les mots seuls. Documenté, pas masqué : `REVIEW_REQUIRED`
+n'empêche pas l'usage, le motif est annoncé dans le prompt.
+
+56 tests dédiés (`tests/core/test_skills_detection.py` 16,
+`tests/core/test_skills_securite.py` 10, `tests/core/test_skills_registry.py`
+12, `tests/core/test_skills_selection.py` 8, `tests/core/
+test_skills_instantane.py` 7, extensions à `tests/agents/test_dioumtoukay.py`
+3 nouveaux sur 49) : dépôt vide, détection réelle (fichiers construits,
+jamais simulés), `apps/pwa/` atteint, `node_modules/` jamais descendu,
+compétence malveillante bloquée de bout en bout, licence non-commerciale
+bloquée même sur un contenu propre et une empreinte intacte, empreinte
+altérée détectée, filtre projet strict (mission §5 : SEO/Tailwind/Three.js
+jamais retenus pour une tâche Playwright même si tous présents dans le
+projet), bout en bout sur Dioumtoukay réel (jamais un appel direct au
+résolveur, mission §17).
+
+**Banc de jetons, mesuré, pas estimé** (`docs/audits/autoskills_audit.md`,
+section Décision) : les sept compétences réunies pèsent 11 734 caractères
+(~2 933 jetons, estimation en caractères, jamais un vrai compte de
+jetons — aucun tokenizer appelé ici). Une tâche React n'en charge que
+1 900 (-84 %), une tâche FastAPI 2 152 (-82 %), une tâche Playwright sur
+ce dépôt (qui n'a pas Playwright) 0 (-100 %, correctement exclue). Détection
++ sélection : 18 à 23 ms mesurées sur ce dépôt.
+
+Suite complète (`python -m pytest tests/ -q`) : **4704 passed, 31 skipped,
+48 deselected, 0 failed** (618.05s / 10m18s, mesuré le 10/09/2026).
+
+### Ce que ça coûte si c'est faux
+
+Le catalogue de technologies est délibérément restreint (11 entrées) : un
+projet futur dans une pile totalement différente (Rust, Go, Ruby) ne
+recevra AUCUNE compétence, jamais une compétence mal assortie — c'est le
+comportement voulu (mission §5, TEST E : échec propre sur une technologie
+inconnue), mais cela veut dire que ce système ne couvre, aujourd'hui, QUE
+la pile réelle d'ARENA et les technologies web/test les plus communes.
+L'étendre à une nouvelle technologie est un ajout borné (`core/skills/
+detection.py::TECHNOLOGIES` + une nouvelle compétence dans `core/skills/
+store/`), jamais une réécriture.
+
+Le faux positif `REVIEW_REQUIRED` sur du contenu bénin qui parle de
+sécurité est un compromis assumé, pas un défaut caché : si le motif
+générique de `core/security/trust.py` finissait par masquer un motif
+RÉEL d'injection dans une future compétence empruntée à un tiers,
+`REVIEW_REQUIRED` resterait le même verdict que pour un cas bénin — c'est
+pourquoi ce dépôt n'importe aujourd'hui AUCUNE compétence tierce
+(Licensing, ci-dessus) : la question ne se pose que le jour où elle se
+posera vraiment.

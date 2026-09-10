@@ -561,6 +561,47 @@ class TestIlSaitOuIlEst:
         assert "Instantané du projet" not in moteur.vues[0]
 
 
+class TestLesCompetencesPertinentesArriventDesLePremierTour:
+    """Mission ARENA x AUTOSKILLS (10/09/2026) : Dioumtoukay reçoit
+    maintenant les compétences techniques que le PROJET et la TÂCHE
+    appellent réellement — jamais un catalogue entier, jamais rien pour
+    une technologie absente. Test bout en bout, à travers `run()`, jamais
+    un appel direct à `instantane_competences()` (mission §17)."""
+
+    @pytest.mark.asyncio
+    async def test_une_tache_fastapi_dans_un_projet_python_recoit_la_competence(self, bac):
+        (bac / "requirements.txt").write_text("fastapi\n", encoding="utf-8")
+        moteur = ModeleScripte("ACTION: terminer\nCONTENU:\nvu\nFIN")
+
+        await DioumtoukayAgent(provider=moteur, atelier=Atelier(racine=bac)).run(
+            "ajoute une route FastAPI pour cet endpoint")
+
+        assert "FastAPI" in moteur.vues[0]
+
+    @pytest.mark.asyncio
+    async def test_une_technologie_absente_du_projet_n_est_jamais_injectee(self, bac):
+        """Le projet est Python pur : même si la demande nomme
+        Playwright, rien n'est trouvé nulle part dans `bac` pour cette
+        technologie — elle ne doit jamais atteindre le prompt."""
+        (bac / "requirements.txt").write_text("fastapi\n", encoding="utf-8")
+        moteur = ModeleScripte("ACTION: terminer\nCONTENU:\nvu\nFIN")
+
+        await DioumtoukayAgent(provider=moteur, atelier=Atelier(racine=bac)).run(
+            "corrige ce test playwright qui échoue")
+
+        assert "Playwright" not in moteur.vues[0]
+
+    @pytest.mark.asyncio
+    async def test_une_tache_sans_technologie_nommee_ne_charge_rien(self, bac):
+        (bac / "requirements.txt").write_text("fastapi\n", encoding="utf-8")
+        moteur = ModeleScripte("ACTION: terminer\nCONTENU:\nvu\nFIN")
+
+        await DioumtoukayAgent(provider=moteur, atelier=Atelier(racine=bac)).run(
+            "explique-moi ce que fait ce module")
+
+        assert "Compétences techniques pertinentes" not in moteur.vues[0]
+
+
 class TestLeRapportNommeCeQuiAChange:
     @pytest.mark.asyncio
     async def test_les_fichiers_modifies_sont_nommes(self, bac):

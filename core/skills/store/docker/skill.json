@@ -1,0 +1,21 @@
+{
+  "titre": "Docker",
+  "description": "Reproducibility, layer ordering, secret handling and verification conventions for Dockerfiles.",
+  "technologies": [
+    "docker"
+  ],
+  "mots_taches": [
+    "docker",
+    "dockerfile",
+    "conteneur",
+    "container",
+    "image docker",
+    "deploiement",
+    "déploiement"
+  ],
+  "source": "ARENA",
+  "licence": "ARENA (original)",
+  "version": "1.0.0",
+  "commit_amont": null,
+  "sha256_skill_md": "b83e827cec443a0d0f4bdb5b9e53160d3a41739b424d4d8ca5421c3e3c0dd784"
+}

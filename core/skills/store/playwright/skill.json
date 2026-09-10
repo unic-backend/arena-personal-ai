@@ -1,0 +1,21 @@
+{
+  "titre": "Playwright",
+  "description": "Locator, waiting, isolation and debugging conventions for Playwright end-to-end tests.",
+  "technologies": [
+    "playwright"
+  ],
+  "mots_taches": [
+    "playwright",
+    "test e2e",
+    "test end-to-end",
+    "locator",
+    "flaky",
+    "test qui echoue",
+    "test qui échoue"
+  ],
+  "source": "ARENA",
+  "licence": "ARENA (original)",
+  "version": "1.0.0",
+  "commit_amont": null,
+  "sha256_skill_md": "4653f14073a24e245e31c15ac8dc4e99b03ca57b2e6b9dc2e7bc50ea165cc1a8"
+}

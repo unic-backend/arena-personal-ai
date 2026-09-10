@@ -1,0 +1,23 @@
+{
+  "titre": "Python / FastAPI",
+  "description": "Backend routing, error handling, Pydantic and testing conventions for ARENA's FastAPI service.",
+  "technologies": [
+    "python",
+    "fastapi"
+  ],
+  "mots_taches": [
+    "fastapi",
+    "route",
+    "router",
+    "pydantic",
+    "endpoint",
+    "backend python",
+    "api python",
+    "async python"
+  ],
+  "source": "ARENA",
+  "licence": "ARENA (original)",
+  "version": "1.0.0",
+  "commit_amont": null,
+  "sha256_skill_md": "988d8568f724f7432eab0b05e11fba250cec314b12c04203ef86b0d636cf7dac"
+}
