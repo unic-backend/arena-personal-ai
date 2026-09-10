@@ -106,6 +106,7 @@ from core.permissions.politique import PolitiqueDePermissions
 from core.reasoning.reasoning_engine import ReasoningEngine
 from social.tiktok.tiktok_connector import TikTokConnector
 from tools.atelier import Atelier
+from tools.browser.browser_use_tool import BrowserUseTool
 from tools.rag.graphrag_tool import GraphRAGTool
 from tools.rag.lightrag_tool import LightRAGTool
 from tools.rag.lightrag_tool import est_un_echec as lightrag_echec
@@ -337,8 +338,15 @@ registre.declarer(
 # passer par ce registre. Voir core/connectors/browser.py.
 registre.declarer(
     "browser",
+    # `outil=` partage `ollama_rapide` — construite plus bas, atteinte ici
+    # seulement a la premiere execution reelle (fabrique paresseuse), jamais
+    # au chargement du module. Sans lui, `BrowserUseTool()` construisait son
+    # PROPRE `OllamaProvider` independant : exactement ce que ce fichier met
+    # en garde des sa premiere ligne — « deux `OllamaProvider` qui
+    # rechargent chacun le modele en VRAM » (mission Fuji-Web, defaut trouve
+    # en lisant le code, pas suppose).
     lambda: ConnecteurBrowser(acces=acces, journal=journal, file_attente=file_attente,
-                              crochets=crochets),
+                              crochets=crochets, outil=BrowserUseTool(provider=ollama_rapide)),
 )
 # Verification FORMELLE (DEC-0067) : Lean tranche, jamais le modele. ARENA
 # savait calculer (bac a sable Python, sympy) ; elle ne savait pas prouver.

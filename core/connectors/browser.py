@@ -68,15 +68,55 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, Optional
+from enum import Enum
+from typing import Any, Dict, List, Optional
 
 import httpx
 
-from core.actions.resultat import ResultatAction, echec, succes
+from core.actions.resultat import ResultatAction, echec, partiel, succes
 from core.connectors.base import Capacite, Connecteur, EtatSante, Sante, _maintenant
-from tools.browser.browser_use_tool import BrowserUseTool
+from tools.browser.browser_use_tool import MAX_ETAPES_DEFAUT, BrowserUseTool
 
 logger = logging.getLogger("usman.connecteurs.browser")
+
+
+class ResultatNavigation(str, Enum):
+    """Classification DETERMINISTE d'une tâche de navigation — jamais un
+    simple `status: success` pris sur parole (mission Fuji-Web §7 : « must
+    not be considered successful merely because the click API returned
+    success »). Quatre issues, jamais deux :
+
+    - `succes_declare` vient de `browser_use` lui-même (l'agent a appelé
+      son action `done` avec `success=True/False`) — c'est encore un
+      AUTO-rapport, pas une vérification indépendante d'ARENA.
+    - `a_des_erreurs` et `nombre_etapes`/`max_etapes` viennent de
+      l'historique réel de la bibliothèque — des faits, pas une opinion.
+
+    Un succès déclaré MALGRÉ des erreurs rencontrées en route devient
+    `NON_VERIFIE`, jamais un succès plein : les deux signaux se
+    contredisent, et masquer la contradiction serait exactement l'erreur
+    que ce module corrige.
+    """
+
+    VERIFIE = "VERIFIED_SUCCESS"
+    NON_VERIFIE = "UNVERIFIED_SUCCESS"
+    ECHEC = "FAILED"
+    INCOMPLET = "INCOMPLETE"
+
+
+def classer_resultat(
+    succes_declare: Optional[bool], a_des_erreurs: bool, nombre_etapes: int, max_etapes: int,
+) -> ResultatNavigation:
+    """Le seul endroit qui décide si une navigation a « réussi ». Pure,
+    testable sans navigateur : voir `tests/core/test_connecteur_browser.py`."""
+    if succes_declare is True:
+        return ResultatNavigation.NON_VERIFIE if a_des_erreurs else ResultatNavigation.VERIFIE
+    if succes_declare is False:
+        return ResultatNavigation.ECHEC
+    # `None` : l'agent n'a jamais appelé `done` — soit le plafond de pas a
+    # été atteint (mission §8, MAX_STEPS), soit un arrêt anormal que
+    # l'appelant a déjà filtré avant d'arriver ici.
+    return ResultatNavigation.INCOMPLET
 
 #: Une navigation autonome peut enchaîner plusieurs pages et attentes
 #: réseau — plus généreux qu'un simple appel HTTP, jamais illimité.
@@ -197,7 +237,10 @@ class ConnecteurBrowser(Connecteur):
                 nom="naviguer", action="browse",
                 description=(
                     "Navigue de façon autonome (clics, formulaires, extraction) sur un "
-                    "site web, avec le meilleur moteur disponible."),
+                    "site web, avec le meilleur moteur disponible. Parametres optionnels : "
+                    "max_steps (plafond de pas, defaut 25), fichiers_autorises (envoi de "
+                    "fichier — liste fermee, jamais une recherche libre), sensitive_data + "
+                    "allowed_domains (identifiants — les deux ensemble ou aucun des deux)."),
                 ecriture=True),
         }
 
@@ -236,39 +279,86 @@ class ConnecteurBrowser(Connecteur):
             return echec(action=capacite.nom, cible=self.nom,
                          message="Aucune tâche fournie : rien à faire.")
 
+        max_steps = parametres.get("max_steps") or MAX_ETAPES_DEFAUT
+        sensitive_data = parametres.get("sensitive_data")
+        allowed_domains = parametres.get("allowed_domains")
+        fichiers_autorises = parametres.get("fichiers_autorises")
+
         url_lightpanda = _lightpanda_url()
         tente_lightpanda = bool(url_lightpanda) and _lightpanda_sain(url_lightpanda)
 
         if tente_lightpanda:
-            resultat = self._lancer(tache, cdp_url=url_lightpanda)
+            resultat = self._lancer(tache, cdp_url=url_lightpanda, max_steps=max_steps,
+                                    sensitive_data=sensitive_data, allowed_domains=allowed_domains,
+                                    fichiers_autorises=fichiers_autorises)
             if resultat.get("status") == "success":
-                return succes(
-                    action=capacite.nom, cible=self.nom,
-                    message=self._resume(resultat), preuve=str(resultat.get("result") or "réponse vide")[:500],
-                    moteur=resultat.get("moteur"), resultat=resultat.get("result"), repli=False)
+                return self._resultat_action(capacite, resultat, repli=False)
             logger.warning("Lightpanda a échoué (%s) : repli sur le moteur existant.",
                           resultat.get("error"))
 
-        resultat = self._lancer(tache, cdp_url=None)
+        resultat = self._lancer(tache, cdp_url=None, max_steps=max_steps,
+                                sensitive_data=sensitive_data, allowed_domains=allowed_domains,
+                                fichiers_autorises=fichiers_autorises)
         if resultat.get("status") != "success":
             return echec(
                 action=capacite.nom, cible=self.nom,
                 message=f"Navigation impossible : {resultat.get('error') or 'erreur inconnue'}",
-                moteur=resultat.get("moteur"))
+                moteur=resultat.get("moteur"), etapes=resultat.get("etapes") or [])
 
-        return succes(
+        return self._resultat_action(capacite, resultat, repli=tente_lightpanda)
+
+    def _resultat_action(
+        self, capacite: Capacite, resultat: Dict[str, Any], repli: bool,
+    ) -> ResultatAction:
+        """Classe le resultat (`classer_resultat`) et le transpose en
+        `ResultatAction` — jamais un succes qui ne fait que reprendre le
+        statut auto-declare de `browser_use`."""
+        classification = classer_resultat(
+            succes_declare=resultat.get("succes_declare"),
+            a_des_erreurs=bool(resultat.get("erreurs")),
+            nombre_etapes=resultat.get("nombre_etapes") or 0,
+            max_etapes=resultat.get("max_etapes") or MAX_ETAPES_DEFAUT,
+        )
+        preuve = str(resultat.get("result") or "réponse vide")[:500]
+        detail: Dict[str, Any] = dict(
+            moteur=resultat.get("moteur"), resultat=resultat.get("result"), repli=repli,
+            verification=classification.value, nombre_etapes=resultat.get("nombre_etapes"),
+            urls_visitees=resultat.get("urls_visitees") or [],
+            erreurs=resultat.get("erreurs") or [], etapes=resultat.get("etapes") or [],
+            duree_secondes=resultat.get("duree_secondes"),
+        )
+
+        if classification is ResultatNavigation.VERIFIE:
+            return succes(action=capacite.nom, cible=self.nom,
+                         message=self._resume(resultat), preuve=preuve, **detail)
+        if classification is ResultatNavigation.NON_VERIFIE:
+            return partiel(
+                action=capacite.nom, cible=self.nom,
+                message=f"{self._resume(resultat)} (succès déclaré, mais des erreurs sont survenues en route — "
+                        f"non vérifié).",
+                preuve=preuve, **detail)
+        # ECHEC ou INCOMPLET : rien n'est prouvé, jamais deguise en succes.
+        return echec(
             action=capacite.nom, cible=self.nom,
-            message=self._resume(resultat), preuve=str(resultat.get("result") or "réponse vide")[:500],
-            moteur=resultat.get("moteur"), resultat=resultat.get("result"), repli=tente_lightpanda)
+            message=(f"Navigation non aboutie ({classification.value}) : "
+                    f"{resultat.get('result') or 'aucun résultat'}"),
+            **detail)
 
-    def _lancer(self, tache: str, cdp_url: Optional[str]) -> Dict[str, Any]:
+    def _lancer(
+        self, tache: str, cdp_url: Optional[str], *, max_steps: int,
+        sensitive_data: Optional[Dict[str, Any]], allowed_domains: Optional[List[str]],
+        fichiers_autorises: Optional[List[str]],
+    ) -> Dict[str, Any]:
         """Exécute `BrowserUseTool.run_task` (une coroutine) depuis `_executer`,
         qui ne l'est pas — même pont par thread que GitIngest (DEC-0047) :
         `asyncio.run()` ici léverait sur une boucle déjà active (routes
         FastAPI, agents `async def`)."""
         def _dans_son_propre_fil() -> Dict[str, Any]:
             return asyncio.run(asyncio.wait_for(
-                self._outil.run_task(tache, cdp_url=cdp_url), timeout=DELAI_SECONDES))
+                self._outil.run_task(
+                    tache, cdp_url=cdp_url, max_steps=max_steps, sensitive_data=sensitive_data,
+                    allowed_domains=allowed_domains, available_file_paths=fichiers_autorises,
+                ), timeout=DELAI_SECONDES))
 
         try:
             with ThreadPoolExecutor(max_workers=1) as bassin:

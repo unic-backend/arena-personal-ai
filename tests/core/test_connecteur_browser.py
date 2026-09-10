@@ -12,7 +12,7 @@ import pytest
 import core.connectors.browser as module
 from core.actions.resultat import Statut
 from core.connectors.base import EtatSante
-from core.connectors.browser import ConnecteurBrowser
+from core.connectors.browser import ConnecteurBrowser, ResultatNavigation, classer_resultat
 
 #: La VRAIE règle du moteur de base, capturée avant que la fixture autouse
 #: ne la remplace par un double. Sans cette référence, aucun test de ce
@@ -32,19 +32,29 @@ _SANS_PLAYWRIGHT = pytest.mark.skipif(
     reason="playwright absent : sa résolution de chemins ne peut pas être mesurée ici")
 
 
+#: Champs par defaut d'une reponse SUCCES cote `BrowserUseTool` (mission
+#: Fuji-Web : signaux deterministes consommes par `classer_resultat`) —
+#: un test qui veut un echec/une non-verification les ecrase explicitement.
+_SIGNAUX_SUCCES_VERIFIE = {"succes_declare": True, "erreurs": [], "nombre_etapes": 1,
+                          "max_etapes": 25, "etapes": [], "urls_visitees": []}
+
+
 class FauxOutil:
     """Remplace `BrowserUseTool` — note les appels, rend un résultat scripté
     par moteur (`cdp_url is None` -> chromium, sinon -> lightpanda)."""
 
     def __init__(self, reponse_chromium=None, reponse_lightpanda=None, delai=0.0):
         self.appels = []
-        self._chromium = reponse_chromium or {
-            "status": "success", "task": "x", "result": "ok (chromium)", "moteur": "chromium"}
-        self._lightpanda = reponse_lightpanda or {
-            "status": "success", "task": "x", "result": "ok (lightpanda)", "moteur": "lightpanda"}
+        self._chromium = {**_SIGNAUX_SUCCES_VERIFIE, "status": "success", "task": "x",
+                          "result": "ok (chromium)", "moteur": "chromium",
+                          **(reponse_chromium or {})}
+        self._lightpanda = {**_SIGNAUX_SUCCES_VERIFIE, "status": "success", "task": "x",
+                            "result": "ok (lightpanda)", "moteur": "lightpanda",
+                            **(reponse_lightpanda or {})}
 
-    async def run_task(self, tache: str, cdp_url: Optional[str] = None) -> Dict[str, Any]:
+    async def run_task(self, tache: str, cdp_url: Optional[str] = None, **kw: Any) -> Dict[str, Any]:
         self.appels.append((tache, cdp_url))
+        self.derniers_kwargs = kw
         return self._lightpanda if cdp_url else self._chromium
 
 
@@ -305,6 +315,69 @@ class TestLaVraiePolitiqueLivree:
         assert regle is not None, "browser.browse a disparu de la politique livrée"
         assert regle.get("decision") == "ALLOWED"
         assert regle.get("interrupteur") == "SEARCH_WEB"
+
+
+class TestClasserResultat:
+    """La classification deterministe (mission Fuji-Web §7) : un succes
+    auto-declare par browser_use ne devient jamais un succes ARENA sans
+    verification."""
+
+    def test_succes_declare_sans_erreur_est_verifie(self):
+        assert classer_resultat(True, False, 3, 25) is ResultatNavigation.VERIFIE
+
+    def test_succes_declare_avec_erreurs_n_est_pas_verifie(self):
+        assert classer_resultat(True, True, 3, 25) is ResultatNavigation.NON_VERIFIE
+
+    def test_echec_declare_est_un_echec(self):
+        assert classer_resultat(False, False, 3, 25) is ResultatNavigation.ECHEC
+
+    def test_aucun_done_appele_est_incomplet(self):
+        assert classer_resultat(None, False, 25, 25) is ResultatNavigation.INCOMPLET
+
+
+class TestVerificationDansLExecution:
+    """`_executer` classe reellement le resultat — jamais un succes qui ne
+    fait que reprendre `status: success` sans regarder les autres signaux."""
+
+    def test_succes_verifie_devient_succes(self):
+        outil = FauxOutil(reponse_chromium={"succes_declare": True, "erreurs": []})
+        resultat = ConnecteurBrowser(outil=outil).executer("naviguer", tache="x")
+        assert resultat.statut is Statut.SUCCES
+        assert resultat.detail["verification"] == "VERIFIED_SUCCESS"
+
+    def test_succes_declare_avec_erreurs_devient_partiel_jamais_succes_plein(self):
+        outil = FauxOutil(reponse_chromium={
+            "succes_declare": True, "erreurs": ["element introuvable au pas 2"]})
+        resultat = ConnecteurBrowser(outil=outil).executer("naviguer", tache="x")
+        assert resultat.statut is Statut.PARTIEL
+        assert resultat.detail["verification"] == "UNVERIFIED_SUCCESS"
+
+    def test_plafond_de_pas_atteint_sans_done_est_un_echec_honnete(self):
+        outil = FauxOutil(reponse_chromium={
+            "succes_declare": None, "nombre_etapes": 25, "max_etapes": 25})
+        resultat = ConnecteurBrowser(outil=outil).executer("naviguer", tache="x")
+        assert resultat.statut is Statut.ECHEC
+        assert resultat.detail["verification"] == "INCOMPLETE"
+
+    def test_max_steps_est_transmis_a_l_outil(self):
+        outil = FauxOutil()
+        ConnecteurBrowser(outil=outil).executer("naviguer", tache="x", max_steps=10)
+        assert outil.derniers_kwargs["max_steps"] == 10
+
+    def test_sensitive_data_et_allowed_domains_sont_transmis(self):
+        outil = FauxOutil()
+        ConnecteurBrowser(outil=outil).executer(
+            "naviguer", tache="x",
+            sensitive_data={"x_pw": "secret"}, allowed_domains=["exemple.test"],
+            fichiers_autorises=["/tmp/x.pdf"])
+        assert outil.derniers_kwargs["sensitive_data"] == {"x_pw": "secret"}
+        assert outil.derniers_kwargs["allowed_domains"] == ["exemple.test"]
+        assert outil.derniers_kwargs["available_file_paths"] == ["/tmp/x.pdf"]
+
+    def test_sans_parametres_optionnels_le_plafond_par_defaut_s_applique(self):
+        outil = FauxOutil()
+        ConnecteurBrowser(outil=outil).executer("naviguer", tache="x")
+        assert outil.derniers_kwargs["max_steps"] == module.MAX_ETAPES_DEFAUT
 
 
 class TestJamaisLightpandaImporte:

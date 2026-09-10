@@ -16,17 +16,33 @@ class FausseHistorique:
     def final_result(self):
         return "titre trouvé"
 
+    def number_of_steps(self):
+        return 1
+
+    def urls(self):
+        return ["https://example.com"]
+
+    def is_successful(self):
+        return True
+
+    def errors(self):
+        return []
+
 
 class FauxAgent:
-    """Remplace `browser_use.Agent` — note la session reçue, ne lance rien."""
+    """Remplace `browser_use.Agent` — note la session et les nouveaux
+    parametres reçus (mission Fuji-Web : sensitive_data, available_file_paths,
+    register_new_step_callback), ne lance rien de reel."""
 
     dernier_browser_session = None
+    dernier_kwargs = None
 
     def __init__(self, task, llm, browser_session=None, **kw):
         self.task = task
         FauxAgent.dernier_browser_session = browser_session
+        FauxAgent.dernier_kwargs = kw
 
-    async def run(self):
+    async def run(self, max_steps=None, **kw):
         return FausseHistorique()
 
 
