@@ -60,6 +60,27 @@ def demande_securite_chantier(texte: str) -> bool:
     return any(mot in minuscule for mot in DEMANDE_SECURITE_CHANTIER)
 
 
+#: Ce qui declenche AUSSI `media_metadata` (mission EXIF & Media Metadata,
+#: DEC-0081), en plus de la description libre de Qwen3-VL. Une description
+#: ordinaire ("decris cette photo") ne doit pas imprimer un dump EXIF brut a
+#: chaque fois — seulement quand la demande porte explicitement sur le
+#: technique, l'exhaustif, ou les metadonnees.
+DEMANDE_METADONNEES_TECHNIQUES = (
+    "information technique", "informations techniques", "métadonnées",
+    "metadonnees", "métadonnée", "metadonnee", "exif", "détails techniques",
+    "details techniques", "analyse complètement", "analyse completement",
+    "analyse complete", "analyse complète", "toutes les informations",
+    "specs techniques", "caractéristiques techniques", "caracteristiques techniques",
+    "fiche technique",
+)
+
+
+def demande_metadonnees_techniques(texte: str) -> bool:
+    """Vrai si la demande veut les faits mesures dans le fichier, pas un avis."""
+    minuscule = (texte or "").lower()
+    return any(mot in minuscule for mot in DEMANDE_METADONNEES_TECHNIQUES)
+
+
 class VisionAgent(BaseAgent):
     """Agent charge de comprendre une image et de repondre a son sujet."""
 
@@ -109,7 +130,19 @@ class VisionAgent(BaseAgent):
                 ),
             }
 
+        # Metadonnees techniques (mission EXIF & Media Metadata, DEC-0081) :
+        # mesurees ICI, avant meme de savoir si Ollama repond. Ce sont des
+        # faits lus dans le fichier, pas un avis du modele — les rendre
+        # depend de Pillow/ffprobe, jamais de la vision. Une photo dont on
+        # demande « toutes les informations techniques » doit les recevoir
+        # meme si Ollama est eteint.
+        metadonnees = self._metadonnees_techniques(user_input, images)
+
         if not await self.provider.is_available():
+            if metadonnees is not None:
+                return self._reponse_metadonnees_seules(images, metadonnees,
+                    "Ollama ne repond pas : je ne peux pas decrire la photo, "
+                    "mais voici ses informations techniques reelles.")
             return {
                 "status": "warning",
                 "agent": self.name,
@@ -130,6 +163,10 @@ class VisionAgent(BaseAgent):
             )
         except httpx.HTTPStatusError as erreur:
             logger.warning("Ollama a refuse la requete de vision : %s", erreur)
+            if metadonnees is not None:
+                return self._reponse_metadonnees_seules(images, metadonnees,
+                    "Ollama a refuse l'analyse visuelle (modele non installe), "
+                    "mais voici les informations techniques reelles de la photo.")
             return {
                 "status": "warning",
                 "agent": self.name,
@@ -141,6 +178,10 @@ class VisionAgent(BaseAgent):
             }
         except httpx.HTTPError as erreur:
             logger.warning("Vision indisponible : %s", erreur)
+            if metadonnees is not None:
+                return self._reponse_metadonnees_seules(images, metadonnees,
+                    f"Le modele de vision est injoignable ({erreur}), mais voici "
+                    "les informations techniques reelles de la photo.")
             return {
                 "status": "warning",
                 "agent": self.name,
@@ -154,6 +195,16 @@ class VisionAgent(BaseAgent):
                 f"{reponse_finale}\n\n--- DÉTECTION SÉCURITÉ (SiteGuard, "
                 f"observation automatique) ---\n{securite['resume']}"
             )
+        if metadonnees is not None:
+            # Jamais fondu avec la description libre de Qwen3-VL : deux
+            # signaux distincts, meme discipline que la securite chantier
+            # juste au-dessus — Vision decrit ce qu'elle voit, les
+            # metadonnees disent ce qui est reellement dans le fichier.
+            reponse_finale = (
+                f"{reponse_finale}\n\n--- INFORMATIONS TECHNIQUES (mesurees "
+                f"dans le fichier, pas une observation visuelle) ---\n"
+                f"{self._resume_metadonnees(metadonnees)}"
+            )
 
         return {
             "status": "success",
@@ -163,6 +214,70 @@ class VisionAgent(BaseAgent):
             # Ce que la detection EPI deterministe a rendu. `None` quand la
             # demande ne parlait pas de chantier/securite, ou sans registre.
             "securite_chantier": securite,
+            # `None` quand la demande ne portait pas sur les informations
+            # techniques, ou sans registre — jamais un dictionnaire vide qui
+            # se lirait comme « rien trouve ».
+            "metadonnees_techniques": metadonnees,
+        }
+
+    def _metadonnees_techniques(
+        self, texte: str, images: List[PieceJointe],
+    ) -> Optional[Dict[str, Any]]:
+        """Ce que `media_metadata` mesure reellement sur la premiere image —
+        jamais invente, jamais fondu avec l'avis du modele de vision.
+
+        Returns:
+            Le detail mesure, ou `None` sans demande explicite d'informations
+            techniques, sans registre branche, ou sans image.
+        """
+        if not demande_metadonnees_techniques(texte) or self.registre is None or not images:
+            return None
+        image = images[0]
+        resultat = self.registre.executer(
+            "media_metadata", "analyser",
+            image_base64=image.image_base64, nom_fichier=image.nom)
+        if resultat.statut.value != "SUCCESS":
+            # Une capacite absente ou en echec se rapporte comme telle —
+            # jamais un dictionnaire de metadonnees qui donnerait
+            # l'impression d'avoir mesure quelque chose.
+            return {"erreur": resultat.message}
+        return resultat.detail
+
+    def _resume_metadonnees(self, metadonnees: Dict[str, Any]) -> str:
+        if "erreur" in metadonnees:
+            return f"Non disponibles : {metadonnees['erreur']}"
+        lignes = []
+        for cle, libelle in (
+            ("format_reel", "Format"), ("largeur", "Largeur"), ("hauteur", "Hauteur"),
+            ("fabricant", "Fabricant"), ("modele_appareil", "Appareil"),
+            ("objectif", "Objectif"), ("iso", "ISO"), ("ouverture", "Ouverture"),
+            ("vitesse_obturation", "Vitesse d'obturation"), ("focale_mm", "Focale (mm)"),
+            ("date_prise", "Date"), ("logiciel", "Logiciel"), ("copyright", "Copyright"),
+        ):
+            valeur = metadonnees.get(cle)
+            if valeur is not None:
+                lignes.append(f"- {libelle} : {valeur}")
+        if metadonnees.get("gps_present"):
+            lignes.append(
+                f"- GPS : {metadonnees.get('gps_latitude')}, {metadonnees.get('gps_longitude')}")
+        else:
+            lignes.append("- GPS : absent du fichier")
+        if metadonnees.get("alerte_extension"):
+            lignes.append(f"- ATTENTION : {metadonnees['alerte_extension']}")
+        return "\n".join(lignes) if lignes else "Aucune metadonnee technique lisible."
+
+    def _reponse_metadonnees_seules(
+        self, images: List[PieceJointe], metadonnees: Dict[str, Any], prefixe: str,
+    ) -> Dict[str, Any]:
+        """La vision a echoue, mais les informations techniques restent
+        reelles et disponibles : les rendre plutot qu'un simple avertissement."""
+        return {
+            "status": "success" if "erreur" not in metadonnees else "warning",
+            "agent": self.name,
+            "response": f"{prefixe}\n\n{self._resume_metadonnees(metadonnees)}",
+            "images_analysees": [image.nom for image in images],
+            "securite_chantier": None,
+            "metadonnees_techniques": metadonnees,
         }
 
     def _detecter_securite_chantier(

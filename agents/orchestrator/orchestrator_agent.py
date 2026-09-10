@@ -263,6 +263,15 @@ VISION = (
     "analyse ce dessin", "analyse ce schema", "analyse ce schéma",
     "decris cette image", "décris cette image", "decris cette photo",
     "décris cette photo", "analyse ce document scanne", "analyse ce document scanné",
+    # Metadonnees techniques d'une photo (mission EXIF & Media Metadata,
+    # DEC-0081) : `VisionAgent` porte les deux (description ET metadonnees,
+    # `demande_metadonnees_techniques`) — aucun second agent, aucun second
+    # routeur, juste les phrases qui doivent l'atteindre.
+    "analyse complètement cette photo", "analyse completement cette photo",
+    "informations techniques sur cette photo", "informations techniques de cette photo",
+    "informations techniques disponibles sur cette photo",
+    "métadonnées de cette photo", "metadonnees de cette photo",
+    "exif de cette photo", "exif de cette image",
 )
 
 #: PARLER ou ECOUTER. **Les sous-titres n en font PAS partie** : STUDIO les

@@ -6711,3 +6711,229 @@ réel sur cette carte diverge de ce que le code suppose (temps de génération,
 mémoire), le premier lancement du propriétaire le révélera — `/health` et le
 doctor (`verifier_csm`) sont conçus pour le dire immédiatement, jamais pour
 le cacher derrière un `[OK]` optimiste.
+
+## DEC-0081 — Métadonnées de fichiers média : capacité canonique `media_metadata`, combinée à Vision, jamais fondue
+
+**Date** : 10/09/2026
+**Statut** : accepté
+
+### Contexte
+
+Mission ARENA × EXIF & MEDIA METADATA. Étudier `ternera/exif-viewer` (commit
+`3ceea259`, aucune licence) et donner à ARENA une lecture fiable des
+métadonnées techniques d'un fichier média — EXIF image, conteneur/codec
+vidéo, tags audio — sans intégrer une extension Chrome ni créer un second
+système Vision/FFmpeg. Rapport complet → `docs/audits/exif_viewer_audit.md`.
+
+### Ce qui existait déjà, audité avant d'écrire une ligne
+
+`core/montage/operations.py::sonder_le_media` appelle déjà `ffprobe`, mais
+seulement pour `duree_ms`/`largeur`/`hauteur`, au service du seul pipeline de
+montage — pas une capacité de métadonnées générale. Aucune lecture EXIF nulle
+part dans le dépôt. **Rien à conserver, rien à comparer : `IMPLEMENT_NEW`**,
+avec Pillow (déjà une dépendance) et `FFmpegTool` (déjà le seul pilote
+`ffmpeg`/`ffprobe` du dépôt) — zéro nouvelle dépendance, zéro ligne
+d'`exif-viewer` (son parseur JS n'a aucun usage en Python ; seul le
+vocabulaire de tags EXIF/TIFF standard, non protégeable, est repris — et
+Pillow l'expose déjà nativement).
+
+### Décision
+
+**Un connecteur, une capacité, jamais un second Vision ni un second
+FFmpeg.** `core/connectors/media_metadata.py` (`analyser`, lecture seule) :
+
+1. **Image** : `Pillow` seul (`getexif()`, `get_ifd()` pour les sous-IFD
+   Exif/GPS) — format, dimensions, orientation, date, fabricant, modèle,
+   objectif, ISO, ouverture, vitesse, focale, logiciel, copyright, GPS.
+   Accepte un chemin **ou** un `io.BytesIO` : les pièces jointes d'ARENA ne
+   vivent qu'en base64 mémoire (`apps/backend/pieces_jointes.py`), jamais
+   écrites sur disque — aucun fichier temporaire nécessaire.
+2. **Vidéo/Audio** : `FFmpegTool` existant (`tools/video/ffmpeg_tool.py`),
+   un appel `ffprobe -show_format -show_streams` plus complet que
+   `sonder_le_media` (qui reste inchangé, pour le seul montage).
+3. **Intégration Vision, jamais fusion** : `agents/vision/vision_agent.py`
+   reprend exactement le patron déjà utilisé par
+   `_detecter_securite_chantier` — un second appel déterministe
+   (`registre.executer("media_metadata", "analyser", ...)`), ajouté comme
+   section **distincte** après la description libre de Qwen3-VL, jamais
+   mélangé au texte du modèle. Si Ollama est injoignable, les métadonnées
+   partent quand même (`_reponse_metadonnees_seules`) — mesuré réellement
+   dans ce bac à sable, qui n'a pas non plus d'Ollama joignable pour la
+   vision.
+4. **Routage** : `agents/orchestrator/orchestrator_agent.py` — le tuple
+   `VISION` gagne les phrases exactes de la mission (« analyse complètement
+   cette photo », « informations techniques sur cette photo », « exif de
+   cette image »…), testé par mots-clés et de bout en bout par
+   `POST /api/chat`.
+
+### GPS et confidentialité
+
+Le connecteur n'appelle jamais le réseau (vérifié : `httpx`/`requests`/
+`urllib.request`/`socket` absents de son propre code source, testé). Le GPS
+absent est **toujours dit explicitement** (« GPS : absent du fichier »),
+jamais omis ni inventé. Aucune persistance au-delà de la réponse retournée à
+l'appelant — la même discipline, indépendamment retrouvée, que celle
+d'`exif-viewer` lui-même (coordonnées affichées brutes, jamais géocodées,
+jamais envoyées).
+
+### Vérification
+
+`ruff check .` propre. `config/permissions_services.yaml` : `media_metadata`
+déclaré `read: ALLOWED` — sans cette entrée, le connecteur était refusé par
+défaut (`Statut.REFUSE`), trouvé et corrigé avant d'écrire le premier test
+formel.
+
+30 tests dédiés, tous réels — EXIF complet + GPS (JPEG construit et relu par
+Pillow, coordonnées vérifiées : 14°41'00"N, 17°26'00"O →
+14.683333, -17.433333), sans EXIF, PNG, WebP, fichier corrompu, extension
+mensongère (PNG enregistré en `.jpg`, détecté), EXIF malformé (ne plante
+jamais), fichier volumineux (6000×4000, < 10 s), vidéo et audio réels
+construits par un vrai `ffmpeg` et relus par le connecteur, image en mémoire
+(base64, sans toucher le disque). Bout en bout, `POST /api/chat` réel
+(`tests/test_media_metadata_dans_le_chat.py`) : le vrai chemin de repli sans
+Ollama (mesuré, pas simulé), la combinaison Vision + métadonnées sans
+fusion (le seul point simulé : la réponse de Qwen3-VL, `FakeProvider`,
+puisqu'aucun Ollama n'est joignable ici), et l'absence de GPS jamais
+inventée dans la réponse HTTP réelle.
+
+Suite complète (`python -m pytest tests/ -q`) : voir le commit — chiffres
+collés dans le message qui les rapporte, mesurés après ce changement.
+
+### Ce que ça coûte si c'est faux
+
+Aucun `ollama serve` n'était joignable dans ce bac à sable : le chemin
+combiné (Vision **et** métadonnées dans la même réponse, via un vrai
+Qwen3-VL) n'a été vérifié qu'avec un modèle simulé pour la moitié Vision —
+la moitié métadonnées, elle, est réelle de bout en bout. Si le vrai Qwen3-VL
+répond différemment de `FakeProvider` (formatage, longueur), le premier
+lancement du propriétaire le montrera dans la section « INFORMATIONS
+TECHNIQUES » — elle reste séparée du texte du modèle par construction, donc
+rien ne peut s'y mélanger silencieusement même si ça arrive.
+
+## DEC-0082 — Instantané de projet : ce que Dioumtoukay sait avant de relire le dépôt, OpenContext étudié
+
+**Date** : 10/09/2026
+**Statut** : accepté
+
+### Contexte
+
+Mission ARENA × OPENCONTEXT. Étudier `0xranx/OpenContext` (commit
+`0649e71`, MIT) et améliorer l'architecture mémoire/contexte-projet
+existante d'ARENA — sans second système de mémoire, sans second RAG, sans
+second graphe de code. Rapport complet →
+`docs/audits/opencontext_audit.md`.
+
+### Ce qui existait déjà, audité avant d'écrire une ligne
+
+Un écosystème mémoire/contexte déjà riche : `core/memory/personnelle.py`
+(mémoire typée, provenance, expiration), `core/memory/memory_manager.py`
+(session, partagée par tous les agents), `core/connectors/openviking.py`
+(contexte hiérarchique L0/L1/L2, budgété, dédupliqué), `core/connectors/
+claude_context.py` (index sémantique persistant, réindexation
+incrémentale par arbre de Merkle), `core/connectors/graphify.py` (graphe
+structurel hors ligne), `core/connectors/gitingest.py` (repli contenu
+brut, déjà appelé par `RepoEngineerAgent`), `core/context/
+recherche_unifiee.py` (composition code/mémoire/internet, provenance,
+parallélisme), `core/execution/reprise.py` (DEC-0072, reprise durable
+d'une tâche interrompue). Comparaison complète : matrice §35 de l'audit.
+
+**OpenContext étudié n'a AUCUN mécanisme d'invalidation git-consciente ni
+d'état STABLE/STALE** — vérifié par recherche exhaustive dans son code
+source (`git diff`, `invalidat`, `staleness`, `fingerprint`, `checksum` :
+zéro résultat). C'est une bibliothèque personnelle de notes Markdown,
+globale et hors dépôt, avec recherche et un serveur MCP — précieuse pour
+ce qu'elle fait, mais elle ne fait pas ce que la mission décrivait comme
+inspiré d'elle.
+
+**Le manque réel, mesuré, pas supposé** : `agents/dioumtoukay/
+dioumtoukay_agent.py::_reperes()` — le SEUL endroit qui prépare le point
+de départ d'une tâche de codage — ne lisait jamais `PROJECT_MEMORY/`, que
+`CLAUDE.md` demande pourtant à un humain de lire en premier. Chaque tâche
+de Dioumtoukay partait donc à l'aveugle, exactement le défaut que
+`_reperes()` avait déjà corrigé pour la racine du dépôt et la branche git
+(son propre commentaire : « deux tours perdus au départ comptent »).
+
+### Décision
+
+**Un module de lecture, jamais un système de stockage.**
+`core/context/instantane_projet.py` — aucune base de données, aucun
+vecteur, aucun appel modèle, aucune écriture. Il lit `PROJECT_MEMORY/
+LOCKED_ZONES.md`, `PROJECT_MEMORY/PROJECT_MAP.md` et les titres des
+dernières décisions de `docs/DECISIONS.md`, budgétés à 8000 caractères,
+et compare la date déclarée de chaque fichier (« Mise à jour : AAAA-MM-JJ »,
+convention déjà en place) au nombre RÉEL de commits sur le dépôt depuis
+cette date (`git log --since`) — un compte grossier mais honnête, jamais
+un mappage fichier→dossiers deviné qui serait faux dès qu'une convention
+change.
+
+Deux points d'entrée, tous deux une extension d'un mécanisme existant,
+jamais un nouveau :
+
+1. `agents/dioumtoukay/dioumtoukay_agent.py::_reperes()` — l'instantané
+   s'ajoute à ce que `_reperes()` mesure déjà (racine, branche, fichiers
+   modifiés, contenu du dossier), une fois par tâche, jamais par tour.
+2. `core/context/recherche_unifiee.py` — une 4ᵉ source, `project_snapshot`,
+   déclenchée par ses propres mots-clés (`MOTS_PROJET`), synchrone et
+   locale (aucun `registre`, aucune permission requise — lire un fichier
+   Markdown déjà écrit n'en demande pas).
+
+**Étudié dans OpenContext, non copié** : l'idée du geste « charger le
+contexte avant de travailler » (ses slash-commands `/opencontext-context`),
+rendue ici **automatique** plutôt qu'explicite — Dioumtoukay ne peut pas
+taper une commande qu'on ne lui a jamais montrée. Les liens stables (UUID,
+`oc_resolve`) et le statut d'index dédié (`oc_index_status`) ont été
+considérés et écartés : voir l'audit, section « ce qui reste SUGGESTION —
+NON IMPLÉMENTÉE ».
+
+### Vérification
+
+`ruff check .` propre. Deux sabotages, deux restaurations :
+
+1. Le calcul du nombre de commits depuis la date déclarée
+   (`_fraicheur`, `instantane_projet.py`) — mis à zéro artificiellement →
+   `test_perime_des_commits_reels_apres_la_date_declaree` échoue (0 au
+   lieu de 1 commit détecté). Restauré.
+2. L'injection de l'instantané dans `_reperes()` — désactivée → 
+   `test_project_memory_arrive_des_le_premier_tour` échoue (le contenu de
+   `LOCKED_ZONES.md` n'atteint plus le premier tour de Dioumtoukay).
+   Restauré.
+
+30 tests dédiés (`tests/core/test_instantane_projet.py`, 13 ; extensions à
+`tests/core/test_recherche_unifiee.py`, 4 nouveaux sur 21 ; extensions à
+`tests/agents/test_dioumtoukay.py`, 2 nouveaux sur 46) : dépôt vide,
+fichiers présents/absents individuellement, fraîcheur avec et sans dépôt
+git réel (git réel construit dans chaque test, jamais simulé), budget
+dépassé et respecté, décisions récentes tronquées au maximum déclaré,
+absence de `docs/DECISIONS.md` gérée sans casser, provenance distincte
+dans `recherche_unifiee`, et bout en bout : Dioumtoukay reçoit vraiment le
+contenu de `PROJECT_MEMORY/` dès son premier tour, un dossier sans mémoire
+opérationnelle ne reçoit rien d'inventé.
+
+Suite complète (`python -m pytest tests/ -q`) : voir le commit — chiffres
+mesurés après ce changement, collés dans le message qui les rapporte.
+
+**Régression trouvée et corrigée au passage** : `core/connectors/
+media_metadata.py` (mission précédente, DEC-0081) avait fait passer le
+compte de modules d'`orphelins.py` de 255 à 257 (202 → 204 atteints) sans
+que `CLAUDE.md` soit remesuré — `tests/test_documentation.py::
+test_le_compteur_de_modules_de_CLAUDE_md_est_a_jour` l'a attrapé. Corrigé
+dans le même commit que cette mission, avant de continuer.
+
+### Ce que ça coûte si c'est faux
+
+Le compte de commits est délibérément GROSSIER (dépôt entier, pas les
+dossiers réellement concernés) : un commit sans rapport avec
+`PROJECT_MAP.md` fera afficher « peut-être périmé » à tort. C'est un faux
+positif accepté par construction — Dioumtoukay lit le bandeau et décide,
+il ne s'arrête jamais dessus (la source fait toujours autorité, mission
+§12). Le risque inverse — un faux NÉGATIF, où un vrai changement pertinent
+ne déclenche aucun signal — n'existe pas : si zéro commit n'est passé
+depuis la date déclarée, rien n'a pu changer, cette moitié-là est une
+garantie, pas une heuristique.
+
+Aucun modèle n'était joignable dans ce bac à sable : le comportement réel
+de Dioumtoukay face à cet instantané (est-ce qu'un vrai modèle en tient
+compte, ou le noie dans le reste du contexte ?) n'a été vérifié que par
+construction du prompt (`moteur.vues[0]` contient bien le texte), jamais
+par une vraie génération. Le premier lancement du propriétaire sur son PC
+le montrera.

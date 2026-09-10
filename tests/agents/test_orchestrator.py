@@ -126,6 +126,23 @@ def test_le_repli_aiguille_toujours_les_cas_explicites(fake_provider, phrase, at
 @pytest.mark.parametrize(
     "phrase",
     [
+        # Mission EXIF & Media Metadata (DEC-0081), §7 ROUTAGE : le routeur
+        # doit atteindre VisionAgent (qui porte lui-meme media_metadata)
+        # SANS agent ni routeur separe.
+        "Donne-moi toutes les informations techniques disponibles sur cette photo.",
+        "Analyse complètement cette photo",
+        "exif de cette photo",
+    ],
+)
+def test_les_demandes_de_metadonnees_atteignent_vision(fake_provider, phrase):
+    agent = OrchestratorAgent(provider=fake_provider, memory=None)
+
+    assert agent._classer_par_mots_cles(phrase) == "VISION"
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
         "Quelle est la dernière version de Python ?",
         "Qui est le président du Sénégal actuellement ?",
         "Quelle est la météo aujourd'hui ?",
