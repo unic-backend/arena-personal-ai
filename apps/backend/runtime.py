@@ -71,6 +71,7 @@ from core.connectors.ifc_generation import ConnecteurIfcGeneration
 from core.connectors.krillinai import ConnecteurKrillinAI
 from core.connectors.lean_formel import ConnecteurLeanFormel
 from core.connectors.market_data import ConnecteurMarketData
+from core.connectors.media_metadata import ConnecteurMediaMetadata
 from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.montage import ConnecteurMontage
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
@@ -422,6 +423,16 @@ registre.declarer(
     "montage",
     lambda: ConnecteurMontage(acces=acces, journal=journal, file_attente=file_attente,
                               crochets=crochets),
+)
+# Metadonnees techniques (EXIF, video, audio) : lecture seule, aucune
+# capacite d'ecriture declaree. Mission EXIF & Media Metadata — audite avant
+# d'ecrire une ligne, rien n'existait deja (`core/connectors/media_metadata.py`).
+# `VisionAgent` l'appelle en plus de Qwen3-VL pour une analyse « complete »,
+# jamais fondu dans sa description libre — meme discipline que SiteGuard.
+registre.declarer(
+    "media_metadata",
+    lambda: ConnecteurMediaMetadata(acces=acces, journal=journal,
+                                    file_attente=file_attente, crochets=crochets),
 )
 registre.declarer(
     "galsen",

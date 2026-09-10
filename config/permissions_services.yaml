@@ -214,6 +214,15 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     document:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
 
+  # media_metadata : lit un fichier deja sur la machine, n'ecrit jamais rien
+  # (`core/connectors/media_metadata.py`). Meme risque que lire un fichier
+  # audio/video existant (`audio_voix.read`) — mais le GPS EXIF qu'il peut
+  # exposer reste une donnee sensible : ALLOWED n'est pas une dispense de
+  # confidentialite, seulement la reconnaissance qu'AUCUNE ecriture ni appel
+  # externe n'a lieu (le connecteur lui-meme n'appelle jamais le reseau).
+  media_metadata:
+    read:        {decision: ALLOWED,      risque: LOW}
+
   # OpenTakeoff : mesurer un plan PDF ne touche a rien hors du processus qui
   # le lit. Exporter ecrit le rapport et le plan marque a cote du plan source
   # — meme logique que le devis PDF : confirmation, coupe-circuit WRITE_FILES.

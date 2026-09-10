@@ -6,7 +6,12 @@ Rien n'appelle Ollama : le fournisseur est le double du socle
 import httpx
 import pytest
 
-from agents.vision.vision_agent import QUESTION_PAR_DEFAUT, VisionAgent, demande_securite_chantier
+from agents.vision.vision_agent import (
+    QUESTION_PAR_DEFAUT,
+    VisionAgent,
+    demande_metadonnees_techniques,
+    demande_securite_chantier,
+)
 from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.actions.resultat import echec, non_configure, succes
 
@@ -250,3 +255,210 @@ class TestModeleAbsent:
 
         assert reponse["status"] == "warning"
         assert "qwen3-vl" in reponse["response"]
+
+
+class TestDemandeMetadonneesTechniques:
+    """Mission EXIF & Media Metadata (DEC-0081) : le mot-cle, sans registre ni modele."""
+
+    def test_informations_techniques_declenche(self):
+        assert demande_metadonnees_techniques(
+            "Donne-moi toutes les informations techniques disponibles sur cette photo") is True
+
+    def test_analyse_completement_declenche(self):
+        assert demande_metadonnees_techniques("Analyse complètement cette photo") is True
+
+    def test_exif_declenche(self):
+        assert demande_metadonnees_techniques("quel est l'EXIF de cette image ?") is True
+
+    def test_une_description_ordinaire_ne_declenche_pas(self):
+        assert demande_metadonnees_techniques("que vois-tu sur cette photo ?") is False
+
+    def test_analyse_chantier_ne_declenche_pas_a_tort(self):
+        """« analyse cette photo de chantier » ne contient ni « complètement »
+        ni « technique » : SiteGuard se declenche, pas les metadonnees."""
+        assert demande_metadonnees_techniques("analyse cette photo de chantier") is False
+
+
+class FauxRegistreMultiple:
+    """Un registre a plusieurs connecteurs, cle par (nom, capacite) — pour les
+    tests ou Vision et media_metadata sont tous deux sollicites."""
+
+    def __init__(self, reponses):
+        self._reponses = reponses
+        self.appels = []
+
+    def executer(self, nom, capacite, **parametres):
+        self.appels.append((nom, capacite, parametres))
+        return self._reponses[(nom, capacite)]
+
+
+def _resultat_metadata(**detail):
+    return succes(action="analyser", cible="media_metadata", message="mesure",
+                 preuve="x", **detail)
+
+
+class TestMetadonneesTechniques:
+    """Mission EXIF & Media Metadata, §4 — INTÉGRATION VISION :
+    ARENA -> Vision -> Media Metadata -> combinaison -> reponse. Les deux
+    signaux restent distincts (meme discipline que SiteGuard) : jamais fondus
+    dans un seul texte sans en-tete."""
+
+    async def test_declenchee_et_combinee_sans_etre_fondue(self, provider_factory, depot):
+        piece = depot.deposer("photo.jpg", OCTETS_IMAGE)
+        provider = provider_factory("Un mur en placo, vue de face.")
+        registre = FauxRegistreMultiple({
+            ("media_metadata", "analyser"): _resultat_metadata(
+                format_reel="JPEG", largeur=800, hauteur=600, fabricant="Canon",
+                modele_appareil="EOS R5", iso=400, ouverture="f/2.8",
+                vitesse_obturation="1/250s", focale_mm=50.0, date_prise="2026:09:10 12:00:00",
+                logiciel=None, copyright=None, gps_present=False,
+                gps_latitude=None, gps_longitude=None, alerte_extension=None),
+        })
+        agent = VisionAgent(provider=provider, pieces_jointes=depot, registre=registre)
+
+        reponse = await agent.run(
+            "Analyse complètement cette photo", context={"attachments": [piece.identifiant]})
+
+        assert reponse["status"] == "success"
+        assert "Un mur en placo, vue de face." in reponse["response"]
+        assert "INFORMATIONS TECHNIQUES" in reponse["response"]
+        assert "EOS R5" in reponse["response"]
+        assert "f/2.8" in reponse["response"]
+        # Les deux signaux restent SEPARES, jamais fondus l'un dans l'autre.
+        assert reponse["response"].index("Un mur en placo") < reponse["response"].index(
+            "INFORMATIONS TECHNIQUES")
+        assert reponse["metadonnees_techniques"]["modele_appareil"] == "EOS R5"
+
+    async def test_le_registre_recoit_le_bon_appel(self, provider_factory, depot):
+        piece = depot.deposer("photo.jpg", OCTETS_IMAGE)
+        provider = provider_factory("Une photo.")
+        registre = FauxRegistreMultiple({
+            ("media_metadata", "analyser"): _resultat_metadata(
+                format_reel="JPEG", largeur=1, hauteur=1, fabricant=None,
+                modele_appareil=None, iso=None, ouverture=None, vitesse_obturation=None,
+                focale_mm=None, date_prise=None, logiciel=None, copyright=None,
+                gps_present=False, gps_latitude=None, gps_longitude=None,
+                alerte_extension=None),
+        })
+        agent = VisionAgent(provider=provider, pieces_jointes=depot, registre=registre)
+
+        await agent.run("montre-moi les métadonnées", context={"attachments": [piece.identifiant]})
+
+        assert ("media_metadata", "analyser",
+               {"image_base64": piece.image_base64, "nom_fichier": "photo.jpg"}) in registre.appels
+
+    async def test_jamais_declenchee_sur_une_description_ordinaire(self, provider_factory, depot):
+        piece = depot.deposer("photo.jpg", OCTETS_IMAGE)
+        provider = provider_factory("Une photo ordinaire.")
+        registre = FauxRegistreMultiple({})
+        agent = VisionAgent(provider=provider, pieces_jointes=depot, registre=registre)
+
+        reponse = await agent.run("Que vois-tu ?", context={"attachments": [piece.identifiant]})
+
+        assert registre.appels == []
+        assert reponse["metadonnees_techniques"] is None
+        assert "INFORMATIONS TECHNIQUES" not in reponse["response"]
+
+    async def test_sans_registre_reste_absente(self, provider_factory, depot):
+        piece = depot.deposer("photo.jpg", OCTETS_IMAGE)
+        provider = provider_factory("Une photo.")
+        agent = VisionAgent(provider=provider, pieces_jointes=depot, registre=None)
+
+        reponse = await agent.run(
+            "analyse complètement cette photo", context={"attachments": [piece.identifiant]})
+
+        assert reponse["metadonnees_techniques"] is None
+        assert "INFORMATIONS TECHNIQUES" not in reponse["response"]
+
+    async def test_un_echec_de_media_metadata_est_dit_jamais_invente(self, provider_factory, depot):
+        piece = depot.deposer("photo.jpg", OCTETS_IMAGE)
+        provider = provider_factory("Une photo.")
+        registre = FauxRegistreMultiple({
+            ("media_metadata", "analyser"): echec(
+                action="analyser", cible="media_metadata", message="fichier illisible"),
+        })
+        agent = VisionAgent(provider=provider, pieces_jointes=depot, registre=registre)
+
+        reponse = await agent.run(
+            "informations techniques de cette photo", context={"attachments": [piece.identifiant]})
+
+        assert reponse["metadonnees_techniques"] == {"erreur": "fichier illisible"}
+        assert "Non disponibles" in reponse["response"]
+
+    async def test_gps_absent_du_fichier_est_dit_jamais_invente(self, provider_factory, depot):
+        piece = depot.deposer("photo.jpg", OCTETS_IMAGE)
+        provider = provider_factory("Une photo.")
+        registre = FauxRegistreMultiple({
+            ("media_metadata", "analyser"): _resultat_metadata(
+                format_reel="JPEG", largeur=10, hauteur=10, fabricant=None,
+                modele_appareil=None, iso=None, ouverture=None, vitesse_obturation=None,
+                focale_mm=None, date_prise=None, logiciel=None, copyright=None,
+                gps_present=False, gps_latitude=None, gps_longitude=None,
+                alerte_extension=None),
+        })
+        agent = VisionAgent(provider=provider, pieces_jointes=depot, registre=registre)
+
+        reponse = await agent.run(
+            "métadonnées de cette photo", context={"attachments": [piece.identifiant]})
+
+        assert "GPS : absent du fichier" in reponse["response"]
+        assert "14.6" not in reponse["response"], "aucune coordonnee ne doit apparaitre si absente"
+
+
+class TestMetadonneesQuandVisionEchoue:
+    """La photo reste analysable techniquement meme si Qwen3-VL ne repond pas
+    — les metadonnees sont mesurees dans le fichier, pas par le modele."""
+
+    async def test_ollama_eteint_rend_quand_meme_les_metadonnees(self, provider_factory, depot):
+        piece = depot.deposer("photo.jpg", OCTETS_IMAGE)
+        provider = provider_factory(disponible=False)
+        registre = FauxRegistreMultiple({
+            ("media_metadata", "analyser"): _resultat_metadata(
+                format_reel="JPEG", largeur=800, hauteur=600, fabricant="Canon",
+                modele_appareil="EOS R5", iso=400, ouverture="f/2.8",
+                vitesse_obturation="1/250s", focale_mm=50.0, date_prise="2026:09:10 12:00:00",
+                logiciel=None, copyright=None, gps_present=False,
+                gps_latitude=None, gps_longitude=None, alerte_extension=None),
+        })
+        agent = VisionAgent(provider=provider, pieces_jointes=depot, registre=registre)
+
+        reponse = await agent.run(
+            "Analyse complètement cette photo", context={"attachments": [piece.identifiant]})
+
+        assert reponse["status"] == "success"
+        assert "Ollama ne repond pas" in reponse["response"]
+        assert "EOS R5" in reponse["response"]
+        assert reponse["metadonnees_techniques"]["modele_appareil"] == "EOS R5"
+
+    async def test_ollama_indisponible_sans_demande_technique_reste_un_avertissement(
+        self, provider_factory, depot
+    ):
+        """Le comportement d'avant cette mission ne change pas pour une
+        simple description quand Ollama est eteint."""
+        piece = depot.deposer("photo.jpg", OCTETS_IMAGE)
+        provider = provider_factory(disponible=False)
+        agent = VisionAgent(provider=provider, pieces_jointes=depot, registre=None)
+
+        reponse = await agent.run("Que vois-tu ?", context={"attachments": [piece.identifiant]})
+
+        assert reponse["status"] == "warning"
+
+    async def test_modele_non_installe_rend_quand_meme_les_metadonnees(self, depot):
+        piece = depot.deposer("photo.jpg", OCTETS_IMAGE)
+        registre = FauxRegistreMultiple({
+            ("media_metadata", "analyser"): _resultat_metadata(
+                format_reel="JPEG", largeur=1, hauteur=1, fabricant=None,
+                modele_appareil="TestCam", iso=None, ouverture=None, vitesse_obturation=None,
+                focale_mm=None, date_prise=None, logiciel=None, copyright=None,
+                gps_present=False, gps_latitude=None, gps_longitude=None,
+                alerte_extension=None),
+        })
+        agent = VisionAgent(
+            provider=TestModeleAbsent.ProviderQuiRefuse(), pieces_jointes=depot, registre=registre)
+
+        reponse = await agent.run(
+            "informations techniques de cette photo", context={"attachments": [piece.identifiant]})
+
+        assert reponse["status"] == "success"
+        assert "TestCam" in reponse["response"]
+        assert "modele de vision n'est probablement pas installe" not in reponse["response"]
