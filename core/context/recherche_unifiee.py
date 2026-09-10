@@ -1,6 +1,6 @@
 """La recherche unifiée : une question fait appel à ce qui est pertinent —
-code, mémoire, internet —, jamais aux trois par réflexe, jamais aux trois
-en séquence quand elles peuvent tourner ensemble.
+code, mémoire, internet, projet —, jamais aux quatre par réflexe, jamais en
+séquence quand elles peuvent tourner ensemble.
 
 Mission « intégration unifiée » (06/09/2026, Claude Context + OpenViking +
 Agent-Reach) : « ARENA reste le cerveau et l'orchestrateur principal » —
@@ -20,18 +20,27 @@ question mixte demande plusieurs sources ; c'est le cas normal, pas une
 exception.
 
 **Provenance, jamais fusionnée dans un bloc anonyme** (mission §7) : chaque
-résultat conserve sa source (`"codebase"`, `"openviking_memory"`, `"web"`)
-et l'agent qui consomme cette réponse peut donc distinguer « je sais
-parce que » de « je suppose que ». Une source qui échoue (non configurée,
-en panne) n'efface pas les autres — exactement la garde que DEC-0017 avait
-déjà posée en parallélisant `DeepResearcherAgent`.
+résultat conserve sa source (`"codebase"`, `"openviking_memory"`, `"web"`,
+`"project_snapshot"`) et l'agent qui consomme cette réponse peut donc
+distinguer « je sais parce que » de « je suppose que ». Une source qui
+échoue (non configurée, en panne) n'efface pas les autres — exactement la
+garde que DEC-0017 avait déjà posée en parallélisant `DeepResearcherAgent`.
+
+**Quatrième source, mission ARENA x OPENCONTEXT (10/09/2026)** :
+`project_snapshot` (`core/context/instantane_projet.py`) — l'état du dépôt
+LUI-MÊME (zones verrouillées, carte du projet, décisions récentes), jamais
+son contenu de code. Locale et synchrone, sans `registre` : lire des
+fichiers Markdown déjà écrits ne demande ni permission ni confirmation.
 """
 from __future__ import annotations
 
 import asyncio
 import inspect
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from core.context.instantane_projet import instantane
 
 logger = logging.getLogger("usman.context.recherche_unifiee")
 
@@ -60,6 +69,19 @@ MOTS_INTERNET = (
     "en ligne", "recherche web", "vérifie si", "verifie si",
 )
 
+#: Signaux qui orientent vers l'instantané de projet (mission ARENA x
+#: OPENCONTEXT, 10/09/2026) — `core/context/instantane_projet.py` : où en
+#: est le dépôt LUI-MÊME (zones verrouillées, carte, décisions récentes),
+#: jamais son contenu de code (déjà `MOTS_CODE`) ni un souvenir personnel
+#: (déjà `MOTS_MEMOIRE`).
+MOTS_PROJET = (
+    "où en est", "ou en est", "état du projet", "etat du projet",
+    "état du dépôt", "etat du depot", "zone verrouillée", "zone verrouillee",
+    "zones verrouillées", "zones verrouillees", "décisions récentes",
+    "decisions recentes", "instantané du projet", "instantane du projet",
+    "avant de coder", "avant de toucher",
+)
+
 
 def sources_pertinentes(question: str) -> List[str]:
     """Les sources que la question appelle, dans un ordre stable — jamais
@@ -72,6 +94,8 @@ def sources_pertinentes(question: str) -> List[str]:
         trouvees.append("memoire")
     if any(mot in texte for mot in MOTS_INTERNET):
         trouvees.append("internet")
+    if any(mot in texte for mot in MOTS_PROJET):
+        trouvees.append("projet")
     return trouvees
 
 
@@ -134,6 +158,18 @@ async def _depuis_internet(fresh_info_agent: Any, question: str) -> Dict[str, An
     }
 
 
+def _depuis_projet(chemin_code: str) -> Dict[str, Any]:
+    """Synchrone et locale — pas d'appel réseau, pas de `registre` : lire
+    des fichiers déjà sur disque ne demande ni permission ni confirmation,
+    même discipline que `_reperes()` dans `dioumtoukay_agent.py`."""
+    etat = instantane(Path(chemin_code))
+    return {
+        "source": "project_snapshot", "favorable": not etat.vide,
+        "resume": etat.texte or "Aucun PROJECT_MEMORY/ ni docs/DECISIONS.md ici.",
+        "perime": [f.chemin for f in etat.fraicheurs if f.perime],
+    }
+
+
 async def rechercher_unifie(
     question: str, *,
     registre: Any = None,
@@ -176,13 +212,18 @@ async def rechercher_unifie(
         taches["memoire"] = _depuis_memoire(registre, question, session_id)
     if "internet" in demandees and fresh_info_agent is not None:
         taches["internet"] = _depuis_internet(fresh_info_agent, question)
+    if "projet" in demandees and chemin_code:
+        # Synchrone (lecture de fichiers + `git log`) : `asyncio.to_thread`
+        # pour ne jamais bloquer la boucle asyncio le temps du sous-processus
+        # git, même garde que `_executer_connecteur` pour le registre.
+        taches["projet"] = asyncio.to_thread(_depuis_projet, chemin_code)
 
     if not taches:
         return {
             "status": "warning", "sources_interrogees": [], "resultats": [],
             "response": (
                 f"Source(s) identifiée(s) ({', '.join(demandees)}) mais aucune n'est "
-                "disponible ici (registre ou agent internet non branché)."),
+                "disponible ici (registre, agent internet ou dossier non branché)."),
         }
 
     bruts = await asyncio.gather(*taches.values(), return_exceptions=True)
@@ -193,7 +234,7 @@ async def rechercher_unifie(
             logger.warning("Source %s en échec : %s", nom_source, brut)
             resultats.append({
                 "source": {"code": "codebase", "memoire": "openviking_memory",
-                          "internet": "web"}[nom_source],
+                          "internet": "web", "projet": "project_snapshot"}[nom_source],
                 "favorable": False, "resume": f"Erreur : {brut}",
             })
         else:

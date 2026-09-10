@@ -67,6 +67,15 @@ class TestSourcesPertinentes:
     def test_une_question_ordinaire_ne_declenche_rien(self):
         assert sources_pertinentes("bonjour, comment vas-tu ?") == []
 
+    def test_une_question_de_projet(self):
+        assert sources_pertinentes("où en est le projet, quelles zones sont verrouillées ?") == ["projet"]
+
+    def test_projet_et_code_restent_distincts(self):
+        """« code » vient de MOTS_CODE, « projet » de MOTS_PROJET : une
+        question qui ne porte que sur l'état du dépôt ne doit jamais
+        déclencher la recherche de code par accident."""
+        assert sources_pertinentes("avant de toucher à quoi que ce soit, où en est le projet ?") == ["projet"]
+
 
 class TestRechercherUnifie:
     async def test_aucune_source_identifiee_ne_lance_aucun_appel(self):
@@ -106,6 +115,31 @@ class TestRechercherUnifie:
 
         assert resultat["sources_interrogees"] == []
         assert registre.appels == []
+
+    async def test_question_de_projet_lit_le_vrai_project_memory(self, tmp_path):
+        """`projet` ne passe jamais par `registre` : lire des fichiers
+        Markdown deja sur disque, comme `_reperes()` le fait deja pour
+        `git status`."""
+        memoire = tmp_path / "PROJECT_MEMORY"
+        memoire.mkdir()
+        (memoire / "LOCKED_ZONES.md").write_text(
+            "*Mise à jour : 2026-01-01.*\nne jamais toucher a X", encoding="utf-8")
+
+        resultat = await rechercher_unifie(
+            "où en est le projet, quelles zones sont verrouillées ?",
+            registre=None, chemin_code=str(tmp_path))
+
+        assert resultat["status"] == "success"
+        assert resultat["sources_interrogees"] == ["projet"]
+        assert resultat["resultats"][0]["source"] == "project_snapshot"
+        assert "ne jamais toucher a X" in resultat["response"]
+
+    async def test_question_de_projet_sans_project_memory_est_defavorable(self, tmp_path):
+        resultat = await rechercher_unifie(
+            "où en est le projet ?", registre=None, chemin_code=str(tmp_path))
+
+        assert resultat["sources_interrogees"] == ["projet"]
+        assert resultat["resultats"][0]["favorable"] is False
 
     async def test_question_de_memoire_appelle_openviking(self):
         registre = RegistreDouble(reponses={

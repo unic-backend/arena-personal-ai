@@ -533,6 +533,33 @@ class TestIlSaitOuIlEst:
         listers = [e for e in journal.dernieres(limite=50) if e.action == "lister"]
         assert len(listers) == 3, "un repere par tour au lieu d'un seul au depart"
 
+    @pytest.mark.asyncio
+    async def test_project_memory_arrive_des_le_premier_tour(self, bac):
+        """Mission ARENA x OPENCONTEXT (10/09/2026) : avant, seuls la racine,
+        la branche et le contenu du dossier etaient mesures — jamais
+        PROJECT_MEMORY/, que CLAUDE.md demande a un humain de lire en
+        premier. Le meme manque, pour l'agent de codage lui-meme."""
+        memoire = bac / "PROJECT_MEMORY"
+        memoire.mkdir()
+        (memoire / "LOCKED_ZONES.md").write_text(
+            "*Mise à jour : 2026-01-01.*\nne jamais toucher a config/metier.yaml",
+            encoding="utf-8")
+        moteur = ModeleScripte("ACTION: terminer\nCONTENU:\nvu\nFIN")
+
+        await DioumtoukayAgent(provider=moteur, atelier=Atelier(racine=bac)).run("regarde")
+
+        assert "ne jamais toucher a config/metier.yaml" in moteur.vues[0]
+
+    @pytest.mark.asyncio
+    async def test_sans_project_memory_rien_n_est_invente(self, bac):
+        """Un dossier sans memoire operationnelle (ou un autre projet) ne
+        doit jamais recevoir un instantane fabrique."""
+        moteur = ModeleScripte("ACTION: terminer\nCONTENU:\nvu\nFIN")
+
+        await DioumtoukayAgent(provider=moteur, atelier=Atelier(racine=bac)).run("regarde")
+
+        assert "Instantané du projet" not in moteur.vues[0]
+
 
 class TestLeRapportNommeCeQuiAChange:
     @pytest.mark.asyncio

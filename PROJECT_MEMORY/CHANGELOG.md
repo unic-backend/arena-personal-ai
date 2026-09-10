@@ -628,3 +628,81 @@ code 200).
 le 10/09/2026). Suite isolée du service CSM
 (`tools/audio/csm_service/test_server.py`, son propre environnement) :
 11 passed.
+
+## 2026-09-10 (suite) — Métadonnées de fichiers média (DEC-0081), exif-viewer audité
+
+Mission ARENA × EXIF & MEDIA METADATA. `ternera/exif-viewer` audité (aucune
+licence, extension Chrome — rien repris hors le vocabulaire EXIF/TIFF
+standard, déjà natif dans Pillow). ARENA n'avait aucune capacité de
+métadonnées avant cette session (`sonder_le_media` du montage n'extrait que
+durée/dimensions, pour son propre import) : `IMPLEMENT_NEW`.
+
+**Créé** :
+
+| Fichier | Changement |
+|---|---|
+| `core/connectors/media_metadata.py` (nouveau) | `analyser` : image (Pillow, EXIF + sous-IFD GPS/Exif), vidéo/audio (`FFmpegTool`, `ffprobe`) ; accepte un chemin ou une image en mémoire (base64) |
+| `agents/vision/vision_agent.py` | même patron que `_detecter_securite_chantier` : second appel déterministe, section distincte après la description libre, jamais fondu ; repli si Ollama injoignable |
+| `agents/orchestrator/orchestrator_agent.py` | tuple `VISION` étendu aux phrases exactes de la mission |
+| `apps/backend/runtime.py`, `config/permissions_services.yaml` | connecteur câblé, `media_metadata: read ALLOWED` (refusé par défaut sans cette entrée — trouvé et corrigé avant les tests formels) |
+
+**Délibérément pas fait** : aucun doctor check dédié (Pillow est toujours
+présent, faible valeur) ; rien d'`exif-viewer` au-delà du vocabulaire de tags
+standard.
+
+GPS jamais envoyé au réseau (vérifié : le module lui-même ne contient ni
+`httpx`, ni `requests`, ni `socket`), jamais inventé quand absent — dit
+explicitement (« GPS : absent du fichier »).
+
+30 tests dédiés, réels : EXIF+GPS construits et relus par Pillow, sans EXIF,
+PNG, WebP, fichier corrompu, extension mensongère détectée, EXIF malformé,
+fichier volumineux, vidéo/audio réels via un vrai `ffmpeg`, image en mémoire
+sans toucher le disque. Bout en bout (`POST /api/chat`) : le vrai repli sans
+Ollama (mesuré, pas simulé — ce bac à sable n'en a pas non plus pour la
+vision), combinaison Vision+métadonnées (seule la réponse Qwen3-VL est
+simulée, `FakeProvider` — le reste est réel), GPS absent jamais inventé dans
+la réponse HTTP réelle. Rapport complet → `docs/audits/exif_viewer_audit.md`.
+
+`ruff check .` propre. Suite complète : voir le commit — chiffres mesurés
+après ce changement, collés dans le message qui les rapporte.
+
+## 2026-09-10 (suite) — Instantané de projet pour Dioumtoukay (DEC-0082), OpenContext audité
+
+Mission ARENA × OPENCONTEXT. `0xranx/OpenContext` audité (MIT) : une
+bibliothèque personnelle de notes Markdown hors dépôt, avec recherche et
+serveur MCP — **aucune invalidation git-consciente, aucun état
+STABLE/STALE**, vérifié par recherche exhaustive dans son code (zéro
+résultat pour `git diff`/`invalidat`/`fingerprint`). L'audit d'ARENA a
+trouvé un écosystème mémoire/contexte déjà mature (OpenViking, Claude
+Context, Graphify, GitIngest, `recherche_unifiee.py`, `reprise.py`) et
+UN manque réel, mesuré : `agents/dioumtoukay/dioumtoukay_agent.py::
+_reperes()`, le seul point de départ d'une tâche de codage, ne lisait
+jamais `PROJECT_MEMORY/`.
+
+**Créé** :
+
+| Fichier | Changement |
+|---|---|
+| `core/context/instantane_projet.py` (nouveau) | Lit `PROJECT_MEMORY/LOCKED_ZONES.md`+`PROJECT_MAP.md`+titres récents de `docs/DECISIONS.md`, budgété à 8000 caractères ; fraîcheur par date déclarée vs commits git réels depuis |
+| `agents/dioumtoukay/dioumtoukay_agent.py` | `_reperes()` inclut l'instantané — une fois par tâche, jamais par tour |
+| `core/context/recherche_unifiee.py` | 4ᵉ source `project_snapshot`, ses propres mots-clés (`MOTS_PROJET`), synchrone/locale, sans `registre` |
+
+**Délibérément pas fait** : liens stables (UUID, idée d'OpenContext) —
+valeur non démontrée pour un seul propriétaire ; fingerprints par
+dossier — un mappage deviné serait faux dès qu'une convention change, un
+compte de commits global reste grossier mais honnête ; banc de jetons
+formel — aucun modèle joignable ici pour le mesurer réellement.
+
+Deux sabotages, deux restaurations : le calcul de fraîcheur (mis à zéro
+→ un test le détecte), l'injection dans `_reperes()` (désactivée → un
+test le détecte). 30 tests dédiés/étendus, réels (dépôt git construit
+pour de vrai dans chaque test de fraîcheur, jamais simulé).
+
+**Régression trouvée et corrigée au passage** : le module `media_metadata`
+de la mission précédente (DEC-0081) avait fait passer le compte de
+modules d'`orphelins.py` sans que `CLAUDE.md` soit remesuré —
+`test_le_compteur_de_modules_de_CLAUDE_md_est_a_jour` l'a attrapé, corrigé
+dans ce commit.
+
+`ruff check .` propre. Suite complète : voir le commit — chiffres mesurés
+après ce changement. Rapport complet → `docs/audits/opencontext_audit.md`.

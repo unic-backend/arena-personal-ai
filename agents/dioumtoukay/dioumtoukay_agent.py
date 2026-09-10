@@ -41,6 +41,7 @@ from typing import Any, Dict, List, Optional
 
 from core.actions.resultat import Statut
 from core.agent.base_agent import BaseAgent
+from core.context.instantane_projet import instantane
 from core.execution.reprise import JournalDeReprise
 from core.memory.conversation import retenir_l_echange
 from core.memory.memory_manager import MemoryManager
@@ -875,6 +876,18 @@ class DioumtoukayAgent(BaseAgent):
         autour = self.atelier.lister(".")
         if autour.ok:
             lignes.append("Ce que contient la racine :\n" + autour.sortie)
+
+        # Mission ARENA x OPENCONTEXT (10/09/2026) : avant, seuls la racine,
+        # la branche et le contenu du dossier etaient mesures ici -- jamais
+        # PROJECT_MEMORY/, que CLAUDE.md demande a un humain de lire en
+        # premier. `instantane()` ne lit que des fichiers deja ecrits, ne
+        # remplace aucune memoire existante, et rend une chaine vide si
+        # `self.atelier.racine` n'a ni PROJECT_MEMORY/ ni docs/DECISIONS.md
+        # (un autre projet, ou le tmp_path d'un test) -- jamais invente.
+        etat_projet = instantane(self.atelier.racine)
+        if not etat_projet.vide:
+            lignes.append(etat_projet.texte)
+
         return "\n".join(lignes)
 
     @staticmethod
