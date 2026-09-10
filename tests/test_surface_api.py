@@ -94,6 +94,11 @@ SURFACE_ATTENDUE = {
     "/api/personnages/{identifiant}": (["GET"], ["verify_api_key", "limiter_debit"]),
     "/api/personnages/{identifiant}/image": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/personnages/{identifiant}/identite": (["POST"], ["verify_api_key", "limiter_debit"]),
+    # Generation d'image haute qualite (HiDream-I1, mission ARENA x
+    # HIDREAM-I1, DEC-0085) — la capacite image-generation canonique.
+    "/api/image/generer": (["POST"], ["verify_api_key", "limiter_debit"]),
+    "/api/image/capacites": (["GET"], ["verify_api_key", "limiter_debit"]),
+    "/api/image/{job_id}": (["GET"], ["verify_api_key", "limiter_debit"]),
 }
 
 

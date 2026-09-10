@@ -51,10 +51,17 @@ LANCES_EN_SOUS_PROCESSUS = {
 #: `LANCES_EN_SOUS_PROCESSUS`, aucun code d'ARENA ne le demarre : c'est donc
 #: une categorie a part, pas le meme mecanisme deguise. Detail complet ->
 #: `docs/audits/sesame_csm_audit.md`, section « Isolation des dependances ».
+#: Le worker HiDream-I1 (`tools/image/hidream/`, mission ARENA x HIDREAM-I1,
+#: DEC-0085) suit exactement la meme categorie que le service CSM ci-dessus,
+#: pour la meme raison technique (`torch`/`diffusers`/`transformers`, absents
+#: de l'environnement principal). Detail complet ->
+#: `docs/audits/hidream_i1_audit.md`.
 SERVICE_LANCE_PAR_LE_PROPRIETAIRE = frozenset({
     'tools.audio.csm_service.server',
     'tools.audio.csm_service.watermark',
     'tools.audio.csm_service.test_server',
+    'tools.image.hidream.serveur_hidream',
+    'tools.image.hidream.test_server',
 })
 
 

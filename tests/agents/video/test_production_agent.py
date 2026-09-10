@@ -826,3 +826,103 @@ class TestPersonnage:
             "n-existe-pas", str(tmp_path / "x.jpg"))
 
         assert resultat["status"] == "error"
+
+
+class TestHiDreamImage:
+    """Mission ARENA x HIDREAM-I1 (DEC-0085) : `hidream_image` compose dans
+    le graphe existant comme wangp/xaar_kaname — jamais un second chemin de
+    generation d'image."""
+
+    async def test_hidream_image_dans_le_graphe_transmet_le_prompt(self):
+        modele = ModeleDouble([
+            '[{"id": "img", "capacite": "hidream_image", '
+            '"parametres": {"prompt": "un chat cyberpunk", "width": 1024, "height": 1024, '
+            '"seed": 7, "variante": "fast"}}]'
+        ])
+        registre = RegistreXaarDouble(reponse={
+            "statut": "SUCCESS", "message": "ok", "preuve": "j1"})
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+
+        resultat = await agent.run("genere une image de chat", context={"references": []})
+
+        assert resultat["status"] == "success"
+        appel = registre.appels[0]
+        assert appel["connecteur"] == "hidream"
+        assert appel["capacite"] == "generer"
+        assert appel["parametres"]["prompt"] == "un chat cyberpunk"
+        assert appel["parametres"]["width"] == 1024
+        assert appel["parametres"]["seed"] == 7
+        assert appel["parametres"]["variante"] == "fast"
+
+    async def test_hidream_image_soumet_pour_confirmation_jamais_un_succes_invente(self):
+        """Comme wangp : une soumission n'est pas un artefact final."""
+        modele = ModeleDouble([
+            '[{"id": "img", "capacite": "hidream_image", "parametres": {"prompt": "un chat"}}]'
+        ])
+        registre = RegistreXaarDouble(reponse={
+            "statut": "NEEDS_CONFIRMATION", "message": "en attente"})
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+
+        resultat = await agent.run("genere une image", context={"references": []})
+
+        assert resultat["projet"]["artefact_final"] is None
+
+    async def test_hidream_image_sans_prompt_echoue_honnetement(self):
+        modele = ModeleDouble([
+            '[{"id": "img", "capacite": "hidream_image", "parametres": {}}]'
+        ])
+        registre = RegistreXaarDouble()
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+
+        resultat = await agent.run("genere une image", context={"references": []})
+
+        assert resultat["status"] == "warning"
+        assert registre.appels == []
+
+    async def test_hidream_image_sans_registre_echoue_honnetement(self):
+        modele = ModeleDouble([
+            '[{"id": "img", "capacite": "hidream_image", "parametres": {"prompt": "un chat"}}]'
+        ])
+        agent = VideoProductionAgent(provider=modele, registre=None)
+
+        resultat = await agent.run("genere une image", context={"references": []})
+
+        assert resultat["status"] == "warning"
+
+
+class TestGenererImageDirect:
+    """`generer_image` — le point d'entree hors graphe de la capacite
+    image-generation canonique (mission ARENA x HIDREAM-I1, DEC-0085)."""
+
+    async def test_transmet_le_prompt_et_les_parametres_au_connecteur(self):
+        registre = RegistreXaarDouble(reponse={
+            "statut": "SUCCESS", "message": "ok", "preuve": "j1"})
+        agent = VideoProductionAgent(provider=ModeleDouble(), registre=registre)
+
+        resultat = await agent.generer_image(
+            "un phare breton au clair de lune", negative_prompt="flou", width=1024,
+            height=1024, seed=99, variante="dev")
+
+        assert resultat["statut"] == "SUCCESS"
+        appel = registre.appels[0]
+        assert appel["connecteur"] == "hidream"
+        assert appel["capacite"] == "generer"
+        assert appel["parametres"]["prompt"] == "un phare breton au clair de lune"
+        assert appel["parametres"]["negative_prompt"] == "flou"
+        assert appel["parametres"]["variante"] == "dev"
+
+    async def test_prompt_vide_n_atteint_jamais_le_connecteur(self):
+        registre = RegistreXaarDouble()
+        agent = VideoProductionAgent(provider=ModeleDouble(), registre=registre)
+
+        resultat = await agent.generer_image("   ")
+
+        assert resultat["status"] == "error"
+        assert registre.appels == []
+
+    async def test_sans_registre_echoue_honnetement(self):
+        agent = VideoProductionAgent(provider=ModeleDouble(), registre=None)
+
+        resultat = await agent.generer_image("un chat")
+
+        assert resultat["status"] == "error"

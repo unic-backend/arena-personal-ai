@@ -808,3 +808,68 @@ pas contourné.
 `ruff check .` propre. Suite complète : **4751 passed, 31 skipped, 48
 deselected, 0 failed** (482.83s / 8m02s). Rapport complet →
 `docs/audits/agentheroes_audit.md`.
+
+## 2026-09-10 (suite) — Génération d'image haute qualité (DEC-0085), HiDream-I1 audité
+
+Mission ARENA × HIDREAM-I1. `HiDream-ai/HiDream-I1` audité (commit
+`5f92bab45f1dfb1e794ee357286a5b837eaf4400`, **MIT** code et poids, vérifié
+sur le dépôt ET les pages HuggingFace) : 17B paramètres, MoE épars, 4
+encodeurs texte dont `meta-llama/Meta-Llama-3.1-8B-Instruct` (licence Llama
+3.1, PAS MIT, gated). Aucune capacité image texte→image canonique
+n'existait dans ARENA avant cette mission (mesuré) — WanGP ne fait que de
+la vidéo (image en sous-produit, texte seul), krillin_cover délègue à un
+fournisseur externe non-ARENA.
+
+**Créé** :
+
+| Fichier | Changement |
+|---|---|
+| `core/production/materiel.py` (nouveau) | VRAM (nvidia-smi) / RAM (psutil, nouvelle dépendance) / disque (stdlib) — mesurés, jamais devinés |
+| `core/production/hidream_strategie.py` (nouveau) | Décision déterministe LOCAL_FULL/QUANTIZED/OFFLOAD/REMOTE_REQUIRED/UNSUPPORTED, testable sans GPU |
+| `core/connectors/hidream.py` (nouveau) | Service `image_generation` (nouveau dans permissions_services.yaml), refuse avant tout envoi si le matériel ne tient pas, revalide chaque fichier annoncé par le worker |
+| `core/production/artefact_image.py` (nouveau) | Validation Pillow réelle + provenance (sidecar JSON) |
+| `tools/image/hidream/` (nouveau) | Worker FastAPI isolé (même catégorie que `tools/audio/csm_service/`), intégration diffusers officielle, offload CPU séquentiel par défaut |
+| `agents/video/production_agent.py` | `hidream_image` dans le graphe + `generer_image` (point d'entrée direct) |
+| `apps/backend/routers/image_generation.py` (nouveau) | `/api/image/generer`, `/api/image/capacites`, `/api/image/{job_id}` |
+
+**Délibérément pas fait** : aucune quantification implémentée (aucune
+n'existe en amont pour cette architecture MoE, jamais un trick non
+vérifié) ; aucun worker distant déployé (contrat prêt, infrastructure non
+configurée) ; aucun couplage direct Agent Heroes-personnages↔HiDream (le
+router décide, jamais un point à point).
+
+**Sabotage réel** : le rappel de validation dans
+`HiDreamConnector._etat` retiré → 2 tests échouent (un « terminé » du
+worker redevenait une preuve sans relecture). Restauré → 22 tests du
+connecteur repassent.
+
+257 tests dédiés/étendus sur le périmètre de cette mission, dont 14 pour
+le worker qui tournent **sans torch/diffusers installés** (la couche HTTP/
+gestion de tâches n'en dépend jamais directement — un choix délibérément
+différent de `tools/audio/csm_service/server.py`).
+
+`python scripts/orphelins.py` : 274 modules, 217 atteints (+7/+5),
+`CLAUDE.md` remesuré. Le worker HiDream rejoint l'exemption déjà écrite
+pour le service CSM.
+
+**Classification matérielle finale (RTX A2000 12 Go, 32 Go RAM) : E —
+SERVER_ONLY_RECOMMENDED**, calculée par code, jamais estimée à l'œil —
+la RAM système (32 Go) est déjà plus petite que le modèle complet (~63 Go),
+même avec offload. Ce n'est pas un échec de mission (§34) : l'architecture
+complète refuse proprement une exécution qui échouerait, et se branche sur
+un futur serveur GPU par un seul changement de variable d'environnement.
+
+Restart test réel : nouveau processus, vraie requête HTTP,
+`NEEDS_CONFIRMATION` puis `NOT_CONFIGURED` honnêtes, jamais une génération
+simulée.
+
+Deuxième trouvaille réelle, par la suite complète : `tests/
+test_capacites_video_pwa.py` (déjà écrit après un incident du 03/09/2026)
+a détecté `hidream_image` manquante côté interface PWA
+(`videoProjectStore.ts`/`VideoProjectModal.tsx`, icône `ImagePlus` +
+libellés FR/EN ajoutés) — corrigé et revérifié directement (`npx tsc
+--noEmit`, `npm test` 29 tests, `npm run build`, tous verts).
+
+`ruff check .` propre. Suite complète : **4821 passed, 31 skipped, 48
+deselected, 0 failed** (476.95s / 7m56s). Rapport complet →
+`docs/audits/hidream_i1_audit.md`.
