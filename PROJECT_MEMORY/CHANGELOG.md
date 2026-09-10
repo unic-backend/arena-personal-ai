@@ -511,3 +511,55 @@ ce mur isolé » déclenche FINANCE à tort), le mot « simulé » obligatoire
 `ruff check .` propre. Suite complète relancée après le réveil de
 `paper_trading.py` : **4507 passed, 31 skipped, 48 deselected, 0 failed**
 (422 s).
+
+---
+
+## 2026-09-10 (suite) — Navigation Web : vérification déterministe (DEC-0079), Fuji-Web audité
+
+Mission : étudier `normal-computing/fuji-web` et renforcer la navigation
+Web existante d'ARENA. Détail complet : `docs/DECISIONS.md` DEC-0079,
+`docs/audits/fuji_web_audit.md`.
+
+**ARENA avait déjà un navigateur autonome complet** (`browser-use` +
+Playwright, DEC-0059) — rien à combler côté moteur. **L'audit, testé
+contre la vraie bibliothèque installée** (dans un environnement isolé,
+jamais le dépôt) : Fuji-Web est une extension Chrome supervisée par un
+humain, pas un service headless — architecture différente, pas un
+concurrent direct. Son seul fichier de test n'est jamais exécuté par sa
+propre CI (`"test": "exit 0"`). Liste déroulante, multi-onglet, sauvegarde
+de workflow : roadmap, confirmés absents du code — `browser_use` les a
+déjà tous. Son vrai défaut : aucune vérification déterministe du résultat
+d'une action.
+
+**Le moteur Chromium/Playwright réel d'ARENA a été conduit en direct**
+(page locale construite pour le test, sans modèle) : navigation, clic sur
+le bon élément parmi deux pièges, formulaire, contenu dynamique,
+capture d'écran et téléchargement — fichiers physiques vérifiés sur
+disque. Un vrai défaut de récupération trouvé en testant les pannes
+(re-naviguer sur le même onglet après un échec de navigation) — sans
+conséquence pour ARENA, qui ne réutilise jamais une page entre deux
+tâches.
+
+**Corrigé** :
+
+| Fichier | Changement |
+|---|---|
+| `tools/browser/browser_use_tool.py` | Plafond de pas explicite, callback d'étapes → statuts concis, `sensitive_data`/`allowed_domains` (identifiants protégés — refus sans domaines restreints, `browser_use` avertit lui-même du risque de fuite par injection de prompt), signaux déterministes renvoyés |
+| `core/connectors/browser.py` | `classer_resultat()` — un succès auto-déclaré contredit par des erreurs devient `PARTIAL`, jamais un succès plein |
+| `agents/browser/browser_agent.py` | Résultat d'une page tierce désormais enveloppé (`TrustLevel.EXTERNAL`) — avant cette mission, il arrivait brut dans la réponse |
+| `apps/backend/runtime.py` | Le connecteur browser partage enfin `ollama_rapide` au lieu d'en reconstruire un second — l'avertissement que ce fichier porte depuis sa première ligne |
+
+**Délibérément pas fait** : aucun second agent/moteur de navigateur ;
+aucun routage dynamique cloud pour la navigation (`RouteurModeles` choisit
+par appel, `browser_use.Agent` attend un LLM statique — les deux ne
+s'emboîtent pas sans refonte plus profonde, **limitation documentée**,
+non masquée) ; aucun coffre-fort d'identifiants inventé (le branchement
+`sensitive_data` est prêt, rien ne le remplit aujourd'hui).
+
+Trois sabotages, trois restaurations : la distinction succès/erreurs
+contradictoires, le refus d'identifiants sans domaines restreints,
+l'enveloppe de confiance (TEST 10, injection de prompt).
+
+`ruff check .` propre. Suite complète (`python -m pytest tests/ -q`) :
+4534 passed, 31 skipped, 48 deselected, 0 failed (422.57s / 7m02s, mesuré
+le 10/09/2026, confirmé par une seconde mesure indépendante).

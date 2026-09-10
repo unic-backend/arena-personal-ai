@@ -6484,3 +6484,124 @@ ou l'inverse. Le coût est borné : `FinanceAgent` ne déclenche jamais
 d'action réelle, seulement un texte d'analyse marqué de sa confiance et
 de ses limites — une classification imprécise reste une opinion affichée
 comme telle, jamais un ordre exécuté sur la foi d'un chiffre faux.
+
+---
+
+## DEC-0079 — Navigation Web : vérification déterministe, identifiants protégés, Fuji-Web audité
+
+**Date** : 10/09/2026
+**Statut** : accepté
+
+### La mission
+
+Étudier `normal-computing/fuji-web` (Apache-2.0) — une extension Chrome
+d'automatisation de navigateur par IA — et renforcer la capacité de
+navigation existante d'ARENA. Jamais un second agent de navigateur.
+Audit complet : `docs/audits/fuji_web_audit.md`.
+
+### Ce qu'ARENA avait déjà, mesuré avant tout code
+
+**Un navigateur autonome COMPLET, déjà branché** : `agents/browser/
+browser_agent.py` → `core/connectors/browser.py` (permissions, santé,
+repli Lightpanda, DEC-0059) → `tools/browser/browser_use_tool.py`, qui
+pilote `browser-use==0.13.10` + `playwright==1.62.0` (Chromium local, réel,
+avec JavaScript). Rien à combler côté moteur.
+
+### L'audit, testé contre la vraie bibliothèque installée, pas seulement lu
+
+Fuji-Web est une extension de navigateur — panneau latéral, clé API
+OpenAI/Anthropic collée par l'utilisateur dans le navigateur, pilote
+l'onglet ACTIF d'un humain présent. Ce n'est ni l'architecture ni le
+besoin d'ARENA (Chromium headless, autonome, sans humain). Son seul
+fichier de test (`templatize.test.ts`) n'est jamais exécuté par sa
+propre CI (`"test": "exit 0"` dans `package.json`) — vert de façade.
+Sélection de liste déroulante, workflows multi-onglets et sauvegarde de
+workflows sont listés dans son propre README comme roadmap, confirmé
+absents du code. Son vrai défaut, le plus intéressant : **aucune
+vérification déterministe du résultat d'une action** — la boucle
+(`src/state/currentTask.ts`) ne fait que redonner la main au modèle, qui
+doit lui-même remarquer qu'un clic n'a rien changé.
+
+`browser_use==0.13.10` a été installé dans un environnement isolé
+(`/tmp/browseruse-venv`, jamais le dépôt) pour inspecter sa VRAIE API :
+`register_new_step_callback` (observabilité par pas réelle),
+`Agent.run(max_steps=...)` (plafond réel), `AgentHistoryList.is_successful()/
+has_errors()/urls()/number_of_steps()` (signaux déterministes réels), et
+`sensitive_data`/`available_file_paths` (identifiants et pièces jointes,
+mécanismes réels). Construire un `Agent(sensitive_data=...)` sans
+`allowed_domains` fait lever à la bibliothèque **elle-même** un
+avertissement explicite : *"☠️ If the agent visits a malicious website and
+encounters a prompt-injection attack, your sensitive_data may be
+exposed!"* — exactement la faille que ce module ferme.
+
+Le moteur Chromium/Playwright de ce bac à sable a été conduit **en
+direct**, sans modèle (page locale construite pour le test) : navigation,
+clic sur le bon élément parmi deux pièges identiques, remplissage et
+soumission de formulaire, attente de contenu chargé dynamiquement,
+capture d'écran (fichier PNG réel vérifié), téléchargement (fichier
+réel vérifié) — les huit premiers tests de la mission, réussis avec le
+vrai moteur qu'ARENA utilise. Un vrai défaut trouvé en testant les pannes :
+re-naviguer sur le MÊME onglet juste après une navigation échouée le
+laisse dans une course interne Chromium ("interrupted by another
+navigation to chrome-error://") — un onglet neuf récupère proprement.
+Sans conséquence pour ARENA : chaque tâche `browser_use` lance déjà sa
+propre session, jamais une page réutilisée entre deux appels.
+
+### Ce qui a été corrigé dans ARENA
+
+| Fichier | Ce qui change |
+|---|---|
+| `tools/browser/browser_use_tool.py` | Plafond de pas explicite (`max_steps`, défaut 25) ; callback de pas réel → statuts concis (mission §23), jamais le raisonnement du modèle ; `sensitive_data`/`available_file_paths` câblés sur les VRAIS paramètres de `browser_use` ; `allowed_domains` **obligatoire** dès que `sensitive_data` est fourni — refusé sinon, avant le moindre appel réseau ; signaux déterministes (`succes_declare`, `erreurs`, `nombre_etapes`, `urls_visitees`) renvoyés en plus du texte final |
+| `core/connectors/browser.py` | `classer_resultat()` — classification déterministe à 4 issues (`VERIFIED_SUCCESS`/`UNVERIFIED_SUCCESS`/`FAILED`/`INCOMPLETE`) ; un succès auto-déclaré contredit par des erreurs devient `PARTIAL`, jamais un succès plein ; nouveaux paramètres (`max_steps`, `sensitive_data`, `allowed_domains`, `fichiers_autorises`) passés à travers |
+| `agents/browser/browser_agent.py` | Le résultat d'une page tierce est désormais **enveloppé** (`TrustLevel.EXTERNAL`) avant d'entrer dans la réponse — avant cette mission, il arrivait BRUT, un défaut trouvé en lisant le code (mission §13, TEST 10 : une page contenant « Ignore previous instructions... » est maintenant marquée suspecte, jamais obéie) |
+| `apps/backend/runtime.py` | Le connecteur browser partage désormais `ollama_rapide`, l'instance déjà construite — corrige exactement l'avertissement que ce fichier porte depuis sa première ligne (« deux `OllamaProvider` qui rechargent chacun le modèle en VRAM ») |
+
+### Ce qui n'a délibérément pas été fait
+
+- **Aucun second agent, aucun second moteur de navigateur.** `browser_use`
+  reste l'unique capacité de navigation ; Fuji-Web n'a rien apporté qu'il
+  n'ait déjà, en mieux (vocabulaire d'actions plus riche : liste
+  déroulante, multi-onglet, envoi de fichier — que Fuji-Web n'a que sur sa
+  feuille de route).
+- **Aucun routage dynamique vers le fournisseur cloud de secours pour la
+  navigation.** `RouteurModeles` choisit son fournisseur PAR APPEL ;
+  `browser_use.Agent` attend un objet LLM statique construit une fois.
+  Les deux modèles ne s'emboîtent pas proprement sans une refonte plus
+  profonde du routeur — non tentée ici plutôt que bâclée. La navigation
+  utilise `ollama_rapide` (le modèle local), comme avant cette mission ;
+  seul le PARTAGE de l'instance a été corrigé, pas le choix du
+  fournisseur. **LIMITATION CONNUE, documentée plutôt que masquée.**
+- **Aucun coffre-fort d'identifiants créé.** `sensitive_data` est câblé et
+  protégé (refus sans `allowed_domains`), mais rien dans ARENA ne le
+  remplit aujourd'hui — vérifié : aucun module `core/*secret*` ni
+  `core/*credential*`. Le jour où l'un existera, le branchement est prêt.
+
+### Vérification
+
+`ruff check .` propre. Trois sabotages, trois restaurations, chacun
+confirmé cassant exactement et seulement son propre test :
+
+1. `classer_resultat` — la distinction succès/erreurs contradictoires
+   retirée → un succès déclaré malgré des erreurs redevient un succès
+   plein. Restauré.
+2. Le refus `sensitive_data` sans `allowed_domains` — retiré → l'appel
+   tente de construire l'agent sans protection. Restauré.
+3. L'enveloppe de confiance dans `BrowserAgent` — retirée → le test
+   d'injection de prompt (TEST 10) échoue, le texte hostile passe brut.
+   Restauré.
+
+Suite complète (`python -m pytest tests/ -q`) : 4534 passed, 31 skipped,
+48 deselected, 0 failed (422.57s / 7m02s, mesuré le 10/09/2026 — confirmé
+par une seconde mesure indépendante, même résultat).
+
+### Ce que ça coûte si c'est faux
+
+`classer_resultat` reste construit sur le jugement auto-déclaré de
+`browser_use` (son action `done`) pour deux des quatre issues — ARENA
+croise ce jugement avec des faits (erreurs, plafond de pas) mais ne
+peut pas, sans connaître la tâche, vérifier structurellement qu'une
+« documentation trouvée » est la BONNE documentation. Le coût est
+borné par la même raison que la finance : aucune action irréversible ne
+découle d'une navigation, seulement un texte de résultat marqué de sa
+classification — une classification optimiste reste visible comme telle
+dans `detail.verification`, jamais cachée derrière un `SUCCESS` plat.
