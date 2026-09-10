@@ -663,3 +663,54 @@ class TestDrift:
         assert resultat["projet"]["artefact_final"] == str(export)
         assert Path(resultat["projet"]["artefact_final"]).is_file()
         assert Path(resultat["projet"]["artefact_final"]).read_bytes().startswith(b"\x00\x00\x00\x18ftyp")
+
+
+class TestNarrationConversationnelle:
+    """Mission Sesame CSM, DEC-0080 : `conversationnel` bascule vers
+    `AudioAgent._dialogue`, sans rien changer pour un plan qui ne le demande
+    pas (voir `test_la_narration_video_passe_par_la_meme_porte` dans
+    `tests/test_audio_agent.py` pour le chemin par defaut, inchange)."""
+
+    @pytest.mark.asyncio
+    async def test_sans_conversationnel_le_contexte_ne_change_pas(self):
+        audio = AudioAgentDouble()
+        agent = VideoProductionAgent(provider=ModeleDouble(), audio_agent=audio)
+
+        await agent._appeler_narration({"texte": "Chantier Ouakam", "langue": "fr"})
+
+        _, contexte = audio.appels[0]
+        assert "conversationnel" not in contexte
+        assert contexte["langue"] == "fr"
+
+    @pytest.mark.asyncio
+    async def test_conversationnel_est_transmis_et_defaut_a_l_anglais(self):
+        audio = AudioAgentDouble()
+        agent = VideoProductionAgent(provider=ModeleDouble(), audio_agent=audio)
+
+        await agent._appeler_narration({"texte": "Hello.", "conversationnel": True})
+
+        _, contexte = audio.appels[0]
+        assert contexte["conversationnel"] is True
+        assert contexte["langue"] == "en"
+
+    @pytest.mark.asyncio
+    async def test_conversation_et_speaker_sont_transmis_quand_fournis(self):
+        audio = AudioAgentDouble()
+        agent = VideoProductionAgent(provider=ModeleDouble(), audio_agent=audio)
+
+        tours = [{"texte": "Hi", "speaker": 0}]
+        await agent._appeler_narration({
+            "texte": "Hello back.", "conversationnel": True,
+            "conversation": tours, "speaker": 1})
+
+        _, contexte = audio.appels[0]
+        assert contexte["conversation"] == tours
+        assert contexte["speaker"] == 1
+
+    @pytest.mark.asyncio
+    async def test_sans_texte_de_narration_echoue_meme_en_conversationnel(self):
+        audio = AudioAgentDouble()
+        agent = VideoProductionAgent(provider=ModeleDouble(), audio_agent=audio)
+
+        with pytest.raises(RuntimeError):
+            await agent._appeler_narration({"conversationnel": True})

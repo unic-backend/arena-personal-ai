@@ -387,13 +387,32 @@ class VideoProductionAgent(BaseAgent):
         return self._verifie(resultat, "moneyprinter")
 
     async def _appeler_narration(self, parametres: Dict[str, Any]) -> Dict[str, Any]:
+        """Voix off ou dialogue, selon ce que le plan declare.
+
+        `conversationnel=True` (mission Sesame CSM, DEC-0080) fait passer la
+        demande par `AudioAgent._dialogue` — le routeur choisit alors entre
+        CSM et VoiceStudio lui-meme, jamais ce fichier. Par defaut,
+        `conversationnel` est absent : le comportement d'avant cette mission
+        ne change pas pour un plan qui ne le demande pas.
+        """
         if self.audio_agent is None:
             raise RuntimeError("aucun agent audio branche")
         texte = str(parametres.get("texte") or "").strip()
         if not texte:
             raise RuntimeError("aucun texte de narration fourni")
-        resultat = await self.audio_agent.run(
-            "narration", context={"texte": texte, "langue": str(parametres.get("langue") or "fr")})
+        contexte: Dict[str, Any] = {
+            "texte": texte, "langue": str(parametres.get("langue") or "fr")}
+        if parametres.get("conversationnel"):
+            contexte["conversationnel"] = True
+            # CSM n'a qu'une vraie force : l'anglais. Un plan qui demande une
+            # conversation sans preciser la langue en herite ici, pas dans le
+            # routeur (meme defaut que `AudioAgent._dialogue`).
+            contexte["langue"] = str(parametres.get("langue") or "en")
+            if parametres.get("conversation"):
+                contexte["conversation"] = parametres["conversation"]
+            if "speaker" in parametres:
+                contexte["speaker"] = parametres["speaker"]
+        resultat = await self.audio_agent.run("narration", context=contexte)
         return self._verifie(resultat, "narration")
 
     def _reference_indexee(self, parametres: Dict[str, Any], cle: str,

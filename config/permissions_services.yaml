@@ -203,6 +203,17 @@ services:
     # confirmation (`core/connectors/audio_voix.py::_cloner`).
     cloner:      {decision: CONFIRMATION, risque: HIGH,   interrupteur: WRITE_FILES}
 
+  # Sesame CSM : parole CONVERSATIONNELLE, un second service local separe
+  # (`core/connectors/csm.py`, DEC-0080). Meme logique que audio_voix pour
+  # "document" — un fichier WAV s'ecrit, confirmation + coupe-circuit
+  # WRITE_FILES. Aucune capacite "cloner" ici : ce connecteur n'expose
+  # delibrement aucun conditionnement par un audio fourni par l'appelant
+  # (voir sa docstring) — le seul chemin de clonage vocal d'ARENA reste
+  # audio_voix.cloner, avec son autorisation explicite.
+  csm:
+    read:        {decision: ALLOWED,      risque: LOW}
+    document:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+
   # OpenTakeoff : mesurer un plan PDF ne touche a rien hors du processus qui
   # le lit. Exporter ecrit le rapport et le plan marque a cote du plan source
   # — meme logique que le devis PDF : confirmation, coupe-circuit WRITE_FILES.

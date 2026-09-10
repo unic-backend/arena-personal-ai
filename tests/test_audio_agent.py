@@ -273,3 +273,161 @@ class TestLUsageCommercialEstLeDefaut:
         _, capacite, parametres = agent.registre.appels[0]
         assert capacite == "cloner"
         assert "usage" in parametres
+
+
+class RegistreRoutage:
+    """Repond differemment selon (connecteur, capacite) — pour tester le
+    routage croise de `AudioAgent._dialogue` (mission Sesame CSM, DEC-0080).
+    """
+
+    def __init__(self, reponses):
+        self.reponses = reponses
+        self.appels = []
+
+    def executer(self, connecteur, capacite, **parametres):
+        self.appels.append((connecteur, capacite, parametres))
+        cle = (connecteur, capacite)
+        if cle in self.reponses:
+            reponse = self.reponses[cle]
+            return reponse() if callable(reponse) else reponse
+        return echec(action=capacite, cible=connecteur, message="rien dans ce double")
+
+
+def _moteurs(voix):
+    return succes(action="moteurs", cible="x", message="ok", preuve="p", voix=voix)
+
+
+CSM_VOIX = [{"id": "sesame-csm-1b", "appareil": "cpu", "routage": "cpu_only",
+            "accelere": False}]
+COSYVOICE_VOIX = [{"id": "cosyvoice", "appareil": "cuda:0", "routage": "accelerated",
+                   "accelere": True}]
+
+
+class TestDialogueLeRoutageCroise:
+    """Le SEUL endroit ou les moteurs de `audio` et `csm` se rencontrent."""
+
+    @pytest.mark.parametrize("phrase", [
+        "genere une conversation entre deux personnages",
+        "fais dialoguer ces deux personnages",
+        "discussion entre Amadou et Fatou",
+    ])
+    def test_le_classement_reconnait_un_dialogue(self, phrase):
+        assert genre_de_demande(phrase) == "dialogue"
+
+    @pytest.mark.asyncio
+    async def test_csm_est_choisi_pour_l_anglais_conversationnel(self, tmp_path):
+        registre = RegistreRoutage({
+            ("audio", "moteurs"): _moteurs(COSYVOICE_VOIX),
+            ("csm", "moteurs"): _moteurs(CSM_VOIX),
+            ("csm", "parler"): succes(action="parler", cible="csm", message="ok", preuve="p"),
+        })
+        agent = AudioAgent(provider=ModeleDouble(), registre=registre)
+
+        resultat = await agent.run("genere une conversation entre deux personnages",
+                                   context={"texte": "Hello there."})
+
+        assert resultat["status"] == "success"
+        connecteurs_parler = [a[0] for a in registre.appels if a[1] == "parler"]
+        assert connecteurs_parler == ["csm"]
+
+    @pytest.mark.asyncio
+    async def test_repli_sur_voicestudio_si_csm_absent(self, tmp_path):
+        """Mission §15 : CSM injoignable ne bloque rien, VoiceStudio prend le relais."""
+        registre = RegistreRoutage({
+            ("audio", "moteurs"): _moteurs(COSYVOICE_VOIX),
+            ("csm", "moteurs"): non_configure(
+                action="moteurs", cible="csm", ce_qui_manque="service CSM eteint"),
+            ("audio", "parler"): succes(action="parler", cible="audio", message="ok", preuve="p"),
+        })
+        agent = AudioAgent(provider=ModeleDouble(), registre=registre)
+
+        resultat = await agent.run("genere une conversation entre deux personnages",
+                                   context={"texte": "Hello there."})
+
+        assert resultat["status"] == "success"
+        connecteurs_parler = [a[0] for a in registre.appels if a[1] == "parler"]
+        assert connecteurs_parler == ["audio"]
+        _, _, parametres = [a for a in registre.appels if a[1] == "parler"][0]
+        assert parametres["moteur"] == "cosyvoice"
+
+    @pytest.mark.asyncio
+    async def test_le_francais_ecarte_csm_meme_present_et_dispo(self, tmp_path):
+        """Mission §5 : jamais de francais/wolof sur CSM, meme sans repli demande."""
+        registre = RegistreRoutage({
+            ("audio", "moteurs"): _moteurs(COSYVOICE_VOIX),
+            ("csm", "moteurs"): _moteurs(CSM_VOIX),
+            ("audio", "parler"): succes(action="parler", cible="audio", message="ok", preuve="p"),
+        })
+        agent = AudioAgent(provider=ModeleDouble(), registre=registre)
+
+        resultat = await agent.run("genere une conversation entre deux personnages",
+                                   context={"texte": "Bonjour à tous.", "langue": "fr"})
+
+        assert resultat["status"] == "success"
+        connecteurs_parler = [a[0] for a in registre.appels if a[1] == "parler"]
+        assert connecteurs_parler == ["audio"]
+
+    @pytest.mark.asyncio
+    async def test_le_contexte_conversationnel_route_sans_mot_cle(self, tmp_path):
+        """L'appelant programmatique (le pipeline video) declare, il ne formule pas."""
+        registre = RegistreRoutage({
+            ("audio", "moteurs"): _moteurs(COSYVOICE_VOIX),
+            ("csm", "moteurs"): _moteurs(CSM_VOIX),
+            ("csm", "parler"): succes(action="parler", cible="csm", message="ok", preuve="p"),
+        })
+        agent = AudioAgent(provider=ModeleDouble(), registre=registre)
+
+        # "lis-moi ce texte" est un PARLER ordinaire — seul le contexte
+        # bascule vers le dialogue.
+        resultat = await agent.run("lis-moi ce texte",
+                                   context={"texte": "Hello.", "conversationnel": True})
+
+        assert resultat["status"] == "success"
+        connecteurs_parler = [a[0] for a in registre.appels if a[1] == "parler"]
+        assert connecteurs_parler == ["csm"]
+
+    @pytest.mark.asyncio
+    async def test_ecouter_n_est_jamais_supplante_par_conversationnel(self, tmp_path):
+        media = tmp_path / "x.wav"
+        media.write_bytes(b"x")
+        registre = RegistreRoutage({})
+        agent = AudioAgent(provider=ModeleDouble(), registre=registre)
+
+        await agent.run("transcris cette video",
+                        context={"medias": [str(media)], "conversationnel": True})
+
+        assert registre.appels[0][1] == "transcrire"
+
+    @pytest.mark.asyncio
+    async def test_aucun_moteur_du_tout_est_un_avertissement_jamais_un_crash(self, tmp_path):
+        registre = RegistreRoutage({
+            ("audio", "moteurs"): non_configure(
+                action="moteurs", cible="audio", ce_qui_manque="VoiceStudio eteint"),
+            ("csm", "moteurs"): non_configure(
+                action="moteurs", cible="csm", ce_qui_manque="service CSM eteint"),
+        })
+        agent = AudioAgent(provider=ModeleDouble(), registre=registre)
+
+        resultat = await agent.run("genere une conversation entre deux personnages",
+                                   context={"texte": "Hello."})
+
+        assert resultat["status"] == "warning"
+        assert not any(a[1] == "parler" for a in registre.appels)
+
+    @pytest.mark.asyncio
+    async def test_aucun_fichier_de_reference_n_est_jamais_transmis_a_csm(self, tmp_path):
+        """Mission §13 : la parole conversationnelle ne clone jamais une voix."""
+        registre = RegistreRoutage({
+            ("audio", "moteurs"): _moteurs(COSYVOICE_VOIX),
+            ("csm", "moteurs"): _moteurs(CSM_VOIX),
+            ("csm", "parler"): succes(action="parler", cible="csm", message="ok", preuve="p"),
+        })
+        agent = AudioAgent(provider=ModeleDouble(), registre=registre)
+
+        await agent.run("genere une conversation entre deux personnages", context={
+            "texte": "Hello.", "medias": ["/tmp/quelqu-un-d-autre.wav"]})
+
+        _, _, parametres = [a for a in registre.appels if a[1] == "parler"][0]
+        assert "ref_audio" not in parametres
+        assert "medias" not in parametres
+        assert "/tmp/quelqu-un-d-autre.wav" not in str(parametres)

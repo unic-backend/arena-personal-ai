@@ -89,6 +89,20 @@ class LicenceMoteur:
     #: `instruct` (voice design) est-il honoré ? `None` = dépend du modèle chargé.
     voice_design: Optional[bool]
     source: str
+    #: Langues où ce moteur est CONNU bon — mesuré, jamais suppose. `None` =
+    #: aucune restriction connue (les moteurs VoiceStudio sont multilingues par
+    #: construction et rien ici ne dit le contraire). Un ensemble non vide
+    #: RESTREINT : demander une langue absente de cet ensemble exclut le
+    #: moteur, meme nomme explicitement (mission Sesame CSM, §5 — « do NOT
+    #: claim French or Wolof support simply because audio was generated »).
+    langues: Optional[frozenset] = None
+    #: Ce moteur est-il specifiquement bon en PAROLE CONVERSATIONNELLE
+    #: (prosodie multi-tour, continuite de locuteur) ? Par defaut False : ce
+    #: n'est pas une capacite qu'un moteur TTS classique revendique. Sert
+    #: uniquement au departage quand l'appelant demande explicitement une
+    #: conversation (`conversationnel=True` dans `choisir`) — jamais a exclure
+    #: qui que ce soit.
+    conversationnel: bool = False
 
 
 #: Le tableau des moteurs de VoiceStudio, colonne « License » de son `README.md`
@@ -136,6 +150,20 @@ LICENCES: Dict[str, LicenceMoteur] = {
     "mlx-audio": LicenceMoteur(
         Commercial.INCONNU, "depend du modele charge (VoiceStudio : « Varies »)",
         None, _VS),
+    # Sesame CSM-1B — PAS un moteur de VoiceStudio : un second connecteur
+    # (`core/connectors/csm.py`), un service local separe qu'ARENA pilote par
+    # HTTP, jamais importe. Code ET poids Apache-2.0 (LICENSE du depot,
+    # commit `daed31e`, et `license: apache-2.0` de la fiche modele HF —
+    # verifies directement le 10/09/2026, pas supposes du README). Sa FAQ
+    # officielle est explicite : « has some capacity for non-English languages
+    # due to data contamination [...] but it likely won't do well » — donc
+    # `langues` le restreint a l'anglais, mesure jamais suppose ; French/Wolof
+    # restent au tableau des moteurs VoiceStudio (DEC-0080).
+    "sesame-csm-1b": LicenceMoteur(
+        Commercial.AUTORISE, "Apache-2.0 (code et poids)", False,
+        "LICENSE de SesameAILabs/csm @ daed31e + fiche HF sesame/csm-1b, "
+        "lues le 10/09/2026",
+        langues=frozenset({"en"}), conversationnel=True),
 }
 
 #: Ce qu'on répond d'un moteur absent du tableau. Un moteur neuf apparu chez
@@ -205,8 +233,16 @@ class ErreurDeMoteur(RuntimeError):
     """Aucun moteur ne peut faire ce travail, et on dit lesquels existent."""
 
 
+def _normalise_langue(langue: str) -> str:
+    """`fr-FR`, `FR`, `french` -> `fr`. Vide reste vide (aucune restriction)."""
+    propre = (langue or "").strip().lower()
+    if not propre:
+        return ""
+    return propre.split("-")[0].split("_")[0]
+
+
 def _exclusion(moteur: MoteurTTS, usage: Usage, clonage: bool,
-               voice_design: bool) -> Optional[str]:
+               voice_design: bool, langue: str = "") -> Optional[str]:
     """Pourquoi ce moteur ne convient pas — ou `None` s'il convient.
 
     Un seul endroit décide, pour que le refus d'un moteur nommé donne
@@ -223,31 +259,54 @@ def _exclusion(moteur: MoteurTTS, usage: Usage, clonage: bool,
     if usage is Usage.COMMERCIAL and moteur.licence.commercial is Commercial.INTERDIT:
         return (f"{moteur.licence.licence} : usage commercial interdit. "
                 "Declare un usage non commercial pour l'entendre quand meme.")
+    langue_normalisee = _normalise_langue(langue)
+    restriction = moteur.licence.langues
+    if langue_normalisee and restriction is not None and langue_normalisee not in restriction:
+        # Restriction MESUREE, jamais supposee (mission CSM §5) : un moteur
+        # dont on sait qu'il est mauvais dans cette langue n'est pas choisi
+        # pour elle, meme nomme explicitement — nommer un moteur n'ouvre
+        # aucune porte, ici comme pour la licence.
+        connues = ", ".join(sorted(restriction))
+        return f"non evalue/mauvais en « {langue_normalisee} » (langues connues : {connues})"
     return None
 
 
-def _rang(moteur: MoteurTTS) -> tuple:
+def _rang(moteur: MoteurTTS, conversationnel: bool) -> tuple:
     """L'ordre de préférence. Plus petit est meilleur.
 
     D'abord la licence — une licence établie passe avant une licence inconnue,
     parce qu'un fichier produit sous une licence non vérifiée est un risque
-    qu'on ne rattrape plus. Ensuite l'accélération, seule mesure de latence
-    qu'ARENA obtienne sans faire parler le moteur pour voir.
+    qu'on ne rattrape plus. Puis, SEULEMENT si l'appelant demande explicitement
+    une parole conversationnelle, un moteur qui revendique cette force précise
+    (mission Sesame CSM §3/§4) — jamais par defaut, pour ne pas le faire
+    concourir avec Qwen/Vision/Video sur la meme carte pour un travail ou il
+    n'apporte rien. Enfin l'accélération, seule mesure de latence qu'ARENA
+    obtienne sans faire parler le moteur pour voir.
     """
     return (0 if moteur.licence.commercial is Commercial.AUTORISE else 1,
+            0 if (conversationnel and moteur.licence.conversationnel) else 1,
             0 if moteur.accelere else 1)
 
 
 def choisir(moteurs: Sequence[MoteurTTS], *, usage: Usage = Usage.COMMERCIAL,
             clonage: bool = False, voice_design: bool = False,
+            langue: str = "", conversationnel: bool = False,
             demande: str = "") -> MoteurTTS:
     """Le moteur qui parlera. **Le seul endroit où ce choix se fait.**
 
     Args:
-        moteurs: ce que `/engines/tts` vient de répondre.
+        moteurs: ce que `/engines/tts` (VoiceStudio) et/ou le connecteur CSM
+            viennent de répondre — cette fonction est agnostique de la source,
+            elle ne lit qu'une liste de `MoteurTTS`.
         usage: commercial par défaut — voir la règle 3 de ce module.
         clonage: le travail exige de cloner une voix.
         voice_design: le travail exige `instruct` (genre, âge, accent…).
+        langue: langue du texte a dire (ex. "fr", "en", "wo"). Vide = aucune
+            restriction verifiee. Un moteur dont les langues connues sont
+            mesurees et n'incluent pas celle-ci est ecarte (mission CSM §5).
+        conversationnel: le travail est une parole CONVERSATIONNELLE (dialogue
+            multi-tour), pas une simple lecture. Fait departager en faveur
+            d'un moteur qui revendique cette force — jamais une exclusion.
         demande: un moteur nommé par l'appelant. Il est vérifié comme les
             autres : nommer un moteur n'ouvre aucune porte.
 
@@ -258,7 +317,7 @@ def choisir(moteurs: Sequence[MoteurTTS], *, usage: Usage = Usage.COMMERCIAL,
     if demande:
         for moteur in moteurs:
             if moteur.identifiant == demande:
-                raison = _exclusion(moteur, usage, clonage, voice_design)
+                raison = _exclusion(moteur, usage, clonage, voice_design, langue)
                 if raison is None:
                     return moteur
                 raise ErreurDeMoteur(
@@ -268,15 +327,17 @@ def choisir(moteurs: Sequence[MoteurTTS], *, usage: Usage = Usage.COMMERCIAL,
             f"le moteur « {demande} » n'existe pas ici. Connus : {connus}.")
 
     retenus = [m for m in moteurs
-               if _exclusion(m, usage, clonage, voice_design) is None]
+               if _exclusion(m, usage, clonage, voice_design, langue) is None]
     if retenus:
-        return min(retenus, key=_rang)
+        return min(retenus, key=lambda m: _rang(m, conversationnel))
 
-    raise ErreurDeMoteur(_pourquoi_personne(moteurs, usage, clonage, voice_design))
+    raise ErreurDeMoteur(
+        _pourquoi_personne(moteurs, usage, clonage, voice_design, langue))
 
 
 def _pourquoi_personne(moteurs: Sequence[MoteurTTS], usage: Usage,
-                       clonage: bool, voice_design: bool) -> str:
+                       clonage: bool, voice_design: bool,
+                       langue: str = "") -> str:
     """Le message d'un refus. Il doit lui dire quoi faire, pas seulement non."""
     travail = ("cloner une voix" if clonage
                else "concevoir une voix (`instruct`)" if voice_design
@@ -288,7 +349,7 @@ def _pourquoi_personne(moteurs: Sequence[MoteurTTS], usage: Usage,
     ecartes = []
     licence_bloque = False
     for moteur in moteurs:
-        raison = _exclusion(moteur, usage, clonage, voice_design)
+        raison = _exclusion(moteur, usage, clonage, voice_design, langue)
         ecartes.append(f"{moteur.identifiant} ({raison})")
         if (usage is Usage.COMMERCIAL
                 and moteur.licence.commercial is Commercial.INTERDIT):

@@ -1,0 +1,40 @@
+# Dependances du service CSM d'ARENA — ISOLEES du requirements.txt principal.
+#
+# Pourquoi un fichier a part : `core/connectors/csm.py` en explique la raison
+# (pas juridique ici, contrairement a VoiceStudio/KrillinAI — Apache-2.0 de
+# bout en bout — mais TECHNIQUE : eviter un second conflit de type Pillow vs
+# browser-use, DEC-0079). Installer avec :
+#
+#   python3.10 -m venv .venv
+#   source .venv/bin/activate   # ou .venv\Scripts\activate sous Windows
+#   pip install -r requirements.txt
+#
+# Windows : `triton` ne s'installe pas ; utiliser `triton-windows` a la place
+# (note du README officiel SesameAILabs/csm, verifiee le 10/09/2026).
+#
+# Implementation Transformers-native choisie plutot que le runtime original du
+# depot (mission §8) : `transformers>=4.52.1` fournit `CsmForConditionalGeneration`
+# depuis le 20/05/2025, maintenu par Hugging Face, sans les epingles fragiles
+# du runtime original (torchtune==0.4.0, torchao==0.9.0, moshi==0.2.2). Le prix
+# de ce choix, documente dans l'audit : l'implementation Transformers native
+# N'APPLIQUE PAS le filigrane de Sesame (verifie le 10/09/2026 : aucune trace
+# de "watermark" ni "silentcipher" dans modeling_csm.py ni generation_csm.py
+# du depot huggingface/transformers, branche main). `server.py` le reapplique
+# donc lui-meme, en dependant directement de `silentcipher` (la meme
+# bibliotheque que le depot original utilise) — mission §12.
+torch>=2.4.0
+torchaudio>=2.4.0
+# `torchaudio.save` exige TorchCodec dans les versions recentes de torchaudio
+# (mesure directement le 10/09/2026 : ImportError sans lui). `soundfile` ecrit
+# le WAV final a la place — la meme bibliotheque que `processor.save_audio`
+# de transformers utilise en interne (processing_csm.py, verifie le meme jour).
+soundfile
+transformers>=4.52.1
+huggingface_hub>=0.28.1
+# Watermarking — meme bibliotheque que SesameAILabs/csm (watermarking.py),
+# jamais son code copie : seule la clef publique CSM_1B_GH_WATERMARK (publiee
+# par Sesame elle-meme pour ce checkpoint precis) est reprise, dans
+# watermark.py de ce dossier, avec attribution — voir NOTICE.md.
+silentcipher @ git+https://github.com/SesameAILabs/silentcipher@master
+fastapi>=0.110
+uvicorn>=0.29

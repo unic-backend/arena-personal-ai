@@ -503,6 +503,53 @@ class TestVoiceStudioEstDiagnostique:
         assert "omnivoice" in v.detail and "non commercial" in v.detail
 
 
+class TestCsmEstDiagnostique:
+    """Meme discipline que VoiceStudio (mission Sesame CSM, DEC-0080) : un
+    port qui repond ne prouve rien tant qu'un modele n'est pas charge, et un
+    modele charge sans filigrane n'est pas un `[OK]` plein."""
+
+    def _lecteur(self, muet=False, model_loaded=False, device=None,
+                accelere=False, watermarking=True, ce_qui_manque=None):
+        def lire(url):
+            if muet:
+                raise OSError("connexion refusee")
+            return {"model_loaded": model_loaded, "device": device,
+                   "device_is_accelerated": accelere, "watermarking": watermarking,
+                   "ce_qui_manque": ce_qui_manque}
+        return lire
+
+    def test_service_eteint_est_non_configure_avec_la_commande(self):
+        v = doctor.verifier_csm(self._lecteur(muet=True))
+        assert v.etat is NON_CONFIGURE
+        assert "server.py" in v.remede
+
+    def test_un_port_qui_repond_sans_modele_charge_n_est_pas_OK(self):
+        """Le mensonge que ce test empeche : un port ouvert ne veut pas dire
+        un modele en memoire, encore moins un acces HF accepte."""
+        v = doctor.verifier_csm(self._lecteur(model_loaded=False,
+                                              ce_qui_manque="401 gated"))
+        assert v.etat is NON_CONFIGURE
+        assert "401 gated" in v.remede
+
+    def test_un_modele_charge_sans_filigrane_n_est_pas_OK(self):
+        """Mission §12 : un `[OK]` ici masquerait l'absence de provenance."""
+        v = doctor.verifier_csm(self._lecteur(model_loaded=True, device="cpu",
+                                              watermarking=False))
+        assert v.etat is NON_CONFIGURE
+        assert "filigrane" in v.detail
+
+    def test_charge_et_filigrane_actif_est_OK(self):
+        v = doctor.verifier_csm(self._lecteur(model_loaded=True, device="cuda:0",
+                                              accelere=True, watermarking=True))
+        assert v.etat is OK
+        assert "cuda:0" in v.detail
+        assert "filigrane" in v.detail
+
+    def test_le_diagnostic_complet_porte_la_ligne(self):
+        import inspect
+        assert 'mesurer("Voix conversationnelle (CSM)"' in inspect.getsource(doctor)
+
+
 class TestModeleEmbeddings:
     """Le diagnostic doit nommer le modèle qu'ARENA demande, pas un autre.
 

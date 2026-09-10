@@ -53,6 +53,7 @@ from core.connectors.audio_voix import ConnecteurAudioVoix
 from core.connectors.browser import ConnecteurBrowser
 from core.connectors.calendrier import CalendrierConnector
 from core.connectors.claude_context import ConnecteurClaudeContext
+from core.connectors.csm import ConnecteurCsm
 from core.connectors.devis import DevisConnector
 from core.connectors.drift import ConnecteurDrift
 from core.connectors.faceplugin import ConnecteurFaceplugin
@@ -404,6 +405,18 @@ registre.declarer(
     "audio",
     lambda: ConnecteurAudioVoix(acces=acces, journal=journal,
                                 file_attente=file_attente, crochets=crochets),
+)
+# Sesame CSM : parole CONVERSATIONNELLE (anglais), un SECOND service local
+# separe (code ET poids Apache-2.0, pas de contrainte juridique — la
+# frontiere HTTP est ici pour isoler ses dependances, pas sa licence). Le
+# routeur (`core/audio/routage_tts.py`) ne le prefere QUE quand on lui
+# demande explicitement une conversation en anglais ; il ne concourt jamais
+# avec les autres moteurs pour du travail ordinaire. Detail ->
+# docs/audits/sesame_csm_audit.md, DEC-0080.
+registre.declarer(
+    "csm",
+    lambda: ConnecteurCsm(acces=acces, journal=journal,
+                          file_attente=file_attente, crochets=crochets),
 )
 registre.declarer(
     "montage",
