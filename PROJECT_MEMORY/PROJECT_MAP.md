@@ -42,7 +42,8 @@ Un module qu'aucun de ces quatre n'atteint est un orphelin :
 | `core/models/` | fournisseur Ollama |
 | `core/security/` | frontière de confiance (`trust.py`) |
 | `core/reasoning/` | moteur Plan & Solve (bac à sable) |
-| `agents/` | 16 agents ; les vivants : orchestrator, plaquiste, video_analyzer, vision (DEC-0019), email, fresh_info, coder, researcher… |
+| `core/finance/` | quant (arithmétique pure), risque (classification déterministe), portefeuille simulé SQLite (DEC-0078) — aucun ordre réel |
+| `agents/` | 24 répertoires (mesuré le 10/09/2026) ; les vivants : orchestrator, plaquiste, video_analyzer, vision (DEC-0019), email, fresh_info, coder, researcher, finance (DEC-0078)… |
 | `apps/backend/` | serveur, routeurs, sécurité, prompts, studio |
 | `apps/pwa/` | son interface (compilée) — `apps/pwa/server/` (second serveur mort) supprimé le 29/08/2026, sur sa décision |
 | `.claude/skills/design-language/` | *skill* de développement (pas une capacité runtime) : 224 styles UI/UX documentés, jetons CSS/Tailwind, vérification WCAG — `docs/audits/claude_artisan_audit.md` |

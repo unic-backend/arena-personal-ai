@@ -15,6 +15,7 @@
 | **Google (Gmail + Calendar)** | API, un seul identifiant OAuth | pas de courrier ni d'agenda |
 | **GalsenAPI** | API publique, sans clé | pas de données administratives du Sénégal |
 | **LightRAG** | bibliothèque + Ollama | pas de recherche dans ses documents |
+| **CoinGecko** | API publique `api.coingecko.com`, sans clé | pas de prix ni d'historique de marché — `FINANCE` répond `NON_CONFIGURE` (DEC-0078) |
 
 ## Externes — paquets
 

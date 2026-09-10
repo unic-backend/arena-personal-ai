@@ -51,6 +51,16 @@ services:
     modify:      {decision: CONFIRMATION, risque: MEDIUM}
     delete:      {decision: CONFIRMATION, risque: HIGH, interrupteur: DELETE}
 
+  # Donnees de marche (core/connectors/market_data.py, CoinGecko). Lecture
+  # seule : aucune capacite d'ecriture n'existe sur ce connecteur, donc
+  # aucune entree ici ne pourrait l'autoriser meme par erreur — elle
+  # n'existerait simplement pas dans capacites(). Rien a voir avec
+  # core/finance/paper_trading.py : ce moteur simule ne touche aucun service
+  # exterieur et ne passe donc jamais par ce controle d'acces (meme
+  # frontiere que les autres calculs internes d'ARENA).
+  market_data:
+    read:        {decision: ALLOWED,      risque: LOW}
+
   website:
     inspect:     {decision: ALLOWED,      risque: LOW}
     analyze:     {decision: ALLOWED,      risque: LOW}
