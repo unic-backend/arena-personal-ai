@@ -117,6 +117,20 @@ services:
     generate:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
     cancel:      {decision: ALLOWED,      risque: LOW}
 
+  # Generation d'image haute qualite (HiDream-I1, mission ARENA x HIDREAM-I1,
+  # DEC-0085) — service NOUVEAU, jamais fondu dans video_generation : une
+  # generation d'image et une generation video restent deux capacites
+  # distinctes meme si le meme graphe de projet peut composer les deux.
+  # Meme raisonnement que video_generation : ecriture locale, monopolise la
+  # carte graphique, passe par confirmation + WRITE_FILES ; jamais dans
+  # INTERRUPTEURS_OBLIGATOIRES (une image generee s'efface, ce n'est pas une
+  # action irreversible). `cancel` reste ALLOWED pour la meme raison qu'en
+  # video_generation : annuler REDUIT un effet, il n'en emet aucun.
+  image_generation:
+    read:        {decision: ALLOWED,      risque: LOW}
+    generate:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+    cancel:      {decision: ALLOWED,      risque: LOW}
+
   # Analyse de visages (SDK Faceplugin, moteur local hors depot).
   #
   # **Deux niveaux, et la frontiere est l'identite.** Compter des visages et

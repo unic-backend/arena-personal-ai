@@ -66,6 +66,7 @@ from core.connectors.gitingest import ConnecteurGitIngest
 from core.connectors.gmail import GmailConnector
 from core.connectors.graphify import ConnecteurGraphify
 from core.connectors.hermes_evolution import ConnecteurHermesEvolution
+from core.connectors.hidream import HiDreamConnector
 from core.connectors.ifc import ConnecteurIfc
 from core.connectors.ifc_generation import ConnecteurIfcGeneration
 from core.connectors.krillinai import ConnecteurKrillinAI
@@ -180,6 +181,14 @@ registre.declarer(
     "wan2gp",
     lambda: Wan2GPConnector(acces=acces, journal=journal, file_attente=file_attente,
                             crochets=crochets),
+)
+# Generation d'image haute qualite (HiDream-I1, mission ARENA x HIDREAM-I1,
+# DEC-0085) — worker isole, jamais lance tant que le proprietaire ne l'a pas
+# demarre (tools/image/hidream/). Meme sonde honnete que wan2gp/moneyprinter.
+registre.declarer(
+    "hidream",
+    lambda: HiDreamConnector(acces=acces, journal=journal, file_attente=file_attente,
+                             crochets=crochets),
 )
 # Devis PDF : chiffrage libre, production du document derriere confirmation.
 registre.declarer(

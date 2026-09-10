@@ -7275,3 +7275,170 @@ de ce périmètre rapporte honnêtement `NEEDS_CONFIRMATION`/`NOT_CONFIGURED`
 plutôt qu'un artefact produit — la même situation, mesurée de la même
 façon, que tous les autres moteurs vidéo externes d'ARENA sur cette
 machine.
+
+## DEC-0085 — Image haute qualité : capacité canonique HiDream-I1, matériel mesuré avant tout envoi
+
+**Date** : 10/09/2026
+**Statut** : accepté
+
+### Contexte
+
+Mission ARENA × HIDREAM-I1. Étudier `HiDream-ai/HiDream-I1` (commit
+`5f92bab45f1dfb1e794ee357286a5b837eaf4400`, MIT — code et poids) et donner
+à ARENA une capacité canonique de génération d'image haute qualité, capable
+d'utiliser HiDream-I1 **quand le matériel le permet**, jamais autrement.
+Rapport complet → `docs/audits/hidream_i1_audit.md`.
+
+### Ce qui existait déjà, audité avant d'écrire une ligne
+
+**Aucune capacité de génération d'image texte→image canonique n'existait
+dans ARENA** — mesuré par recherche exhaustive. `core/connectors/wan2gp.py`
+génère des VIDÉOS (parfois des images en sous-produit de sa galerie),
+uniquement via un prompt TEXTE, sans paramètre de résolution/steps/guidance
+contrôlable. `krillin_cover` (KrillinAI) délègue à « un fournisseur externe
+requis » — pas une capacité ARENA propre. `core/connectors/registre.py`
+(un seul registre de connecteurs), `core/production/plan_video.py` (un seul
+graphe de production Video fermé), `core/execution/travaux.py`/
+`core/connectors/suivi_video.py` (une seule file de travaux de fond, déjà
+générique) existaient déjà et sont **réutilisés tels quels** — aucun second
+registre, aucun second graphe, aucune second suivi de tâche.
+
+**Aucune détection matérielle réelle (VRAM/RAM) n'existait** :
+`scripts/doctor.py` vérifie seulement que `nvidia-smi` répond, jamais la
+mémoire totale/libre.
+
+### Décision
+
+**Un connecteur, un worker isolé, deux modules de décision — zéro second
+registre, zéro second agent image.**
+
+1. `core/production/materiel.py` (nouveau) — mesure RÉELLE VRAM
+   (`nvidia-smi`), RAM (`psutil`, nouvelle dépendance minimale — introspection
+   système pure, aucun poids ML, voir `requirements.txt`), disque
+   (`shutil.disk_usage`, stdlib). `None` honnête si rien n'est mesurable,
+   jamais un chiffre inventé.
+2. `core/production/hidream_strategie.py` (nouveau) — décision
+   déterministe, pure, testable SANS GPU : `LOCAL_FULL`/`LOCAL_QUANTIZED`/
+   `LOCAL_OFFLOAD`/`REMOTE_REQUIRED`/`UNSUPPORTED`, chaque seuil documenté
+   avec sa justification (marges de sécurité, diviseur de quantification
+   ESTIMÉ et annoncé comme tel).
+3. `core/connectors/hidream.py` (nouveau) — HTTP, même style que
+   `core/connectors/moneyprinter.py` : service `image_generation` **nouveau**
+   dans `config/permissions_services.yaml` (jamais fondu dans
+   `video_generation` — deux capacités distinctes). Avant tout `generer`
+   confirmé, relit `/health` du worker et applique `decider_strategie` —
+   refuse `NON_CONFIGURE` **avant** tout envoi si le matériel ne tient pas.
+   `etat_travail` ROUVRE chaque fichier que le worker annonce
+   (`core/production/artefact_image.py::valider_image`) avant de confirmer
+   un succès — jamais un « terminé » du worker pris pour une preuve.
+4. `tools/image/hidream/` (nouveau) — worker FastAPI isolé, même catégorie
+   que `tools/audio/csm_service/` (torch/diffusers/transformers hors de
+   l'environnement principal, `scripts/orphelins.py` mis à jour avec la
+   même exemption documentée). Contre l'intégration **officielle** de
+   HiDream dans `diffusers` (recommandée par le README amont lui-même) —
+   `hi_diffusers/` du dépôt étudié n'est PAS vendoré. Chargement paresseux,
+   déchargement après inactivité, offload CPU séquentiel par défaut sur
+   GPU (seule voie qui pourrait tenir sur 12 Go), OOM capturé sans jamais
+   faire tomber le worker.
+5. `core/production/artefact_image.py` (nouveau) — validation réelle
+   (Pillow : ouverture, `verify()`, dimensions) + provenance (sidecar JSON :
+   modèle, version, fournisseur, seed, résolution, prompt, horodatage).
+6. Composition dans l'existant, pas un second chemin :
+   `core/production/plan_video.py::CAPACITES_VIDEO` gagne `hidream_image`
+   (texte→image dans un graphe Video, mission §20) ;
+   `VideoProductionAgent._appeler_hidream_image` (composition dans le
+   graphe) et `VideoProductionAgent.generer_image` (point d'entrée direct,
+   hors graphe — LA capacité canonique du diagramme de la mission) ;
+   `apps/backend/routers/image_generation.py` (`/api/image/generer`,
+   `/api/image/capacites`, `/api/image/{job_id}`).
+
+### Ce qui n'a pas été fait, et pourquoi
+
+- **Aucune quantification implémentée** : aucune n'existe en amont pour
+  cette architecture MoE précise, et ce dépôt n'implémente jamais un trick
+  non vérifié (mission §7). `hidream_strategie.py` l'ESTIME pour la
+  décision de routage, sans jamais prétendre qu'elle a été mesurée.
+- **Aucun worker distant déployé** (mission §24) — le CONTRAT est prêt
+  (`HIDREAM_WORKER_URL` seule variable à changer, le worker mesure SA
+  propre machine), mais aucune infrastructure GPU distante n'est
+  configurée ni autorisée dans cet environnement.
+- **Aucune intégration Agent Heroes-personnages directe** (mission §19) :
+  HiDream devient un provider parmi d'autres pour
+  `core/production/personnage_video.py` (DEC-0084) uniquement si ce module
+  est étendu explicitement plus tard — aucun couplage direct écrit ici,
+  conformément à « router d'abord, jamais un couplage point à point ».
+
+### Licensing
+
+Code et poids HiDream-I1 : **MIT**, vérifié sur le dépôt (`LICENSE`) ET sur
+les pages HuggingFace (tag `license: mit`). **Le 4ᵉ encodeur texte,
+`meta-llama/Meta-Llama-3.1-8B-Instruct`, obligatoire pour toute inférence,
+est sous la licence communautaire Llama 3.1 de Meta — PAS MIT**, gated,
+acceptation explicite requise avant tout téléchargement. Documenté dans le
+README du worker, jamais mélangé avec la licence du code HiDream lui-même.
+
+### Vérification
+
+`ruff check .` propre.
+
+**Sabotage réel** : le rappel de `_valider_et_enregistrer` dans
+`HiDreamConnector._etat` a été retiré → les deux tests qui prouvent que
+« terminé » ne devient jamais un succès sans relecture réelle échouent
+(`AssertionError`/`KeyError`, la relecture ne se produisait plus).
+Restauré → les 22 tests du connecteur repassent.
+
+Suite ciblée sur le périmètre de cette mission : **257 passed, 0 failed**
+(`test_connecteur_hidream.py` 22, `test_materiel.py` 12,
+`test_hidream_strategie.py` 11, `test_artefact_image.py` 10, extensions à
+`test_production_agent.py` 7 nouveaux, `test_image_generation_router.py` 5,
+extensions à `test_surface_api.py` 3 nouvelles routes,
+`tools/image/hidream/test_server.py` 14 — cette derniere suite tourne
+**sans** torch/diffusers installes, la couche HTTP/gestion de taches du
+worker n'en depend jamais directement).
+
+`python scripts/orphelins.py` : 274 modules, 217 atteints (+7/+5),
+`CLAUDE.md` remesuré dans ce commit. Le worker HiDream
+(`tools/image/hidream/serveur_hidream.py`/`test_server.py`) rejoint
+l'exemption déjà écrite pour `tools/audio/csm_service/` — même raison
+technique, même mécanisme documenté dans `scripts/orphelins.py`.
+
+**Deuxième trouvaille réelle, par la suite complète** :
+`tests/test_capacites_video_pwa.py` (déjà écrit après un incident du
+03/09/2026 — une capacité manquait sur l'écran d'où on la déclenche) a
+détecté que `hidream_image` manquait côté interface
+(`apps/pwa/src/lib/store/videoProjectStore.ts`) alors qu'elle existait
+déjà côté serveur — exactement le sens de dérive que ce fichier de test
+existe pour attraper. Corrigé : la capacité, son icône (`ImagePlus`) et
+ses libellés FR/EN ajoutés dans `VideoProjectModal.tsx`. Revérifié
+directement (pas seulement via le test Python qui lit le source) :
+`npx tsc --noEmit`, `npm test` (29 tests) et `npm run build` de
+`apps/pwa/` passent tous les trois après le correctif.
+
+**Restart test réel** (mission §32) : nouveau processus Python, application
+réelle importée à froid, vraie requête HTTP `POST /api/image/generer` —
+rend `NEEDS_CONFIRMATION` (jamais une génération simulée),
+`GET /api/image/capacites` rend honnêtement `NOT_CONFIGURED` (aucun worker
+lancé ici). Aucune initialisation manuelle requise.
+
+**Classification finale du matériel réel (RTX A2000 12 Go, 32 Go RAM) :
+E — SERVER_ONLY_RECOMMENDED**, calculée par code
+(`core/production/hidream_strategie.py`), jamais estimée à l'œil — voir
+`docs/audits/hidream_i1_audit.md`, Local Acceptance Decision. Les trois
+variantes échouent localement même avec offload : la RAM système (32 Go)
+est déjà plus petite que le modèle complet (~63 Go).
+
+Suite complète (`python -m pytest -q`) : **4821 passed, 31 skipped, 48
+deselected, 0 failed** (476.95s / 7m56s, mesuré le 10/09/2026) — après
+correction de la dérive PWA ci-dessus.
+
+### Ce que ça coûte si c'est faux
+
+Les seuils de decision (marges VRAM/RAM, diviseur de quantification 3.5,
+plancher d'offload 6 Go) sont des ESTIMATIONS documentées, jamais mesurées
+sur un vrai GPU — aucun n'est disponible dans cet environnement de
+développement. Une carte future de 16-24 Go pourrait recevoir un verdict
+`LOCAL_QUANTIZED` du calcul sans qu'aucune quantification n'ait
+réellement été testée sur l'architecture MoE de HiDream : le premier essai
+sur une telle carte est un test, pas une certitude — le worker le
+rapporterait honnêtement en cas d'échec (`state: "failed"`), jamais un
+succès inventé.

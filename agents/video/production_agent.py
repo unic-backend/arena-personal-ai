@@ -299,6 +299,40 @@ class VideoProductionAgent(BaseAgent):
                 personnage, "identite_video", str(resultat["preuve"]), "xaar_kaname")
         return resultat
 
+    async def generer_image(
+        self, prompt: str, *, negative_prompt: Optional[str] = None,
+        width: Optional[int] = None, height: Optional[int] = None,
+        seed: Optional[int] = None, variante: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Le point d'entree direct de la capacite image-generation
+        canonique (mission ARENA x HIDREAM-I1, DEC-0085) — hors graphe, pour
+        une demande d'image seule qui n'a pas besoin d'un plan de projet.
+
+        Passe par le MEME connecteur que `hidream_image` dans le graphe
+        (`core/connectors/hidream.py`, via le registre) : aucune deuxieme
+        soumission, aucun deuxieme controle materiel. Le connecteur refuse
+        deja NON_CONFIGURE si le materiel rapporte par le worker ne tient
+        pas la variante demandee — cette methode ne fait que transmettre.
+        """
+        if self.registre is None:
+            return self._erreur("aucun registre de connecteurs branche")
+        prompt = (prompt or "").strip()
+        if not prompt:
+            return self._erreur("Aucun prompt : rien a generer.")
+
+        appel: Dict[str, Any] = {"prompt": prompt}
+        for cle, valeur in (
+            ("negative_prompt", negative_prompt), ("width", width), ("height", height),
+            ("seed", seed), ("variante", variante),
+        ):
+            if valeur is not None:
+                appel[cle] = valeur
+
+        resultat = self.registre.executer("hidream", "generer", **appel)
+        if inspect.isawaitable(resultat):
+            resultat = await resultat
+        return _depuis_resultat_action(resultat)
+
     async def _executer(
         self, objectif: str, contexte: Dict[str, Any], references: List[str],
         graphe: List[EtapeProjet], refus: List[str],
@@ -379,6 +413,8 @@ class VideoProductionAgent(BaseAgent):
                     "cover", references, prompt=parametres.get("prompt"))
             if capacite == "drift":
                 return await self._appeler_drift(parametres, references)
+            if capacite == "hidream_image":
+                return await self._appeler_hidream_image(parametres)
             # valider_graphe() ne laisse jamais passer autre chose que
             # CAPACITES_VIDEO : atteindre ceci serait un bug de ce module,
             # jamais une entree du modele.
@@ -545,6 +581,35 @@ class VideoProductionAgent(BaseAgent):
         if inspect.isawaitable(resultat):
             resultat = await resultat
         return self._verifie(_depuis_resultat_action(resultat), "xaar_kaname")
+
+    async def _appeler_hidream_image(self, parametres: Dict[str, Any]) -> Dict[str, Any]:
+        """HiDream-I1 (mission ARENA x HIDREAM-I1, DEC-0085), par son
+        connecteur — jamais en direct.
+
+        Meme raisonnement que `_appeler_xaar_kaname` : le connecteur porte
+        `generate` du service `image_generation`, que `config/
+        permissions_services.yaml` met a CONFIRMATION. Le connecteur refuse
+        DEJA de soumettre si le materiel rapporte par le worker ne tient pas
+        la variante demandee (`core/production/hidream_strategie.py`) — cette
+        methode ne fait que transmettre, elle ne devine aucun defaut de
+        resolution que le connecteur n'aurait pas deja.
+        """
+        if self.registre is None:
+            raise RuntimeError("aucun registre de connecteurs branche")
+
+        prompt = str(parametres.get("prompt") or "").strip()
+        if not prompt:
+            raise RuntimeError("prompt : aucune description d'image fournie")
+
+        appel: Dict[str, Any] = {"prompt": prompt}
+        for cle in ("negative_prompt", "width", "height", "seed", "variante", "steps", "guidance"):
+            if parametres.get(cle) is not None:
+                appel[cle] = parametres[cle]
+
+        resultat = self.registre.executer("hidream", "generer", **appel)
+        if inspect.isawaitable(resultat):
+            resultat = await resultat
+        return self._verifie(_depuis_resultat_action(resultat), "hidream_image")
 
     async def _appeler_krillin(self, capacite_krillin: str, references: List[str],
                                **parametres_krillin: Any) -> Dict[str, Any]:

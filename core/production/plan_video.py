@@ -35,10 +35,16 @@ from core.production.etat_projet import EtapeProjet
 #: pour ca, wangp/moneyprinter restent le bon choix. Reservee EXCLUSIVEMENT
 #: au workspace Video (mission du 06/09/2026) : aucun chemin plaquiste/BIM/
 #: metier ne la reference.
+#:
+#: « hidream_image » (DEC-0085, mission ARENA x HIDREAM-I1) genere une image
+#: haute qualite via HiDream-I1 — un plan de projet peut donc composer
+#: TEXTE -> image HiDream -> scene wangp/image-a-video, exactement le
+#: pipeline que la mission decrit (§20). Reste une ECRITURE comme
+#: wangp/moneyprinter : le fichier reel n'existe qu'apres confirmation.
 CAPACITES_VIDEO: Tuple[str, ...] = (
     "vision", "transcription", "wangp", "moneyprinter", "narration", "xaar_kaname", "montage",
     "krillin_subtitle", "krillin_tts", "krillin_render_horizontal", "krillin_render_vertical",
-    "krillin_cover", "drift",
+    "krillin_cover", "drift", "hidream_image",
 )
 
 
@@ -153,7 +159,7 @@ def valider_graphe(
 CAPACITES_ECRITURE = frozenset({
     "wangp", "moneyprinter", "narration", "xaar_kaname",
     "krillin_subtitle", "krillin_tts", "krillin_render_horizontal", "krillin_render_vertical",
-    "krillin_cover", "drift",
+    "krillin_cover", "drift", "hidream_image",
 })
 
 
@@ -233,6 +239,12 @@ Contrats de parametres :
 - drift : parametres.demande = texte de la demande de montage/edition
   (ex: "coupe les silences", "ajoute une transition entre les deux clips"),
   parametres.references = liste d'indices de references a ouvrir dans Drift.
+- hidream_image : parametres.prompt = texte de l'image (obligatoire),
+  parametres.negative_prompt (optionnel), parametres.width/height (une des
+  resolutions publiees : 1024x1024, 768x1360, 1360x768, 880x1168, 1168x880,
+  1248x832, 832x1248), parametres.seed (optionnel, reproductibilite),
+  parametres.variante = "full"/"dev"/"fast" (par defaut "fast" — la plus
+  legere).
 
 Objectif du proprietaire :
 {objectif}

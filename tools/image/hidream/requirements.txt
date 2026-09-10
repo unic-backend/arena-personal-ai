@@ -1,0 +1,37 @@
+# Dependances du worker HiDream-I1 d'ARENA — ISOLEES du requirements.txt
+# principal (mission ARENA x HIDREAM-I1, DEC-0085).
+#
+# Pourquoi un fichier a part, meme raison technique que
+# tools/audio/csm_service/requirements.txt (DEC-0079, Pillow vs browser-use) :
+# torch/diffusers/transformers n'entrent JAMAIS dans l'environnement principal
+# d'ARENA (requirements.txt racine, commentaire sur txtai_minimal). Installer
+# avec :
+#
+#   cd tools/image/hidream
+#   python3.11 -m venv .venv && source .venv/bin/activate   # .venv\Scripts\activate sous Windows
+#   pip install -r requirements.txt
+#   huggingface-cli login   # acces GATE a meta-llama/Meta-Llama-3.1-8B-Instruct
+#   python serveur_hidream.py
+
+torch>=2.5.1
+torchvision>=0.20.1
+# Diffusers DEPUIS LA SOURCE : HiDream y est officiellement integre depuis le
+# 11/04/2025 (README amont, "HiDream is now officially supported in the
+# diffusers library"). Ce choix evite de vendorer `hi_diffusers/` (le paquet
+# maison du depot HiDream-I1) dans ARENA — c'est la voie que le README amont
+# recommande lui-meme pour l'inference via `HiDreamImagePipeline`.
+git+https://github.com/huggingface/diffusers.git
+transformers>=4.47.1
+accelerate>=1.2.1
+einops>=0.7.0
+# Introspection materiel (VRAM/RAM), meme role que core/production/materiel.py
+# cote ARENA — dupliquee ici plutot qu'importee : ce worker ne depend d'AUCUN
+# module d'ARENA (mission §8, frontiere de connecteur propre).
+psutil>=6.0
+fastapi>=0.110
+uvicorn>=0.29
+pillow>=10.0
+
+# NON installe ici, volontairement : flash-attn (le README amont le
+# recommande, jamais ne l'exige — la sonde /health rapporte son absence,
+# la generation reste possible sans, plus lentement).
