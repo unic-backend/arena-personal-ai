@@ -34,10 +34,11 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from apps.backend.config import RENDERED_DIR
 from core.agent.base_agent import BaseAgent
+from core.characters.registry import Personnage, charger_personnage, enregistrer_generation
 from core.execution.coordination import Coordination, Etape
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
-from core.production import plan_drift
+from core.production import personnage_video, plan_drift
 from core.production.etat_projet import EtapeProjet, EtatProjetVideo
 from core.production.plan_video import (
     CAPACITES_VIDEO,
@@ -194,6 +195,22 @@ class VideoProductionAgent(BaseAgent):
         contexte = context or {}
         references: List[str] = [r for r in (contexte.get("references") or []) if r]
 
+        # Personnage (mission ARENA x AGENT HEROES, DEC-0084) : un identifiant
+        # connu resout une identite persistante — ses images de reference
+        # rejoignent les references ouvertes (pour qu'un xaar_kaname du plan
+        # puisse les designer par index), et son profil visuel enrichit
+        # SEULEMENT le prompt envoye au planificateur, jamais l'objectif
+        # rapporte au proprietaire (`etat.objectif` reste ses mots a lui).
+        personnage: Optional[Personnage] = None
+        personnage_id = contexte.get("personnage_id")
+        if personnage_id:
+            personnage = charger_personnage(str(personnage_id))
+            if personnage is None:
+                return self._erreur(f"Personnage inconnu : {personnage_id}.")
+            for image in personnage.images_reference:
+                if image not in references:
+                    references.append(image)
+
         capacites_choisies = contexte.get("capacites")  # mode TEAM : sous-ensemble explicite
         if capacites_choisies:
             capacites_autorisees = tuple(c for c in capacites_choisies if c in CAPACITES_VIDEO)
@@ -214,7 +231,17 @@ class VideoProductionAgent(BaseAgent):
                             "plan de projet sans lui."),
             }
 
-        prompt = prompt_de_planification(objectif, references, capacites_autorisees)
+        objectif_pour_planification = objectif
+        if personnage is not None:
+            ligne_personnage = f"Personnage : {personnage.nom}. {personnage.profil_visuel}".strip()
+            if personnage.images_reference and personnage.images_reference[0] in references:
+                index_visage = references.index(personnage.images_reference[0])
+                ligne_personnage += f" Visage de reference : ref{index_visage}."
+            if personnage.negatif:
+                ligne_personnage += f" Eviter : {personnage.negatif}."
+            objectif_pour_planification = f"{ligne_personnage}\n{objectif}"
+
+        prompt = prompt_de_planification(objectif_pour_planification, references, capacites_autorisees)
         try:
             brut = await self.provider.generate(prompt=prompt)
         except Exception as erreur:  # httpx, timeout, modele absent
@@ -228,6 +255,49 @@ class VideoProductionAgent(BaseAgent):
             return self._erreur(f"Le plan de projet propose ne tient pas : {erreur}")
 
         return await self._executer(objectif, contexte, references, graphe, refus)
+
+    async def generer_image_personnage(self, personnage_id: str, description_scene: str
+                                       ) -> Dict[str, Any]:
+        """Phase 1 du pipeline personnage : soumet une scene WanGP portant
+        l'identite du personnage (`core/production/personnage_video.py`).
+
+        Point d'entree direct, hors graphe : un plan a une seule etape ecrite
+        d'avance n'a pas besoin du planificateur (le modele ne choisit rien
+        ici) — la MEME soumission WanGP que le reste d'ARENA, jamais un
+        second chemin.
+        """
+        personnage = charger_personnage(personnage_id)
+        if personnage is None:
+            return self._erreur(f"Personnage inconnu : {personnage_id}.")
+        if self.video_analyzer_agent is None:
+            return self._erreur("aucun agent video (WanGP) branche")
+        return await personnage_video.soumettre_generation_image(
+            self.video_analyzer_agent, personnage, description_scene)
+
+    async def appliquer_identite_personnage(
+        self, personnage_id: str, fichier_cible: str, *, many_faces: bool = False,
+    ) -> Dict[str, Any]:
+        """Phase 2 du pipeline personnage : repose le visage de reference du
+        personnage sur un fichier DEJA produit (une generation confirmee et
+        suivie jusqu'au fichier — `VideoAnalyzerAgent.suivre_la_generation`).
+
+        Jamais appelable sur une tache encore en cours : `fichier_cible`
+        doit deja exister, verifie par `personnage_video.appliquer_identite`.
+        """
+        personnage = charger_personnage(personnage_id)
+        if personnage is None:
+            return self._erreur(f"Personnage inconnu : {personnage_id}.")
+        if self.registre is None:
+            return self._erreur("aucun registre de connecteurs branche")
+        resultat = await personnage_video.appliquer_identite(
+            self.registre, personnage, fichier_cible, RENDERED_DIR, many_faces=many_faces)
+        # Provenance : uniquement sur un succes MESURE (un fichier de sortie
+        # que Xaar Kaname a reellement produit) — jamais sur une soumission,
+        # jamais sur un echec. `enregistrer_generation` est append-only.
+        if resultat.get("statut") == "SUCCESS" and resultat.get("preuve"):
+            enregistrer_generation(
+                personnage, "identite_video", str(resultat["preuve"]), "xaar_kaname")
+        return resultat
 
     async def _executer(
         self, objectif: str, contexte: Dict[str, Any], references: List[str],

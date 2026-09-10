@@ -754,3 +754,57 @@ correcte). Détection+sélection : 18-23 ms.
 `ruff check .` propre. Suite complète : **4704 passed, 31 skipped, 48
 deselected, 0 failed** (618.05s / 10m18s). Rapport complet →
 `docs/audits/autoskills_audit.md`.
+
+## 2026-09-10 (suite) — Personnages ARENA Video (DEC-0084), Agent Heroes audité
+
+Mission ARENA × AGENT HEROES. `agentheroes/agentheroes` audité (commit
+`dd6ba3d2c7070a77fc8f1dbb190560e77dfbef5e`, **licence discordante** —
+README AGPL-3.0 avec un `LICENSE` qui n'existe pas, les 4 `package.json`
+disent ISC — traité comme AGPL par prudence, zéro code copié). Identité de
+personnage persistante + pipeline WanGP (prompt composé) → Xaar Kaname
+(remplacement de visage réel en post-traitement) : deux moteurs déjà
+existants, zéro nouveau moteur de génération. `VideoProductionAgent`
+(DEC-0037) déjà mature — huit capacités, `xaar_kaname` déjà câblé ; le
+vrai manque était l'identité/persistance, pas la génération.
+
+**Créé** :
+
+| Fichier | Changement |
+|---|---|
+| `core/characters/registry.py` (nouveau) | Registre de personnages, même architecture que `core/skills/registry.py` ; images jamais copiées, moteur validé contre `MOTEURS_CONNUS` |
+| `core/production/personnage_video.py` (nouveau) | `composer_prompt`/`soumettre_generation_image`/`appliquer_identite` — deux phases confirmées séparément |
+| `apps/backend/routers/personnages.py` (nouveau) | `/api/personnages` CRUD + `/image` + `/identite` |
+| `agents/video/production_agent.py` | `personnage_id` dans le contexte ; deux méthodes publiques hors graphe |
+| `apps/backend/routers/video_production.py` | `personnage_id` optionnel sur `/api/video/projet` |
+
+**Délibérément pas fait** : aucun fournisseur cloud (Replicate/RunwayML/
+OpenAI/Fal.ai — ARENA reste local-first, DEC-0002) ; aucun entraînement
+LoRA (rien n'est câblé nulle part dans ARENA) ; aucune UI Characters
+dédiée (mission §36, l'API suffit pour l'instant) ; aucune injection dans
+`core/context/instantane_projet.py`/`core/skills/` (mission §23-24, hors
+du périmètre Video que la mission restreint explicitement).
+
+**Sabotage réel, trouvé par le test sur la vraie pile (`RegistreConnecteurs`
++ `XaarKanameConnector` réels, jamais un double)** : `appliquer_identite`
+ne normalisait pas la clé anglaise `status` de `ResultatAction.to_dict()`
+vers `statut` — même piège que `_depuis_resultat_action` dans
+`production_agent.py`, retrouvé indépendamment ici. `KeyError` sabotage →
+restauré → passe.
+
+135 tests dédiés/étendus : persistance + provenance sur un registre relu
+depuis le disque (jamais l'objet en mémoire), image de référence jamais
+copiée, échecs propres sans appeler le moteur sur du vide, la vraie pile
+ne contourne jamais la confirmation, restart à froid réel (nouveau
+processus, nouveau `USMAN_PERSONNAGES_DIR`, vraie requête HTTP).
+
+`python scripts/orphelins.py` : 267 modules, 212 atteints (+4/+3),
+`CLAUDE.md` remesuré dans ce commit.
+
+Deuxième trouvaille réelle, par la suite complète cette fois :
+`tests/test_surface_api.py` (empreinte figée des routes HTTP) a détecté
+les quatre routes `/api/personnages*` absentes de sa liste — corrigé,
+pas contourné.
+
+`ruff check .` propre. Suite complète : **4751 passed, 31 skipped, 48
+deselected, 0 failed** (482.83s / 8m02s). Rapport complet →
+`docs/audits/agentheroes_audit.md`.
