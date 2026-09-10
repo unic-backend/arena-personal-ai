@@ -706,3 +706,51 @@ dans ce commit.
 
 `ruff check .` propre. Suite complète : voir le commit — chiffres mesurés
 après ce changement. Rapport complet → `docs/audits/opencontext_audit.md`.
+
+## 2026-09-10 (suite) — Compétences techniques dynamiques (DEC-0083), AutoSkills audité
+
+Mission ARENA × AUTOSKILLS. `midudev/autoskills` audité (**CC-BY-NC-4.0**,
+vérifié dans le `LICENSE` racine ET `packages/autoskills/package.json`) :
+détection déterministe de pile, registre de 218 compétences multi-sources,
+revue par modèle (`gpt-5.4`) avant approbation. Principe de détection
+repris (réimplémenté en Python) ; revue par modèle rejetée (ARENA préfère
+un contrôle déterministe) ; aucune ligne de code copiée (licence
+non-commerciale). Aucun détecteur de pile technique n'existait dans ARENA
+avant cette mission (mesuré, recherche exhaustive).
+
+**Créé** :
+
+| Fichier | Changement |
+|---|---|
+| `core/skills/detection.py` (nouveau) | Détection déterministe (paquets npm, fichiers de config, `requirements.txt`) — 11 technologies, `apps/pwa/` atteint |
+| `core/skills/registry.py` (nouveau) | Schéma `skill.json`+`SKILL.md`, empreinte SHA-256, licence non-commerciale bloquée |
+| `core/skills/selection.py` (nouveau) | Réutilise `core/specialistes/selection.py::_sans_accents`/`_reconnait` ; filtre projet puis tâche, plafond 3 |
+| `core/skills/securite.py` (nouveau) | Réutilise `core/security/trust.py::inspect()` + motifs destructeurs propres |
+| `core/skills/instantane.py` (nouveau) | Point d'entrée unique : `BLOCKED`/`OUTDATED` exclus, `REVIEW_REQUIRED` annoncé |
+| `core/skills/store/` (nouveau, 7 compétences) | python-fastapi, react-typescript, tailwindcss, vite, docker, github-actions, playwright — contenu ORIGINAL |
+| `agents/dioumtoukay/dioumtoukay_agent.py` | `_reperes()` prend la demande, inclut les compétences pertinentes |
+
+**Délibérément pas fait** : aucune compétence empruntée à un tiers (218
+licences à vérifier une par une, hors périmètre) ; `skills-lock.json` par
+projet cible (rien à verrouiller, ARENA ne télécharge rien dans le dépôt
+de l'utilisateur) ; workspace multi-niveaux façon pnpm/gradle (deux
+niveaux suffisent, seul cas réel : `apps/pwa/`).
+
+**Faux positif réel, mesuré, pas caché** : `docker`/`github-actions`/
+`tailwindcss`/`vite` ressortent `REVIEW_REQUIRED` — leur contenu parle
+légitimement de secrets/jetons. `REVIEW_REQUIRED` n'empêche pas l'usage,
+le motif est annoncé dans le prompt.
+
+Deux sabotages, deux restaurations : le filtre projet (technologie
+absente laissée passer → 3 tests le détectent), l'exclusion `BLOCKED`
+(compétence malveillante de test laissée passer → détecté). 56 tests
+dédiés/étendus.
+
+**Banc de jetons, mesuré** : 7 compétences réunies = 11 734 caractères ;
+tâche React = 1 900 (-84 %) ; tâche FastAPI = 2 152 (-82 %) ; tâche
+Playwright sur ce dépôt (qui n'a pas Playwright) = 0 (-100 %, exclusion
+correcte). Détection+sélection : 18-23 ms.
+
+`ruff check .` propre. Suite complète : **4704 passed, 31 skipped, 48
+deselected, 0 failed** (618.05s / 10m18s). Rapport complet →
+`docs/audits/autoskills_audit.md`.

@@ -1,0 +1,20 @@
+{
+  "titre": "GitHub Actions",
+  "description": "Workflow structure, secrets, caching and reliability conventions for GitHub Actions CI.",
+  "technologies": [
+    "github-actions"
+  ],
+  "mots_taches": [
+    "github actions",
+    "workflow",
+    "ci",
+    "pipeline ci",
+    "gitleaks",
+    "runner"
+  ],
+  "source": "ARENA",
+  "licence": "ARENA (original)",
+  "version": "1.0.0",
+  "commit_amont": null,
+  "sha256_skill_md": "03b444f2b6b0092498e3645219af0d5a76f689e6ce696f0cadd5c72fa0306c34"
+}

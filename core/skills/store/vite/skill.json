@@ -1,0 +1,20 @@
+{
+  "titre": "Vite",
+  "description": "Build, dev-server and environment-variable conventions for a Vite project.",
+  "technologies": [
+    "vite"
+  ],
+  "mots_taches": [
+    "vite",
+    "build",
+    "bundle",
+    "hmr",
+    "dev server",
+    "vite.config"
+  ],
+  "source": "ARENA",
+  "licence": "ARENA (original)",
+  "version": "1.0.0",
+  "commit_amont": null,
+  "sha256_skill_md": "cff55838d719a2b834eb1d718b9338d3e51dc205027b35ab02eb3ece87c736f5"
+}

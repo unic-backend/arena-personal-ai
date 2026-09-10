@@ -47,6 +47,7 @@ from core.memory.conversation import retenir_l_echange
 from core.memory.memory_manager import MemoryManager
 from core.memory.personnelle import MemoirePersonnelle
 from core.models.base import ModelProvider
+from core.skills.instantane import instantane_competences
 from core.specialistes.selection import bloc_de_methode, choisir
 from tools.atelier.atelier import Atelier, Resultat
 
@@ -715,7 +716,7 @@ class DioumtoukayAgent(BaseAgent):
         # Les reperes sont pris UNE fois : ils decrivent le point de depart, et
         # les refaire a chaque tour couterait trois commandes reelles par tour
         # pour redire ce que le journal du travail raconte deja mieux.
-        reperes = self._reperes()
+        reperes = self._reperes(user_input)
 
         # La methode d'un specialiste (`debugging`/`tests`/`architecture`...,
         # `core/specialistes/catalogue.py`) n'atteignait jamais Dioumtoukay :
@@ -852,7 +853,7 @@ class DioumtoukayAgent(BaseAgent):
 
     # --- Ce qu'il voit, et ce qu'il rend ---------------------------------------------
 
-    def _reperes(self) -> str:
+    def _reperes(self, demande: str) -> str:
         """Où il est, et ce qu'il y a autour. Mesuré, jamais supposé.
 
         Sans ça, le premier tour partait à l'aveugle : le modèle dépensait deux
@@ -887,6 +888,17 @@ class DioumtoukayAgent(BaseAgent):
         etat_projet = instantane(self.atelier.racine)
         if not etat_projet.vide:
             lignes.append(etat_projet.texte)
+
+        # Mission ARENA x AUTOSKILLS (10/09/2026) : avant, Dioumtoukay recevait
+        # soit rien du tout sur la pile technique du projet, soit (via
+        # `analyser`) tout le depot d'un coup. `instantane_competences()`
+        # detecte les technologies REELLEMENT presentes (jamais devinees),
+        # et ne retient que les competences que LA DEMANDE appelle vraiment
+        # -- zero si rien ne correspond, jamais un catalogue entier pose
+        # dans le prompt par reflexe (mission §5, §7).
+        bloc_competences = instantane_competences(self.atelier.racine, demande)
+        if bloc_competences:
+            lignes.append(bloc_competences)
 
         return "\n".join(lignes)
 

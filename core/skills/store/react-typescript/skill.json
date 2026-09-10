@@ -1,0 +1,25 @@
+{
+  "titre": "React + TypeScript",
+  "description": "Component, state, accessibility and testing conventions for React/TypeScript UI code.",
+  "technologies": [
+    "react",
+    "typescript"
+  ],
+  "mots_taches": [
+    "react",
+    "composant",
+    "component",
+    "hook",
+    "useeffect",
+    "usestate",
+    "typescript",
+    "props",
+    "jsx",
+    "tsx"
+  ],
+  "source": "ARENA",
+  "licence": "ARENA (original)",
+  "version": "1.0.0",
+  "commit_amont": null,
+  "sha256_skill_md": "ff4ec7d58fbf7226914a233554f66da369003e9428796d87b36b2bce8e796ba7"
+}
