@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from agents.video.production_agent import VideoProductionAgent
+from core.characters.registry import charger_personnage, creer_personnage
 
 
 class ModeleDouble:
@@ -714,3 +715,114 @@ class TestNarrationConversationnelle:
 
         with pytest.raises(RuntimeError):
             await agent._appeler_narration({"conversationnel": True})
+
+
+class TestPersonnage:
+    """Mission ARENA x AGENT HEROES (DEC-0084) : un `personnage_id` connu
+    enrichit le graphe existant, il n'en cree jamais un second."""
+
+    @pytest.fixture
+    def personnage(self, tmp_path, monkeypatch):
+        image = tmp_path / "visage.jpg"
+        image.write_bytes(b"visage")
+        dossier = tmp_path / "personnages"
+        cree = creer_personnage(
+            "Aissatou", "Presentatrice", [str(image)],
+            "femme senegalaise, la trentaine, boubou bleu", dossier=dossier)
+
+        import agents.video.production_agent as module
+        from core.characters.registry import enregistrer_generation
+        monkeypatch.setattr(
+            module, "charger_personnage",
+            lambda identifiant: charger_personnage(identifiant, dossier=dossier))
+        monkeypatch.setattr(
+            module, "enregistrer_generation",
+            lambda personnage, *a, **k: enregistrer_generation(personnage, *a, dossier=dossier, **k))
+        return cree
+
+    async def test_personnage_inconnu_est_refuse_avant_tout_appel_modele(self):
+        modele = ModeleDouble()
+        agent = VideoProductionAgent(provider=modele)
+
+        resultat = await agent.run("fais une scene", context={"personnage_id": "n-existe-pas"})
+
+        assert resultat["status"] == "error"
+        assert "inconnu" in resultat["response"].lower()
+        assert modele.prompts == []
+
+    async def test_les_images_du_personnage_rejoignent_les_references(self, personnage):
+        modele = ModeleDouble(["[]"])
+        agent = VideoProductionAgent(provider=modele)
+
+        await agent.run("fais une scene", context={"personnage_id": personnage.identifiant})
+
+        assert "ref0" in modele.prompts[0]
+
+    async def test_le_profil_enrichit_le_prompt_sans_changer_l_objectif_rapporte(self, personnage):
+        modele = ModeleDouble(['[{"id": "scene", "capacite": "wangp", '
+                              '"parametres": {"description": "x"}}]'])
+        analyzer = VideoAnalyzerDouble()
+        agent = VideoProductionAgent(provider=modele, video_analyzer_agent=analyzer)
+
+        resultat = await agent.run(
+            "filme le personnage au marche", context={"personnage_id": personnage.identifiant})
+
+        assert "boubou bleu" in modele.prompts[0]
+        assert resultat["projet"]["objectif"] == "filme le personnage au marche"
+
+    async def test_generer_image_personnage_compose_le_prompt(self, personnage):
+        analyzer = VideoAnalyzerDouble()
+        agent = VideoProductionAgent(provider=ModeleDouble(), video_analyzer_agent=analyzer)
+
+        resultat = await agent.generer_image_personnage(personnage.identifiant, "marche au soleil")
+
+        assert "boubou bleu" in analyzer.appels_scene[0]
+        assert "marche au soleil" in analyzer.appels_scene[0]
+        assert resultat["personnage_id"] == personnage.identifiant
+
+    async def test_generer_image_personnage_inconnu_est_refuse(self):
+        agent = VideoProductionAgent(provider=ModeleDouble())
+
+        resultat = await agent.generer_image_personnage("n-existe-pas", "scene")
+
+        assert resultat["status"] == "error"
+
+    async def test_appliquer_identite_personnage_enregistre_la_provenance(self, personnage, tmp_path):
+        cible = tmp_path / "scene_generee.jpg"
+        cible.write_bytes(b"scene")
+        sortie = tmp_path / "sortie.jpg"
+        sortie.write_bytes(b"resultat")
+        registre = RegistreXaarDouble(reponse={
+            "statut": "SUCCESS", "message": "ok", "preuve": str(sortie), "output": str(sortie)})
+        agent = VideoProductionAgent(provider=ModeleDouble(), registre=registre)
+
+        resultat = await agent.appliquer_identite_personnage(personnage.identifiant, str(cible))
+
+        assert resultat["statut"] == "SUCCESS"
+        # Provenance reellement ecrite sur le disque, relue independamment
+        # de l'objet garde en memoire par ce test.
+        relu = charger_personnage(personnage.identifiant, dossier=tmp_path / "personnages")
+        assert len(relu.historique) == 1
+        assert relu.historique[0]["fichier"] == str(sortie)
+        assert relu.historique[0]["moteur"] == "xaar_kaname"
+
+    async def test_appliquer_identite_sans_fichier_produit_n_enregistre_rien(self, personnage, tmp_path):
+        """Jamais de provenance sur un echec — mission §5 : la provenance
+        n'existe que pour ce qui a reellement ete produit."""
+        registre = RegistreXaarDouble(reponse={"statut": "FAILED", "message": "echec moteur"})
+        agent = VideoProductionAgent(provider=ModeleDouble(), registre=registre)
+
+        cible = tmp_path / "scene_generee.jpg"
+        cible.write_bytes(b"scene")
+        await agent.appliquer_identite_personnage(personnage.identifiant, str(cible))
+
+        relu = charger_personnage(personnage.identifiant, dossier=tmp_path / "personnages")
+        assert relu.historique == ()
+
+    async def test_appliquer_identite_personnage_inconnu_est_refuse(self, tmp_path):
+        agent = VideoProductionAgent(provider=ModeleDouble(), registre=RegistreXaarDouble())
+
+        resultat = await agent.appliquer_identite_personnage(
+            "n-existe-pas", str(tmp_path / "x.jpg"))
+
+        assert resultat["status"] == "error"

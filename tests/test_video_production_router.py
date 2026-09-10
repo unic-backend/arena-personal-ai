@@ -119,6 +119,40 @@ def test_sans_capacites_le_contexte_ne_les_mentionne_pas(client, entetes, monkey
     assert "capacites" not in appels[0]
 
 
+def test_personnage_id_est_transmis_au_contexte(client, entetes, monkeypatch):
+    """Mission ARENA x AGENT HEROES (DEC-0084) : la route transmet
+    `personnage_id`, elle ne resout jamais le personnage elle-meme — c'est
+    `VideoProductionAgent.run` qui le fait (meme separation route/logique
+    que le reste de ce fichier)."""
+    appels = []
+
+    async def double(objectif, context=None):
+        appels.append(context)
+        return {"status": "success", "response": "ok"}
+
+    monkeypatch.setattr(video_production.video_production_agent, "run", double)
+
+    client.post("/api/video/projet",
+               json={"objectif": "x", "personnage_id": "aissatou-abc123"},
+               headers=entetes)
+
+    assert appels[0]["personnage_id"] == "aissatou-abc123"
+
+
+def test_sans_personnage_id_le_contexte_ne_le_mentionne_pas(client, entetes, monkeypatch):
+    appels = []
+
+    async def double(objectif, context=None):
+        appels.append(context)
+        return {"status": "success", "response": "ok"}
+
+    monkeypatch.setattr(video_production.video_production_agent, "run", double)
+
+    client.post("/api/video/projet", json={"objectif": "x"}, headers=entetes)
+
+    assert "personnage_id" not in appels[0]
+
+
 def test_une_exception_de_l_agent_devient_une_erreur_500_pas_un_crash_muet(
     client, entetes, monkeypatch,
 ):

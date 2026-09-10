@@ -7077,3 +7077,201 @@ RÉEL d'injection dans une future compétence empruntée à un tiers,
 pourquoi ce dépôt n'importe aujourd'hui AUCUNE compétence tierce
 (Licensing, ci-dessus) : la question ne se pose que le jour où elle se
 posera vraiment.
+
+## DEC-0084 — Personnages ARENA Video : identité persistante, pipeline WanGP → Xaar Kaname, Agent Heroes audité
+
+**Date** : 10/09/2026
+**Statut** : accepté
+
+### Contexte
+
+Mission ARENA × AGENT HEROES. Étudier `agentheroes/agentheroes` (commit
+`dd6ba3d2c7070a77fc8f1dbb190560e77dfbef5e`, licence **discordante** — voir
+Licensing) et donner à ARENA Video la capacité de créer, persister et
+réutiliser des personnages visuels cohérents à travers des générations
+d'image/vidéo — **strictement confiné au workspace Video** (restriction
+explicite de la mission : jamais UniC Plaquiste, BIM, ou une application
+top-level séparée). Rapport complet → `docs/audits/agentheroes_audit.md`.
+
+### Ce qui existait déjà, audité avant d'écrire une ligne
+
+`agents/video/production_agent.py::VideoProductionAgent` (DEC-0037) compose
+déjà huit capacités réelles (`vision`, `transcription`, `wangp`,
+`moneyprinter`, `narration`, `xaar_kaname`, `montage`, `drift`, cinq
+`krillin_*`) via un graphe validé contre la liste fermée de
+`core/production/plan_video.py::CAPACITES_VIDEO`. **`xaar_kaname` (Deep-
+Live-Cam, face-swap) est déjà câblé** — sa capacité `traiter` prend un
+visage source, une cible, et produit un artefact réel, déjà protégée par
+`video_generation.generate = CONFIRMATION`. **`wan2gp.py` n'accepte qu'un
+`source` TEXTE** pour générer — aucun conditionnement par image/seed/
+embedding n'existe nulle part dans ARENA, et son propre commentaire dit
+pourquoi : deviner un protocole non documenté serait l'erreur déjà commise
+une fois. **Aucun concept de personnage/identité et aucun connecteur de
+génération d'image texte→image n'existait** — mesuré par recherche
+exhaustive (`grep -rn "personnage\|character"` sur `core/`, `agents/`).
+
+Cette double mesure fixe ce que « cohérence de personnage » peut
+honnêtement vouloir dire ici (mission §6) : **pas** un conditionnement
+amont (le paramètre n'existe pas), mais une composition de prompt texte
+suivie d'un vrai remplacement de visage en post-traitement — deux moteurs
+déjà existants, zéro nouveau moteur de génération.
+
+### Décision
+
+**Une identité, deux phases, chacune confirmée séparément — jamais un
+troisième moteur, jamais un contournement de la file de confirmation.**
+
+1. `core/characters/registry.py` (nouveau) — le registre des personnages,
+   **même architecture que `core/skills/registry.py`** (un dossier, un
+   JSON de métadonnées, jamais une exception qui arrête la lecture des
+   autres) : reprise, pas dupliquée, parce qu'ARENA a déjà ce format pour
+   une entrée structurée + provenance + fichier. Champs volontairement
+   restreints à ce qu'ARENA sait faire (mission §5 : « ne pas implémenter
+   bêtement le schéma suggéré ») : pas de `source`/`licence` amont (un
+   personnage est créé par le propriétaire, jamais importé), pas de
+   LoRA/adaptateur (aucun entraînement n'est câblé — mission §7, étudié,
+   non reproduit). Les images de référence ne sont **jamais copiées** —
+   seuls leurs chemins (déjà dans `MEDIA_DIR`) sont retenus (mission
+   §21-22). Les métadonnées vivent dans `data/personnages/` (donnée
+   d'exécution, ignorée par git — comme `data/database/memory.db`),
+   jamais dans l'arbre source.
+2. `core/production/personnage_video.py` (nouveau) — le pipeline :
+   `composer_prompt` (identité + scène, jamais la scène elle-même —
+   `tools/video/prompt_audit.py` reste seul juge de sa complétude),
+   `soumettre_generation_image` (confie le prompt composé à
+   `VideoAnalyzerAgent.planifier_scene`, la MÊME voie WanGP que le reste
+   d'ARENA), `appliquer_identite` (repose le visage de référence sur un
+   fichier **déjà produit** — jamais une tâche en cours — via le
+   connecteur `xaar_kaname`, donc via `config/permissions_services.yaml`).
+   Le texte du profil passe par `core/security/trust.py::inspect()`
+   (mission §27) — **relevé, jamais bloqué** : un profil de personnage
+   n'est pas un fichier exécutable, la décision reste au propriétaire qui
+   l'a écrit.
+3. `agents/video/production_agent.py` (étendu, pas dupliqué) —
+   `context["personnage_id"]` résout le personnage, injecte ses images de
+   référence dans `references` (pour qu'un `xaar_kaname` du graphe puisse
+   les désigner par index) et enrichit **seulement le prompt envoyé au
+   planificateur**, jamais l'objectif rapporté au propriétaire. Deux
+   méthodes publiques, `generer_image_personnage`/
+   `appliquer_identite_personnage`, exposent les deux phases hors graphe
+   (un plan à une étape écrite d'avance n'a pas besoin d'un modèle pour la
+   choisir). La provenance (mission §5 : « creation history ») n'est
+   écrite **que sur un succès mesuré** — jamais sur une soumission, jamais
+   sur un échec.
+4. `apps/backend/routers/personnages.py` (nouveau) — `/api/personnages`
+   (CRUD), `/api/personnages/{id}/image`, `/api/personnages/{id}/identite`
+   — aucune logique ici, seulement la route (même discipline que
+   `video_production.py`), même contrôle `MEDIA_DIR` que le reste des
+   références Video.
+
+**Aucune capacité ajoutée à `CAPACITES_VIDEO`** : le graphe fermé de
+`plan_video.py` n'a pas changé — la composition personnage se fait en
+amont (enrichissement de prompt) et en dehors du graphe (les deux
+méthodes publiques), jamais par une nouvelle entrée dans la liste fermée.
+**Aucune permission ajoutée** à `config/permissions_services.yaml` : les
+deux phases retombent sur des capacités déjà gouvernées
+(`wan2gp.generer`, `xaar_kaname.traiter`).
+
+### Ce qui n'a pas été repris d'Agent Heroes, et pourquoi
+
+- **Les quatre fournisseurs cloud** (Replicate/RunwayML/OpenAI/Fal.ai) :
+  ARENA reste local-first (DEC-0002). Aucune clé API dans cet
+  environnement — en ajouter un aurait créé une dépendance non
+  fonctionnelle plutôt qu'une capacité (mission §8).
+- **`trainImages`/LoRA** : aucun entraînement, local ou distant, n'existe
+  dans ARENA aujourd'hui. `moteur_generation` du personnage est validé
+  contre `MOTEURS_CONNUS = ("wangp",)` — un personnage ne peut pas
+  déclarer un moteur qu'ARENA ne sait pas interroger.
+- **BullMQ/Redis** : `core/execution/travaux.py` + `suivre_la_generation`
+  couvrent déjà le travail de fond (mission §19-20 : améliorer l'existant,
+  pas ajouter Redis parce qu'Agent Heroes l'utilise).
+- **Le schéma Prisma `Characters`** : `core/skills/registry.py` était déjà
+  le meilleur précédent dans CE dépôt pour une entrée structurée +
+  provenance + fichier — repris, pas le schéma Prisma.
+- **Le frontend Agent Heroes / une UI Characters dédiée** (mission §36) :
+  **SUGGESTION — NON IMPLÉMENTÉE.** Le Media Studio existe déjà (route
+  `/ui/studio`) ; `/api/personnages` est prêt à être consommé par un panneau futur, mais
+  construire ce panneau n'a pas été demandé et n'était pas nécessaire pour
+  que le pipeline fonctionne par API.
+- **Injection dans `core/context/instantane_projet.py`/`core/skills/`**
+  (mission §23-24, interopérabilité OpenContext/AutoSkills) :
+  **SUGGESTION — NON IMPLÉMENTÉE.** Ces deux systèmes alimentent
+  `agents/dioumtoukay/dioumtoukay_agent.py` (l'agent de CODE), hors du
+  périmètre Video que la mission restreint explicitement — les y
+  connecter aurait fait fuir la capacité personnage hors de son
+  workspace.
+
+### Licensing
+
+**Discordance non résolue dans le dépôt amont lui-même**, documentée
+plutôt que tranchée : `README.md` affiche AGPL-3.0 et pointe vers un
+`LICENSE` qui **n'existe pas** (vérifié : `find . -iname "LICENSE*"` vide
+sur le clone réel) ; les quatre `package.json` (racine + 3 apps)
+déclarent tous `"license": "ISC"`. **Traitement identique à un AGPL
+confirmé** (même prudence que DEC-0083 sur AutoSkills, CC-BY-NC-4.0) :
+**zéro ligne de code copiée**, étude architecturale seulement — la question
+ne s'est donc jamais posée pour le contenu produit ici.
+
+### Vérification
+
+`ruff check .` propre.
+
+**Sabotage réel, trouvé par le test sur la vraie pile, pas simulé** :
+`appliquer_identite` normalisait `resultat.to_dict()` (qui rend la clé
+anglaise `status`) sans jamais écrire la clé `statut` que
+`appliquer_identite_personnage` vérifie — exactement le piège déjà
+documenté dans `agents/video/production_agent.py:
+_depuis_resultat_action`, retrouvé indépendamment ici parce qu'un double
+de test renvoyait déjà `{"statut": ...}` et ne pouvait donc jamais le
+révéler. Le test qui l'a levé (`TestPileReelle` puis
+`test_normalise_un_vrai_resultatAction...`, `tests/core/
+test_personnage_video.py`) construit le VRAI `RegistreConnecteurs` +
+VRAI `XaarKanameConnector`, jamais un double. Sabotage (retrait de la
+ligne de normalisation) → `KeyError: 'statut'`. Restauré → passe.
+
+135 tests dédiés/étendus (`tests/core/test_characters_registry.py` 16,
+`tests/core/test_personnage_video.py` 11, extensions à `tests/agents/
+video/test_production_agent.py` 11 nouveaux, `tests/test_personnages_router.py`
+10, extensions à `tests/test_video_production_router.py` 2 nouveaux) :
+persistance + provenance réelle (créer → générer deux fois → relire d'un
+nouveau chargement disque, jamais l'objet gardé en mémoire), image de
+référence jamais copiée, moteur non câblé refusé, licence/injection
+relevées jamais bloquées, échecs propres (image de référence absente,
+disparue entre-temps, fichier cible absent — jamais d'appel au moteur sur
+du vide), la vraie pile `RegistreConnecteurs`+`XaarKanameConnector` ne
+contourne jamais la confirmation, restart à froid réel (nouveau processus
+Python, `USMAN_PERSONNAGES_DIR` neuf, création puis relecture par vraie
+requête HTTP `TestClient` contre l'application réelle — pas un double).
+
+`python scripts/orphelins.py` : 267 modules, 212 atteints (+4/+3 sur
+263/209), aucun module réel endormi — les trois nouveaux modules réels
+sont tous atteints depuis leur premier commit, jamais orphelins.
+
+La suite complète a aussi attrapé, réellement, une deuxième chose que les
+tests ciblés ne pouvaient pas voir : `tests/test_surface_api.py` fige la
+liste exacte des routes HTTP d'ARENA — les quatre nouvelles routes
+`/api/personnages*` en étaient absentes, `test_la_liste_des_routes_est_
+exactement_celle_attendue` a échoué comme il est fait pour. Ajoutées à
+`SURFACE_ATTENDUE` avec leurs vraies dépendances (`verify_api_key`,
+`limiter_debit`) — pas un contournement du test, le filet a fonctionné.
+
+Suite complète (`python -m pytest -q`) : **4751 passed, 31 skipped, 48
+deselected, 0 failed** (482.83s / 8m02s, mesuré le 10/09/2026).
+
+### Ce que ça coûte si c'est faux
+
+La « cohérence » offerte ici est un remplacement de visage mesurable en
+post-traitement, pas un conditionnement amont — plus faible que ce
+qu'Agent Heroes obtient de ses fournisseurs cloud, et dit comme tel
+(Audit, section « Ce que la mission demande d'exposer honnêtement »). Si
+WanGP expose un jour un vrai paramètre de conditionnement par image,
+`composer_prompt` restera correct mais incomplet tant que ce module n'est
+pas explicitement mis à jour pour le lire — ce n'est pas un défaut caché,
+c'est la limite honnête du moteur qu'ARENA a aujourd'hui.
+
+Le pipeline personnage dépend de deux moteurs externes non installés sur
+cette machine de développement (WanGP, Deep-Live-Cam) : chaque test réel
+de ce périmètre rapporte honnêtement `NEEDS_CONFIRMATION`/`NOT_CONFIGURED`
+plutôt qu'un artefact produit — la même situation, mesurée de la même
+façon, que tous les autres moteurs vidéo externes d'ARENA sur cette
+machine.

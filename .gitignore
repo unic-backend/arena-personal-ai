@@ -48,6 +48,11 @@ data/rag/*
 data/audio/*
 data/montages/*
 !data/rag/.gitkeep
+# Personnages (mission ARENA x AGENT HEROES, DEC-0084) : identite et
+# provenance ecrites par le proprietaire, jamais du source versionne
+# (meme raison que data/travaux/*).
+data/personnages/*
+!data/personnages/.gitkeep
 logs/*.log
 
 # Node.js / Frontend

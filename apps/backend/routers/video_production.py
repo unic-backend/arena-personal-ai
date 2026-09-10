@@ -37,6 +37,10 @@ class ProjetVideoRequest(BaseModel):
     #: l'agent choisit parmi la liste fermee entiere.
     capacites: Optional[List[str]] = None
     parallelisme: Optional[int] = None
+    #: Personnage connu (`core/characters/registry.py`, DEC-0084) : ses
+    #: images de reference rejoignent `references`, son profil enrichit le
+    #: prompt de planification — voir `VideoProductionAgent.run`.
+    personnage_id: Optional[str] = None
 
 
 def _reference_sure(chemin_brut: str) -> str:
@@ -62,6 +66,8 @@ async def creer_projet_video(request: ProjetVideoRequest) -> Dict[str, Any]:
         contexte["capacites"] = request.capacites
     if request.parallelisme:
         contexte["parallelisme"] = request.parallelisme
+    if request.personnage_id:
+        contexte["personnage_id"] = request.personnage_id
 
     try:
         return await video_production_agent.run(request.objectif, context=contexte)
