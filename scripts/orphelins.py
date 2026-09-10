@@ -41,6 +41,22 @@ LANCES_EN_SOUS_PROCESSUS = {
     'core.connectors.ponts.faceplugin_pont': 'core/connectors/faceplugin.py',
 }
 
+#: Le service CSM (`tools/audio/csm_service/`, mission Sesame CSM, DEC-0080) :
+#: du code ARENA, versionne, jamais importe par ARENA elle-meme — ni
+#: directement, ni par un pont en sous-processus comme ci-dessus. C'est le
+#: PROPRIETAIRE qui le lance (`python server.py`), dans son propre
+#: environnement isole (`torch`/`transformers`, absents de l'environnement
+#: principal — le meler l'importerait dans ARENA). `core/connectors/csm.py`
+#: ne lui parle QUE par HTTP, jamais par import. Contrairement a
+#: `LANCES_EN_SOUS_PROCESSUS`, aucun code d'ARENA ne le demarre : c'est donc
+#: une categorie a part, pas le meme mecanisme deguise. Detail complet ->
+#: `docs/audits/sesame_csm_audit.md`, section « Isolation des dependances ».
+SERVICE_LANCE_PAR_LE_PROPRIETAIRE = frozenset({
+    'tools.audio.csm_service.server',
+    'tools.audio.csm_service.watermark',
+    'tools.audio.csm_service.test_server',
+})
+
 
 def _module_de(chemin: pathlib.Path) -> str:
     """`core/memory/semantique.py` -> `core.memory.semantique`, partout.
@@ -111,7 +127,7 @@ def est_reveillable(module: str) -> bool:
     portant ce nom. Une exemption survit toujours a sa raison ; c est pour ca
     qu elle doit partir avec elle.
     """
-    if module in LANCES_EN_SOUS_PROCESSUS:
+    if module in LANCES_EN_SOUS_PROCESSUS or module in SERVICE_LANCE_PAR_LE_PROPRIETAIRE:
         return False
     return not module.endswith('__init__')
 

@@ -451,6 +451,54 @@ def verifier_voicestudio(lecteur: Optional[Callable[[str], Any]] = None) -> Veri
         f"{detail} | transcription : {', '.join(ecoute) or 'aucune'}")
 
 
+def verifier_csm(lecteur: Optional[Callable[[str], Any]] = None) -> Verification:
+    """Sesame CSM, interroge pour de vrai — et si le filigrane est actif.
+
+    Meme discipline que `verifier_voicestudio` : un port qui repond ne dit
+    pas si un modele est charge. CSM ecrit en plus si un chargement a
+    precedemment echoue (`ce_qui_manque` de `/health`, typiquement un acces
+    Hugging Face gated non accepte) : on le relaie tel quel.
+
+    C'est un service SEPARE, mais fourni par ARENA elle-meme
+    (`tools/audio/csm_service/`), a lancer par le proprietaire dans son
+    propre environnement isole (`docs/audits/sesame_csm_audit.md`).
+    """
+    lire = lecteur or _lire_json
+    url = os.getenv("CSM_URL", "http://127.0.0.1:8901").rstrip("/")
+    try:
+        info = lire(f"{url}/health") or {}
+    except Exception:  # noqa: BLE001
+        return Verification(
+            "Voix conversationnelle (CSM)", NON_CONFIGURE, f"ne repond pas sur {url}",
+            "Lancer le service : cd tools/audio/csm_service && python server.py "
+            "(dans son propre venv, voir requirements.txt)")
+
+    if not info.get("model_loaded"):
+        return Verification(
+            "Voix conversationnelle (CSM)", NON_CONFIGURE,
+            f"repond sur {url}, mais aucun modele charge",
+            str(info.get("ce_qui_manque") or
+                "acces Hugging Face gated a sesame/csm-1b et meta-llama/Llama-3.2-1B."))
+
+    if not info.get("watermarking"):
+        # Un modele charge sans filigrane disponible n'est pas une panne :
+        # c'est une garantie de provenance absente, et /generate le refuse
+        # deja lui-meme (mission §12). Le doctor le dit quand meme, pour ne
+        # pas laisser croire a un [OK] plein.
+        return Verification(
+            "Voix conversationnelle (CSM)", NON_CONFIGURE,
+            f"modele charge sur {info.get('device') or '?'}, mais silentcipher "
+            "(filigrane) n'est pas installe : /generate refusera toute demande",
+            "Installer silentcipher dans l'environnement du service "
+            "(voir tools/audio/csm_service/requirements.txt).")
+
+    return Verification(
+        "Voix conversationnelle (CSM)", OK,
+        f"charge sur {info.get('device') or '?'} "
+        f"({'accelere' if info.get('device_is_accelerated') else 'processeur'}), "
+        "filigrane actif")
+
+
 def verifier_moneyprinter(lecteur: Optional[Callable[[str], Any]] = None) -> Verification:
     """Le service de video courte, interroge pour de vrai.
 
@@ -865,6 +913,7 @@ def diagnostiquer() -> Rapport:
         mesurer("WanGP (generation video)", verifier_wangp),
         mesurer("Video courte (MPT)", verifier_moneyprinter),
         mesurer("Voix (VoiceStudio)", verifier_voicestudio),
+        mesurer("Voix conversationnelle (CSM)", verifier_csm),
         mesurer("Metre de plan (OpenTakeoff)", verifier_opentakeoff),
         mesurer("Xaar Kaname (visage)", verifier_xaar_kaname),
         mesurer("Visages (Faceplugin)", verifier_faceplugin),

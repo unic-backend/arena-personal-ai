@@ -182,3 +182,46 @@ fournisseur de modèle — trois choses qu'ARENA a déjà ou refuse par principe
 
 Sa licence MIT aurait permis la copie. C'est l'architecture, pas le droit, qui
 s'y opposait.
+
+---
+
+## Sesame CSM — parole conversationnelle
+
+ARENA sait générer de la parole conversationnelle (anglais) en pilotant un
+service local séparé (`core/connectors/csm.py`,
+`tools/audio/csm_service/`).
+
+- Projet : Sesame CSM — https://github.com/SesameAILabs/csm
+- Modèle : https://huggingface.co/sesame/csm-1b
+- Licence : **Apache-2.0**, code ET poids (`LICENSE` du dépôt au commit
+  `daed31e`, et `license: apache-2.0` dans les métadonnées réelles de la
+  fiche HF, lues le 10/09/2026)
+- Audit complet → `docs/audits/sesame_csm_audit.md`
+
+**Aucune ligne du dépôt original n'est présente dans ce dépôt.** La licence
+Apache-2.0 l'aurait pourtant permis — contrairement à VoiceStudio (AGPL) ou
+KrillinAI (GPL), aucune obligation juridique ne s'y opposait. La frontière
+« service séparé » retenue ici est **technique**, pas juridique : isoler des
+dépendances étroitement épinglées (`torch`, `torchtune`, `torchao`, `moshi`)
+d'un `requirements.txt` déjà mis à mal une fois (Pillow vs `browser-use`,
+DEC-0079).
+
+`tools/audio/csm_service/server.py` est du code **original d'ARENA**, écrit
+contre l'API publique de `transformers.CsmForConditionalGeneration`
+(implémentation Transformers-native, préférée au runtime original — raisons
+dans l'audit).
+
+**Une exception à « aucune ligne copiée » : la clef de filigrane.**
+`tools/audio/csm_service/watermark.py` reprend littéralement
+`CSM_1B_GH_WATERMARK = [212, 211, 146, 56, 201]` du fichier
+`watermarking.py` du dépôt original (Apache-2.0) — Sesame publie
+elle-même cette clef pour identifier l'audio produit par CSM-1B
+spécifiquement. La mécanique qui l'utilise (rééchantillonnage à 44,1 kHz,
+encodage via `silentcipher`, rééchantillonnage au débit d'origine) est
+adaptée en quelques lignes, jamais copiée telle quelle. Cette reprise existe
+parce que l'implémentation Transformers-native choisie n'applique **aucun**
+filigrane par elle-même — vérifié directement dans le code source de
+`transformers` (`modeling_csm.py`, `generation_csm.py`, branche `main`,
+aucune occurrence de « watermark » ni « silentcipher » au 10/09/2026) —
+et la mission qui a motivé cette intégration exige que le filigrane de
+Sesame ne soit jamais silencieusement retiré.

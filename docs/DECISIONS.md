@@ -6605,3 +6605,109 @@ borné par la même raison que la finance : aucune action irréversible ne
 découle d'une navigation, seulement un texte de résultat marqué de sa
 classification — une classification optimiste reste visible comme telle
 dans `detail.verification`, jamais cachée derrière un `SUCCESS` plat.
+
+---
+
+## DEC-0080 — Parole conversationnelle : Sesame CSM audité, jamais par défaut
+
+**Date** : 10/09/2026
+**Statut** : accepté
+
+### Contexte
+
+Mission ARENA × SESAME CSM. Étudier `SesameAILabs/csm` (commit `daed31e`,
+Apache-2.0 de bout en bout) et intégrer sa vraie force — la parole
+conversationnelle — dans le routeur de voix existant d'ARENA
+(`core/audio/routage_tts.py`), sans dupliquer OmniVoice/VoiceStudio ni créer
+un second système de voix indépendant. Rapport complet →
+`docs/audits/sesame_csm_audit.md`.
+
+### Ce qui existait déjà, audité avant d'écrire une ligne
+
+Un routeur de voix **unique** (`core/audio/routage_tts.py::choisir`),
+alimenté par un seul connecteur (`core/connectors/audio_voix.py`, VoiceStudio
+par HTTP), lui-même utilisé par `AudioAgent` (parler/écouter/cloner) et par
+le pipeline vidéo (`production_agent.py::_appeler_narration`). **ACTIVE** de
+bout en bout, avec quinze moteurs déjà connus de son tableau de licences.
+Rien de tout cela n'a été dupliqué.
+
+### Décision
+
+**Un second connecteur, jamais un second routeur.** CSM entre dans le MÊME
+`choisir()` que VoiceStudio, comme un `MoteurTTS` de plus — pas un système
+parallèle. Trois pièces :
+
+1. `core/connectors/csm.py` — pilote un service local séparé
+   (`tools/audio/csm_service/`, code original d'ARENA) par HTTP, même
+   discipline que `audio_voix.py` (adresse locale seulement, succès = fichier
+   re-sondé, jamais la réponse HTTP seule).
+2. `core/audio/routage_tts.py` — `choisir()` gagne `langue` et
+   `conversationnel` : CSM est **exclu** hors anglais (son propre FAQ :
+   « it likely won't do well » ailleurs — mesure de Sesame, pas d'ARENA),
+   et n'est **préféré** que si l'appelant demande explicitement une
+   conversation. Jamais par défaut, jamais concurrent de Qwen/Vision/Video
+   pour la RTX A2000 sur un travail ordinaire.
+3. `agents/audio/audio_agent.py::_dialogue` — le SEUL endroit où les moteurs
+   des deux connecteurs se rencontrent : fusionne leurs listes, appelle
+   `choisir()`, dispatch vers le connecteur propriétaire du choix. CSM
+   injoignable ou en français ne bloque rien : VoiceStudio prend le relais
+   automatiquement (testé).
+
+### Ce qui a été délibérément refusé
+
+- **Aucun chemin de clonage vocal chez CSM.** Il sait conditionner sur un
+  enregistrement fourni (« audio prompting ») ; ce chemin n'est jamais
+  exposé — même règle absolue que `core/connectors/krillinai.py` pour le
+  même risque (média synthétique imitant une personne réelle). Le seul
+  clonage vocal d'ARENA reste `audio_voix.py::_cloner`, avec son
+  autorisation exigée dans le code même.
+- **Aucune langue promise au-delà de l'anglais.** Le FAQ officiel du dépôt
+  le dit lui-même ; `LICENCES["sesame-csm-1b"].langues = frozenset({"en"})`
+  l'applique, jamais contournable en nommant le moteur explicitement.
+- **Le runtime original de CSM.** L'implémentation Transformers-native est
+  préférée (maintenue, dépendances stables) — mais elle n'applique PAS le
+  filigrane de Sesame par elle-même (vérifié : zéro occurrence de
+  « watermark »/« silentcipher » dans `modeling_csm.py`/`generation_csm.py`
+  de `transformers`). `tools/audio/csm_service/watermark.py` le réapplique
+  lui-même, systématiquement, avec la clef publique de Sesame pour ce
+  checkpoint — trois refus en cascade (service, connecteur) si le filigrane
+  échoue, jamais un fichier sans provenance renvoyé.
+
+### Vérification
+
+`ruff check .` propre. Trois sabotages, trois restaurations, chacun confirmé
+cassant exactement et seulement son (ses) test(s) propre(s) :
+
+1. La restriction de langue dans `_exclusion` (`routage_tts.py`) — retirée →
+   4 tests du routeur + 1 test de routage croisé côté agent échouent (un
+   test de français choisissait CSM). Restaurée.
+2. Le refus `X-CSM-Watermarked: false` côté connecteur (`csm.py`) — retiré →
+   un fichier non filigrané est gardé et déclaré succès. Restauré.
+3. Le refus `filigrane_ok is False` côté service (`server.py`, testé dans son
+   propre environnement isolé) — retiré → un audio non filigrané part avec
+   un code 200. Restauré.
+
+Service CSM testé en direct, dans un venv isolé, contre le VRAI service HTTP
+(pas un double) : `/health` ne charge rien avant le premier appel (confirmé),
+`/generate` tente un vrai chargement Hugging Face et échoue avec le message
+RÉEL d'un accès gated non authentifié (`401 Client Error`, cité tel quel) —
+relayé sans déformation jusqu'à `ConnecteurCsm.sonder()`, vérifié bout en
+bout. `tools/audio/csm_service/test_server.py` (11 tests, sa propre suite
+isolée — hors `pytest tests/` d'ARENA, `torch` n'y est pas installé) :
+11 passed.
+
+Suite complète (`python -m pytest tests/ -q`) : 4582 passed, 31 skipped,
+48 deselected, 0 failed (509.25s / 8m29s, mesuré le 10/09/2026).
+
+### Ce que ça coûte si c'est faux
+
+Aucun GPU ni accès Hugging Face gated n'était disponible dans ce bac à sable
+pour cette mission : le chargement réel du modèle, la VRAM réelle, la durée
+de génération réelle sur la RTX A2000 cible **n'ont pas pu être mesurés
+ici**, et ne sont affirmés nulle part — ni dans le code (qui rapporte
+`device`/`device_is_accelerated` comme des mesures faites à l'instant de
+l'appel, jamais des constantes), ni dans cette décision. Si le comportement
+réel sur cette carte diverge de ce que le code suppose (temps de génération,
+mémoire), le premier lancement du propriétaire le révélera — `/health` et le
+doctor (`verifier_csm`) sont conçus pour le dire immédiatement, jamais pour
+le cacher derrière un `[OK]` optimiste.

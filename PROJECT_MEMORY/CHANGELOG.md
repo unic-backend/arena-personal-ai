@@ -563,3 +563,68 @@ l'enveloppe de confiance (TEST 10, injection de prompt).
 `ruff check .` propre. Suite complète (`python -m pytest tests/ -q`) :
 4534 passed, 31 skipped, 48 deselected, 0 failed (422.57s / 7m02s, mesuré
 le 10/09/2026, confirmé par une seconde mesure indépendante).
+
+---
+
+## 2026-09-10 (suite) — Parole conversationnelle : Sesame CSM audité, jamais par défaut (DEC-0080)
+
+Mission : étudier `SesameAILabs/csm` et intégrer sa vraie force — la
+conversation — dans le routeur de voix existant d'ARENA, sans créer de
+second système. Détail complet : `docs/DECISIONS.md` DEC-0080,
+`docs/audits/sesame_csm_audit.md`.
+
+**ARENA avait déjà un routeur de voix unique** (`core/audio/routage_tts.py`,
+DEC-0069), alimenté par VoiceStudio. Rien à dupliquer côté architecture —
+CSM entre dans le MÊME `choisir()`, comme un moteur de plus, jamais un
+second routeur. Code et poids Apache-2.0 de bout en bout (vérifié
+directement, pas supposé du README) : aucune contrainte juridique, à la
+différence de VoiceStudio (AGPL) ou KrillinAI (GPL) — la frontière « service
+séparé » retenue ici est purement technique (isoler des dépendances
+étroitement épinglées : `torch`, `torchtune`, `torchao`, `moshi`).
+
+**Une vraie trouvaille en comparant les deux implémentations** (mission
+§8) : l'implémentation Transformers-native de CSM (préférée — maintenue,
+dépendances stables) n'applique PAS le filigrane que le runtime original de
+Sesame applique systématiquement — vérifié directement dans le code source
+de `transformers` (zéro occurrence de « watermark »/« silentcipher »).
+`tools/audio/csm_service/watermark.py` le réapplique lui-même, avec la clef
+publique que Sesame publie pour ce checkpoint précis — trois refus en
+cascade si le filigrane échoue, jamais un fichier sans provenance renvoyé.
+
+**Testé en direct, dans un environnement isolé, contre le vrai service HTTP**
+(pas un double) : `/health` ne charge rien avant le premier appel, confirmé
+; `/generate` tente un vrai chargement Hugging Face et échoue avec le
+message RÉEL d'un accès gated non authentifié (`401 Client Error`, cité tel
+quel) — relayé sans déformation jusqu'au connecteur ARENA, vérifié bout en
+bout. Aucun GPU ni accès HF gated disponible ici : le chargement réel du
+modèle, la VRAM et la durée de génération sur la RTX A2000 cible n'ont pas
+pu être mesurés — non affirmés nulle part, **limitation documentée**.
+
+**Corrigé/créé** :
+
+| Fichier | Changement |
+|---|---|
+| `core/audio/routage_tts.py` | `choisir()` gagne `langue`/`conversationnel` — CSM exclu hors anglais (son propre FAQ), préféré seulement si demandé explicitement |
+| `core/audio/verification.py` (nouveau) | Extrait de `audio_voix.py` : `hote_local_ou_refuse`/`sonder_le_fichier`/`ressemble_a_du_wav`, partagés avec `csm.py` — évite la duplication que la mission interdit |
+| `core/connectors/csm.py` (nouveau) | Pilote `tools/audio/csm_service/` par HTTP — aucune capacité de clonage, jamais un fichier de référence transmis |
+| `agents/audio/audio_agent.py` | `_dialogue` — le SEUL endroit où les moteurs de `audio` et `csm` se rencontrent ; CSM injoignable ou en français fait retomber le choix sur VoiceStudio sans rien casser |
+| `agents/video/production_agent.py` | `_appeler_narration` transmet `conversationnel`/`conversation`/`speaker` quand le plan le demande — inchangé sinon |
+| `tools/audio/csm_service/` (nouveau) | Service HTTP original d'ARENA, environnement isolé, sa propre suite de tests (hors `pytest tests/` — `torch` n'y est pas installé) |
+| `config/permissions_services.yaml`, `scripts/doctor.py`, `apps/backend/runtime.py` | Permissions, diagnostic (`verifier_csm`), enregistrement du connecteur |
+
+**Délibérément pas fait** : aucun chemin de clonage vocal chez CSM (même
+règle absolue que KrillinAI pour le même risque) ; aucune langue promise
+au-delà de l'anglais sans mesure réelle ; le runtime original de CSM (la
+version Transformers-native est préférée, filigrane réappliqué).
+
+Trois sabotages, trois restaurations : la restriction de langue du routeur
+(retirée → un test en français choisissait CSM), le refus de filigrane côté
+connecteur (retiré → un fichier non filigrané gardé et déclaré succès), le
+même refus côté service (retiré → un audio non filigrané partait avec un
+code 200).
+
+`ruff check .` propre. Suite complète (`python -m pytest tests/ -q`) :
+4582 passed, 31 skipped, 48 deselected, 0 failed (509.25s / 8m29s, mesuré
+le 10/09/2026). Suite isolée du service CSM
+(`tools/audio/csm_service/test_server.py`, son propre environnement) :
+11 passed.

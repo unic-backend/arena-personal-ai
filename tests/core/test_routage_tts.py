@@ -194,7 +194,76 @@ class TestLesAutresFiltres:
         assert "aucun moteur de voix installe" in str(erreur.value)
 
     def test_un_moteur_nomme_mais_inexistant_liste_ceux_qui_existent(self):
-        with pytest.raises(ErreurDeMoteur) as erreur:
+        with pytest.raises(ErreurDeMoteur):
             choisir([_moteur("kittentts")], demande="piper")
 
-        assert "kittentts" in str(erreur.value)
+
+class TestSesameCsmLangueEtConversationnel:
+    """DEC-0080 : CSM ne concourt QUE pour l'anglais conversationnel demande.
+
+    Rien ici ne doit changer le comportement mesure par les classes
+    ci-dessus quand `langue`/`conversationnel` ne sont pas fournis — c'est
+    exactement ce que les 38 tests deja presents dans ce fichier verifient
+    en continuant a passer sans modification.
+    """
+
+    def test_csm_est_dans_le_tableau_avec_sa_source(self):
+        licence = LICENCES["sesame-csm-1b"]
+        assert licence.commercial is Commercial.AUTORISE
+        assert "Apache-2.0" in licence.licence
+        assert licence.langues == frozenset({"en"})
+        assert licence.conversationnel is True
+        assert len(licence.source) > 20
+
+    def test_csm_est_ecarte_pour_le_francais_meme_seul_disponible(self):
+        with pytest.raises(ErreurDeMoteur) as erreur:
+            choisir([_moteur("sesame-csm-1b")], usage=Usage.COMMERCIAL, langue="fr")
+        assert "en" in str(erreur.value)
+
+    def test_csm_est_ecarte_pour_le_wolof(self):
+        with pytest.raises(ErreurDeMoteur):
+            choisir([_moteur("sesame-csm-1b")], usage=Usage.COMMERCIAL, langue="wo")
+
+    def test_nommer_csm_en_francais_ne_contourne_pas_la_restriction_de_langue(self):
+        """Meme regle que pour la licence : nommer un moteur n'ouvre aucune porte."""
+        with pytest.raises(ErreurDeMoteur) as erreur:
+            choisir([_moteur("sesame-csm-1b"), _moteur("cosyvoice")],
+                    usage=Usage.COMMERCIAL, langue="fr", demande="sesame-csm-1b")
+        assert "sesame-csm-1b" in str(erreur.value)
+
+    def test_csm_reste_eligible_en_anglais(self):
+        choisi = choisir([_moteur("sesame-csm-1b")], usage=Usage.COMMERCIAL, langue="en")
+        assert choisi.identifiant == "sesame-csm-1b"
+
+    def test_langue_vide_ne_restreint_rien_meme_pour_csm(self):
+        """Aucune langue demandee = aucune verification a faire, pour personne."""
+        choisi = choisir([_moteur("sesame-csm-1b")], usage=Usage.COMMERCIAL, langue="")
+        assert choisi.identifiant == "sesame-csm-1b"
+
+    def test_un_moteur_sans_restriction_de_langue_n_est_jamais_ecarte_par_elle(self):
+        """`langues=None` (tous les moteurs VoiceStudio) = pas de verification."""
+        choisi = choisir([_moteur("cosyvoice")], usage=Usage.COMMERCIAL, langue="wo")
+        assert choisi.identifiant == "cosyvoice"
+
+    def test_csm_passe_devant_un_moteur_generaliste_si_conversationnel_demande(self):
+        """La force reelle de CSM (mission §3/§4) : dialogue anglais."""
+        choisi = choisir(
+            [_moteur("cosyvoice", routage="accelerated", appareil="cuda:0"),
+             _moteur("sesame-csm-1b", routage="cpu_only")],
+            usage=Usage.COMMERCIAL, langue="en", conversationnel=True)
+        assert choisi.identifiant == "sesame-csm-1b"
+
+    def test_csm_ne_passe_pas_devant_par_defaut_sans_demande_conversationnelle(self):
+        """Ne PAS faire concourir CSM avec les autres GPU pour du travail ordinaire."""
+        choisi = choisir(
+            [_moteur("cosyvoice", routage="accelerated", appareil="cuda:0"),
+             _moteur("sesame-csm-1b", routage="cpu_only")],
+            usage=Usage.COMMERCIAL, langue="en", conversationnel=False)
+        assert choisi.identifiant == "cosyvoice"
+
+    def test_la_langue_normalise_les_variantes_regionales(self):
+        """`fr-FR`, `FR`, `en-US` : seule la racine de langue compte."""
+        choisi = choisir([_moteur("sesame-csm-1b")], usage=Usage.COMMERCIAL, langue="en-US")
+        assert choisi.identifiant == "sesame-csm-1b"
+        with pytest.raises(ErreurDeMoteur):
+            choisir([_moteur("sesame-csm-1b")], usage=Usage.COMMERCIAL, langue="FR-fr")

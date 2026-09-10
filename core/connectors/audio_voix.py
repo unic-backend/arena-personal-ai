@@ -38,11 +38,9 @@ from __future__ import annotations
 
 import logging
 import os
-import subprocess
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
 
 import httpx
 
@@ -54,6 +52,12 @@ from core.audio.routage_tts import (
     Usage,
     choisir,
     moteurs_depuis,
+)
+from core.audio.verification import (
+    AdresseNonLocale,
+    hote_local_ou_refuse,
+    ressemble_a_du_wav,
+    sonder_le_fichier,
 )
 from core.connectors.base import Capacite, Connecteur, EtatSante, Sante
 
@@ -70,96 +74,27 @@ DOSSIER_AUDIO = Path("data") / "audio"
 #: d'audio transcrits en ~4 s avec `faster-whisper base`.
 DELAI_SECONDES = 600.0
 
-#: Les hotes acceptes. La regle 3 vit ici, et nulle part ailleurs.
-HOTES_LOCAUX = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
-
 CE_QUI_MANQUE = (
     "VoiceStudio ne repond pas sur {url}. C'est un programme separe (AGPL-3.0) "
     "qu'ARENA pilote, jamais un module d'ARENA : demarre-le, puis reessaie."
 )
 
 
-class AdresseNonLocale(ValueError):
-    """`OMNIVOICE_URL` sort de la machine. La voix ne part pas."""
-
-
 def url_de_voicestudio() -> str:
     """L'adresse de VoiceStudio, refusee si elle n'est pas locale.
+
+    Regle 3, sa mesure (`ressemble_a_du_wav`/`sonder_le_fichier`) et
+    l'exception `AdresseNonLocale` vivent maintenant dans
+    `core/audio/verification.py`, partagees avec `core/connectors/csm.py` —
+    voir ce module pour pourquoi (mission Sesame CSM, DEC-0080). Importees
+    ci-dessus, elles restent utilisables sous ces memes noms depuis ce
+    fichier : aucun appelant existant n'a besoin de changer.
 
     Raises:
         AdresseNonLocale: si l'hote configure n'est pas la boucle locale.
     """
     url = os.environ.get("OMNIVOICE_URL", URL_PAR_DEFAUT).rstrip("/")
-    hote = urlparse(url).hostname
-    if hote not in HOTES_LOCAUX:
-        raise AdresseNonLocale(
-            f"OMNIVOICE_URL pointe vers « {hote} », hors de cette machine. "
-            "Les voix et les enregistrements restent locaux : refuse."
-        )
-    return url
-
-
-def ressemble_a_du_wav(chemin: Path) -> bool:
-    """Le fichier porte-t-il l'en-tête d'un WAV : « RIFF » … « WAVE » ?
-
-    Ce n'est **pas** une mesure de durée et ne la remplace pas. C'est le seul
-    contrôle possible quand `ffprobe` manque, et il suffit à distinguer un son
-    d'un message d'erreur que VoiceStudio aurait renvoyé avec un code 200 —
-    ce que la règle 2 cherche précisément à attraper.
-    """
-    try:
-        with chemin.open("rb") as flux:
-            entete = flux.read(12)
-    except OSError:
-        return False
-    return entete[:4] == b"RIFF" and entete[8:12] == b"WAVE"
-
-
-def sonder_le_fichier(chemin: Path, ffprobe: str = "ffprobe") -> Dict[str, Any]:
-    """Ce que ffprobe mesure sur un fichier audio. Rien n'est suppose.
-
-    Un champ que la sonde ne donne pas reste `None` — jamais `0`, qui se
-    lirait comme une mesure.
-
-    `sonde_disponible` dit si `ffprobe` a pu repondre. **Sans lui, `duree_ms`
-    vaut `None` pour une raison qui ne concerne pas le fichier**, et confondre
-    les deux revenait a jeter un son valide : mesure du 02/09/2026, un WAV
-    reel de 2 s et 176 478 octets supprime parce que `ffprobe` manquait.
-    """
-    inconnu: Dict[str, Any] = {"duree_ms": None, "octets": None, "format": None,
-                               "sonde_disponible": None}
-    if not chemin.is_file():
-        return inconnu
-    inconnu["octets"] = chemin.stat().st_size
-    try:
-        sortie = subprocess.run(
-            [ffprobe, "-v", "error", "-show_entries",
-             "format=duration,format_name", "-of", "default=nw=1:nk=1", str(chemin)],
-            capture_output=True, text=True, timeout=60)
-    except (OSError, subprocess.SubprocessError) as erreur:
-        logger.warning("ffprobe indisponible pour %s : %s", chemin, erreur)
-        inconnu["sonde_disponible"] = False
-        return inconnu
-
-    inconnu["sonde_disponible"] = True
-    # L'ordre des lignes n'est PAS celui demande a `-show_entries` : ffprobe
-    # rend `format_name` d'abord, `duration` ensuite. Lire « la derniere
-    # ligne » comme le format laissait donc ce champ toujours `None`, sur des
-    # fichiers parfaitement mesurables (mesure du 02/09/2026). Chaque ligne est
-    # maintenant reconnue pour ce qu'elle est, jamais pour sa position.
-    for brute in sortie.stdout.splitlines():
-        ligne = brute.strip()
-        if not ligne:
-            continue
-        try:
-            duree = float(ligne)
-        except ValueError:
-            if inconnu["format"] is None:
-                inconnu["format"] = ligne
-        else:
-            if inconnu["duree_ms"] is None:
-                inconnu["duree_ms"] = int(round(duree * 1000))
-    return inconnu
+    return hote_local_ou_refuse(url, "OMNIVOICE_URL")
 
 
 def usage_demande(valeur: str) -> Usage:
