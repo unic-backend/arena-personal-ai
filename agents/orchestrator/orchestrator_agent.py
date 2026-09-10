@@ -94,6 +94,7 @@ INTENTIONS = {
     "UI_GENERATE",
     "PREUVE_FORMELLE",
     "ARCHITECTURE_3D",
+    "FINANCE",
 }
 
 #: Ce qui demande de CONSTRUIRE ou d'INSPECTER un batiment en 3D. Teste
@@ -107,6 +108,38 @@ ARCHITECTURE_3D = (
     "cree une maison", "crée une maison", "creer une maison", "créer une maison",
     "construis une maison", "construis un batiment", "construis un bâtiment",
     "trace les murs", "trace un mur", "scene 3d", "scène 3d",
+)
+
+#: Actifs financiers nommes sans ambiguite (noms complets). Les tickers
+#: courts (BTC, ETH, SOL...) ne sont PAS ici : en sous-chaine simple, "sol"
+#: matche "isole", "solution", "resolu" — ils sont testes a part, par un
+#: motif a frontieres de mot (`_MOTIF_TICKER_FINANCE`).
+ACTIFS_FINANCE = (
+    "bitcoin", "ethereum", "solana", "cardano", "dogecoin", "litecoin",
+    "polkadot", "chainlink", "ripple", "crypto", "cryptomonnaie",
+    "cryptomonnaies", "marche financier", "marché financier", "marche crypto",
+    "marché crypto", "bourse", "action boursiere", "action boursière",
+)
+
+_MOTIF_TICKER_FINANCE = re.compile(r"\b(btc|eth|sol|bnb|xrp|ada|dot|avax)\b", re.IGNORECASE)
+
+
+def _nomme_un_actif_financier(texte: str) -> bool:
+    return any(mot in texte for mot in ACTIFS_FINANCE) or bool(_MOTIF_TICKER_FINANCE.search(texte))
+
+
+#: Ce qui demande une ANALYSE ou une EVALUATION DE RISQUE financiere — jamais
+#: une simple question de prix, que FRESH_INFO traite deja sans calcul
+#: quantitatif ni moteur de risque. Le VERBE separe les deux, comme pour
+#: ARCHITECTURE_3D/VISION plus haut : « le cours du bitcoin ? » reste
+#: FRESH_INFO, « analyse le bitcoin » va au Director financier
+#: (agents/finance/finance_agent.py).
+VERBES_FINANCE = (
+    "analyse", "analyses", "évalue le risque", "evalue le risque",
+    "risque de cette position", "risque de ce marche", "risque de ce marché",
+    "volatilite de", "volatilité de", "dois-je investir", "faut-il investir",
+    "vaut-il investir", "recommandation d'investissement",
+    "recommandation d investissement", "portefeuille simule", "portefeuille simulé",
 )
 
 #: Ce qui parle de ses RESEAUX SOCIAUX. Teste avant le metier : « une
@@ -503,11 +536,19 @@ VISION          : comprendre une image, une photo, un plan ou une capture
 UI_GENERATE     : générer le CODE d'une interface visuelle (page web, écran
                   d'application, tableau de bord) à partir d'une description —
                   pas la logique d'un programme, l'apparence d'une interface.
+FINANCE         : analyser un actif financier (crypto, action, marché) —
+                  tendance, indicateurs quantitatifs, risque, portefeuille
+                  simulé. PAS une simple question de prix ou de cours, qui
+                  reste FRESH_INFO ; ici il s'agit d'évaluer, de chiffrer un
+                  risque, ou de recommander (« analyse le bitcoin »,
+                  « quel est le risque de cette position »).
 
 Attention : parler DE code, DE maths ou D'une erreur n'est pas demander d'en produire.
 « Explique-moi le code de la route » est CHAT, pas CODE_EXECUTION.
 Une question sur un fait qui peut avoir change depuis est FRESH_INFO, pas CHAT :
 « Quelle est la derniere version de Python ? » demande de verifier, pas de se souvenir.
+« Quel est le cours du bitcoin ? » est FRESH_INFO (un chiffre) ;
+« Analyse le bitcoin » est FINANCE (une évaluation).
 
 Demande : {demande}
 
@@ -588,6 +629,23 @@ class OrchestratorAgent(BaseAgent):
         """
         return any(motif in (user_input or "").lower() for motif in COURRIER)
 
+    @staticmethod
+    def demande_financiere(user_input: str) -> bool:
+        """Dit si la phrase demande une ANALYSE financiere — jamais une
+        simple question de prix (FRESH_INFO garde ce cas, sans calcul
+        quantitatif ni moteur de risque).
+
+        Evaluee avant `exige_verification()`, meme raison que
+        `demande_de_courrier()` : « analyse le bitcoin aujourd'hui » contient
+        « aujourd'hui » (`FORMULATIONS_COURANTES`) et partirait sinon en
+        simple recherche web plutot que vers le Director financier
+        (`agents/finance/finance_agent.py`). Verbe ET actif exiges, tous les
+        deux : « analyse ce devis » n'a pas d'actif, « le bitcoin a chute »
+        n'a pas de verbe d'analyse — ni l'un ni l'autre seul ne suffit.
+        """
+        texte = (user_input or "").lower()
+        return any(v in texte for v in VERBES_FINANCE) and _nomme_un_actif_financier(texte)
+
     async def analyze_intent(self, user_input: str, espace: Optional[str] = None) -> str:
         """Détermine vers quel agent envoyer la demande.
 
@@ -596,15 +654,17 @@ class OrchestratorAgent(BaseAgent):
         son agent, sans appeler le modele classeur — l'utilisateur a deja dit
         ou il voulait aller en cliquant dessus.
 
-        Quatre controles determinstes passent avant l'espace, dans cet ordre :
-        question personnelle, salutation pure, demande de courrier, puis
-        controle date. Aucun des quatre ne coute rien, et chacun rattrape ce
-        que l'espace ne peut pas savoir mieux qu'une phrase ordinaire — une
-        salutation depuis « UniC Plaquiste » ne doit pas faire rediger un
-        devis fabrique. Le courrier passe AVANT le controle date : « combien
-        de mail aujourd'hui » contient « aujourd'hui »
-        (`FORMULATIONS_COURANTES`) et partirait sinon en recherche web plutot
-        que d'ouvrir Gmail (trouve le 31/08/2026).
+        Cinq controles determinstes passent avant l'espace, dans cet ordre :
+        question personnelle, salutation pure, demande de courrier, demande
+        financiere, puis controle date. Aucun des cinq ne coute rien, et
+        chacun rattrape ce que l'espace ne peut pas savoir mieux qu'une
+        phrase ordinaire — une salutation depuis « UniC Plaquiste » ne doit
+        pas faire rediger un devis fabrique. Le courrier et la finance
+        passent AVANT le controle date : « combien de mail aujourd'hui » et
+        « analyse le bitcoin aujourd'hui » contiennent tous deux
+        « aujourd'hui » (`FORMULATIONS_COURANTES`) et partiraient sinon en
+        recherche web plutot que vers Gmail ou le Director financier
+        (trouve le 31/08/2026, meme mecanisme applique a la finance).
 
         Ensuite seulement l'espace, puis le modele. S'ils sont indisponibles ou
         repondent autre chose qu'une etiquette connue, on retombe sur les
@@ -622,6 +682,10 @@ class OrchestratorAgent(BaseAgent):
         if self.demande_de_courrier(user_input):
             logger.info("Demande de courrier explicite -> EMAIL, avant le controle date")
             return "EMAIL"
+
+        if self.demande_financiere(user_input):
+            logger.info("Demande d'analyse financiere explicite -> FINANCE, avant le controle date")
+            return "FINANCE"
 
         if self.exige_verification(user_input):
             logger.info("Contrôle daté : la question demande une vérification -> FRESH_INFO")
@@ -705,6 +769,16 @@ class OrchestratorAgent(BaseAgent):
         # enverraient chercher l actualite sur le web.
         if any(k in text for k in AGENDA):
             return "PLAQUISTE"
+
+        # Analyse financiere. Teste AVANT fresh_keywords, meme raison que
+        # l'agenda juste au-dessus : « analyse le bitcoin aujourd'hui »
+        # contient « aujourd'hui » et partirait sinon en simple recherche web.
+        # Appelee sur la CLASSE, jamais `self` : `_classer_par_mots_cles` est
+        # aussi appelee sans instance dans les tests (`Classe._methode(None, ...)`),
+        # exactement comme le reste de cette methode ne s'appuie sur aucun
+        # etat de `self`.
+        if OrchestratorAgent.demande_financiere(user_input):
+            return "FINANCE"
 
         # Information fraiche : la reponse a pu changer depuis l'entrainement du modele.
         fresh_keywords = [

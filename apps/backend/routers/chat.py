@@ -27,6 +27,7 @@ from apps.backend.runtime import (
     editor_agent,
     email_agent,
     fast_provider,
+    finance_agent,
     formel_agent,
     fresh_agent,
     graphrag_tool,
@@ -499,6 +500,11 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         result = await coder_agent.run(request.prompt)
     elif intent == "TREND_SEARCH":
         result = await trend_agent.run(request.prompt, context={"region": request.region})
+    elif intent == "FINANCE":
+        # Donnees reelles -> calcul deterministe -> risque -> interpretation
+        # (agents/finance/finance_agent.py). Jamais d'ordre reel : aucune
+        # capacite d'ecriture n'existe sur le connecteur market_data.
+        result = await finance_agent.run(request.prompt)
     elif intent == "VISAGE":
         # Analyse de visages par le SDK Faceplugin, via le registre — jamais
         # en direct : c'est le registre qui applique la permission, et deux de

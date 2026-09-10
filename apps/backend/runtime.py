@@ -15,6 +15,7 @@ from agents.coder.coder_agent import CoderAgent
 from agents.dioumtoukay.dioumtoukay_agent import DioumtoukayAgent
 from agents.editor.editor_agent import EditorAgent
 from agents.email.email_agent import EmailAgent
+from agents.finance.finance_agent import FinanceAgent
 from agents.formel.formel_agent import FormelAgent
 from agents.fresh_info.fresh_info_agent import FreshInfoAgent
 from agents.montage.montage_agent import MontageAgent
@@ -68,6 +69,7 @@ from core.connectors.ifc import ConnecteurIfc
 from core.connectors.ifc_generation import ConnecteurIfcGeneration
 from core.connectors.krillinai import ConnecteurKrillinAI
 from core.connectors.lean_formel import ConnecteurLeanFormel
+from core.connectors.market_data import ConnecteurMarketData
 from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.montage import ConnecteurMontage
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
@@ -150,6 +152,14 @@ registre.declarer(
     "tiktok",
     lambda: TikTokConnector(acces=acces, journal=journal, file_attente=file_attente,
                             crochets=crochets),
+)
+# Donnees de marche (CoinGecko, lecture seule, sans cle) : intelligence
+# financiere, DEC a venir. Aucune capacite d'ecriture n'est declaree — voir
+# core/connectors/market_data.py.
+registre.declarer(
+    "market_data",
+    lambda: ConnecteurMarketData(acces=acces, journal=journal, file_attente=file_attente,
+                                 crochets=crochets),
 )
 # Premier connecteur reellement operationnel : GalsenAPI est publique, donc il
 # ne depend d'aucun secret et n'est pas gele par la purge en attente.
@@ -573,6 +583,11 @@ browser_agent = BrowserAgent(provider=fast_provider, memory=memory, registre=reg
 formel_agent = FormelAgent(provider=deep_provider, memory=memory, registre=registre)
 # Agent d'information fraiche : il lit le web avant de repondre.
 fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)
+# Intelligence financiere (DEC a venir, audit AutoHedge) : donnees reelles,
+# calcul deterministe (core/finance/), interpretation seulement en dernier —
+# `deep_provider` parce que commenter des chiffres sans en inventer demande
+# plus qu'une passe rapide.
+finance_agent = FinanceAgent(provider=deep_provider, memory=memory, registre=registre)
 repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory, registre=registre)
 swe_agent = SWEAgent(provider=coder_provider, memory=memory)
 # Dioumtoukay : celui qui AGIT sur la machine (DEC-0038). Il recoit le

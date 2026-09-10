@@ -6370,3 +6370,117 @@ faire » n'est jamais un échec silencieux. Un seuil trop haut laisserait un
 modèle bloqué consommer des tours pour rien jusqu'à `TOURS_MAX` — c'était
 déjà le risque avant cette mission ; les deux gardes ne font que le
 réduire, jamais l'aggraver.
+
+---
+
+## DEC-0078 — Intelligence financière : moteur quant/risque déterministe, AutoHedge audité et non copié
+
+**Date** : 10/09/2026
+**Statut** : accepté
+
+### La mission
+
+Étudier `The-Swarm-Corporation/AutoHedge` (MIT) — un « fonds spéculatif
+autonome » multi-agents (Director/Quant/Risk/Execution, Solana/Jupiter) —
+et en extraire ce qui renforce une capacité d'analyse financière pour
+ARENA. Jamais un second fonds spéculatif, jamais un ordre réel, jamais un
+portefeuille réel. Audit complet : `docs/audits/autohedge_audit.md`.
+
+### Ce qu'ARENA n'avait pas, mesuré avant tout code
+
+Aucune trace de finance, de crypto ou de trading nulle part dans le dépôt
+avant cette mission : `docs/DECISIONS.md`, `PROJECT_MEMORY/`, et une
+recherche `grep -rli "finance\|trading\|market.data\|quant\|risk.engine"`
+sur `agents/`, `core/`, `tools/`, `apps/` ne trouvaient que des faux
+positifs (« financière » dans une phrase de prose, « chiffre » du métier
+plaquiste). `TrendAnalyzerAgent` existait déjà, mais analyse des
+tendances de CONTENU vidéo, pas de marché.
+
+### L'audit, testé, pas seulement lu
+
+`AutoHedge.run(task)` n'appelle qu'**un seul agent** (`director_agent`,
+`swarms.Agent(handoffs=[...])`) : le diagramme du README (Director ->
+Quant -> Risk -> Execution) est une intention du LLM directeur, jamais un
+pipeline fixé dans le code. Aucun agent — Quant, Risque, Exécution — ne
+reçoit d'outil (`tools=`) : leurs « calculs » (RSI, VaR, position sizing)
+sont du texte généré, confirmé par l'absence totale de `numpy`/`pandas`
+en dehors de code mort (`yahoo_api.py`, jamais importé). Les outils
+Jupiter (Solana) sont réels et **testés en direct** ici (prix SOL obtenu,
+cohérent avec CoinGecko ; requête de swap réelle atteignant l'API Jupiter
+Ultra, refusée faute de fonds sur un portefeuille jetable non financé) —
+mais `tools_registry.get_tools()` n'est importé nulle part dans le
+produit : injoignables depuis `AutoHedge.run()`. Aucun test dans tout le
+dépôt malgré cinq workflows CI qui en réclament. Aucune boucle autonome.
+Détail complet, capacité par capacité : `docs/audits/autohedge_audit.md`.
+
+### Ce qui a été construit dans ARENA
+
+| Composant | Rôle |
+|---|---|
+| `core/connectors/market_data.py` | Connecteur CoinGecko (prix + historique), lecture seule, sans clé — même cadre `Connecteur` que tout le reste (`core/connectors/base.py`), donc santé mesurée, permissions, quotas, journal |
+| `core/finance/quant.py` | Arithmétique pure (rendements, volatilité, SMA/EMA, RSI, MACD, Bollinger, support/résistance, drawdown, corrélation) — zéro appel modèle, zéro appel réseau |
+| `core/finance/risk.py` | Classification de risque déterministe (volatilité, drawdown, concentration HHI) et scénarios (stop-loss, taille de position) — seuils fixés dans le code, jamais ajustés pour un résultat souhaité |
+| `core/finance/paper_trading.py` | Portefeuille simulé, comptabilité SQLite déterministe — aucun ordre réel, aucune clé de portefeuille nulle part dans le fichier (vérifié par test) |
+| `core/finance/structured_output.py` | Le schéma de sortie fixe (§9 de la mission) |
+| `agents/finance/finance_agent.py` | Le « Director » d'ARENA : données réelles -> calcul -> risque -> interprétation, dans cet ordre fixé dans le CODE, jamais laissé au modèle. Réutilise `tools/search/web_search_tool.py` (même outil que `TrendAnalyzerAgent`) pour le contexte d'actualité — aucun second moteur de recherche |
+| `agents/orchestrator/orchestrator_agent.py` | Nouvelle intention `FINANCE`, avec son propre contrôle déterministe (`demande_financiere`), placé — comme celui du courrier (mesure du 31/08/2026) — AVANT le contrôle de fraîcheur : « analyse le bitcoin aujourd'hui » contient « aujourd'hui » et partirait sinon en simple recherche web |
+| `core/execution/voies.py`, `config/permissions_services.yaml` | `FINANCE` en voie RECHERCHE (appel réseau réel) ; `market_data.read` en `ALLOWED`/`LOW` — aucune capacité d'écriture déclarée nulle part |
+
+### Ce qui n'a délibérément PAS été fait
+
+- **Aucune intégration Solana/Jupiter.** L'audit confirme que même chez
+  AutoHedge, la couche réellement dangereuse (`execute_trade`, signature
+  avec une clé privée) n'est jamais câblée au produit. La construire ici
+  aurait ajouté un risque réel sans qu'aucune demande ne le justifie.
+- **Aucun fournisseur actions/ETF/forex.** `MarketDataProvider` est conçu
+  agnostique à l'actif (mission §13), mais seul CoinGecko (crypto, sans
+  clé) est câblé. Un fournisseur actions demanderait une clé API que
+  personne n'a fournie — `NOT_CONFIGURED` honnête plutôt qu'une fausse
+  promesse de couverture.
+- **Aucun backtesting.** Mission §12 le permet « si l'infrastructure
+  existante le permet » ; aucune n'existe pour rejouer un historique
+  contre une stratégie. Non construit plutôt que bâclé.
+
+`core/finance/paper_trading.py` a d'abord été écrit sans appelant réel —
+`scripts/orphelins.py` l'a signalé comme orphelin réel, exactement ce que
+`CLAUDE.md` mesure et refuse de laisser dormir. Corrigé dans la même
+passe : `FinanceAgent` reconnaît maintenant un ordre simulé **explicite**
+(« achète 0,1 bitcoin simulé »), toujours au prix de marché réel du
+moment, jamais inventé — et refuse tout le reste (le mot « simulé »
+est obligatoire ; sans lui, une phrase qui ressemble à un ordre reste une
+question d'analyse). `python scripts/orphelins.py` : **250 modules, 200
+atteints, aucun module réel endormi** (`CLAUDE.md` mis à jour, était 242/194
+avant cette mission).
+
+### Vérification
+
+`ruff check .` propre. Sabotage sur les quatre garanties qui ne se
+prouvent pas autrement :
+
+1. Le garde-fou « pas de donnée réelle -> pas de calcul, pas de modèle
+   consulté » dans `FinanceAgent.run()` — retiré, le test dédié échoue en
+   consultant le modèle sans données. Restauré.
+2. Le contrôle déterministe `demande_financiere` placé avant le contrôle
+   de fraîcheur — retiré, « analyse le bitcoin aujourd'hui » repart en
+   FRESH_INFO. Restauré.
+3. La frontière par mot des tickers courts (BTC/ETH/SOL) — remplacée par
+   une sous-chaîne naïve, « analyse ce mur isolé » (contient « sol »)
+   déclenche alors FINANCE à tort. Restaurée.
+4. Le mot « simulé » obligatoire dans `extraire_ordre_simule` — retiré,
+   « achète 0,5 bitcoin » (sans le mot) est alors lu comme un ordre.
+   Restauré.
+
+Suite complète (`python -m pytest tests/ -q`), relancée après ces
+derniers correctifs : **4507 passed, 31 skipped, 48 deselected, 0
+failed** (422 s, mesuré le 10/09/2026).
+
+### Ce que ça coûte si c'est faux
+
+Le moteur de risque utilise des seuils heuristiques documentés
+(`core/finance/risk.py`, `SEUILS_VOLATILITE`/`SEUILS_DRAWDOWN`), pas une
+validation statistique sur des données historiques réelles — un seuil mal
+calibré classerait une situation FAIBLE quand elle est en réalité MODÉRÉE,
+ou l'inverse. Le coût est borné : `FinanceAgent` ne déclenche jamais
+d'action réelle, seulement un texte d'analyse marqué de sa confiance et
+de ses limites — une classification imprécise reste une opinion affichée
+comme telle, jamais un ordre exécuté sur la foi d'un chiffre faux.

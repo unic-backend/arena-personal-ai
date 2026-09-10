@@ -155,6 +155,11 @@ VOIE_PAR_INTENTION: Dict[str, Voie] = {
     "TREND_SEARCH": Voie.RECHERCHE,
     "DEEP_RESEARCH": Voie.RECHERCHE,
     "BROWSER": Voie.RECHERCHE,
+    # Le connecteur de marche est un appel reseau reel (CoinGecko), et
+    # l'agent peut y ajouter une recherche web pour le contexte d'actualite
+    # (core/finance/, agents/finance/finance_agent.py) : meme voie que
+    # FRESH_INFO/DEEP_RESEARCH, pour la meme raison — sortir chercher dehors.
+    "FINANCE": Voie.RECHERCHE,
 }
 
 #: Voie d'une intention inconnue. La moins chere **qui puisse encore repondre** :

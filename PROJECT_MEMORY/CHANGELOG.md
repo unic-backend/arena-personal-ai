@@ -452,3 +452,62 @@ Nettoyé (2314 fichiers), 4 Go libérés. Sans rapport avec le code du dépôt.
 
 Suite complète, après nettoyage : **4372 passed, 31 skipped, 48 deselected,
 0 failed** (456 s). `ruff check .` propre.
+
+---
+
+## 2026-09-10 — Intelligence financière (DEC-0078), AutoHedge audité
+
+Mission : étudier `The-Swarm-Corporation/AutoHedge` et en tirer une capacité
+d'analyse financière pour ARENA — jamais un fonds spéculatif, jamais un
+ordre réel. Détail complet : `docs/DECISIONS.md` DEC-0078,
+`docs/audits/autohedge_audit.md`.
+
+**L'audit, testé en direct, pas seulement lu** : `AutoHedge.run()` n'appelle
+qu'un seul agent (le Director) ; Quant/Risque/Exécution n'ont aucun outil
+(`tools=`) attaché — leurs « calculs » sont du texte de LLM, confirmé par
+zéro `numpy`/`pandas` en dehors de code mort. Les outils Jupiter (Solana)
+sont réels et fonctionnent **en isolation** (prix SOL réel obtenu, cohérent
+avec CoinGecko), mais **jamais câblés** au produit
+(`tools_registry.get_tools()` n'est importé nulle part). Aucun test dans
+tout le dépôt malgré 5 workflows CI. Aucune boucle autonome.
+
+**Construit dans ARENA**, tout nouveau, rien dupliqué :
+
+| Fichier | Rôle |
+|---|---|
+| `core/connectors/market_data.py` | CoinGecko, lecture seule, sans clé — même cadre `Connecteur` que tout le reste |
+| `core/finance/quant.py` | Arithmétique pure (RSI, MACD, Bollinger, drawdown, corrélation...), zéro appel modèle |
+| `core/finance/risk.py` | Classification de risque déterministe + scénarios (stop-loss, taille de position) |
+| `core/finance/paper_trading.py` | Portefeuille simulé, SQLite, aucun ordre réel — appelé par `FinanceAgent` sur ordre simulé explicite |
+| `core/finance/structured_output.py` | Le schéma de sortie fixe |
+| `agents/finance/finance_agent.py` | Director ARENA : données réelles -> calcul -> risque -> interprétation, ordre fixé dans le code |
+| `agents/orchestrator/orchestrator_agent.py` | Intention `FINANCE`, même correctif de collision date que le courrier (31/08/2026) |
+
+**Rien copié d'AutoHedge** : ni code, ni dépendances (`swarms`, `solders`
+absents de `requirements.txt`), seulement le principe de séparation des
+rôles, adapté au cadre d'agents existant d'ARENA.
+
+**Délibérément pas fait** : aucune intégration Solana/Jupiter (le risque
+réel d'AutoHedge n'est même pas câblé chez eux) ; aucun fournisseur
+actions/ETF (pas de clé fournie) ; aucun backtesting.
+
+**Un orphelin réel trouvé et réveillé en cours de route** :
+`scripts/orphelins.py` a signalé `core.finance.paper_trading` comme
+module réel jamais atteint — exactement ce que `CLAUDE.md` mesure et
+interdit de laisser dormir. Corrigé dans la même passe : `FinanceAgent`
+reconnaît maintenant un ordre simulé **explicite** (« achète 0,1 bitcoin
+simulé »), toujours au prix de marché réel, jamais inventé, et refuse
+tout le reste (le mot « simulé » est obligatoire). `250 modules, 200
+atteints, aucun module réel endormi` (`CLAUDE.md` mis à jour, était
+242/194).
+
+Quatre sabotages, quatre restaurations : le garde-fou anti-fabrication
+(retiré → le modèle est consulté sans données réelles, test rouge),
+la collision date/finance dans l'orchestrateur (retirée → repart en
+FRESH_INFO), la frontière de mot des tickers courts (retirée → « analyse
+ce mur isolé » déclenche FINANCE à tort), le mot « simulé » obligatoire
+(retiré → « achète 0,5 bitcoin » ordinaire est lu comme un ordre).
+
+`ruff check .` propre. Suite complète relancée après le réveil de
+`paper_trading.py` : **4507 passed, 31 skipped, 48 deselected, 0 failed**
+(422 s).
