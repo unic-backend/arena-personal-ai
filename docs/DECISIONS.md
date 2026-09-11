@@ -7775,8 +7775,130 @@ de développement. Un futur serveur ComfyUI réel pourrait rendre une décision 
 qui échoue à l'usage (la « smart memory » de ComfyUI a un comportement réel non mesuré
 ici) : le connecteur le rapporterait honnêtement via `status.status_str: "error"`,
 jamais un succès inventé — mais le premier essai réel sur un serveur ComfyUI doit être
-traité comme un test, pas une certitude, exactement comme pour HiDream (DEC-0085). Les
-cinq workflows `CANDIDATE` n'ont AUCUNE garantie d'exactitude sur leurs profils de
-ressources déclarés : ce sont des bornes de planification pour une mission future, pas
-des mesures.</new_string>
+traité comme un test, pas une certitude, exactement comme pour HiDream (DEC-0085).
+*(Note DEC-0088 : les cinq workflows initialement `CANDIDATE` sont depuis implémentés
+et promus `STABLE` — le paragraphe ci-dessus, écrit avant cette suite, décrivait leur
+état d'alors ; leurs profils de ressources restent, eux, des ESTIMATIONS non mesurées
+sur un vrai GPU, voir DEC-0088.)*
 
+## DEC-0088 — Les cinq workflows ComfyUI restants, réellement construits contre le code source amont
+
+**Date** : 11/09/2026 (suite de DEC-0087, même jour)
+**Statut** : accepté
+
+### Contexte
+
+Suite directe de DEC-0087 : `image_to_image`, `upscale`, `controlnet_image`,
+`character_image` et `image_to_video` restaient déclarés `CANDIDATE` (schéma et profil
+de ressources écrits, gabarit volontairement absent — « ne jamais implémenter un trick
+non vérifié »). Cette mission les implémente réellement, contre le code source amont de
+ComfyUI (`nodes.py` et deux modules de `comfy_extras/` — `nodes_upscale_model.py` et
+`nodes_video_model.py`, non vendorés, détail dans `docs/audits/comfyui_audit.md`),
+commit `6338e4bd428247a4a8843496aa98fb7f2a9d3632`, même commit que DEC-0087 —
+`git ls-remote` reconfirmé identique — jamais deviné depuis un nom de nœud plausible.
+
+### Décision
+
+**Cinq gabarits nouveaux, promus `STABLE` au même titre que `text_to_image`** — même
+niveau de preuve (construit nœud par nœud contre le vrai `INPUT_TYPES`/`define_schema`
+du code source, testé déterministiquement, jamais confirmé contre un serveur ComfyUI
+réellement lancé, comme `text_to_image` lui-même ne l'a jamais été non plus).
+
+1. **`image_to_image`** — `LoadImage` → `VAEEncode` (`pixels`/`vae`) → `KSampler` avec
+   `denoise` < 1 pour préserver une part de l'image source.
+2. **`upscale`** — `UpscaleModelLoader`/`ImageUpscaleWithModel`
+   (module `nodes_upscale_model.py` de `comfy_extras/`), le seul workflow sans texte ni
+   checkpoint de diffusion.
+3. **`controlnet_image`** — `ControlNetApplyAdvanced`, jamais l'ancien `ControlNetApply`
+   (marqué `DEPRECATED = True` dans le code source audité).
+4. **`character_image`** — `LoraLoader` module le MODEL et le CLIP d'un checkpoint
+   standard ; aucune image de référence (mission §17 : la référence/identité d'un
+   personnage ARENA reste portée par `core/production/personnage_video.py`, DEC-0084 —
+   ce workflow n'est pas couplé à ce module).
+5. **`image_to_video`** — Stable Video Diffusion, la SEULE famille vidéo que ComfyUI
+   expédie en natif (vérifié par recherche exhaustive du dépôt amont) :
+   `ImageOnlyCheckpointLoader` → `SVD_img2vid_Conditioning` → `VideoLinearCFGGuidance` →
+   `KSamplerAdvanced` → `SaveAnimatedWEBP`.
+
+**Une image de référence ne touche jamais le disque d'ARENA — décision architecturale,
+pas un détail.** `image_to_image`/`upscale`/`controlnet_image` déclarent leur paramètre
+image en `type="image_base64"` (`core/production/comfyui_workflows.py`) : mêmes octets
+en mémoire que `apps/backend/pieces_jointes.py` pour une pièce jointe (DEC-0019),
+jamais un chemin de fichier local. `core/connectors/comfyui.py::_televerser_images`
+décode et televerse (`POST /upload/image`) juste avant l'envoi — le risque qu'un
+chemin fourni par un appelant HTTP pointe vers un fichier arbitraire du serveur
+(`.env`, un secret) est **structurellement absent** plutôt que filtré après coup (le
+même défaut qu'`agents/plaquiste/plaquiste_agent.py::chemin_hors_du_depot` a dû
+corriger une fois dans ce dépôt — évité ici dès la conception).
+
+**Vérification de modèle généralisée.** `EntreeWorkflow.verification_modeles`
+(nouveau champ) fait correspondre chaque paramètre de modèle (`ckpt_name`,
+`control_net_name`, `lora_name`, `model_name`) à son dossier ComfyUI
+(`GET /models/{dossier}`) — le contrôle « le modèle demandé est-il installé » de
+DEC-0087, généralisé au-delà de `ckpt_name`/`checkpoints` seul. `controlnet_image`
+vérifie DEUX modèles distincts avant tout envoi.
+
+### Ce qui n'a pas été fait, et pourquoi
+
+- **Aucun câblage au graphe vidéo ni à `personnage_video.py`.** `image_to_video` et
+  `character_image` restent des workflows DIRECTS du connecteur ComfyUI — les coupler à
+  `plan_video.py::CAPACITES_VIDEO` ou à l'identité de personnage ARENA attend un besoin
+  mesuré, pas une anticipation (mission §17/§19, même principe que DEC-0087).
+- **Aucun de ces cinq workflows n'a tourné contre un serveur ComfyUI réel** — toujours
+  aucun GPU dans cet environnement de développement.
+- **`character_image` ne prend aucune image de référence** (LoRA seul) — délibéré : une
+  vraie conditionnement par référence visuelle pour un personnage ARENA appartient à
+  `personnage_video.py`, pas à un second mécanisme d'identité dans ce module.
+
+### Vérification
+
+- `ruff check .` propre sur l'ensemble du dépôt.
+- **Sabotage réel, la vérification généralisée de modèle** :
+  `ComfyUIConnector._verifier_modeles` neutralisée (`return None`) → trois tests
+  échouent immédiatement (`upscale` accepterait un modèle jamais vérifié,
+  `controlnet_image` enverrait avec un ControlNet absent). Restaurée → les 85 tests du
+  périmètre ComfyUI repassent.
+- 27 tests nouveaux (validation de forme `image_base64`, construction déterministe des
+  cinq gabarits contre les vrais noms de nœuds, refus AVANT tout envoi — matériel
+  insuffisant devançant même le televersement, modèle absent, televersement en échec ou
+  sans nom rendu), plus la mise à jour des deux tests devenus obsolètes (aucun workflow
+  `CANDIDATE` ne reste dans le registre réel — remplacés par un faux workflow injecté
+  via `monkeypatch`, qui préserve la couverture de la règle sans mentir sur l'état du
+  catalogue).
+- Régression ciblée (vidéo, HiDream, Wan2GP, registre d'agents cross-espace, surface
+  API, connecteurs dormants, ComfyUI) : 262 passed, 0 failed.
+- **Restart test réel** : nouveau processus, application réelle importée à froid,
+  `GET /api/image/workflows` rend les SIX workflows avec `statut: "STABLE"` ;
+  `POST /api/image/generer` avec `workflow_id=character_image` et `workflow_id=upscale`
+  passent bien par la file de confirmation (`NEEDS_CONFIRMATION`, moteur rapporté
+  `comfyui`) — aucune confirmation n'est jamais contournée.
+- **Corrigé au passage** : un artefact de manipulation d'outil (`</new_string>` littéral)
+  s'était glissé à la toute fin de l'entrée DEC-0087 lors de sa rédaction — trouvé en
+  relisant le fichier avant d'y ajouter cette entrée, corrigé ici, jamais laissé pour
+  une session future.
+- **Régression réelle trouvée par la suite complète, et trouvée DEUX FOIS** (pas par
+  les tests ciblés) : `tests/test_documentation.py`
+  (`test_les_fichiers_cites_par_la_documentation_existent`) vérifie que tout chemin
+  cité entre apostrophes inverses dans `docs/*.md` existe RÉELLEMENT dans ce dépôt —
+  cette entrée citait deux modules amont de ComfyUI (non vendorés, jamais importés,
+  détail dans `docs/audits/comfyui_audit.md`) avec leur chemin `comfy_extras/` complet.
+  Corrigé une première fois en gardant le seul nom de fichier — puis le PARAGRAPHE
+  DÉCRIVANT ce correctif a lui-même recité le chemin complet entre apostrophes
+  inverses, faisant échouer le test une seconde fois. Ce paragraphe est maintenant
+  écrit sans reproduire le motif fautif. Revérifié après la seconde correction :
+  18 passed.
+- Suite complète `python -m pytest -q`, après correction : **5094 passed, 31 skipped,
+  48 deselected, 0 failed** (408.91s / 6m49s, mesuré le 11/09/2026).
+
+### Ce que ça coûte si c'est faux
+
+Même limite que DEC-0087 : les profils de ressources des cinq nouveaux workflows sont
+des ESTIMATIONS documentées (SVD notamment : 16 Go de VRAM confortable, jamais mesuré
+sur un vrai GPU). `controlnet_image` et `image_to_video` sont les plus lourds du
+catalogue — un futur serveur avec un GPU modeste pourrait recevoir une décision
+`LOCAL_SUPPORTED`/`LOCAL_OFFLOAD` qui échoue en pratique ; le connecteur le rapporterait
+honnêtement, jamais un succès inventé, mais le premier essai réel reste un test.
+`_televerser_images` décode un base64 fourni par l'appelant sans limite de dimensions
+(seulement une limite d'octets, 20 Mo) : une image techniquement valide mais
+absurdement grande en pixels (bombe de décompression) n'est pas explicitement
+retestée ici — Pillow, côté ComfyUI, resterait la dernière ligne de défense.

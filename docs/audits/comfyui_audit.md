@@ -52,8 +52,8 @@ déjà sa propre API HTTP + WebSocket, prête à l'emploi.
 | Capacité | État ARENA avant cette mission | Verdict |
 |---|---|---|
 | Image texte→image | `core/connectors/hidream.py` (DEC-0085) — ACTIF, mais un seul modèle (HiDream-I1), classé `SERVER_ONLY_RECOMMENDED` sur ce matériel | Backend ALTERNATIF ajouté (`core/connectors/comfyui.py`), même capacité `image_generation`, jamais un second agent |
-| Vidéo | `core/connectors/wan2gp.py`, `core/production/plan_video.py` — ACTIFS | Non touchés. ComfyUI reste hors du graphe vidéo dans cette mission (aucun workflow vidéo implémenté — `image_to_video` déclaré `CANDIDATE`, jamais construit, mission §41/§43 : documenté, pas inventé) |
-| Personnages (Agent Heroes-like) | `core/production/personnage_video.py` (DEC-0084) — ACTIF, `core/connectors/xaar_kaname.py` pour le repositionnement de visage | Non couplé à ComfyUI ici (mission §17/§19 : le routeur d'abord, jamais un couplage point à point) — `character_image` déclaré `CANDIDATE` pour une mission future |
+| Vidéo | `core/connectors/wan2gp.py`, `core/production/plan_video.py` — ACTIFS | Non couplés au graphe vidéo. `image_to_video` (Stable Video Diffusion, DEC-0088) est **implémenté et STABLE** comme workflow direct du connecteur ComfyUI, mais n'est PAS câblé dans `plan_video.py::CAPACITES_VIDEO` — le routeur existe, le câblage au graphe attend un besoin mesuré (mission §17) |
+| Personnages (Agent Heroes-like) | `core/production/personnage_video.py` (DEC-0084) — ACTIF, `core/connectors/xaar_kaname.py` pour le repositionnement de visage | `character_image` (LoRA sur checkpoint standard, DEC-0088) est **implémenté et STABLE**, mais non couplé à `personnage_video.py` — même principe que ci-dessus : le routeur d'abord, jamais un couplage point à point sans besoin mesuré (mission §17/§19) |
 | Audio | `core/connectors/audio_voix.py`, `core/connectors/csm.py`, `core/audio/routage_tts.py` — ACTIFS | Non touchés — aucun avantage concret mesuré à faire passer l'audio par ComfyUI (mission §21) |
 | 3D | `core/connectors/architecture_3d.py` (DEC-0070, Pascal) — ACTIF, précision BIM | Non touché — la mission distingue explicitement 3D générative et 3D d'ingénierie (§22) ; aucun besoin mesuré de 3D générative créative cette mission |
 | Registre d'agents cross-espace | `core/agent/capacites.py` — ACTIF | **Non étendu** — même limite que DEC-0086/DEC-0085 : ce registre ne connaît que les espaces de la barre latérale PWA, "ComfyUI" n'en est pas un |
@@ -83,8 +83,9 @@ d'artefact.**
 
 1. **Charger des nœuds personnalisés tiers.** Mission §10 : zéro confiance par défaut.
    Aucun `custom_nodes/` n'est installé, référencé, ou recommandé ici — seuls les nœuds
-   natifs (`KSampler`, `CheckpointLoaderSimple`, etc.) apparaissent dans le seul workflow
-   implémenté.
+   natifs (`KSampler`, `CheckpointLoaderSimple`, `ControlNetApplyAdvanced`, `LoraLoader`,
+   `SVD_img2vid_Conditioning`, etc.) apparaissent dans les six workflows implémentés
+   (DEC-0087 puis DEC-0088).
 2. **Envoyer un graphe JSON libre.** Rejeté par construction : `core/connectors/comfyui.py`
    n'accepte qu'un `workflow_id` du registre contrôlé + des paramètres nommés, jamais un
    graphe (mission §8/§30).

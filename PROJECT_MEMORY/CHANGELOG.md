@@ -1022,3 +1022,62 @@ faux.
 
 `ruff check .` propre. Suite complète, après correction : **5065 passed,
 31 skipped, 48 deselected, 0 failed** (471.58s / 7m51s).
+
+## 11/09/2026 (suite) — Les cinq workflows ComfyUI restants (DEC-0088)
+
+Suite directe de DEC-0087, même jour. `image_to_image`, `upscale`,
+`controlnet_image`, `character_image`, `image_to_video` — les cinq
+workflows laissés `CANDIDATE` — construits contre le vrai code source
+amont (`nodes.py`, deux modules de `comfy_extras/` — `nodes_upscale_model.py`
+et `nodes_video_model.py`, non vendorés —, même commit `6338e4bd` que
+DEC-0087, reconfirmé identique). Cinq gabarits promus `STABLE`, même niveau de
+preuve que `text_to_image` : construits noeud par noeud contre le vrai
+`INPUT_TYPES`/`define_schema`, testés déterministiquement, jamais
+confirmés contre un serveur ComfyUI réel (aucun GPU ici, comme pour
+`text_to_image` lui-même).
+
+`controlnet_image` utilise `ControlNetApplyAdvanced` — jamais l'ancien
+`ControlNetApply`, marqué `DEPRECATED` dans le code source. `image_to_video`
+utilise Stable Video Diffusion, la seule famille vidéo native de ComfyUI
+(vérifié par recherche exhaustive).
+
+**Une image de référence ne touche jamais le disque d'ARENA** : les
+workflows qui en prennent une la déclarent en `image_base64` (mêmes
+octets en mémoire que `apps/backend/pieces_jointes.py`, DEC-0019) ;
+`core/connectors/comfyui.py::_televerser_images` décode et televerse
+(`POST /upload/image`) juste avant l'envoi — jamais un chemin de fichier
+local qu'un appelant HTTP pourrait faire pointer vers un secret du
+serveur (le défaut qu'`agents/plaquiste/plaquiste_agent.py
+::chemin_hors_du_depot` avait dû corriger une fois ici, évité ici dès la
+conception, pas filtré après coup).
+
+`EntreeWorkflow.verification_modeles` (nouveau) généralise le contrôle
+« le modèle demandé est-il installé » de DEC-0087 au-delà de `ckpt_name` —
+`controlnet_image` vérifie deux modèles distincts avant tout envoi.
+
+**Sabotage réel** : `_verifier_modeles` neutralisée → trois tests
+échouent (un ControlNet absent serait accepté). Restaurée → les 85 tests
+du périmètre ComfyUI repassent. 27 tests nouveaux ; deux tests devenus
+obsolètes (plus aucun `CANDIDATE` réel dans le registre) remplacés par un
+faux workflow injecté via `monkeypatch`, sans perdre la couverture de la
+règle. Régression ciblée : 262 passed, 0 failed.
+
+**Corrigé au passage** : un artefact de manipulation d'outil
+(`</new_string>` littéral) s'était glissé à la fin de l'entrée DEC-0087 —
+trouvé en relisant le fichier, corrigé.
+
+Restart test réel : `GET /api/image/workflows` rend les SIX workflows en
+`STABLE` ; les nouvelles routes passent bien par la confirmation, jamais
+contournée.
+
+**Régression réelle trouvée par la suite complète, deux fois de suite**
+(pas par les tests ciblés) : `tests/test_documentation.py` vérifie que
+tout chemin cité entre apostrophes inverses dans `docs/*.md` existe
+réellement dans ce dépôt — `docs/DECISIONS.md` citait deux modules amont
+de ComfyUI (jamais vendorés) avec leur chemin `comfy_extras/` complet.
+Corrigé une première fois ; le paragraphe décrivant ce correctif a
+lui-même recité le motif fautif, faisant échouer le test une seconde
+fois — corrigé à son tour. Revérifié : 18 passed.
+
+`ruff check .` propre. Suite complète, après correction : **5094 passed,
+31 skipped, 48 deselected, 0 failed** (408.91s / 6m49s).

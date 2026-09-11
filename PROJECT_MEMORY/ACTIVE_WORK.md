@@ -1,17 +1,42 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-09-11, fin de session (DEC-0087).*
+*Mise à jour : 2026-09-11, fin de session (DEC-0087 + DEC-0088).*
 
 ## En cours
 
-Rien. La mission « ARENA × COMFYUI » (ComfyUI comme moteur d'exécution
-alternatif, DEC-0087) vient d'être développée sur sa propre branche — voir
-`docs/DECISIONS.md`, DEC-0087, pour la décision complète, et
-`docs/audits/comfyui_audit.md` pour l'audit amont. **Non encore fusionnée
-au moment de cette note** — vérifier l'état réel de la PR avant de
-supposer qu'elle l'est.
+Rien. La mission « ARENA × COMFYUI » (DEC-0087, puis sa suite DEC-0088 le
+même jour) est développée sur la MÊME branche/PR (#187) — voir
+`docs/DECISIONS.md`, DEC-0087 et DEC-0088, et `docs/audits/comfyui_audit.md`
+pour l'audit amont. **Non encore fusionnée au moment de cette note** —
+vérifier l'état réel de la PR avant de supposer qu'elle l'est.
 
-## Dernier chunk : DEC-0087 — ComfyUI comme moteur d'exécution alternatif
+## Dernier chunk : DEC-0088 — les cinq workflows ComfyUI restants
+
+`image_to_image`, `upscale`, `controlnet_image`, `character_image`,
+`image_to_video` — implémentés contre le vrai code source ComfyUI
+(`nodes.py`, `comfy_extras/`), promus `STABLE` au même niveau de preuve
+que `text_to_image`. Image de référence jamais sur le disque d'ARENA
+(`image_base64`, mêmes octets en mémoire que les pièces jointes du chat,
+DEC-0019) — `_televerser_images` decode+televerse a ComfyUI juste avant
+l'envoi. `verification_modeles` (nouveau) généralise le controle
+« modele installe ? » au-dela de `ckpt_name`.
+
+**Sabotage réel** : `_verifier_modeles` neutralisée → 3 tests échouent
+(ControlNet absent accepté). Restaurée → 85 tests repassent. 27 tests
+nouveaux, régression ciblée 262 passed. Un artefact de manipulation
+d'outil (`</new_string>` littéral) trouvé et corrigé à la fin de l'entrée
+DEC-0087 dans `docs/DECISIONS.md`. Restart test réel : les six workflows
+rendus `STABLE` par `/api/image/workflows`.
+
+**Deux régressions réelles trouvées par la suite complète, pas par les
+tests ciblés** : `tests/test_documentation.py` a détecté que l'entrée
+DEC-0088 citait deux chemins amont ComfyUI non vendorés avec leur chemin
+complet — corrigé une première fois, puis le paragraphe DÉCRIVANT ce
+correctif a lui-même recité le motif fautif, cassant le test une seconde
+fois. Corrigé à son tour, revérifié (18 passed). Suite complète finale :
+**5094 passed, 31 skipped, 48 deselected, 0 failed** (408.91s).
+
+## Chunk précédent : DEC-0087 — ComfyUI comme moteur d'exécution alternatif
 
 `core/production/comfyui_workflows.py` (registre CONTRÔLÉ de workflows —
 un seul `STABLE`, `text_to_image`), `core/production/comfyui_strategie.py`

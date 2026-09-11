@@ -8,6 +8,7 @@ lui-meme (`GET /system_stats`, `POST /prompt`, `GET /history/{id}`,
 Aucun test n'appelle un vrai serveur ComfyUI : `_get`/`_post`/`_get_brut`
 sont monkeypatches sur le module.
 """
+import base64
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,10 @@ import core.connectors.comfyui as comfyui_module
 from core.actions.resultat import Statut
 from core.connectors.base import EtatSante
 from core.connectors.comfyui import GENERATIONS_PAR_MINUTE, ComfyUIConnector
+
+#: Un base64 valide (memes octets que test_comfyui_workflows.py) — jamais
+#: une vraie image, seule la FORME compte a ce stade.
+IMAGE_B64 = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"x" * 200).decode()
 
 #: Materiel genereux (H100-like) — de quoi tenir text_to_image confortablement.
 STATS_GENEREUX = {
@@ -59,17 +64,30 @@ def faux_post(reponse=None, journal=None):
     return _appeler
 
 
+def faux_post_fichier(reponse=None, journal=None):
+    def _appeler(chemin, octets, nom_fichier):
+        if journal is not None:
+            journal.append(("UPLOAD", chemin, len(octets), nom_fichier))
+        if isinstance(reponse, Exception):
+            raise reponse
+        return reponse if reponse is not None else {"name": "uploaded.png", "subfolder": ""}
+    return _appeler
+
+
 @pytest.fixture
 def brancher(monkeypatch):
-    """Branche `_get`/`_post`/`_get_brut` sur le module — jamais l'instance,
-    car le connecteur les appelle en module-level (`_get(...)`, pas
-    `self._get`)."""
-    def _faire(get_reponses=None, post_reponse=None, journal=None, get_brut=None):
+    """Branche `_get`/`_post`/`_get_brut`/`_post_fichier` sur le module —
+    jamais l'instance, car le connecteur les appelle en module-level
+    (`_get(...)`, pas `self._get`)."""
+    def _faire(get_reponses=None, post_reponse=None, journal=None, get_brut=None,
+               post_fichier_reponse=None):
         monkeypatch.setattr(comfyui_module, "_get",
                             faux_get(get_reponses or {"system_stats": STATS_GENEREUX,
                                                       "models/checkpoints": CHECKPOINTS_DISPONIBLES},
                                      journal))
         monkeypatch.setattr(comfyui_module, "_post", faux_post(post_reponse, journal))
+        monkeypatch.setattr(comfyui_module, "_post_fichier",
+                            faux_post_fichier(post_fichier_reponse, journal))
         if get_brut is not None:
             monkeypatch.setattr(comfyui_module, "_get_brut", get_brut)
     return _faire
@@ -129,13 +147,27 @@ def test_un_workflow_inconnu_est_refuse(connecteur):
     assert resultat.statut is Statut.ECHEC
 
 
-def test_un_workflow_candidate_est_refuse_jamais_envoye(connecteur, brancher):
+def test_un_workflow_candidate_est_refuse_jamais_envoye(connecteur, brancher, monkeypatch):
+    """Les six workflows du registre reel sont tous STABLE aujourd'hui —
+    cette regle de refus reste une garantie du connecteur, verifiee ici
+    contre un faux workflow CANDIDATE injecte le temps du test."""
+    import core.production.comfyui_workflows as workflows_module
+
+    faux = workflows_module.EntreeWorkflow(
+        identifiant="faux_candidat", version="0.0.0-candidate",
+        statut=workflows_module.StatutWorkflow.CANDIDATE, objectif="test",
+        noeuds_requis=(), modeles_requis=(),
+        profil_ressources=workflows_module.ProfilRessourcesWorkflow(1, 1, 1, 1), gabarit=None,
+    )
+    registre_test = dict(workflows_module.REGISTRE, faux_candidat=faux)
+    monkeypatch.setattr(workflows_module, "REGISTRE", registre_test)
+
     journal = []
     brancher(journal=journal)
     connecteur = ComfyUIConnector()
 
     resultat = connecteur.executer_confirmee(
-        "generer", workflow_id="upscale", prompt="peu importe")
+        "generer", workflow_id="faux_candidat", prompt="peu importe")
 
     assert resultat.statut is Statut.ECHEC
     assert "pas encore implemente" in resultat.message
@@ -182,6 +214,133 @@ def test_une_reponse_sans_prompt_id_n_est_pas_une_preuve(brancher):
 
     assert resultat.statut is Statut.ECHEC
     assert "prompt_id" in resultat.message
+
+
+# --- Televersement d'image de reference (image_to_image/upscale/controlnet) -------
+
+def test_une_image_de_reference_est_televersee_avant_l_envoi(brancher):
+    journal = []
+    brancher(get_reponses={"system_stats": STATS_GENEREUX, "models/upscale_models": ["4x.pth"]},
+             journal=journal)
+    connecteur = ComfyUIConnector()
+
+    resultat = connecteur.executer_confirmee(
+        "generer", workflow_id="upscale", image_source=IMAGE_B64, model_name="4x.pth")
+
+    assert resultat.statut is Statut.SUCCES
+    televersement = next(a for a in journal if a[0] == "UPLOAD")
+    assert televersement[1] == "upload/image"
+    appel_prompt = next(a for a in journal if a[0] == "POST" and a[1] == "prompt")
+    graphe = appel_prompt[2]["prompt"]
+    noeud_load = next(n for n in graphe.values() if n["class_type"] == "LoadImage")
+    assert noeud_load["inputs"]["image"] == "uploaded.png"
+
+
+def test_le_televersement_utilise_le_sous_dossier_rendu(brancher):
+    journal = []
+    brancher(get_reponses={"system_stats": STATS_GENEREUX, "models/upscale_models": ["4x.pth"]},
+             post_fichier_reponse={"name": "img.png", "subfolder": "arena"}, journal=journal)
+    connecteur = ComfyUIConnector()
+
+    connecteur.executer_confirmee(
+        "generer", workflow_id="upscale", image_source=IMAGE_B64, model_name="4x.pth")
+
+    appel_prompt = next(a for a in journal if a[0] == "POST" and a[1] == "prompt")
+    graphe = appel_prompt[2]["prompt"]
+    noeud_load = next(n for n in graphe.values() if n["class_type"] == "LoadImage")
+    assert noeud_load["inputs"]["image"] == "arena/img.png"
+
+
+def test_un_televersement_en_echec_refuse_avant_prompt(brancher):
+    journal = []
+    brancher(get_reponses={"system_stats": STATS_GENEREUX, "models/upscale_models": ["4x.pth"]},
+             post_fichier_reponse=ConnectionError("refuse"), journal=journal)
+    connecteur = ComfyUIConnector()
+
+    resultat = connecteur.executer_confirmee(
+        "generer", workflow_id="upscale", image_source=IMAGE_B64, model_name="4x.pth")
+
+    assert resultat.statut is Statut.NON_CONFIGURE
+    assert not any(a[0] == "POST" and a[1] == "prompt" for a in journal)
+
+
+def test_un_televersement_sans_nom_rendu_est_refuse(brancher):
+    journal = []
+    brancher(get_reponses={"system_stats": STATS_GENEREUX, "models/upscale_models": ["4x.pth"]},
+             post_fichier_reponse={}, journal=journal)
+    connecteur = ComfyUIConnector()
+
+    resultat = connecteur.executer_confirmee(
+        "generer", workflow_id="upscale", image_source=IMAGE_B64, model_name="4x.pth")
+
+    assert resultat.statut is Statut.NON_CONFIGURE
+    assert not any(a[0] == "POST" and a[1] == "prompt" for a in journal)
+
+
+def test_le_verrou_materiel_precede_le_televersement(brancher):
+    """Le materiel insuffisant doit refuser AVANT de televerser quoi que ce
+    soit — televerser pour rien gaspille de la bande passante en pure perte."""
+    journal = []
+    brancher(get_reponses={"system_stats": STATS_A2000, "models/upscale_models": ["4x.pth"]},
+             journal=journal)
+    connecteur = ComfyUIConnector()
+
+    resultat = connecteur.executer_confirmee(
+        "generer", workflow_id="upscale", image_source=IMAGE_B64, model_name="4x.pth")
+
+    assert resultat.statut is Statut.NON_CONFIGURE
+    assert not any(a[0] == "UPLOAD" for a in journal)
+
+
+# --- Verification generalisee des modeles (checkpoint, controlnet, lora...) -------
+
+def test_upscale_verifie_le_dossier_upscale_models_pas_checkpoints(brancher):
+    journal = []
+    brancher(get_reponses={"system_stats": STATS_GENEREUX, "models/upscale_models": []},
+             journal=journal)
+    connecteur = ComfyUIConnector()
+
+    resultat = connecteur.executer_confirmee(
+        "generer", workflow_id="upscale", image_source=IMAGE_B64, model_name="4x.pth")
+
+    assert resultat.statut is Statut.NON_CONFIGURE
+    assert any(a[0] == "GET" and a[1] == "models/upscale_models" for a in journal)
+    assert not any(a[0] == "GET" and a[1] == "models/checkpoints" for a in journal)
+
+
+def test_controlnet_image_verifie_deux_dossiers_de_modeles(brancher):
+    journal = []
+    brancher(get_reponses={
+        "system_stats": STATS_GENEREUX, "models/checkpoints": CHECKPOINTS_DISPONIBLES,
+        "models/controlnet": ["cn.safetensors"],
+    }, journal=journal)
+    connecteur = ComfyUIConnector()
+
+    resultat = connecteur.executer_confirmee(
+        "generer", workflow_id="controlnet_image", prompt="un chat",
+        ckpt_name="v1-5-pruned-emaonly.safetensors", image_source=IMAGE_B64,
+        control_net_name="cn.safetensors")
+
+    assert resultat.statut is Statut.SUCCES
+    assert any(a[0] == "GET" and a[1] == "models/checkpoints" for a in journal)
+    assert any(a[0] == "GET" and a[1] == "models/controlnet" for a in journal)
+
+
+def test_un_controlnet_absent_refuse_meme_si_le_checkpoint_existe(brancher):
+    journal = []
+    brancher(get_reponses={
+        "system_stats": STATS_GENEREUX, "models/checkpoints": CHECKPOINTS_DISPONIBLES,
+        "models/controlnet": ["autre.safetensors"],
+    }, journal=journal)
+    connecteur = ComfyUIConnector()
+
+    resultat = connecteur.executer_confirmee(
+        "generer", workflow_id="controlnet_image", prompt="un chat",
+        ckpt_name="v1-5-pruned-emaonly.safetensors", image_source=IMAGE_B64,
+        control_net_name="cn-inexistant.safetensors")
+
+    assert resultat.statut is Statut.NON_CONFIGURE
+    assert not any(a[0] == "POST" and a[1] == "prompt" for a in journal)
 
 
 # --- Etat, avec relecture reelle avant de confirmer un succes ----------------------

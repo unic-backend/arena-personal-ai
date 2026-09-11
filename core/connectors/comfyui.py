@@ -22,21 +22,29 @@ parle directement a l'API HTTP native de ComfyUI (`/system_stats`,
    modele — jamais une supposition depuis ARENA (meme principe que
    `core/connectors/hidream.py`, applique a un serveur deja existant plutot
    qu'a un worker ecrit ici).
-3. **Le modele demande doit exister avant l'envoi.** `GET
-   /models/checkpoints` est relu ; un checkpoint absent refuse la
-   generation avant `/prompt`, jamais un telechargement automatique
-   (mission §12/§25 : jamais de telechargement aveugle).
-4. **« Termine » n'est jamais pris pour une preuve.** `etat_travail` relit
+3. **Chaque modele que le workflow nomme doit exister avant l'envoi.**
+   `entree.verification_modeles` (checkpoint, ControlNet, LoRA, modele
+   d'agrandissement...) est relu via `GET /models/{dossier}` ; un modele
+   absent refuse la generation avant `/prompt`, jamais un telechargement
+   automatique (mission §12/§25 : jamais de telechargement aveugle).
+4. **Une image de reference ne touche jamais le disque d'ARENA.**
+   `image_to_image`/`upscale`/`controlnet_image` prennent leur image en
+   base64 (`core/production/comfyui_workflows.py`) ; ce connecteur la
+   decode en memoire et la televerse a ComfyUI (`POST /upload/image`)
+   juste avant l'envoi — jamais un chemin de fichier local qu'un appelant
+   pourrait faire pointer ailleurs (mission §31).
+5. **« Termine » n'est jamais pris pour une preuve.** `etat_travail` relit
    chaque image que ComfyUI annonce dans son historique
    (`core/production/artefact_image.py::valider_image`) avant de confirmer
    un succes — meme discipline que HiDream et Xaar Kaname.
-5. **Le worker peut liberer sa VRAM.** `decharger` appelle `POST /free`
+6. **Le worker peut liberer sa VRAM.** `decharger` appelle `POST /free`
    (mission §11/§38 : ne jamais laisser un modele resident bloquer le
    reste d'ARENA) — une lecture-ecriture sans effet exterieur, jamais un
    « generate ».
 """
 from __future__ import annotations
 
+import base64
 import logging
 import os
 import random
@@ -51,7 +59,13 @@ from core.actions.resultat import ResultatAction, echec, non_configure, succes
 from core.connectors.base import Capacite, Connecteur, EtatSante, Sante
 from core.production.artefact_image import ProvenanceImage, ecrire_provenance, valider_image
 from core.production.comfyui_strategie import StrategieComfyUI, decider_strategie
-from core.production.comfyui_workflows import construire_requete, lister, obtenir, valider_parametres
+from core.production.comfyui_workflows import (
+    EntreeWorkflow,
+    construire_requete,
+    lister,
+    obtenir,
+    valider_parametres,
+)
 from core.production.materiel import EtatGpu, EtatRam, mesurer_disque
 
 logger = logging.getLogger("usman.connecteurs.comfyui")
@@ -103,6 +117,36 @@ def _get_brut(chemin: str, parametres: Dict[str, Any]) -> bytes:
         reponse = client.get(url, params=parametres)
         reponse.raise_for_status()
         return reponse.content
+
+
+#: Signatures binaires reconnues, juste assez pour choisir une extension
+#: plausible — ComfyUI accepte ce que Pillow ouvre, l'extension n'est
+#: qu'indicative pour son propre dossier `input/`.
+_SIGNATURES_IMAGE = (
+    (b"\x89PNG\r\n\x1a\n", ".png"),
+    (b"\xff\xd8\xff", ".jpg"),
+    (b"RIFF", ".webp"),  # WEBP : verifie plus loin que "WEBP" suit à l'offset 8
+    (b"GIF87a", ".gif"),
+    (b"GIF89a", ".gif"),
+)
+
+
+def _extension_devinee(octets: bytes) -> str:
+    for signature, extension in _SIGNATURES_IMAGE:
+        if not octets.startswith(signature):
+            continue
+        if signature == b"RIFF" and octets[8:12] != b"WEBP":
+            continue
+        return extension
+    return ".png"  # repli raisonnable — Pillow refusera proprement si c'en n'est pas un
+
+
+def _post_fichier(chemin: str, octets: bytes, nom_fichier: str) -> Dict[str, Any]:
+    url = f"{BASE_URL.rstrip('/')}/{chemin.lstrip('/')}"
+    with httpx.Client(timeout=DELAI_SECONDES) as client:
+        reponse = client.post(url, files={"image": (nom_fichier, octets, "application/octet-stream")})
+        reponse.raise_for_status()
+        return reponse.json()
 
 
 def _materiel_depuis_system_stats(brut: Dict[str, Any]) -> tuple:
@@ -188,6 +232,11 @@ def _images_de_l_historique(enregistrement: Dict[str, Any]) -> list:
                 if isinstance(image, dict) and image.get("filename"):
                     images.append(image)
     return images
+
+
+class _EchecTeleversement(Exception):
+    """Le decodage ou le televersement d'une image de reference a echoue —
+    jamais une exception qui remonterait telle quelle a l'appelant."""
 
 
 class ComfyUIConnector(Connecteur):
@@ -316,19 +365,9 @@ class ComfyUIConnector(Connecteur):
             return non_configure(action=capacite.nom, cible=self.nom, ce_qui_manque=CE_QUI_MANQUE,
                                  detail_erreur=type(erreur).__name__)
 
-        ckpt_name = validation.parametres.get("ckpt_name")
-        if ckpt_name:
-            try:
-                checkpoints = _get("models/checkpoints", {})
-            except Exception as erreur:  # noqa: BLE001
-                return non_configure(action=capacite.nom, cible=self.nom,
-                                     ce_qui_manque=CE_QUI_MANQUE, detail_erreur=type(erreur).__name__)
-            if not isinstance(checkpoints, list) or ckpt_name not in checkpoints:
-                return non_configure(
-                    action=capacite.nom, cible=self.nom,
-                    ce_qui_manque=(f"le checkpoint « {ckpt_name} » installe dans "
-                                  f"models/checkpoints/ de ComfyUI (disponibles : "
-                                  f"{checkpoints if isinstance(checkpoints, list) else 'aucun'})."))
+        erreur_modele = self._verifier_modeles(entree, validation.parametres)
+        if erreur_modele is not None:
+            return non_configure(action=capacite.nom, cible=self.nom, ce_qui_manque=erreur_modele)
 
         gpu, ram = _materiel_depuis_system_stats(stats)
         disque = mesurer_disque(Path(OUTPUT_DIR) if OUTPUT_DIR else Path("."))
@@ -341,7 +380,12 @@ class ComfyUIConnector(Connecteur):
                 ce_qui_manque=f"materiel insuffisant pour « {workflow_id} » : {decision.raison}")
 
         try:
-            requete = construire_requete(workflow_id, validation.parametres)
+            parametres_prets = self._televerser_images(entree, validation.parametres)
+        except _EchecTeleversement as erreur:
+            return non_configure(action=capacite.nom, cible=self.nom, ce_qui_manque=str(erreur))
+
+        try:
+            requete = construire_requete(workflow_id, parametres_prets)
         except ValueError as erreur:
             return echec(action=capacite.nom, cible=self.nom, message=str(erreur))
 
@@ -368,6 +412,60 @@ class ComfyUIConnector(Connecteur):
             preuve=str(identifiant), workflow_id=workflow_id,
             strategie=decision.strategie.value, engine="comfyui",
             seed=validation.parametres.get("seed"))
+
+    def _verifier_modeles(self, entree: EntreeWorkflow, parametres: Dict[str, Any]) -> Optional[str]:
+        """Rend un message « ce qui manque » si un modele nomme par
+        `entree.verification_modeles` n'est pas installe — `None` si tout
+        tient. Generalise le controle checkpoint au-dela de `ckpt_name`
+        (mission §12/§25 : jamais un telechargement a l'aveugle)."""
+        for parametre, dossier in entree.verification_modeles.items():
+            nom_modele = parametres.get(parametre)
+            if not nom_modele:
+                continue
+            try:
+                disponibles = _get(f"models/{dossier}", {})
+            except Exception as erreur:  # noqa: BLE001
+                return f"{CE_QUI_MANQUE} ({type(erreur).__name__} en verifiant models/{dossier})"
+            if not isinstance(disponibles, list) or nom_modele not in disponibles:
+                return (f"le modele « {nom_modele} » installe dans models/{dossier}/ de ComfyUI "
+                       f"(disponibles : {disponibles if isinstance(disponibles, list) else 'aucun'}).")
+        return None
+
+    def _televerser_images(
+        self, entree: EntreeWorkflow, parametres: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Decode chaque parametre `image_base64` du schema et le televerse
+        a ComfyUI (`POST /upload/image`) — rend une COPIE de `parametres` ou
+        ces valeurs sont remplacees par le nom que ComfyUI a attribue, seul
+        vocabulaire que `LoadImage` accepte. Leve `_EchecTeleversement`
+        plutot que de laisser un octet invalide atteindre `construire_requete`."""
+        prets = dict(parametres)
+        for nom, spec in entree.schema_entree.items():
+            if spec.type != "image_base64":
+                continue
+            valeur = parametres.get(nom)
+            if not valeur:
+                continue
+            try:
+                octets = base64.b64decode(valeur, validate=True)
+            except (ValueError, TypeError) as erreur:
+                raise _EchecTeleversement(f"{nom} : base64 illisible ({type(erreur).__name__}).") from erreur
+
+            nom_fichier = f"arena-ref-{random.randint(0, 2**32 - 1):08x}{_extension_devinee(octets)}"
+            try:
+                reponse = _post_fichier("upload/image", octets, nom_fichier)
+            except Exception as erreur:  # noqa: BLE001
+                raise _EchecTeleversement(
+                    f"{CE_QUI_MANQUE} (televersement de {nom} en echec : "
+                    f"{type(erreur).__name__}).") from erreur
+
+            nom_distant = str(reponse.get("name") or "")
+            if not nom_distant:
+                raise _EchecTeleversement(
+                    f"ComfyUI n'a pas rendu de nom apres le televersement de {nom}.")
+            sous_dossier = str(reponse.get("subfolder") or "")
+            prets[nom] = f"{sous_dossier}/{nom_distant}" if sous_dossier else nom_distant
+        return prets
 
     def _telecharger_si_besoin(self, image: Dict[str, Any]) -> Optional[Path]:
         """Rend le chemin LOCAL du fichier annonce par ComfyUI : lecture
