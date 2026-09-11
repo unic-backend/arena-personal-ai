@@ -1,17 +1,56 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-08-29, fin de session.*
+*Mise à jour : 2026-09-11, fin de session (PR #186 fusionnée).*
 
-## ⚠️ Ce fichier est périmé au-delà de PR #34
+## En cours
 
-Plus de 40 PR sont passées depuis (DEC-0020 à DEC-0024 au moins, jusqu'à
-`docs/DECISIONS.md`). Ce fichier n'a pas été réécrit à chaque fois — le
-faire correctement exige de relire chaque PR fusionnée depuis, hors
-périmètre d'une seule session. **Dernier chunk réellement documenté ici et
-à jour : DEC-0024 (31/08/2026), connecteurs Gmail réels — voir
-`docs/audits/connecteurs_audit.md` et l'entrée DEC-0024.** Pour tout le
-reste, `docs/DECISIONS.md` (toutes les entrées) reste la source exacte ; ce
-fichier est un index, pas l'autorité.
+Rien. La mission « ARENA × OPENEXECUTIVE » (Executive Intelligence,
+DEC-0086) est **terminée et fusionnée** dans `master` — PR #186,
+branche `claude/openexecutive-business-intelligence`, commit
+`96adf2e182c2a25a1eb5acb21ec0689c440de1c0`.
+
+## Dernier chunk : DEC-0086 — Executive Intelligence
+
+Nouvelle capacité canonique `core/executive/` : une couche qui **coordonne
+les spécialistes déjà existants** (jamais un second agent-plateforme) pour
+répondre à une question d'affaires complexe — calcul déterministe (marge,
+échéancier, faisabilité de délai), désaccord préservé entre rôles (jamais
+moyenné), synthèse avec vérification chiffrée. `OpenExecutive`
+(SenteLabsAI, commit `fc72987537069173cb6402a1892bc03fd74f5454`, Apache-2.0)
+audité en profondeur — rapport complet : `docs/audits/openexecutive_audit.md`.
+Détail complet de la décision : `docs/DECISIONS.md`, DEC-0086.
+
+Six rôles (finance/operations/risque/approvisionnement/strategie_marche/
+ressources_humaines), sélection dynamique par mots-clés (plafond 4, repli
+finance+risque pour une évaluation générale sans mot de domaine), intention
+`EXECUTIVE` dans l'aiguilleur et le dispatch, routes
+`/api/executive/analyser` + `/api/executive/roles`.
+
+Deux bugs réels trouvés et corrigés **par le test de redémarrage** (pas par
+les tests unitaires écrits d'avance) : extraction du nombre de jours le
+plus proche d'un mot-clé (au lieu du premier trouvé), et un libellé
+d'échéancier qui traversait un saut de ligne. Une régression réelle trouvée
+**par la suite complète** (pas par les tests ciblés) : une tentative
+d'enregistrer `"executive"` dans `core/agent/capacites.py` (registre réservé
+aux espaces de la barre latérale PWA) — retirée.
+
+166 tests dédiés, suite complète après correction : **4991 passed, 31
+skipped, 48 deselected, 0 failed** (477.21s). CI de la PR : les échecs
+(`Declared dependencies still resolve`, `Docker image builds` — conflit
+Pillow/browser-use ; `Lint and offline test suite` — 39 échecs
+weasyprint/libreoffice/ffmpeg absents du job) sont **préexistants sur
+`master`**, confirmés identiques, documentés en commentaire PR — rien
+attribuable au diff de cette mission.
+
+## ⚠️ L'historique détaillé entre DEC-0024 et DEC-0085 n'a pas été relu ici
+
+Plus de 150 PR sont passées entre ce chunk et le précédent point vraiment
+à jour de ce fichier (DEC-0024, connecteurs Gmail réels — voir
+`docs/audits/connecteurs_audit.md`). Le relire correctement exige de
+reparcourir chaque PR fusionnée depuis, hors périmètre d'une seule session.
+Pour tout ce qui n'est pas DEC-0086 ci-dessus, `docs/DECISIONS.md` (toutes
+les entrées, jusqu'à DEC-0086 inclus) reste la source exacte ; ce fichier
+est un index, pas l'autorité.
 
 ## État à l'instant (2026-08-29 — voir l'avertissement ci-dessus)
 
