@@ -100,6 +100,38 @@ class MemoryManager:
                     return row["value"]
             return None
 
+    def list_facts(self, category: str, limit: int = 8) -> List[Dict[str, Any]]:
+        """Les faits les plus recents d'une categorie, du plus recent au plus
+        ancien. Ajoute pour l'Executive Intelligence (mission ARENA x
+        OPENEXECUTIVE, DEC-0086, §15) — une decision executive est un fait de
+        plus dans la memoire deja existante, jamais un second systeme de
+        memoire. Reutilisable par toute categorie future de la meme maniere.
+        """
+        with closing(self._get_connection()) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT key, value, metadata, updated_at FROM long_term_memory "
+                "WHERE category = ? ORDER BY updated_at DESC, id DESC LIMIT ?",
+                (category, limit),
+            )
+            resultats = []
+            for row in cursor.fetchall():
+                try:
+                    valeur = json.loads(row["value"])
+                except Exception:
+                    valeur = row["value"]
+                metadonnees = None
+                if row["metadata"]:
+                    try:
+                        metadonnees = json.loads(row["metadata"])
+                    except Exception:
+                        metadonnees = row["metadata"]
+                resultats.append({
+                    "key": row["key"], "value": valeur, "metadata": metadonnees,
+                    "updated_at": row["updated_at"],
+                })
+            return resultats
+
 if __name__ == "__main__":
     mem = MemoryManager()
     mem.set_fact("user_profile", "owner", "Ousmane", {"role": "Propriétaire"})

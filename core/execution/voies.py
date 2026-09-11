@@ -160,6 +160,12 @@ VOIE_PAR_INTENTION: Dict[str, Voie] = {
     # (core/finance/, agents/finance/finance_agent.py) : meme voie que
     # FRESH_INFO/DEEP_RESEARCH, pour la meme raison — sortir chercher dehors.
     "FINANCE": Voie.RECHERCHE,
+    # Executive Intelligence (mission ARENA x OPENEXECUTIVE, DEC-0086) :
+    # jusqu'a quatre roles en parallele, chacun pouvant interpreter par le
+    # modele, plus une synthese — plusieurs appels modele par construction —
+    # et le role strategie_marche peut sortir chercher sur le web, meme
+    # raison que FINANCE juste au-dessus.
+    "EXECUTIVE": Voie.RECHERCHE,
 }
 
 #: Voie d'une intention inconnue. La moins chere **qui puisse encore repondre** :

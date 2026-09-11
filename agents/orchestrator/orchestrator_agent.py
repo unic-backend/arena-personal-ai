@@ -95,6 +95,7 @@ INTENTIONS = {
     "PREUVE_FORMELLE",
     "ARCHITECTURE_3D",
     "FINANCE",
+    "EXECUTIVE",
 }
 
 #: Ce qui demande de CONSTRUIRE ou d'INSPECTER un batiment en 3D. Teste
@@ -141,6 +142,31 @@ VERBES_FINANCE = (
     "vaut-il investir", "recommandation d'investissement",
     "recommandation d investissement", "portefeuille simule", "portefeuille simulé",
 )
+
+#: Ce qui demande une DECISION d'affaires, jamais une simple question de prix
+#: ou un devis ordinaire (mission ARENA x OPENEXECUTIVE, DEC-0086). Chaque
+#: locution est deja complete (verbe + objet de decision) : pas de couple
+#: verbe/actif separe a tester comme pour la finance, parce qu'« accepter »
+#: seul est trop courant hors contexte de decision (« accepte mon devis »).
+#: Teste APRES `demande_financiere` : « devrions-nous investir dans le
+#: bitcoin » doit rester FINANCE, l'analyse de marche existante, jamais
+#: l'Executive Intelligence qui ne sait pas analyser un actif financier.
+PHRASES_EXECUTIVE = (
+    "devrions-nous", "devrions nous", "devons-nous accepter", "devons nous accepter",
+    "faut-il accepter", "faut il accepter", "should we accept",
+    "evaluation executive", "évaluation exécutive", "executive assessment",
+    "evaluation d'affaires", "évaluation d'affaires", "evaluation d affaires",
+    "decision d'investissement", "décision d'investissement", "decision d investissement",
+    "accepter ce contrat", "accepter ce projet", "accepter ce chantier",
+    "accepter cette offre", "accepter cette proposition",
+    "analyse cette proposition", "analyse ce contrat", "analyser ce contrat",
+    "strategie d'acquisition client", "stratégie d'acquisition client",
+    "strategie d acquisition client", "plan d'expansion", "plan d expansion",
+    "strategie d'expansion", "stratégie d'expansion", "strategie d expansion",
+    "rapport executif", "rapport exécutif", "brief executif", "brief exécutif",
+    "resume executif", "résumé exécutif", "resume exécutif",
+)
+
 
 #: Ce qui parle de ses RESEAUX SOCIAUX. Teste avant le metier : « une
 #: publication sur mon chantier » contient « chantier » et partirait chez
@@ -655,6 +681,23 @@ class OrchestratorAgent(BaseAgent):
         texte = (user_input or "").lower()
         return any(v in texte for v in VERBES_FINANCE) and _nomme_un_actif_financier(texte)
 
+    @staticmethod
+    def demande_executive(user_input: str) -> bool:
+        """Dit si la phrase demande une DECISION D'AFFAIRES (mission ARENA x
+        OPENEXECUTIVE, DEC-0086) — jamais un devis ordinaire (PLAQUISTE le
+        traite deja) ni une analyse de marche (FINANCE, teste juste avant).
+
+        Locutions completes, pas un couple verbe/objet separe : « accepter »
+        seul est trop courant hors decision (« accepte mon devis »). Testee
+        apres `demande_financiere` pour la meme raison qu'elle est testee
+        apres `demande_de_courrier` : eviter qu'un mot d'actualite
+        (« aujourd'hui », « cette semaine ») ne detourne la question vers
+        FRESH_INFO avant que son vrai sujet — une decision d'affaires — ait
+        eu son mot a dire.
+        """
+        texte = (user_input or "").lower()
+        return any(phrase in texte for phrase in PHRASES_EXECUTIVE)
+
     async def analyze_intent(self, user_input: str, espace: Optional[str] = None) -> str:
         """Détermine vers quel agent envoyer la demande.
 
@@ -695,6 +738,10 @@ class OrchestratorAgent(BaseAgent):
         if self.demande_financiere(user_input):
             logger.info("Demande d'analyse financiere explicite -> FINANCE, avant le controle date")
             return "FINANCE"
+
+        if self.demande_executive(user_input):
+            logger.info("Demande de decision d'affaires explicite -> EXECUTIVE, avant le controle date")
+            return "EXECUTIVE"
 
         if self.exige_verification(user_input):
             logger.info("Contrôle daté : la question demande une vérification -> FRESH_INFO")
@@ -788,6 +835,11 @@ class OrchestratorAgent(BaseAgent):
         # etat de `self`.
         if OrchestratorAgent.demande_financiere(user_input):
             return "FINANCE"
+
+        # Decision d'affaires (mission ARENA x OPENEXECUTIVE, DEC-0086).
+        # Meme raison de placement que la finance juste au-dessus.
+        if OrchestratorAgent.demande_executive(user_input):
+            return "EXECUTIVE"
 
         # Information fraiche : la reponse a pu changer depuis l'entrainement du modele.
         fresh_keywords = [

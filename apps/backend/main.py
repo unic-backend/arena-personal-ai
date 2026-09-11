@@ -23,6 +23,7 @@ from apps.backend.routers import (
     connectors,
     contexte_unifie,
     conversations,
+    executive,
     gardien,
     hermes_evolution,
     image_generation,
@@ -272,6 +273,7 @@ app.include_router(connectors.router)
 app.include_router(video_production.router)
 app.include_router(personnages.router)
 app.include_router(image_generation.router)
+app.include_router(executive.router)
 app.include_router(hermes_evolution.router)
 app.include_router(contexte_unifie.router)
 app.include_router(speech.router)

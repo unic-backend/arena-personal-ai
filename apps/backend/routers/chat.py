@@ -26,6 +26,7 @@ from apps.backend.runtime import (
     dioumtoukay_agent,
     editor_agent,
     email_agent,
+    executive_agent,
     fast_provider,
     finance_agent,
     formel_agent,
@@ -505,6 +506,12 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         # (agents/finance/finance_agent.py). Jamais d'ordre reel : aucune
         # capacite d'ecriture n'existe sur le connecteur market_data.
         result = await finance_agent.run(request.prompt)
+    elif intent == "EXECUTIVE":
+        # Executive Intelligence (mission ARENA x OPENEXECUTIVE, DEC-0086) :
+        # coordonne les specialistes existants d'ARENA, jamais un second
+        # agent-plateforme. Recommande seulement — aucune action consequente
+        # n'est executee ici (core/executive/moteur.py).
+        result = await executive_agent.run(request.prompt)
     elif intent == "VISAGE":
         # Analyse de visages par le SDK Faceplugin, via le registre — jamais
         # en direct : c'est le registre qui applique la permission, et deux de
