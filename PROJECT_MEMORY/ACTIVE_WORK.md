@@ -4,9 +4,9 @@
 
 ## En cours
 
-DEC-0091 (Trans4mers — amorce/confirmation, verrou par fichier, worktrees
-isolés) vérifiée (suite complète : 5222 passed, 0 failed, mesuré le
-11/09/2026), prête à pousser sur une branche restartée depuis `master`.
+PR #190 (DEC-0091 — Trans4mers : amorce/confirmation, verrou par fichier,
+worktrees isolés) **fusionnée dans `master`** le 11/09/2026. Rien en attente
+d'action côté assistant sur ce chunk.
 
 ## Dernier chunk : DEC-0091 — Trans4mers audité : crash recovery et concurrence pour Dioumtoukay, aucun second runtime
 
