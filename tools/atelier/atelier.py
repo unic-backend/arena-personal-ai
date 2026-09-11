@@ -36,6 +36,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from tools.atelier import verrous
+
 logger = logging.getLogger("usman.atelier")
 
 #: Au-delà, une commande est considérée comme bloquée. Réglable par l'appelant :
@@ -155,15 +157,22 @@ class Atelier:
         return r
 
     def ecrire(self, chemin: str, contenu: str) -> Resultat:
-        """Écrit un fichier. Crée les dossiers manquants."""
+        """Écrit un fichier. Crée les dossiers manquants.
+
+        Sérialisée par chemin (`verrous.pour`) : deux tâches qui écrivent le
+        même fichier en même temps (mission ARENA x TRANS4MERS §20) attendent
+        leur tour au lieu d'entrelacer leurs octets — jamais refusées, jamais
+        bloquées plus longtemps qu'une écriture disque réelle.
+        """
         p = self._chemin(chemin)
-        try:
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(contenu, encoding="utf-8")
-        except Exception as erreur:  # noqa: BLE001
-            r = Resultat(False, f"Ecriture impossible ({type(erreur).__name__}) : {p}")
-        else:
-            r = Resultat(True, f"{p} ecrit ({len(contenu)} caracteres).")
+        with verrous.pour(p):
+            try:
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(contenu, encoding="utf-8")
+            except Exception as erreur:  # noqa: BLE001
+                r = Resultat(False, f"Ecriture impossible ({type(erreur).__name__}) : {p}")
+            else:
+                r = Resultat(True, f"{p} ecrit ({len(contenu)} caracteres).")
         self._noter("ecrire", str(p), r)
         return r
 
@@ -189,30 +198,40 @@ class Atelier:
         fichier, ou citer un passage plus long.
         """
         p = self._chemin(chemin)
-        try:
-            contenu = p.read_text(encoding="utf-8")
-        except Exception as erreur:  # noqa: BLE001
-            r = Resultat(False, f"Lecture impossible ({type(erreur).__name__}) : {p}")
-            self._noter("remplacer", str(p), r)
-            return r
-
-        vus = contenu.count(ancien)
-        if not ancien:
-            r = Resultat(False, "Aucun passage a remplacer n'a ete donne.")
-        elif vus == 0:
-            r = Resultat(False, f"Passage introuvable dans {p} : relis le fichier, "
-                                "le texte cite n'y est pas tel quel.")
-        elif vus > 1:
-            r = Resultat(False, f"Passage present {vus} fois dans {p} : cite un "
-                                "extrait plus long, qui n'apparaisse qu'une fois.")
-        else:
+        # Le verrou entoure LECTURE + ECRITURE ensemble : c'est ce qui rend la
+        # verification « le passage apparait exactement une fois » fiable
+        # meme sous concurrence reelle (mission §11/§12/§20/§46). Sans lui,
+        # deux taches pourraient toutes deux lire la version AVANT la
+        # modification de l'autre, trouver chacune le passage une fois, et la
+        # seconde ecriture ecraserait silencieusement la premiere (une
+        # « lost update » classique) — avec le verrou, la seconde tache relit
+        # forcement le contenu DEJA modifie par la premiere, donc echoue
+        # proprement (« introuvable ») au lieu d'ecraser son travail.
+        with verrous.pour(p):
             try:
-                p.write_text(contenu.replace(ancien, nouveau, 1), encoding="utf-8")
+                contenu = p.read_text(encoding="utf-8")
             except Exception as erreur:  # noqa: BLE001
-                r = Resultat(False, f"Ecriture impossible ({type(erreur).__name__}) : {p}")
+                r = Resultat(False, f"Lecture impossible ({type(erreur).__name__}) : {p}")
+                self._noter("remplacer", str(p), r)
+                return r
+
+            vus = contenu.count(ancien)
+            if not ancien:
+                r = Resultat(False, "Aucun passage a remplacer n'a ete donne.")
+            elif vus == 0:
+                r = Resultat(False, f"Passage introuvable dans {p} : relis le fichier, "
+                                    "le texte cite n'y est pas tel quel.")
+            elif vus > 1:
+                r = Resultat(False, f"Passage present {vus} fois dans {p} : cite un "
+                                    "extrait plus long, qui n'apparaisse qu'une fois.")
             else:
-                r = Resultat(True, f"{p} modifie ({len(ancien)} caracteres remplaces "
-                                   f"par {len(nouveau)}).")
+                try:
+                    p.write_text(contenu.replace(ancien, nouveau, 1), encoding="utf-8")
+                except Exception as erreur:  # noqa: BLE001
+                    r = Resultat(False, f"Ecriture impossible ({type(erreur).__name__}) : {p}")
+                else:
+                    r = Resultat(True, f"{p} modifie ({len(ancien)} caracteres remplaces "
+                                       f"par {len(nouveau)}).")
         self._noter("remplacer", str(p), r)
         return r
 
@@ -301,13 +320,17 @@ class Atelier:
     def deplacer(self, source: str, destination: str) -> Resultat:
         """Déplace ou renomme. C'est ce qui range un dossier."""
         a, b = self._chemin(source), self._chemin(destination)
-        try:
-            b.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(a), str(b))
-        except Exception as erreur:  # noqa: BLE001
-            r = Resultat(False, f"Deplacement impossible ({type(erreur).__name__}) : {a} -> {b}")
-        else:
-            r = Resultat(True, f"{a} deplace vers {b}.")
+        # Source ET destination, dans un ordre stable (`verrous.pour_plusieurs`)
+        # : deux deplacements concurrents qui touchent les memes deux chemins
+        # dans des sens opposes ne peuvent pas se bloquer l'un l'autre.
+        with verrous.pour_plusieurs([a, b]):
+            try:
+                b.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(a), str(b))
+            except Exception as erreur:  # noqa: BLE001
+                r = Resultat(False, f"Deplacement impossible ({type(erreur).__name__}) : {a} -> {b}")
+            else:
+                r = Resultat(True, f"{a} deplace vers {b}.")
         self._noter("deplacer", f"{a} -> {b}", r)
         return r
 
@@ -320,13 +343,14 @@ class Atelier:
         niveau, avant d'appeler cette methode — jamais dedans.
         """
         a, b = self._chemin(source), self._chemin(destination)
-        try:
-            b.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(str(a), str(b))
-        except Exception as erreur:  # noqa: BLE001
-            r = Resultat(False, f"Copie impossible ({type(erreur).__name__}) : {a} -> {b}")
-        else:
-            r = Resultat(True, f"{a} copie vers {b}.")
+        with verrous.pour_plusieurs([a, b]):
+            try:
+                b.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(str(a), str(b))
+            except Exception as erreur:  # noqa: BLE001
+                r = Resultat(False, f"Copie impossible ({type(erreur).__name__}) : {a} -> {b}")
+            else:
+                r = Resultat(True, f"{a} copie vers {b}.")
         self._noter("copier", f"{a} -> {b}", r)
         return r
 
@@ -341,14 +365,15 @@ class Atelier:
         organization`.
         """
         p = self._chemin(chemin)
-        try:
-            if p.is_dir():
-                raise IsADirectoryError(f"{p} est un dossier, pas un fichier")
-            p.unlink()
-        except Exception as erreur:  # noqa: BLE001
-            r = Resultat(False, f"Suppression impossible ({type(erreur).__name__}) : {p}")
-        else:
-            r = Resultat(True, f"{p} supprime.")
+        with verrous.pour(p):
+            try:
+                if p.is_dir():
+                    raise IsADirectoryError(f"{p} est un dossier, pas un fichier")
+                p.unlink()
+            except Exception as erreur:  # noqa: BLE001
+                r = Resultat(False, f"Suppression impossible ({type(erreur).__name__}) : {p}")
+            else:
+                r = Resultat(True, f"{p} supprime.")
         self._noter("supprimer", str(p), r)
         return r
 
@@ -486,3 +511,85 @@ class Atelier:
         demandé, et le journal dit ce qui est parti.
         """
         return self.executer(["git", *arguments], dossier=dossier)
+
+    def isoler(self, nom: str, base: str = "HEAD", dossier: Optional[str] = None) -> Resultat:
+        """Crée un worktree git isolé pour un travail risqué ou parallèle,
+        sans jamais toucher l'arbre de travail principal.
+
+        Mission ARENA x TRANS4MERS §18/§52. Concept vérifié dans le code
+        source de Trans4mers (MIT, `abhayzangir1/trans4mer`, commit `d0940a9`,
+        `core/trans4mers-engine/src/git_workspace.rs::ensure_git_workspace` —
+        `.gitignore` protégeant les worktrees isolés de tout commit
+        accidentel). Rien copié : `git worktree` est ici invoqué en shell nu
+        via `self.git()`, comme le reste de ce module — c'est du `git`
+        ordinaire, pas une bibliothèque `git2` embarquée.
+
+        **Une capacité de plus, pas une restriction.** DEC-0038 reste entier :
+        Dioumtoukay peut toujours modifier l'arbre principal directement s'il
+        le choisit. `isoler()` lui donne juste un endroit où travailler SANS
+        y toucher, quand la tâche s'y prête (branche à soi, tâches
+        parallèles) — jamais un chemin obligatoire.
+
+        Returns:
+            En cas de succès, `donnees["chemin"]` porte le chemin absolu du
+            nouveau worktree — c'est ce chemin qu'il faut passer en `DOSSIER:`
+            aux actions suivantes pour travailler réellement dedans.
+        """
+        if not nom or any(c in nom for c in ("/", "\\", "..")):
+            return Resultat(False, "NOM de worktree invalide : un seul segment, "
+                                   "sans '/' ni '..'.")
+        ou = self._chemin(dossier) if dossier else self.racine
+        self._proteger_worktrees_du_commit(ou)
+        chemin_worktree = ou / ".worktrees" / nom
+        resultat = self.git("worktree", "add", "-b", nom, str(chemin_worktree), base,
+                            dossier=dossier)
+        if resultat.ok:
+            resultat.donnees["chemin"] = str(chemin_worktree)
+            resultat.message = f"Worktree isole cree : {chemin_worktree} (branche {nom})."
+            resultat.sortie = str(chemin_worktree)
+        return resultat
+
+    def nettoyer_worktree(self, nom: str, dossier: Optional[str] = None) -> Resultat:
+        """Retire un worktree isolé créé par `isoler()`.
+
+        **N'écrase jamais un travail non commité par défaut** — mission §19,
+        « never destroy user work » : `git worktree remove` refuse tout seul
+        s'il reste des modifications non commitées dans le worktree, et cet
+        échec est rapporté tel quel, jamais contourné par un `--force`
+        ajouté ici. Un appelant qui veut vraiment forcer le fait lui-même via
+        `atelier.git("worktree", "remove", chemin, "--force")` — un geste
+        explicite, jamais un défaut silencieux.
+        """
+        if not nom or any(c in nom for c in ("/", "\\", "..")):
+            return Resultat(False, "NOM de worktree invalide : un seul segment, "
+                                   "sans '/' ni '..'.")
+        ou = self._chemin(dossier) if dossier else self.racine
+        chemin_worktree = ou / ".worktrees" / nom
+        return self.git("worktree", "remove", str(chemin_worktree), dossier=dossier)
+
+    @staticmethod
+    def _proteger_worktrees_du_commit(racine: Path) -> None:
+        """S'assure que `.worktrees/` est ignoré par git dans ce dépôt.
+
+        Sans ça, un `git add -A` ultérieur dans l'arbre principal pourrait
+        aspirer le contenu entier d'un worktree isolé — le contraire exact
+        de l'isolation recherchée. Idée vérifiée dans Trans4mers
+        (`git_workspace.rs::ensure_gitignore`) ; n'ajoute la ligne que si le
+        fichier existe déjà et ne la porte pas encore — ne crée jamais de
+        `.gitignore` dans un dépôt qui n'en a pas choisi d'avoir un.
+        """
+        gitignore = racine / ".gitignore"
+        ligne = ".worktrees/"
+        try:
+            if not gitignore.is_file():
+                return
+            contenu = gitignore.read_text(encoding="utf-8")
+            if ligne not in contenu.splitlines():
+                with verrous.pour(gitignore):
+                    contenu = gitignore.read_text(encoding="utf-8")
+                    if ligne not in contenu.splitlines():
+                        separateur = "" if contenu.endswith("\n") or not contenu else "\n"
+                        gitignore.write_text(
+                            contenu + separateur + f"{ligne}\n", encoding="utf-8")
+        except OSError as erreur:  # noqa: BLE001 — une protection qui echoue ne bloque pas isoler()
+            logger.warning(".gitignore non mis a jour pour .worktrees/ (%s).", erreur)

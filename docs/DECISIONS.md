@@ -8110,3 +8110,158 @@ cryptographie appliquée sans revue externe, jamais celui d'une primitive
 inventée ici. Une phrase de passe oubliée rend un souvenir sensible
 définitivement illisible, comme chez AI Memory Vault — assumé, documenté,
 jamais un recouvrement caché qui affaiblirait la protection.
+
+---
+
+## DEC-0091 — Trans4mers audité : amorce/confirmation, verrou par fichier, worktrees isolés — jamais un second runtime de code
+
+**2026-09-11.** Mission reçue : étudier `abhayzangir1/trans4mer` (« un
+runtime de codage autonome fiable ») et renforcer le runtime d'ingénierie
+logicielle EXISTANT d'ARENA — crash recovery, terminal/filesystem sûrs,
+diff en boucle humaine, concurrence multi-agent — jamais un second agent de
+code, un second bac à sable, un second système de fichiers ou de
+mémoire/RAG/MCP/navigateur. Audit complet du dépôt cloné :
+`docs/audits/trans4mer_audit.md`.
+
+### Ce qu'ARENA possédait déjà, vérifié avant d'écrire une ligne
+
+`DioumtoukayAgent` (`agents/dioumtoukay/dioumtoukay_agent.py`) + `Atelier`
+(`tools/atelier/atelier.py`) restent le runtime canonique — DEC-0038
+(02/09/2026) : « il doit être comme claude code […] entrer dans mes fichiers
+du pc », et donc **aucune confirmation, aucun chemin interdit, aucune
+commande refusée**, une décision du propriétaire prise en connaissance de
+cause, jamais re-litigée ici. Trois missions antérieures avaient déjà
+comparé ce runtime à des systèmes voisins et n'avaient laissé qu'un manque
+réel à chaque fois : DEC-0063 (mini-SWE-agent — budget de temps, réponses
+illisibles consécutives), DEC-0072/0073 (Open SWE — `core/execution/
+reprise.py`, le journal durable qui existe déjà), DEC-0077 (Cline — gardes
+anti-répétition/anti-échecs). Relire ces trois décisions en entier faisait
+déjà partie de l'audit : elles bornent ce qui restait vraiment à faire.
+
+### Audit réel de Trans4mers (code cloné, commit `d0940a9`, MIT)
+
+Son mécanisme central — `core/trans4mers-engine/src/approval_engine.rs` —
+protège contre le TOCTOU (« Time-Of-Check to Time-Of-Use ») par un hash
+SHA-256 d'arguments canonicalisés (clés JSON triées), recalculé **à partir
+de ce qui va réellement s'exécuter** et comparé à ce qui a été approuvé
+(`agent_runtime.rs:1007`, juste avant l'exécution de l'outil). Ce mécanisme
+suppose une étape d'approbation humaine qui n'existe PAS dans la boucle de
+Dioumtoukay (DEC-0038) — il n'a donc pas été copié tel quel : ce qui a été
+retenu, c'est le PRINCIPE (revérifier juste avant d'agir, jamais faire
+confiance à une décision prise plus tôt), appliqué là où ARENA a un vrai
+manque, pas là où trans4mer en a un. Trois autres pièces étudiées :
+`domain/recovery.rs::FailureClass` (4 catégories déterministes),
+`domain/execution.rs::Checkpoint`/`ExecutionPhase` (l'état d'une action en
+cours de vol, distinct d'une action terminée), `git_workspace.rs` (worktree
++ protection `.gitignore`). Détail complet, y compris ce qui a été
+délibérément ignoré (CQRS, PTY, navigateur, mémoire à paliers, MCP,
+multi-agent temps réel) : `docs/audits/trans4mer_audit.md`.
+
+### Ce qui a été construit — trois pièces, rien de plus
+
+1. **Amorce/confirmation** (`core/execution/reprise.py::Etape.confirmee`,
+   `JournalDeReprise.amorcer()`/`confirmer()`). Le manque réel, mesuré dans
+   le code existant avant d'écrire une ligne : `noter()` écrivait
+   **après** l'action — un crash PENDANT l'écriture d'un fichier ou une
+   commande longue ne laissait rien sur le disque, la reprise ne savait
+   même pas que l'action avait été tentée. `DioumtoukayAgent.run()` amorce
+   maintenant chaque action AVANT de l'exécuter (`reprises.amorcer()`) et la
+   confirme après (`reprises.confirmer()`) — une étape jamais confirmée est
+   rapportée à la reprise comme **ÉTAT INCONNU**, jamais comme un succès ni
+   un échec, avec l'instruction explicite de ne pas la rejouer sans vérifier
+   son effet réel (mission §14/§15/§47, « never blindly rerun a potentially
+   destructive operation after crash »).
+2. **Verrou par chemin de fichier** (`tools/atelier/verrous.py`, nouveau
+   module). Le risque réel, mesuré dans le câblage de production
+   (`apps/backend/runtime.py`) : UN SEUL `DioumtoukayAgent`, UN SEUL
+   `Atelier` partagé, une boucle `async` qui attend le modèle à chaque
+   tour — deux conversations qui demandent toutes deux à Dioumtoukay de
+   travailler EN MÊME TEMPS sur le même fichier peuvent réellement
+   entrelacer leurs actions. Le verrou **sérialise, ne refuse jamais rien**
+   — la même distinction que `threading.Lock` face à un contrôle d'accès,
+   ce qui le rend compatible avec DEC-0038 sans la re-litiger. Granularité
+   FICHIER seule (mission §21, « use only what's needed ») : `executer()`
+   n'est délibérément pas verrouillé — une commande shell peut tourner
+   120s et toucher n'importe quoi, la soumettre bloquerait un chemin sans
+   rapport pour une protection qu'on ne peut pas nommer.
+3. **Worktrees isolés** (`Atelier.isoler()`/`nettoyer_worktree()`). Une
+   capacité de plus, jamais un chemin obligé : `git worktree add`/`remove`
+   en shell nu (comme le reste du module), avec la même protection
+   `.gitignore` que Trans4mers pour qu'un `git add -A` de l'arbre principal
+   n'aspire jamais un worktree isolé. `nettoyer_worktree()` ne force jamais
+   la suppression d'un travail non commité (mission §19, « never destroy
+   user work ») — `git worktree remove` refuse tout seul, et cet échec est
+   rapporté tel quel.
+
+### Ce qui a été délibérément REJETÉ, et pourquoi
+
+- **Hash d'approbation humaine / porte HITL (§9-11/§45)** : aucune étape
+  d'approbation n'existe dans la boucle de Dioumtoukay — DEC-0038, lue en
+  entier avant d'écrire une ligne. En ajouter une reviendrait à réintroduire
+  par un autre nom la garde-fou que cette décision retire en connaissance de
+  cause. **Non re-litigé.**
+- **Bac à sable de chemins autorisés/interdits (§34)** : le docstring
+  d'`Atelier` dit depuis le 02/09/2026 « ce n'est pas une prison » — un
+  chemin absolu hors de la racine est délibérément suivi. Une jaugeolette de
+  chemins irait directement contre cette décision.
+- **CQRS/event sourcing complet, PTY réelle, navigateur, mémoire à
+  paliers, RAG hybride, MCP** : chacun a déjà un équivalent audité et
+  mesuré ailleurs dans ARENA (reprise durable DEC-0072, `subprocess.Popen`
+  suffisant à ce qui est réellement lancé, Fuji-Web DEC-0079, AI Memory
+  Vault DEC-0090, txtai DEC-0051, `core/mcp/` DEC-0072/0077) — les dupliquer
+  aurait été exactement ce que la mission interdit (§2, §36-39).
+- **Multi-agent temps réel / swarm** : DEC-0063 a déjà tranché que
+  Dioumtoukay reste un agent unique qui agit, les autres des spécialistes
+  consultés — non re-litigé.
+
+### Tests et sabotage — 16 tests nouveaux, tous avec une preuve réelle
+
+- `tests/core/test_reprise_amorce.py` (6) : une amorce sans confirmation
+  est bien seule sur le disque au moment du « crash » simulé ; elle est
+  rapportée ÉTAT INCONNU à la reprise ; `confirmer()` retrouve l'étape même
+  depuis une Tache relue par un AUTRE `JournalDeReprise` (un redémarrage
+  réel entre les deux). **Sabotage** : le test
+  `test_sans_amorce_un_crash_en_plein_vol_ne_laisse_RIEN` fixe le
+  comportement de l'ANCIEN chemin (`noter()` seul) pour prouver que le
+  manque était réel, pas seulement affirmé.
+- `tests/tools/test_atelier_concurrence.py` (3) : deux VRAIS threads,
+  synchronisés par un `threading.Barrier` (le pire entrelacement possible,
+  pas une chance sur dix) — deux `ecrire()` concurrents sur le même fichier
+  ne produisent jamais un contenu mélangé ; deux `remplacer()` concurrents
+  sur le même passage, un seul réussit, l'autre échoue proprement
+  (« introuvable »), jamais une correction perdue en silence. **Sabotage
+  réel** : le verrou neutralisé (`monkeypatch`) ET les deux threads forcés à
+  lire avant que l'un n'écrive (un second `threading.Barrier` sur la
+  lecture) — les deux remplacements réussissent alors tous les deux,
+  prouvant que c'est bien le verrou qui protégeait, pas une coïncidence de
+  timing.
+- `tests/tools/test_atelier_worktree.py` (7) : un vrai dépôt git, un vrai
+  `git worktree add` — le fichier écrit dans le worktree isolé n'apparaît
+  jamais dans l'arbre principal ; `.gitignore` mis à jour SEULEMENT s'il
+  existe déjà ; un nom invalide (`../evasion`) refusé ; un worktree portant
+  un fichier non commité **survit** à `nettoyer_worktree()` (git refuse, le
+  fichier est vérifié toujours présent après).
+
+`ruff check .` propre sur tout le dépôt. Suite ciblée (les 4 fichiers
+ci-dessus + les tests existants d'`Atelier`/`reprise`/`Dioumtoukay`) :
+**138 passed**. Suite complète : **5222 passed, 31 skipped, 48 deselected,
+0 failed** (578.09s, mesuré le 11/09/2026) — exactement 16 de plus que la
+mesure DEC-0090 (5206), les 16 tests nouveaux de cette mission.
+
+### Ce que ça coûte si c'est faux
+
+Le verrou par fichier est un mutex **en mémoire du processus** — il protège
+contre deux tâches concurrentes dans le MÊME processus `apps/backend`, pas
+contre deux processus ARENA distincts qui écriraient le même fichier (un
+scénario qui n'existe pas aujourd'hui : un seul processus backend tourne).
+S'il venait à exister, cette protection ne s'appliquerait plus et devrait
+être refaite au niveau du fichier disque (`flock`), pas simplement
+réutilisée. L'amorce ne protège pas contre un processus SHELL orphelin
+(`executer()` peut lancer un `pytest`/`npm` qui, sur `start_new_session=True`,
+survit à la mort du processus parent ARENA) — un point non résolu ici, nommé
+plutôt que caché : `amorcer()`/`confirmer()` disent que l'ISSUE de l'action
+est inconnue après un crash, ils ne tuent aucun processus orphelin qui
+continuerait de tourner. Windows n'a pas été mesuré dans cette session (elle
+tourne sur Linux, cloud) — `Path`, `threading.Lock` et `git worktree` sont
+portables par construction, mais ce n'est pas la même chose qu'une mesure
+réelle sur la machine du propriétaire.
