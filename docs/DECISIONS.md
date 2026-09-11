@@ -8266,6 +8266,145 @@ tourne sur Linux, cloud) — `Path`, `threading.Lock` et `git worktree` sont
 portables par construction, mais ce n'est pas la même chose qu'une mesure
 réelle sur la machine du propriétaire.
 
+---
+
+## DEC-0092 — Case audité et connecté : un ordinateur Linux isolé et persistant, jamais un second cerveau
+
+**2026-09-11.** Mission reçue : étudier `case-computers/case` et donner aux
+agents d'ARENA un ordinateur Linux isolé et persistant (bureau, terminal,
+fichiers, navigateur) — sans jamais faire de Case le cerveau, ni dupliquer
+un agent de code, de navigation, un routeur de modèles ou une seconde
+infrastructure MCP. Audit complet : `docs/audits/case_audit.md`.
+
+### Ce qu'ARENA possédait déjà, vérifié avant d'écrire une ligne
+
+`DioumtoukayAgent`/`Atelier` restent le runtime canonique — Case n'en
+devient jamais un second (mission §4/§8). `core/connectors/base.py` (le
+contrat `Connecteur` — capacités déclarées, santé mesurée, permission avant
+tout, `ResultatAction` avec preuve obligatoire pour un succès) est déjà
+l'abstraction que la mission demande sous le nom `computer_runtime` : un
+`ConnecteurCaseComputer` de plus, au même rang que `github`/`pdf`/
+`file_conversion`, jamais une architecture séparée. `core/mcp/transport.py::
+ClientMcp` (client MCP déjà utilisé pour WanGP/OpenTakeoff) a été réutilisé
+**tel quel** pour vérifier le serveur MCP réel de Case — zéro ligne de
+client MCP neuve.
+
+### Audit réel de Case (code cloné, commit `133082b`)
+
+Licence **double, par dossier** (`LICENSE.md`, vérifié dans le clone) :
+AGPL-3.0 pour `control-plane/`+`image/`, MIT pour `mcp/`/`bin/`/`web/`/
+`tests/`. **Aucune ligne AGPL copiée dans ARENA** — le connecteur écrit ici
+est un client REST, la même frontière que `github.py` vers l'API GitHub, et
+`LICENSE.md` le confirme lui-même : *« Writing an agent that drives Case
+over MCP or REST. Not a derivative work. »* `SECURITY.md` lu en entier :
+mot de passe injecté par CDP (jamais donné à l'agent), `deskd` refuse
+(423) toute action pendant l'injection d'un identifiant, aucun outil MCP
+d'écriture de credential.
+
+### Ce qui a été construit
+
+- **`core/connectors/case_computer.py`** (nouveau) — `ConnecteurCaseComputer`,
+  11 capacités (`lister`, `etat`, `creer`, `dormir`, `reveiller`,
+  `executer_commande`, `lire_fichier`, `ecrire_fichier`, `naviguer`,
+  `capture_ecran`, `detruire`), client REST vers l'API de `cased` — sa table
+  de routes amont (dépôt Case, module control-plane cased.py, jamais vendoré
+  dans ARENA) lue pour son contrat, jamais pour sa copie.
+  REST plutôt que MCP par décision explicite : `wake`/`destroy` n'existent
+  **pas** côté MCP (vérifié en listant les 25 outils réels), REST porte le
+  cycle de vie complet dans un seul contrat cohérent (mission §28). Aucune
+  capacité `credential`/`login` déclarée — cette responsabilité reste
+  entièrement côté Case, jamais un modèle ARENA (mission §22-24).
+- **`config/permissions_services.yaml`** — `case: read ALLOWED/LOW, write
+  ALLOWED/MEDIUM, destroy CONFIRMATION/HIGH`. Un ordinateur Case n'est PAS
+  la machine du propriétaire : le régime DEC-0038 (aucune garde) ne
+  s'applique pas ici, c'est une ressource qu'ARENA gère elle-même — la
+  destruction (irréversible, données persistantes) est la seule qui
+  demande un accord.
+- **`apps/backend/runtime.py`** — `registre.declarer("case", ...)`, câblé
+  dans `DioumtoukayAgent(connecteur_case=...)`. Aucun routeur HTTP neuf :
+  le routeur générique `/connectors/{id}/...` (`apps/backend/routers/
+  connectors.py`) expose `case` automatiquement, comme tout connecteur du
+  registre.
+- **`agents/dioumtoukay/dioumtoukay_agent.py`** — onze actions
+  `ordinateur_*`, pont `_via_case()` (décrit les octets bruts — capture
+  d'écran, contenu de fichier — par leur taille dans le compte-rendu,
+  jamais recopiés tels quels dans du texte).
+
+### Déploiement local — réellement fait, pas seulement conçu
+
+**Contrainte mesurée avant tout : 1,1 Go disponibles dans cette session**
+(un quota, pas le disque physique). L'image de bureau de Case (Debian +
+Chromium + XFCE) n'a pas été construite — au-delà de ce que cette session
+pouvait risquer. **Le control-plane, lui, a réellement tourné** :
+`docker build` réussi (~215 Mo, Python pur), `cased` lancé avec
+`/var/run/docker.sock` monté, un jeton configuré, aucune image de bureau
+déclarée joignable — délibérément, pour mesurer le comportement réel d'un
+manque plutôt que de le supposer.
+
+Mesuré en direct contre cette instance réelle (curl, puis le connecteur
+ARENA, puis la boucle ENTIÈRE de Dioumtoukay) :
+
+| Appel réel | Résultat réel |
+|---|---|
+| `GET /health` sans jeton | `{"ok":true}` |
+| `GET /v1/computers` sans jeton / mauvais jeton | 401 |
+| `GET /v1/computers` avec bon jeton | `{"computers":[]}` |
+| `POST /v1/computers` (créer, sans image de bureau) | `{"error":{"code":"create_failed","message":"create failed: ImageNotFound"}}` |
+| `ClientMcp` d'ARENA (zéro ligne neuve) contre le serveur MCP réel | poignée de main réussie, **25 outils réels listés** |
+| Boucle complète de Dioumtoukay (`lister` puis `creer`) | `lister` réussit réellement ; `creer` échoue réellement (`ImageNotFound`), rapporté tel quel jusqu'au compte-rendu final |
+
+### Ce qui a été délibérément REJETÉ, et pourquoi
+
+- **L'agent intégré de Case (Drive)** : jamais utilisé comme cerveau —
+  ARENA parle directement à l'API, Dioumtoukay reste le seul agent
+  (mission §8).
+- **MCP comme seul chemin** : incomplet par rapport à REST pour le cycle de
+  vie (`wake`/`destroy` absents de la surface MCP, vérifié réellement) —
+  REST retenu, MCP vérifié joignable pour de futurs usages.
+- **Duplication d'Agent-Reach/Fuji/Lightpanda** : aucun touché — Case ajoute
+  un ORDINATEUR, pas une seconde intelligence de navigation (mission §20).
+- **VPS distant** : non tenté, seulement préparé (`USMAN_CASE_URL`
+  configurable, aucune hypothèse de localhost câblée en dur).
+- **Windows** : non mesuré (session Linux/cloud) — dit comme inconnu.
+
+### Tests — 38 nouveaux (34 déterministes + 4 `integration`, tous verts)
+
+`tests/core/test_connecteur_case_computer.py` (28 : 25 avec
+`httpx.MockTransport`, jamais le vrai réseau ; 3 `integration` contre
+l'instance Case réellement déployée ci-dessus). `tests/agents/
+test_dioumtoukay_case.py` (10 : 9 déterministes — extraction des champs,
+confirmation de `detruire` jamais contournée, octets binaires jamais
+recopiés en texte ; 1 `integration`, la boucle Dioumtoukay **complète**
+contre le vrai `cased`, mission §52 : « Do not bypass ARENA for proof »).
+`ruff check .` propre. `python scripts/orphelins.py` : 298 modules, 238
+atteints (+1/+1, aucun orphelin réel nouveau). Suite complète :
+**5256 passed, 31 skipped, 52 deselected, 0 failed** (520.88s, mesuré le
+11/09/2026) — exactement +34 sur la mesure DEC-0091 (5222), les tests
+déterministes de cette mission ; les 4 `integration` s'ajoutent aux
+désélectionnés (48 → 52). Une régression réelle trouvée par la suite
+complète (pas par les tests ciblés) : `tests/test_documentation.py` a
+détecté que ce document citait le chemin amont control-plane cased.py de
+Case (jamais vendoré dans ARENA) entre accents graves — lu comme un chemin
+local par le test qui vérifie que tout ce qui l'est existe vraiment. Corrigé
+en le sortant des accents graves (même défaut, même correctif que celui déjà
+rencontré dans l'entrée DEC-0088 avec ComfyUI).
+
+### Ce que ça coûte si c'est faux
+
+Aucune image de bureau n'ayant tourné dans cette session, la persistance
+réelle entre un `sleep`/`wake` (mission §13/§55), l'isolation entre deux
+ordinateurs (§58) et le handoff humain (§56) **restent non mesurés** — le
+connecteur est écrit pour eux (l'API les couvre entièrement), mais rien ne
+les a fait tourner pour de vrai ici. `USMAN_CASE_TOKEN` transite en clair
+dans l'en-tête `Authorization`, même modèle de confiance que
+`USMAN_GITHUB_TOKEN` — pas d'audit supplémentaire. Le risque nommé par
+`SECURITY.md` de Case lui-même (un ordinateur compromis peut composer
+`cased` sur le réseau `case-desks` partagé) n'est pas mitigé par ce
+connecteur : il parle REST, et la frontière reste entièrement celle que
+Case documente (`CASE_TOKEN`, `DESK_TOKEN`).
+
+---
+
 ## DEC-0093 — gitgui audité : état git structuré, checkpoint/restauration — jamais une garde sur DEC-0038
 
 **2026-09-11.** Mission reçue : étudier `antonellof/gitgui` en profondeur et

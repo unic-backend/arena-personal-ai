@@ -57,6 +57,34 @@ la mesure DEC-0091 (5222).
 Développé sur une branche fraîche (`claude/gitgui-git-state`, issue
 d'`origin/master`) plutôt que sur la branche CASE encore ouverte — éviter de
 mélanger deux missions indépendantes dans une seule PR.
+## Chunk précédent : DEC-0092 — Case audité et connecté : un ordinateur Linux isolé, jamais un second cerveau
+
+`case-computers/case` audité (dual AGPL/MIT par dossier, commit `133082b`)
+— rapport complet `docs/audits/case_audit.md`. `core/connectors/
+case_computer.py` (nouveau) : client REST vers l'API de `cased`, 11
+capacités (lister/creer/etat/dormir/reveiller/executer_commande/
+lire_fichier/ecrire_fichier/naviguer/capture_ecran/detruire), aucune ligne
+AGPL copiée. Câblé dans `DioumtoukayAgent` (onze actions `ordinateur_*`) et
+dans le registre de connecteurs (`apps/backend/runtime.py` — expose
+`/connectors/case/...` automatiquement, aucun routeur neuf).
+
+**Déploiement local réellement fait** (pas seulement conçu) : le
+control-plane (`cased`) a tourné pour de vrai dans cette session (Docker
+réel, ~215 Mo, `/var/run/docker.sock` monté) — auth réelle (401/200), santé
+réelle (`docker:true`), création réellement tentée et honnêtement refusée
+(`ImageNotFound`, aucune image de bureau construite — contrainte disque
+mesurée : 1,1 Go disponibles dans cette session). Le client MCP DÉJÀ présent
+d'ARENA (`core/mcp/transport.py`, zéro ligne neuve) a listé les 25 outils
+réels du serveur MCP de Case.
+
+Rejeté et documenté (`docs/DECISIONS.md`, DEC-0092) : l'agent Drive de Case
+comme cerveau, MCP comme seul chemin (wake/destroy absents de sa surface),
+duplication d'Agent-Reach/Fuji/Lightpanda, VPS (préparé, pas tenté).
+
+**38 tests nouveaux** (34 déterministes + 4 `integration`, tous verts) :
+`test_connecteur_case_computer.py` (28, dont 3 contre l'instance Case
+réelle), `test_dioumtoukay_case.py` (10, dont 1 faisant tourner la boucle
+ENTIÈRE de Dioumtoukay contre le vrai `cased` — mission §52).
 
 ## Chunk précédent : DEC-0091 — Trans4mers audité : crash recovery et concurrence pour Dioumtoukay, aucun second runtime
 

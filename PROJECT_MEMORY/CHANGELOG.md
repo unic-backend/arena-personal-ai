@@ -1212,6 +1212,53 @@ check .` propre. Suite complète : **5222 passed, 31 skipped, 48 deselected,
 0 failed** (578.09s, mesuré le 11/09/2026 — exactement +16 sur la mesure
 DEC-0090).
 
+---
+
+## 11/09/2026 (suite) — Case audité et connecté : un ordinateur Linux isolé et persistant (DEC-0092)
+
+Mission reçue : donner aux agents d'ARENA un ordinateur Linux isolé et
+persistant (bureau, terminal, fichiers, navigateur) via `case-computers/case`
+(dual AGPL/MIT par dossier, commit `133082b`) — jamais un second cerveau, un
+second agent de code/navigation, une seconde infrastructure MCP. Audit
+complet : `docs/audits/case_audit.md`.
+
+`core/connectors/case_computer.py` (nouveau) — client REST (le contrat
+`Connecteur` déjà en place, aucune architecture neuve), 11 capacités,
+**aucune ligne AGPL copiée** (`LICENSE.md` de Case : « writing an agent that
+drives Case over MCP or REST. Not a derivative work. »). Câblé dans
+`DioumtoukayAgent` (onze actions `ordinateur_*`) et le registre de
+connecteurs — `/connectors/case/...` exposé automatiquement, aucun routeur
+neuf. `config/permissions_services.yaml` : `case.destroy` seul en
+CONFIRMATION (données persistantes, irréversible) ; le reste ALLOWED — un
+ordinateur Case n'est PAS la machine du propriétaire, DEC-0038 ne s'y
+applique pas.
+
+**Déploiement local réellement fait** (contrainte disque mesurée : 1,1 Go
+disponibles — l'image de bureau, plusieurs centaines de Mo à 1 Go, n'a pas
+été construite). Le control-plane (`cased`), lui, a tourné pour de vrai :
+`docker build` réussi (~215 Mo), auth réelle (401/200), création réellement
+tentée et honnêtement refusée (`ImageNotFound`, aucune image de bureau).
+Le client MCP DÉJÀ présent d'ARENA (`core/mcp/transport.py`, zéro ligne
+neuve) a listé les 25 outils réels du serveur MCP de Case.
+
+Rejeté et documenté (DEC-0092) : Drive (l'agent intégré de Case) comme
+cerveau, MCP comme seul chemin (`wake`/`destroy` absents de sa surface),
+duplication d'Agent-Reach/Fuji/Lightpanda, VPS (préparé, pas tenté).
+
+**38 tests nouveaux** (34 déterministes + 4 `integration`, tous verts) :
+`test_connecteur_case_computer.py` (28, dont 3 contre l'instance Case
+réellement déployée) ; `test_dioumtoukay_case.py` (10, dont 1 faisant
+tourner la boucle ENTIÈRE de Dioumtoukay contre le vrai `cased` — mission
+§52, « Do not bypass ARENA for proof »). `ruff check .` propre.
+`scripts/orphelins.py` : 298 modules, 238 atteints (+1/+1). Suite complète :
+**5256 passed, 31 skipped, 52 deselected, 0 failed** (520.88s, mesuré le
+11/09/2026 — exactement +34 sur la mesure DEC-0091). Régression réelle
+trouvée par la suite complète : `docs/DECISIONS.md` citait un chemin amont
+de Case entre accents graves — corrigé, détail dans `docs/DECISIONS.md`
+DEC-0092.
+
+---
+
 ## 11/09/2026 (suite) — gitgui audité : état git structuré, checkpoint/restauration pour Dioumtoukay (DEC-0093)
 
 Mission reçue : étudier `antonellof/gitgui` (MIT, commit `7b08381`, une

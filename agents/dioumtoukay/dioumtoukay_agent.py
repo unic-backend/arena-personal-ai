@@ -123,6 +123,13 @@ ECHECS_CONSECUTIFS_MAX = 3
 #: DEC-0091), `Atelier.isoler`/`nettoyer_worktree`. Une CAPACITE de plus,
 #: jamais un chemin oblige — DEC-0038 reste entier, Dioumtoukay peut toujours
 #: travailler directement sur l'arbre principal s'il le choisit.
+#: `ordinateur_*` : mission ARENA x CASE (11/09/2026, DEC-0092), le connecteur
+#: `case` (`core/connectors/case_computer.py`). Un ordinateur Linux ISOLE et
+#: PERSISTANT, distinct de la machine du proprietaire — utile pour un test
+#: qui doit tourner sous Linux, un paquet a ne pas installer sur la vraie
+#: machine, un navigateur qui garde son identite entre deux sessions.
+#: `ordinateur_detruire` passe par la meme confirmation que `ouvrir_pr` :
+#: irreversible, jamais lance sans accord.
 #: `git_statut`/`git_diff`/`git_checkpoint`/`git_restaurer` : mission ARENA x
 #: GITGUI (11/09/2026, DEC-0093), `Atelier.git_statut` et consorts. Une
 #: LECTURE structuree de plus (jamais une garde neuve sur `git`/`executer` —
@@ -135,6 +142,11 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "organiser_appliquer", "organiser_annuler",
            "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
            "isoler", "nettoyer_worktree",
+           "ordinateur_lister", "ordinateur_creer", "ordinateur_etat",
+           "ordinateur_dormir", "ordinateur_reveiller", "ordinateur_executer",
+           "ordinateur_lire_fichier", "ordinateur_ecrire_fichier",
+           "ordinateur_naviguer", "ordinateur_capture_ecran",
+           "ordinateur_detruire",
            "git_statut", "git_diff", "git_checkpoint", "git_restaurer",
            "terminer")
 
@@ -160,13 +172,16 @@ ACTIONS_QUI_ANALYSENT = frozenset({
     "organiser_inspecter", "organiser_planifier",
     "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
     "isoler",
+    "ordinateur_lister", "ordinateur_creer", "ordinateur_etat",
+    "ordinateur_executer", "ordinateur_lire_fichier",
+    "ordinateur_naviguer", "ordinateur_capture_ecran",
     "git_statut", "git_diff", "git_checkpoint", "git_restaurer",
 })
 
 _ETIQUETTE = re.compile(r"^\s*ACTION\s*:\s*(\w+)", re.IGNORECASE | re.MULTILINE)
 _CHAMP = re.compile(
     r"^\s*(CHEMIN|SOURCE|DESTINATION|COMMANDE|DOSSIER|TEXTE|DEPOT|TITRE|TETE|BASE|REF|FORMAT"
-    r"|PLAN_ID|CONFIRMER_SUPPRESSION|OPERATION|PAGES|DEGRES|FORMAT_PDFX|NOM"
+    r"|PLAN_ID|CONFIRMER_SUPPRESSION|OPERATION|PAGES|DEGRES|FORMAT_PDFX|NOM|COMPUTER_ID|URL"
     r"|CIBLE|IDENTIFIANT)"
     r"\s*:\s*(.+)$",
     re.IGNORECASE | re.MULTILINE)
@@ -281,6 +296,39 @@ BASE: HEAD
 ACTION: nettoyer_worktree
 NOM: correctif-toiture
 
+ACTION: ordinateur_creer
+NOM: test-linux
+
+ACTION: ordinateur_lister
+
+ACTION: ordinateur_executer
+COMPUTER_ID: id rendu par ordinateur_creer ou ordinateur_lister
+COMMANDE: pytest -q
+
+ACTION: ordinateur_lire_fichier
+COMPUTER_ID: id de l'ordinateur
+CHEMIN: /home/agent/rapport.txt
+
+ACTION: ordinateur_ecrire_fichier
+COMPUTER_ID: id de l'ordinateur
+CHEMIN: /home/agent/notes.txt
+CONTENU:
+le contenu du fichier
+FIN
+
+ACTION: ordinateur_naviguer
+COMPUTER_ID: id de l'ordinateur
+URL: https://exemple.test
+
+ACTION: ordinateur_capture_ecran
+COMPUTER_ID: id de l'ordinateur
+
+ACTION: ordinateur_dormir
+COMPUTER_ID: id de l'ordinateur
+
+ACTION: ordinateur_detruire
+COMPUTER_ID: id de l'ordinateur
+
 ACTION: git_statut
 DOSSIER: .
 
@@ -347,7 +395,16 @@ COMMENT TRAVAILLER
    sur l'arbre principal si la tache ne le demande pas. `nettoyer_worktree`
    le retire une fois fini — il echoue si des modifications n'y sont pas
    commitees, et c'est voulu : rien n'ecrase un travail non sauvegarde.
-10. `git_statut` te dit vraiment ce qui a change (branche, fichiers
+10. `ordinateur_*` donne un ORDINATEUR LINUX ISOLE ET PERSISTANT (Case),
+   different de la machine du proprietaire — jamais un chemin oblige non
+   plus, utile pour un test specifiquement Linux, un paquet a ne pas
+   installer sur la vraie machine, un navigateur qui doit garder son
+   identite d'une session a l'autre. `ordinateur_creer` rend un COMPUTER_ID
+   (ou `ordinateur_lister` en retrouve un existant) ; passe-le a toutes les
+   actions suivantes. `ordinateur_detruire` demande une confirmation au
+   proprietaire — irreversible, ne le retente pas en esperant un autre
+   resultat.
+11. `git_statut` te dit vraiment ce qui a change (branche, fichiers
    modifies/indexes/non suivis/en conflit) sans avoir a lire du texte —
    consulte-le AVANT de modifier davantage un depot dont tu ne connais pas
    l'etat. `git_diff` (CIBLE: travail|index|un commit, CHEMIN optionnel)
@@ -358,7 +415,7 @@ COMMENT TRAVAILLER
    ajoute depuis — jamais un fichier deja modifie par le proprietaire avant
    ton checkpoint, meme si tu l'as touche ensuite : ce fichier-la n'est
    jamais restaure, pour ne rien ecraser qui ne t'appartient pas.
-11. `pdf_fusionner` prend un fichier par ligne dans CONTENU, DANS L'ORDRE
+12. `pdf_fusionner` prend un fichier par ligne dans CONTENU, DANS L'ORDRE
    demande — c'est cet ordre qui range les documents dans le resultat.
    `FORMAT_PDFX: oui` ajoute le manifeste (recuperable ensuite par
    `pdf_demonter`) ; sans lui, c'est une simple concatenation de PDF.
@@ -451,6 +508,7 @@ class DioumtoukayAgent(BaseAgent):
                  connecteur_file_conversion: Optional[Any] = None,
                  connecteur_file_organization: Optional[Any] = None,
                  connecteur_pdf: Optional[Any] = None,
+                 connecteur_case: Optional[Any] = None,
                  reprises: Optional[JournalDeReprise] = None):
         super().__init__(
             name="DioumtoukayAgent",
@@ -490,6 +548,17 @@ class DioumtoukayAgent(BaseAgent):
         # jamais la source — aucune ne demande de confirmation pour cette
         # raison meme.
         self.connecteur_pdf = connecteur_pdf
+        # Le connecteur Case (DEC-0092, mission ARENA x CASE) : un ordinateur
+        # Linux ISOLE et persistant, distinct de la machine du proprietaire
+        # (Atelier reste le seul chemin vers celle-ci, DEC-0038 inchange).
+        # Utile pour un test qui doit tourner sur Linux, un paquet qu'on ne
+        # veut pas installer sur la vraie machine, un navigateur qui garde
+        # son identite entre deux sessions. `creer`/`executer_commande`/
+        # `ecrire_fichier`/`naviguer` sont ALLOWED (risque MEDIUM,
+        # config/permissions_services.yaml) — un effet reel, mais contenu
+        # dans un conteneur qu'ARENA gere elle-meme. `detruire` seul demande
+        # confirmation : il supprime des donnees persistantes sans retour.
+        self.connecteur_case = connecteur_case
         # Le journal DURABLE de ce qu'il a deja fait (DEC-0072). La memoire
         # longue garde un RESUME de chaque travail ; celui-ci garde les ETAPES,
         # pour qu'une tache arretee a la 12e action reprenne a la 13e au lieu
@@ -615,6 +684,35 @@ class DioumtoukayAgent(BaseAgent):
             return Resultat(True, resultat.message, sortie=detail)
         return Resultat(False, resultat.message)
 
+    def _via_case(self, capacite: str, confirmee: bool = False,
+                  **parametres: Any) -> Resultat:
+        """Meme pont, vers le connecteur `case` (DEC-0092) — un ordinateur
+        Linux isole, jamais la machine du proprietaire.
+
+        A la difference des autres ponts : le detail peut porter des octets
+        bruts (`png`, `contenu` d'un fichier lu) — les melanger tels quels
+        dans `sortie` produirait du texte illisible ou invalide. Ils sont
+        donc decrits (taille), jamais recopies.
+        """
+        if self.connecteur_case is None:
+            return Resultat(False, "Le connecteur Case n'est pas branche sur cette machine.")
+        try:
+            appel = (self.connecteur_case.executer_confirmee if confirmee
+                     else self.connecteur_case.executer)
+            resultat = appel(capacite, **parametres)
+        except Exception as erreur:  # noqa: BLE001 — un connecteur qui leve ne casse pas la tache
+            return Resultat(False, f"Case injoignable : {type(erreur).__name__}: {erreur}")
+
+        if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
+            lignes = []
+            for cle, valeur in resultat.detail.items():
+                if isinstance(valeur, (bytes, bytearray)):
+                    lignes.append(f"{cle}: {len(valeur)} octet(s)")
+                else:
+                    lignes.append(f"{cle}: {valeur}")
+            return Resultat(True, resultat.message, sortie="\n".join(lignes))
+        return Resultat(False, resultat.message)
+
     @staticmethod
     def _lire_fichiers(contenu: str) -> Optional[List[str]]:
         """Un chemin de fichier par ligne, tel quel — `None` si vide."""
@@ -665,6 +763,56 @@ class DioumtoukayAgent(BaseAgent):
             if not nom:
                 return Resultat(False, "Il manque NOM — le worktree a retirer.")
             return self.atelier.nettoyer_worktree(nom)
+        if action.nom == "ordinateur_lister":
+            return self._via_case("lister")
+        if action.nom == "ordinateur_creer":
+            return self._via_case("creer", nom=champs.get("NOM", ""))
+        if action.nom == "ordinateur_etat":
+            cid = champs.get("COMPUTER_ID", "")
+            if not cid:
+                return Resultat(False, "Il manque COMPUTER_ID.")
+            return self._via_case("etat", computer_id=cid)
+        if action.nom == "ordinateur_dormir":
+            cid = champs.get("COMPUTER_ID", "")
+            if not cid:
+                return Resultat(False, "Il manque COMPUTER_ID.")
+            return self._via_case("dormir", computer_id=cid)
+        if action.nom == "ordinateur_reveiller":
+            cid = champs.get("COMPUTER_ID", "")
+            if not cid:
+                return Resultat(False, "Il manque COMPUTER_ID.")
+            return self._via_case("reveiller", computer_id=cid)
+        if action.nom == "ordinateur_executer":
+            cid, commande = champs.get("COMPUTER_ID", ""), champs.get("COMMANDE", "")
+            if not cid or not commande:
+                return Resultat(False, "Il manque COMPUTER_ID ou COMMANDE.")
+            return self._via_case("executer_commande", computer_id=cid, commande=commande)
+        if action.nom == "ordinateur_lire_fichier":
+            cid, chemin = champs.get("COMPUTER_ID", ""), champs.get("CHEMIN", "")
+            if not cid or not chemin:
+                return Resultat(False, "Il manque COMPUTER_ID ou CHEMIN.")
+            return self._via_case("lire_fichier", computer_id=cid, chemin=chemin)
+        if action.nom == "ordinateur_ecrire_fichier":
+            cid, chemin = champs.get("COMPUTER_ID", ""), champs.get("CHEMIN", "")
+            if not cid or not chemin:
+                return Resultat(False, "Il manque COMPUTER_ID ou CHEMIN.")
+            return self._via_case("ecrire_fichier", computer_id=cid, chemin=chemin,
+                                  contenu=action.contenu)
+        if action.nom == "ordinateur_naviguer":
+            cid, url = champs.get("COMPUTER_ID", ""), champs.get("URL", "")
+            if not cid or not url:
+                return Resultat(False, "Il manque COMPUTER_ID ou URL.")
+            return self._via_case("naviguer", computer_id=cid, url=url)
+        if action.nom == "ordinateur_capture_ecran":
+            cid = champs.get("COMPUTER_ID", "")
+            if not cid:
+                return Resultat(False, "Il manque COMPUTER_ID.")
+            return self._via_case("capture_ecran", computer_id=cid)
+        if action.nom == "ordinateur_detruire":
+            cid = champs.get("COMPUTER_ID", "")
+            if not cid:
+                return Resultat(False, "Il manque COMPUTER_ID.")
+            return self._via_case("detruire", computer_id=cid)
         if action.nom == "git_statut":
             return self.atelier.git_statut(dossier=champs.get("DOSSIER") or None)
         if action.nom == "git_diff":

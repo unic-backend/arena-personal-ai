@@ -53,6 +53,7 @@ from core.connectors.architecture_3d import ConnecteurArchitecture3D
 from core.connectors.audio_voix import ConnecteurAudioVoix
 from core.connectors.browser import ConnecteurBrowser
 from core.connectors.calendrier import CalendrierConnector
+from core.connectors.case_computer import ConnecteurCaseComputer
 from core.connectors.claude_context import ConnecteurClaudeContext
 from core.connectors.comfyui import ComfyUIConnector
 from core.connectors.csm import ConnecteurCsm
@@ -544,6 +545,18 @@ registre.declarer(
                           crochets=crochets),
 )
 
+# Case (mission ARENA x CASE, DEC-0092) : un ordinateur Linux ISOLE et
+# PERSISTANT, distinct de la machine du proprietaire (Atelier reste le seul
+# chemin vers celle-ci, DEC-0038 inchange) — client REST vers une instance
+# Case deployee separement (AGPL pour son control-plane, jamais copie ici :
+# docs/audits/case_audit.md). NON_CONFIGURE tant que USMAN_CASE_URL ne pointe
+# vers rien de joignable — aucune simulation d'ordinateur qui n'existe pas.
+registre.declarer(
+    "case",
+    lambda: ConnecteurCaseComputer(acces=acces, journal=journal, file_attente=file_attente,
+                                   crochets=crochets),
+)
+
 # --- Mesures d'execution ------------------------------------------------------
 # Les voies declarent des cibles ; ce rapport garde ce que les reponses ont
 # reellement coute, pour que les deux soient confrontables. Il est lu par
@@ -669,6 +682,7 @@ dioumtoukay_agent = DioumtoukayAgent(
     connecteur_file_conversion=registre.obtenir("file_conversion"),
     connecteur_file_organization=registre.obtenir("file_organization"),
     connecteur_pdf=registre.obtenir("pdf"),
+    connecteur_case=registre.obtenir("case"),
     reprises=JournalDeReprise())
 # Raisonnement profond : plan, calcul reellement execute en bac a sable, puis
 # synthese. Le modele profond, parce que c'est la voie PROFONDE qui l'emprunte.
