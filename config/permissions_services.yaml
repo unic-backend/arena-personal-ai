@@ -442,6 +442,20 @@ services:
     batir:     {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
     demolir:   {decision: CONFIRMATION, risque: HIGH,   interrupteur: WRITE_FILES}
 
+  # Case (DEC-0092, mission ARENA x CASE) : un ordinateur Linux ISOLE, pas la
+  # machine du proprietaire — donc pas le regime DEC-0038 (aucune garde).
+  # `read` couvre lister/etat/capture d'ecran, rien ne change. `write` couvre
+  # le cycle de vie et l'action a l'interieur de l'ordinateur isole (creer,
+  # dormir, reveiller, executer une commande, ecrire un fichier, naviguer) :
+  # un effet reel, mais contenu dans un conteneur qu'ARENA gere elle-meme, pas
+  # un effet chez un tiers — ALLOWED, comme le `git push` de DEC-0038, jamais
+  # aussi libre qu'Atelier. `destroy` supprime des donnees PERSISTANTES sans
+  # retour possible : CONFIRMATION, meme logique que `demolir` ci-dessus.
+  case:
+    read:    {decision: ALLOWED,      risque: LOW}
+    write:   {decision: ALLOWED,      risque: MEDIUM}
+    destroy: {decision: CONFIRMATION, risque: HIGH}
+
 # Regles par compte — ce sont les POLITIQUES D'AUTOMATISATION.
 #
 # La specification demande de pouvoir pre-autoriser des flux de travail
