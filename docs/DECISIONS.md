@@ -7954,3 +7954,159 @@ sous-réseaux, passerelles) qu'aucune mission métier n'a demandé à ce jour.
 Une intégration à tort ajouterait une dépendance lourde, immature et
 partiellement copyleft pour dupliquer une capacité déjà opérationnelle — le
 second coût dépasse sans commune mesure le premier.
+
+## DEC-0090 — Mémoire canonique enrichie : gouvernance, chiffrement, import, portabilité MCP/API (AI Memory Vault audité)
+
+**2026-09-11.** Mission reçue : étudier `ai-encryption-tool/ai` (« AI Memory
+Vault ») et fusionner ses meilleures idées dans l'architecture mémoire/contexte
+existante d'ARENA — jamais un second système de mémoire.
+
+### Audit d'ARENA d'abord
+
+`core/memory/personnelle.py` (`MemoirePersonnelle`) existait déjà, actif,
+appelé par `agents/social/`, `agents/dioumtoukay/`, `agents/plaquiste/` et
+`apps/backend/runtime.py` — avec un modèle de provenance (`Nature` :
+FAIT/PREFERENCE/INFERENCE/CONTEXTE_TEMPORAIRE) déjà plus riche que le modèle
+d'AI Memory Vault. `core/memory/recuperation.py` (récupération bornée en
+caractères, quatre signaux) et `core/memory/semantique.py` (embeddings
+Ollama locaux, jamais un repli silencieux) couvraient déjà l'essentiel des
+sections §10/§11/§29-32 de la mission. Trois manques réels, mesurés avant
+d'écrire une ligne : aucun `rejeter()`/`supprimer()`, aucun chiffrement au
+repos, et `core/mcp/` ne contenait qu'un CLIENT (jamais un serveur).
+
+### Audit réel d'AI Memory Vault
+
+Rapport complet -> `docs/audits/ai_memory_vault_audit.md`. Commit
+`5e6d218c1b21a7dd71e94bb6d090c7f153b6f910`, MIT. Backend FastAPI/SQLite local
+réel, mais : aucun champ workspace/projet, « rejeter » identique à « pas
+encore approuvé » (un manque, pas une idée à copier), repli silencieux vers
+un faux embedding haché quand Qdrant est indisponible (leur propre CI ne
+teste d'ailleurs jamais le chemin Qdrant), comparaison de clé d'API non à
+temps constant. Le chiffrement (AES-256-GCM, PBKDF2-HMAC-SHA256, 310 000
+itérations, `frontend/src/cryptoVault.js`) est le morceau le plus solide,
+jamais utilisé côté backend local — adopté ici en paramètres, jamais en code.
+
+### Ce qui a été construit (extension de l'existant, jamais un doublon)
+
+1. **Gouvernance** (`core/memory/personnelle.py`) : nouvel `Etat`
+   (ACTIF/REJETE/ARCHIVE), orthogonal à `Nature`. `rejeter()`/`archiver()`/
+   `reactiver()`/`supprimer()` — `souvenirs()` exclut REJETE/ARCHIVE par
+   défaut. Migration automatique d'une base créée avant cette mission
+   (`ALTER TABLE` protégé). `PRAGMA journal_mode=WAL` ajouté : le serveur MCP
+   et le backend ARENA sont désormais deux PROCESSUS qui peuvent écrire le
+   même fichier.
+2. **Détection de secret dans le contenu** : réutilise
+   `scripts/scanner_secrets.py::MOTIFS_NOMMES` (jamais une seconde liste) —
+   `retenir()` refuse un contenu en forme de clé AWS/Google/Slack/GitHub/
+   Stripe/OpenAI ou de clé privée PEM, avant l'écriture.
+3. **Chiffrement au repos** (`core/memory/chiffrement.py`, nouveau) :
+   AES-256-GCM + PBKDF2-HMAC-SHA256, 600 000 itérations (au-dessus des
+   310 000 vérifiés chez AI Memory Vault), sel et nonce aléatoires par
+   enregistrement, `cryptography` (déjà transitivement présente, déclarée
+   maintenant). `retenir(sensible=True)` refuse d'écrire en clair sans coffre
+   configuré (`USMAN_MEMORY_VAULT_PASSPHRASE`) ; sans coffre ou avec la
+   mauvaise phrase, la lecture rend un état lisible, jamais le clair, jamais
+   un crash de toute une liste pour une seule ligne illisible.
+4. **Import de conversations** (`core/memory/import_conversations.py`,
+   nouveau) : ChatGPT (ZIP/JSON), Claude (JSON), texte/Markdown — extraction
+   par expressions régulières (jamais un modèle : le texte importé reste une
+   DONNÉE du début à la fin, jamais un prompt). Toujours `Nature.INFERENCE`,
+   jamais un fait direct. Déduplication par `core/memory/consolidation.py::empreinte`
+   (jamais un second hachage), contre l'import ET contre la mémoire déjà là.
+5. **Premier serveur MCP d'ARENA** (`core/mcp/memory_server.py`, nouveau) :
+   six outils (`search_memory`, `create_memory`, `list_memory`,
+   `approve_memory`, `reject_memory`, `delete_memory`), appelant directement
+   `MemoirePersonnelle` — aucun saut HTTP interne, contrairement à AI Memory
+   Vault (leur serveur MCP parle à leur propre backend par HTTP). Aucune clé
+   d'API à l'intérieur : qui peut lancer ce processus a déjà, par
+   construction, l'accès filesystem au même fichier SQLite — une clé ici
+   serait un théâtre de sécurité, pas une frontière réelle.
+6. **API HTTP** (`apps/backend/routers/memory.py`, nouveau) : même
+   discipline que `executive.py`/`conversations.py` (`verify_api_key` +
+   `limiter_debit`). CRUD, recherche bornée, approve/reject/archive/
+   reactivate, export (explicitement PAS chiffré, jamais prétendre le
+   contraire), import.
+
+### Ce qui n'a pas été fait, et pourquoi
+
+- **Aucun second moteur vectoriel** (Qdrant/sentence-transformers) — ARENA a
+  déjà `core/memory/semantique.py` (embeddings Ollama locaux).
+- **Aucun mode Supabase/hébergé** — ARENA reste mono-propriétaire, local-first.
+- **Aucune extension navigateur** — jamais le fondement de la mémoire.
+- **`Ask Memory` séparé non construit** — leur implémentation n'appelle même
+  pas de modèle (un gabarit de phrase) ; une vraie synthèse passe par le
+  routeur de modèles d'ARENA, pas un second chatbot.
+- **`update_memory` (édition libre) non repris** — une correction passe par
+  `rejeter()` + une nouvelle création, pour ne jamais réécrire une preuve
+  historique en place.
+- **Le serveur MCP n'a jamais parlé à un client MCP externe réel** (Claude
+  Desktop, Cursor) dans cet environnement — seulement au client stdio
+  qu'ARENA possède déjà (`core/mcp/stdio_transport.py`, réutilisé pour
+  OpenTakeoff) et aux fonctions Python directement. Documenté comme limite,
+  pas masqué.
+
+### Vérification
+
+- Chiffrement : round-trip, mauvaise clé, tag GCM altéré, JSON corrompu —
+  tous testés, sur le module seul ET intégré à `MemoirePersonnelle`
+  (`tests/core/test_memoire_chiffrement.py`, 17 ; classe `TestChiffrementIntegre`
+  de `tests/core/test_memoire_gouvernance.py`) — le clair n'apparaît jamais
+  dans le fichier SQLite, vérifié en lisant la ligne brute.
+- Gouvernance, migration d'une base pré-existante, persistance après
+  redémarrage complet (trois scénarios réels : fait approuvé, souvenir
+  rejeté, souvenir sensible — nouvelle instance sur le même fichier, aucune
+  restauration manuelle), isolation de projet, efficacité en tokens mesurée
+  (réduction **> 90 %** sur un cas réel, pas supposée) :
+  `tests/core/test_memoire_gouvernance.py` (37 tests).
+- Import : ChatGPT/Claude/texte, déduplication, secret refusé, injection de
+  prompt vérifiée INERTE (reste une chaîne de caractères, jamais exécutée —
+  aucun import de `core/models/` dans le pipeline, vérifiable en le lisant) :
+  `tests/core/test_memoire_import_conversations.py` (20 tests).
+- Serveur MCP : les six outils en direct, **et** un vrai sous-processus
+  parlé par le protocole JSON-RPC stdio réel (`ClientMcpStdio`, le même
+  client qu'OpenTakeoff) — deux appels en séquence, `tools/list` vérifié
+  contre les six noms attendus : `tests/core/test_mcp_memory_server.py`
+  (12 tests).
+- API HTTP : CRUD/recherche/gouvernance/export/import, authentification
+  (401 sans clé), 404, via `TestClient` contre l'app FastAPI réelle :
+  `tests/test_memory_router.py` (17 tests).
+- **Régression réelle trouvée par la suite complète** (pas par les tests
+  ciblés) : `core.mcp.memory_server`, jamais importé par le reste d'ARENA
+  par construction (un serveur MCP est un processus autonome, lancé par le
+  client MCP qui s'y connecte, jamais par ARENA elle-même), apparaissait
+  comme orphelin (`scripts/orphelins.py`). Corrigé en l'ajoutant à
+  `SERVICE_LANCE_PAR_LE_PROPRIETAIRE` (même catégorie que le service CSM et
+  le worker HiDream-I1, pour une raison différente : pas une isolation de
+  dépendance lourde, mais le protocole MCP lui-même). Le compteur de modules
+  de `CLAUDE.md` (296 modules, 236 atteints) mis à jour en conséquence.
+- Une troisième régression réelle, trouvée deux fois par la suite complète
+  (jamais par les tests ciblés) : `tests/test_scanner_secrets.py::test_le_vrai_depot_est_propre`
+  a détecté que les valeurs factices de `TestSecretsRefuses` (les chaînes
+  utilisées pour PROUVER que `retenir()` refuse un contenu en forme de
+  secret) avaient elles-mêmes la forme d'un secret aux yeux du scanner
+  d'ARENA — et, avant même de pousser, **GitHub Push Protection a bloqué le
+  push** pour la même raison sur un jeton Slack factice. Corrigé en
+  construisant ces valeurs par concaténation à l'exécution (jamais un
+  littéral en forme de secret dans l'historique git) et en renommant deux
+  variables de test nommées `secret` (le scanner réagit aussi au NOM d'une
+  affectation, pas seulement à sa valeur).
+- `ruff check .` propre. Suite complète, après ces trois corrections :
+  **5206 passed, 31 skipped, 48 deselected, 0 failed** (448.25s / 7m28,
+  mesuré le 11/09/2026). Un run intermédiaire avait montré 4 échecs dans
+  `tests/core/test_mcp_memory_server.py`, jamais reproduits depuis (le même
+  sous-ensemble seul, puis la suite complète, plusieurs fois de suite
+  verts) — un flake ponctuel, probablement lié au premier usage du mode WAL
+  sous charge complète de la suite, documenté plutôt que caché.
+
+### Ce que ça coûte si c'est faux
+
+Le serveur MCP est un premier, jamais éprouvé contre un client MCP externe
+réel dans cet environnement — s'il existe un écart de conformité au
+protocole que le client stdio existant d'ARENA ne révèle pas, il ne sera
+trouvé qu'au premier usage réel (Claude Desktop, Cursor). Les paramètres de
+chiffrement suivent une pratique standard (AES-GCM, PBKDF2) sans audit
+cryptographique tiers formel — le risque résiduel est celui de toute
+cryptographie appliquée sans revue externe, jamais celui d'une primitive
+inventée ici. Une phrase de passe oubliée rend un souvenir sensible
+définitivement illisible, comme chez AI Memory Vault — assumé, documenté,
+jamais un recouvrement caché qui affaiblirait la protection.

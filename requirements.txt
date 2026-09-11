@@ -87,6 +87,18 @@ CairoSVG==2.9.0            # core/production/conversion/moteurs.py — SVG -> PN
                           # bibliotheque Python appelee, jamais du code copie. Exige libcairo
                           # SYSTEME ; absente, `sonder()` le rapporte au lieu de planter.
 
+# --- Memoire canonique (DEC-0090, mission ARENA x AI MEMORY VAULT) ---
+mcp==2.1.1                # core/mcp/memory_server.py — serveur MCP exposant la memoire
+                          # d'ARENA (search/create/list/approve/reject/delete_memory) a un
+                          # client MCP compatible. DEJA une dependance TRANSITIVE de
+                          # browser-use 0.13.10 (voir ligne 25 ci-dessus, meme version
+                          # exacte) : declaree ici parce que le code l'importe desormais
+                          # directement, jamais parce qu'elle manquait.
+cryptography==41.0.7      # core/memory/chiffrement.py — chiffrement au repos (AES-256-GCM
+                          # + PBKDF2-HMAC-SHA256) des souvenirs marques sensibles. DEJA
+                          # presente transitivement dans cet environnement ; declaree ici
+                          # pour la meme raison que mcp ci-dessus.
+
 # Non liste ici, et volontairement :
 # - ffmpeg : binaire systeme, pas un paquet pip (voir Dockerfile)
 # - libreoffice (soffice) : binaire systeme, pas un paquet pip — DOCX/PPTX/XLSX <-> PDF

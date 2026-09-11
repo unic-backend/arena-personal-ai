@@ -56,10 +56,20 @@ LANCES_EN_SOUS_PROCESSUS = {
 #: pour la meme raison technique (`torch`/`diffusers`/`transformers`, absents
 #: de l'environnement principal). Detail complet ->
 #: `docs/audits/hidream_i1_audit.md`.
+#: Le serveur MCP memoire (`core/mcp/memory_server.py`, mission ARENA x AI
+#: MEMORY VAULT, DEC-0090) est de la meme categorie pour une raison
+#: DIFFERENTE : pas d'isolation de dependance lourde, mais un serveur MCP
+#: EST, par le protocole lui-meme, un processus autonome sur son entree/
+#: sortie standard, lance par le CLIENT MCP qui s'y connecte (Claude Desktop,
+#: Cursor) — jamais par ARENA. `__main__: mcp.run()` est son seul point
+#: d'entree ; aucun code de ce depot ne l'importe, et ce serait une erreur
+#: architecturale s'il l'etait (l'app FastAPI et le processus MCP partagent
+#: le fichier SQLite, jamais l'espace memoire Python).
 SERVICE_LANCE_PAR_LE_PROPRIETAIRE = frozenset({
     'tools.audio.csm_service.server',
     'tools.audio.csm_service.watermark',
     'tools.audio.csm_service.test_server',
+    'core.mcp.memory_server',
     'tools.image.hidream.serveur_hidream',
     'tools.image.hidream.test_server',
 })

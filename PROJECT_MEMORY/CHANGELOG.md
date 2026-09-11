@@ -1103,3 +1103,74 @@ l'adresse publique en QR code pour le téléphone. Déjà dans le dépôt, déj�
 utilisé. Rien câblé : intégrer Tunnet aurait dupliqué une capacité
 opérationnelle avec une dépendance lourde, immature et partiellement
 copyleft.
+
+## 11/09/2026 — Mémoire canonique enrichie : gouvernance, chiffrement, import, MCP (DEC-0090)
+
+Mission ARENA x AI MEMORY VAULT. `ai-encryption-tool/ai` audité (MIT, commit
+`5e6d218c`) — rapport complet `docs/audits/ai_memory_vault_audit.md`. Audit
+préalable : `core/memory/personnelle.py` (`MemoirePersonnelle`) existait
+déjà, actif, avec un modèle de provenance (`Nature`) déjà plus riche que
+celui d'AI Memory Vault. Trois manques réels seulement : pas de
+`rejeter()`/`supprimer()`, pas de chiffrement au repos, pas de serveur MCP
+(`core/mcp/` n'avait qu'un client).
+
+**Construit, en extension de l'existant, jamais un doublon** :
+- Gouvernance (`Etat` ACTIF/REJETE/ARCHIVE) sur `Souvenir`, orthogonale à
+  `Nature` — `rejeter()`/`archiver()`/`reactiver()`/`supprimer()`, migration
+  automatique d'une base créée avant cette mission, `PRAGMA journal_mode=WAL`
+  (deux processus — backend + MCP — écrivent désormais le même fichier).
+- Détection de secret dans le CONTENU d'un souvenir, en réutilisant
+  `scripts/scanner_secrets.py::MOTIFS_NOMMES` — jamais une seconde liste.
+- `core/memory/chiffrement.py` (nouveau) : AES-256-GCM + PBKDF2-HMAC-SHA256
+  600 000 itérations (au-dessus des 310 000 vérifiés chez AI Memory Vault),
+  sel/nonce aléatoires par enregistrement. `sensible=True` refuse d'écrire
+  en clair sans coffre configuré.
+- `core/memory/import_conversations.py` (nouveau) : ChatGPT/Claude/texte,
+  extraction par regex (jamais un modèle — le texte importé reste une
+  donnée, jamais un prompt), toujours `Nature.INFERENCE`, déduplication via
+  `core/memory/consolidation.py::empreinte`.
+- `core/mcp/memory_server.py` (nouveau) — **premier serveur MCP d'ARENA** :
+  six outils, appel direct à `MemoirePersonnelle`, aucune clé d'API interne
+  (qui lance ce processus a déjà l'accès filesystem au même fichier).
+- `apps/backend/routers/memory.py` (nouveau) : même discipline que
+  `executive.py` (clé + limiteur de débit).
+
+**Sabotage/preuve réels** : chiffrement (mauvaise clé, tag GCM altéré, JSON
+corrompu — tous refusés proprement) ; persistance après redémarrage complet
+(fait approuvé, souvenir rejeté, souvenir sensible — nouvelle instance,
+même fichier, aucune restauration manuelle) ; isolation de projet (deux
+projets, zéro contamination) ; efficacité en tokens **mesurée** (réduction
+> 90 % sur un cas réel) ; injection de prompt importée vérifiée INERTE
+(reste une chaîne de caractères) ; serveur MCP testé en appel direct ET via
+un vrai sous-processus parlant le protocole JSON-RPC stdio réel
+(`ClientMcpStdio`, réutilisé d'OpenTakeoff).
+
+**Régression réelle trouvée par la suite complète** (pas par les tests
+ciblés) : `core.mcp.memory_server` remontait comme orphelin
+(`scripts/orphelins.py`) — un serveur MCP est un processus autonome, lancé
+par son client, jamais importé par ARENA. Corrigé en l'ajoutant à
+`SERVICE_LANCE_PAR_LE_PROPRIETAIRE` (même catégorie que CSM/HiDream, raison
+différente). Compteur de modules de `CLAUDE.md` mis à jour (296/236).
+
+Tests nouveaux : 17 (chiffrement) + 37 (gouvernance/isolation/tokens) + 20
+(import) + 12 (MCP) + 17 (API HTTP) = **103**. `ruff check .` propre.
+
+**Deux autres régressions réelles trouvées par la suite complète** : la
+nouvelle route `/api/memory` a changé l'empreinte figée par
+`tests/test_surface_api.py` (corrigé : routes/dépendances déclarées, dans
+l'ordre trié qu'impose la fusion GET+POST/GET+DELETE sur un même chemin) ;
+`.env.example` portait encore le préfixe `ARENA_` (le projet est passé à
+`USMAN_` le 26/08/2026, `tests/test_renommage.py`) — `USMAN_MEMORY_VAULT_PASSPHRASE`
+et `USMAN_MEMORY_DB_PATH` partout, jamais l'ancien préfixe.
+
+Troisième régression réelle, trouvée deux fois par la suite complète :
+`tests/test_scanner_secrets.py` (et **GitHub Push Protection au premier
+push**) ont détecté que les valeurs factices de `TestSecretsRefuses`
+avaient elles-mêmes la forme d'un secret — corrigé en les construisant par
+concaténation à l'exécution, jamais en littéral, et en renommant deux
+variables de test appelées `secret`.
+
+Suite complète finale : **5206 passed, 31 skipped, 48 deselected, 0 failed**
+(448.25s, mesuré le 11/09/2026). Un flake ponctuel (4 échecs dans
+`test_mcp_memory_server.py` sur un run intermédiaire) jamais reproduit
+depuis — documenté dans `docs/DECISIONS.md`, DEC-0090.
