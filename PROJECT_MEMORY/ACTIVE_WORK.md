@@ -1,17 +1,23 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-09-11, fin de session (DEC-0087 + DEC-0088).*
+*Mise à jour : 2026-09-11, fin de session (DEC-0087 + DEC-0088 + DEC-0089).*
 
 ## En cours
 
-Rien. La mission « ARENA × COMFYUI » (DEC-0087, puis sa suite DEC-0088 le
-même jour) était développée sur la branche/PR #187, **mergée le
-2026-09-11** (confirmé par l'événement GitHub `pull_request.closed`,
-`outcome: merged`) — voir `docs/DECISIONS.md`, DEC-0087 et DEC-0088, et
-`docs/audits/comfyui_audit.md` pour l'audit amont. Le suivi CI/PR est
-terminé, aucun check-in n'est reprogrammé.
+Rien en attente de PR pour l'instant. Dernier point : **DEC-0089** —
+Tunnet (`orielhaim/tuntun`) audité et refusé, doc seule, pas encore
+poussé — voir `docs/DECISIONS.md`, DEC-0089, et `docs/audits/tunnet_audit.md`.
 
-## Dernier chunk : DEC-0088 — les cinq workflows ComfyUI restants
+## Dernier chunk : DEC-0089 — Tunnet audité, refusé (rien à câbler)
+
+Demandé via un commentaire Reddit. Dépôt réel cloné et lu : ce n'est pas
+le petit outil de connexion décrit, mais un produit complet de mise en
+réseau maillée (19 crates Rust, licence éclatée AGPL/MPL/Apache,
+`Status: In development`). `scripts/lancer_arena.ps1` fait déjà ce que le
+besoin décrit (serveur + Tunnel Cloudflare + QR code) — rien câblé, pour
+ne pas dupliquer une capacité qui existe et fonctionne.
+
+## Chunk précédent : DEC-0088 — les cinq workflows ComfyUI restants
 
 `image_to_image`, `upscale`, `controlnet_image`, `character_image`,
 `image_to_video` — implémentés contre le vrai code source ComfyUI

@@ -1081,3 +1081,25 @@ fois — corrigé à son tour. Revérifié : 18 passed.
 
 `ruff check .` propre. Suite complète, après correction : **5094 passed,
 31 skipped, 48 deselected, 0 failed** (408.91s / 6m49s).
+
+## 11/09/2026 — Tunnet (orielhaim/tuntun) audité, refusé (DEC-0089)
+
+Demande reçue via un commentaire Reddit décrivant un dépôt permettant de
+« se connecter aux agents qui tournent sur son ordinateur principal depuis
+son portable ». Dépôt réel cloné et lu (pas le commentaire seul) :
+`docs/audits/tunnet_audit.md`. Ce n'est pas le petit outil décrit —
+c'est « Tunnet », un produit de mise en réseau maillée complet (19 crates
+Rust, dashboard Node, SDK Go, apps mobile/desktop/cloud, opérateur
+Kubernetes, moteur de licence commercial), `Status: In development`,
+licence éclatée par composant (MPL-2.0 / **AGPL-3.0-only** sur le plan de
+contrôle auto-hébergé / Apache-2.0), et le fichier `LICENSING.md` censé
+trancher par fichier — cité par le `LICENSE` lui-même — absent du clone.
+Aucun code Python, aucune API d'orchestration d'agents.
+
+**Trouvaille qui a tranché** : `scripts/lancer_arena.ps1` fait déjà,
+sans dépendance nouvelle, exactement ce que le commentaire décrit — lance
+le serveur ARENA, ouvre un Tunnel Cloudflare Quick Tunnel, affiche
+l'adresse publique en QR code pour le téléphone. Déjà dans le dépôt, déjà
+utilisé. Rien câblé : intégrer Tunnet aurait dupliqué une capacité
+opérationnelle avec une dépendance lourde, immature et partiellement
+copyleft.

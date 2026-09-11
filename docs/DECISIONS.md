@@ -7902,3 +7902,55 @@ honnêtement, jamais un succès inventé, mais le premier essai réel reste un t
 (seulement une limite d'octets, 20 Mo) : une image techniquement valide mais
 absurdement grande en pixels (bombe de décompression) n'est pas explicitement
 retestée ici — Pillow, côté ComfyUI, resterait la dernière ligne de défense.
+
+## DEC-0089 — Tunnet (orielhaim/tuntun) audité, refusé : ARENA a déjà ce que ça promettait
+
+**2026-09-11.** Demande reçue : un commentaire Reddit (r/opensourcealternat…)
+décrivant un dépôt comme permettant « de me connecter facilement aux agents
+qui tournent sur mon ordinateur principal depuis mon ordinateur portable
+quand je sors » — https://github.com/orielhaim/tuntun. Demande explicite :
+que ce soit intégré et **opérationnel**, pas du code qui dort.
+
+### Audit réel du dépôt (cloné, code lu — pas le commentaire seul)
+
+Rapport complet : `docs/audits/tunnet_audit.md`. Le dépôt réel, sous le nom
+« Tunnet », n'est pas le petit outil décrit par le commentaire : c'est un
+produit de mise en réseau maillée complet (19 crates Rust, dashboard Node,
+SDK Go, apps mobile/desktop/cloud, opérateur Kubernetes, moteur de licence
+commercial), `Status: In development`, licence éclatée par composant
+(MPL-2.0 / **AGPL-3.0-only** pour le plan de contrôle auto-hébergé /
+Apache-2.0), et le fichier `LICENSING.md` censé trancher précisément par
+fichier — cité par le `LICENSE` du dépôt lui-même — n'existe pas dans ce
+clone. Aucun code Python ; aucune API pensée pour l'orchestration d'agents
+(contrairement à ComfyUI, DEC-0087, qui en expose une vraie).
+
+### Ce qui existait déjà dans ARENA pour ce besoin précis
+
+`scripts/lancer_arena.ps1` fait déjà, sans dépendance nouvelle, exactement ce
+que le commentaire décrit : lance le serveur ARENA
+(`apps/backend/main.py`), ouvre un tunnel Cloudflare Quick Tunnel
+(`cloudflared tunnel --url http://localhost:8000`), lit l'adresse publique
+dans son journal et l'affiche en QR code pour le téléphone. Ce script existe
+déjà dans le dépôt et est déjà utilisé par le propriétaire — vérifié en le
+lisant, pas supposé.
+
+### Décision
+
+**Rien n'a été câblé.** Ajouter Tunnet dupliquerait une capacité qui existe
+et fonctionne déjà, pour un coût réel : 58 Mo de code dans trois langages
+étrangers au dépôt (Rust/TypeScript/Go), un composant auto-hébergeable sous
+AGPL-3.0-only sans le fichier promis pour savoir précisément quel fichier en
+relève, et un produit `In development` sans version stable. La seule limite
+réelle du mécanisme existant — l'adresse Quick Tunnel change à chaque
+démarrage — se résout avec un Tunnel Cloudflare **nommé** (toujours
+`cloudflared`, aucune dépendance nouvelle), jamais documenté ici comme fait
+puisque non demandé explicitement ; à sa disposition si le propriétaire veut
+une adresse stable.
+
+### Ce que ça coûte si c'est faux
+
+Un refus à tort prive ARENA d'un maillage privé multi-appareils (SSH,
+sous-réseaux, passerelles) qu'aucune mission métier n'a demandé à ce jour.
+Une intégration à tort ajouterait une dépendance lourde, immature et
+partiellement copyleft pour dupliquer une capacité déjà opérationnelle — le
+second coût dépasse sans commune mesure le premier.
