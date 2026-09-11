@@ -92,6 +92,18 @@ class Etape:
 
     Les champs sont ceux que l'observabilité demande : quel outil, combien de
     temps, réussi ou non. Ils sont écrits par celui qui agit, jamais déduits.
+
+    Attributes:
+        confirmee: `False` entre `amorcer()` et `confirmer()` — l'action a été
+            *décidée* mais on ne sait pas encore ce qu'elle a vraiment donné.
+            Une tâche tuée pendant cette fenêtre (mission ARENA x TRANS4MERS,
+            §14/§47) laisse une étape non confirmée sur le disque : ni
+            « réussie » ni « échouée », un état que `ok` seul ne peut pas
+            porter. `True` pour toute étape écrite par `noter()` (l'ancien
+            chemin, un seul appel, jamais interrompu entre décision et
+            resultat) — vaut `True` par défaut pour que les journaux déjà sur
+            le disque avant cette version se relisent comme « confirmées »,
+            ce qu'ils sont réellement.
     """
 
     numero: int
@@ -101,6 +113,7 @@ class Etape:
     resume: str = ""
     duree_ms: int = 0
     quand: str = field(default_factory=_maintenant)
+    confirmee: bool = True
 
 
 @dataclass
@@ -125,9 +138,29 @@ class Tache:
         Rendu sous la forme du journal que l'agent tient déjà pendant sa
         boucle : reprendre, c'est repartir avec ce journal-là, pas avec un
         format nouveau que rien d'autre ne sait lire.
+
+        Une étape jamais confirmée (`amorcer()` appelé, `confirmer()` jamais
+        atteint — le processus est mort entre les deux) ne se lit PAS comme un
+        échec : on ne sait pas ce qui s'est vraiment passé sur le disque ou
+        dans le terminal. Mission ARENA x TRANS4MERS §15 : « never blindly
+        rerun a potentially destructive operation after crash ». Le dire au
+        modèle qui reprend est la seule façon de tenir cette règle — une
+        ligne muette se relirait comme une étape comme les autres.
         """
-        return [f"{e.outil} {e.cible} -> {'ok' if e.ok else 'echec'} : {e.resume}".strip()
-                for e in self.etapes]
+        rendu = []
+        for e in self.etapes:
+            if not e.confirmee:
+                rendu.append(
+                    f"{e.outil} {e.cible} -> ETAT INCONNU : cette action a ete "
+                    "decidee mais le travail s'est arrete avant que son resultat "
+                    "reel soit connu (le processus a pu s'arreter pendant "
+                    "qu'elle tournait). Ne PAS supposer qu'elle a reussi, ne PAS "
+                    "la rejouer sans d'abord verifier son effet reel sur le "
+                    "disque ou le depot.")
+                continue
+            rendu.append(f"{e.outil} {e.cible} -> {'ok' if e.ok else 'echec'} : "
+                        f"{e.resume}".strip())
+        return rendu
 
     def journal(self) -> Dict[str, Any]:
         """La ligne d'observabilité de la tâche entière."""
@@ -238,6 +271,53 @@ class JournalDeReprise:
         tache.etapes.append(etape)
         tache.maj_le = _maintenant()
         self._ecrire()
+        return etape
+
+    def amorcer(self, tache: Tache, outil: str, cible: str = "") -> Etape:
+        """Réserve une étape et l'écrit **avant** que l'action ne tourne.
+
+        Mission ARENA x TRANS4MERS §14 (« write-ahead state ») : `noter()`
+        écrit après coup, donc une action tuée EN COURS (le processus meurt
+        pendant l'écriture d'un fichier, ou pendant qu'une commande tourne)
+        ne laisse RIEN sur le disque — la reprise ne sait même pas qu'elle a
+        été tentée. `amorcer()` + `confirmer()` encadrent l'action : l'intention
+        est écrite avant, le résultat après. Une étape jamais confirmée est
+        donc la preuve, pas une supposition, qu'une action s'est interrompue
+        au milieu.
+
+        `ok=False` par défaut ici : tant que `confirmer()` n'a pas eu lieu,
+        rien ne dit que l'action a réussi. Un `ok` par défaut à `True` sur une
+        étape non confirmée se lirait comme une réussite avant même d'avoir
+        tourné — exactement le mensonge que ce module existe pour éviter.
+        """
+        etape = Etape(numero=len(tache.etapes) + 1, outil=outil, cible=cible,
+                      ok=False, confirmee=False)
+        tache.etapes.append(etape)
+        tache.maj_le = _maintenant()
+        self._ecrire()
+        return etape
+
+    def confirmer(self, tache: Tache, etape: Etape, ok: bool,
+                  resume: str = "", duree_ms: int = 0) -> Etape:
+        """Complète une étape amorcée avec ce qui s'est vraiment passé.
+
+        Retrouve l'étape par son `numero` plutôt que de faire confiance à la
+        référence Python reçue : `tache` peut avoir été relue depuis le
+        disque entre `amorcer()` et `confirmer()` (reprise, autre processus).
+        """
+        for existante in tache.etapes:
+            if existante.numero == etape.numero:
+                existante.ok = ok
+                existante.resume = (resume or "")[:400]
+                existante.duree_ms = duree_ms
+                existante.confirmee = True
+                tache.maj_le = _maintenant()
+                self._ecrire()
+                return existante
+        # L'etape amorcee a disparu (tache reouverte ailleurs, purge) : on
+        # n'invente pas un resultat pour une etape qu'on ne retrouve plus.
+        logger.warning("Etape %s introuvable pour confirmer (tache %s).",
+                       etape.numero, tache.identifiant)
         return etape
 
     def terminer(self, tache: Tache, conclusion: str = "") -> None:

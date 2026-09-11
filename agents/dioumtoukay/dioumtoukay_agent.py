@@ -119,11 +119,16 @@ ECHECS_CONSECUTIFS_MAX = 3
 #: plan se propose (`organiser_planifier`), puis s'applique seulement sur
 #: son identifiant deja valide (`organiser_appliquer`) — jamais une liste
 #: d'operations fournie une deuxieme fois, non revue.
+#: `isoler`/`nettoyer_worktree` : mission ARENA x TRANS4MERS (11/09/2026,
+#: DEC-0091), `Atelier.isoler`/`nettoyer_worktree`. Une CAPACITE de plus,
+#: jamais un chemin oblige — DEC-0038 reste entier, Dioumtoukay peut toujours
+#: travailler directement sur l'arbre principal s'il le choisit.
 ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "executer", "analyser", "diagnostiquer", "ouvrir_pr", "etat_ci",
            "convertir", "organiser_inspecter", "organiser_planifier",
            "organiser_appliquer", "organiser_annuler",
            "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
+           "isoler", "nettoyer_worktree",
            "terminer")
 
 #: Les actions qui modifient quelque chose. Elles sont comptées à part dans le
@@ -147,12 +152,13 @@ ACTIONS_QUI_ANALYSENT = frozenset({
     "analyser", "diagnostiquer", "etat_ci", "convertir",
     "organiser_inspecter", "organiser_planifier",
     "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
+    "isoler",
 })
 
 _ETIQUETTE = re.compile(r"^\s*ACTION\s*:\s*(\w+)", re.IGNORECASE | re.MULTILINE)
 _CHAMP = re.compile(
     r"^\s*(CHEMIN|SOURCE|DESTINATION|COMMANDE|DOSSIER|TEXTE|DEPOT|TITRE|TETE|BASE|REF|FORMAT"
-    r"|PLAN_ID|CONFIRMER_SUPPRESSION|OPERATION|PAGES|DEGRES|FORMAT_PDFX)"
+    r"|PLAN_ID|CONFIRMER_SUPPRESSION|OPERATION|PAGES|DEGRES|FORMAT_PDFX|NOM)"
     r"\s*:\s*(.+)$",
     re.IGNORECASE | re.MULTILINE)
 
@@ -259,6 +265,13 @@ PAGES: 3,4,5,6,7
 ACTION: pdf_extraire_texte
 CHEMIN: facture.pdf
 
+ACTION: isoler
+NOM: correctif-toiture
+BASE: HEAD
+
+ACTION: nettoyer_worktree
+NOM: correctif-toiture
+
 ACTION: terminer
 CONTENU:
 ce que tu as fait, en francais simple, pour le proprietaire
@@ -304,7 +317,15 @@ COMMENT TRAVAILLER
    exige en plus `CONFIRMER_SUPPRESSION: oui`, sans quoi elle est refusee.
    `organiser_annuler` defait un plan applique, sauf ses suppressions
    (jamais reversibles). N'invente jamais un identifiant de plan.
-9. `pdf_fusionner` prend un fichier par ligne dans CONTENU, DANS L'ORDRE
+9. `isoler` cree un dossier de travail SEPARE (un worktree git, sur sa propre
+   branche) sans toucher l'arbre principal — utile pour un correctif risque
+   ou une tache parallele. Il rend le chemin du worktree ; passe ensuite ce
+   chemin en DOSSIER: aux actions suivantes pour travailler VRAIMENT dedans.
+   Ce n'est jamais obligatoire : tu peux continuer a travailler directement
+   sur l'arbre principal si la tache ne le demande pas. `nettoyer_worktree`
+   le retire une fois fini — il echoue si des modifications n'y sont pas
+   commitees, et c'est voulu : rien n'ecrase un travail non sauvegarde.
+10. `pdf_fusionner` prend un fichier par ligne dans CONTENU, DANS L'ORDRE
    demande — c'est cet ordre qui range les documents dans le resultat.
    `FORMAT_PDFX: oui` ajoute le manifeste (recuperable ensuite par
    `pdf_demonter`) ; sans lui, c'est une simple concatenation de PDF.
@@ -601,6 +622,16 @@ class DioumtoukayAgent(BaseAgent):
         if action.nom == "deplacer":
             return self.atelier.deplacer(champs.get("SOURCE", ""),
                                          champs.get("DESTINATION", ""))
+        if action.nom == "isoler":
+            nom = champs.get("NOM", "")
+            if not nom:
+                return Resultat(False, "Il manque NOM — le nom de la branche/worktree a creer.")
+            return self.atelier.isoler(nom, base=champs.get("BASE") or "HEAD")
+        if action.nom == "nettoyer_worktree":
+            nom = champs.get("NOM", "")
+            if not nom:
+                return Resultat(False, "Il manque NOM — le worktree a retirer.")
+            return self.atelier.nettoyer_worktree(nom)
         if action.nom == "analyser":
             return await self._consulter(self.analyste, "RepoEngineerAgent",
                                          champs.get("TEXTE", ""))
@@ -795,19 +826,27 @@ class DioumtoukayAgent(BaseAgent):
                     "est ci-dessous ; la suite reste a faire.")
                 break
 
+            # Amorcee AVANT que l'action ne tourne, pas apres : une tache tuee
+            # PENDANT l'ecriture d'un fichier ou une commande longue doit
+            # laisser la preuve qu'elle a ete TENTEE, jamais un journal muet
+            # qui laisserait croire qu'elle n'a jamais commence (mission
+            # ARENA x TRANS4MERS §14 « write-ahead state » / §47).
+            cible = str(action.champs.get("CHEMIN") or action.champs.get("MOTIF") or "")
+            etape = self.reprises.amorcer(tache, action.nom, cible=cible)
             debut_action = time.monotonic()
             resultat = await self._executer_action(action)
             duree_ms = int((time.monotonic() - debut_action) * 1000)
             rendu.append({"action": action.nom, "champs": action.champs,
                           **resultat.to_dict()})
             journal_du_travail.append(self._compte_rendu(action, resultat))
-            # Ecrit MAINTENANT, pas a la fin : une tache tuee au milieu doit
-            # laisser exactement ce qu'elle avait fait.
-            self.reprises.noter(
-                tache, action.nom,
-                cible=str(action.champs.get("CHEMIN") or action.champs.get("MOTIF") or ""),
-                ok=resultat.ok, resume=self._compte_rendu(action, resultat),
-                duree_ms=duree_ms)
+            # Confirmee MAINTENANT : ce que l'action a vraiment donne remplace
+            # l'amorce. Une tache tuee entre les deux lignes ci-dessus laisse
+            # l'etape amorcee, non confirmee — `deja_fait()` la rapporte comme
+            # ETAT INCONNU au lieu de la faire passer pour un echec ou une
+            # reussite qu'elle n'a peut-etre pas eu.
+            self.reprises.confirmer(
+                tache, etape, ok=resultat.ok,
+                resume=self._compte_rendu(action, resultat), duree_ms=duree_ms)
 
             # Garde anti-echecs : la meme garantie que ci-dessus, mais pour une
             # action qui CHANGE a chaque tour tout en echouant a chaque fois.

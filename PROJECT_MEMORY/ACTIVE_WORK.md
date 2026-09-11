@@ -1,13 +1,45 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-09-11, fin de session (DEC-0087 → DEC-0090).*
+*Mise à jour : 2026-09-11, fin de session (DEC-0087 → DEC-0091).*
 
 ## En cours
 
-DEC-0090 vérifiée (suite complète : 5206 passed, 0 failed, mesuré le
+DEC-0091 (Trans4mers — amorce/confirmation, verrou par fichier, worktrees
+isolés) vérifiée (suite complète : 5222 passed, 0 failed, mesuré le
 11/09/2026), prête à pousser sur une branche restartée depuis `master`.
 
-## Dernier chunk : DEC-0090 — Mémoire canonique enrichie (AI Memory Vault audité)
+## Dernier chunk : DEC-0091 — Trans4mers audité : crash recovery et concurrence pour Dioumtoukay, aucun second runtime
+
+`abhayzangir1/trans4mer` audité (MIT, commit `d0940a9`) — rapport complet
+`docs/audits/trans4mer_audit.md`. Dioumtoukay/Atelier restent le runtime
+canonique (DEC-0038 : aucune confirmation, aucun chemin interdit, non
+re-litigé). Trois manques réels comblés :
+
+1. **Amorce/confirmation** (`core/execution/reprise.py` :
+   `Etape.confirmee`, `amorcer()`/`confirmer()`) — une action est
+   maintenant journalisée AVANT de tourner, pas après ; une étape jamais
+   confirmée (crash en plein vol) est rapportée ÉTAT INCONNU à la reprise,
+   jamais un succès ni un échec supposé.
+2. **Verrou par fichier** (`tools/atelier/verrous.py`, nouveau) — deux
+   tâches qui écrivent le même fichier en même temps (le câblage réel :
+   un seul `Atelier` partagé, une boucle `async`) sont sérialisées, jamais
+   refusées — un mutex, pas une porte d'autorisation.
+3. **Worktrees isolés** (`Atelier.isoler()`/`nettoyer_worktree()`) — `git
+   worktree add`/`remove` en shell nu, `.gitignore` protégé, jamais de
+   suppression forcée d'un travail non commité.
+
+Rejeté et documenté (`docs/DECISIONS.md`, DEC-0091) : porte d'approbation
+humaine et bac à sable de chemins (contrediraient DEC-0038), CQRS complet,
+PTY, navigateur/mémoire/RAG/MCP (déjà couverts ailleurs, aucun doublon).
+
+**16 tests nouveaux, chacun avec un sabotage réel** : `test_reprise_amorce.py`
+(6, dont un test qui fixe le comportement de l'ANCIEN chemin pour prouver le
+manque) ; `test_atelier_concurrence.py` (3, deux VRAIS threads synchronisés
+par `threading.Barrier`, verrou neutralisé pour prouver qu'il protégeait
+vraiment) ; `test_atelier_worktree.py` (7, vrai dépôt git, vrai `git
+worktree`, un fichier non commité qui survit à un nettoyage refusé).
+
+## Chunk précédent : DEC-0090 — Mémoire canonique enrichie (AI Memory Vault audité)
 
 `ai-encryption-tool/ai` audité (MIT, commit `5e6d218c`) — rapport complet
 `docs/audits/ai_memory_vault_audit.md`. Aucun second système de mémoire :

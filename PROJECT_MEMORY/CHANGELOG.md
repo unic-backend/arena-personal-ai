@@ -1174,3 +1174,40 @@ Suite complète finale : **5206 passed, 31 skipped, 48 deselected, 0 failed**
 (448.25s, mesuré le 11/09/2026). Un flake ponctuel (4 échecs dans
 `test_mcp_memory_server.py` sur un run intermédiaire) jamais reproduit
 depuis — documenté dans `docs/DECISIONS.md`, DEC-0090.
+
+---
+
+## 11/09/2026 (suite) — Trans4mers audité : amorce/confirmation, verrou par fichier, worktrees isolés (DEC-0091)
+
+Mission reçue : renforcer le runtime d'ingénierie logicielle EXISTANT
+d'ARENA (`DioumtoukayAgent`/`Atelier`) avec les meilleures idées de
+`abhayzangir1/trans4mer` (MIT, commit `d0940a9`) — crash recovery,
+concurrence, isolation git — jamais un second agent de code. Audit complet :
+`docs/audits/trans4mer_audit.md`.
+
+DEC-0038 (« il doit tout faire, pas de limite ») relue en entier avant
+d'écrire une ligne : aucune porte d'approbation humaine, aucun bac à sable
+de chemins n'a été ajouté — les deux contrediraient cette décision, non
+re-litigée. Ce qui restait un manque RÉEL, mesuré dans le code existant :
+
+1. **`core/execution/reprise.py`** — `Etape.confirmee`, `amorcer()`/
+   `confirmer()` : une action est journalisée AVANT de tourner (pas après
+   comme avec `noter()` seul). Une étape jamais confirmée après un « crash »
+   simulé est rapportée ÉTAT INCONNU à la reprise, jamais un succès ou un
+   échec supposé.
+2. **`tools/atelier/verrous.py`** (nouveau) — un verrou en mémoire par
+   chemin canonique. `apps/backend/runtime.py` n'instancie qu'UN
+   `DioumtoukayAgent`/`Atelier` partagé, boucle `async` : deux
+   conversations concurrentes qui touchent le même fichier sont
+   sérialisées, jamais refusées (mutex, pas permission).
+3. **`Atelier.isoler()`/`nettoyer_worktree()`** — `git worktree add`/
+   `remove` en shell nu, `.gitignore` protégé contre l'aspiration
+   accidentelle d'un worktree isolé, jamais de suppression forcée d'un
+   travail non commité.
+
+**16 tests nouveaux, chacun avec un sabotage réel** (`test_reprise_amorce.py`,
+`test_atelier_concurrence.py` — deux VRAIS threads synchronisés par
+`threading.Barrier`, `test_atelier_worktree.py` — vrai dépôt git). `ruff
+check .` propre. Suite complète : **5222 passed, 31 skipped, 48 deselected,
+0 failed** (578.09s, mesuré le 11/09/2026 — exactement +16 sur la mesure
+DEC-0090).
