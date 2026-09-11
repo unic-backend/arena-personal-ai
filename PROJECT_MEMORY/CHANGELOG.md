@@ -873,3 +873,75 @@ libellés FR/EN ajoutés) — corrigé et revérifié directement (`npx tsc
 `ruff check .` propre. Suite complète : **4821 passed, 31 skipped, 48
 deselected, 0 failed** (476.95s / 7m56s). Rapport complet →
 `docs/audits/hidream_i1_audit.md`.
+
+## 11/09/2026 — Executive Intelligence : décision d'affaires multi-spécialiste (DEC-0086)
+
+Mission ARENA × OPENEXECUTIVE. `SenteLabsAI/OpenExecutive` audité (commit
+`fc72987537069173cb6402a1892bc03fd74f5454`, Apache-2.0) — voir
+`docs/audits/openexecutive_audit.md`. Aucune capacité de finance d'affaires
+n'existait (`agents/finance/finance_agent.py` est un Director de marché
+crypto, pas de comptabilité de projet) ; aucun spécialiste stratégie/
+marketing/RH/juridique n'existait.
+
+**Construit** : `core/executive/` — contrat structuré (`AnalyseSpecialiste`/
+`DecisionExecutive`), calcul financier déterministe (marge, échéancier,
+faisabilité de délai, scénarios), classification de risque d'affaires
+(réutilise `NiveauRisque` de `core/finance/risk.py`), couche de contexte
+métier (lit `config/metier.yaml`, déjà générique), extraction déterministe
+de chiffres, sélection dynamique de rôles (plafond 4, repli finance+risque
+pour une évaluation générale), six rôles adaptateurs (finance/operations/
+risque/approvisionnement/strategie_marche/ressources_humaines — chacun sur
+une capacité réelle, jamais un second agent), détection structurelle du
+désaccord (jamais moyenné) + synthèse + vérification déterministe des
+chiffres cités. `agents/executive/executive_agent.py` (BaseAgent mince,
+aucune méthode d'action). `apps/backend/routers/executive.py`
+(`/api/executive/analyser`, `/api/executive/roles`). Intention `EXECUTIVE`
+ajoutée à l'aiguilleur et au dispatch, testée avant `exige_verification`
+(même raison que FINANCE/EMAIL). `MemoryManager.list_facts` ajouté (une
+méthode, pas un second système de mémoire) pour la mémoire de décision.
+
+**Zéro second agent-plateforme, zéro second registre/routeur/RAG/mémoire** —
+voir le tableau de comparaison dans `docs/audits/openexecutive_audit.md`.
+
+**Ce qui n'a pas été fait** : intégrations Slack/Discord/Telegram/Google
+Chat (connecteurs déjà présents ailleurs) ; Graphify non câblé (aucun besoin
+mesuré) ; pas de cycle d'autonomie progressive façon `decision_ledger`
+d'OpenExecutive (aucune action `AUTO_EXECUTE` à graduer chez ARENA) ;
+génération PDF non câblée (le moteur PDF existant de
+`agents/plaquiste/devis_pdf.py` pourra recevoir la sortie structurée dans
+une mission future).
+
+**Sabotage réel** : le `wrap()` anti-injection du rôle `approvisionnement`
+retiré → le test dédié échoue immédiatement (texte de document envoyé brut
+au modèle). Restauré → les 15 tests du module repassent.
+
+**Deux bugs réels trouvés et corrigés** : `extraire_jours_pres_de` rendait
+le premier nombre de jours d'une fenêtre fusionnée autour d'un mot-clé
+plutôt que le plus proche — « Deadline: 14 days ... possible 5-day delay »
+cherché près de « delay » rendait 14 au lieu de 5. Corrigé (distance au
+mot-clé, pas ordre d'apparition dans le texte), trouvé par les tests
+unitaires. Un second, trouvé seulement par le test de redémarrage réel
+(pas par les tests écrits d'avance) : le libellé d'une échéance capturait
+les sauts de ligne et fusionnait « completion » avec la phrase suivante.
+Corrigé, avec un test de non-régression dédié.
+
+166 tests dédiés à ce périmètre, incluant le scénario synthétique exact de
+la mission (chantier à 10 000 000, marge 25 % réellement calculée), les
+cinq tâches de sélection de spécialistes (code et vidéo jamais détournés
+vers l'Executive Intelligence), un test d'injection de prompt sur un
+document contractuel piégé, un test UniC Plaquiste en lecture seule sur le
+vrai `config/metier.yaml`, et des tests d'échec (rôle en panne, recherche
+web indisponible, modèle indisponible, mémoire absente).
+
+`python scripts/orphelins.py` : 288 modules, 229 atteints (+14/+12),
+`CLAUDE.md` remesuré, aucun module réel endormi.
+
+**Régression réelle trouvée par la suite complète** (pas par les tests
+ciblés) : une première version enregistrait `"executive"` dans
+`core/agent/capacites.py`, le registre qui ne connaît QUE les espaces de la
+barre latérale de la PWA — `tests/test_runtime_capacites.py` l'a détecté.
+Retiré ; l'agent reste joignable par l'intention `EXECUTIVE` et par
+`/api/executive/*`.
+
+`ruff check .` propre. Suite complète, après correction : **4991 passed,
+31 skipped, 48 deselected, 0 failed** (477.21s / 7m57s).

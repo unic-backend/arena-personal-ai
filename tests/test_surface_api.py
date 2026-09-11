@@ -99,6 +99,9 @@ SURFACE_ATTENDUE = {
     "/api/image/generer": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/image/capacites": (["GET"], ["verify_api_key", "limiter_debit"]),
     "/api/image/{job_id}": (["GET"], ["verify_api_key", "limiter_debit"]),
+    # Executive Intelligence (mission ARENA x OPENEXECUTIVE, DEC-0086).
+    "/api/executive/analyser": (["POST"], ["verify_api_key", "limiter_debit"]),
+    "/api/executive/roles": (["GET"], ["verify_api_key", "limiter_debit"]),
 }
 
 

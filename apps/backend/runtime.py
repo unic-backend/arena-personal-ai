@@ -15,6 +15,7 @@ from agents.coder.coder_agent import CoderAgent
 from agents.dioumtoukay.dioumtoukay_agent import DioumtoukayAgent
 from agents.editor.editor_agent import EditorAgent
 from agents.email.email_agent import EmailAgent
+from agents.executive.executive_agent import ExecutiveAgent
 from agents.finance.finance_agent import FinanceAgent
 from agents.formel.formel_agent import FormelAgent
 from agents.fresh_info.fresh_info_agent import FreshInfoAgent
@@ -629,6 +630,15 @@ fresh_agent = FreshInfoAgent(provider=fast_provider, memory=memory)
 # `deep_provider` parce que commenter des chiffres sans en inventer demande
 # plus qu'une passe rapide.
 finance_agent = FinanceAgent(provider=deep_provider, memory=memory, registre=registre)
+# Executive Intelligence (mission ARENA x OPENEXECUTIVE, DEC-0086) : coordonne
+# les specialistes existants d'ARENA (calcul, recherche, documents) pour une
+# decision d'affaires — jamais un second agent-plateforme. `deep_provider` :
+# synthetiser plusieurs analyses en une recommandation coherente demande plus
+# qu'une passe rapide, meme raison que FinanceAgent juste au-dessus.
+executive_agent = ExecutiveAgent(
+    provider=deep_provider, memory=memory,
+    lightrag_query=lambda q: lightrag_tool.query(q, mode="hybrid"),
+)
 repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory, registre=registre)
 swe_agent = SWEAgent(provider=coder_provider, memory=memory)
 # Dioumtoukay : celui qui AGIT sur la machine (DEC-0038). Il recoit le
@@ -710,6 +720,12 @@ capacites.enregistrer("documents", adaptateur_synchrone(
     lambda texte: lightrag_tool.query(texte, mode="hybrid"), "LightRAG",
     est_un_echec=lightrag_echec,
 ))
+# Executive Intelligence (DEC-0086) n'est PAS enregistree ici : ce registre ne
+# connait que les espaces choisissables dans la barre laterale de la PWA
+# (`INTENTION_PAR_ESPACE`, verifie par tests/test_runtime_capacites.py) —
+# "Executive" n'en est pas un. L'agent reste joignable par l'intention
+# EXECUTIVE (agents/orchestrator, apps/backend/routers/chat.py) et par
+# `apps/backend/routers/executive.py`.
 
 
 #: Les moteurs qui repondent a une intention sans etre des `BaseAgent` :
