@@ -5,10 +5,11 @@
 ## En cours
 
 Rien. La mission « ARENA × COMFYUI » (DEC-0087, puis sa suite DEC-0088 le
-même jour) est développée sur la MÊME branche/PR (#187) — voir
-`docs/DECISIONS.md`, DEC-0087 et DEC-0088, et `docs/audits/comfyui_audit.md`
-pour l'audit amont. **Non encore fusionnée au moment de cette note** —
-vérifier l'état réel de la PR avant de supposer qu'elle l'est.
+même jour) était développée sur la branche/PR #187, **mergée le
+2026-09-11** (confirmé par l'événement GitHub `pull_request.closed`,
+`outcome: merged`) — voir `docs/DECISIONS.md`, DEC-0087 et DEC-0088, et
+`docs/audits/comfyui_audit.md` pour l'audit amont. Le suivi CI/PR est
+terminé, aucun check-in n'est reprogrammé.
 
 ## Dernier chunk : DEC-0088 — les cinq workflows ComfyUI restants
 
