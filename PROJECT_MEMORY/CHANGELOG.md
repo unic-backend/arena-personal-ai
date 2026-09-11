@@ -945,3 +945,139 @@ Retiré ; l'agent reste joignable par l'intention `EXECUTIVE` et par
 
 `ruff check .` propre. Suite complète, après correction : **4991 passed,
 31 skipped, 48 deselected, 0 failed** (477.21s / 7m57s).
+
+## 11/09/2026 (suite) — ComfyUI comme moteur d'exécution alternatif (DEC-0087)
+
+Mission ARENA × COMFYUI. `Comfy-Org/ComfyUI` audité (commit
+`6338e4bd428247a4a8843496aa98fb7f2a9d3632`, GPL-3.0, clone réel — pas le
+README seul) : `POST /prompt` (workflow JSON « API format »),
+`GET /system_stats` (VRAM/RAM réelles par appareil), `GET /history/{id}`,
+`POST /free` (décharge les modèles), gestion mémoire automatique (« smart
+memory », vérifiée dans `comfy/model_management.py`). `SECURITY.md` amont
+confirme noir sur blanc : les extensions tierces (`custom_nodes/`) sont du
+code Python arbitraire, **aucune isolation** — zéro nœud tiers installé ici
+(mission §10).
+
+Existant réutilisé, rien dupliqué : `core/connectors/hidream.py` (DEC-0085,
+seule capacité image-generation, classée `SERVER_ONLY_RECOMMENDED` sur la
+RTX A2000 du propriétaire), `core/production/materiel.py`,
+`core/production/artefact_image.py`, `core/connectors/registre.py`,
+`config/permissions_services.yaml` (service `image_generation` déjà là).
+
+Quatre modules nouveaux : `core/production/comfyui_workflows.py` (registre
+CONTRÔLÉ de workflows — un seul `STABLE`, `text_to_image`, gabarit
+reconstruit noeud par noeud depuis le JSON officiel audité ; cinq
+`CANDIDATE`, schéma écrit, gabarit volontairement absent) ;
+`core/production/comfyui_strategie.py` (décision matérielle à six issues,
+reconnaissant le déchargement automatique de ComfyUI — contrairement à
+HiDream) ; `core/connectors/comfyui.py` (connecteur HTTP direct vers l'API
+native de ComfyUI — **aucun worker écrit ici**, contrairement à HiDream :
+ComfyUI est déjà un serveur complet) ; `core/production/
+image_backend_router.py` (choix DIRECT/COMFYUI, défaut strictement
+inchangé — `hidream` en premier, repli mission §39 seulement sur
+`NOT_CONFIGURED` et jamais sur demande explicite).
+
+`agents/video/production_agent.py::_soumettre_image` (nouveau) : `generer_image`
+(entrée directe) et `_appeler_hidream_image` (étape de graphe) partagent
+désormais le MÊME choix de backend au lieu de deux logiques dupliquées.
+`apps/backend/routers/image_generation.py` étendu (`backend`/`workflow_id`
+optionnels, nouvelle route `GET /api/image/workflows`) ; `config/
+permissions_services.yaml` : une action `unload` ajoutée au service
+existant.
+
+**Sabotage réel** : la vérification anti-traversée de chemin
+(`_chemin_contenu`, mission §31 — un `subfolder`/`filename` annoncé par
+ComfyUI ne doit jamais faire lire un fichier hors du dossier de sortie
+attendu) retirée → une vraie image placée hors du dossier de base est
+confirmée comme un succès légitime. Restaurée → refusée, les 27 tests du
+connecteur repassent.
+
+73 tests nouveaux : construction déterministe du JSON officiel, validation
+de paramètres (bornes, coercition, champ requis vide traité comme absent),
+refus avant tout envoi (workflow inconnu/`CANDIDATE`/checkpoint absent/
+matériel insuffisant), relecture réelle avant de confirmer un succès, repli
+bidirectionnel mission §39. Régression ciblée (vidéo, HiDream, Wan2GP,
+registre d'agents, surface API) : 258 passed, 0 failed.
+`python scripts/orphelins.py` : 292 modules, 233 atteints (+4/+4), aucun
+module réel endormi.
+
+**Restart test réel** : processus neuf, application importée à froid,
+vraies requêtes HTTP — `GET /api/image/workflows` rend le catalogue réel ;
+`GET /api/image/capacites?backend=comfyui` rend honnêtement
+`NOT_CONFIGURED` (aucun serveur ComfyUI lancé ici) ; `POST /api/image/
+generer` avec `backend=comfyui` route bien vers ComfyUI
+(`NEEDS_CONFIRMATION`, moteur rapporté `comfyui`) ; le même appel SANS
+`backend` route toujours vers `hidream` (comportement DEC-0085 inchangé).
+
+**Régression réelle trouvée par la suite complète** (pas par les tests
+ciblés) : `tests/test_connecteurs_dormants.py` (DEC-0068) a détecté
+`comfyui` comme connecteur enregistré sans appelant visible en analyse
+statique — le nom ne circulait que dans un tuple
+(`core/production/image_backend_router.py`), jamais comme argument
+littéral ou affectation nommée seule. Réellement joignable (le restart
+test ci-dessus le prouve), mais invisible à l'AST : corrigé en nommant la
+constante (`BACKEND_COMFYUI = "comfyui"`, motif déjà utilisé ailleurs dans
+ce dépôt) plutôt que de l'ajouter à `DORMANTS_CONNUS`, ce qui aurait été
+faux.
+
+`ruff check .` propre. Suite complète, après correction : **5065 passed,
+31 skipped, 48 deselected, 0 failed** (471.58s / 7m51s).
+
+## 11/09/2026 (suite) — Les cinq workflows ComfyUI restants (DEC-0088)
+
+Suite directe de DEC-0087, même jour. `image_to_image`, `upscale`,
+`controlnet_image`, `character_image`, `image_to_video` — les cinq
+workflows laissés `CANDIDATE` — construits contre le vrai code source
+amont (`nodes.py`, deux modules de `comfy_extras/` — `nodes_upscale_model.py`
+et `nodes_video_model.py`, non vendorés —, même commit `6338e4bd` que
+DEC-0087, reconfirmé identique). Cinq gabarits promus `STABLE`, même niveau de
+preuve que `text_to_image` : construits noeud par noeud contre le vrai
+`INPUT_TYPES`/`define_schema`, testés déterministiquement, jamais
+confirmés contre un serveur ComfyUI réel (aucun GPU ici, comme pour
+`text_to_image` lui-même).
+
+`controlnet_image` utilise `ControlNetApplyAdvanced` — jamais l'ancien
+`ControlNetApply`, marqué `DEPRECATED` dans le code source. `image_to_video`
+utilise Stable Video Diffusion, la seule famille vidéo native de ComfyUI
+(vérifié par recherche exhaustive).
+
+**Une image de référence ne touche jamais le disque d'ARENA** : les
+workflows qui en prennent une la déclarent en `image_base64` (mêmes
+octets en mémoire que `apps/backend/pieces_jointes.py`, DEC-0019) ;
+`core/connectors/comfyui.py::_televerser_images` décode et televerse
+(`POST /upload/image`) juste avant l'envoi — jamais un chemin de fichier
+local qu'un appelant HTTP pourrait faire pointer vers un secret du
+serveur (le défaut qu'`agents/plaquiste/plaquiste_agent.py
+::chemin_hors_du_depot` avait dû corriger une fois ici, évité ici dès la
+conception, pas filtré après coup).
+
+`EntreeWorkflow.verification_modeles` (nouveau) généralise le contrôle
+« le modèle demandé est-il installé » de DEC-0087 au-delà de `ckpt_name` —
+`controlnet_image` vérifie deux modèles distincts avant tout envoi.
+
+**Sabotage réel** : `_verifier_modeles` neutralisée → trois tests
+échouent (un ControlNet absent serait accepté). Restaurée → les 85 tests
+du périmètre ComfyUI repassent. 27 tests nouveaux ; deux tests devenus
+obsolètes (plus aucun `CANDIDATE` réel dans le registre) remplacés par un
+faux workflow injecté via `monkeypatch`, sans perdre la couverture de la
+règle. Régression ciblée : 262 passed, 0 failed.
+
+**Corrigé au passage** : un artefact de manipulation d'outil
+(`</new_string>` littéral) s'était glissé à la fin de l'entrée DEC-0087 —
+trouvé en relisant le fichier, corrigé.
+
+Restart test réel : `GET /api/image/workflows` rend les SIX workflows en
+`STABLE` ; les nouvelles routes passent bien par la confirmation, jamais
+contournée.
+
+**Régression réelle trouvée par la suite complète, deux fois de suite**
+(pas par les tests ciblés) : `tests/test_documentation.py` vérifie que
+tout chemin cité entre apostrophes inverses dans `docs/*.md` existe
+réellement dans ce dépôt — `docs/DECISIONS.md` citait deux modules amont
+de ComfyUI (jamais vendorés) avec leur chemin `comfy_extras/` complet.
+Corrigé une première fois ; le paragraphe décrivant ce correctif a
+lui-même recité le motif fautif, faisant échouer le test une seconde
+fois — corrigé à son tour. Revérifié : 18 passed.
+
+`ruff check .` propre. Suite complète, après correction : **5094 passed,
+31 skipped, 48 deselected, 0 failed** (408.91s / 6m49s).
