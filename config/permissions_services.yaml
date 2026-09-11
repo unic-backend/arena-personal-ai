@@ -126,10 +126,15 @@ services:
   # INTERRUPTEURS_OBLIGATOIRES (une image generee s'efface, ce n'est pas une
   # action irreversible). `cancel` reste ALLOWED pour la meme raison qu'en
   # video_generation : annuler REDUIT un effet, il n'en emet aucun.
+  # `unload` ajoutee mission ARENA x COMFYUI (DEC-0087) : libere la VRAM
+  # occupee par ComfyUI (`POST /free`). Aucun effet exterieur, aucun fichier
+  # touche — une liberation de ressource, pas une generation. ALLOWED/LOW,
+  # comme `cancel`.
   image_generation:
     read:        {decision: ALLOWED,      risque: LOW}
     generate:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
     cancel:      {decision: ALLOWED,      risque: LOW}
+    unload:      {decision: ALLOWED,      risque: LOW}
 
   # Analyse de visages (SDK Faceplugin, moteur local hors depot).
   #

@@ -38,7 +38,7 @@ from core.characters.registry import Personnage, charger_personnage, enregistrer
 from core.execution.coordination import Coordination, Etape
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
-from core.production import personnage_video, plan_drift
+from core.production import image_backend_router, personnage_video, plan_drift
 from core.production.etat_projet import EtapeProjet, EtatProjetVideo
 from core.production.plan_video import (
     CAPACITES_VIDEO,
@@ -303,16 +303,22 @@ class VideoProductionAgent(BaseAgent):
         self, prompt: str, *, negative_prompt: Optional[str] = None,
         width: Optional[int] = None, height: Optional[int] = None,
         seed: Optional[int] = None, variante: Optional[str] = None,
+        backend: Optional[str] = None, workflow_id: Optional[str] = None,
+        ckpt_name: Optional[str] = None, steps: Optional[int] = None,
+        cfg: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Le point d'entree direct de la capacite image-generation
-        canonique (mission ARENA x HIDREAM-I1, DEC-0085) — hors graphe, pour
-        une demande d'image seule qui n'a pas besoin d'un plan de projet.
+        canonique (mission ARENA x HIDREAM-I1 puis x COMFYUI, DEC-0085 et
+        DEC-0087) — hors graphe, pour une demande d'image seule qui n'a pas
+        besoin d'un plan de projet.
 
-        Passe par le MEME connecteur que `hidream_image` dans le graphe
-        (`core/connectors/hidream.py`, via le registre) : aucune deuxieme
-        soumission, aucun deuxieme controle materiel. Le connecteur refuse
-        deja NON_CONFIGURE si le materiel rapporte par le worker ne tient
-        pas la variante demandee — cette methode ne fait que transmettre.
+        Passe par le registre de connecteurs, jamais un deuxieme controle
+        materiel ecrit ici : `core/connectors/hidream.py` et
+        `core/connectors/comfyui.py` refusent deja NON_CONFIGURE si leur
+        materiel ne tient pas la demande. `backend` choisit explicitement le
+        moteur (« hidream » ou « comfyui ») ; sans lui, le comportement de
+        DEC-0085 est INCHANGE (`hidream` en premier —
+        `core/production/image_backend_router.py`).
         """
         if self.registre is None:
             return self._erreur("aucun registre de connecteurs branche")
@@ -323,15 +329,49 @@ class VideoProductionAgent(BaseAgent):
         appel: Dict[str, Any] = {"prompt": prompt}
         for cle, valeur in (
             ("negative_prompt", negative_prompt), ("width", width), ("height", height),
-            ("seed", seed), ("variante", variante),
+            ("seed", seed), ("variante", variante), ("workflow_id", workflow_id),
+            ("ckpt_name", ckpt_name), ("steps", steps), ("cfg", cfg),
         ):
             if valeur is not None:
                 appel[cle] = valeur
 
-        resultat = self.registre.executer("hidream", "generer", **appel)
+        return await self._soumettre_image(appel, backend)
+
+    async def _soumettre_image(
+        self, appel: Dict[str, Any], backend_demande: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Le SEUL endroit qui choisit un moteur pour la capacite
+        image-generation — `generer_image` et `_appeler_hidream_image`
+        (l'etape de graphe) partagent ce chemin, jamais deux logiques
+        distinctes (mission §5, no-duplication).
+
+        Repli mission §39 : si le moteur choisi (ou par defaut) rend
+        NOT_CONFIGURED et qu'aucun backend n'a ete demande explicitement,
+        l'autre moteur connu est essaye UNE fois, seulement s'il est
+        reellement declare dans le registre. Un backend demande
+        explicitement n'a jamais de repli — un choix explicite est respecte,
+        jamais devine a sa place.
+        """
+        backend = image_backend_router.backend_choisi(backend_demande)
+        resultat = self.registre.executer(backend, "generer", **appel)
         if inspect.isawaitable(resultat):
             resultat = await resultat
-        return _depuis_resultat_action(resultat)
+        traduit = _depuis_resultat_action(resultat)
+        traduit["moteur"] = backend
+
+        if backend_demande is None and traduit.get("statut") == "NOT_CONFIGURED":
+            secours = image_backend_router.backend_de_secours(backend)
+            est_declare = getattr(self.registre, "est_declare", lambda _n: False)
+            if secours and est_declare(secours):
+                resultat_secours = self.registre.executer(secours, "generer", **appel)
+                if inspect.isawaitable(resultat_secours):
+                    resultat_secours = await resultat_secours
+                traduit_secours = _depuis_resultat_action(resultat_secours)
+                traduit_secours["moteur"] = secours
+                if traduit_secours.get("statut") != "NOT_CONFIGURED":
+                    return traduit_secours
+
+        return traduit
 
     async def _executer(
         self, objectif: str, contexte: Dict[str, Any], references: List[str],
@@ -606,10 +646,8 @@ class VideoProductionAgent(BaseAgent):
             if parametres.get(cle) is not None:
                 appel[cle] = parametres[cle]
 
-        resultat = self.registre.executer("hidream", "generer", **appel)
-        if inspect.isawaitable(resultat):
-            resultat = await resultat
-        return self._verifie(_depuis_resultat_action(resultat), "hidream_image")
+        traduit = await self._soumettre_image(appel, parametres.get("backend"))
+        return self._verifie(traduit, "hidream_image")
 
     async def _appeler_krillin(self, capacite_krillin: str, references: List[str],
                                **parametres_krillin: Any) -> Dict[str, Any]:

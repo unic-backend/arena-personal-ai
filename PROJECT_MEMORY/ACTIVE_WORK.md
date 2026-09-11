@@ -1,15 +1,62 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-08-29, fin de session.*
+*Mise à jour : 2026-09-11, fin de session (DEC-0087).*
 
-## ⚠️ Ce fichier est périmé au-delà de PR #34
+## En cours
 
-Plus de 40 PR sont passées depuis (DEC-0020 à DEC-0024 au moins, jusqu'à
-`docs/DECISIONS.md`). Ce fichier n'a pas été réécrit à chaque fois — le
-faire correctement exige de relire chaque PR fusionnée depuis, hors
-périmètre d'une seule session. **Dernier chunk réellement documenté ici et
-à jour : DEC-0024 (31/08/2026), connecteurs Gmail réels — voir
-`docs/audits/connecteurs_audit.md` et l'entrée DEC-0024.** Pour tout le
+Rien. La mission « ARENA × COMFYUI » (ComfyUI comme moteur d'exécution
+alternatif, DEC-0087) vient d'être développée sur sa propre branche — voir
+`docs/DECISIONS.md`, DEC-0087, pour la décision complète, et
+`docs/audits/comfyui_audit.md` pour l'audit amont. **Non encore fusionnée
+au moment de cette note** — vérifier l'état réel de la PR avant de
+supposer qu'elle l'est.
+
+## Dernier chunk : DEC-0087 — ComfyUI comme moteur d'exécution alternatif
+
+`core/production/comfyui_workflows.py` (registre CONTRÔLÉ de workflows —
+un seul `STABLE`, `text_to_image`), `core/production/comfyui_strategie.py`
+(décision matérielle à six issues, reconnaît le déchargement automatique
+de ComfyUI), `core/connectors/comfyui.py` (connecteur HTTP direct — aucun
+worker écrit, contrairement à HiDream : ComfyUI est déjà un serveur
+complet), `core/production/image_backend_router.py` (choix DIRECT/COMFYUI,
+défaut inchangé : `hidream` en premier, repli seulement sur
+`NOT_CONFIGURED`). `agents/video/production_agent.py::_soumettre_image`
+unifie `generer_image` et l'étape de graphe `hidream_image` sur le même
+choix de backend.
+
+**Sabotage réel** : la défense anti-traversée de chemin (`_chemin_contenu`)
+retirée → un fichier hors du dossier de sortie attendu est confirmé comme
+un succès. Restaurée → refusé, 27 tests repassent. 73 tests nouveaux,
+régression ciblée 258 passed. `scripts/orphelins.py` : 292 modules, 233
+atteints (+4/+4). Restart test réel : `backend=comfyui` route bien vers
+ComfyUI, l'appel par défaut route toujours vers `hidream` (DEC-0085
+inchangé) — aucun serveur ComfyUI n'a tourné ici (pas de GPU dans cet
+environnement de développement), `NOT_CONFIGURED` honnête à chaque appel.
+
+**Régression réelle trouvée par la suite complète** (pas par les tests
+ciblés) : `tests/test_connecteurs_dormants.py` a détecté `comfyui` comme
+connecteur sans appelant visible en analyse statique (le nom ne circulait
+que dans un tuple). Corrigé en nommant la constante
+(`BACKEND_COMFYUI = "comfyui"`), jamais ajouté à `DORMANTS_CONNUS` — le
+connecteur EST joignable. Revérifié : 8 passed.
+
+## Dernier chunk documenté avant celui-ci : DEC-0086 — Executive Intelligence
+
+`core/executive/` (dix modules) : décision d'affaires multi-spécialiste,
+`OpenExecutive` audité (SenteLabsAI, Apache-2.0), désaccord préservé entre
+rôles, calcul déterministe (marge/échéancier/faisabilité). 166 tests, suite
+complète mesurée alors : 4991 passed, 0 failed. Détail complet :
+`docs/DECISIONS.md`, DEC-0086 ; PR ouverte séparément pour la mise à jour
+de ce fichier de mémoire lui-même (`claude/active-work-post-dec-0086`) —
+vérifier si elle a fusionné ; si non, son contenu est repris ci-dessus.
+
+## ⚠️ L'historique détaillé entre DEC-0024 et DEC-0085 n'a pas été relu ici
+
+Plus de 150 PR sont passées entre ce chunk et le précédent point vraiment
+à jour de ce fichier (DEC-0024, connecteurs Gmail réels — voir
+`docs/audits/connecteurs_audit.md`). Le relire correctement exige de
+reparcourir chaque PR fusionnée depuis, hors périmètre d'une seule
+session. Pour tout le
 reste, `docs/DECISIONS.md` (toutes les entrées) reste la source exacte ; ce
 fichier est un index, pas l'autorité.
 

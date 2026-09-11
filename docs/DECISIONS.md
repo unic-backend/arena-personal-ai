@@ -7616,3 +7616,167 @@ de décision, pas n'importe quelle phrase financière. Un chiffre qui échappe
 `NEUTRE`/`INCONNU` — mais cela signifie qu'une formulation inhabituelle
 peut manquer un chiffre réellement présent dans la question. Le repli est
 honnête (`UNKNOWN`, jamais un chiffre plausible), pas invisible.
+
+## DEC-0087 — ComfyUI comme moteur d'exécution alternatif, jamais un second cerveau
+
+**Date** : 11/09/2026
+**Statut** : accepté
+
+### Contexte
+
+Mission ARENA × COMFYUI. Étudier `Comfy-Org/ComfyUI` (commit
+`6338e4bd428247a4a8843496aa98fb7f2a9d3632`, GPL-3.0) et déterminer s'il peut devenir un
+**backend d'exécution** pour la capacité image-generation canonique d'ARENA — jamais un
+second orchestrateur, jamais un second agent image, jamais une duplication du graphe
+vidéo. Rapport complet → `docs/audits/comfyui_audit.md`.
+
+### Ce qui existait déjà, audité avant d'écrire une ligne
+
+`core/connectors/hidream.py` (DEC-0085) est la seule capacité image-generation d'ARENA —
+classée `SERVER_ONLY_RECOMMENDED` sur le matériel réel du propriétaire (RTX A2000 12 Go,
+32 Go RAM : HiDream-I1 exige ~63 Go). `core/production/materiel.py` (mesure matérielle),
+`core/production/artefact_image.py` (validation d'image + provenance),
+`core/connectors/registre.py` (registre unique de connecteurs),
+`core/connectors/suivi_video.py::suivre_generation` (suivi de tâche générique),
+`config/permissions_services.yaml` (service `image_generation` déjà déclaré) existaient
+tous et sont **réutilisés tels quels** — zéro duplication.
+
+### Décision
+
+**Un connecteur ALTERNATIF, un module de gabarits contrôlés, un module de décision
+matérielle — zéro second registre, zéro second agent image, zéro second système de
+job.**
+
+1. `core/production/comfyui_workflows.py` (nouveau) — le registre CONTRÔLÉ des
+   workflows ComfyUI approuvés. Un seul workflow `STABLE` :
+   `text_to_image` (gabarit construit noeud par noeud à partir du JSON « API format »
+   officiel audité). Cinq autres déclarés `CANDIDATE` (schéma et profil de ressources
+   écrits, gabarit volontairement absent — `image_to_image`, `upscale`,
+   `controlnet_image`, `character_image`, `image_to_video`) : reconnus, jamais
+   implémentés ni prétendus l'être (mission §34). Validation et construction de requête
+   **déterministes, testables sans serveur** (mission §9).
+2. `core/production/comfyui_strategie.py` (nouveau) — décision matérielle à SIX issues
+   (LOCAL_FAST/LOCAL_SUPPORTED/LOCAL_SLOW/LOCAL_OFFLOAD/REMOTE_RECOMMENDED/UNSUPPORTED),
+   reconnaissant que ComfyUI décharge lui-même ses poids (« smart memory », vérifié dans
+   le code amont) contrairement à HiDream. Réutilise `EtatGpu`/`EtatRam`/`EtatDisque`
+   de `core/production/materiel.py` — zéro second modèle de matériel.
+3. `core/connectors/comfyui.py` (nouveau) — connecteur HTTP direct vers l'API **native**
+   de ComfyUI (`/system_stats`, `/prompt`, `/history/{id}`, `/interrupt`, `/free`,
+   `/models/{folder}`, `/view`) : **aucun worker écrit ici**, contrairement à HiDream —
+   ComfyUI est déjà un serveur complet. Refuse AVANT tout envoi : workflow
+   inconnu/`CANDIDATE`, checkpoint absent (`GET /models/checkpoints` relu, jamais un
+   téléchargement automatique — mission §12/§25), matériel insuffisant. `etat_travail`
+   ROUVRE chaque image annoncée (`artefact_image.py::valider_image`) avant de confirmer
+   un succès. `decharger` (nouvelle action `unload`, ALLOWED/LOW) appelle `POST /free`
+   pour libérer la VRAM (mission §11/§38).
+4. `core/production/image_backend_router.py` (nouveau) — le choix DIRECT (`hidream`) vs
+   COMFYUI pour la capacité `generer_image`/`hidream_image` : **le comportement par
+   défaut est strictement inchangé** (hidream en premier, comme DEC-0085) ; un `backend`
+   explicite est toujours respecté sans repli ; un échec `NOT_CONFIGURED` du moteur par
+   défaut déclenche UN essai de l'autre moteur, seulement s'il est réellement déclaré
+   dans le registre (mission §39). `agents/video/production_agent.py::_soumettre_image`
+   centralise ce choix — `generer_image` (entrée directe) et `_appeler_hidream_image`
+   (étape de graphe) partagent désormais le MÊME chemin, plutôt que deux logiques
+   dupliquées.
+5. `apps/backend/routers/image_generation.py` étendu (pas dupliqué) :
+   `backend`/`workflow_id`/`ckpt_name`/`steps`/`cfg` optionnels sur
+   `POST /api/image/generer` ; `backend` en requête sur `GET /api/image/capacites` et
+   `GET /api/image/{job_id}` (défaut : `hidream`, comportement DEC-0085 inchangé) ; une
+   route nouvelle `GET /api/image/workflows` (catalogue pur, jamais un appel réseau).
+6. `config/permissions_services.yaml` : une action `unload` ajoutée au service
+   `image_generation` existant — jamais un second service.
+
+### Ce qui n'a pas été fait, et pourquoi
+
+- **Aucun serveur ComfyUI n'a tourné dans cette mission.** Aucun GPU, aucune
+  installation ComfyUI dans cet environnement de développement — comme pour HiDream. Le
+  test de redémarrage (ci-dessous) le prouve honnêtement : `NOT_CONFIGURED`, jamais une
+  génération simulée.
+- **Cinq workflows restent `CANDIDATE`** (image_to_image, upscale, controlnet_image,
+  character_image, image_to_video) — schéma et profil de ressources déclarés pour ne pas
+  faire réauditer une mission future, gabarit non écrit : construire un gabarit non
+  vérifié aurait été exactement le « trick non vérifié » que ce dépôt refuse (mission
+  §7 appliquée par analogie).
+- **Aucun couplage direct à Agent Heroes/personnage_video.py ni au graphe vidéo.** Le
+  routeur existe ; l'étendre à ces capacités attend un besoin mesuré, pas une
+  anticipation (mission §17/§19, même principe que DEC-0085/§19 sur Graphify).
+- **Aucune comparaison chiffrée HiDream-direct vs HiDream-via-ComfyUI** (mission §15/42) :
+  ComfyUI n'a jamais exécuté HiDream-I1 ici, faute de serveur — documenté comme limite,
+  jamais deviné.
+- **Aucun worker/serveur ComfyUI distant déployé** (mission §24/33) — le contrat est prêt
+  (`COMFYUI_URL` seule variable à changer, `/system_stats` mesure sa propre machine,
+  local et distant partagent le même contrat), aucune infrastructure distante
+  configurée ni autorisée ici.
+
+### Licensing
+
+Code ComfyUI : **GPL-3.0**, vérifié sur le fichier `LICENSE` du clone réel. **Aucun code
+ComfyUI n'est vendoré** dans ce dépôt — le connecteur parle HTTP à un processus ComfyUI
+séparé, jamais un import Python de son code (même frontière que HiDream/WanGP/CSM/
+MoneyPrinterTurbo, déjà établie pour des raisons de dépendances ; elle a ici, en plus,
+une conséquence de licence directe : GPL-3.0 imposerait ses obligations à tout ce qui
+LIE son code, jamais à un processus séparé qui lui parle par HTTP). Aucun `custom_nodes/`
+tiers n'est installé, référencé ou recommandé (mission §10 : zéro confiance par défaut
+envers du code Python tiers non revu).
+
+### Vérification
+
+- `ruff check .` propre sur l'ensemble du dépôt.
+- **Sabotage réel, la défense anti-traversée de chemin (mission §31)** : la vérification
+  `cible_resolue.relative_to(base_resolue)` dans `_chemin_contenu` (core/connectors/
+  comfyui.py) retirée → un fichier `subfolder="../"` pointant hors du dossier de sortie
+  attendu est alors lu et validé comme un succès légitime (une vraie image PNG placée
+  hors base est confirmée). Restaurée → refusé (`success: False`), les 27 tests du
+  connecteur repassent.
+- 73 tests nouveaux dédiés à ce périmètre (`test_comfyui_workflows.py` 17,
+  `test_comfyui_strategie.py` 12, `test_connecteur_comfyui.py` 27,
+  `test_image_backend_router.py` 5, extensions à `test_production_agent.py` (7
+  nouveaux, dont le repli bidirectionnel et le partage graphe/entrée directe),
+  extensions à `test_image_generation_router.py` (5 nouvelles) et
+  `test_surface_api.py` (1 nouvelle route)) — incluant la construction déterministe du
+  JSON « API format » officiel, la validation de paramètres (bornes, coercition, champ
+  requis vide traité comme absent), le refus avant tout envoi (workflow inconnu/
+  `CANDIDATE`/checkpoint absent/matériel insuffisant), la relecture réelle avant de
+  confirmer un succès, et le repli mission §39 (un moteur `NOT_CONFIGURED` en essaie un
+  autre, jamais sur demande explicite, jamais deux fois).
+- **Régression ciblée** (vidéo, HiDream, Wan2GP, registre d'agents cross-espace,
+  surface API, ComfyUI) : 258 passed, 0 failed.
+- `python scripts/orphelins.py` : 292 modules, 233 atteints (+4/+4), aucun module réel
+  endormi — `CLAUDE.md` remesuré.
+- **Restart test réel** (mission §32/§45) : nouveau processus Python, application réelle
+  importée à froid, vraies requêtes HTTP à travers le runtime normal —
+  `GET /api/image/workflows` rend le catalogue réel des six workflows ;
+  `GET /api/image/capacites?backend=comfyui` rend honnêtement `NOT_CONFIGURED` (aucun
+  serveur ComfyUI lancé ici) ; `POST /api/image/generer` avec `backend=comfyui` route
+  bien vers le connecteur ComfyUI (`NEEDS_CONFIRMATION`, moteur rapporté `comfyui`) ;
+  le même appel SANS `backend` route toujours vers `hidream` (comportement DEC-0085
+  inchangé, moteur rapporté `hidream`). ARENA démarre sans aucun serveur ComfyUI —
+  mission §45, aucune initialisation manuelle requise.
+- **Régression réelle trouvée par la suite complète** (pas par les 73 tests ciblés) :
+  `tests/test_connecteurs_dormants.py` (DEC-0068, analyse AST des appelants réels d'un
+  connecteur) a détecté `comfyui` comme un connecteur enregistré sans aucun appelant
+  visible en analyse statique — `core/production/image_backend_router.py` ne passait le
+  nom qu'à l'intérieur d'un tuple (`BACKENDS_CONNUS = ("hidream", "comfyui")`), jamais
+  comme argument littéral d'un appel ni comme affectation nommée seule. Le connecteur
+  était réellement joignable (le test de redémarrage ci-dessus le prouve), mais
+  invisible à l'analyse statique — **jamais ajouté à `DORMANTS_CONNUS`**, ce qui aurait
+  été faux : corrigé en nommant la constante (`BACKEND_COMFYUI = "comfyui"`), le motif
+  déjà utilisé ailleurs dans ce dépôt (`audio_agent.py`, `formel_agent.py`). Revérifié :
+  `tests/test_connecteurs_dormants.py` 8 passed.
+- Suite complète `python -m pytest -q`, après correction : **5065 passed, 31 skipped,
+  48 deselected, 0 failed** (471.58s / 7m51s, mesuré le 11/09/2026).
+
+### Ce que ça coûte si c'est faux
+
+Les seuils de `comfyui_strategie.py` (marges VRAM/RAM 85 %/80 %, plancher d'offload
+2 Go, plancher de disque de sortie 200 Mo) sont des ESTIMATIONS documentées, jamais
+mesurées sur un vrai GPU par ce dépôt — aucun n'est disponible dans cet environnement
+de développement. Un futur serveur ComfyUI réel pourrait rendre une décision `LOCAL_FAST`
+qui échoue à l'usage (la « smart memory » de ComfyUI a un comportement réel non mesuré
+ici) : le connecteur le rapporterait honnêtement via `status.status_str: "error"`,
+jamais un succès inventé — mais le premier essai réel sur un serveur ComfyUI doit être
+traité comme un test, pas une certitude, exactement comme pour HiDream (DEC-0085). Les
+cinq workflows `CANDIDATE` n'ont AUCUNE garantie d'exactitude sur leurs profils de
+ressources déclarés : ce sont des bornes de planification pour une mission future, pas
+des mesures.</new_string>
+

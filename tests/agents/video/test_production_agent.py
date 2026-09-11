@@ -926,3 +926,119 @@ class TestGenererImageDirect:
         resultat = await agent.generer_image("un chat")
 
         assert resultat["status"] == "error"
+
+    async def test_un_backend_explicite_est_transmis_tel_quel(self):
+        registre = RegistreXaarDouble(reponse={
+            "statut": "SUCCESS", "message": "ok", "preuve": "p1"})
+        agent = VideoProductionAgent(provider=ModeleDouble(), registre=registre)
+
+        resultat = await agent.generer_image(
+            "un chat", backend="comfyui", workflow_id="text_to_image")
+
+        assert resultat["statut"] == "SUCCESS"
+        assert registre.appels[0]["connecteur"] == "comfyui"
+        assert registre.appels[0]["parametres"]["workflow_id"] == "text_to_image"
+
+
+class RegistreBackendsDouble:
+    """Un double qui distingue les connecteurs par nom — necessaire pour
+    verifier le repli mission §39 (`core/production/image_backend_router.py`)
+    sans toucher un vrai registre."""
+
+    def __init__(self, reponses: dict, declares=("hidream", "comfyui")):
+        self._reponses = reponses
+        self._declares = set(declares)
+        self.appels = []
+
+    def est_declare(self, nom: str) -> bool:
+        return nom in self._declares
+
+    async def executer(self, connecteur, capacite, **parametres):
+        self.appels.append({"connecteur": connecteur, "capacite": capacite,
+                            "parametres": parametres})
+        return self._reponses[connecteur]
+
+
+class TestReplyImageBackend:
+    """Mission §39 : un moteur indisponible (`NOT_CONFIGURED`) declenche UN
+    essai de l'autre moteur connu — jamais quand un backend a ete demande
+    explicitement, jamais une deuxieme fois. Le defaut essaie toujours
+    `hidream` en premier (compatibilite DEC-0085) : c'est donc ce sens du
+    repli (hidream indisponible -> comfyui) que le point d'entree public
+    exerce reellement ; le sens inverse est teste directement sur
+    `core/production/image_backend_router.py::backend_de_secours`, qui est
+    symetrique par construction."""
+
+    async def test_hidream_indisponible_essaie_comfyui(self):
+        registre = RegistreBackendsDouble({
+            "hidream": {"statut": "NOT_CONFIGURED", "message": "absent"},
+            "comfyui": {"statut": "SUCCESS", "message": "ok", "preuve": "p1"},
+        })
+        agent = VideoProductionAgent(provider=ModeleDouble(), registre=registre)
+
+        resultat = await agent.generer_image("un chat")
+
+        assert resultat["statut"] == "SUCCESS"
+        assert resultat["moteur"] == "comfyui"
+        assert [a["connecteur"] for a in registre.appels] == ["hidream", "comfyui"]
+
+    async def test_un_backend_explicite_n_a_jamais_de_repli(self):
+        registre = RegistreBackendsDouble({
+            "comfyui": {"statut": "NOT_CONFIGURED", "message": "absent"},
+            "hidream": {"statut": "SUCCESS", "message": "ok", "preuve": "p1"},
+        })
+        agent = VideoProductionAgent(provider=ModeleDouble(), registre=registre)
+
+        resultat = await agent.generer_image("un chat", backend="comfyui")
+
+        assert resultat["statut"] == "NOT_CONFIGURED"
+        assert [a["connecteur"] for a in registre.appels] == ["comfyui"]
+
+    async def test_si_les_deux_moteurs_sont_indisponibles_le_premier_est_rendu(self):
+        registre = RegistreBackendsDouble({
+            "hidream": {"statut": "NOT_CONFIGURED", "message": "hidream absent"},
+            "comfyui": {"statut": "NOT_CONFIGURED", "message": "comfyui absent"},
+        })
+        agent = VideoProductionAgent(provider=ModeleDouble(), registre=registre)
+
+        resultat = await agent.generer_image("un chat")
+
+        assert resultat["statut"] == "NOT_CONFIGURED"
+        assert [a["connecteur"] for a in registre.appels] == ["hidream", "comfyui"]
+
+    async def test_un_repli_n_est_jamais_tente_vers_un_backend_non_declare(self):
+        registre = RegistreBackendsDouble(
+            {"hidream": {"statut": "NOT_CONFIGURED", "message": "absent"}},
+            declares=("hidream",))
+        agent = VideoProductionAgent(provider=ModeleDouble(), registre=registre)
+
+        resultat = await agent.generer_image("un chat")
+
+        assert resultat["statut"] == "NOT_CONFIGURED"
+        assert [a["connecteur"] for a in registre.appels] == ["hidream"]
+
+    async def test_un_succes_du_premier_essai_n_appelle_jamais_le_second(self):
+        registre = RegistreBackendsDouble({
+            "hidream": {"statut": "SUCCESS", "message": "ok", "preuve": "p1"},
+            "comfyui": {"statut": "SUCCESS", "message": "ok", "preuve": "p2"},
+        })
+        agent = VideoProductionAgent(provider=ModeleDouble(), registre=registre)
+
+        resultat = await agent.generer_image("un chat")
+
+        assert resultat["moteur"] == "hidream"
+        assert [a["connecteur"] for a in registre.appels] == ["hidream"]
+
+    async def test_le_graphe_hidream_image_partage_le_meme_repli(self):
+        registre = RegistreBackendsDouble({
+            "hidream": {"statut": "NOT_CONFIGURED", "message": "absent"},
+            "comfyui": {"statut": "SUCCESS", "message": "ok", "preuve": "p1"},
+        })
+        modele = ModeleDouble(
+            ['[{"id": "img", "capacite": "hidream_image", "parametres": {"prompt": "un chat"}}]'])
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+
+        resultat = await agent.run("genere une image", context={"references": []})
+
+        assert resultat["status"] == "success"
+        assert [a["connecteur"] for a in registre.appels] == ["hidream", "comfyui"]

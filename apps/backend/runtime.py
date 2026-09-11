@@ -54,6 +54,7 @@ from core.connectors.audio_voix import ConnecteurAudioVoix
 from core.connectors.browser import ConnecteurBrowser
 from core.connectors.calendrier import CalendrierConnector
 from core.connectors.claude_context import ConnecteurClaudeContext
+from core.connectors.comfyui import ComfyUIConnector
 from core.connectors.csm import ConnecteurCsm
 from core.connectors.devis import DevisConnector
 from core.connectors.drift import ConnecteurDrift
@@ -189,6 +190,16 @@ registre.declarer(
 registre.declarer(
     "hidream",
     lambda: HiDreamConnector(acces=acces, journal=journal, file_attente=file_attente,
+                             crochets=crochets),
+)
+# Moteur d'execution de workflows generatifs (ComfyUI, mission ARENA x
+# COMFYUI, DEC-0087) — backend ALTERNATIF pour la meme capacite
+# image-generation, jamais un second agent. Non configure tant qu'aucun
+# serveur ComfyUI n'est lance (COMFYUI_URL). Voir
+# core/production/image_backend_router.py pour le choix entre les deux.
+registre.declarer(
+    "comfyui",
+    lambda: ComfyUIConnector(acces=acces, journal=journal, file_attente=file_attente,
                              crochets=crochets),
 )
 # Devis PDF : chiffrage libre, production du document derriere confirmation.
