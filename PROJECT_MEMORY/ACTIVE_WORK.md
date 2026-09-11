@@ -1,17 +1,47 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-09-11, fin de session (DEC-0087 + DEC-0088).*
+*Mise à jour : 2026-09-11, fin de session (DEC-0087 → DEC-0090).*
 
 ## En cours
 
-Rien. La mission « ARENA × COMFYUI » (DEC-0087, puis sa suite DEC-0088 le
-même jour) était développée sur la branche/PR #187, **mergée le
-2026-09-11** (confirmé par l'événement GitHub `pull_request.closed`,
-`outcome: merged`) — voir `docs/DECISIONS.md`, DEC-0087 et DEC-0088, et
-`docs/audits/comfyui_audit.md` pour l'audit amont. Le suivi CI/PR est
-terminé, aucun check-in n'est reprogrammé.
+DEC-0090 vérifiée (suite complète : 5206 passed, 0 failed, mesuré le
+11/09/2026), prête à pousser sur une branche restartée depuis `master`.
 
-## Dernier chunk : DEC-0088 — les cinq workflows ComfyUI restants
+## Dernier chunk : DEC-0090 — Mémoire canonique enrichie (AI Memory Vault audité)
+
+`ai-encryption-tool/ai` audité (MIT, commit `5e6d218c`) — rapport complet
+`docs/audits/ai_memory_vault_audit.md`. Aucun second système de mémoire :
+tout étend `core/memory/personnelle.py` (`MemoirePersonnelle`), déjà actif
+et plus riche que leur modèle (provenance `Nature` FAIT/PREFERENCE/
+INFERENCE/CONTEXTE_TEMPORAIRE).
+
+Construit : gouvernance (`Etat` ACTIF/REJETE/ARCHIVE, `rejeter`/`archiver`/
+`reactiver`/`supprimer`, migration auto d'une base pré-existante) ;
+chiffrement au repos (`core/memory/chiffrement.py`, AES-256-GCM +
+PBKDF2-HMAC-SHA256 600k itérations, `Coffre`) ; import ChatGPT/Claude/texte
+(`core/memory/import_conversations.py`, toujours `Nature.INFERENCE`,
+injection de prompt vérifiée inerte) ; premier serveur MCP d'ARENA
+(`core/mcp/memory_server.py`, 6 outils, testé via un vrai sous-processus
+stdio) ; API HTTP (`apps/backend/routers/memory.py`).
+
+**Régression trouvée par la suite complète** : `core.mcp.memory_server`
+remontait comme orphelin (un serveur MCP est lancé par son client, jamais
+importé par ARENA) — ajouté à `SERVICE_LANCE_PAR_LE_PROPRIETAIRE` dans
+`scripts/orphelins.py`, compteur de `CLAUDE.md` mis à jour (296/236).
+
+Isolation de projet et efficacité en tokens mesurées (pas supposées) :
+réduction **> 90 %** des caractères envoyés sur un cas réel.
+
+## Chunk précédent : DEC-0089 — Tunnet audité, refusé (rien à câbler)
+
+Demandé via un commentaire Reddit. Dépôt réel cloné et lu : ce n'est pas
+le petit outil de connexion décrit, mais un produit complet de mise en
+réseau maillée (19 crates Rust, licence éclatée AGPL/MPL/Apache,
+`Status: In development`). `scripts/lancer_arena.ps1` fait déjà ce que le
+besoin décrit (serveur + Tunnel Cloudflare + QR code) — rien câblé, pour
+ne pas dupliquer une capacité qui existe et fonctionne.
+
+## Chunk précédent : DEC-0088 — les cinq workflows ComfyUI restants
 
 `image_to_image`, `upscale`, `controlnet_image`, `character_image`,
 `image_to_video` — implémentés contre le vrai code source ComfyUI

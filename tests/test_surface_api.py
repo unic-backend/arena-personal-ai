@@ -105,6 +105,20 @@ SURFACE_ATTENDUE = {
     # Executive Intelligence (mission ARENA x OPENEXECUTIVE, DEC-0086).
     "/api/executive/analyser": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/executive/roles": (["GET"], ["verify_api_key", "limiter_debit"]),
+    # Memoire canonique (mission ARENA x AI MEMORY VAULT, DEC-0090) — le meme
+    # service que le serveur MCP (core/mcp/memory_server.py), par HTTP.
+    # GET (lister) + POST (creer) fusionnes sur le meme chemin : dependances
+    # triees par `routes_declarees()` a la fusion, d'ou l'ordre different des
+    # routes a une seule methode ci-dessus.
+    "/api/memory": (["GET", "POST"], ["limiter_debit", "verify_api_key"]),
+    "/api/memory/search": (["GET"], ["verify_api_key", "limiter_debit"]),
+    "/api/memory/export/all": (["GET"], ["verify_api_key", "limiter_debit"]),
+    "/api/memory/import": (["POST"], ["verify_api_key", "limiter_debit"]),
+    "/api/memory/{identifiant}": (["DELETE", "GET"], ["limiter_debit", "verify_api_key"]),
+    "/api/memory/{identifiant}/approve": (["POST"], ["verify_api_key", "limiter_debit"]),
+    "/api/memory/{identifiant}/reject": (["POST"], ["verify_api_key", "limiter_debit"]),
+    "/api/memory/{identifiant}/archive": (["POST"], ["verify_api_key", "limiter_debit"]),
+    "/api/memory/{identifiant}/reactivate": (["POST"], ["verify_api_key", "limiter_debit"]),
 }
 
 
