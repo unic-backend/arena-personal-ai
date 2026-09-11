@@ -8402,3 +8402,157 @@ dans l'en-tête `Authorization`, même modèle de confiance que
 `cased` sur le réseau `case-desks` partagé) n'est pas mitigé par ce
 connecteur : il parle REST, et la frontière reste entièrement celle que
 Case documente (`CASE_TOKEN`, `DESK_TOKEN`).
+
+---
+
+## DEC-0093 — gitgui audité : état git structuré, checkpoint/restauration — jamais une garde sur DEC-0038
+
+**2026-09-11.** Mission reçue : étudier `antonellof/gitgui` en profondeur et
+ne retenir QUE ce qui rend les agents de codage/auto-réparation d'ARENA plus
+sûrs, plus autonomes et plus transparents sur git — jamais remplacer
+l'architecture existante, jamais l'interface terminale de gitgui sans
+bénéfice réel, jamais une dépendance Kitty/cmux/Ghostty/WezTerm ou un rendu
+terminal-spécifique, compatibilité Windows d'abord. Phase 1 explicitement
+demandée avant tout code : audit complet du dépôt cloné, tableau
+fonctionnalité → décision. Audit : `docs/audits/gitgui_audit.md`.
+
+### Ce qu'ARENA possédait déjà, vérifié avant d'écrire une ligne
+
+Recherche directe dans le dépôt (`grep`) : aucune lecture structurée de
+l'état git n'existait — seul `Atelier.git()` (DEC-0038, passe-plat shell
+total, sans aucune garde) et `Dioumtoukay._reperes()` (texte brut, `git
+status --short`/`rev-parse`, jamais reparsé en champs). Le manque que décrit
+la mission (« un agent qui doit lire du texte à chaque fois plutôt que de
+raisonner sur des champs ») était réel, pas supposé.
+
+### Audit réel de gitgui (code cloné, commit `7b08381`, MIT)
+
+Application graphique Rust (`iced`/`tiny-skia`, `git2`/libgit2, protocole
+Kitty pour les images inline) — rien n'en est directement réutilisable en
+Python. Trois pièces ont guidé la conception, jamais copiées :
+`src/git/repo.rs::RepoSnapshot`/`FileStatus`/`RepoState` (l'état structuré,
+huit valeurs d'opération en cours possibles — merge/rebase/cherry-pick/
+revert/bisect/autre) ; `src/git/ops.rs` (un `enum Command` fermé envoyé à un
+thread worker dédié qui seul touche `git2`, et `push_args()` qui choisit
+`--force-with-lease`, jamais `--force` nu) ; l'absence totale d'un mécanisme
+de checkpoint/restauration côté agent — gitgui n'en a pas, c'est le besoin
+central de LA MISSION, pas de gitgui, qui l'a fait naître. Détail complet,
+tableau fonctionnalité par fonctionnalité et ce qui a été délibérément
+ignoré (interface, thread worker + `mpsc`, stage par hunk, rebase
+interactif, suggestion de message par LLM, publication GitHub, graphe de
+commits) : `docs/audits/gitgui_audit.md`.
+
+### Ce qui a été construit — un module, quatre méthodes, quatre actions
+
+1. **`tools/atelier/git_etat.py`** (nouveau) — `EtatGit`/`EtatFichier`/
+   `StatutFichier`/`EtatOperation`, parsing de `git status --porcelain=v2
+   --branch` (le format stable et documenté de git, choisi pour éviter
+   toute dépendance `git2`/libgit2/GitPython — la mission demandait
+   explicitement de préférer les mécanismes portables existants). `EtatGit.
+   branche_protegee()` est un champ INFORMATIF (`main`/`master` par défaut,
+   personnalisable) — il ne bloque rien, DEC-0038 reste entier.
+   `lire_diff()` rend un diff structuré PAR FICHIER (jamais par hunk :
+   aucune action ARENA ne stage un fichier partiellement aujourd'hui).
+2. **Checkpoint/restauration** (`creer_checkpoint()`/`restaurer_checkpoint()`
+   dans le même module) — le cœur de la demande de la mission. Un
+   checkpoint photographie racine/branche/tête/fichiers DÉJÀ en désordre au
+   moment de sa création. Une restauration défait ce qui est apparu depuis,
+   et **ne touche jamais un fichier qui était déjà dirty au checkpoint**,
+   même si l'agent l'a modifié ensuite — les deux éditions restent
+   mélangées plutôt que risquer d'écraser le travail du propriétaire :
+   granularité FICHIER, jamais CONTENU, un choix de sécurité documenté dans
+   le docstring du module, pas une limitation découverte après coup. Usage
+   unique : un checkpoint consommé par `git_restaurer` ne peut pas être
+   rejoué sur un état qui a changé entre-temps.
+3. **`Atelier.git_statut`/`git_diff`/`git_checkpoint`/`git_restaurer`**
+   (quatre méthodes nouvelles) — enveloppent le module ci-dessus, journalisent
+   via `_noter()`, rendent un `Resultat` (jamais un `ResultatAction` — ce
+   n'est pas un connecteur externe).
+4. **Quatre `ACTIONS` Dioumtoukay** (`git_statut`, `git_diff`,
+   `git_checkpoint`, `git_restaurer`) — câblées dans `ACTIONS`, `_CHAMP`
+   (champs `CIBLE`/`IDENTIFIANT`), `_executer_action()`,
+   `ACTIONS_QUI_ANALYSENT`, avec des exemples dans `CONSIGNE` et un point
+   10 dans les instructions numérotées expliquant leur usage (avant une
+   modification risquée : `git_checkpoint`, puis en cas de problème
+   `git_restaurer`).
+
+Tout est un AJOUT : aucune garde n'a été posée sur `Atelier.git()` ni
+`Atelier.executer()` — DEC-0038 (02/09/2026, « aucune confirmation, aucun
+chemin interdit, aucune commande refusée ») n'est ni contredite ni
+re-litigée.
+
+### Ce qui a été délibérément REJETÉ, et pourquoi
+
+- **Toute l'interface graphique** (`iced`, `tiny-skia`, `src/term/kitty.rs`,
+  mode fenêtre `winit`) — exclue par construction (contrainte explicite de
+  la mission : pas de Kitty/cmux/Ghostty/WezTerm, pas de rendu
+  terminal-spécifique). ARENA n'a pas d'UI de ce type à ce niveau.
+- **`git2`/libgit2 comme dépendance** — délibérément évité au profit du
+  format texte stable `--porcelain=v2` (préférence explicite de la mission
+  pour les mécanismes portables ; zéro nouvelle dépendance C, compatible
+  Windows sans compilation supplémentaire).
+- **Thread worker + canal `mpsc`** — résout un blocage d'UI graphique
+  qu'ARENA n'a pas : `Atelier.executer()` est déjà un sous-processus lancé
+  depuis une boucle `asyncio`, rien à débloquer.
+- **Stage par hunk/ligne, rebase interactif/autosquash, suggestion de
+  message de commit par LLM, publication GitHub, graphe de commits** —
+  chacun soit un doublon direct d'une capacité qu'ARENA a déjà
+  (`ouvrir_pr`/`etat_ci`, Dioumtoukay lui-même comme rédacteur de commit),
+  soit un bénéfice purement visuel, soit contraire à l'esprit de la mission
+  (refuser le destructeur par défaut, jamais l'outiller en premier).
+  Détail : `docs/audits/gitgui_audit.md`.
+
+### Tests — 34 nouveaux, sur de vrais dépôts git, jamais un raccourci
+
+- `tests/tools/test_git_etat.py` (22) : dépôt propre, fichiers modifiés/
+  supprimés/indexés/non suivis (dont un nom avec espaces), avance/retard
+  avec et sans amont configuré, détection de branche protégée (défaut,
+  branche de fonctionnalité, ensemble personnalisé), HEAD détachée, un VRAI
+  conflit de fusion (deux branches divergentes, vrai `git merge`), un VRAI
+  rebase interrompu en plein vol, diff structuré (arbre de travail, index
+  seul, un commit, un chemin précis), le contrat checkpoint/restauration en
+  entier — dont **le test qui prouve qu'un fichier déjà dirty au checkpoint
+  n'est jamais touché**, même modifié encore après — et un dossier qui
+  n'est pas un dépôt git rapporté comme échec nommé.
+- `tests/tools/test_atelier_git.py` (7) : que l'atelier appelle bien le
+  module, journalise, et rend un `Resultat` correct — sans reparser ce que
+  `test_git_etat.py` a déjà prouvé ; le cycle complet créer/modifier/
+  restaurer ; jamais un fichier déjà dirty touché au niveau `Atelier`
+  aussi ; un checkpoint déjà consommé refuse d'être rejoué ; un identifiant
+  inconnu est un échec nommé.
+- `tests/agents/test_dioumtoukay_git.py` (5) : via la BOUCLE COMPLÈTE de
+  l'agent, jamais un appel direct qui contournerait le parsing réel des
+  actions — une modification réelle vue par `git_statut`, un vrai contenu
+  de diff montré par `git_diff`, un checkpoint créé rend un message
+  lisible, une restauration retrouve bien l'identifiant rendu par
+  `Atelier.git_checkpoint()` et efface le fichier créé par l'agent,
+  `IDENTIFIANT` manquant est refusé sans toucher au dépôt.
+
+`ruff check` propre sur tous les fichiers touchés. Suite ciblée (les 3
+fichiers ci-dessus) : **34 passed**. Suite complète : **5256 passed, 31
+skipped, 48 deselected, 0 failed** (487.70s, mesuré le 11/09/2026) —
+exactement +34 sur la mesure DEC-0091 (5222), les 34 tests nouveaux de
+cette mission, un pour un.
+
+### Ce que ça coûte si c'est faux
+
+Le format `--porcelain=v2` est documenté comme stable depuis git 2.11 ; s'il
+changeait un jour, `lire_etat()`/`lire_diff()` lèveraient une `ErreurGit`
+visible (testé contre un vrai dépôt), jamais un état silencieusement faux.
+La granularité fichier du checkpoint est une limite assumée, pas un bug :
+si deux modifications (propriétaire et agent) finissent mélangées dans le
+MÊME fichier après un checkpoint, une restauration refuse de le toucher —
+le coût est de laisser les deux éditions mélangées, jamais d'en écraser une
+par erreur ; une séparation au niveau du contenu n'a pas été tentée parce
+qu'elle ne peut pas être faite sûrement sans comprendre l'intention de
+chaque édition. Les checkpoints vivent en mémoire du processus
+(`Atelier._checkpoints_git`), pas sur disque : un redémarrage d'ARENA les
+perd tous — c'est voulu (un checkpoint sert une tâche en cours, jamais à
+survivre à un redémarrage ; cette garantie-là reste le rôle de
+`core/execution/reprise.py`, DEC-0072), mais ça veut dire qu'un checkpoint
+créé juste avant un crash du processus backend lui-même (pas de l'agent)
+est perdu, sans mécanisme de reprise. Windows n'a pas été mesuré dans cette
+session (elle tourne sur Linux, cloud) — le choix de `git status
+--porcelain=v2` plutôt que `git2` a été fait précisément pour rester
+portable sans compilation, mais ce n'est pas une mesure réelle sur la
+machine du propriétaire.

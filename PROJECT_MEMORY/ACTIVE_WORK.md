@@ -1,14 +1,63 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-09-11, fin de session (DEC-0087 → DEC-0092).*
+*Mise à jour : 2026-09-11, fin de session (DEC-0087 → DEC-0093).*
 
 ## En cours
 
-DEC-0092 (Case — ordinateur Linux isolé et persistant) vérifiée (suite
-complète : 5256 passed, 0 failed, mesuré le 11/09/2026), prête à pousser sur
-une branche restartée depuis `master`.
+PR #193 (DEC-0093 — gitgui : état git structuré, checkpoint/restauration)
+**fusionnée dans `master`** le 11/09/2026 (mergée à 17:40 UTC, surveillance CI
+terminée automatiquement). Rien en attente d'action côté assistant sur ce
+chunk.
 
-## Dernier chunk : DEC-0092 — Case audité et connecté : un ordinateur Linux isolé, jamais un second cerveau
+Mission ARENA x CASE (DEC-0092, PR #192, branche `claude/case-computer-runtime`)
+**toujours ouverte**, surveillance CI active (check-in périodique) — voir le
+chunk DEC-0092 plus bas pour son état.
+
+## Dernier chunk : DEC-0093 — gitgui audité : état git structuré, checkpoint/restauration pour Dioumtoukay
+
+Mission reçue : étudier `antonellof/gitgui` (MIT, commit `7b08381`) et ne
+retenir QUE ce qui rend les agents de codage d'ARENA plus sûrs/autonomes/
+transparents sur git — jamais son interface (`iced`/`tiny-skia`/Kitty),
+jamais `git2`/libgit2 comme dépendance. Audit complet :
+`docs/audits/gitgui_audit.md`.
+
+Nouveau module **`tools/atelier/git_etat.py`** — état structuré
+(`EtatGit`/`EtatFichier`/`StatutFichier`/`EtatOperation`, parsing de `git
+status --porcelain=v2 --branch`, format stable, aucune dépendance ajoutée),
+diff structuré par fichier (`lire_diff()`), et le mécanisme central demandé
+par la mission — absent de gitgui lui-même — **checkpoint/restauration**
+(`creer_checkpoint()`/`restaurer_checkpoint()`) : granularité FICHIER, un
+fichier déjà en désordre au moment du checkpoint n'est jamais touché par une
+restauration, même modifié ensuite par l'agent. Câblé dans `Atelier`
+(`git_statut`, `git_diff`, `git_checkpoint`, `git_restaurer`) et
+`DioumtoukayAgent` (quatre nouvelles `ACTIONS`) — en AJOUT PUR, aucune garde
+posée sur `Atelier.git()`/`executer()` : DEC-0038 reste entier. Les branches
+protégées (`main`/`master`) sont un champ informatif
+(`EtatGit.branche_protegee()`), jamais un refus.
+
+Rejeté et documenté (`docs/audits/gitgui_audit.md`) : toute l'interface
+graphique, le thread worker + canal `mpsc` (résout un problème d'UI
+qu'ARENA n'a pas), `git2`/libgit2 comme dépendance, stage par hunk/ligne
+(aucun besoin agent actuel), rebase interactif/autosquash (irait contre la
+demande de refuser le destructeur par défaut), suggestion de message de
+commit par LLM (doublon — Dioumtoukay écrit déjà ses commits), publication
+GitHub et graphe de commits (doublons ou bénéfice purement visuel).
+
+**34 tests nouveaux, sur de vrais dépôts git** (jamais un raccourci qui
+contournerait le parsing réel — vrai `git init`, vrai `git merge` en
+conflit, vrai `git rebase` interrompu) : `tests/tools/test_git_etat.py`
+(22), `tests/tools/test_atelier_git.py` (7, dont le test qui prouve qu'un
+fichier déjà dirty au checkpoint n'est jamais touché), `tests/agents/
+test_dioumtoukay_git.py` (5, via la boucle complète de l'agent, jamais un
+appel direct qui contournerait le parsing des actions). `ruff check` propre
+sur les fichiers touchés. Suite complète : **5256 passed, 31 skipped, 48
+deselected, 0 failed** (487.70s, mesuré le 11/09/2026) — exactement +34 sur
+la mesure DEC-0091 (5222).
+
+Développé sur une branche fraîche (`claude/gitgui-git-state`, issue
+d'`origin/master`) plutôt que sur la branche CASE encore ouverte — éviter de
+mélanger deux missions indépendantes dans une seule PR.
+## Chunk précédent : DEC-0092 — Case audité et connecté : un ordinateur Linux isolé, jamais un second cerveau
 
 `case-computers/case` audité (dual AGPL/MIT par dossier, commit `133082b`)
 — rapport complet `docs/audits/case_audit.md`. `core/connectors/

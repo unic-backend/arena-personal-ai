@@ -1256,3 +1256,36 @@ tourner la boucle ENTIÈRE de Dioumtoukay contre le vrai `cased` — mission
 trouvée par la suite complète : `docs/DECISIONS.md` citait un chemin amont
 de Case entre accents graves — corrigé, détail dans `docs/DECISIONS.md`
 DEC-0092.
+
+---
+
+## 11/09/2026 (suite) — gitgui audité : état git structuré, checkpoint/restauration pour Dioumtoukay (DEC-0093)
+
+Mission reçue : étudier `antonellof/gitgui` (MIT, commit `7b08381`, une
+appli graphique Rust `iced`/`git2`) et ne retenir QUE ce qui rend les
+agents de codage d'ARENA plus sûrs/autonomes/transparents sur git — jamais
+son interface, jamais `git2`/libgit2 comme dépendance, compatibilité
+Windows d'abord. Audit complet : `docs/audits/gitgui_audit.md`.
+
+Nouveau module **`tools/atelier/git_etat.py`** — état structuré
+(`EtatGit`/`EtatFichier`/`StatutFichier`/`EtatOperation`, parsing de `git
+status --porcelain=v2 --branch`, aucune dépendance ajoutée), diff structuré
+par fichier, et le mécanisme central absent de gitgui lui-même :
+**checkpoint/restauration** — granularité FICHIER, un fichier déjà en
+désordre au moment du checkpoint n'est jamais touché par une restauration,
+même modifié ensuite par l'agent. Câblé dans `Atelier` (`git_statut`,
+`git_diff`, `git_checkpoint`, `git_restaurer`) et `DioumtoukayAgent`
+(quatre nouvelles `ACTIONS`) — en AJOUT PUR, DEC-0038 reste entier ; les
+branches protégées sont un champ informatif, jamais un refus.
+
+Rejeté (`docs/audits/gitgui_audit.md`) : toute l'interface graphique, le
+thread worker + `mpsc` (résout un problème d'UI qu'ARENA n'a pas),
+`git2`/libgit2, stage par hunk, rebase interactif/autosquash, suggestion de
+message de commit par LLM (doublon), publication GitHub et graphe de
+commits (doublon/visuel).
+
+**34 tests nouveaux, sur de vrais dépôts git** (`test_git_etat.py` 22,
+`test_atelier_git.py` 7, `test_dioumtoukay_git.py` 5 via la boucle complète
+de l'agent). `ruff check` propre. Suite complète : **5256 passed, 31
+skipped, 48 deselected, 0 failed** (487.70s, mesuré le 11/09/2026 —
+exactement +34 sur la mesure DEC-0091).

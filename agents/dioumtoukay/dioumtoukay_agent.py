@@ -130,6 +130,12 @@ ECHECS_CONSECUTIFS_MAX = 3
 #: machine, un navigateur qui garde son identite entre deux sessions.
 #: `ordinateur_detruire` passe par la meme confirmation que `ouvrir_pr` :
 #: irreversible, jamais lance sans accord.
+#: `git_statut`/`git_diff`/`git_checkpoint`/`git_restaurer` : mission ARENA x
+#: GITGUI (11/09/2026, DEC-0093), `Atelier.git_statut` et consorts. Une
+#: LECTURE structuree de plus (jamais une garde neuve sur `git`/`executer` —
+#: DEC-0038 reste entier) et une paire checkpoint/restauration pour annuler
+#: SES PROPRES modifications sans jamais toucher un fichier deja en
+#: desordre avant elle.
 ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "executer", "analyser", "diagnostiquer", "ouvrir_pr", "etat_ci",
            "convertir", "organiser_inspecter", "organiser_planifier",
@@ -141,6 +147,7 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "ordinateur_lire_fichier", "ordinateur_ecrire_fichier",
            "ordinateur_naviguer", "ordinateur_capture_ecran",
            "ordinateur_detruire",
+           "git_statut", "git_diff", "git_checkpoint", "git_restaurer",
            "terminer")
 
 #: Les actions qui modifient quelque chose. Elles sont comptées à part dans le
@@ -168,12 +175,14 @@ ACTIONS_QUI_ANALYSENT = frozenset({
     "ordinateur_lister", "ordinateur_creer", "ordinateur_etat",
     "ordinateur_executer", "ordinateur_lire_fichier",
     "ordinateur_naviguer", "ordinateur_capture_ecran",
+    "git_statut", "git_diff", "git_checkpoint", "git_restaurer",
 })
 
 _ETIQUETTE = re.compile(r"^\s*ACTION\s*:\s*(\w+)", re.IGNORECASE | re.MULTILINE)
 _CHAMP = re.compile(
     r"^\s*(CHEMIN|SOURCE|DESTINATION|COMMANDE|DOSSIER|TEXTE|DEPOT|TITRE|TETE|BASE|REF|FORMAT"
-    r"|PLAN_ID|CONFIRMER_SUPPRESSION|OPERATION|PAGES|DEGRES|FORMAT_PDFX|NOM|COMPUTER_ID|URL)"
+    r"|PLAN_ID|CONFIRMER_SUPPRESSION|OPERATION|PAGES|DEGRES|FORMAT_PDFX|NOM|COMPUTER_ID|URL"
+    r"|CIBLE|IDENTIFIANT)"
     r"\s*:\s*(.+)$",
     re.IGNORECASE | re.MULTILINE)
 
@@ -320,6 +329,19 @@ COMPUTER_ID: id de l'ordinateur
 ACTION: ordinateur_detruire
 COMPUTER_ID: id de l'ordinateur
 
+ACTION: git_statut
+DOSSIER: .
+
+ACTION: git_diff
+CIBLE: travail
+CHEMIN: apps/backend/config.py
+
+ACTION: git_checkpoint
+DOSSIER: .
+
+ACTION: git_restaurer
+IDENTIFIANT: identifiant rendu par git_checkpoint
+
 ACTION: terminer
 CONTENU:
 ce que tu as fait, en francais simple, pour le proprietaire
@@ -382,7 +404,18 @@ COMMENT TRAVAILLER
    actions suivantes. `ordinateur_detruire` demande une confirmation au
    proprietaire — irreversible, ne le retente pas en esperant un autre
    resultat.
-11. `pdf_fusionner` prend un fichier par ligne dans CONTENU, DANS L'ORDRE
+11. `git_statut` te dit vraiment ce qui a change (branche, fichiers
+   modifies/indexes/non suivis/en conflit) sans avoir a lire du texte —
+   consulte-le AVANT de modifier davantage un depot dont tu ne connais pas
+   l'etat. `git_diff` (CIBLE: travail|index|un commit, CHEMIN optionnel)
+   montre le contenu reel d'un changement. Avant une modification risquee
+   (plusieurs fichiers, un correctif dont tu n'es pas sur), `git_checkpoint`
+   photographie l'etat actuel et rend un IDENTIFIANT ; si la suite tourne
+   mal, `git_restaurer` avec cet identifiant annule CE QUE TU AS TOI-MEME
+   ajoute depuis — jamais un fichier deja modifie par le proprietaire avant
+   ton checkpoint, meme si tu l'as touche ensuite : ce fichier-la n'est
+   jamais restaure, pour ne rien ecraser qui ne t'appartient pas.
+12. `pdf_fusionner` prend un fichier par ligne dans CONTENU, DANS L'ORDRE
    demande — c'est cet ordre qui range les documents dans le resultat.
    `FORMAT_PDFX: oui` ajoute le manifeste (recuperable ensuite par
    `pdf_demonter`) ; sans lui, c'est une simple concatenation de PDF.
@@ -780,6 +813,21 @@ class DioumtoukayAgent(BaseAgent):
             if not cid:
                 return Resultat(False, "Il manque COMPUTER_ID.")
             return self._via_case("detruire", computer_id=cid)
+        if action.nom == "git_statut":
+            return self.atelier.git_statut(dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_diff":
+            chemin = champs.get("CHEMIN", "")
+            return self.atelier.git_diff(
+                cible=champs.get("CIBLE") or "travail",
+                chemins=[chemin] if chemin else None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_checkpoint":
+            return self.atelier.git_checkpoint(dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_restaurer":
+            identifiant = champs.get("IDENTIFIANT", "")
+            if not identifiant:
+                return Resultat(False, "Il manque IDENTIFIANT — celui rendu par git_checkpoint.")
+            return self.atelier.git_restaurer(identifiant)
         if action.nom == "analyser":
             return await self._consulter(self.analyste, "RepoEngineerAgent",
                                          champs.get("TEXTE", ""))

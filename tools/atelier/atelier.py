@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from tools.atelier import verrous
+from tools.atelier import git_etat, verrous
 
 logger = logging.getLogger("usman.atelier")
 
@@ -117,6 +117,12 @@ class Atelier:
         # demandé — « entrer dans mes fichiers du pc ».
         self.racine = Path(racine) if racine else Path.cwd()
         self.journal = journal
+        # Les checkpoints Git (DEC-0093) vivent en memoire du processus, pas
+        # sur disque : un checkpoint sert a annuler le travail d'UNE tache en
+        # cours, jamais a survivre a un redemarrage d'ARENA — c'est
+        # `core/execution/reprise.py` (DEC-0072) qui porte deja cette garantie
+        # au niveau de la tache entiere, un role different.
+        self._checkpoints_git: Dict[str, git_etat.Checkpoint] = {}
 
     # --- Trace ------------------------------------------------------------------
 
@@ -511,6 +517,98 @@ class Atelier:
         demandé, et le journal dit ce qui est parti.
         """
         return self.executer(["git", *arguments], dossier=dossier)
+
+    # --- État Git structuré (DEC-0093, mission ARENA x GITGUI) ------------------------
+
+    def git_statut(self, dossier: Optional[str] = None) -> Resultat:
+        """L'état structuré du dépôt — branche, fichiers modifiés/indexés/
+        non suivis/en conflit, avance/retard sur l'amont, opération en cours.
+
+        Une LECTURE de plus, comme `metadonnees(hachage=True)` — rien de
+        nouveau n'est interdit ni ajouté comme garde : `git()` reste le
+        chemin sans limite (DEC-0038), celui-ci donne juste la même
+        information sous une forme que Dioumtoukay peut lire sans reparser
+        du texte a chaque fois.
+        """
+        ou = self._chemin(dossier) if dossier else self.racine
+        try:
+            etat = git_etat.lire_etat(ou)
+        except git_etat.ErreurGit as erreur:
+            r = Resultat(False, f"Etat git illisible ({ou}) : {erreur}")
+        else:
+            resume = (f"{etat.branche or '(detachee)'} : "
+                     f"{len(etat.modifies)} modifie(s), {len(etat.indexes)} indexe(s), "
+                     f"{len(etat.non_suivis)} non suivi(s), {len(etat.conflits)} conflit(s).")
+            r = Resultat(True, resume, donnees=etat.to_dict())
+        self._noter("git_statut", str(ou), r)
+        return r
+
+    def git_diff(self, cible: str = "travail", chemins: Optional[List[str]] = None,
+                dossier: Optional[str] = None) -> Resultat:
+        """Le diff structuré, par fichier — `cible` : `"travail"`, `"index"`
+        ou un identifiant de commit (voir `git_etat.lire_diff`)."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        try:
+            fichiers = git_etat.lire_diff(ou, cible=cible, chemins=chemins)
+        except git_etat.ErreurGit as erreur:
+            r = Resultat(False, f"Diff impossible ({cible}) : {erreur}")
+        else:
+            r = Resultat(True, f"{len(fichiers)} fichier(s) modifie(s) ({cible}).",
+                         sortie="\n\n".join(f.texte for f in fichiers),
+                         donnees={"fichiers": [f.to_dict() for f in fichiers]})
+        self._noter("git_diff", f"{cible} dans {ou}", r)
+        return r
+
+    def git_checkpoint(self, dossier: Optional[str] = None) -> Resultat:
+        """Photographie l'état actuel avant une modification risquée.
+
+        Rend un identifiant (`donnees["identifiant"]`) à repasser a
+        `git_restaurer()`. Vit en memoire de ce processus (voir le
+        commentaire du constructeur) — pas destine a survivre a un
+        redemarrage d'ARENA.
+        """
+        ou = self._chemin(dossier) if dossier else self.racine
+        try:
+            checkpoint = git_etat.creer_checkpoint(ou)
+        except git_etat.ErreurGit as erreur:
+            r = Resultat(False, f"Checkpoint impossible ({ou}) : {erreur}")
+        else:
+            self._checkpoints_git[checkpoint.identifiant] = checkpoint
+            r = Resultat(True, f"Checkpoint {checkpoint.identifiant} cree "
+                              f"({len(checkpoint.fichiers_preexistants)} fichier(s) "
+                              "deja en desordre, jamais touches par une restauration).",
+                         donnees=checkpoint.to_dict())
+        self._noter("git_checkpoint", str(ou), r)
+        return r
+
+    def git_restaurer(self, identifiant: str) -> Resultat:
+        """Annule ce qu'un checkpoint a vu apparaitre depuis sa creation —
+        jamais un fichier deja en desordre avant lui (voir `git_etat.
+        restaurer_checkpoint`, la garantie complete y est documentee).
+
+        Usage unique : le checkpoint est retire une fois consomme, comme un
+        point de reprise qu'on ne rejoue pas deux fois sur un etat qui a
+        change entre-temps.
+        """
+        checkpoint = self._checkpoints_git.pop(identifiant, None)
+        if checkpoint is None:
+            r = Resultat(False, f"Checkpoint inconnu ou deja utilise : {identifiant}")
+            self._noter("git_restaurer", identifiant, r)
+            return r
+        try:
+            resultat = git_etat.restaurer_checkpoint(checkpoint)
+        except git_etat.ErreurGit as erreur:
+            r = Resultat(False, f"Restauration impossible : {erreur}")
+        else:
+            r = Resultat(
+                resultat.ok,
+                (f"{len(resultat.restaures)} fichier(s) restaure(s), "
+                 f"{len(resultat.ignores_deja_dirty)} deja-en-desordre jamais touche(s)."
+                 if resultat.ok else
+                 f"{len(resultat.echecs)} echec(s) de restauration."),
+                donnees=resultat.to_dict())
+        self._noter("git_restaurer", identifiant, r)
+        return r
 
     def isoler(self, nom: str, base: str = "HEAD", dossier: Optional[str] = None) -> Resultat:
         """Crée un worktree git isolé pour un travail risqué ou parallèle,
