@@ -4,12 +4,14 @@
 
 ## En cours
 
+PR #193 (DEC-0093 — gitgui : état git structuré, checkpoint/restauration)
+**fusionnée dans `master`** le 11/09/2026 (mergée à 17:40 UTC, surveillance CI
+terminée automatiquement). Rien en attente d'action côté assistant sur ce
+chunk.
+
 Mission ARENA x CASE (DEC-0092, PR #192, branche `claude/case-computer-runtime`)
 **toujours ouverte**, surveillance CI active (check-in périodique) — voir le
-chunk DEC-0092 plus bas pour son état exact au moment où la mission GITGUI a
-commencé. Mission ARENA x GITGUI (DEC-0093) livrée sur une branche séparée
-(`claude/gitgui-git-state`, partie de `origin/master`, jamais empilée sur la
-branche CASE non fusionnée) — voir le chunk ci-dessous.
+chunk DEC-0092 plus bas pour son état.
 
 ## Dernier chunk : DEC-0093 — gitgui audité : état git structuré, checkpoint/restauration pour Dioumtoukay
 
