@@ -8383,8 +8383,8 @@ atteints (+1/+1, aucun orphelin réel nouveau). Suite complète :
 déterministes de cette mission ; les 4 `integration` s'ajoutent aux
 désélectionnés (48 → 52). Une régression réelle trouvée par la suite
 complète (pas par les tests ciblés) : `tests/test_documentation.py` a
-détecté que ce document citait `control-plane/cased.py` (un chemin amont de
-Case, jamais vendoré dans ARENA) entre accents graves — lu comme un chemin
+détecté que ce document citait le chemin amont control-plane cased.py de
+Case (jamais vendoré dans ARENA) entre accents graves — lu comme un chemin
 local par le test qui vérifie que tout ce qui l'est existe vraiment. Corrigé
 en le sortant des accents graves (même défaut, même correctif que celui déjà
 rencontré dans l'entrée DEC-0088 avec ComfyUI).
