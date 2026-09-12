@@ -537,10 +537,17 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         # ici renvoyait une erreur a une question parfaitement claire.
         if demande_de_suivi(request.prompt):
             result = await video_agent.run(request.prompt)
-        else:
-            raw_path = request.video_path or str(MEDIA_DIR / "source" / "test_video.mp4")
-            v_path = validate_media_path(raw_path)
+        elif request.video_path:
+            v_path = validate_media_path(request.video_path)
             result = await video_agent.run(request.prompt, context={"video_path": str(v_path)})
+        else:
+            # Aucun chemin fourni : jamais de repli sur un fichier de test
+            # (`test_video.mp4`) qui ferait analyser une video qui n'est pas
+            # la sienne comme si elle l'etait (audit externe, commit
+            # f7f0478). `VideoAnalyzerAgent.run` sait deja repondre
+            # honnetement a l'absence de video ("Aucune video valide fournie
+            # pour l'analyse") — ce chemin lui laisse simplement le faire.
+            result = await video_agent.run(request.prompt, context={})
     elif "PUBLI" in request.prompt.upper() or "POSTER" in request.prompt.upper():
         result = await publisher_agent.run(request.prompt, context={"video_path": request.video_path})
     else:

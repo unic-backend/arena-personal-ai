@@ -84,3 +84,86 @@ describe('makeRemoteTransport — identite de conversation', () => {
     expect(appels[0].body.run_id).not.toBe(appels[1].body.run_id);
   });
 });
+
+/* ─────────────────────────────────────────────────────────────
+   L'etat metier de /files (readable/status), pas seulement le code HTTP.
+
+   Audit externe (commit f7f0478) : `/files` rend TOUJOURS un objet avec un
+   code 200, meme pour un fichier refuse (ECHEC/NON_PRIS_EN_CHARGE — un
+   fichier audio joint, par exemple, qu'aucun lecteur ne sait extraire).
+   Avant ce correctif, l'activite de cette piece etait quand meme marquee
+   « completed » avec « Fichier reçu et inspecté » — l'interface annoncait
+   une reussite pour un fichier jamais lu.
+   ───────────────────────────────────────────────────────────── */
+function fauxAttachment(kind: 'audio' | 'document' = 'audio') {
+  return {
+    id: `att-${kind}`,
+    name: kind === 'audio' ? 'memo.mp3' : 'devis.pdf',
+    size: 1234,
+    type: kind === 'audio' ? 'audio/mpeg' : 'application/pdf',
+    kind,
+    file: new File(['x'], kind === 'audio' ? 'memo.mp3' : 'devis.pdf'),
+    url: '',
+    status: 'ready' as const,
+  };
+}
+
+describe('makeRemoteTransport — statut metier des pieces jointes', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('un fichier refuse (readable=false) devient une activite "failed", jamais "completed"', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/files')) {
+        return new Response(JSON.stringify({
+          id: 'p1', name: 'memo.mp3', size: 1234, status: 'NON_PRIS_EN_CHARGE',
+          readable: false, reason: 'format audio non pris en charge par /files',
+          nature: 'document', truncated: false, characters: 0,
+        }), { status: 200 });
+      }
+      return new Response('data: {"type":"done","meta":{}}\n\n', { status: 200 });
+    }));
+
+    const transport = makeRemoteTransport({ url: 'https://exemple.test' });
+    const evenements = await collecter(transport.run(
+      { text: 'voici un memo vocal', attachments: [fauxAttachment('audio')] } as never,
+      {} as never,
+      new AbortController().signal,
+    ));
+
+    const activites = evenements
+      .filter((e): e is { type: 'activity'; event: import('./types').ActivityEvent } =>
+        (e as { type: string }).type === 'activity')
+      .map((e) => e.event);
+    const pieceAudio = activites.filter((e) => e.tool === 'file_uploader').pop();
+    expect(pieceAudio?.status).toBe('failed');
+    expect(pieceAudio?.description).toContain('format audio non pris en charge');
+  });
+
+  it('un fichier reellement lu (readable=true) reste "completed"', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/files')) {
+        return new Response(JSON.stringify({
+          id: 'p2', name: 'devis.pdf', size: 1234, status: 'LU', readable: true,
+          nature: 'document', truncated: false, characters: 42,
+        }), { status: 200 });
+      }
+      return new Response('data: {"type":"done","meta":{}}\n\n', { status: 200 });
+    }));
+
+    const transport = makeRemoteTransport({ url: 'https://exemple.test' });
+    const evenements = await collecter(transport.run(
+      { text: 'voici mon devis', attachments: [fauxAttachment('document')] } as never,
+      {} as never,
+      new AbortController().signal,
+    ));
+
+    const activites = evenements
+      .filter((e): e is { type: 'activity'; event: import('./types').ActivityEvent } =>
+        (e as { type: string }).type === 'activity')
+      .map((e) => e.event);
+    const piece = activites.filter((e) => e.tool === 'file_uploader').pop();
+    expect(piece?.status).toBe('completed');
+  });
+});

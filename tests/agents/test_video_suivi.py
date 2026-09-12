@@ -245,15 +245,38 @@ async def test_le_routeur_n_exige_pas_de_fichier_pour_une_question_de_suivi(monk
     assert double.appels == [("Où en est ma vidéo ?", None)]
 
 
-async def test_le_routeur_passe_toujours_le_fichier_pour_une_analyse(monkeypatch):
+async def test_le_routeur_transmet_le_vrai_chemin_quand_il_existe(monkeypatch, tmp_path):
+    """Un `video_path` réel doit toujours atteindre l'agent — inchangé."""
+    double = AgentDouble()
+    monkeypatch.setattr(routeur_chat, "video_agent", double)
+    vrai_fichier = tmp_path / "chantier.mp4"
+    vrai_fichier.write_bytes(b"faux mp4")
+    monkeypatch.setattr(routeur_chat, "validate_media_path", lambda p: p)
+
+    await dispatch_request(ChatRequest(
+        prompt="Analyse cette vidéo", session_id="test", video_path=str(vrai_fichier)),
+        intent="VIDEO_ANALYSIS")
+
+    _, contexte = double.appels[0]
+    assert contexte == {"video_path": str(vrai_fichier)}
+
+
+async def test_le_routeur_n_invente_jamais_un_fichier_de_test(monkeypatch):
+    """Corrige un défaut confirmé (audit externe, commit f7f0478) : sans
+    `video_path`, le routeur substituait `media/source/test_video.mp4` — le
+    propriétaire recevait l'analyse d'une vidéo qui n'était pas la sienne.
+    L'agent doit être appelé SANS chemin invente, et rester libre de
+    répondre honnêtement qu'aucune vidéo n'a été fournie."""
     double = AgentDouble()
     monkeypatch.setattr(routeur_chat, "video_agent", double)
 
-    await dispatch_request(ChatRequest(prompt="Analyse cette vidéo", session_id="test"),
-                           intent="VIDEO_ANALYSIS")
+    await dispatch_request(ChatRequest(
+        prompt="Analyse cette vidéo", session_id="test", video_path=None),
+        intent="VIDEO_ANALYSIS")
 
     _, contexte = double.appels[0]
-    assert contexte is not None and "video_path" in contexte
+    assert contexte == {}
+    assert "test_video.mp4" not in str(contexte)
 
 
 @pytest.mark.parametrize("phrase", [

@@ -251,6 +251,56 @@ class TestLesHuitIntentionsReconnectees:
         assert resultat["response"] == "Interface generee en code."
 
 
+class TestVideoAnalysisSansRepliSurUnFichierDeTest:
+    """Avant ce correctif (audit externe, commit f7f0478) : sans
+    `video_path` ni question de suivi, VIDEO_ANALYSIS analysait
+    `media/source/test_video.mp4` comme si c'etait la video du proprietaire.
+    `VideoAnalyzerAgent.run` sait deja repondre honnetement a l'absence de
+    video ; il ne doit plus jamais recevoir un chemin invente a sa place."""
+
+    @pytest.mark.asyncio
+    async def test_aucun_video_path_ne_devient_jamais_test_video_mp4(self, monkeypatch):
+        recu = {}
+
+        async def _video(prompt, context=None):
+            recu["context"] = context
+            return {"response": "Aucune video valide fournie pour l'analyse.",
+                    "agent": "VideoAnalyzerAgent", "status": "error"}
+        monkeypatch.setattr(routeur_chat.video_agent, "run", _video)
+        monkeypatch.setattr(routeur_chat, "demande_de_suivi", lambda _texte: False)
+
+        resultat = await dispatch_request(
+            ChatRequest(prompt="analyse cette video", video_path=None),
+            intent="VIDEO_ANALYSIS")
+
+        assert "test_video.mp4" not in str(recu["context"] or {}), (
+            "VIDEO_ANALYSIS a substitue un fichier de test a l'absence de "
+            "video du proprietaire")
+        assert recu["context"] == {}
+        assert resultat["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_un_video_path_reel_est_transmis_normalement(self, monkeypatch, tmp_path):
+        vrai_fichier = tmp_path / "chantier.mp4"
+        vrai_fichier.write_bytes(b"faux contenu mp4")
+        monkeypatch.setattr(routeur_chat, "MEDIA_DIR", tmp_path)
+        monkeypatch.setattr(routeur_chat, "validate_media_path", lambda p: Path(p))
+
+        recu = {}
+
+        async def _video(prompt, context=None):
+            recu["context"] = context
+            return {"response": "Analyse terminee.", "agent": "VideoAnalyzerAgent"}
+        monkeypatch.setattr(routeur_chat.video_agent, "run", _video)
+        monkeypatch.setattr(routeur_chat, "demande_de_suivi", lambda _texte: False)
+
+        await dispatch_request(
+            ChatRequest(prompt="analyse cette video", video_path=str(vrai_fichier)),
+            intent="VIDEO_ANALYSIS")
+
+        assert recu["context"]["video_path"] == str(vrai_fichier)
+
+
 class TestLesClesMortesNeServentPlus:
     """Quatre valeurs publiquement connues ne doivent plus rien ouvrir."""
 
