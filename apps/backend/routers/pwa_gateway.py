@@ -666,6 +666,17 @@ async def flux_agent(demande: DemandeAgent):
                 if run_id:
                     _journal_executions.marquer_en_cours(run_id)
                 trames_de_ce_tour: List[str] = []
+                #: L'agent a-t-il ete REELLEMENT lance ? Mesure du 12/09/2026,
+                #: en diagnostic de ce meme correctif : une coupure du flux
+                #: APRES le lancement de l'agent mais AVANT la premiere trame
+                #: laissait `trames_de_ce_tour` vide, donc le `finally`
+                #: oubliait le `run_id` — et un nouvel essai relancait une
+                #: action dont l'effet avait peut-etre deja eu lieu (un e-mail
+                #: parti, un devis ecrit). C'est exactement ce qu'un journal
+                #: d'idempotence doit empecher : « ne jamais rejouer une action
+                #: dont l'issue est inconnue ». Ce drapeau separe les deux cas
+                #: que `trames vides` confondait.
+                agent_lance = False
 
                 def _rejouable(trame_sse: str) -> str:
                     trames_de_ce_tour.append(trame_sse)
@@ -716,6 +727,8 @@ async def flux_agent(demande: DemandeAgent):
                             intent=intention,
                         )
 
+                    # A partir d'ici, l'action peut avoir un effet reel.
+                    agent_lance = True
                     mesure = await chronometrer(f"agent {intention}", voie, _repondre)
                     noter_mesure(mesure)
                     if mesure.etat != ETAT_MESURE:
@@ -773,7 +786,23 @@ async def flux_agent(demande: DemandeAgent):
                     if run_id:
                         if trames_de_ce_tour:
                             _journal_executions.terminer(run_id, trames_de_ce_tour)
+                        elif agent_lance:
+                            # Lance, mais rien n'est parti vers son ecran :
+                            # l'issue est INCONNUE, pas « rien ne s'est
+                            # passe ». On la fige telle quelle — un nouvel
+                            # essai avec le meme `run_id` lira cette phrase
+                            # au lieu de refaire l'action. Relancer pour de
+                            # vrai reste possible, mais devient un acte
+                            # delibere (un nouveau `run_id`), jamais un effet
+                            # de bord d'une reconnexion automatique.
+                            _journal_executions.terminer(run_id, [erreur(
+                                f"Cette demande ({intention}) a ete interrompue "
+                                "apres son lancement : son issue est inconnue. "
+                                "Verifie le resultat avant de la relancer."
+                            )])
                         else:
+                            # Rien n'a demarre (panne avant l'agent) : un essai
+                            # futur avec ce `run_id` doit pouvoir retenter.
                             _journal_executions.oublier(run_id)
 
             memory.add_chat_message(session_id=session, role="user", content=demande.text)

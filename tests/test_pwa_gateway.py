@@ -6,6 +6,7 @@ relance la requete jusqu'a trois fois si le flux se ferme sans `done` ni
 
 Aucun test ici n'appelle Ollama : le fournisseur est un double.
 """
+import asyncio
 import json
 from uuid import uuid4
 
@@ -725,6 +726,51 @@ class TestIdempotenceParRunId:
         demander(client, entetes, text="deuxieme message", run_id="run-distinct-b")
 
         assert len(appels) == 2, "deux run_id distincts doivent chacun s'executer reellement"
+
+    def test_une_interruption_apres_le_lancement_ne_relance_jamais_l_action(
+        self, client, entetes, fournisseur, monkeypatch,
+    ):
+        """Trou trouve le 12/09/2026, en diagnostic de ce correctif meme.
+
+        L'agent est lance (l'e-mail peut deja etre parti), puis le flux est
+        coupe AVANT la premiere trame : `trames_de_ce_tour` reste vide, et
+        l'ancien `finally` oubliait alors le `run_id` — la relance suivante
+        re-executait l'action. Une action dont l'issue est INCONNUE ne se
+        rejoue jamais a l'aveugle : le deuxieme essai doit lire le constat
+        d'interruption, pas refaire le travail.
+        """
+        fournisseur()
+        self._agent_specialise(monkeypatch)
+
+        appels = []
+
+        async def _resultat_puis_coupure(_requete, intent=None):
+            appels.append(intent)
+            # L'action a eu son effet, puis le client disparait : la tache est
+            # ANNULEE. `chronometrer` n'attrape que `Exception` (mesures.py) —
+            # une annulation est une `BaseException`, elle traverse donc sans
+            # produire la moindre trame. C'est precisement le cas que
+            # `trames vides` confondait avec « rien ne s'est passe ».
+            raise asyncio.CancelledError()
+        monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat_puis_coupure)
+
+        # L'annulation ferme le flux sans trame (mesure : HTTP 200, corps vide).
+        demander(client, entetes, text="envoie le devis", run_id="run-coupe")
+        assert len(appels) == 1, "le premier essai doit bien avoir lance l'agent"
+
+        # Deuxieme essai, MEME run_id : l'action ne doit pas repartir.
+        reponse = demander(client, entetes, text="envoie le devis", run_id="run-coupe")
+
+        assert len(appels) == 1, (
+            "l'action a ete relancee alors que son issue etait inconnue : "
+            f"{len(appels)} executions pour une seule demande"
+        )
+        messages = " ".join(
+            c.get("message", "") for c in trames(reponse.text) if c["type"] == "error"
+        )
+        assert "issue est inconnue" in messages, (
+            f"le deuxieme essai doit dire ce qui s'est passe, recu : {messages}"
+        )
 
 
 def test_plaquiste_recoit_le_fil_entier_pas_la_derniere_ligne_seule(
