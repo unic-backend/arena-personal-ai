@@ -56,6 +56,21 @@ def test_le_rapport_de_travail_n_est_pas_duplique():
     assert (DOCS / "RAPPORT_TRAVAIL.txt").exists()
 
 
+def test_le_rapport_de_travail_dit_qu_il_n_est_pas_a_jour():
+    """Audit f7f0478, etape 12 : un cliche du 25/08/2026 se lisait comme l'etat
+
+    du jour — « Le systeme fonctionne a 100% », « 12 agents d'elite » —
+    quand `apps/backend/runtime.py` en construit reellement 25 aujourd'hui.
+    Sans avertissement, ce texte est indiscernable d'une mesure actuelle.
+    """
+    contenu = (DOCS / "RAPPORT_TRAVAIL.txt").read_text(encoding="utf-8")
+
+    assert "AVERTISSEMENT" in contenu.splitlines()[1], (
+        "l'avertissement de peremption a disparu de la premiere ligne utile"
+    )
+    assert "CLICHE FIGE" in contenu
+
+
 def test_aucun_secret_en_clair_dans_la_documentation():
     """Un document qui décrit une fuite ne doit pas la reproduire.
 

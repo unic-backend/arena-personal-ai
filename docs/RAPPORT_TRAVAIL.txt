@@ -1,4 +1,25 @@
 ================================================================================
+  AVERTISSEMENT (ajoute le 12/09/2026, audit f7f0478, etape 12) : ce rapport
+  est un CLICHE FIGE du 25 Août 2026 (v1.6.0). Il n'est PAS mis a jour et ne
+  decrit PAS l'etat actuel — il est garde tel quel comme trace historique
+  (voir `tests/test_documentation.py::test_le_rapport_de_travail_n_est_pas_
+  duplique`, qui n'exige que son unicite, jamais son exactitude).
+
+  Deux ecarts mesures avec l'etat reel du 12/09/2026, pour ne pas laisser ce
+  fichier faire foi par erreur : la section 3 annonce « 12 agents d'elite »
+  quand `python -c "import apps.backend.runtime as r; from core.agent.
+  base_agent import BaseAgent; print(len({o.name for o in vars(r).values()
+  if isinstance(o, BaseAgent)}))"` en compte reellement 25 aujourd'hui
+  (PlaquisteAgent, FinanceAgent, ExecutiveAgent, VisionAgent, EmailAgent et
+  huit autres en sont absents) ; l'affirmation « Le systeme fonctionne a
+  100% » n'a jamais ete une mesure verifiable depuis ce depot — elle decrit
+  la machine Windows du proprietaire, jamais verifiee ici.
+
+  Etat courant et verifie : `PROJECT_MEMORY/PROJECT_MAP.md` (carte a jour),
+  `python scripts/orphelins.py` (portee reelle, mesuree a chaque lancement),
+  `GET /health` (agents reellement cables, DEC mesuree dans
+  `tests/test_api.py::TestSanteNAnnoncePasPlusQueCeQuiExiste`).
+================================================================================
                     Usman — IA PERSONNELLE AUTONOME (SOCIÉTÉ / PLATAFORME)
                     RAPPORT COMPLET D'ARCHITECTURE & D'EXÉCUTION v1.6.0
 ================================================================================
