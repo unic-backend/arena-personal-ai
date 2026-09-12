@@ -82,8 +82,15 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Authorization", "Content-Type"],
+    # Audit f7f0478, etape 11 : cette liste ne couvrait pas ce que le client
+    # envoie reellement. `DELETE` manquait (`DELETE /api/memory/{id}`,
+    # `memory.py`) ; `X-Usman-Run-ID` (idempotence, DEC de l'etape 5) et
+    # `Last-Event-ID` (reprise SSE, `remoteTransport.ts`) manquaient aussi.
+    # Starlette rend alors un `400` au PREFLIGHT lui-meme (mesure le
+    # 12/09/2026) : le navigateur bloque la vraie requete avant meme qu'elle
+    # ne parte, sans qu'aucun log applicatif ne le montre.
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-Usman-Run-ID", "Last-Event-ID"],
 )
 
 RENDERED_DIR.mkdir(parents=True, exist_ok=True)

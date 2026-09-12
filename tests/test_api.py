@@ -101,6 +101,64 @@ def test_l_etoile_n_est_jamais_une_origine_autorisee():
     assert "*" not in main.ALLOWED_ORIGINS
 
 
+class TestLeCorsCorrespondAuxVraiesRequetes:
+    """Audit f7f0478, etape 11 : la politique CORS ne couvrait pas ce que le
+
+    client envoie reellement. Mesure le 12/09/2026 : Starlette rend un `400`
+    au PREFLIGHT lui-meme quand une methode ou un en-tete demande n'est pas
+    autorise — le navigateur bloque alors la vraie requete avant qu'elle ne
+    parte, sans qu'aucun log applicatif ne le montre.
+    """
+
+    def test_le_flux_avec_ses_vrais_en_tetes_passe_le_preflight(self, client):
+        """`remoteTransport.ts` envoie X-Usman-Run-ID et Last-Event-ID sur ce flux."""
+        res = client.options(
+            "/api/chat/stream",
+            headers={
+                "Origin": main.ALLOWED_ORIGINS[0],
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers":
+                    "x-usman-run-id,last-event-id,authorization,content-type",
+            },
+        )
+
+        assert res.status_code == 200, (
+            f"le preflight echoue lui-meme : {res.status_code} {res.text}")
+        autorises = {h.strip().lower() for h in
+                     res.headers.get("access-control-allow-headers", "").split(",")}
+        assert {"x-usman-run-id", "last-event-id"} <= autorises
+
+    def test_la_suppression_memoire_passe_le_preflight(self, client):
+        """`DELETE /api/memory/{id}` existe (memory.py) mais DELETE n'etait pas autorise."""
+        res = client.options(
+            "/api/memory/un-identifiant",
+            headers={
+                "Origin": main.ALLOWED_ORIGINS[0],
+                "Access-Control-Request-Method": "DELETE",
+                "Access-Control-Request-Headers": "authorization,content-type",
+            },
+        )
+
+        assert res.status_code == 200, (
+            f"le preflight echoue lui-meme : {res.status_code} {res.text}")
+        methodes = {m.strip().upper() for m in
+                    res.headers.get("access-control-allow-methods", "").split(",")}
+        assert "DELETE" in methodes
+
+    def test_une_origine_inconnue_reste_refusee_meme_avec_les_bons_en_tetes(self, client):
+        """Elargir les en-tetes/methodes ne doit pas elargir les origines."""
+        res = client.options(
+            "/api/memory/un-identifiant",
+            headers={
+                "Origin": "https://site-inconnu.example",
+                "Access-Control-Request-Method": "DELETE",
+                "Access-Control-Request-Headers": "x-usman-run-id",
+            },
+        )
+
+        assert res.headers.get("access-control-allow-origin") is None
+
+
 @pytest.mark.integration
 def test_le_chat_repond_reellement(client, entetes, ollama_en_ligne):
     res = client.post(
