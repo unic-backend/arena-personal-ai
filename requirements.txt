@@ -36,10 +36,15 @@ python-pptx==1.0.2        # tools/documents/reader.py — lecture des .pptx
 pypdfium2==5.13.0         # tools/documents/reader.py — rendu d'une page PDF en image, pour l'OCR
 pytesseract==0.3.13       # tools/documents/reader.py — OCR d'un PDF scanne. Exige le binaire
                           # tesseract (+ tesseract-ocr-fra) installe a part sur la machine.
-psutil==6.1.1             # core/production/materiel.py — RAM systeme reelle (totale/
+psutil==7.2.2             # core/production/materiel.py — RAM systeme reelle (totale/
                           # disponible), portable Windows/Linux. Introspection systeme
                           # pure, aucun poids ML : ne rapproche pas ARENA de torch/
                           # transformers (mission ARENA x HIDREAM-I1, DEC-0085).
+                          # Monte le 12/09/2026 : browser-use==0.13.10 epingle
+                          # exactement psutil==7.2.2, en conflit avec le 6.1.1 fixe ici
+                          # auparavant — `pip install -r requirements.txt` refusait de se
+                          # resoudre (audit externe, commit f7f0478). API utilisee
+                          # (`psutil.virtual_memory()`) inchangee entre 6.x et 7.x.
 qrcode==8.2               # scripts/lancer_arena.ps1 — le carre a scanner avec le
                           # telephone. Appele par `python -c` depuis PowerShell, donc
                           # invisible d'un scan d'imports : il a manque ici du jour ou
@@ -73,9 +78,13 @@ numpy==2.4.6              # core/production/txtai_recherche.py — le backend nu
 ifcopenshell==0.8.5       # core/connectors/ifc.py — lecture BIM/IFC (DEC-0053).
                           # LGPL-3.0-or-later, wheels precompiles (aucun compilateur requis).
                           # Bibliotheque Python appelee, jamais du code copie.
-Pillow==12.0.0            # core/production/conversion/moteurs.py — conversion d'images
+Pillow==12.3.0            # core/production/conversion/moteurs.py — conversion d'images
                           # (DEC-0074). MIT-CMU. Absente du depot avant cette mission : aucune
                           # capacite ARENA ne convertissait une image jusqu'ici.
+                          # Monte le 12/09/2026 (depuis 12.0.0) : browser-use==0.13.10
+                          # epingle exactement Pillow==12.3.0, en conflit avec le
+                          # 12.0.0 fixe ici auparavant (audit externe, commit f7f0478).
+                          # API utilisee (`Image.open`/`Image.new`) inchangee.
 weasyprint==68.1           # core/production/conversion/moteurs.py — HTML/Markdown/TXT -> PDF
                           # (DEC-0074). BSD-3-Clause. Exige libcairo/libpango SYSTEME (mesure
                           # presents dans l'image de ce depot) ; absents, `sonder()` rapporte
