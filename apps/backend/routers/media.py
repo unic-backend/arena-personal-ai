@@ -67,10 +67,19 @@ async def ecrire_par_blocs(file: UploadFile, destination: Path) -> int:
 
     Depasser le plafond interrompt l'ecriture et supprime le fichier partiel :
     un envoi refuse ne doit rien laisser sur le disque.
+
+    `destination` est reclamee de facon ATOMIQUE (`"xb"`, `O_EXCL`) : si un
+    autre envoi tient deja ce chemin, `open()` leve `FileExistsError` avant
+    qu'un seul octet ne soit ecrit — jamais un `"wb"` qui aurait tronque
+    silencieusement le fichier de quelqu'un d'autre en l'ouvrant (audit
+    externe, commit f7f0478 : un second envoi du meme nom ecrasait le
+    premier, et un echec ensuite supprimait meme ce qui restait). L'appelant
+    (`upload_video`) essaie un autre nom sur `FileExistsError` — jamais cette
+    fonction, qui ne sait rien du reste du dossier.
     """
     taille = 0
     try:
-        with open(destination, "wb") as tampon:
+        with open(destination, "xb") as tampon:
             while bloc := await file.read(TAILLE_BLOC_ENVOI):
                 taille += len(bloc)
                 if taille > TAILLE_MAX_ENVOI:
@@ -80,6 +89,11 @@ async def ecrire_par_blocs(file: UploadFile, destination: Path) -> int:
                                f"{TAILLE_MAX_ENVOI / (1024 ** 3):.1f} Go)."
                     )
                 tampon.write(bloc)
+    except FileExistsError:
+        # `destination` appartient a un AUTRE envoi (fini, ou encore en
+        # cours) : rien n'a ete ouvert par CET appel, donc rien a nettoyer —
+        # un `unlink` ici supprimerait le fichier de cet autre envoi.
+        raise
     except Exception:
         destination.unlink(missing_ok=True)
         raise
@@ -89,6 +103,26 @@ async def ecrire_par_blocs(file: UploadFile, destination: Path) -> int:
         raise HTTPException(status_code=400, detail="Fichier vide.")
 
     return taille
+
+
+def _candidats_de_nom(nom_sur: str):
+    """Le nom d'origine d'abord — cas courant, garde lisible et compatible
+    avec tout ce qui l'attend deja (`medias_montables`, l'inventaire des
+    references cote PWA) — puis des variantes numerotees seulement si ce
+    nom est deja pris. Jamais un nom invente qui perdrait le nom d'origine :
+    `chantier_2.mp4` reste lisible a cote de `chantier.mp4`."""
+    yield nom_sur
+    tige, suffixe = Path(nom_sur).stem, Path(nom_sur).suffix
+    compteur = 1
+    while True:
+        yield f"{tige}_{compteur}{suffixe}"
+        compteur += 1
+
+
+#: Personne ne depose jamais mille fichiers de suite sous le meme nom ; au-dela,
+#: continuer a essayer serait masquer un vrai probleme (dossier non nettoye,
+#: boucle d'envoi emballee) derriere une attente silencieuse.
+LIMITE_TENTATIVES_NOM = 1000
 
 
 @router.post("/api/upload", dependencies=[Depends(verify_api_key)])
@@ -101,13 +135,38 @@ async def upload_video(file: UploadFile = File(...)):
         incoming_dir = MEDIA_DIR / "incoming"
         incoming_dir.mkdir(parents=True, exist_ok=True)
 
-        file_path = incoming_dir / safe_filename
-        taille = await ecrire_par_blocs(file, file_path)
-        logger.info(f"Fichier reçu : {safe_filename} ({taille / (1024 ** 2):.1f} Mo)")
+        # Chaque candidat est reclame de facon ATOMIQUE par `ecrire_par_blocs`
+        # (`FileExistsError` sur collision) : jamais un `.exists()` verifie
+        # puis un chemin different pris entre-temps par un envoi concurrent —
+        # l'ecriture elle-meme est la reclamation (audit externe, commit
+        # f7f0478 : deux envois du meme nom, l'un ecrasait l'autre).
+        file_path = None
+        stored_filename = None
+        taille = None
+        for tentative, candidat in enumerate(_candidats_de_nom(safe_filename)):
+            if tentative >= LIMITE_TENTATIVES_NOM:
+                raise HTTPException(
+                    status_code=507,
+                    detail=f"Impossible de trouver un nom de stockage libre pour "
+                           f"'{safe_filename}' apres {LIMITE_TENTATIVES_NOM} essais."
+                )
+            file_path = incoming_dir / candidat
+            try:
+                taille = await ecrire_par_blocs(file, file_path)
+            except FileExistsError:
+                continue
+            stored_filename = candidat
+            break
+
+        logger.info(f"Fichier reçu : {stored_filename} ({taille / (1024 ** 2):.1f} Mo)"
+                   + (f" — nom d'origine '{safe_filename}' deja pris" if stored_filename != safe_filename else ""))
 
         return {
             "status": "success",
-            "filename": safe_filename,
+            "filename": stored_filename,
+            # Le nom d'origine (nettoye), pour l'afficher meme quand une
+            # collision a force un nom de stockage different — jamais perdu.
+            "original_filename": safe_filename,
             "path": str(file_path),
             "size_bytes": taille,
         }
