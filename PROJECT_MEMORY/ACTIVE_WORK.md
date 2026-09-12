@@ -1,24 +1,75 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-09-12, fin de session (DEC-0087 → DEC-0094).*
+*Mise à jour : 2026-09-12, fin de session (DEC-0087 → DEC-0095).*
 
 ## En cours
 
-DEC-0094 (gitgui, second passage — opérations git mutantes sûres à
-rejouer : idempotence, précondition/postcondition, `tools/atelier/
-git_ops.py`) poussée en PR #196. CI a trouvé une vraie régression (42
-échecs au lieu des 39 attendus) : `continuer_operation()` sans éditeur
-configuré échouait sur le runner GitHub Actions (« Terminal is dumb, but
-EDITOR unset ») alors que ça passait en local (`GIT_EDITOR` déjà présent
-localement). Corrigé (`-c core.editor=true` sur l'appel `--continue`),
-reproduit et vérifié en local sous les mêmes conditions que CI avant de
-pousser, CI re-vérifiée après coup : retombée exactement à 39 échecs
-pré-existants. Détail complet : `docs/DECISIONS.md`, DEC-0094. PR #192
-(DEC-0092) et #193 (DEC-0093) déjà fusionnées le 11/09/2026 — rien en
-attente d'action côté assistant sur ces deux chunks. PR #196 en attente de
-fusion par le propriétaire.
+Rien en attente d'action côté assistant. Les deux derniers chunks sont
+fusionnés dans `master` par le propriétaire, le 12/09/2026 :
 
-## Dernier chunk : DEC-0094 — gitgui, second passage : opérations git mutantes sûres à rejouer
+- **PR #196** (DEC-0094, gitgui second passage) — CI avait trouvé une
+  vraie régression (42 échecs au lieu des 39 attendus :
+  `continuer_operation()` sans éditeur configuré échouait sur le runner
+  GitHub Actions, invisible en local où `GIT_EDITOR` est déjà présent).
+  Corrigée (`-c core.editor=true`), reproduite et revérifiée avant push.
+  Un check-in programmé a ensuite trouvé CI de nouveau rouge pour une
+  cause distincte — un conflit `Pillow`/`psutil` réel avec `browser-use`,
+  présent sur `master` aussi, déjà diagnostiqué et corrigé côté DEC-0095 —
+  correctif porté ici tel quel (`d179877` cherry-pické) avant fusion.
+- **PR #197** (DEC-0095, douze défauts d'un audit externe) — fusionnée
+  après ses 12 checks CI verts (Docker inclus) et 5366 tests passés sur la
+  suite complète. Détail plus bas.
+
+## Dernier chunk : DEC-0095 — douze défauts confirmés d'un audit externe, réparés un par un (PR #197)
+
+Mission reçue avec consigne explicite : revérifier CHAQUE constat de
+l'audit (commit `f7f0478`) contre le code actuel avant de le corriger, ne
+rien croire sur parole. Onze des douze étaient encore exacts ; le
+douzième (connecteurs dormants) était déjà réparé avant l'audit
+(`tests/test_connecteurs_dormants.py`, DEC-0068) — revérifié, toujours
+exact, laissé tel quel. Décisions et coûts détaillés : `docs/DECISIONS.md`,
+DEC-0095. Résumé d'une ligne par étape :
+
+1. Dépendances/CI — conflit `Pillow`/`psutil` réel avec `browser-use`,
+   outils natifs manquants en CI (weasyprint/cairosvg/libreoffice/ffmpeg).
+2. Huit intentions de chat gérées par `dispatch_request` mais absentes
+   d'`AGENTS_SPECIALISES` — reconnues, jamais exécutées.
+3. `conversation_id` stable séparé de `run_id` (par exécution) — chaque
+   message ouvrait une session mémoire vierge.
+4. Repli `test_video.mp4` retiré — une analyse sans fichier fourni
+   analysait un fichier de test comme s'il était réel.
+5. Idempotence par `run_id` (`JournalExecutions`, 256 entrées, mémoire
+   process) contre la reconnexion qui rejoue une action déjà exécutée.
+6. Fausse réussite vidéo — sortie ffmpeg jamais vérifiée par `ffprobe`
+   avant d'annoncer un montage prêt.
+7. `/media/rendered/{nom}` → `{nom:path}` — les sorties dans un
+   sous-dossier réel étaient un 404 malgré une URL correcte.
+8. Collisions d'upload — `open(..., "wb")` écrasait un fichier existant ;
+   `"xb"` + suffixe numérique, testé avec de vrais threads concurrents.
+9. Mémoire long terme bornée — `souvenirs()`/`recuperer_semantique()` ne
+   regardaient jamais au-delà de la fenêtre importance/récence (500) ;
+   complément SQL borné (`candidats_bornes`), limite résiduelle mesurée et
+   documentée plutôt que cachée.
+10. Quota cloud contourné par un fournisseur imposé (`AI_DEFAULT_PROVIDER`)
+    — vérifié maintenant sur CHAQUE chemin ; `CompteurUsage` persiste
+    désormais en SQLite (survit à un redémarrage).
+11. CORS incomplet — `DELETE` et les en-têtes réels du client
+    (`X-Usman-Run-ID`, `Last-Event-ID`) manquaient ; un vrai préflight
+    tombait en `400` avant même que la requête ne parte.
+12. `docs/RAPPORT_TRAVAIL.txt` (cliché du 25/08/2026, « 12 agents
+    d'élite », « fonctionne à 100% ») lu comme une mesure du jour —
+    bandeau d'avertissement ajouté, fichier gardé (jamais de purge).
+
+Chaque étape porte son test de régression, confirmé en échec avant
+correction et en succès après (`git stash`, jamais supposé). `ruff check .`
+propre sur tout le dépôt. Suite Python complète après fusion : **5366
+passed, 31 skipped, 52 deselected, 0 failed** (682.82s, mesuré le
+12/09/2026). Non vérifiable depuis cet environnement : Ollama réel
+(génération/embeddings), persistance réelle de `CompteurUsage` après un
+vrai redémarrage sur la machine du propriétaire (seule une simulation l'a
+été ici). 12 commits sur `claude/audit-repairs-f7f0478`, PR #197 fusionnée.
+
+## Chunk précédent : DEC-0094 — gitgui, second passage : opérations git mutantes sûres à rejouer
 
 Mission reçue : approfondir DEC-0093 avec ce que la lecture seule ne
 couvrait pas — les opérations qui MUTENT le dépôt (stage, commit, branche,

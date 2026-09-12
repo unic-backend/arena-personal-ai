@@ -8751,3 +8751,155 @@ conditions : **5353 passed, 31 skipped, 52 deselected, 0 failed** (444.91s,
 mesuré le 12/09/2026). CI re-vérifiée après le push du correctif : **39
 failed** (le plafond pré-existant, inchangé), **5293 passed** — la
 régression a disparu, rien d'autre n'a bougé.
+
+## DEC-0095 — Douze défauts confirmés par un audit externe, réparés un par un (PR #197)
+
+**2026-09-12.** Mission reçue : un audit externe sur le commit `f7f0478`
+listait douze constats. Consigne explicite : revérifier CHAQUE constat
+contre le code actuel avant de le corriger — pas croire l'audit sur parole
+— et réparer avec des tests qui échouent avant, passent après. Branche
+`claude/audit-repairs-f7f0478`, PR #197. Détail intégral (preuves, sorties
+réelles) dans les messages de commit de la branche ; ce qui suit est la
+décision derrière chaque réparation, pas son récit.
+
+### Ce qui était réellement confirmé (et un cas qui ne l'était plus)
+
+Les douze constats ont été revérifiés un par un contre `master` (`fc53bf0`,
+pas contre l'audit). Onze étaient encore exacts. Un seul chapitre —
+l'étape 12, connecteurs dormants — était déjà réparé avant cette mission
+(`tests/test_connecteurs_dormants.py`, DEC-0068, antérieur à l'audit) :
+revérifié (`DORMANTS_CONNUS` toujours exact, `scripts/orphelins.py` donne
+toujours 299/239 comme l'annonce `CLAUDE.md`), et laissé tel quel — le
+défaut restant de cette étape était ailleurs (voir plus bas).
+
+### Réparations, et ce que chacune coûte si elle est fausse
+
+- **Dépendances/CI** — `Pillow`/`psutil` épinglés en conflit réel avec
+  `browser-use==0.13.10` ; CI n'installait pas weasyprint/cairosvg/
+  markdown/libreoffice/ffmpeg alors que des tests HORS `integration` en
+  dépendent. *Coût si faux* : un contributeur qui suit `requirements.txt`
+  à la lettre reste bloqué à l'installation, pour la même raison.
+
+- **Huit intentions de chat orphelines** — gérées par `dispatch_request`
+  mais absentes d'`AGENTS_SPECIALISES`, la porte vérifiée AVANT lui sur les
+  trois surfaces de chat. *Coût si faux* : une intention reconnue par le
+  classement répond quand même en conversation ordinaire, silencieusement.
+
+- **`conversation_id` séparé de `run_id`** — l'interface envoyait un
+  `run_id` neuf par message, utilisé comme identifiant de session mémoire :
+  chaque message ouvrait une session vierge. Un `conversation_id` stable
+  s'ajoute, `run_id` reste tel quel (il sert maintenant l'idempotence).
+  *Coût si faux* : un ancien client qui n'envoie pas `conversation_id`
+  doit retomber sur `run_id` sans casser — testé explicitement.
+
+- **Repli `test_video.mp4` retiré** — une analyse vidéo sans fichier
+  fourni utilisait un fichier de test comme s'il était réel. *Coût si
+  faux* : une analyse tourne sur un contenu qui n'est pas celui du
+  propriétaire, sans qu'il le sache.
+
+- **Idempotence par `run_id`** (`JournalExecutions`, `pwa_gateway.py`) —
+  aucune protection n'existait contre une reconnexion qui rejoue une
+  action déjà exécutée. *Décision* : un plafond fixe de 256 exécutions en
+  mémoire (même convention que `JournalOperationsGit`), jamais persistant
+  — un redémarrage du serveur perd l'historique d'idempotence en cours,
+  ce qui rouvre la fenêtre à la reconnexion suivante juste après un
+  redémarrage. *Coût si faux* : rare (il faut un redémarrage exactement
+  entre l'exécution et la reconnexion du client), documenté ici plutôt que
+  résolu — une vraie persistance de ce journal n'a pas été demandée par la
+  mission et aurait dépassé son périmètre.
+
+- **Fausse réussite vidéo** — `convert_to_vertical_9_16` rendait `True`
+  sans vérifier que la sortie ffmpeg existait et était un vrai flux vidéo.
+  Vérification ajoutée par `ffprobe` réel, sabotée dans les tests (fichier
+  tronqué après un rendu réel réussi). *Coût si faux* : un montage annoncé
+  prêt pointe vers un fichier vide ou corrompu, découvert seulement à la
+  lecture.
+
+- **`/media/rendered/{nom}` → `{nom:path}`** — le convertisseur FastAPI par
+  défaut refusait tout `/` dans `{nom}`, rendant injoignables les sorties
+  dans des sous-dossiers réels (`conversions/...`). Le confinement
+  (`validate_media_path`) ne changeait pas de comportement, seul le
+  routage s'ouvrait à la profondeur réelle. *Coût si faux* : un fichier
+  légitime devient un 404 silencieux malgré une URL correcte.
+
+- **Collisions d'upload** — `open(..., "wb")` écrasait un fichier existant
+  du même nom. Remplacé par `open(..., "xb")` (atomique, `O_EXCL`) plus un
+  suffixe numérique (`_1`, `_2`…) en cas de collision, `original_filename`
+  conservé séparément de `filename` (stocké). Testé avec de vrais threads
+  concurrents, pas un mock. *Coût si faux* : un deuxième envoi du même nom
+  détruit silencieusement le premier fichier du propriétaire.
+
+- **Mémoire long terme bornée** (`souvenirs_correspondant_a_des_mots`,
+  `candidats_bornes`) — `recuperer()`/`recuperer_semantique()` ne
+  regardaient jamais au-delà de la fenêtre importance/récence
+  (`limite_lecture`, 500 par défaut) : un souvenir pertinent mais ancien
+  et peu important n'était jamais même soumis à la recherche. *Décision* :
+  une requête SQL `LIKE` bornée en complément, jamais du FTS5 ni une
+  migration de schéma (zone verrouillée, `LOCKED_ZONES.md`) — exclut les
+  souvenirs `sensible=1` (chiffrés, une recherche `LIKE` sur du texte
+  chiffré ne trouve rien de sensé). *Limite mesurée et documentée, pas
+  cachée* : cette requête complémentaire est ELLE-MÊME bornée et triée par
+  importance — un mot-clé partagé par plus de `limite_lecture` autres
+  souvenirs peut encore masquer une correspondance peu importante
+  (`test_limite_reelle_un_mot_partage_par_trop_de_souvenirs_peut_encore_
+  manquer`). *Coût si faux* : cette limite résiduelle se découvrirait en
+  production comme un souvenir introuvable malgré un mot-clé exact — elle
+  est désormais nommée et testée plutôt que silencieuse.
+
+- **Quota cloud contourné par un fournisseur imposé** — `_candidats()`
+  vérifiait `compteur.verdict()` uniquement sur le chemin AUTO ; un
+  fournisseur explicitement demandé (`AI_DEFAULT_PROVIDER`) ignorait
+  entièrement le plafond et le budget du jour. Corrigé : la vérification
+  s'applique maintenant à CHAQUE chemin qui peut atteindre le cloud.
+  *Coût si faux* : un propriétaire qui impose GROQ pense être protégé par
+  son plafond configuré et ne l'est pas.
+
+- **Compteur d'usage non persistant** — en mémoire pure, un redémarrage
+  remettait le compte du jour à zéro, rouvrant un budget déjà épuisé.
+  *Décision* : `CompteurUsage(db_path=...)` optionnel, SQLite (même base
+  que le reste, DEC-0005), purge des jours de plus de 3 jours à chaque
+  écriture pour rester borné ; `db_path=None` garde le comportement en
+  mémoire d'origine (défaut des tests existants, rien cassé). *Coût si
+  faux* : sans `db_path` câblé dans `runtime.py` (fait ici), le défaut
+  d'origine revient tel quel au prochain redémarrage réel.
+
+- **Contrat CORS incomplet** — `allow_methods`/`allow_headers` ne
+  couvraient pas `DELETE` (`/api/memory/{id}`) ni les en-têtes réels
+  envoyés par `remoteTransport.ts` (`X-Usman-Run-ID`, `Last-Event-ID`).
+  Mesuré avec un vrai préflight (`TestClient`) : Starlette répond `400` AU
+  PRÉFLIGHT LUI-MÊME, avant même que la vraie requête ne parte — aucun log
+  applicatif ne montre pourquoi. `ALLOWED_ORIGINS` (la vraie frontière de
+  sécurité) n'a pas bougé. *Coût si faux* : une fonctionnalité qui marche
+  en test (même origine, pas de CORS) casse silencieusement en production
+  cross-origin, avec un message d'erreur que seul le navigateur voit.
+
+- **`docs/RAPPORT_TRAVAIL.txt` non daté comme historique** — un cliché du
+  25/08/2026 (« 12 agents d'élite », « fonctionne à 100% ») se lisait
+  comme une mesure du jour, quand `runtime.py` construit réellement 25
+  agents aujourd'hui. *Décision* : bandeau d'avertissement ajouté en tête,
+  fichier gardé (un test en exige l'existence, jamais sa suppression) —
+  jamais de purge d'historique. *Coût si faux* : quiconque cite ce fichier
+  comme preuve d'un état actuel se trompe de onze agents et d'un chiffre
+  jamais mesuré depuis ce dépôt.
+
+### Ce qui reste non vérifié depuis cet environnement
+
+`ollama serve` n'existe pas ici : rien qui appelle réellement un modèle
+(génération, embeddings `bge-m3`) n'a été mesuré en conditions réelles —
+seule la logique de routage/repli/budget l'a été, avec des doublures.
+Docker/`dockerd` non disponible en local, mais **le job CI "Docker image
+builds" a réellement construit l'image sur cette PR** (mesuré, pas
+supposé). La persistance réelle de `CompteurUsage` sur la machine Windows
+du propriétaire n'a pas été observée après un vrai redémarrage — seule la
+simulation (une deuxième instance sur le même fichier) l'a été.
+
+### Preuve
+
+Chaque étape porte ses propres tests de régression, confirmés en échec
+avant correction et en succès après (`git stash` à chaque fois — jamais
+supposé). `python -m ruff check .` propre sur l'ensemble du dépôt. Les 12
+checks CI de la PR sont verts, Docker inclus. Suite Python complète après
+fusion : **5366 passed, 31 skipped, 52 deselected, 0 failed** (682.82s,
+mesurée le 12/09/2026). PR #197 **fusionnée dans `master` par le
+propriétaire** le 12/09/2026. Détail complet, étape par étape, dans les
+messages de commit de `claude/audit-repairs-f7f0478`.
