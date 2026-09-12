@@ -190,4 +190,42 @@ async def test_le_cache_ne_redemande_pas_un_texte_connu():
 
 def test_deux_vecteurs_de_dimensions_differentes_ne_se_comparent_pas():
     assert cosinus([1.0, 0.0], [1.0, 0.0, 0.0]) == 0.0
+
+
+# --- Au-dela de la fenetre importance/recence -----------------------------------
+# Meme defaut que cote lexical (audit externe, commit f7f0478) : `candidats =
+# memoire.souvenirs(limite=limite_lecture)` ne vectorisait QUE la fenetre
+# importance/recence — un souvenir hors de cette fenetre n'etait jamais meme
+# soumis a Ollama, quel que soit le sens qu'il aurait pu partager avec la
+# question.
+
+async def test_un_souvenir_hors_fenetre_est_desormais_vectorise_et_trouve(memoire, retenir):
+    for index in range(520):
+        retenir(f"Chantier ordinaire numero {index}, sans lien avec la question.",
+               jours=0, importance=0.9)
+    # Hors fenetre par construction (peu important, ancien) — MAIS partage un
+    # mot DISTINCTIF avec la question (aucun autre souvenir ne le porte), donc
+    # le filtre SQL complementaire (`souvenirs_correspondant_a_des_mots`) le
+    # retrouve et le soumet a la vectorisation, meme sans entree dans
+    # VECTEURS (-> AUTRE, orthogonal a QUESTION : seule la correspondance
+    # lexicale le fait remonter ici, pas le sens — ce test verifie qu'il est
+    # EXAMINE, pas qu'il gagne par le sens).
+    #
+    # Un mot COMMUN aux 520 souvenirs de remplissage (comme "chantier") ne
+    # suffirait pas : le filtre complementaire est LUI AUSSI borne
+    # (`limite_lecture`), et 520 correspondances sur un mot banal
+    # rempliraient a nouveau cette fenetre avant le souvenir cible — limite
+    # reelle et mesuree, documentee dans `souvenirs_correspondant_a_des_mots`,
+    # pas contournee ici par un mot qui la masquerait.
+    retenir("Ce souvenir GIRAFETURQUOISE reclame une attention particuliere.",
+           jours=800, importance=0.02)
+
+    trouve = await recuperer_semantique(
+        memoire, "girafeturquoise particuliere",
+        index=index_de_test(), maintenant=MAINTENANT)
+
+    contenus = [resultat.souvenir.contenu for resultat in trouve.resultats]
+    assert any("GIRAFETURQUOISE" in c for c in contenus), (
+        "le souvenir hors fenetre, mais lexicalement lie a la question, "
+        "n'a jamais ete vectorise ni retrouve")
     assert cosinus([], []) == 0.0
