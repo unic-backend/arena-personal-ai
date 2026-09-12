@@ -1575,3 +1575,51 @@ est morte (son commit CI est déjà dans `master`, HiDream aussi) et
 dans `master` (`c8132c9`), et ce qui reste réintroduirait LibreChat, supprimé
 par DEC-0007 après la fuite de 4 clés. Rien n'a été supprimé : c'est sa
 décision.
+
+---
+
+## 2026-09-12 (suite) — `master` renommée `main` : la CI ne tournait plus, et le scan de secrets s'ignorait
+
+Le propriétaire a renommé la branche par défaut parce que son dépôt est
+**public** et que les outils tiers, qui supposent `main`, répondaient 404.
+Mesuré avant/après sur l'API GitHub non authentifiée :
+
+```
+avant : /branches/main → 404   /branches/master → 200
+après : /branches/main → 200   /branches/master → 301 (redirection)
+```
+
+Le dépôt lui-même écrivait `master` en dur, et deux choses cassaient :
+
+| Cassé | Effet réel |
+|---|---|
+| `on.push.branches` et `on.pull_request.branches` valaient `["master"]` | **aucun check ne tournait** sur `main` ni sur une PR la visant |
+| le scan différentiel de secrets comparait à `origin/master` | ce ref n'existe plus : l'étape tombait dans son repli « étape ignorée » et **ne scannait plus rien, sans échouer** |
+
+Le second est le plus grave : un contrôle de sécurité qui se désactive en
+silence. La base ne s'écrit plus en dur — elle vient de l'événement GitHub
+(`pull_request.base.ref`, sinon `repository.default_branch`) — et une base
+absente **échoue** (`::error::` + `exit 1`) au lieu d'être sautée.
+
+Corrigés aussi, parce qu'ils donnent une commande qui échouerait :
+`CLAUDE.md` (« jamais de push direct sur `master` »),
+`docs/COMMANDES_PC.md` (`git pull origin master`) et
+`docs/REGLES_DE_TRAVAIL.md`. Les mentions historiques de `master`
+(`CHANGELOG`, `DECISIONS`, audits) restent : elles racontent ce qui s'est
+passé sous ce nom, elles sont exactes.
+
+4 tests dans `tests/test_gitleaks_config.py` gardent la classe entière : les
+déclencheurs nomment la branche par défaut, aucun nom de branche en dur dans
+le script du scan, et le scan échoue plutôt que de s'ignorer.
+
+**Le trou était d'abord dans mon test.** Sa première version ne cherchait que
+`origin/master` et `refs/heads/master` : le sabotage `git fetch origin master`
+(nom en dur passé en ARGUMENT, sans slash) passait à travers — 16 passed alors
+que le workflow était cassé. Resserré sur le script de l'étape, les 4
+sabotages tombent.
+
+Deux constats au passage : le clone local ne suivait que `master`
+(`remote.origin.fetch` mono-branche), ce qui a rendu un inventaire de branches
+faux plus tôt dans la session ; et les documents affirment encore « le dépôt
+est privé depuis le 28/08/2026 » alors qu'il est **public** (`private: false`
+vérifié). `.env` est ignoré et n'a jamais été versionné.

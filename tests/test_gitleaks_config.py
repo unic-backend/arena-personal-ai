@@ -81,6 +81,82 @@ def test_la_ci_execute_le_scan():
     assert "--config .gitleaks.toml" in workflow
 
 
+# --- Le nom de la branche de base ---------------------------------------------
+#
+# Ces deux tests existent a cause d'une panne silencieuse reelle. Le 12/09/2026
+# le proprietaire a renomme la branche par defaut `master` -> `main` (les outils
+# tiers supposent `main` et repondaient 404 sur son depot public). Le workflow
+# ecrivait `master` en dur a quatre endroits : les declencheurs ne tournaient
+# plus du tout, et le scan DIFFERENTIEL de secrets tombait dans son repli
+# « Pas de branche master a comparer, etape ignoree » — il ne scannait plus
+# rien, sans echouer.
+
+def _workflow() -> str:
+    return (RACINE / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+
+def test_la_ci_se_declenche_sur_la_branche_par_defaut():
+    import yaml
+
+    declencheurs = yaml.safe_load(_workflow())[True]
+
+    assert "main" in declencheurs["push"]["branches"], (
+        "la CI ne tourne plus sur la branche par defaut : aucun check sur main")
+    assert "main" in declencheurs["pull_request"]["branches"], (
+        "aucun check ne tourne sur une pull request qui vise main")
+
+
+def test_aucune_branche_de_base_ecrite_en_dur_dans_la_ci():
+    """Un nom de branche en dur est exactement ce qui a casse le scan en
+    silence. La base se lit sur l'evenement GitHub, jamais dans le texte.
+
+    Le test porte sur le SCRIPT de l'etape et cherche le nom de branche sous
+    TOUTES ses formes. Une premiere version ne regardait que `origin/master`
+    et `refs/heads/master` : le sabotage `git fetch origin master` (un nom en
+    dur passe en ARGUMENT, sans slash) passait a travers. Mesure du
+    12/09/2026 — le trou etait dans le test, pas dans le workflow.
+    """
+    etape = _etape_du_scan_differentiel()
+    script = etape["run"]
+
+    for nom in ("master", "main"):
+        assert not re.search(rf"\b{nom}\b", script), (
+            f"la branche « {nom} » est ecrite en dur dans le script du scan "
+            f"differentiel : c'est ce qui l'a fait tomber en silence au "
+            f"renommage du 12/09/2026")
+    assert "$BASE" in script, "le script doit lire la base dans son environnement"
+    assert "github.event.repository.default_branch" in etape["env"]["BASE"], (
+        "la base du scan differentiel doit venir de l'evenement GitHub")
+    assert "master" not in etape["if"], (
+        "la condition de l'etape ne doit pas nommer une branche en dur")
+
+
+def _etape_du_scan_differentiel() -> dict:
+    import yaml
+
+    for etape in yaml.safe_load(_workflow())["jobs"]["secrets"]["steps"]:
+        if str(etape.get("name", "")).startswith("No secret added"):
+            return etape
+    raise AssertionError("l'etape du scan differentiel a disparu du workflow")
+
+
+def test_le_scan_differentiel_echoue_plutot_que_de_s_ignorer():
+    """La regression a ete invisible parce que l'etape se desactivait toute
+    seule. Un controle de securite qui se tait n'en est pas un.
+
+    Le test lit le SCRIPT de l'etape, pas le texte du fichier : les
+    commentaires du workflow racontent justement cette panne, et un test qui
+    cherchait la phrase n'importe ou tombait sur eux.
+    """
+    script = _etape_du_scan_differentiel()["run"]
+
+    assert "ignoree" not in script, (
+        "le scan differentiel a retrouve un repli silencieux")
+    assert script.count("::error::") >= 2, (
+        "base absente ou introuvable doivent toutes deux echouer bruyamment")
+    assert "exit 1" in script
+
+
 # --- Documents du propriétaire ------------------------------------------------
 
 @pytest.mark.parametrize(

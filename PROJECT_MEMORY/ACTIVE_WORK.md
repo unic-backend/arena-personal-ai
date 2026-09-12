@@ -4,8 +4,31 @@
 
 ## En cours
 
-**Une PR attend sa décision de fusion : PR #204 (DEC-0098), l'index de tri
-de la mémoire.** Branche `claude/memoire-index-de-tri`.
+**Une PR attend sa décision de fusion : la CI après le renommage de la
+branche par défaut.** Branche `claude/ci-branche-main`.
+
+Il a renommé `master` → `main` le 12/09/2026 (son dépôt est **public** et les
+outils tiers, qui supposent `main`, répondaient 404 — mesuré). Le dépôt
+écrivait `master` en dur : **plus aucun check ne tournait** sur `main` ni sur
+une PR la visant, et le scan différentiel de secrets comparait à
+`origin/master`, donc tombait dans son repli « étape ignorée » et **ne
+scannait plus rien sans échouer**. Corrigé, base lue sur l'événement GitHub,
+échec bruyant si elle manque, 4 tests qui gardent la classe.
+
+**Deux choses à savoir pour la suite :**
+- les documents affirment encore « le dépôt est **privé** depuis le
+  28/08/2026 » (`DECISIONS.md`, `CHANGELOG.md`, `docs/CURRENT_TASK.md`). Il
+  est **public** (`private: false`, mesuré). `.env` est ignoré et n'a jamais
+  été versionné, le *Secret scan* est vert — mais la note « purge de
+  l'historique jamais autorisée, le dépôt est privé » repose sur une prémisse
+  qui a changé. **Sa décision.**
+- un clone de ce dépôt peut arriver configuré pour ne suivre QUE `master`
+  (`remote.origin.fetch` mono-branche). Vérifier
+  `git config --get-all remote.origin.fetch` avant tout inventaire de
+  branches : sinon les références locales sont périmées et l'inventaire est
+  faux (c'est arrivé dans cette session).
+
+PR #204 (DEC-0098), l'index de tri de la mémoire, est **fusionnée**.
 
 Tout le reste est **fusionné** dans `master` par le propriétaire le
 12/09/2026 : PR #196 (DEC-0094, gitgui second passage — CI avait trouvé une
