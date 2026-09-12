@@ -1,11 +1,13 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-09-12, fin de session (DEC-0087 → DEC-0095).*
+*Mise à jour : 2026-09-12, fin de session (DEC-0087 → DEC-0096).*
 
 ## En cours
 
-Rien en attente d'action côté assistant. Les deux derniers chunks sont
-fusionnés dans `master` par le propriétaire, le 12/09/2026 :
+**Une PR attend sa décision de fusion : le coût de la mémoire chiffrée
+(DEC-0096).** Branche `claude/memoire-dechiffrement-cout`, détail juste
+en dessous. Tout le reste est fusionné dans `master` par le propriétaire,
+le 12/09/2026 :
 
 - **PR #196** (DEC-0094, gitgui second passage) — CI avait trouvé une
   vraie régression (42 échecs au lieu des 39 attendus :
@@ -22,6 +24,91 @@ fusionnés dans `master` par le propriétaire, le 12/09/2026 :
 - **PR #199** (diagnostic des douze étapes, à sa demande) — fusionnée le
   12/09/2026. Quatre trous réels trouvés dans mes propres réparations et
   corrigés, plus un correctif de test CI. Détail juste en dessous.
+
+## DEC-0096 — la memoire chiffree coutait 275 ms par souvenir relu (12/09/2026)
+
+Trouve en cherchant quoi ameliorer dans la memoire, et **mesure avant
+d'ecrire quoi que ce soit** :
+
+```
+500 souvenirs sensibles, relus       : 133 590 ms  (2 min 14)
+une derivation PBKDF2 (600 000 iter.):      275 ms
+nonce different par message          : True
+sel aussi different par message      : True   <- la cause
+```
+
+`chiffrer()` tirait un **sel** neuf a chaque message, donc `dechiffrer()`
+repayait les 600 000 iterations **par souvenir**. Le nonce — la seule
+unicite qu'AES-GCM exige reellement — etait deja tire au hasard par
+message : le sel par message n'achetait aucune securite et coutait 275 ms
+a chaque lecture. Effet pratique : plus il enregistre de souvenirs
+sensibles, plus ARENA devient lente, precisement sur les donnees qui
+valent d'etre protegees.
+
+Deux changements, aucun ne touche au format d'enveloppe
+(`core/memory/chiffrement.py`) :
+
+- un cache borne de cles derivees, par sel (`CLES_GARDEES = 256`) ;
+- un sel partage par lot d'ecritures (`MESSAGES_PAR_SEL = 65 536`), la
+  forme ordinaire d'un conteneur chiffre : un sel en en-tete, puis un
+  nonce neuf par message.
+
+Mesure apres (re-mesuree le 12/09/2026 apres coup, machine au repos) :
+
+```
+500 ecritures sensibles   :   270,6 ms   (contre 138 s)
+relecture des 500         :     3,6 ms   (contre 133 590 ms)
+nonces distincts sur 500  :   500
+sels distincts sur 500    :     1        <- une seule derivation payee
+```
+
+500 dechiffrements coutent donc **une** derivation au lieu de 500 — asserte
+par un test qui compte les appels, pas estime a l'oeil.
+
+**Pourquoi ce n'est pas un troc securite/vitesse**, chaque point garde par
+un test de `tests/core/test_memoire_chiffrement.py` :
+
+- le nonce reste `os.urandom` par message — verifie sur 50 enveloppes ;
+- le sel reste aleatoire (jamais une constante) et tourne par lot, donc
+  une cle ne couvre jamais un nombre illimite de messages et la marge
+  d'anniversaire du nonce 96 bits reste intacte ;
+- une mauvaise phrase secrete est toujours refusee — le cache est indexe
+  par sel et derive de la phrase de l'instance, il ne peut pas servir de
+  porte derobee ;
+- `dechiffrer()` n'est pas touche : il lit toujours le sel dans
+  l'enveloppe, donc **tout souvenir deja ecrit reste lisible**. Prouve par
+  un test qui reconstruit a la main l'ANCIEN format (un sel par message)
+  et le dechiffre.
+
+`PROJECT_MEMORY/LOCKED_ZONES.md` verrouille `core/memory/personnelle.py`
+(schema SQLite + migration qui n'effacera jamais) ; ce changement ne
+touche ni le schema, ni la migration, ni les donnees stockees.
+
+**Quatre affirmations du depot devenues fausses**, corrigees sur place
+plutot que laissees a tromper le prochain lecteur : le commentaire « sel et
+nonce tires au hasard a chaque appel » dans le test, celui de `TAILLE_SEL`
+(« un sel par chiffrement, jamais partage entre deux souvenirs »), le
+docstring de `Coffre` (« le sel differe a chaque appel ») et — la plus
+importante — la premise du docstring du module, « la derivation de cle ne
+tourne jamais sur un chemin chaud ». Cette phrase etait fausse, et c'est
+elle qui a autorise le defaut : elle vient d'etre remplacee par la mesure
+qui la contredit.
+
+### Deux defauts de memoire trouves, PAS corriges
+
+1. **Un souvenir sensible est introuvable par mot-cle.** Mesure : « Le
+   code du portail du chantier Fast Group est 4821. » (`sensible=True`)
+   ne ressort ni sur « quel est le code du portail Fast Group ? », ni sur
+   « code portail chantier », ni sur « 4821 » — alors que le souvenir
+   existe bien. Cause : `souvenirs_correspondant_a_des_mots` exclut
+   `sensible=1`, parce qu'au niveau SQL ces lignes sont du chiffre.
+   Maintenant que dechiffrer est gratuit, un passage borne
+   « dechiffrer puis filtrer » devient faisable.
+2. **`ORDER BY importance DESC, cree_le DESC` passe par un TEMP B-TREE**
+   (aucun index composite), et la requete par mots-cles classe par
+   importance et non par pertinence lexicale — un mot partage par plus de
+   `limite_lecture` souvenirs peut donc cacher une correspondance peu
+   importante.
 
 ## Quatre des cinq connecteurs dormants reveilles — le cinquieme refuse par sa propre decision (12/09/2026)
 

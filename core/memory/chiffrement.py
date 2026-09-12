@@ -10,10 +10,16 @@ cryptographie maison) — repris ICI en Python (`cryptography`, la bibliotheque
 deja utilisee ailleurs dans ce depot, jamais une implementation ecrite a la
 main), avec deux ecarts deliberes :
 
-1. **310 000 -> 600 000 iterations.** La derivation de cle ne tourne jamais
-   sur un chemin chaud (un souvenir sensible s'ecrit et se lit rarement, pas a
-   chaque message) : le cout supplementaire est negligeable, la marge contre
-   une attaque hors ligne ne l'est pas.
+1. **310 000 -> 600 000 iterations.** La marge contre une attaque hors
+   ligne vaut le cout. Ce paragraphe a longtemps ajoute « la derivation ne
+   tourne jamais sur un chemin chaud » — c'etait faux, et c'est ce qui a
+   cause un vrai defaut : chaque enveloppe portant son propre sel, relire
+   500 souvenirs sensibles repayait 500 derivations, soit 2 min 14 mesurees
+   le 12/09/2026. Depuis, la cle est derivee une fois par sel et gardee
+   (`CLES_GARDEES`), et le sel est partage par lot d'ecritures
+   (`MESSAGES_PAR_SEL`) — la forme ordinaire d'un conteneur chiffre. Le
+   nonce, lui, reste tire au hasard a chaque message : c'est la seule
+   unicite qu'AES-GCM exige.
 2. **Local-first par construction, pas par option.** Il n'existe aucun mode
    ou la phrase de passe quitte la machine — pas de navigateur, pas de
    Supabase, pas de synchronisation. `Coffre.depuis_environnement()` lit
@@ -72,7 +78,7 @@ CLES_GARDEES = 256
 #: coffre qui vivrait des annees.
 MESSAGES_PAR_SEL = 65_536
 
-TAILLE_SEL = 16   # octets — un sel par chiffrement, jamais partage entre deux souvenirs
+TAILLE_SEL = 16   # octets — tire au hasard, partage par lot d'ecritures (MESSAGES_PAR_SEL)
 TAILLE_NONCE = 12  # octets — la taille recommandee pour AES-GCM, jamais reutilisee
 TAILLE_CLE = 32    # octets — AES-256
 
@@ -127,7 +133,9 @@ class Coffre:
 
     Une instance de `Coffre` porte UNE phrase de passe : un souvenir chiffre
     par un coffre ne se dechiffre que par un coffre construit avec la meme
-    phrase (le sel differe a chaque appel, la phrase non).
+    phrase. Le sel est lu dans l'enveloppe au dechiffrement, donc un souvenir
+    ecrit par une instance precedente — y compris avant le partage de sel par
+    lot du 12/09/2026 — reste lisible.
     """
 
     def __init__(self, passphrase: str) -> None:
