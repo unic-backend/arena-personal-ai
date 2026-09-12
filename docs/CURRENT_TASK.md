@@ -201,6 +201,20 @@ sa réponse, et elles ne se tranchent pas sans lui.
 
 ---
 
+## Le seul module construit mais pas encore branché (12/09/2026)
+
+`python scripts/orphelins.py` le nomme, et c'est volontaire :
+
+| # | Module | Ce qui lui manque, et pourquoi ce n'est pas un oubli |
+|---|---|---|
+| 1 | `core/execution/boucle.py` | **Son consommateur.** Le mécanisme est écrit et prouvé — 20 tests, 4 sabotages : plafond de tours desserré, plan tronqué au lieu d'être refusé, `appels_outils` à 0 au lieu de `None`, budget de temps désactivé ; chacun fait tomber un test précis. Ce qu'il n'a pas, c'est une phrase du propriétaire qui le fasse tourner, et **c'est la cinquième condition ci-dessous**. Le brancher au hasard serait pire que le laisser ici : `ReasoningEngine` n'a pas de vraie replanification à faire (son étape `calcul` est déjà `facultative`, un échec n'emporte pas la réponse), et forcer la boucle là serait l'abstraction sans cas d'usage que la mission interdit. Son consommateur est l'**Executive Brain** — chunk suivant. |
+
+**Ce module ne compte donc pas comme réveillé**, et rien dans le dépôt ne
+l'annonce comme tel. Il est ici pour que sa dette soit visible, pas pour
+qu'elle soit oubliée.
+
+---
+
 ## Ce que « réveillé » veut dire ici
 
 Un module n'est pas réveillé parce qu'il importe, ni parce que ses tests
