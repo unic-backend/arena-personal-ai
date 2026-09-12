@@ -136,6 +136,17 @@ ECHECS_CONSECUTIFS_MAX = 3
 #: DEC-0038 reste entier) et une paire checkpoint/restauration pour annuler
 #: SES PROPRES modifications sans jamais toucher un fichier deja en
 #: desordre avant elle.
+#: `git_stager` a `git_abandonner` : mission ARENA x GITGUI, second passage
+#: (11/09/2026, DEC-0094), `tools/atelier/git_ops.py`. Des OPERATIONS git
+#: mutantes structurees — jamais une garde neuve sur `git()`/`executer()`
+#: (DEC-0038 reste entier, `git()` reste le chemin sans aucune limite) : ce
+#: sont des CAPACITES de plus, surs a rejouer (IDENTIFIANT_OPERATION —
+#: repasser le meme ne rejoue jamais deux fois la meme mutation), qui
+#: refusent de muter un depot qui a change de facon inattendue
+#: (TETE_ATTENDUE) et qui verifient ce qu'elles ont reellement fait plutot
+#: que de le supposer. `git_pousser` ne pousse JAMAIS en `--force` nu — seul
+#: `FORCE_AVEC_BAIL` (`--force-with-lease`) existe, et un rejet
+#: non-fast-forward n'est jamais retente avec la force automatiquement.
 ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "executer", "analyser", "diagnostiquer", "ouvrir_pr", "etat_ci",
            "convertir", "organiser_inspecter", "organiser_planifier",
@@ -148,6 +159,12 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "ordinateur_naviguer", "ordinateur_capture_ecran",
            "ordinateur_detruire",
            "git_statut", "git_diff", "git_checkpoint", "git_restaurer",
+           "git_stager", "git_desindexer", "git_commettre",
+           "git_branches_lister", "git_branche_creer", "git_basculer",
+           "git_recuperer", "git_tirer", "git_pousser",
+           "git_fusionner", "git_rebaser", "git_cherry_pick", "git_revert",
+           "git_tag_creer", "git_remiser", "git_remise_appliquer",
+           "git_conflit_lire", "git_continuer", "git_abandonner",
            "terminer")
 
 #: Les actions qui modifient quelque chose. Elles sont comptées à part dans le
@@ -176,13 +193,16 @@ ACTIONS_QUI_ANALYSENT = frozenset({
     "ordinateur_executer", "ordinateur_lire_fichier",
     "ordinateur_naviguer", "ordinateur_capture_ecran",
     "git_statut", "git_diff", "git_checkpoint", "git_restaurer",
+    "git_branches_lister", "git_conflit_lire",
 })
 
 _ETIQUETTE = re.compile(r"^\s*ACTION\s*:\s*(\w+)", re.IGNORECASE | re.MULTILINE)
 _CHAMP = re.compile(
     r"^\s*(CHEMIN|SOURCE|DESTINATION|COMMANDE|DOSSIER|TEXTE|DEPOT|TITRE|TETE|BASE|REF|FORMAT"
     r"|PLAN_ID|CONFIRMER_SUPPRESSION|OPERATION|PAGES|DEGRES|FORMAT_PDFX|NOM|COMPUTER_ID|URL"
-    r"|CIBLE|IDENTIFIANT)"
+    r"|CIBLE|IDENTIFIANT|IDENTIFIANT_OPERATION|DISTANT|BRANCHE|AMEND|FORCE_AVEC_BAIL"
+    r"|TETE_ATTENDUE|REBASE|SUR|COMMIT|DEPUIS|BASCULER|MESSAGE|INDEX|GARDER"
+    r"|INCLURE_NON_SUIVIS)"
     r"\s*:\s*(.+)$",
     re.IGNORECASE | re.MULTILINE)
 
@@ -342,6 +362,75 @@ DOSSIER: .
 ACTION: git_restaurer
 IDENTIFIANT: identifiant rendu par git_checkpoint
 
+ACTION: git_stager
+CONTENU:
+apps/backend/config.py
+tests/test_config.py
+FIN
+
+ACTION: git_commettre
+IDENTIFIANT_OPERATION: correctif-config-1
+CONTENU:
+fix: corrige le port par defaut de la config
+FIN
+
+ACTION: git_desindexer
+CHEMIN: apps/backend/config.py
+
+ACTION: git_branches_lister
+
+ACTION: git_branche_creer
+NOM: correctif-config
+DEPUIS: HEAD
+BASCULER: oui
+
+ACTION: git_basculer
+CIBLE: correctif-config
+
+ACTION: git_recuperer
+DISTANT: origin
+
+ACTION: git_tirer
+DISTANT: origin
+REBASE: non
+
+ACTION: git_pousser
+DISTANT: origin
+BRANCHE: correctif-config
+FORCE_AVEC_BAIL: non
+
+ACTION: git_fusionner
+BRANCHE: main
+
+ACTION: git_rebaser
+SUR: main
+
+ACTION: git_cherry_pick
+COMMIT: a1b2c3d
+
+ACTION: git_revert
+COMMIT: a1b2c3d
+
+ACTION: git_tag_creer
+NOM: v1.2.0
+CIBLE: HEAD
+MESSAGE: version stable
+
+ACTION: git_remiser
+MESSAGE: travail en cours
+INCLURE_NON_SUIVIS: non
+
+ACTION: git_remise_appliquer
+INDEX: 0
+GARDER: non
+
+ACTION: git_conflit_lire
+CHEMIN: apps/backend/config.py
+
+ACTION: git_continuer
+
+ACTION: git_abandonner
+
 ACTION: terminer
 CONTENU:
 ce que tu as fait, en francais simple, pour le proprietaire
@@ -423,6 +512,25 @@ COMMENT TRAVAILLER
    document = index 0) — jamais a partir de 1. OPERATION choisit entre
    `reordonner` (PAGES devient le nouvel ordre complet), `supprimer_pages`,
    `extraire_pages`, ou `pivoter_pages` (ajoute DEGRES, multiple de 90).
+13. `git_stager`/`git_desindexer` (CONTENU : un chemin par ligne, ou CHEMIN
+   pour un seul) avant `git_commettre` (CONTENU : le message). Un
+   IDENTIFIANT_OPERATION repasse a l'identique NE REJOUE JAMAIS la meme
+   mutation — utile apres une reponse perdue, jamais besoin de verifier "est-ce
+   deja fait ?" a la main. TETE_ATTENDUE (le TETE rendu par un `git_statut`
+   precedent) refuse de committer/fusionner/rebaser/picorer/annuler si le
+   depot a change depuis sans que tu le saches — relis l'etat plutot que
+   d'ignorer le refus. `git_pousser` ne force JAMAIS silencieusement : un
+   rejet non-fast-forward reste un rejet, `FORCE_AVEC_BAIL: oui` ajoute
+   seulement `--force-with-lease` (refuse tout seul si quelqu'un d'autre a
+   pousse entre-temps), jamais un `--force` nu. `git_fusionner`/`git_rebaser`
+   qui rendent un conflit laissent le depot EN CONFLIT : `git_conflit_lire`
+   montre les trois cotes (ta version, la base, l'autre version) — ne choisis
+   jamais automatiquement l'un des deux, ecris la resolution reelle, puis
+   `git_stager` le fichier resolu, puis `git_continuer`. `git_abandonner`
+   revient a l'etat d'avant la fusion/le rebase/le picorage/le revert en
+   cours, proprement. Aucune de ces actions ne fait jamais `reset --hard` ni
+   `clean -fd` : ce registre reste uniquement accessible via `executer` en
+   toutes lettres, jamais un defaut ici.
 
 REGLES
 
@@ -828,6 +936,137 @@ class DioumtoukayAgent(BaseAgent):
             if not identifiant:
                 return Resultat(False, "Il manque IDENTIFIANT — celui rendu par git_checkpoint.")
             return self.atelier.git_restaurer(identifiant)
+        if action.nom == "git_stager":
+            chemins = self._lire_fichiers(action.contenu) or (
+                [champs["CHEMIN"]] if champs.get("CHEMIN") else None)
+            if not chemins:
+                return Resultat(False, "Il manque CHEMIN, ou un bloc CONTENU: … FIN "
+                                       "avec un chemin par ligne.")
+            return self.atelier.git_stager(
+                chemins, identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_desindexer":
+            chemins = self._lire_fichiers(action.contenu) or (
+                [champs["CHEMIN"]] if champs.get("CHEMIN") else None)
+            if not chemins:
+                return Resultat(False, "Il manque CHEMIN, ou un bloc CONTENU: … FIN "
+                                       "avec un chemin par ligne.")
+            return self.atelier.git_desindexer(
+                chemins, identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_commettre":
+            message = action.contenu or champs.get("MESSAGE", "")
+            if not message.strip():
+                return Resultat(False, "Il manque le message de commit "
+                                       "(bloc CONTENU: … FIN, ou MESSAGE).")
+            amend = champs.get("AMEND", "").strip().lower() in ("oui", "true", "yes")
+            return self.atelier.git_commettre(
+                message, amend=amend, tete_attendue=champs.get("TETE_ATTENDUE") or None,
+                identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_branches_lister":
+            return self.atelier.git_branches_lister(dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_branche_creer":
+            nom = champs.get("NOM", "")
+            if not nom:
+                return Resultat(False, "Il manque NOM — le nom de la branche a creer.")
+            basculer = champs.get("BASCULER", "oui").strip().lower() in ("oui", "true", "yes")
+            return self.atelier.git_branche_creer(
+                nom, depuis=champs.get("DEPUIS") or "HEAD", basculer=basculer,
+                identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_basculer":
+            cible = champs.get("CIBLE", "")
+            if not cible:
+                return Resultat(False, "Il manque CIBLE — la branche ou le commit vise.")
+            return self.atelier.git_basculer(
+                cible, identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_recuperer":
+            return self.atelier.git_recuperer(
+                distant=champs.get("DISTANT") or "origin",
+                identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_tirer":
+            rebase = champs.get("REBASE", "").strip().lower() in ("oui", "true", "yes")
+            return self.atelier.git_tirer(
+                distant=champs.get("DISTANT") or "origin", rebase=rebase,
+                identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_pousser":
+            force_avec_bail = champs.get("FORCE_AVEC_BAIL", "").strip().lower() in ("oui", "true", "yes")
+            return self.atelier.git_pousser(
+                distant=champs.get("DISTANT") or "origin", branche=champs.get("BRANCHE") or None,
+                force_avec_bail=force_avec_bail,
+                identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_fusionner":
+            branche = champs.get("BRANCHE", "")
+            if not branche:
+                return Resultat(False, "Il manque BRANCHE — la branche a fusionner.")
+            return self.atelier.git_fusionner(
+                branche, tete_attendue=champs.get("TETE_ATTENDUE") or None,
+                identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_rebaser":
+            sur = champs.get("SUR", "")
+            if not sur:
+                return Resultat(False, "Il manque SUR — la reference sur laquelle rebaser.")
+            return self.atelier.git_rebaser(
+                sur, tete_attendue=champs.get("TETE_ATTENDUE") or None,
+                identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_cherry_pick":
+            commit = champs.get("COMMIT", "")
+            if not commit:
+                return Resultat(False, "Il manque COMMIT — le commit a picorer.")
+            return self.atelier.git_cherry_pick(
+                commit, tete_attendue=champs.get("TETE_ATTENDUE") or None,
+                identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_revert":
+            commit = champs.get("COMMIT", "")
+            if not commit:
+                return Resultat(False, "Il manque COMMIT — le commit a annuler.")
+            return self.atelier.git_revert(
+                commit, tete_attendue=champs.get("TETE_ATTENDUE") or None,
+                identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_tag_creer":
+            nom = champs.get("NOM", "")
+            if not nom:
+                return Resultat(False, "Il manque NOM — le nom du tag.")
+            return self.atelier.git_tag_creer(
+                nom, cible=champs.get("CIBLE") or "HEAD", message=champs.get("MESSAGE") or None,
+                identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_remiser":
+            inclure = champs.get("INCLURE_NON_SUIVIS", "").strip().lower() in ("oui", "true", "yes")
+            return self.atelier.git_remiser(
+                message=champs.get("MESSAGE") or None, inclure_non_suivis=inclure,
+                identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_remise_appliquer":
+            index_brut = champs.get("INDEX", "0").strip()
+            index = int(index_brut) if index_brut.isdigit() else 0
+            garder = champs.get("GARDER", "").strip().lower() in ("oui", "true", "yes")
+            return self.atelier.git_remise_appliquer(
+                index=index, garder=garder,
+                identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_conflit_lire":
+            chemin = champs.get("CHEMIN", "")
+            if not chemin:
+                return Resultat(False, "Il manque CHEMIN — le fichier en conflit a lire.")
+            return self.atelier.git_conflit_lire(chemin, dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_continuer":
+            return self.atelier.git_continuer(
+                identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
+        if action.nom == "git_abandonner":
+            return self.atelier.git_abandonner(
+                identifiant_operation=champs.get("IDENTIFIANT_OPERATION") or None,
+                dossier=champs.get("DOSSIER") or None)
         if action.nom == "analyser":
             return await self._consulter(self.analyste, "RepoEngineerAgent",
                                          champs.get("TEXTE", ""))

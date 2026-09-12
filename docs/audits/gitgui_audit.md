@@ -142,6 +142,80 @@ champ informatif (`EtatGit.branche_protegee()`), jamais un refus.
   structuré : rien dans cette conception ne l'empêche d'être ajouté plus
   tard au même module, sans réécriture.
 
+## Second passage (DEC-0094) — l'API de contrôle pour agent
+
+*Mission ARENA x GITGUI, second passage — reçue le 12/09/2026 : « ROBUST
+AGENTIC GIT CONTROL FOR USMAN CODER ». Le premier passage (DEC-0093,
+ci-dessus) couvrait l'état/diff/checkpoint — LECTURE structurée. Celui-ci
+couvre ce qui restait : les opérations MUTANTES (stage, commit, branche,
+réseau, fusion, conflit) rendues sûres à rejouer, avec précondition et
+postcondition — sa section 7 (« Agent control API », `docs/SPEC.md` du
+dépôt amont) et son `src/agent.rs`, non lus en détail la première fois.*
+
+### Ce qui a été étudié cette fois, précisément
+
+Sa section 7 et `src/agent.rs` (commit `7b08381`, inchangé
+depuis le premier passage — vérifié par `git fetch` sur le clone local avant
+d'écrire une ligne) : gitgui expose un socket Unix
+(`$XDG_RUNTIME_DIR/gitgui/<pid>.sock`), JSON lignes, douze commandes. Le
+mécanisme qui comptait pour cette mission : chaque écriture accepte un `id`
+optionnel ; `App::agent_results` (`src/ui/app.rs`), une `HashMap<String,
+AgentOutcome>` plafonnée à `AGENT_RESULTS_KEPT = 256` entrées (la plus
+ancienne évincée au-delà), retient `Queued` puis `Done{ok, message}` par
+`id` ; un `id` déjà vu rend ce résultat avec `duplicate: true` **sans
+ré-exécuter** (`agent.rs::queue()`). Backstop indépendant, propre à git
+lui-même : `Repo::commit` refuse un index identique à HEAD, donc même un
+retry SANS `id` ne crée jamais un commit vide.
+
+### Tableau d'audit — ce second passage
+
+| Mécanisme gitgui | ARENA l'a déjà ? | Utilité | Méthode d'intégration | Risque | Décision |
+|---|---|---|---|---|---|
+| Idempotence par `id`, `agent_results` plafonné à 256 | Non | Élevée — cœur explicite de la mission (§7/§32) | `JournalOperationsGit` (`tools/atelier/git_ops.py`) : `OrderedDict` plafonné à `CAPACITE_JOURNAL=256` (même chiffre, convention reprise), clé = `identifiant_operation` fourni par l'appelant, jamais généré ici | Faible — mémoire du processus, jamais persistée (comme les checkpoints DEC-0093) | **ADAPT (mécanisme repris, code non copié)** |
+| Socket Unix + JSON lignes (`agent.rs::Server::bind`) | Non applicable | Nulle : résout une frontière de PROCESS (agent dans un terminal voisin) qu'ARENA n'a pas — Dioumtoukay et `Atelier` tournent dans le même process Python | — | — | **SKIP — aucune frontière à traverser, voir docstring de `git_ops.py`** |
+| Précondition de HEAD avant une mutation | Non — aucun mécanisme comparable | Élevée (§8/§25/§33, « detect concurrent changes ») | `ErreurPreconditionGit` : `tete_attendue` optionnelle sur `commettre`/`fusionner`/`rebaser`/`cherry_pick`/`annuler_commit` ; un écart REFUSE avant tout appel git, jamais après | Faible — lecture seule avant la mutation | **NOUVEAU (le besoin n'existe pas chez gitgui — une seule interface, jamais deux agents concurrents sur le même dépôt local)** |
+| Postcondition (le commit a-t-il vraiment bougé HEAD ?) | Non | Moyenne (§9) | Chaque opération relit l'état après coup (`git_etat.lire_etat`) et rend un échec si le résultat annoncé par git ne correspond pas à ce qui est réellement mesuré | Faible | **NOUVEAU** |
+| `Command` enum fermé, 40+ variantes (`git/ops.rs`) | Partiel (DEC-0093 : 4 lectures) | Élevée | `git_ops.py` : 18 fonctions nommées (stage, commit, branche, checkout, fetch/pull/push, merge/rebase/cherry-pick/revert, tag, stash, conflit, continue/abort) — exactement la liste de la mission §6, jamais plus | Moyen — chaque fonction est une surface de plus ; mitigé par des tests réels sur chacune | **ADAPT (liste reprise, implémentation neuve)** |
+| `push_args()` : `--force-with-lease` jamais `--force` | Déjà noté en DEC-0093, pas encore câblé | Élevée (§14) | `pousser(force_avec_bail: bool)` — AUCUN paramètre `force` nu n'existe dans la signature (vérifié par un test d'introspection) | Faible si le paramètre est utilisé consciemment ; un rejet non-fast-forward n'est jamais retenté avec la force automatiquement | **INTEGRATE** |
+| Résolution de conflit à trois voies (`repo::conflict_view`) | Non | Élevée (§17, « OURS, BASE, THEIRS ») | `lire_conflit()` : `git show :1:/:2:/:3:<chemin>` — jamais un choix ours/theirs automatique, l'appelant lit, comprend, écrit la résolution lui-même | Faible — lecture seule | **ADAPT** |
+| `State::Continue/Abort/Skip` (fusion/rebase/cherry-pick/revert) | Non | Élevée (§18) | `continuer_operation()`/`abandonner_operation()` détectent l'opération en cours via `EtatOperation` (DEC-0093), jamais devinée ; `abort` seulement — jamais un `reset --hard` maison | Faible — `--abort` est l'opération de secours de git lui-même | **ADAPT** |
+| Classification d'erreurs par message | Non | Élevée (§29) | `classer_erreur()` : 12 catégories, motifs regex sur stderr, testés contre de vrais messages git | Faible | **NOUVEAU (vocabulaire de la mission, pas de gitgui — gitgui ne classe pas ses erreurs, il les affiche telles quelles en toast)** |
+| `GIT_TERMINAL_PROMPT=0` (jamais un prompt interactif bloquant) | Non explicite | Moyenne | Non nécessaire : `subprocess.run` sans stdin fourni ne PEUT de toute façon pas répondre à un prompt — git échoue immédiatement plutôt que d'attendre, vérifié en pratique (le comportement recherché existe déjà par construction) | Nul | **SKIP — déjà garanti par la façon dont `_executer` appelle `subprocess.run`** |
+| AI commit message (`git/ai.rs`) | Oui (Dioumtoukay lui-même) | — | — | — | **SKIP — doublon, déjà refusé en DEC-0093, reconfirmé** |
+
+### La vulnérabilité trouvée EN ÉCRIVANT ce module, pas supposée
+
+`git branch -D <depuis>` s'exécute réellement quand `nom="-D"` est passé nu
+à `git branch <nom> <depuis>` : git lit `-D` comme l'option de suppression
+forcée, pas comme le nom de branche voulu — et **supprime la branche que
+`depuis` désignait**, l'inverse exact de « créer une branche ». Mesuré dans
+un dépôt de test avant tout correctif (une branche `a-branch-to-protect`
+disparaissait réellement). `git checkout <nom> --` (le `--` final, censé
+lever l'ambiguïté chemin/référence) NE PROTÈGE PAS non plus : `git
+checkout` analyse ses options avant d'atteindre le `--`. Corrigé par un
+refus explicite de toute valeur commençant par `-`, AVANT la construction de
+la commande (`_commence_par_option`/`_nom_ref_invalide`), sur chaque
+paramètre qui atteint git comme référence nue (branche, distant, cible,
+commit, tag) — jamais une confiance dans le `--`/l'échappement du shell
+seul. Cinq tests de régression dédiés (`TestSecurite` dans
+`tests/tools/test_git_ops.py`) fixent ce comportement.
+
+### Ce qui a été délibérément REJETÉ cette fois, et pourquoi
+
+- **`reset --hard`/`clean -fd`/suppression de branche distante/réécriture
+  d'historique partagé** : absents de la liste d'opérations que la mission
+  énumère elle-même (§6) ; DEC-0038 reste la seule porte pour ce registre,
+  via `Atelier.git()` en toutes lettres.
+- **Une confirmation nouvelle sur les opérations destructrices** : la
+  mission le demande (§15) mais DEC-0038 a explicitement retiré toute
+  confirmation sur l'accès de Dioumtoukay à sa propre machine — ajouter une
+  garde ici reviendrait à reprendre en douce une décision du propriétaire.
+  Résolu comme DEC-0091/92/93 : des méthodes explicites, jamais un défaut
+  silencieux, jamais un `--force` nu exposé — la sûreté vient de la
+  structure de l'API, pas d'une confirmation qui contredirait DEC-0038.
+- **Stage par hunk/ligne** (`StageHunk`/`StageLines` de gitgui) : absent de
+  la liste §6 de la mission, aucun besoin agent actuel ne le demande.
+
 ## Note de livraison — écart avec la consigne « pas de code avant l'audit »
 
 La mission demandait explicitement l'audit avant toute modification de

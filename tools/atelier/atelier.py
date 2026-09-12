@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from tools.atelier import git_etat, verrous
+from tools.atelier import git_etat, git_ops, verrous
 
 logger = logging.getLogger("usman.atelier")
 
@@ -123,6 +123,10 @@ class Atelier:
         # `core/execution/reprise.py` (DEC-0072) qui porte deja cette garantie
         # au niveau de la tache entiere, un role different.
         self._checkpoints_git: Dict[str, git_etat.Checkpoint] = {}
+        # Journal d'idempotence des operations git mutantes (DEC-0094, mission
+        # ARENA x GITGUI second passage) — meme choix « memoire du processus »
+        # que les checkpoints ci-dessus, voir `git_ops.JournalOperationsGit`.
+        self._journal_git_ops = git_ops.JournalOperationsGit()
 
     # --- Trace ------------------------------------------------------------------
 
@@ -609,6 +613,173 @@ class Atelier:
                 donnees=resultat.to_dict())
         self._noter("git_restaurer", identifiant, r)
         return r
+
+    # --- Opérations Git mutantes structurées (DEC-0094, mission ARENA x GITGUI,
+    # second passage) ------------------------------------------------------------
+
+    def _depuis_operation(self, action: str, op: git_ops.ResultatOperation) -> Resultat:
+        """Convertit un `git_ops.ResultatOperation` (le type du module mutant)
+        en `Resultat` (le type de ce module) — journalise puis rend, comme
+        toutes les autres actions d'`Atelier`."""
+        r = Resultat(op.ok, op.message, sortie=op.sortie, donnees=op.to_dict())
+        self._noter(action, op.operation, r)
+        return r
+
+    def git_stager(self, chemins: List[str], identifiant_operation: Optional[str] = None,
+                   dossier: Optional[str] = None) -> Resultat:
+        """`git add` — indexe exactement les chemins demandés (mission §12,
+        « stage only intended files »), jamais un `-A` implicite."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_stager", git_ops.stager(
+            ou, chemins, identifiant_operation=identifiant_operation, journal=self._journal_git_ops))
+
+    def git_desindexer(self, chemins: List[str], identifiant_operation: Optional[str] = None,
+                       dossier: Optional[str] = None) -> Resultat:
+        """`git restore --staged` — retire de l'index sans toucher l'arbre."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_desindexer", git_ops.desindexer(
+            ou, chemins, identifiant_operation=identifiant_operation, journal=self._journal_git_ops))
+
+    def git_commettre(self, message: str, amend: bool = False, tete_attendue: Optional[str] = None,
+                      identifiant_operation: Optional[str] = None, dossier: Optional[str] = None) -> Resultat:
+        """Commit sûr à rejouer : un `identifiant_operation` répété ne crée
+        jamais un second commit (mission §7/§32) ; `tete_attendue` refuse de
+        commiter si le dépôt a changé depuis (mission §8/§25/§33)."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_commettre", git_ops.commettre(
+            ou, message, amend=amend, tete_attendue=tete_attendue,
+            identifiant_operation=identifiant_operation, journal=self._journal_git_ops))
+
+    def git_branches_lister(self, dossier: Optional[str] = None) -> Resultat:
+        """Les branches locales, structurées (mission §6, `branch_list`)."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_branches_lister", git_ops.lister_branches(ou))
+
+    def git_branche_creer(self, nom: str, depuis: str = "HEAD", basculer: bool = True,
+                          identifiant_operation: Optional[str] = None,
+                          dossier: Optional[str] = None) -> Resultat:
+        """`git branch` (+ `checkout` si `basculer`)."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_branche_creer", git_ops.creer_branche(
+            ou, nom, depuis=depuis, basculer=basculer,
+            identifiant_operation=identifiant_operation, journal=self._journal_git_ops))
+
+    def git_basculer(self, cible: str, identifiant_operation: Optional[str] = None,
+                     dossier: Optional[str] = None) -> Resultat:
+        """`git checkout <cible>` — vérifie que la branche courante correspond
+        réellement après coup (mission §9)."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_basculer", git_ops.basculer(
+            ou, cible, identifiant_operation=identifiant_operation, journal=self._journal_git_ops))
+
+    def git_recuperer(self, distant: str = "origin", identifiant_operation: Optional[str] = None,
+                      dossier: Optional[str] = None) -> Resultat:
+        """`git fetch`."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_recuperer", git_ops.recuperer(
+            ou, distant=distant, identifiant_operation=identifiant_operation, journal=self._journal_git_ops))
+
+    def git_tirer(self, distant: str = "origin", rebase: bool = False,
+                 identifiant_operation: Optional[str] = None, dossier: Optional[str] = None) -> Resultat:
+        """`git pull [--rebase]` — un vrai conflit rend un échec classé, jamais
+        poursuivi à l'aveugle."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_tirer", git_ops.tirer(
+            ou, distant=distant, rebase=rebase, identifiant_operation=identifiant_operation,
+            journal=self._journal_git_ops))
+
+    def git_pousser(self, distant: str = "origin", branche: Optional[str] = None,
+                    force_avec_bail: bool = False, identifiant_operation: Optional[str] = None,
+                    dossier: Optional[str] = None) -> Resultat:
+        """`git push` — **jamais `--force` nu** (mission §14) : seul
+        `force_avec_bail=True` (`--force-with-lease`) est possible, et un
+        rejet non-fast-forward n'est jamais retenté avec la force tout seul."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_pousser", git_ops.pousser(
+            ou, distant=distant, branche=branche, force_avec_bail=force_avec_bail,
+            identifiant_operation=identifiant_operation, journal=self._journal_git_ops))
+
+    def git_fusionner(self, branche: str, tete_attendue: Optional[str] = None,
+                      identifiant_operation: Optional[str] = None, dossier: Optional[str] = None) -> Resultat:
+        """`git merge` — un conflit laisse le dépôt en fusion, à résoudre via
+        `git_conflit_lire`/`git_continuer` (mission §17)."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_fusionner", git_ops.fusionner(
+            ou, branche, tete_attendue=tete_attendue, identifiant_operation=identifiant_operation,
+            journal=self._journal_git_ops))
+
+    def git_rebaser(self, sur: str, tete_attendue: Optional[str] = None,
+                    identifiant_operation: Optional[str] = None, dossier: Optional[str] = None) -> Resultat:
+        """`git rebase` — un conflit se résout comme une fusion (`git_conflit_
+        lire`/`git_continuer`/`git_abandonner`)."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_rebaser", git_ops.rebaser(
+            ou, sur, tete_attendue=tete_attendue, identifiant_operation=identifiant_operation,
+            journal=self._journal_git_ops))
+
+    def git_cherry_pick(self, commit: str, tete_attendue: Optional[str] = None,
+                        identifiant_operation: Optional[str] = None, dossier: Optional[str] = None) -> Resultat:
+        """`git cherry-pick`."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_cherry_pick", git_ops.cherry_pick(
+            ou, commit, tete_attendue=tete_attendue, identifiant_operation=identifiant_operation,
+            journal=self._journal_git_ops))
+
+    def git_revert(self, commit: str, tete_attendue: Optional[str] = None,
+                   identifiant_operation: Optional[str] = None, dossier: Optional[str] = None) -> Resultat:
+        """`git revert --no-edit` — AJOUTE un commit qui annule, ne réécrit
+        jamais l'historique."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_revert", git_ops.annuler_commit(
+            ou, commit, tete_attendue=tete_attendue, identifiant_operation=identifiant_operation,
+            journal=self._journal_git_ops))
+
+    def git_tag_creer(self, nom: str, cible: str = "HEAD", message: Optional[str] = None,
+                      identifiant_operation: Optional[str] = None, dossier: Optional[str] = None) -> Resultat:
+        """`git tag`."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_tag_creer", git_ops.creer_tag(
+            ou, nom, cible=cible, message=message, identifiant_operation=identifiant_operation,
+            journal=self._journal_git_ops))
+
+    def git_remiser(self, message: Optional[str] = None, inclure_non_suivis: bool = False,
+                    identifiant_operation: Optional[str] = None, dossier: Optional[str] = None) -> Resultat:
+        """`git stash push`."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_remiser", git_ops.remiser(
+            ou, message=message, inclure_non_suivis=inclure_non_suivis,
+            identifiant_operation=identifiant_operation, journal=self._journal_git_ops))
+
+    def git_remise_appliquer(self, index: int = 0, garder: bool = False,
+                             identifiant_operation: Optional[str] = None,
+                             dossier: Optional[str] = None) -> Resultat:
+        """`git stash pop` (par défaut) ou `git stash apply` (`garder=True`)."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_remise_appliquer", git_ops.appliquer_remise(
+            ou, index=index, garder=garder, identifiant_operation=identifiant_operation,
+            journal=self._journal_git_ops))
+
+    def git_conflit_lire(self, chemin: str, dossier: Optional[str] = None) -> Resultat:
+        """Les trois côtés (OURS/BASE/THEIRS) d'un fichier en conflit — jamais
+        une résolution automatique choisie ici (mission §17)."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_conflit_lire", git_ops.lire_conflit(ou, chemin))
+
+    def git_continuer(self, identifiant_operation: Optional[str] = None,
+                      dossier: Optional[str] = None) -> Resultat:
+        """`--continue` de l'opération en cours (fusion/rebase/cherry-pick/
+        revert), détectée — jamais devinée."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_continuer", git_ops.continuer_operation(
+            ou, identifiant_operation=identifiant_operation, journal=self._journal_git_ops))
+
+    def git_abandonner(self, identifiant_operation: Optional[str] = None,
+                       dossier: Optional[str] = None) -> Resultat:
+        """`--abort` de l'opération en cours — toujours sûr par construction,
+        jamais un `reset --hard` maison (mission §37)."""
+        ou = self._chemin(dossier) if dossier else self.racine
+        return self._depuis_operation("git_abandonner", git_ops.abandonner_operation(
+            ou, identifiant_operation=identifiant_operation, journal=self._journal_git_ops))
 
     def isoler(self, nom: str, base: str = "HEAD", dossier: Optional[str] = None) -> Resultat:
         """Crée un worktree git isolé pour un travail risqué ou parallèle,
