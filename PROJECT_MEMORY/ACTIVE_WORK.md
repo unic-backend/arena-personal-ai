@@ -1,17 +1,61 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-09-11, fin de session (DEC-0087 → DEC-0093).*
+*Mise à jour : 2026-09-12, fin de session (DEC-0087 → DEC-0094).*
 
 ## En cours
 
-PR #192 (DEC-0092 — Case : ordinateur Linux isolé et persistant) **fusionnée
-dans `master`** le 11/09/2026 (mergée à 23:04 UTC, surveillance CI terminée
-automatiquement) — après un conflit de fusion réel avec `master` (PRs #193/
-#194 entre-temps), résolu à la main (`42fb04a`), revérifié : suite complète
-5290 passed, 0 failed. PR #193 (DEC-0093 — gitgui) déjà fusionnée le
-11/09/2026. Rien en attente d'action côté assistant sur ces deux chunks.
+DEC-0094 (gitgui, second passage — opérations git mutantes sûres à
+rejouer : idempotence, précondition/postcondition, `tools/atelier/
+git_ops.py`) vérifiée (suite ciblée : 63 passed ; suite complète voir
+`docs/DECISIONS.md`, DEC-0094), prête à pousser sur une branche restartée
+depuis `master`. PR #192 (DEC-0092) et #193 (DEC-0093) déjà fusionnées le
+11/09/2026 — rien en attente d'action côté assistant sur ces deux chunks.
 
-## Dernier chunk : DEC-0093 — gitgui audité : état git structuré, checkpoint/restauration pour Dioumtoukay
+## Dernier chunk : DEC-0094 — gitgui, second passage : opérations git mutantes sûres à rejouer
+
+Mission reçue : approfondir DEC-0093 avec ce que la lecture seule ne
+couvrait pas — les opérations qui MUTENT le dépôt (stage, commit, branche,
+réseau, fusion, conflit), sûres à rejouer (idempotence par identifiant,
+section 7 du SPEC.md du dépôt amont gitgui et son `src/agent.rs`, jamais son code copié),
+protégées contre une mutation sur un dépôt qui a changé sans qu'on le sache
+(précondition de HEAD), vérifiant ce qu'elles ont réellement fait
+(postcondition). Audit complet : `docs/audits/gitgui_audit.md`, section
+« Second passage ».
+
+`tools/atelier/git_ops.py` (nouveau) : `JournalOperationsGit` (idempotence,
+plafonné à 256 comme gitgui), `ErreurPreconditionGit` (refuse AVANT de
+muter si le HEAD a changé), `TypeErreurGit` (13 catégories classées par
+motif), 18 opérations (`stager`/`desindexer`/`commettre`,
+branches/checkout, réseau — `pousser` n'expose AUCUN `force` nu, seul
+`force_avec_bail` existe —, fusion/rebase/cherry-pick/revert, tag, stash,
+`lire_conflit` à trois côtés, continue/abort détectés jamais devinés).
+Câblé jusqu'à 18 nouvelles actions Dioumtoukay.
+
+**Vulnérabilité trouvée en écrivant le module, corrigée avant de
+continuer** : un nom de branche `"-D"` passé nu à `git branch <nom>
+<depuis>` executait RÉELLEMENT `git branch -D <depuis>` — suppression
+forcée de la branche que `depuis` désignait, l'inverse de « créer une
+branche ». Mesuré dans un dépôt de test (branche protégée réellement
+disparue) avant le correctif : refus de toute référence commençant par `-`
+avant de construire la commande, sur chaque paramètre atteignant git comme
+référence nue.
+
+Rejeté et documenté (`docs/DECISIONS.md`, DEC-0094) : socket Unix (aucune
+frontière de process à traverser, Dioumtoukay/`Atelier` dans le même
+process Python), `reset --hard`/`clean -fd`/réécriture d'historique
+partagé (hors de la liste d'opérations de la mission, DEC-0038 reste la
+seule porte via `Atelier.git()`), une confirmation nouvelle sur les
+opérations destructrices (contredirait DEC-0038).
+
+**63 tests nouveaux** : `test_git_ops.py` (47, dont un vrai conflit de
+fusion résolu de bout en bout, un vrai rejet non-fast-forward, un vrai
+`--force-with-lease` qui refuse tant que le bail est périmé, et 5 tests de
+régression sur l'injection par option) ; `test_atelier_git_ops.py` (10,
+dont l'idempotence partagée sur la durée de vie d'un `Atelier`) ;
+`test_dioumtoukay_git_ops.py` (6, dont un identifiant répété sur DEUX
+instances d'agent successives).
+
+## Chunk précédent : DEC-0093 — gitgui audité : état git structuré, checkpoint/restauration pour Dioumtoukay
 
 Mission reçue : étudier `antonellof/gitgui` (MIT, commit `7b08381`) et ne
 retenir QUE ce qui rend les agents de codage d'ARENA plus sûrs/autonomes/

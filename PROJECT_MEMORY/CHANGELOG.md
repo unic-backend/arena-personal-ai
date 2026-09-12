@@ -1289,3 +1289,47 @@ commits (doublon/visuel).
 de l'agent). `ruff check` propre. Suite complète : **5256 passed, 31
 skipped, 48 deselected, 0 failed** (487.70s, mesuré le 11/09/2026 —
 exactement +34 sur la mesure DEC-0091).
+
+---
+
+## 12/09/2026 — gitgui, second passage : opérations git mutantes sûres à rejouer (DEC-0094)
+
+Mission reçue : approfondir DEC-0093 avec les opérations qui MUTENT le
+dépôt (stage, commit, branche, réseau, fusion, conflit) — sûres à rejouer
+(idempotence par identifiant, section 7 du SPEC.md du dépôt amont gitgui
+et son `src/agent.rs`, jamais son code copié), protégées contre une mutation sur
+un dépôt qui a changé sans qu'on le sache (précondition de HEAD), et qui
+vérifient ce qu'elles ont réellement fait (postcondition) plutôt que de le
+supposer. Audit complet : `docs/audits/gitgui_audit.md`, section « Second
+passage ».
+
+`tools/atelier/git_ops.py` (nouveau) : `JournalOperationsGit` (idempotence,
+plafonné à 256 comme `AGENT_RESULTS_KEPT` de gitgui), `ErreurPreconditionGit`,
+`TypeErreurGit` (13 catégories classées par motif), 18 opérations
+(stage/unstage/commit, branches/checkout, fetch/pull/push — **`pousser`
+n'expose aucun `force` nu**, seul `force_avec_bail` existe —, merge/rebase/
+cherry-pick/revert, tag, stash, `lire_conflit` à trois côtés OURS/BASE/
+THEIRS, continue/abort détectés jamais devinés). Câblé dans `Atelier` (18
+méthodes) et `DioumtoukayAgent` (18 nouvelles `ACTIONS`).
+
+**Vulnérabilité trouvée en écrivant le module, corrigée avant de
+continuer** : un nom de branche `"-D"` passé nu à `git branch <nom>
+<depuis>` exécutait RÉELLEMENT `git branch -D <depuis>` — suppression
+forcée de la branche visée par `depuis`. Mesuré dans un dépôt de test avant
+correctif. Corrigé par un refus de toute référence commençant par `-` avant
+de construire la commande.
+
+Rejeté et documenté (DEC-0094) : socket Unix (aucune frontière de process à
+traverser), `reset --hard`/`clean -fd`/réécriture d'historique partagé
+(hors de la liste de la mission, DEC-0038 reste la seule porte), une
+confirmation nouvelle sur les opérations destructrices (contredirait
+DEC-0038).
+
+**63 tests nouveaux, sur de vrais dépôts git** (`test_git_ops.py` 47, dont
+un vrai conflit résolu de bout en bout, un vrai rejet non-fast-forward, un
+`--force-with-lease` qui refuse tant que le bail est périmé, et 5 tests de
+régression sur l'injection par option ; `test_atelier_git_ops.py` 10, dont
+l'idempotence partagée sur la durée de vie d'un `Atelier` ;
+`test_dioumtoukay_git_ops.py` 6, dont un identifiant répété sur deux
+instances d'agent successives). `ruff check` propre.
+`scripts/orphelins.py` : 300 modules, 240 atteints (+1/+1).

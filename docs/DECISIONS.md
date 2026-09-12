@@ -8556,3 +8556,176 @@ session (elle tourne sur Linux, cloud) — le choix de `git status
 --porcelain=v2` plutôt que `git2` a été fait précisément pour rester
 portable sans compilation, mais ce n'est pas une mesure réelle sur la
 machine du propriétaire.
+
+---
+
+## DEC-0094 — gitgui, second passage : opérations Git mutantes sûres à rejouer, jamais une garde sur DEC-0038
+
+**2026-09-12.** Mission reçue : « ROBUST AGENTIC GIT CONTROL FOR USMAN
+CODER » — approfondir DEC-0093 avec ce qui restait non couvert : les
+opérations qui MUTENT le dépôt (stage, commit, branche, réseau, fusion,
+conflit), rendues sûres à rejouer (idempotence par identifiant), protégées
+contre une mutation sur un dépôt qui a changé sans qu'on le sache
+(précondition de HEAD), et qui vérifient ce qu'elles ont réellement fait
+(postcondition) plutôt que de le supposer. Deuxième lecture de
+`antonellof/gitgui` (MIT, commit `7b08381`, inchangé — vérifié par `git
+fetch`), cette fois sa section 7 (docs/SPEC.md du dépôt amont, jamais
+vendoré ici) et son `src/agent.rs` (l'API de contrôle pour agent, non
+détaillée au premier passage). Audit complet :
+`docs/audits/gitgui_audit.md`, section « Second passage ».
+
+### Ce qu'ARENA possédait déjà, vérifié avant d'écrire une ligne
+
+DEC-0093 donnait la LECTURE structurée (`git_etat.py` : état, diff,
+checkpoint/restauration) mais aucune ÉCRITURE structurée — seul
+`Atelier.git()` (DEC-0038, shell nu, aucune garde) existait pour muter.
+Aucun mécanisme d'idempotence, de précondition ou de classification
+d'erreur n'existait nulle part dans le dépôt avant ce travail.
+
+### Le mécanisme étudié chez gitgui, et ce qui en a été repris (jamais le code)
+
+`src/agent.rs::queue()` : chaque écriture accepte un `id` optionnel ;
+`App::agent_results` (`HashMap` plafonnée à 256 entrées, la plus ancienne
+évincée) retient `Queued` puis `Done{ok, message}` sous cet `id` ; un `id`
+déjà vu rend ce résultat avec `duplicate: true` **sans ré-exécuter**.
+Architecture non copiée : gitgui relie une interface graphique et un git
+worker sur des THREADS SÉPARÉS via un socket Unix, pour qu'un agent dans un
+AUTRE PROCESS (un terminal voisin) pilote l'interface. ARENA n'a jamais eu
+cette frontière — Dioumtoukay et `Atelier` tournent dans le même process
+Python, un appel de méthode est déjà le canal que le socket existe pour
+fournir chez eux. Ouvrir un socket ici aurait recréé une frontière
+inexistante, pour aucun bénéfice.
+
+### Ce qui a été construit — un module, dix-huit opérations, câblées jusqu'à Dioumtoukay
+
+**`tools/atelier/git_ops.py`** (nouveau) :
+
+1. **`JournalOperationsGit`** — le mécanisme d'idempotence, réimplémenté en
+   Python : un `OrderedDict` plafonné à 256 entrées (même chiffre que
+   gitgui), clé = `identifiant_operation` fourni par l'appelant. Un
+   identifiant déjà vu rend le résultat déjà obtenu (`doublon=True`), sans
+   ré-exécuter quoi que ce soit.
+2. **Précondition de HEAD** (`ErreurPreconditionGit`) — `tete_attendue`
+   optionnelle sur les opérations qui en ont besoin (`commettre`,
+   `fusionner`, `rebaser`, `cherry_pick`, `annuler_commit`) : un écart entre
+   le HEAD attendu et le HEAD réel REFUSE l'opération avant tout appel git,
+   jamais après une mutation partielle.
+3. **Postcondition** — chaque opération relit l'état réel après coup
+   (`git_etat.lire_etat`) et rapporte un échec si ce que git a annoncé ne
+   correspond pas à ce qui est réellement mesuré (HEAD qui n'a pas bougé
+   après un commit annoncé réussi, branche courante qui ne correspond pas
+   après un checkout annoncé réussi).
+4. **`TypeErreurGit`** — 13 catégories (NON_UN_DEPOT, CONFLIT, ECHEC_AUTH,
+   NON_FAST_FORWARD, DISTANT_INACCESSIBLE, BRANCHE_INTROUVABLE,
+   FICHIER_VERROU, REBASE_EN_COURS, FUSION_EN_COURS, PERMISSION_REFUSEE,
+   RIEN_A_FAIRE, INCONNUE…), classées par motif sur le message d'erreur réel
+   — jamais du texte brut à interpréter à l'aveugle.
+5. **Dix-huit opérations** : `stager`/`desindexer`/`commettre` (index et
+   commit), `lister_branches`/`creer_branche`/`basculer`,
+   `recuperer`/`tirer`/`pousser` (réseau — **`pousser` n'expose aucun
+   paramètre `force` nu**, seul `force_avec_bail` existe et pousse
+   `--force-with-lease`), `fusionner`/`rebaser`/`cherry_pick`/`annuler_commit`,
+   `creer_tag`, `remiser`/`appliquer_remise`, `lire_conflit` (les trois
+   côtés OURS/BASE/THEIRS d'un fichier en conflit — jamais un choix
+   automatique), `continuer_operation`/`abandonner_operation` (détectent
+   l'opération en cours via `EtatOperation`, jamais devinée).
+6. **Câblage complet** : 18 méthodes `Atelier.git_*` (un `Dict[str,
+   git_ops.Checkpoint]`-like journal partagé sur la durée de vie de
+   l'atelier), 18 nouvelles `ACTIONS` Dioumtoukay avec leurs champs
+   (`IDENTIFIANT_OPERATION`, `TETE_ATTENDUE`, `FORCE_AVEC_BAIL`, etc.),
+   exemples et instruction numérotée dans `CONSIGNE`.
+
+Tout est un AJOUT : aucune garde n'a été posée sur `Atelier.git()`/
+`executer()` — DEC-0038 reste entier et non re-litigé.
+
+### La vulnérabilité trouvée en écrivant ce module, corrigée avant de continuer
+
+`git branch -D <depuis>` s'exécutait RÉELLEMENT quand un nom de branche à
+créer valait `"-D"` : git lisait `-D` comme l'option de suppression forcée,
+pas comme le nom voulu, et supprimait la branche que `depuis` désignait —
+l'inverse exact de l'opération demandée. Mesuré dans un dépôt de test avant
+tout correctif (une branche protégée disparaissait pour de vrai). Le `--`
+final (`git checkout <nom> --`), qu'on pourrait croire protecteur, NE
+PROTÈGE PAS : `git checkout` lit ses options avant de l'atteindre. Corrigé
+par un refus explicite de toute référence commençant par `-`, avant même de
+construire la commande, sur chaque paramètre qui atteint git comme
+référence nue (nom de branche/tag à créer, cible, distant, commit) — cinq
+tests de régression dédiés le fixent.
+
+### Ce qui a été délibérément REJETÉ, et pourquoi
+
+- **Socket Unix + JSON lignes** : résout une frontière de PROCESS qu'ARENA
+  n'a pas (Dioumtoukay et `Atelier` sont dans le même process Python).
+- **`reset --hard`/`clean -fd`/suppression de branche distante/réécriture
+  d'historique partagé** : absents de la liste d'opérations que la mission
+  énumère elle-même ; DEC-0038 reste la seule porte, via `Atelier.git()` en
+  toutes lettres, jamais un défaut silencieux ici.
+- **Une confirmation nouvelle sur les opérations destructrices** : la
+  mission le demande, mais DEC-0038 a explicitement retiré toute
+  confirmation sur l'accès de Dioumtoukay à sa propre machine — la sûreté
+  vient ici de la structure de l'API (pas de `--force` nu exposé, jamais un
+  défaut destructeur), jamais d'une garde qui contredirait cette décision.
+- **AI commit message** : Dioumtoukay EST déjà l'agent qui rédige ses
+  commits — doublon, déjà refusé en DEC-0093, reconfirmé.
+- **Stage par hunk/ligne** : absent de la liste d'opérations de la mission,
+  aucun besoin agent actuel.
+
+### Tests — 63 nouveaux, sur de vrais dépôts git, jamais un raccourci
+
+- `tests/tools/test_git_ops.py` (47) : classification d'erreurs, stage/
+  unstage, commit (avec vérification de postcondition), idempotence (un
+  identifiant répété ne recommite jamais, un plafond de journal qui oublie
+  le plus ancien), précondition de HEAD (un changement externe refuse la
+  mutation SANS la faire), préservation d'un fichier du propriétaire non
+  lié, branches (création, bascule vérifiée, nom invalide refusé), réseau
+  réel (fetch/pull entre deux vrais clones, non-fast-forward refusé sans
+  forcer, `--force-with-lease` qui refuse tant que le bail est périmé et
+  réussit après un fetch), fusion en VRAI conflit (détection, lecture à
+  trois côtés, résolution puis continuation, abandon qui revient à un état
+  valide), rebase conflictuel + abandon, cherry-pick et revert réels, tag,
+  stash/apply, et la classe `TestSecurite` (nom de fichier avec espaces et
+  guillemets, message de commit avec métacaractères shell, chemin unicode,
+  chemin très long, traversée de chemin, et les cinq tests de régression
+  sur l'injection par option).
+- `tests/tools/test_atelier_git_ops.py` (10) : que l'atelier appelle
+  `git_ops` et journalise, sans reparser ce que la suite du module a déjà
+  prouvé — dont l'idempotence PARTAGÉE sur la durée de vie d'un même
+  `Atelier` (le journal n'est pas recréé à chaque appel).
+- `tests/agents/test_dioumtoukay_git_ops.py` (6) : via la boucle COMPLÈTE de
+  Dioumtoukay, dont un identifiant d'opération répété sur DEUX instances
+  d'agent successives (simulant une vraie relance après redémarrage de la
+  conversation) qui ne recommite jamais une seconde fois.
+
+`ruff check .` propre sur tout le dépôt. Suite ciblée (les 3 fichiers
+ci-dessus) : **63 passed**. Suite complète : **5353 passed, 31 skipped,
+52 deselected, 0 failed** (428.14s, mesuré le 12/09/2026) — exactement +63
+sur la mesure DEC-0092/0093 (5290). Une régression réelle trouvée par la
+suite complète (pas par les tests ciblés) : `tests/test_documentation.py`
+a détecté que ce texte citait le SPEC.md du dépôt AMONT gitgui (jamais
+vendoré ici) entre accents graves, lu comme un chemin ARENA introuvable
+par le vérificateur de citations. Corrigé par une reformulation sans
+accents graves autour de ce chemin amont, revérifié
+(`test_documentation.py` : 18 passed).
+
+### Ce que ça coûte si c'est faux
+
+Le journal d'idempotence vit en mémoire du processus `Atelier` — un
+redémarrage du backend le perd entièrement, exactement comme les
+checkpoints DEC-0093 ; un identifiant réutilisé après un redémarrage
+exécute donc une VRAIE nouvelle opération plutôt que de retrouver un
+résultat qui n'existe plus. C'est le choix assumé (pas un oubli) : la
+persistance d'une reprise au niveau tâche reste le rôle de
+`core/execution/reprise.py` (DEC-0072), pas de ce module. La précondition
+de HEAD protège contre un changement EXTERNE au dépôt, jamais contre deux
+appels de ce module lui-même qui s'entrelaceraient dans le même processus
+— c'est `verrous.pour(racine)` (sérialisation par dépôt) qui couvre ce
+second cas, pas la précondition. La classification d'erreurs est fondée sur
+des motifs de texte (langue anglaise de git, jamais localisée) : un git
+configuré dans une autre langue (`LANG=fr_FR` avec des messages traduits)
+rendrait `INCONNUE` là où l'anglais aurait été classé précisément — non
+mesuré ici, une limite réelle plutôt qu'une supposition d'universalité.
+Windows n'a pas été mesuré dans cette session (elle tourne sur Linux,
+cloud) — aucune primitive Unix (socket, `os.killpg`, `start_new_session`)
+n'a été ajoutée par ce module lui-même (il réutilise `git_etat._executer`,
+déjà portable), mais ce n'est pas une mesure réelle sur la machine du
+propriétaire.
