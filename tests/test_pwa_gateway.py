@@ -610,6 +610,123 @@ class TestContinuiteDeConversation:
             "resoudre son antecedent")
 
 
+class TestIdempotenceParRunId:
+    """Avant ce correctif (audit externe, commit f7f0478) : un flux coupe
+    avant que le client ne voie `done` declenchait une relance identique
+    (meme `run_id`, cote `remoteTransport.ts`), et le serveur n'utilisait
+    jamais `run_id` pour l'empecher — `dispatch_request` (un e-mail parti,
+    un devis genere) tournait deux fois pour une seule action voulue.
+    Corrige le 12/09/2026 (`JournalExecutions`)."""
+
+    def _agent_specialise(self, monkeypatch, intention="EMAIL"):
+        async def _intention(_demande, espace=None):
+            return intention
+        monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _intention)
+
+    def test_meme_run_id_rejoue_le_resultat_sans_ré_executer(
+        self, client, entetes, fournisseur, monkeypatch,
+    ):
+        """La reponse a reussi mais le client ne l'a jamais vue (flux coupe) :
+        la relance avec le MEME run_id ne doit jamais renvoyer une seconde
+        fois l'agent — elle doit rejouer exactement la meme reponse."""
+        fournisseur()
+        self._agent_specialise(monkeypatch)
+
+        appels = []
+
+        async def _resultat(_requete, intent=None):
+            appels.append(intent)
+            return {"response": f"E-mail envoye (appel {len(appels)}).", "sources": []}
+        monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+        premiere = trames(demander(client, entetes, text="envoie le devis par mail",
+                                   run_id="run-idempotence-1").text)
+        seconde = trames(demander(client, entetes, text="envoie le devis par mail",
+                                  run_id="run-idempotence-1").text)
+
+        assert appels == ["EMAIL"], (
+            f"dispatch_request a ete appele {len(appels)} fois pour un seul "
+            "run_id : l'action a ete rejouee, pas seulement la reponse")
+        jetons_1 = [c["text"] for c in premiere if c["type"] == "token"]
+        jetons_2 = [c["text"] for c in seconde if c["type"] == "token"]
+        assert jetons_1 == jetons_2 == ["E-mail envoye (appel 1)."]
+
+    def test_un_echec_metier_explicite_n_est_jamais_retente(
+        self, client, entetes, fournisseur, monkeypatch,
+    ):
+        """« Ne jamais retenter un echec explicite » : le meme run_id doit
+        rejouer la MEME erreur, jamais redemander a l'agent en esperant un
+        succes different."""
+        fournisseur()
+        self._agent_specialise(monkeypatch, intention="FINANCE")
+
+        appels = []
+
+        async def _echec(_requete, intent=None):
+            appels.append(intent)
+            return {"response": "", "sources": []}  # reponse vide -> erreur metier
+        monkeypatch.setattr(pwa_gateway, "dispatch_request", _echec)
+
+        premiere = trames(demander(client, entetes, text="analyse ce marche",
+                                   run_id="run-idempotence-echec").text)
+        seconde = trames(demander(client, entetes, text="analyse ce marche",
+                                  run_id="run-idempotence-echec").text)
+
+        assert len(appels) == 1, "l'echec metier a ete retente automatiquement"
+        erreurs_1 = [c for c in premiere if c["type"] == "error"]
+        erreurs_2 = [c for c in seconde if c["type"] == "error"]
+        assert len(erreurs_1) == 1 and len(erreurs_2) == 1
+        assert erreurs_1[0]["message"] == erreurs_2[0]["message"]
+
+    def test_une_execution_encore_en_cours_refuse_un_doublon_concurrent(
+        self, client, entetes, fournisseur, monkeypatch,
+    ):
+        """Une deuxieme requete avec le MEME run_id, alors que la premiere
+        n'a pas encore fini (marqueur EN_COURS), ne doit jamais declencher
+        une deuxieme execution — jamais une hypothese sur ce que la premiere
+        a deja fait."""
+        fournisseur()
+        self._agent_specialise(monkeypatch)
+
+        appels = []
+
+        async def _resultat(_requete, intent=None):
+            appels.append(intent)
+            return {"response": "Ne devrait jamais s'executer.", "sources": []}
+        monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+        # Simule une premiere execution encore en vol (flux coupe en cours de
+        # route, avant que `terminer()` ne soit appele) sans avoir a
+        # orchestrer un vrai entrelacement de threads.
+        pwa_gateway._journal_executions.marquer_en_cours("run-en-vol")
+
+        reponse = trames(demander(client, entetes, text="envoie le devis par mail",
+                                  run_id="run-en-vol").text)
+
+        assert appels == [], "une deuxieme execution a demarre alors que la premiere tournait encore"
+        erreurs = [c for c in reponse if c["type"] == "error"]
+        assert len(erreurs) == 1
+        assert "en cours" in erreurs[0]["message"].lower()
+
+    def test_deux_run_id_distincts_s_executent_chacun_independamment(
+        self, client, entetes, fournisseur, monkeypatch,
+    ):
+        fournisseur()
+        self._agent_specialise(monkeypatch)
+
+        appels = []
+
+        async def _resultat(_requete, intent=None):
+            appels.append(intent)
+            return {"response": f"reponse {len(appels)}", "sources": []}
+        monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+        demander(client, entetes, text="premier message", run_id="run-distinct-a")
+        demander(client, entetes, text="deuxieme message", run_id="run-distinct-b")
+
+        assert len(appels) == 2, "deux run_id distincts doivent chacun s'executer reellement"
+
+
 def test_plaquiste_recoit_le_fil_entier_pas_la_derniere_ligne_seule(
     client, entetes, fournisseur, monkeypatch,
 ):
