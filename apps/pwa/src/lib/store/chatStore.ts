@@ -596,7 +596,10 @@ export const useChat = create<ChatState>((set, get) => {
         .slice(-8)
         .map((m) => ({ role: m.role, content: m.text }));
       const transport = choisirTransport(remote, surAppareil);
-      const stream = transport.run({ text: visibleText, video, attachments, history }, contexteAppareil, abort.signal);
+      const stream = transport.run(
+        { text: visibleText, video, attachments, history, conversationId: convId },
+        contexteAppareil, abort.signal,
+      );
       for await (const chunk of stream) {
         log(chunk);
         if (chunk.type === 'activity') {
@@ -750,7 +753,10 @@ export const useChat = create<ChatState>((set, get) => {
         .map((m) => ({ role: m.role, content: m.text }));
 
       const transport = choisirTransport(remote);
-      const stream = transport.run({ text: trimmedText, history }, contexteAppareil, abort.signal);
+      const stream = transport.run(
+        { text: trimmedText, history, conversationId: convId },
+        contexteAppareil, abort.signal,
+      );
 
       for await (const chunk of stream) {
         log(chunk);
@@ -904,7 +910,10 @@ export const useChat = create<ChatState>((set, get) => {
         .map((m) => ({ role: m.role, content: m.text }));
 
       const transport = choisirTransport(remote);
-      const stream = transport.run({ text: precedingUserMsg.text, history }, contexteAppareil, abort.signal);
+      const stream = transport.run(
+        { text: precedingUserMsg.text, history, conversationId: convId },
+        contexteAppareil, abort.signal,
+      );
 
       for await (const chunk of stream) {
         log(chunk);

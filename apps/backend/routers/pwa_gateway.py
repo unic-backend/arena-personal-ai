@@ -8,7 +8,11 @@ parle. **C'est la seconde qui est retenue.**
 Le protocole, releve dans son code (`src/lib/activity/`) :
 
 - `POST /agent/stream` — corps JSON `{text, locale, history, attachments,
-  connectors, run_id, persona, memories}`, reponse en `text/event-stream`.
+  connectors, run_id, conversation_id, persona, memories}`, reponse en
+  `text/event-stream`. `conversation_id` (stable, un par fil) porte la
+  session memoire ; `run_id` (nouveau a chaque message) reste ce qu'il a
+  toujours ete, un identifiant d'EXECUTION — les deux ne se confondent plus
+  depuis le 12/09/2026.
 - `POST /files` — **un** fichier sous le nom `file`, un champ `kind`, et en
   reponse **un objet seul**. Suppose au pluriel le 2026-08-27, ce qui rendait
   un 422 : le protocole se lit, il ne se devine pas.
@@ -115,6 +119,14 @@ class DemandeAgent(BaseModel):
     attachments: List[str] = Field(default_factory=list)
     connectors: Any = None
     run_id: Optional[str] = None
+    # Identite STABLE de la conversation (le `activeId` de son store cote
+    # PWA) — distincte de `run_id`, qui identifie UNE execution et change a
+    # chaque message (mission ARENA x AUDIT, corrige le 12/09/2026 : le
+    # serveur utilisait `run_id` comme session de memoire, donc chaque
+    # nouveau message perdait l'historique des tours precedents). Optionnel
+    # pour les anciens clients qui ne l'envoient pas encore : `run_id` reste
+    # le repli, exactement le comportement d'avant ce champ.
+    conversation_id: Optional[str] = None
     persona: Optional[Dict[str, Any]] = None
     memories: Any = None
     # L'espace choisi dans la barre laterale de la PWA (VOLET « espaces
@@ -508,7 +520,11 @@ async def flux_agent(demande: DemandeAgent):
     relance la requete jusqu'a trois fois, et une reponse devient trois.
     """
     _signaler_non_applique(demande)
-    session = demande.run_id or "pwa"
+    # `conversation_id` (stable, un par fil) prime sur `run_id` (une nouvelle
+    # valeur par message) : sans ca, chaque tour ouvrait une session de
+    # memoire differente et un agent specialise ne voyait jamais le tour
+    # precedent (mission ARENA x AUDIT, corrige le 12/09/2026).
+    session = demande.conversation_id or demande.run_id or "pwa"
     proprietaire = memory.get_fact("owner") or "Ousmane"
 
     async def flux():

@@ -524,6 +524,92 @@ def test_les_huit_intentions_reconnectees_atteignent_dispatch_request(
     assert any(c["type"] == "done" for c in charges)
 
 
+class TestContinuiteDeConversation:
+    """Avant ce correctif (audit externe, commit f7f0478) : l'interface
+    envoyait un `run_id` NEUF a chaque message, et le serveur l'utilisait
+    comme identifiant de SESSION memoire (`session = demande.run_id or
+    "pwa"`) — chaque nouveau message ouvrait donc une session vierge, et un
+    agent specialise lisant l'historique (FRESH_INFO : « Celle de 2006 ? »
+    apres une question sur une coupe du monde) ne voyait jamais le tour
+    precedent. Corrige le 12/09/2026 : un `conversation_id` STABLE, distinct
+    du `run_id` par execution, porte desormais la session."""
+
+    def test_conversation_id_stable_garde_l_historique_entre_deux_messages(
+        self, client, entetes, fournisseur, chat_direct,
+    ):
+        fournisseur(morceaux=["Bonjour"])
+        demander(client, entetes, text="Je m'appelle Seck",
+                conversation_id="conv-continuite-1", run_id="run-1")
+        demander(client, entetes, text="Quel est mon nom ?",
+                conversation_id="conv-continuite-1", run_id="run-2")
+
+        historique = pwa_gateway.memory.get_recent_history(
+            session_id="conv-continuite-1", limit=10)
+        textes_utilisateur = [m["content"] for m in historique if m["role"] == "user"]
+        assert textes_utilisateur == ["Je m'appelle Seck", "Quel est mon nom ?"], (
+            "les deux tours ne partagent pas la meme session malgre le meme "
+            "conversation_id — la continuite est cassee")
+
+    def test_deux_conversations_distinctes_ne_partagent_pas_leur_historique(
+        self, client, entetes, fournisseur, chat_direct,
+    ):
+        fournisseur(morceaux=["Bonjour"])
+        demander(client, entetes, text="Secret de la conversation A",
+                conversation_id="conv-A", run_id="run-a1")
+        demander(client, entetes, text="Question de la conversation B",
+                conversation_id="conv-B", run_id="run-b1")
+
+        historique_b = pwa_gateway.memory.get_recent_history(session_id="conv-B", limit=10)
+        textes_b = [m["content"] for m in historique_b if m["role"] == "user"]
+        assert "Secret de la conversation A" not in textes_b, (
+            "la conversation B voit un message de la conversation A : "
+            "isolation cassee")
+        assert textes_b == ["Question de la conversation B"]
+
+    def test_sans_conversation_id_le_run_id_reste_la_session_repli(
+        self, client, entetes, fournisseur, chat_direct,
+    ):
+        """Compatibilite avec un ancien client qui n'envoie pas encore
+        `conversation_id` : le comportement d'avant ce correctif continue de
+        marcher tel quel."""
+        fournisseur(morceaux=["Bonjour"])
+        demander(client, entetes, text="Message d'un ancien client",
+                run_id="run-legacy-1")
+
+        historique = pwa_gateway.memory.get_recent_history(
+            session_id="run-legacy-1", limit=10)
+        textes = [m["content"] for m in historique if m["role"] == "user"]
+        assert textes == ["Message d'un ancien client"]
+
+    def test_fresh_info_recoit_l_identifiant_de_conversation_pas_le_run_id(
+        self, client, entetes, fournisseur, monkeypatch,
+    ):
+        """Le cas nomme par l'audit : FRESH_INFO lit `session_id` pour
+        resoudre une question elliptique. Ce test verifie que
+        dispatch_request recoit desormais `session_id=conversation_id`,
+        jamais le `run_id` qui change a chaque message."""
+        fournisseur()
+
+        async def _fresh_info(_demande, espace=None):
+            return "FRESH_INFO"
+        monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _fresh_info)
+
+        recu = {}
+
+        async def _resultat(requete, intent=None):
+            recu["session_id"] = requete.session_id
+            return {"response": "Coupe du monde 2006 : Italie.", "sources": []}
+        monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+        demander(client, entetes, text="Celle de 2006 ?",
+                conversation_id="conv-fresh-info", run_id="run-qui-change")
+
+        assert recu["session_id"] == "conv-fresh-info", (
+            "FRESH_INFO a recu le run_id (change a chaque message) au lieu "
+            "du conversation_id stable — la question elliptique ne peut pas "
+            "resoudre son antecedent")
+
+
 def test_plaquiste_recoit_le_fil_entier_pas_la_derniere_ligne_seule(
     client, entetes, fournisseur, monkeypatch,
 ):

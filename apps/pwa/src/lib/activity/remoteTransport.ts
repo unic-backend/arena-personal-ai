@@ -200,6 +200,14 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
         attachments: uploaded.map((value) => value.id),
         connectors: await resolveActiveConnectors(),
         run_id: runId,
+        // Identite STABLE du fil (le `activeId` du store), distincte de
+        // `run_id` ci-dessus qui change a chaque message : sans elle, le
+        // serveur utilisait `run_id` comme session de memoire et perdait
+        // les tours precedents a chaque nouveau message (corrige le
+        // 12/09/2026). Absent (ancien client, ou aucune conversation active
+        // encore creee) : le serveur retombe sur `run_id`, comportement
+        // inchange.
+        conversation_id: request.conversationId,
         // L'espace ouvert dans l'interface, pour que le serveur route direct
         // vers l'agent dedie au lieu de deviner l'intention depuis la phrase.
         // `null` (Usman general) ne change rien : le classifieur habituel
