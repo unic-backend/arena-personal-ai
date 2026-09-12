@@ -95,6 +95,46 @@ class TestConfinementPreserve:
             f"une tentative de traversee ({cible!r}) n'a pas ete refusee : "
             f"{reponse.status_code}")
 
+    @pytest.mark.parametrize("cible", [
+        "%2e%2e%2f%2e%2e%2fetc%2fpasswd",
+        "conversions/..%2f..%2f..%2fetc%2fpasswd",
+        "/etc/passwd",
+    ])
+    def test_une_traversee_encodee_est_refusee(self, client, entetes, cible):
+        """Ajoute le 12/09/2026 en diagnostic : les trois tentatives d'origine
+        n'essayaient pas l'encodage pourcent complet ni un chemin absolu."""
+        reponse = client.get(f"/media/rendered/{cible}", headers=entetes)
+        assert reponse.status_code in (403, 404), (
+            f"{cible!r} n'a pas ete refuse : {reponse.status_code}")
+        assert "root:" not in reponse.text, f"fuite de /etc/passwd via {cible!r}"
+
+    def test_un_lien_symbolique_vers_l_exterieur_est_refuse(self, client, entetes):
+        """Le cas que `{nom:path}` a rendu atteignable pour la premiere fois.
+
+        Avant ce correctif, aucun `/` ne passait dans `{nom}` : un lien pose
+        dans un SOUS-DOSSIER de `media/rendered/` etait hors de portee. Il ne
+        l'est plus. `validate_media_path` resout le lien (`Path.resolve()`)
+        avant de verifier le confinement, donc la cible reelle est comparee —
+        mais rien ne l'epinglait : remplacer `resolve()` par `absolute()`
+        ouvrirait le trou en silence. Mesure le 12/09/2026 : 403, sans fuite.
+        """
+        dossier = RENDERED_DIR / "conversions"
+        dossier.mkdir(parents=True, exist_ok=True)
+        lien = dossier / "lien_diagnostic_vers_dehors.pdf"
+        lien.unlink(missing_ok=True)
+        lien.symlink_to("/etc/passwd")
+        try:
+            reponse = client.get(
+                "/media/rendered/conversions/lien_diagnostic_vers_dehors.pdf",
+                headers=entetes)
+
+            assert reponse.status_code == 403, (
+                "un lien symbolique vers l'exterieur de media/ a ete servi : "
+                f"{reponse.status_code}")
+            assert "root:" not in reponse.text, "le contenu de /etc/passwd a fuite"
+        finally:
+            lien.unlink(missing_ok=True)
+
     def test_un_fichier_absent_reste_un_404_jamais_un_500(self, client, entetes):
         reponse = client.get("/media/rendered/conversions/n_existe_pas.pdf",
                              headers=entetes)
