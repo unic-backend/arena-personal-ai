@@ -258,6 +258,27 @@ async def test_un_plafond_atteint_fait_redescendre_sur_sa_machine():
     assert len(groq.appels) == 1
 
 
+async def test_le_plafond_s_applique_meme_a_un_fournisseur_impose():
+    """Le quota valait pour AUTO, pas pour un fournisseur impose — c'etait le trou.
+
+    Audit f7f0478, etape 10 : `_candidats` verifiait `compteur.verdict()`
+    uniquement sur le chemin de repli automatique. Un `AI_DEFAULT_PROVIDER`
+    (ou un choix pousse par l'interface) contournait entierement le plafond
+    et le budget du jour — imposer un fournisseur revenait a desactiver le
+    controle de cout.
+    """
+    compteur = CompteurUsage(requetes_par_jour=1, budget_journalier=0)
+    groq = FauxFournisseur("groq")
+    r = routeur(demande="GROQ", groq=groq, compteur=compteur)
+
+    await r.generate("bonjour")          # 1er : encore dans le quota -> groq
+    reponse = await r.generate("re")     # 2e : plafond atteint, meme impose
+
+    assert "local" in reponse
+    assert "plafond atteint" in r.dernier_choix.raison
+    assert len(groq.appels) == 1, "le 2e appel n'aurait jamais du atteindre groq"
+
+
 async def test_l_appel_local_n_est_pas_compte():
     compteur = CompteurUsage()
     r = routeur(mode="LOCAL_ONLY", compteur=compteur)

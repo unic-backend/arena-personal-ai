@@ -25,15 +25,39 @@ est connu, et dit quand il faut redescendre sur Ollama.
    jamais un defaut qu'on subit.
 """
 import logging
+import sqlite3
+from contextlib import closing
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("usman.modeles.usage")
 
-#: Combien d'appels sont gardes en memoire. Au-dela, les plus anciens partent :
-#: ce compteur ne doit pas peser plus que ce qu'il compte.
+#: Combien d'appels sont gardes en memoire quand aucune base n'est fournie.
+#: Au-dela, les plus anciens partent : ce compteur ne doit pas peser plus que
+#: ce qu'il compte.
+#:
+#: **Ce plafond n'est PAS le plafond du jour.** Mesure du 12/09/2026 (audit
+#: f7f0478, etape 10) : avec `db_path=None`, `requetes_aujourdhui` et
+#: `cout_aujourdhui` ne lisent QUE cette liste bornee — un proprietaire qui
+#: configure `AI_MAX_CLOUD_REQUESTS_PER_DAY` au-dela de 500 verrait ses
+#: premiers appels du jour expulses avant que le plafond ne soit jamais
+#: atteint, le rouvrant sans fin. C'est exactement pour cela que
+#: `CompteurUsage(db_path=...)` existe : des qu'une base est fournie, le
+#: compte du jour se lit dans SQLite, jamais dans cette liste tronquee.
 APPELS_GARDES = 500
+
+#: Le nom de la table SQLite, dans la meme base que le reste d'ARENA
+#: (memoire, gouvernance, gardien...) — DEC-0005, SQLite est deja le choix du
+#: projet pour tout etat qui doit survivre un redemarrage.
+TABLE_USAGE = "usage_cloud_appels"
+
+#: Combien de jours d'historique la base garde. Le compte du jour ne regarde
+#: jamais plus loin qu'aujourd'hui ; cette marge n'est que pour couvrir un
+#: fuseau horaire mal aligne au moment de la purge, jamais pour du reporting
+#: long terme (qui n'est pas ce que ce module promet — regle 3 du docstring).
+JOURS_CONSERVES = 3
 
 #: Tarifs connus, en dollars par million de jetons. **Vide par defaut** : un
 #: tarif que personne n'a saisi ne s'invente pas, et le cout reste `None`.
@@ -92,13 +116,76 @@ class Verdict:
 
 
 class CompteurUsage:
-    """Compte ce qui part vers le cloud, et dit quand il faut s'arreter."""
+    """Compte ce qui part vers le cloud, et dit quand il faut s'arreter.
+
+    Sans `db_path` : purement en memoire, comme avant — pour les tests et les
+    usages ephemeres. Avec `db_path` : le compte du jour vit dans SQLite
+    (meme base que le reste d'ARENA, DEC-0005), et **survit a un
+    redemarrage** — mesure du 12/09/2026 (audit f7f0478, etape 10) : sans
+    cela, un redemarrage remettait le plafond du jour a zero, autorisant a
+    nouveau un budget deja epuise juste avant l'arret.
+    """
 
     def __init__(self, requetes_par_jour: int = 200,
-                 budget_journalier: float = 1.0) -> None:
+                 budget_journalier: float = 1.0,
+                 db_path: Optional[str] = None) -> None:
         self.requetes_par_jour = max(0, requetes_par_jour)
         self.budget_journalier = max(0.0, budget_journalier)
+        self.db_path = db_path
+        #: Cache en memoire — pour le mode sans base, et pour ne rien
+        #: changer au comportement deja teste. Quand `db_path` est fourni,
+        #: le compte du jour ne lit **jamais** cette liste (elle est bornee,
+        #: voir `APPELS_GARDES`) : il lit la base.
         self.appels: List[Appel] = []
+        if self.db_path:
+            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+            self._creer_table()
+
+    # --- Base --------------------------------------------------------------------
+
+    def _connexion(self) -> sqlite3.Connection:
+        connexion = sqlite3.connect(self.db_path)
+        connexion.row_factory = sqlite3.Row
+        return connexion
+
+    def _creer_table(self) -> None:
+        with closing(self._connexion()) as connexion:
+            connexion.execute(f"""
+                CREATE TABLE IF NOT EXISTS {TABLE_USAGE} (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fournisseur TEXT NOT NULL,
+                    modele TEXT NOT NULL,
+                    jour TEXT NOT NULL,
+                    horodatage TEXT NOT NULL,
+                    classement TEXT NOT NULL,
+                    jetons_entree INTEGER,
+                    jetons_sortie INTEGER,
+                    secondes REAL,
+                    repli INTEGER NOT NULL,
+                    succes INTEGER NOT NULL
+                )
+            """)
+            connexion.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_{TABLE_USAGE}_jour "
+                f"ON {TABLE_USAGE} (jour)")
+            connexion.commit()
+
+    def _purger_avant(self, connexion: sqlite3.Connection, aujourdhui: str) -> None:
+        """Retire les jours trop anciens pour compter — jamais aujourd'hui."""
+        limite = (datetime.fromisoformat(aujourdhui).date()
+                  - timedelta(days=JOURS_CONSERVES)).isoformat()
+        connexion.execute(f"DELETE FROM {TABLE_USAGE} WHERE jour < ?", (limite,))
+
+    @staticmethod
+    def _depuis_ligne(ligne: sqlite3.Row) -> Appel:
+        return Appel(
+            fournisseur=ligne["fournisseur"], modele=ligne["modele"],
+            jour=ligne["jour"], horodatage=ligne["horodatage"],
+            classement=ligne["classement"],
+            jetons_entree=ligne["jetons_entree"], jetons_sortie=ligne["jetons_sortie"],
+            secondes=ligne["secondes"], repli=bool(ligne["repli"]),
+            succes=bool(ligne["succes"]),
+        )
 
     # --- Compter ---------------------------------------------------------------
 
@@ -108,11 +195,33 @@ class CompteurUsage:
         surplus = len(self.appels) - APPELS_GARDES
         if surplus > 0:
             del self.appels[:surplus]
+        if self.db_path:
+            with closing(self._connexion()) as connexion:
+                connexion.execute(
+                    f"""INSERT INTO {TABLE_USAGE}
+                        (fournisseur, modele, jour, horodatage, classement,
+                         jetons_entree, jetons_sortie, secondes, repli, succes)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (appel.fournisseur, appel.modele, appel.jour, appel.horodatage,
+                     appel.classement, appel.jetons_entree, appel.jetons_sortie,
+                     appel.secondes, int(appel.repli), int(appel.succes)))
+                self._purger_avant(connexion, appel.jour)
+                connexion.commit()
         return appel
 
     def du_jour(self, jour: Optional[str] = None) -> List[Appel]:
-        """Les appels d'une journee — celle de sa machine, pas 24 h glissantes."""
+        """Les appels d'une journee — celle de sa machine, pas 24 h glissantes.
+
+        Avec une base : lit SQLite, pas le cache borne — c'est ce qui rend le
+        compte exact au-dela de `APPELS_GARDES` appels dans la meme journee.
+        """
         reference = jour or _aujourdhui()
+        if self.db_path:
+            with closing(self._connexion()) as connexion:
+                lignes = connexion.execute(
+                    f"SELECT * FROM {TABLE_USAGE} WHERE jour = ?", (reference,)
+                ).fetchall()
+            return [self._depuis_ligne(ligne) for ligne in lignes]
         return [appel for appel in self.appels if appel.jour == reference]
 
     @property

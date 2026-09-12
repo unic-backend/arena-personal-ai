@@ -590,9 +590,13 @@ ollama_profond = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_PROFOND)
 ollama_vision = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_VISION)
 
 # Un seul compteur pour les deux aiguilleurs : le budget du jour est celui du
-# proprietaire, pas celui d'un chemin de reponse.
+# proprietaire, pas celui d'un chemin de reponse. Persiste dans la meme base
+# que le reste d'ARENA (DEC-0005) : sans `db_path`, un redemarrage remettait
+# le plafond du jour a zero et rouvrait un budget deja epuise (audit f7f0478,
+# etape 10).
 compteur_usage = CompteurUsage(requetes_par_jour=CLOUD_REQUETES_PAR_JOUR,
-                               budget_journalier=CLOUD_BUDGET_JOURNALIER)
+                               budget_journalier=CLOUD_BUDGET_JOURNALIER,
+                               db_path=str(DB_PATH))
 
 
 def _aiguilleur(local: OllamaProvider) -> RouteurModeles:
