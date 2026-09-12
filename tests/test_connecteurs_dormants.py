@@ -45,9 +45,6 @@ RACINE = Path(__file__).resolve().parent.parent
 DORMANTS_CONNUS = {
     "formbricks": "sondages/feedback (DEC-0052) : aucun agent ni route ne les demande.",
     "galsen": "données publiques du Sénégal : aucune intention ne les convoque.",
-    "graphify": "graphe du dépôt (DEC-0046) : `recherche_unifiee` l'exclut explicitement.",
-    "txtai_search": "recherche sémantique sur documents FOURNIS a l'appel — "
-                    "aucun appelant ne lui en fournit.",
     "workflow_guide": "guide de flux de travail : aucun agent ne le consulte.",
 }
 

@@ -108,6 +108,72 @@ class TestRechercherUnifie:
         assert resultat["resultats"][0]["source"] == "codebase"
         assert registre.appels[0][0] == "claude_context"
 
+    async def test_claude_context_indisponible_interroge_le_graphe(self, tmp_path):
+        """Graphify etait annonce « en repli » par l'en-tete de ce module
+        depuis le 06/09/2026 et n'etait appele par RIEN — un des cinq
+        connecteurs dormants. Reveille le 12/09/2026, a la demande du
+        proprietaire : quand Claude Context ne repond pas (pas d'index, pas
+        d'Ollama), le graphe tree-sitter deja construit repond a sa place.
+        """
+        registre = RegistreDouble(reponses={
+            ("claude_context", "rechercher"): {
+                "statut": "ECHEC", "message": "Claude Context n'est pas configure."},
+            ("graphify", "interroger"): {
+                "statut": "SUCCESS", "message": "3 noeud(s) pour « permission ».",
+                "detail": {"resultats": [{"nom": "ControleAcces"}]}},
+        })
+
+        resultat = await rechercher_unifie(
+            "ou est le controle de permission ?", registre=registre,
+            chemin_code=str(tmp_path))
+
+        appeles = [(nom, cap) for nom, cap, _ in registre.appels]
+        assert ("graphify", "interroger") in appeles, (
+            f"le graphe n'a jamais ete interroge : {appeles}")
+        assert resultat["status"] == "success"
+        trouve = resultat["resultats"][0]
+        assert trouve["source"] == "codebase_graphe", (
+            "un resultat de graphe ne doit pas se faire passer pour une "
+            f"lecture du code : {trouve}")
+        assert "ControleAcces" in str(trouve)
+
+    async def test_le_graphe_n_est_pas_interroge_quand_claude_context_repond(self, tmp_path):
+        """Deux moteurs pour une seule question : payer les deux serait du
+        gaspillage, pas de la robustesse."""
+        registre = RegistreDouble(reponses={
+            ("claude_context", "rechercher"): {
+                "statut": "SUCCESS", "message": "1 resultat.",
+                "detail": {"resultats": [{"path": "core/permissions/controle.py"}]}},
+            ("graphify", "interroger"): {"statut": "SUCCESS", "message": "jamais lu"},
+        })
+
+        await rechercher_unifie("ou est le controle de permission ?",
+                                registre=registre, chemin_code=str(tmp_path))
+
+        appeles = [nom for nom, _, _ in registre.appels]
+        assert "graphify" not in appeles, (
+            "le graphe a ete interroge alors que Claude Context avait repondu")
+
+    async def test_les_deux_muets_ne_fabriquent_aucune_reponse(self, tmp_path):
+        """Un repli qui echoue aussi ne doit pas rendre un resultat vide
+        presente comme une reponse."""
+        registre = RegistreDouble(reponses={
+            ("claude_context", "rechercher"): {
+                "statut": "ECHEC", "message": "Claude Context n'est pas configure."},
+            ("graphify", "interroger"): {
+                "statut": "ECHEC", "message": "graphify n'est pas installe."},
+        })
+
+        resultat = await rechercher_unifie(
+            "ou est le controle de permission ?", registre=registre,
+            chemin_code=str(tmp_path))
+
+        trouve = resultat["resultats"][0]
+        assert trouve["favorable"] is False
+        assert trouve["source"] == "codebase"
+        assert "configure" in trouve["resume"], (
+            "l'echec du chemin principal doit rester lisible")
+
     async def test_question_de_code_sans_chemin_est_sautee(self, tmp_path):
         registre = RegistreDouble()
 
