@@ -55,14 +55,12 @@ from apps.backend.security import limiter_debit, validate_media_path, verify_api
 from apps.backend.studio import lancer_studio
 from core.architecture.plan import executer as executer_architecture
 from core.context.recherche_unifiee import MOTS_MEMOIRE
-from core.production.txtai_recherche import MAX_DOCUMENTS as MAX_DOCUMENTS_TXTAI
 from tools.documents.indexer import (
     DOSSIER_DOCUMENTS,
     FICHIER_INVENTAIRE,
     Rapport,
     indexer_documents,
 )
-from tools.documents.reader import EXTENSIONS_LISIBLES, lire_document
 from tools.rag.lightrag_tool import est_un_echec as lightrag_echec
 
 logger = logging.getLogger("usman.backend")
@@ -380,46 +378,54 @@ def garantir_un_texte(contenu: Optional[str], source: str,
     )
 
 
-async def _repli_txtai(question: str) -> Optional[Dict[str, Any]]:
-    """Cherche dans ses documents avec txtai, quand LightRAG ne repond pas.
+#: Signaux d'une question de donnee administrative senegalaise. Meme
+#: discipline que `MOTS_CODE`/`MOTS_MEMOIRE` (`core/context/
+#: recherche_unifiee.py`) : une heuristique de mots, pas un aller-retour
+#: modele pour une decision qui se lit dans la question.
+MOTS_SENEGAL = (
+    "region", "région", "departement", "département", "commune", "arrondissement",
+    "population", "habitants", "superficie", "chef-lieu", "collectivite",
+    "collectivité",
+)
 
-    Rend `None` — jamais un faux resultat — quand il n'y a rien a chercher
-    (dossier vide) ou quand txtai lui-meme n'est pas disponible : l'appelant
-    garde alors le message d'echec de LightRAG, qui est le chemin principal.
+#: Les quatorze regions, pour attraper « combien d'habitants a Ziguinchor ? »
+#: quand aucun mot generique n'apparait.
+REGIONS_SENEGAL = (
+    "dakar", "diourbel", "fatick", "kaffrine", "kaolack", "kedougou", "kédougou",
+    "kolda", "louga", "matam", "saint-louis", "sedhiou", "sédhiou",
+    "tambacounda", "thies", "thiès", "ziguinchor",
+)
 
-    Les textes sont lus ici, par `lire_document`, parce que le connecteur
-    exige des documents FOURNIS (`core/connectors/txtai_search.py`) : c'est
-    un choix de son auteur — un index reconstruit et jete a chaque appel ne
-    doit pas se mettre a parcourir le disque tout seul.
+
+def question_de_donnee_senegalaise(question: str) -> bool:
+    """Vrai quand une donnee administrative officielle repondrait mieux que le web."""
+    minuscules = (question or "").lower()
+    return (any(mot in minuscules for mot in MOTS_SENEGAL)
+            and any(lieu in minuscules for lieu in REGIONS_SENEGAL)) or (
+        any(mot in minuscules for mot in MOTS_SENEGAL) and "senegal" in minuscules) or (
+        any(mot in minuscules for mot in MOTS_SENEGAL) and "sénégal" in minuscules)
+
+
+async def _donnees_senegal(question: str) -> Optional[Dict[str, Any]]:
+    """La donnee officielle du Senegal, quand la question en releve.
+
+    `galsen` (API publique, sans cle, OPERATIONNEL) etait l'un des cinq
+    connecteurs qu'aucun chemin n'atteignait : « aucune intention ne les
+    convoque ». Reveille le 12/09/2026, a la demande du proprietaire, sur
+    l'intention qui pose exactement ce genre de question — FRESH_INFO.
+
+    Rend `None` quand la question ne releve pas de ces donnees, ou quand
+    l'API ne repond pas : le chemin web habituel reprend alors la main. Une
+    donnee officielle absente n'est jamais remplacee par une supposition.
     """
-    dossier = Path(DOSSIER_DOCUMENTS)
-    if not dossier.is_dir():
+    if not question_de_donnee_senegalaise(question):
         return None
-    textes: List[str] = []
-    for fichier in sorted(dossier.iterdir()):
-        if len(textes) >= MAX_DOCUMENTS_TXTAI:
-            break
-        if not fichier.is_file() or fichier.suffix.lower() not in EXTENSIONS_LISIBLES:
-            continue
-        try:
-            document = await asyncio.to_thread(lire_document, fichier)
-        except Exception as erreur:  # noqa: BLE001 — un fichier illisible n'arrete pas les autres
-            logger.info("Document ignore pour le repli txtai (%s) : %s",
-                        fichier.name, type(erreur).__name__)
-            continue
-        texte = (document.texte or "").strip()
-        if texte:
-            textes.append(texte)
-    if not textes:
-        return None
-
     resultat = await asyncio.to_thread(
-        registre.executer, "txtai_search", "rechercher",
-        documents=textes, requete=question)
+        registre.executer, "galsen", "rechercher", q=question)
     corps = resultat.to_dict() if hasattr(resultat, "to_dict") else dict(resultat or {})
     if corps.get("statut", corps.get("status")) not in ("SUCCESS", "PARTIAL"):
         return None
-    return {"response": corps.get("message") or "", "agent": "txtai",
+    return {"response": corps.get("message") or "", "agent": "GalsenAPI",
             "status": "success", "detail": corps.get("detail")}
 
 
@@ -451,10 +457,18 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
             "response": raisonnement.get("final_response", "") + note_de_calcul(calcul),
         }
     elif intent == "FRESH_INFO":
-        # Le session_id porte l'historique : sans lui, une question elliptique
-        # ("Celle de 2006 ?" apres une question sur une coupe du monde) part en
-        # recherche telle quelle et cherche le mauvais sujet.
-        result = await fresh_agent.run(request.prompt, context={"session_id": session_id})
+        # Avant le web : la donnee OFFICIELLE, quand la question en releve
+        # (« combien d'habitants a Ziguinchor ? »). Locale, gratuite,
+        # instantanee — et c'est la source, pas un resultat de recherche.
+        officielle = await _donnees_senegal(request.prompt)
+        if officielle is not None:
+            result = officielle
+        else:
+            # Le session_id porte l'historique : sans lui, une question elliptique
+            # ("Celle de 2006 ?" apres une question sur une coupe du monde) part en
+            # recherche telle quelle et cherche le mauvais sujet.
+            result = await fresh_agent.run(
+                request.prompt, context={"session_id": session_id})
     elif intent == "STUDIO":
         result = await lancer_studio(video_agent, editor_agent, subtitle_agent)
     elif intent == "EMAIL":
@@ -515,19 +529,8 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
             reponse_docs = lightrag_tool.query(request.prompt, mode="hybrid")
             # Un moteur documentaire absent rend une phrase d'erreur, pas une
             # reponse : l'annoncer sans statut la faisait lire comme un resultat.
-            if lightrag_echec(reponse_docs):
-                # Repli : txtai sur ses documents reels. Ce connecteur ne lit
-                # jamais le disque lui-meme — il exige les TEXTES dans
-                # l'appel, et c'est precisement pour ca que personne ne
-                # l'appelait (un des cinq connecteurs dormants, DEC-0051).
-                # Reveille le 12/09/2026, a la demande du proprietaire : ici
-                # les textes existent deja, lus par le meme
-                # `tools/documents/reader.py` que l'indexation.
-                result = await _repli_txtai(request.prompt) or {
-                    "response": reponse_docs, "agent": "LightRAG", "status": "error"}
-            else:
-                result = {"response": reponse_docs, "agent": "LightRAG",
-                          "status": "success"}
+            result = {"response": reponse_docs, "agent": "LightRAG",
+                      "status": "error" if lightrag_echec(reponse_docs) else "success"}
     elif intent == "GRAPHRAG":
         result = graphrag_tool.query_global(request.prompt)
     elif intent == "VISION":

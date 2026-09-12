@@ -43,9 +43,22 @@ RACINE = Path(__file__).resolve().parent.parent
 #: se négocie pas, c'est qu'ils ne se déclarent nulle part comme
 #: opérationnels tant qu'ils sont ici.
 DORMANTS_CONNUS = {
-    "formbricks": "sondages/feedback (DEC-0052) : aucun agent ni route ne les demande.",
-    "galsen": "données publiques du Sénégal : aucune intention ne les convoque.",
-    "workflow_guide": "guide de flux de travail : aucun agent ne le consulte.",
+    # Quatre des cinq derniers dormants ont ete reveilles le 12/09/2026, a la
+    # demande du proprietaire : `formbricks` et `workflow_guide` sur
+    # PlaquisteAgent, `galsen` sur FRESH_INFO, `graphify` en repli de la
+    # source `codebase` de `recherche_unifiee`.
+    #
+    # Celui-ci est reste, et ce n'est PAS un oubli : c'est sa propre decision
+    # anterieure qui l'interdit.
+    "txtai_search": "DEC-0051 : son usage est conditionne a un avantage "
+                    "DEMONTRE (« n'utilise txtai que lorsque son avantage est "
+                    "demontre »), et le banc de comparaison qui le montrerait "
+                    "exige des embeddings reels — donc Ollama, absent de ce "
+                    "conteneur. Un branchement sur RAG_DOCS a ete ecrit puis "
+                    "RETIRE le 12/09/2026 : il faisait tomber "
+                    "`TestPasDeRoutageAutomatique`, le test qui garde cette "
+                    "decision. Fabriquer la mesure aurait ete pire que "
+                    "l'attente.",
 }
 
 
