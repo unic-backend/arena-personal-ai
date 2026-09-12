@@ -65,6 +65,14 @@ JOURS_CONSERVES = 3
 TARIFS: Dict[str, Dict[str, float]] = {}
 
 
+#: Ce que vaut le plafond par requete, une fois confronte a la realite des
+#: tarifs. Trois etats, jamais deux : un controle qu'on ne peut pas calculer
+#: n'est pas un controle « qui passe ».
+CONTROLE_DESACTIVE = "DESACTIVE"
+CONTROLE_NON_VERIFIABLE = "NON_VERIFIABLE"
+CONTROLE_MESURE_APRES_COUP = "MESURE_APRES_COUP"
+
+
 def _aujourdhui() -> str:
     return datetime.now(timezone.utc).date().isoformat()
 
@@ -128,15 +136,33 @@ class CompteurUsage:
 
     def __init__(self, requetes_par_jour: int = 200,
                  budget_journalier: float = 1.0,
-                 db_path: Optional[str] = None) -> None:
+                 db_path: Optional[str] = None,
+                 cout_max_par_requete: float = 0.0) -> None:
         self.requetes_par_jour = max(0, requetes_par_jour)
         self.budget_journalier = max(0.0, budget_journalier)
+        #: Plafond par requete, tel que le proprietaire l'a regle
+        #: (`AI_MAX_COST_PER_REQUEST`). Mesure du 12/09/2026 : ce reglage
+        #: existait dans `config.py` ET dans `.env.example` — donc lisible
+        #: comme une protection active — sans etre lu par une seule ligne de
+        #: code. Il est desormais porte ici, mais SANS pretendre bloquer :
+        #: le cout d'une requete depend des jetons de SORTIE, inconnus avant
+        #: la reponse, et `TARIFS` est vide par defaut donc souvent
+        #: incalculable meme apres. `etat_controle_par_requete()` dit lequel
+        #: des trois cas s'applique, au lieu de laisser supposer le bon.
+        self.cout_max_par_requete = max(0.0, cout_max_par_requete)
         self.db_path = db_path
         #: Cache en memoire — pour le mode sans base, et pour ne rien
         #: changer au comportement deja teste. Quand `db_path` est fourni,
         #: le compte du jour ne lit **jamais** cette liste (elle est bornee,
         #: voir `APPELS_GARDES`) : il lit la base.
         self.appels: List[Appel] = []
+        #: Appels distants PARTIS mais pas encore comptes. Mesure du
+        #: 12/09/2026, en diagnostic de l'etape 10 : avec un plafond de 3 et
+        #: dix requetes lancees en parallele, LES DIX partaient au cloud — le
+        #: plafond etait verifie avant l'appel et compte seulement apres la
+        #: reponse, donc chaque requete concurrente voyait un compteur encore
+        #: a zero. Une place se reserve maintenant au moment de la decision.
+        self._en_vol = 0
         if self.db_path:
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
             self._creer_table()
@@ -235,12 +261,63 @@ class CompteurUsage:
                   if appel.cout_estime is not None]
         return sum(connus) if connus else None
 
+    @property
+    def appels_en_vol(self) -> int:
+        """Combien d'appels distants sont partis sans etre encore comptes."""
+        return self._en_vol
+
+    def reserver_une_place(self) -> None:
+        """Prend une place dans le quota du jour AVANT l'appel.
+
+        Synchrone et sans `await` : entre la lecture du verdict et cette
+        reservation, aucune autre tache ne peut se glisser (asyncio ne
+        preempte que sur un `await`). C'est ce qui fait tenir le plafond
+        sous concurrence.
+        """
+        self._en_vol += 1
+
+    def liberer_une_place(self) -> None:
+        """Rend la place a la fin de la requete — l'appel reellement parti a
+        ete compte entre-temps par `enregistrer()`, ou n'a jamais eu lieu."""
+        self._en_vol = max(0, self._en_vol - 1)
+
+    def etat_controle_par_requete(self) -> str:
+        """Le plafond par requete est-il applicable, et comment ?
+
+        - `DESACTIVE` : regle a zero, choix explicite du proprietaire.
+        - `NON_VERIFIABLE` : un plafond est regle, mais aucun tarif n'est
+          configure (`TARIFS` vide) — le cout d'une requete ne peut donc
+          pas etre calcule, ni avant ni apres. Dire « respecte » ici serait
+          un mensonge ; dire `0 $` en serait un pire.
+        - `MESURE_APRES_COUP` : des tarifs existent, le depassement est
+          constate sur la reponse rendue. Jamais « empeche » : les jetons de
+          sortie n'existent pas avant que le modele ait repondu.
+        """
+        if not self.cout_max_par_requete:
+            return CONTROLE_DESACTIVE
+        return CONTROLE_MESURE_APRES_COUP if TARIFS else CONTROLE_NON_VERIFIABLE
+
+    def depassements_par_requete(self, jour: Optional[str] = None) -> int:
+        """Combien d'appels du jour ont coute plus que le plafond par requete.
+
+        Compte seulement ce qui est CALCULABLE : un appel sans tarif connu
+        n'est ni un depassement ni un respect, il est inconnu.
+        """
+        if not self.cout_max_par_requete:
+            return 0
+        return sum(1 for appel in self.du_jour(jour)
+                   if appel.cout_estime is not None
+                   and appel.cout_estime > self.cout_max_par_requete)
+
     # --- Decider ----------------------------------------------------------------
 
     def verdict(self) -> Verdict:
         """Le cloud peut-il encore servir ? Un plafond atteint fait retomber sur Ollama."""
-        if self.requetes_par_jour and self.requetes_aujourdhui >= self.requetes_par_jour:
-            return Verdict(False, (f"plafond atteint : {self.requetes_aujourdhui} "
+        # Les appels en vol comptent : sinon dix requetes simultanees
+        # passeraient toutes un plafond de trois (mesure du 12/09/2026).
+        prevu = self.requetes_aujourdhui + self._en_vol
+        if self.requetes_par_jour and prevu >= self.requetes_par_jour:
+            return Verdict(False, (f"plafond atteint : {prevu} "
                                    f"requete(s) cloud aujourd'hui"))
         depense = self.cout_aujourdhui
         if self.budget_journalier and depense is not None and depense >= self.budget_journalier:
@@ -258,6 +335,11 @@ class CompteurUsage:
             # montant qu'on n'a pas calcule.
             "cout_aujourdhui": self.cout_aujourdhui,
             "budget_journalier": self.budget_journalier or None,
+            "cout_max_par_requete": self.cout_max_par_requete or None,
+            # Ce que ce plafond vaut REELLEMENT aujourd'hui, pas ce qu'il
+            # laisse croire : sans tarif configure, il est `NON_VERIFIABLE`.
+            "controle_cout_par_requete": self.etat_controle_par_requete(),
+            "depassements_par_requete_aujourdhui": self.depassements_par_requete(),
             "cloud_autorise": verdict.autorise,
             "raison": verdict.raison,
         }

@@ -208,6 +208,15 @@ class RouteurModeles(ModelProvider):
     def _fournisseur(self, nom: str) -> ModelProvider:
         return self.local if nom == LOCAL else self.distants[nom]
 
+    def _reserver_si_cloud(self, candidats: Sequence[str]) -> bool:
+        """Prend une place dans le quota du jour si un service distant est
+        candidat. Rendue a la fin de la requete : l'appel reellement parti a
+        ete compte entre-temps par `_noter`."""
+        if any(nom != LOCAL for nom in candidats):
+            self.compteur.reserver_une_place()
+            return True
+        return False
+
     def _noter(self, nom: str, classement: Classement, repli: bool, succes: bool) -> None:
         """Compte l'appel distant. Le local ne coute rien : il n'est pas compte."""
         if nom == LOCAL:
@@ -260,19 +269,12 @@ class RouteurModeles(ModelProvider):
             phrases.append(f"Sa machine ({adresse}) ne repond pas non plus.")
         return " ".join(phrases)
 
-    async def generate(self, prompt: str, system_prompt: Optional[str] = None,
-                       contexte: Optional[Sequence[str]] = None) -> str:
-        """Repond, en essayant chaque fournisseur **une fois**.
-
-        Args:
-            contexte: ce qui part AVEC la demande — souvenirs, pieces jointes.
-                Il compte dans le classement : une question anodine posee sur un
-                document de client ne l'est pas.
-        """
-        classement = classer(prompt, contexte)
-        candidats, raison = self._candidats(classement)
-        essayes: List[str] = []
-
+    async def _essayer_chacun(self, candidats: Sequence[str], raison: str,
+                              classement: Classement, essayes: List[str],
+                              prompt: str, system_prompt: Optional[str]) -> str:
+        """Chaque fournisseur une fois, dans l'ordre. Extrait de `generate`
+        le 12/09/2026 pour que la reservation de quota s'enveloppe dans un
+        `try/finally` lisible plutot que de reindenter toute la boucle."""
         for index, nom in enumerate(candidats):
             if nom != LOCAL and not await self._joignable(nom):
                 essayes.append(nom)
@@ -301,6 +303,30 @@ class RouteurModeles(ModelProvider):
                                    classement, essayes)
         raise RuntimeError(self._pourquoi_personne(classement, candidats, essayes))
 
+    async def generate(self, prompt: str, system_prompt: Optional[str] = None,
+                       contexte: Optional[Sequence[str]] = None) -> str:
+        """Repond, en essayant chaque fournisseur **une fois**.
+
+        Args:
+            contexte: ce qui part AVEC la demande — souvenirs, pieces jointes.
+                Il compte dans le classement : une question anodine posee sur un
+                document de client ne l'est pas.
+        """
+        classement = classer(prompt, contexte)
+        candidats, raison = self._candidats(classement)
+        # La place est prise ICI, dans la foulee du verdict et avant le
+        # premier `await` : sans cela, dix requetes simultanees passaient
+        # toutes un plafond de trois (mesure du 12/09/2026, etape 10).
+        reservee = self._reserver_si_cloud(candidats)
+        essayes: List[str] = []
+
+        try:
+            return await self._essayer_chacun(
+                candidats, raison, classement, essayes, prompt, system_prompt)
+        finally:
+            if reservee:
+                self.compteur.liberer_une_place()
+
     async def generate_stream(self, prompt: str, system_prompt: Optional[str] = None,
                               contexte: Optional[Sequence[str]] = None
                               ) -> AsyncGenerator[str, None]:
@@ -312,8 +338,26 @@ class RouteurModeles(ModelProvider):
         """
         classement = classer(prompt, contexte)
         candidats, raison = self._candidats(classement)
+        # Meme reservation que dans `generate` : prise dans la foulee du
+        # verdict, rendue quand le flux se termine (y compris s'il est coupe,
+        # le `finally` d'un generateur asynchrone tournant aussi a sa
+        # fermeture).
+        reservee = self._reserver_si_cloud(candidats)
         essayes: List[str] = []
+        try:
+            async for morceau in self._flux_de_chacun(
+                    candidats, raison, classement, essayes, prompt, system_prompt):
+                yield morceau
+        finally:
+            if reservee:
+                self.compteur.liberer_une_place()
 
+    async def _flux_de_chacun(self, candidats: Sequence[str], raison: str,
+                              classement: Classement, essayes: List[str],
+                              prompt: str, system_prompt: Optional[str]
+                              ) -> AsyncGenerator[str, None]:
+        """La boucle de repli du flux, extraite pour la meme raison que
+        `_essayer_chacun` (12/09/2026)."""
         for index, nom in enumerate(candidats):
             if nom != LOCAL and not await self._joignable(nom):
                 essayes.append(nom)

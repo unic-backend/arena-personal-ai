@@ -35,6 +35,7 @@ from agents.video_analyzer.video_analyzer_agent import VideoAnalyzerAgent
 from agents.vision.vision_agent import VisionAgent
 from apps.backend.config import (
     CLOUD_BUDGET_JOURNALIER,
+    CLOUD_COUT_MAX_PAR_REQUETE,
     CLOUD_REQUETES_PAR_JOUR,
     DB_PATH,
     FOURNISSEUR_DEMANDE,
@@ -594,9 +595,16 @@ ollama_vision = OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_VISION)
 # que le reste d'ARENA (DEC-0005) : sans `db_path`, un redemarrage remettait
 # le plafond du jour a zero et rouvrait un budget deja epuise (audit f7f0478,
 # etape 10).
+# `CLOUD_COUT_MAX_PAR_REQUETE` etait declare dans `config.py` ET documente
+# dans `.env.example` sans etre lu par une seule ligne : un plafond qui se
+# lisait comme une protection et n'en etait pas (mesure le 12/09/2026, en
+# diagnostic de DEC-0095). Il est desormais porte par le compteur, qui dit
+# dans `resume()` ce qu'il vaut reellement — `NON_VERIFIABLE` tant qu'aucun
+# tarif n'est configure, plutot que de laisser supposer qu'il bloque.
 compteur_usage = CompteurUsage(requetes_par_jour=CLOUD_REQUETES_PAR_JOUR,
                                budget_journalier=CLOUD_BUDGET_JOURNALIER,
-                               db_path=str(DB_PATH))
+                               db_path=str(DB_PATH),
+                               cout_max_par_requete=CLOUD_COUT_MAX_PAR_REQUETE)
 
 
 def _aiguilleur(local: OllamaProvider) -> RouteurModeles:
