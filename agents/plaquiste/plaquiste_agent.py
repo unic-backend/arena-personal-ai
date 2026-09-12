@@ -583,6 +583,50 @@ BLOC_DEMONSTRATION = (
 )
 
 
+#: Ce qui demande un mode operatoire ecrit — jamais un simple « comment
+#: poser du BA13 ? », qui est une question, pas une commande de document.
+MOTS_GUIDE = ("mode operatoire", "mode opératoire", "guide de pose",
+              "fiche de pose", "guide de procedure", "guide de procédure",
+              "procedure ecrite", "procédure écrite", "guide en pdf")
+
+#: Ce qui demande les retours clients deja collectes.
+MOTS_RETOURS = ("retours clients", "retour clients", "avis clients",
+                "satisfaction client", "sondage", "sondages", "questionnaire")
+
+
+def demande_un_guide(texte: str) -> bool:
+    """Vrai quand il demande un document de procedure, pas une explication."""
+    return any(mot in (texte or "").lower() for mot in MOTS_GUIDE)
+
+
+def demande_les_retours(texte: str) -> bool:
+    return any(mot in (texte or "").lower() for mot in MOTS_RETOURS)
+
+
+def etapes_dictees(texte: str) -> List[Dict[str, str]]:
+    """Les etapes qu'il a REELLEMENT dictees, une par ligne.
+
+    Numerotees (« 1. », « 2) ») ou avec un tiret. Rien n'est devine : une
+    demande sans etapes rend une liste vide, et l'appelant le dit.
+    """
+    etapes: List[Dict[str, str]] = []
+    for ligne in (texte or "").splitlines():
+        nettoyee = ligne.strip()
+        capture = re.match(r"^(?:\d+\s*[.)-]|[-*•])\s+(.{3,})$", nettoyee)
+        if capture:
+            etapes.append({"titre": capture.group(1).strip()})
+    return etapes
+
+
+def titre_du_guide(texte: str) -> str:
+    """La premiere ligne non vide qui n'est pas une etape, sinon un titre neutre."""
+    for ligne in (texte or "").splitlines():
+        nettoyee = ligne.strip()
+        if nettoyee and not re.match(r"^(?:\d+\s*[.)-]|[-*•])\s+", nettoyee):
+            return nettoyee[:120]
+    return "Mode operatoire"
+
+
 def composer_instruction(metier: Dict[str, Any], demande: str = "") -> str:
     """Compose l'instruction systeme a partir des seules donnees du fichier.
 
@@ -815,6 +859,60 @@ class PlaquisteAgent(BaseAgent):
         resultat = self.registre.executer(
             "calendrier", "creer", titre=context["titre"], debut=context["debut"],
             fin=context["fin"], lieu=context.get("lieu"))
+        return {"statut": resultat.statut.value, "message": resultat.message,
+                "preuve": resultat.preuve}
+
+    def _proposer_le_guide(self, texte: str) -> Optional[Dict[str, Any]]:
+        """Ecrit un mode operatoire quand il en demande un, et seulement alors.
+
+        `workflow_guide` etait l'un des cinq connecteurs qu'aucun chemin
+        n'atteignait (« aucun agent ne le consulte »), alors qu'il est
+        OPERATIONNEL et ecrit dans `media/rendered/` — le meme dossier, la
+        meme route deja servie que le devis. Reveille le 12/09/2026, a la
+        demande du proprietaire, sur l'agent de son metier : une fiche de
+        pose remise a un ouvrier est un document de chantier, comme un devis.
+
+        Meme discipline que `_proposer_le_document` : **on n'invente pas les
+        etapes**. Sans etapes dictees, aucun fichier n'est ecrit et il
+        l'apprend — un guide de pose invente par un modele enverrait
+        quelqu'un poser une cloison de travers.
+        """
+        if not demande_un_guide(texte):
+            return None
+        etapes = etapes_dictees(texte)
+        if not etapes:
+            return {"statut": "INCOMPLET", "manquants": ["etapes"],
+                    "message": ("Le guide n'est pas ecrit : dicte-moi les etapes "
+                                "(une par ligne, numerotees ou avec un tiret). "
+                                "Je n'invente pas un mode operatoire de pose.")}
+
+        resultat = self.registre.executer(
+            "workflow_guide", "generer",
+            titre=titre_du_guide(texte), etapes=etapes, format="pdf")
+        compte_rendu = {"statut": resultat.statut.value, "message": resultat.message,
+                        "preuve": resultat.preuve}
+        # Comme le devis : l'URL est le SEUL chemin par lequel le document
+        # peut atteindre son telephone.
+        adresse = (resultat.detail or {}).get("url")
+        if adresse:
+            compte_rendu["url"] = adresse
+        return compte_rendu
+
+    def _lire_les_retours_clients(self, texte: str) -> Optional[Dict[str, Any]]:
+        """Les retours de ses clients, quand il les demande.
+
+        `formbricks` etait le cinquieme connecteur dormant (« aucun agent ni
+        route ne les demande »). Reveille le 12/09/2026 : un sondage de
+        satisfaction apres chantier appartient au metier, donc a cet agent.
+
+        Lecture seule (`lister`) : creer un sondage ecrirait chez un tiers,
+        et ce n'est pas ce qu'il demande ici. Sans `FORMBRICKS_BASE_URL`, le
+        connecteur rapporte son indisponibilite — c'est la reponse juste, pas
+        un echec a cacher.
+        """
+        if not demande_les_retours(texte):
+            return None
+        resultat = self.registre.executer("formbricks", "lister")
         return {"statut": resultat.statut.value, "message": resultat.message,
                 "preuve": resultat.preuve}
 
@@ -1545,6 +1643,18 @@ class PlaquisteAgent(BaseAgent):
                     if not contexte.get(champ):
                         contexte[champ] = valeur
                         compris_par_modele.append(champ)
+
+        # Deux documents de chantier de plus, sur le meme declencheur que le
+        # devis (`message_actuel`, jamais le fil entier — un « fais-moi le
+        # guide » dit une fois ne doit pas se rejouer a chaque tour).
+        guide = self._proposer_le_guide(message_actuel)
+        if guide is not None:
+            return {"status": "success" if guide.get("statut") == "SUCCESS" else "warning",
+                    "agent": self.name, "response": guide["message"], "document": guide}
+        retours = self._lire_les_retours_clients(message_actuel)
+        if retours is not None:
+            return {"status": "success" if retours.get("statut") == "SUCCESS" else "warning",
+                    "agent": self.name, "response": retours["message"]}
 
         document = self._proposer_le_document(message_actuel, contexte, metre)
         if document is not None and cotes_d_un_tour_precedent:

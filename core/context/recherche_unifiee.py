@@ -20,8 +20,8 @@ question mixte demande plusieurs sources ; c'est le cas normal, pas une
 exception.
 
 **Provenance, jamais fusionnée dans un bloc anonyme** (mission §7) : chaque
-résultat conserve sa source (`"codebase"`, `"openviking_memory"`, `"web"`,
-`"project_snapshot"`) et l'agent qui consomme cette réponse peut donc
+résultat conserve sa source (`"codebase"`, `"codebase_graphe"`,
+`"openviking_memory"`, `"web"`, `"project_snapshot"`) et l'agent qui consomme cette réponse peut donc
 distinguer « je sais parce que » de « je suppose que ». Une source qui
 échoue (non configurée, en panne) n'efface pas les autres — exactement la
 garde que DEC-0017 avait déjà posée en parallélisant `DeepResearcherAgent`.
@@ -45,8 +45,9 @@ from core.context.instantane_projet import instantane
 logger = logging.getLogger("usman.context.recherche_unifiee")
 
 #: Signaux qui orientent vers le code — Claude Context (`core/connectors/
-#: claude_context.py`) et, en repli, Graphify (DEC-0046) restent hors de ce
-#: module : celui-ci ne choisit qu'ENTRE les trois sources de la mission.
+#: claude_context.py`) et, EN REPLI REEL depuis le 12/09/2026, Graphify
+#: (DEC-0046) : voir `_depuis_code`. Ce module ne choisit toujours qu'ENTRE
+#: les sources — il n'en invente aucune.
 MOTS_CODE = (
     "code", "fonction", "implement", "classe", "connecteur", "fichier",
     "module", "pipeline", "bug", "erreur dans", "où est", "ou est",
@@ -126,8 +127,41 @@ async def _depuis_code(registre: Any, chemin_code: str, question: str) -> Dict[s
         registre, "claude_context", "rechercher", chemin=chemin_code, requete=question))
     statut = corps.get("statut", corps.get("status"))
     favorable = statut in ("SUCCESS", "PARTIAL")
+    if favorable:
+        return {
+            "source": "codebase", "favorable": True,
+            "resume": corps.get("message") or corps.get("response") or "",
+            "resultats": (corps.get("detail") or {}).get("resultats") or [],
+        }
+
+    # Repli : le graphe du depot (Graphify, DEC-0046). L'en-tete de ce module
+    # l'annoncait depuis le 06/09/2026 (« et, en repli, Graphify ») sans que
+    # personne ne l'appelle jamais — `tests/test_connecteurs_dormants.py` le
+    # comptait parmi les cinq connecteurs qu'aucun chemin n'atteignait.
+    # Reveille le 12/09/2026, a la demande du proprietaire.
+    #
+    # Pourquoi seulement en repli, et pas en parallele : les deux repondent a
+    # la MEME question (« ou est-ce, dans le code ? ») par deux moteurs
+    # differents — Claude Context par embeddings, Graphify par un graphe
+    # tree-sitter deja construit. Les lancer ensemble paierait deux fois pour
+    # une seule reponse. La provenance reste distincte (`codebase_graphe`) :
+    # un graphe qui date d'avant-hier n'est pas une lecture du code d'hier,
+    # et l'agent qui lit ce resultat doit pouvoir faire la difference.
+    graphe = _corps(await _executer_connecteur(
+        registre, "graphify", "interroger", requete=question))
+    statut_graphe = graphe.get("statut", graphe.get("status"))
+    if statut_graphe in ("SUCCESS", "PARTIAL"):
+        detail = graphe.get("detail") or {}
+        return {
+            "source": "codebase_graphe", "favorable": True,
+            "resume": graphe.get("message") or graphe.get("response") or "",
+            "resultats": detail.get("resultats") or detail.get("noeuds") or [],
+        }
+
+    # Aucun des deux : on rapporte l'echec du premier, qui est le chemin
+    # principal — jamais un resultat vide presente comme une reponse.
     return {
-        "source": "codebase", "favorable": favorable,
+        "source": "codebase", "favorable": False,
         "resume": corps.get("message") or corps.get("response") or "",
         "resultats": (corps.get("detail") or {}).get("resultats") or [],
     }

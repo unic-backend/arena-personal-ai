@@ -23,6 +23,48 @@ fusionnés dans `master` par le propriétaire, le 12/09/2026 :
   12/09/2026. Quatre trous réels trouvés dans mes propres réparations et
   corrigés, plus un correctif de test CI. Détail juste en dessous.
 
+## Quatre des cinq connecteurs dormants reveilles — le cinquieme refuse par sa propre decision (12/09/2026)
+
+Demande directe du proprietaire (« reveil les 5 »), apres la mesure
+« qu'est-ce qui dort encore ? ». **Quatre sont reveilles ; le cinquieme,
+`txtai_search`, est reste dormant parce que DEC-0051 l'interdit** — sa
+propre decision anterieure, qu'il ne pouvait pas avoir en tete. Detail
+plus bas.
+
+Aucune architecture neuve : chacun est tombe sur un chemin qui existait
+deja et avait deja une raison de le vouloir.
+
+| Connecteur | Reveille sur | Ligne d'appel |
+|---|---|---|
+| `graphify` | repli de la source `codebase` (l'en-tete du module l'annoncait depuis le 06/09/2026 sans que rien ne l'appelle) | `core/context/recherche_unifiee.py:150` |
+| `galsen` | la donnee officielle AVANT le web, sur `FRESH_INFO` | `apps/backend/routers/chat.py:425` |
+| `workflow_guide` | mode operatoire ecrit par `PlaquisteAgent`, meme motif que le devis (URL rendue pour son telephone) | `agents/plaquiste/plaquiste_agent.py:889` |
+| `formbricks` | retours clients lus par `PlaquisteAgent` (lecture seule : `lister`) | `agents/plaquiste/plaquiste_agent.py:915` |
+
+**La regle tenue partout : rien ne s'invente.** Sans etapes dictees, aucun
+guide n'est ecrit et il l'apprend (meme discipline que « je ne devine pas
+le destinataire d'un devis ») ; un dossier de documents vide garde l'echec
+reel de LightRAG ; une API senegalaise muette laisse le web repondre ;
+`formbricks` sans `FORMBRICKS_BASE_URL` rapporte son indisponibilite.
+`graphify` garde une provenance distincte (`codebase_graphe`) : un graphe
+construit avant-hier n'est pas une lecture du code d'hier.
+
+**Pourquoi `txtai_search` n'a pas ete reveille.** Le branchement etait
+ecrit (repli de LightRAG sur `RAG_DOCS`, alimente par ses vrais documents)
+et ses quatre tests passaient — puis la suite complete a fait tomber
+`tests/core/test_connecteur_txtai_search.py::TestPasDeRoutageAutomatique`,
+un test EXISTANT qui garde DEC-0051 : « n'utilise txtai que lorsque son
+avantage est demontre », donc « aucune branche d'aiguillage automatique ».
+Le banc de comparaison qui demontrerait cet avantage exige des embeddings
+reels — Ollama, absent de ce conteneur. Le branchement a ete RETIRE, le
+test n'a pas ete touche, et la raison exacte est desormais ecrite dans
+`DORMANTS_CONNUS`. Pour le lever : un banc pertinence/latence sur sa
+machine, Ollama lance, contre `lightrag`/`semantique` — puis sa decision.
+
+Reste hors de portee d'ici, et ce n'est pas du sommeil : 25 des 40
+connecteurs sont `NOT_CONFIGURED` sur cette machine (cle ou service absent)
+et les quatre modeles Ollama repondent `False` — ils vivent chez lui.
+
 ## Diagnostic des douze etapes de DEC-0095 (12/09/2026, PR #199, fusionnee)
 
 Le proprietaire a demande de rediagnostiquer les douze reparations **une par

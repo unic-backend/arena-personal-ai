@@ -1427,3 +1427,37 @@ vérifications de `doctor.py` (30 est exact — le test compte les appels
 `mesurer("`, pas les fonctions).
 
 6 commits, CI verte sur chacun, `ruff check .` propre. PR #199 fusionnée.
+
+---
+
+## 2026-09-12 (suite) — quatre des cinq connecteurs dormants réveillés
+
+Demande directe du propriétaire après la mesure « qu'est-ce qui dort
+encore ? ». Quatre réveillés ; `txtai_search` est resté dormant parce que
+**DEC-0051 l'interdit** — voir plus bas.
+
+| Connecteur | Réveillé sur |
+|---|---|
+| `graphify` | repli de la source `codebase` de `recherche_unifiee` — l'en-tête du module l'annonçait depuis le 06/09/2026 sans qu'une ligne ne l'appelle |
+| `galsen` | la donnée officielle du Sénégal **avant** le web, sur `FRESH_INFO` |
+| `workflow_guide` | mode opératoire écrit par `PlaquisteAgent`, même motif que le devis |
+| `formbricks` | retours clients lus par `PlaquisteAgent`, en lecture seule |
+
+Aucune architecture nouvelle : chaque branchement tombe sur un chemin
+existant. Et rien ne s'invente — sans étapes dictées aucun guide n'est
+écrit, un dossier vide garde l'échec réel de LightRAG, une API muette
+laisse le web répondre, et `graphify` garde une provenance distincte
+(`codebase_graphe`) parce qu'un graphe d'avant-hier n'est pas une lecture
+du code d'hier.
+
+**`txtai_search` : branchement écrit, puis retiré.** Le repli sur
+`RAG_DOCS` fonctionnait et ses tests passaient, mais la suite complète a
+fait tomber un test EXISTANT — `TestPasDeRoutageAutomatique` — qui garde
+DEC-0051 : « n'utilise txtai que lorsque son avantage est démontré », donc
+aucun aiguillage automatique. Le banc de comparaison qui le démontrerait
+exige Ollama, absent d'ici. Branchement retiré, test intact, raison exacte
+inscrite dans `DORMANTS_CONNUS`.
+
+Tests : 3 nouveaux cas dans `test_recherche_unifiee.py`, plus
+`test_reveil_galsen_fresh_info.py` (12) et `test_reveil_guide_et_retours.py`
+(13) — tous par le vrai `dispatch_request` ou la vraie boucle de l'agent.

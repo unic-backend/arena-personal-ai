@@ -378,6 +378,57 @@ def garantir_un_texte(contenu: Optional[str], source: str,
     )
 
 
+#: Signaux d'une question de donnee administrative senegalaise. Meme
+#: discipline que `MOTS_CODE`/`MOTS_MEMOIRE` (`core/context/
+#: recherche_unifiee.py`) : une heuristique de mots, pas un aller-retour
+#: modele pour une decision qui se lit dans la question.
+MOTS_SENEGAL = (
+    "region", "région", "departement", "département", "commune", "arrondissement",
+    "population", "habitants", "superficie", "chef-lieu", "collectivite",
+    "collectivité",
+)
+
+#: Les quatorze regions, pour attraper « combien d'habitants a Ziguinchor ? »
+#: quand aucun mot generique n'apparait.
+REGIONS_SENEGAL = (
+    "dakar", "diourbel", "fatick", "kaffrine", "kaolack", "kedougou", "kédougou",
+    "kolda", "louga", "matam", "saint-louis", "sedhiou", "sédhiou",
+    "tambacounda", "thies", "thiès", "ziguinchor",
+)
+
+
+def question_de_donnee_senegalaise(question: str) -> bool:
+    """Vrai quand une donnee administrative officielle repondrait mieux que le web."""
+    minuscules = (question or "").lower()
+    return (any(mot in minuscules for mot in MOTS_SENEGAL)
+            and any(lieu in minuscules for lieu in REGIONS_SENEGAL)) or (
+        any(mot in minuscules for mot in MOTS_SENEGAL) and "senegal" in minuscules) or (
+        any(mot in minuscules for mot in MOTS_SENEGAL) and "sénégal" in minuscules)
+
+
+async def _donnees_senegal(question: str) -> Optional[Dict[str, Any]]:
+    """La donnee officielle du Senegal, quand la question en releve.
+
+    `galsen` (API publique, sans cle, OPERATIONNEL) etait l'un des cinq
+    connecteurs qu'aucun chemin n'atteignait : « aucune intention ne les
+    convoque ». Reveille le 12/09/2026, a la demande du proprietaire, sur
+    l'intention qui pose exactement ce genre de question — FRESH_INFO.
+
+    Rend `None` quand la question ne releve pas de ces donnees, ou quand
+    l'API ne repond pas : le chemin web habituel reprend alors la main. Une
+    donnee officielle absente n'est jamais remplacee par une supposition.
+    """
+    if not question_de_donnee_senegalaise(question):
+        return None
+    resultat = await asyncio.to_thread(
+        registre.executer, "galsen", "rechercher", q=question)
+    corps = resultat.to_dict() if hasattr(resultat, "to_dict") else dict(resultat or {})
+    if corps.get("statut", corps.get("status")) not in ("SUCCESS", "PARTIAL"):
+        return None
+    return {"response": corps.get("message") or "", "agent": "GalsenAPI",
+            "status": "success", "detail": corps.get("detail")}
+
+
 async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -> Dict[str, Any]:
     """Aiguille la demande vers l'agent choisi.
 
@@ -406,10 +457,18 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
             "response": raisonnement.get("final_response", "") + note_de_calcul(calcul),
         }
     elif intent == "FRESH_INFO":
-        # Le session_id porte l'historique : sans lui, une question elliptique
-        # ("Celle de 2006 ?" apres une question sur une coupe du monde) part en
-        # recherche telle quelle et cherche le mauvais sujet.
-        result = await fresh_agent.run(request.prompt, context={"session_id": session_id})
+        # Avant le web : la donnee OFFICIELLE, quand la question en releve
+        # (« combien d'habitants a Ziguinchor ? »). Locale, gratuite,
+        # instantanee — et c'est la source, pas un resultat de recherche.
+        officielle = await _donnees_senegal(request.prompt)
+        if officielle is not None:
+            result = officielle
+        else:
+            # Le session_id porte l'historique : sans lui, une question elliptique
+            # ("Celle de 2006 ?" apres une question sur une coupe du monde) part en
+            # recherche telle quelle et cherche le mauvais sujet.
+            result = await fresh_agent.run(
+                request.prompt, context={"session_id": session_id})
     elif intent == "STUDIO":
         result = await lancer_studio(video_agent, editor_agent, subtitle_agent)
     elif intent == "EMAIL":
