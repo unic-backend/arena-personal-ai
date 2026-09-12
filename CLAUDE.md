@@ -18,8 +18,7 @@ vraiment.
 
 ```
 python scripts/orphelins.py
-→ 301 modules, 240 atteints. Un module réel endormi : `core/execution/boucle.py`,
-déclaré dans `docs/CURRENT_TASK.md` en attendant son consommateur.   (mesuré le 12/09/2026)
+→ 301 modules, 241 atteints. Aucun module réel endormi.   (mesuré le 12/09/2026)
 ```
 
 C'est la mesure, et elle ne se raconte pas — **elle se refait**. Ce bloc a

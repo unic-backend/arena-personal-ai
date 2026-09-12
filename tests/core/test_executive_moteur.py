@@ -3,8 +3,10 @@ import asyncio
 
 import pytest
 
-from core.executive.contrat import Position
+import core.executive.moteur as moteur_module
+from core.executive.contrat import AnalyseSpecialiste, Position
 from core.executive.moteur import MoteurExecutif
+from core.executive.selection import RoleExecutif
 from core.models.base import ModelProvider
 
 
@@ -208,3 +210,148 @@ class TestMemoireDeDecision:
         moteur = MoteurExecutif(provider=FauxProvider(reponse="Bonjour !"), memory=memoire)
         await moteur.analyser("Bonjour")
         assert memoire.list_facts("executive_decision", limit=5) == []
+
+
+# --- La seconde chance (12/09/2026) ------------------------------------------
+#
+# Avant : la consultation était un unique `asyncio.gather`. Un rôle en panne
+# PASSAGÈRE — modèle surchargé, recherche qui dépasse son délai — trouait la
+# décision définitivement, et la synthèse se faisait avec ce trou sans que rien
+# ne le retente.
+
+
+class ConsultationScriptee:
+    """Compte les consultations par rôle et décide qui échoue, et quand.
+
+    Rien n'est simulé au-delà de ça : c'est le VRAI moteur qui boucle, la vraie
+    `BoucleAgentique`, et la vraie vérification par `Position`.
+    """
+
+    def __init__(self, echoue_toujours=(), echoue_au_premier_tour=()):
+        self.echoue_toujours = set(echoue_toujours)
+        self.echoue_au_premier_tour = set(echoue_au_premier_tour)
+        self.appels = []
+
+    async def __call__(self, role, entree):
+        self.appels.append(role.identifiant)
+        premier = self.appels.count(role.identifiant) == 1
+        rate = (role.identifiant in self.echoue_toujours
+                or (premier and role.identifiant in self.echoue_au_premier_tour))
+        if rate:
+            return moteur_module._erreur_pour(role, "modele surcharge")
+        return AnalyseSpecialiste(
+            role=role.identifiant, domaine=role.domaine,
+            position=Position.NEUTRE, confiance="MOYENNE",
+        )
+
+    def consultations_de(self, identifiant):
+        return self.appels.count(identifiant)
+
+
+@pytest.fixture
+def roles_scriptes(monkeypatch):
+    """Trois rôles fixes : la sélection ne doit pas faire varier ces tests."""
+    roles = [RoleExecutif(identifiant=i, domaine=f"Domaine {i}", mots_cles=())
+             for i in ("finance", "risque", "strategie_marche")]
+    monkeypatch.setattr(moteur_module, "selectionner", lambda question: roles)
+    return roles
+
+
+async def _analyser(script, monkeypatch, question="faut-il accepter ce chantier ?"):
+    monkeypatch.setattr(moteur_module, "_consulter_un_role", script)
+    return await MoteurExecutif(provider=FauxProvider()).analyser(question)
+
+
+class TestLaSecondeChance:
+
+    @pytest.mark.asyncio
+    async def test_quand_tout_repond_chaque_role_est_consulte_UNE_fois(
+        self, roles_scriptes, monkeypatch,
+    ):
+        """Compatibilité : le cas courant doit coûter exactement ce qu'il coûtait."""
+        script = ConsultationScriptee()
+
+        await _analyser(script, monkeypatch)
+
+        assert script.appels == ["finance", "risque", "strategie_marche"], (
+            "un role a ete consulte deux fois alors que tout repondait")
+
+    @pytest.mark.asyncio
+    async def test_un_role_en_panne_PASSAGERE_est_reconsulte_et_repond(
+        self, roles_scriptes, monkeypatch,
+    ):
+        """Le défaut réparé : avant, ce rôle restait un trou définitif."""
+        script = ConsultationScriptee(echoue_au_premier_tour={"risque"})
+
+        decision = await _analyser(script, monkeypatch)
+
+        assert script.consultations_de("risque") == 2
+        assert script.consultations_de("finance") == 1, (
+            "un role qui avait repondu a ete reconsulte pour rien")
+        indisponibles = [a.role for a in decision.analyses
+                         if a.position is Position.INDISPONIBLE]
+        assert indisponibles == [], f"le trou n'a pas ete comble : {indisponibles}"
+
+    @pytest.mark.asyncio
+    async def test_une_panne_PERMANENTE_est_retentee_une_fois_pas_plus(
+        self, roles_scriptes, monkeypatch,
+    ):
+        """Ce qui borne, c'est `TOURS_MAX` — mesuré, pas supposé.
+
+        Une première version du moteur ajoutait en plus une garde « sans
+        progrès ». Un sabotage a montré qu'elle était inatteignable : la
+        retirer ne faisait tomber aucun test, parce qu'avec deux tours
+        `planifier` n'est jamais appelé une troisième fois. Elle est partie.
+        Ce test tient la vraie borne.
+        """
+        script = ConsultationScriptee(echoue_toujours={"strategie_marche"})
+
+        await _analyser(script, monkeypatch)
+
+        assert script.consultations_de("strategie_marche") == 2, (
+            f"{script.consultations_de('strategie_marche')} consultations : "
+            "la boucle insiste sur une panne permanente")
+
+    @pytest.mark.asyncio
+    async def test_un_role_definitivement_muet_reste_une_INCONNUE_declaree(
+        self, roles_scriptes, monkeypatch,
+    ):
+        """La seconde chance ne comble aucun trou en silence."""
+        script = ConsultationScriptee(echoue_toujours={"strategie_marche"})
+
+        decision = await _analyser(script, monkeypatch)
+
+        muets = [a for a in decision.analyses if a.position is Position.INDISPONIBLE]
+        assert [a.role for a in muets] == ["strategie_marche"]
+        assert muets[0].inconnues, "le role muet ne porte aucune inconnue"
+        assert any("strategie_marche" in i for i in muets[0].inconnues)
+
+    @pytest.mark.asyncio
+    async def test_l_ordre_des_roles_ne_depend_pas_de_l_ordre_des_reponses(
+        self, roles_scriptes, monkeypatch,
+    ):
+        """La synthèse lit une liste ordonnée par la sélection, pas par la course."""
+        script = ConsultationScriptee(echoue_au_premier_tour={"finance"})
+
+        decision = await _analyser(script, monkeypatch)
+
+        assert [a.role for a in decision.analyses] == [
+            "finance", "risque", "strategie_marche"]
+
+    @pytest.mark.asyncio
+    async def test_les_roles_partent_toujours_en_PARALLELE(
+        self, roles_scriptes, monkeypatch,
+    ):
+        """Passer par la boucle ne doit pas sérialiser ce qui ne l'était pas."""
+        async def lente(role, entree):
+            await asyncio.sleep(0.12)
+            return AnalyseSpecialiste(role=role.identifiant, domaine=role.domaine,
+                                      position=Position.NEUTRE, confiance="MOYENNE")
+
+        monkeypatch.setattr(moteur_module, "_consulter_un_role", lente)
+        depart = asyncio.get_event_loop().time()
+        await MoteurExecutif(provider=FauxProvider()).analyser("question")
+        ecoule = asyncio.get_event_loop().time() - depart
+
+        assert ecoule < 0.30, (
+            f"{ecoule:.2f}s pour trois roles de 0,12s : ils ont ete serialises")
