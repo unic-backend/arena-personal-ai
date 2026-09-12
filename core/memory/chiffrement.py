@@ -42,6 +42,7 @@ import base64
 import json
 import logging
 import os
+from collections import OrderedDict
 from dataclasses import dataclass
 
 from cryptography.exceptions import InvalidTag
@@ -58,6 +59,18 @@ VARIABLE_PASSPHRASE = "USMAN_MEMORY_VAULT_PASSPHRASE"
 #: Voir le docstring du module : 600 000, au-dessus des 310 000 verifies chez
 #: AI Memory Vault, parce que la derivation ne tourne jamais sur un chemin chaud.
 ITERATIONS_PBKDF2 = 600_000
+
+#: Combien de cles derivees restent en memoire. Une derivation coute 275 ms
+#: (mesure du 12/09/2026, 600 000 iterations) : sans ce cache, relire deux
+#: fois le meme souvenir sensible la repayait deux fois.
+CLES_GARDEES = 256
+
+#: Au-dela de ce nombre de messages, l'instance renouvelle son sel — donc sa
+#: cle. AES-GCM exige un nonce unique PAR CLE : avec un nonce de 96 bits tire
+#: au hasard, la borne d'anniversaire reste astronomique bien au-dela de ce
+#: plafond, et renouveler regulierement garde cette marge intacte meme sur un
+#: coffre qui vivrait des annees.
+MESSAGES_PAR_SEL = 65_536
 
 TAILLE_SEL = 16   # octets — un sel par chiffrement, jamais partage entre deux souvenirs
 TAILLE_NONCE = 12  # octets — la taille recommandee pour AES-GCM, jamais reutilisee
@@ -121,6 +134,16 @@ class Coffre:
         if not (passphrase or "").strip():
             raise ValueError("Un coffre sans phrase de passe ne protege rien.")
         self._passphrase = passphrase
+        #: Cles deja derivees, par sel. Mesure du 12/09/2026 : lire 500
+        #: souvenirs sensibles prenait 2 min 14 — 275 ms de PBKDF2 par
+        #: souvenir, parce que chaque enveloppe portait son propre sel.
+        self._cles: "OrderedDict[bytes, bytes]" = OrderedDict()
+        #: Le sel de cette instance, tire une seule fois et reutilise pour
+        #: les ecritures suivantes (voir `MESSAGES_PAR_SEL`). Le NONCE, lui,
+        #: reste tire au hasard a chaque message : c'est lui que GCM exige
+        #: unique, et c'etait deja le cas avant ce changement.
+        self._sel_courant: bytes | None = None
+        self._messages_sous_ce_sel = 0
 
     def __repr__(self) -> str:  # jamais la phrase de passe dans un log/traceback
         return "Coffre(passphrase=<masque>)"
@@ -139,6 +162,41 @@ class Coffre:
         return cls(valeur)
 
     def _deriver_cle(self, sel: bytes) -> bytes:
+        """La cle pour ce sel, derivee une fois puis gardee en memoire.
+
+        Le cache ne change RIEN au format ni a la robustesse : la meme
+        phrase et le meme sel donnent la meme cle, par definition de PBKDF2.
+        Il change seulement le nombre de fois qu'on paie les 600 000
+        iterations pour le meme sel.
+        """
+        connue = self._cles.get(sel)
+        if connue is not None:
+            self._cles.move_to_end(sel)
+            return connue
+        cle = self._deriver_vraiment(sel)
+        self._cles[sel] = cle
+        self._cles.move_to_end(sel)
+        while len(self._cles) > CLES_GARDEES:
+            self._cles.popitem(last=False)
+        return cle
+
+    def _sel_pour_ecrire(self) -> bytes:
+        """Le sel des ecritures de cette instance, renouvele par lots.
+
+        Avant le 12/09/2026, chaque message tirait son propre sel : deux
+        souvenirs sensibles ne partageaient jamais une cle, donc les relire
+        coutait une derivation CHACUN. Un sel par lot est la pratique
+        habituelle d'un conteneur chiffre (un sel d'en-tete, puis un nonce
+        par message) et laisse le format d'enveloppe inchange — les
+        souvenirs deja ecrits restent lisibles tels quels.
+        """
+        if self._sel_courant is None or self._messages_sous_ce_sel >= MESSAGES_PAR_SEL:
+            self._sel_courant = os.urandom(TAILLE_SEL)
+            self._messages_sous_ce_sel = 0
+        self._messages_sous_ce_sel += 1
+        return self._sel_courant
+
+    def _deriver_vraiment(self, sel: bytes) -> bytes:
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=TAILLE_CLE,
@@ -149,7 +207,9 @@ class Coffre:
 
     def chiffrer(self, clair: str) -> str:
         """Chiffre `clair`, rend une enveloppe serialisee (texte, stockable telle quelle)."""
-        sel = os.urandom(TAILLE_SEL)
+        sel = self._sel_pour_ecrire()
+        # Le nonce, lui, est TOUJOURS neuf : c'est l'exigence d'AES-GCM, et
+        # la seule des deux qui ne se partage jamais.
         nonce = os.urandom(TAILLE_NONCE)
         cle = self._deriver_cle(sel)
         ciphertext = AESGCM(cle).encrypt(nonce, clair.encode("utf-8"), None)

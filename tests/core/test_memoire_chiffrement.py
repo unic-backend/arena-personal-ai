@@ -12,6 +12,7 @@ from core.memory.chiffrement import (
     VARIABLE_PASSPHRASE,
     Coffre,
     EchecDechiffrement,
+    _Enveloppe,
 )
 
 
@@ -63,9 +64,12 @@ class TestRoundTrip:
         assert "XK7Q9Z" not in enveloppe
 
     def test_deux_chiffrements_du_meme_clair_produisent_des_enveloppes_differentes(self):
-        # Sel et nonce tires au hasard a chaque appel : deux chiffrements du meme
-        # texte ne doivent jamais etre identiques, sinon un observateur du
+        # Le NONCE est tire au hasard a chaque appel : deux chiffrements du
+        # meme texte ne doivent jamais etre identiques, sinon un observateur du
         # stockage pourrait repérer deux souvenirs identiques par comparaison.
+        # (Le sel, lui, est partage par lot depuis le 12/09/2026 — voir
+        # `TestCoutDuDechiffrement`. C'est le nonce qui porte cette garantie,
+        # et il la porte toujours.)
         coffre = Coffre("phrase-de-test")
         a = coffre.chiffrer("meme contenu")
         b = coffre.chiffrer("meme contenu")
@@ -138,3 +142,99 @@ class TestEchecsSurs:
             json_casse_echoue = True
 
         assert mauvaise_cle_echoue and json_casse_echoue
+
+
+class TestCoutDuDechiffrement:
+    """Mesure du 12/09/2026 : lire 500 souvenirs sensibles prenait 2 min 14.
+
+    Chaque enveloppe portait son propre sel, donc `dechiffrer` refaisait les
+    600 000 iterations PBKDF2 **par souvenir** (275 ms chacune). Plus le
+    proprietaire enregistrait de souvenirs sensibles, plus ARENA devenait
+    lent — jusqu'a l'inutilisable, sur la donnee justement la plus precieuse.
+
+    Deux changements, aucun sur le format d'enveloppe : un cache de cles par
+    sel, et un sel reutilise par lot a l'ecriture. Ce que ces tests gardent :
+    la compatibilite avec tout ce qui est deja ecrit, et le fait que le
+    NONCE — la seule unicite qu'AES-GCM exige — reste tire a chaque message.
+    """
+
+    def test_le_nonce_reste_unique_meme_quand_le_sel_est_partage(self):
+        coffre = Coffre("phrase-de-test")
+        enveloppes = [_Enveloppe.depuis(coffre.chiffrer(f"secret {i}")) for i in range(50)]
+
+        nonces = {e.nonce for e in enveloppes}
+        assert len(nonces) == 50, "un nonce repete casse AES-GCM"
+        assert len({e.sel for e in enveloppes}) == 1, (
+            "le sel doit bien etre partage : c'est ce qui evite 50 derivations")
+
+    def test_un_souvenir_ecrit_avec_un_sel_par_message_reste_lisible(self):
+        """La compatibilite qui compte : ses souvenirs deja chiffres.
+
+        On reproduit ici l'ANCIEN format — un sel propre a ce message, tire
+        independamment de l'instance — et on verifie qu'il se dechiffre.
+        """
+        import os
+
+        from core.memory.chiffrement import TAILLE_NONCE, TAILLE_SEL
+
+        coffre = Coffre("phrase-de-test")
+        sel_ancien, nonce = os.urandom(TAILLE_SEL), os.urandom(TAILLE_NONCE)
+        cle = coffre._deriver_vraiment(sel_ancien)
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        ciphertext = AESGCM(cle).encrypt(nonce, "code du portail 4821".encode("utf-8"), None)
+        ancienne = _Enveloppe(ciphertext=ciphertext, nonce=nonce, sel=sel_ancien).serialiser()
+
+        assert coffre.dechiffrer(ancienne) == "code du portail 4821"
+
+    def test_une_mauvaise_phrase_reste_refusee_malgre_le_cache(self):
+        """Le cache ne doit jamais servir de porte de derriere."""
+        enveloppe = Coffre("la bonne phrase").chiffrer("secret")
+
+        autre = Coffre("une autre phrase")
+        with pytest.raises(EchecDechiffrement):
+            autre.dechiffrer(enveloppe)
+
+    def test_le_cache_de_cles_est_borne(self):
+        import os
+
+        from core.memory.chiffrement import CLES_GARDEES
+
+        coffre = Coffre("phrase-de-test")
+        for _ in range(CLES_GARDEES + 20):
+            coffre._deriver_cle(os.urandom(16))
+
+        assert len(coffre._cles) == CLES_GARDEES, (
+            "un cache non borne ferait grossir la memoire du processus sans fin")
+
+    def test_le_sel_se_renouvelle_par_lot(self, monkeypatch):
+        """Une cle ne doit pas servir indefiniment : la marge de collision de
+        nonce reste intacte si le sel se renouvelle."""
+        import core.memory.chiffrement as module
+
+        monkeypatch.setattr(module, "MESSAGES_PAR_SEL", 3)
+        coffre = Coffre("phrase-de-test")
+        sels = [_Enveloppe.depuis(coffre.chiffrer(f"m{i}")).sel for i in range(7)]
+
+        assert len(set(sels)) == 3, f"le sel n'a pas tourne comme prevu : {len(set(sels))}"
+
+    def test_relire_500_souvenirs_ne_derive_qu_une_seule_fois(self):
+        """La mesure qui justifie le changement, en test : 500 dechiffrements
+        pour UNE derivation, au lieu de 500."""
+        coffre = Coffre("phrase-de-test")
+        enveloppes = [coffre.chiffrer(f"secret {i}") for i in range(500)]
+
+        derivations = []
+        vraie = coffre._deriver_vraiment
+
+        def _compter(sel):
+            derivations.append(sel)
+            return vraie(sel)
+        coffre._deriver_vraiment = _compter
+        coffre._cles.clear()
+
+        clairs = [coffre.dechiffrer(e) for e in enveloppes]
+
+        assert clairs[0] == "secret 0" and clairs[-1] == "secret 499"
+        assert len(derivations) == 1, (
+            f"{len(derivations)} derivations pour 500 lectures — chacune coute "
+            f"275 ms, soit ce que ce correctif devait supprimer")
