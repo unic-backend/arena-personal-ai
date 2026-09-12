@@ -109,6 +109,148 @@ class TestRienN_estDevenuInatteignable:
         assert resultat["response"] == "liens trouvés"
 
 
+class TestLesHuitIntentionsReconnectees:
+    """`dispatch_request` gérait déjà ces huit intentions — audit externe,
+    commit f7f0478 : `AGENTS_SPECIALISES` les ignorait, donc `/agent/stream`,
+    `/api/chat/stream` et `/v1/chat/completions` ne les atteignaient jamais :
+    le classement pouvait reconnaître « fais-moi un plan 3D » et la réponse
+    restait quand même un texte de conversation ordinaire. Corrigé le
+    12/09/2026 (`apps/backend/config.py`). Chaque test ici prouve que
+    l'intention atteint réellement SON gestionnaire — jamais seulement que
+    l'objet est importé."""
+
+    @pytest.mark.parametrize("intention", [
+        "ARCHITECTURE_3D", "PREUVE_FORMELLE", "VIDEO_PROJET", "FINANCE",
+        "EXECUTIVE", "VISAGE", "DESIGN_UI", "UI_GENERATE",
+    ])
+    def test_chaque_intention_est_desormais_specialisee(self, intention):
+        assert intention in AGENTS_SPECIALISES, (
+            f"{intention} est géré par dispatch_request mais /agent/stream "
+            "ne l'atteindra jamais : la porte AGENTS_SPECIALISES le bloque")
+
+    @pytest.mark.asyncio
+    async def test_architecture_3d_atteint_le_plan_deterministe(self, monkeypatch):
+        recu = {}
+
+        def _plan(registre, prompt, session=None):
+            recu["prompt"] = prompt
+            recu["session"] = session
+            return {"response": "Plan 3D genere.", "agent": "Architecture3D"}
+        monkeypatch.setattr(routeur_chat, "executer_architecture", _plan)
+
+        resultat = await dispatch_request(
+            ChatRequest(prompt="dessine un plan 3D du salon", session_id="s1"),
+            intent="ARCHITECTURE_3D",
+        )
+        assert recu["prompt"] == "dessine un plan 3D du salon"
+        assert recu["session"] == "s1"
+        assert resultat["response"] == "Plan 3D genere."
+
+    @pytest.mark.asyncio
+    async def test_preuve_formelle_atteint_l_agent_formel(self, monkeypatch):
+        appels = []
+
+        async def _formel(prompt):
+            appels.append(prompt)
+            return {"response": "Preuve verifiee par Lean.", "agent": "FormelAgent"}
+        monkeypatch.setattr(routeur_chat.formel_agent, "run", _formel)
+
+        resultat = await dispatch_request(
+            ChatRequest(prompt="prouve que 2+2=4"), intent="PREUVE_FORMELLE")
+        assert appels == ["prouve que 2+2=4"]
+        assert resultat["response"] == "Preuve verifiee par Lean."
+
+    @pytest.mark.asyncio
+    async def test_video_projet_atteint_l_agent_de_production(self, monkeypatch):
+        appels = []
+
+        async def _prod(prompt, context=None):
+            appels.append((prompt, context))
+            return {"response": "Projet video planifie.", "agent": "VideoProductionAgent"}
+        monkeypatch.setattr(routeur_chat, "video_production_agent",
+                            type("F", (), {"run": staticmethod(_prod)})())
+
+        resultat = await dispatch_request(
+            ChatRequest(prompt="monte un projet video de 3 minutes"), intent="VIDEO_PROJET")
+        assert appels[0][0] == "monte un projet video de 3 minutes"
+        assert resultat["response"] == "Projet video planifie."
+
+    @pytest.mark.asyncio
+    async def test_finance_atteint_l_agent_finance(self, monkeypatch):
+        appels = []
+
+        async def _finance(prompt):
+            appels.append(prompt)
+            return {"response": "Analyse de risque rendue.", "agent": "FinanceAgent"}
+        monkeypatch.setattr(routeur_chat.finance_agent, "run", _finance)
+
+        resultat = await dispatch_request(
+            ChatRequest(prompt="analyse le risque de ce portefeuille"), intent="FINANCE")
+        assert appels == ["analyse le risque de ce portefeuille"]
+        assert resultat["response"] == "Analyse de risque rendue."
+
+    @pytest.mark.asyncio
+    async def test_executive_atteint_l_agent_executive(self, monkeypatch):
+        appels = []
+
+        async def _exec(prompt):
+            appels.append(prompt)
+            return {"response": "Synthese executive rendue.", "agent": "ExecutiveAgent"}
+        monkeypatch.setattr(routeur_chat.executive_agent, "run", _exec)
+
+        resultat = await dispatch_request(
+            ChatRequest(prompt="resume l'etat du chantier"), intent="EXECUTIVE")
+        assert appels == ["resume l'etat du chantier"]
+        assert resultat["response"] == "Synthese executive rendue."
+
+    @pytest.mark.asyncio
+    async def test_visage_atteint_faceplugin(self, monkeypatch):
+        appels = []
+
+        def _analyse(demande, images):
+            appels.append((demande, images))
+            return {"response": "Visage analyse.", "agent": "Faceplugin"}
+        monkeypatch.setattr(routeur_chat, "_analyse_de_visages", _analyse)
+
+        resultat = await dispatch_request(
+            ChatRequest(prompt="qui est sur cette photo"), intent="VISAGE")
+        assert appels[0][0] == "qui est sur cette photo"
+        assert resultat["response"] == "Visage analyse."
+
+    @pytest.mark.asyncio
+    async def test_design_ui_atteint_ui_ux_pro_max(self, monkeypatch):
+        from core.actions.resultat import ResultatAction, Statut
+        appels = []
+
+        def _executer(nom_service, capacite, **kw):
+            appels.append((nom_service, capacite, kw.get("requete")))
+            return ResultatAction(statut=Statut.SUCCES, action=capacite,
+                                  cible=nom_service, message="Palette proposee.",
+                                  preuve="ok")
+        monkeypatch.setattr(routeur_chat.registre, "executer", _executer)
+
+        resultat = await dispatch_request(
+            ChatRequest(prompt="propose une palette de couleurs"), intent="DESIGN_UI")
+        assert appels[0][0] == "ui_ux_pro_max"
+        assert appels[0][2] == "propose une palette de couleurs"
+        assert resultat["response"] == "Palette proposee."
+        assert resultat["status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_ui_generate_atteint_l_agent_ui(self, monkeypatch):
+        appels = []
+
+        async def _ui(prompt):
+            appels.append(prompt)
+            return {"response": "Interface generee en code.", "agent": "UIAgent"}
+        monkeypatch.setattr(routeur_chat.ui_agent, "run", _ui)
+
+        resultat = await dispatch_request(
+            ChatRequest(prompt="genere un formulaire de contact"), intent="UI_GENERATE")
+        assert appels == ["genere un formulaire de contact"]
+        assert resultat["response"] == "Interface generee en code."
+
+
 class TestLesClesMortesNeServentPlus:
     """Quatre valeurs publiquement connues ne doivent plus rien ouvrir."""
 

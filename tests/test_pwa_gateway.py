@@ -486,6 +486,44 @@ def test_un_agent_specialise_qui_leve_rend_une_vraie_erreur(
     assert not any(c["type"] == "done" for c in charges)
 
 
+@pytest.mark.parametrize("intention", [
+    "ARCHITECTURE_3D", "PREUVE_FORMELLE", "VIDEO_PROJET", "FINANCE",
+    "EXECUTIVE", "VISAGE", "DESIGN_UI", "UI_GENERATE",
+])
+def test_les_huit_intentions_reconnectees_atteignent_dispatch_request(
+    client, entetes, fournisseur, monkeypatch, intention,
+):
+    """Avant le correctif (audit externe, commit f7f0478) : ces huit
+    intentions étaient absentes d'`AGENTS_SPECIALISES`, donc `/agent/stream`
+    ne les envoyait jamais à `dispatch_request` — le classement pouvait bien
+    reconnaître « dessine un plan 3D », la réponse restait un texte de
+    conversation généré par `fast_provider`, jamais l'agent spécialisé
+    attendu. Ce test échouait avant le correctif de `AGENTS_SPECIALISES`
+    (apps/backend/config.py) : `dispatch_request` n'était jamais appelé."""
+    fournisseur()
+
+    async def _intention_fixee(_demande, espace=None):
+        return intention
+    monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _intention_fixee)
+
+    appels = []
+
+    async def _resultat(requete, intent=None):
+        appels.append((intent, requete.prompt))
+        return {"response": f"Reponse specialisee de {intent}.", "sources": []}
+    monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+    reponse = demander(client, entetes, text="peu importe la formulation exacte")
+    charges = trames(reponse.text)
+
+    assert appels == [(intention, "peu importe la formulation exacte")], (
+        f"{intention} n'a jamais atteint dispatch_request : la reponse est "
+        "restee une conversation ordinaire au lieu d'invoquer son agent")
+    jetons = [c["text"] for c in charges if c["type"] == "token"]
+    assert jetons == [f"Reponse specialisee de {intention}."]
+    assert any(c["type"] == "done" for c in charges)
+
+
 def test_plaquiste_recoit_le_fil_entier_pas_la_derniere_ligne_seule(
     client, entetes, fournisseur, monkeypatch,
 ):
