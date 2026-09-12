@@ -1333,3 +1333,14 @@ l'idempotence partagée sur la durée de vie d'un `Atelier` ;
 `test_dioumtoukay_git_ops.py` 6, dont un identifiant répété sur deux
 instances d'agent successives). `ruff check` propre.
 `scripts/orphelins.py` : 300 modules, 240 atteints (+1/+1).
+
+**Régression trouvée par CI (PR #196), corrigée le même jour** :
+`continuer_operation()` ouvrait implicitement un éditeur sur `--continue`
+sans qu'aucune des 63 exécutions locales ne le révèle — l'environnement de
+développement a `GIT_EDITOR` déjà configuré, le runner GitHub Actions non
+(« Terminal is dumb, but EDITOR unset »), 3 échecs en plus des 39
+pré-existants. Reproduit localement avant correction
+(`env -u GIT_EDITOR -u EDITOR TERM=dumb`), corrigé (`-c core.editor=true`
+sur l'appel `--continue`), suite complète revérifiée sous les mêmes
+conditions : 5353 passed, 0 failed. CI confirmée retombée à 39 échecs
+pré-existants après le push du correctif.

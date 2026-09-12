@@ -8729,3 +8729,25 @@ cloud) — aucune primitive Unix (socket, `os.killpg`, `start_new_session`)
 n'a été ajoutée par ce module lui-même (il réutilise `git_etat._executer`,
 déjà portable), mais ce n'est pas une mesure réelle sur la machine du
 propriétaire.
+
+### Régression CI trouvée après la mesure ci-dessus, corrigée le même jour
+
+Le premier passage en CI (PR #196) a rendu **42 échecs**, pas les 39
+attendus : `continuer_operation()` appelait `git <fusion|rebase|
+cherry-pick|revert> --continue` sans configurer d'éditeur. En local ça
+passait — `GIT_EDITOR=true` est déjà présent dans l'environnement de
+développement — mais le runner GitHub Actions n'a ni terminal interactif ni
+`EDITOR`/`GIT_EDITOR` : `error: Terminal is dumb, but EDITOR unset`. Les 3
+échecs en trop touchaient exactement les deux tests de résolution de
+conflit + continuation, dans `test_git_ops.py` et `test_atelier_git_ops.py`.
+
+Reproduit localement AVANT correction (`env -u GIT_EDITOR -u EDITOR
+TERM=dumb python -m pytest …`) — message d'erreur identique à celui de CI,
+confirmant la cause plutôt que la supposant. Corrigé en ajoutant `-c
+core.editor=true` à l'appel `--continue` : git accepte alors son message
+déjà préparé sans jamais ouvrir un éditeur. Suite ciblée sous ces mêmes
+conditions (sans éditeur) : **63 passed**. Suite complète sous les mêmes
+conditions : **5353 passed, 31 skipped, 52 deselected, 0 failed** (444.91s,
+mesuré le 12/09/2026). CI re-vérifiée après le push du correctif : **39
+failed** (le plafond pré-existant, inchangé), **5293 passed** — la
+régression a disparu, rien d'autre n'a bougé.

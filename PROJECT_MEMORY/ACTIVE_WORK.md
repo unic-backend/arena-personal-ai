@@ -6,10 +6,17 @@
 
 DEC-0094 (gitgui, second passage — opérations git mutantes sûres à
 rejouer : idempotence, précondition/postcondition, `tools/atelier/
-git_ops.py`) vérifiée (suite ciblée : 63 passed ; suite complète voir
-`docs/DECISIONS.md`, DEC-0094), prête à pousser sur une branche restartée
-depuis `master`. PR #192 (DEC-0092) et #193 (DEC-0093) déjà fusionnées le
-11/09/2026 — rien en attente d'action côté assistant sur ces deux chunks.
+git_ops.py`) poussée en PR #196. CI a trouvé une vraie régression (42
+échecs au lieu des 39 attendus) : `continuer_operation()` sans éditeur
+configuré échouait sur le runner GitHub Actions (« Terminal is dumb, but
+EDITOR unset ») alors que ça passait en local (`GIT_EDITOR` déjà présent
+localement). Corrigé (`-c core.editor=true` sur l'appel `--continue`),
+reproduit et vérifié en local sous les mêmes conditions que CI avant de
+pousser, CI re-vérifiée après coup : retombée exactement à 39 échecs
+pré-existants. Détail complet : `docs/DECISIONS.md`, DEC-0094. PR #192
+(DEC-0092) et #193 (DEC-0093) déjà fusionnées le 11/09/2026 — rien en
+attente d'action côté assistant sur ces deux chunks. PR #196 en attente de
+fusion par le propriétaire.
 
 ## Dernier chunk : DEC-0094 — gitgui, second passage : opérations git mutantes sûres à rejouer
 
