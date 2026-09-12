@@ -123,3 +123,60 @@ def test_des_enregistrements_reellement_concurrents_ne_s_ecrasent_pas(tmp_path):
 
     assert compteur.requetes_aujourdhui == 20, (
         "un enregistrement concurrent ne doit ni se perdre ni doubler")
+
+
+# --- Le plafond par requete : ce qu'il vaut vraiment -------------------------
+# Trouve le 12/09/2026 en diagnostic de l'etape 10 : `CLOUD_COUT_MAX_PAR_REQUETE`
+# (`AI_MAX_COST_PER_REQUEST=0.02`) etait declare dans `config.py` ET documente
+# dans `.env.example`, et lu par ZERO ligne de code. Un reglage qui se lit comme
+# une protection sans en etre une est pire qu'un reglage absent.
+
+
+def test_sans_tarif_le_plafond_par_requete_se_declare_non_verifiable(tmp_path):
+    """La seule reponse honnete : le cout d'une requete n'est pas calculable.
+
+    `TARIFS` est vide par defaut, et le cout depend des jetons de SORTIE,
+    inconnus avant la reponse. Dire « respecte » serait faux ; afficher
+    `0 $` de depense serait pire.
+    """
+    compteur = CompteurUsage(cout_max_par_requete=0.02)
+    compteur.enregistrer(Appel(fournisseur="groq", modele="inconnu",
+                               jetons_entree=10_000, jetons_sortie=10_000))
+
+    resume = compteur.resume()
+    assert resume["cout_max_par_requete"] == 0.02, "le reglage doit etre visible"
+    assert resume["controle_cout_par_requete"] == "NON_VERIFIABLE"
+    assert resume["depassements_par_requete_aujourdhui"] == 0, (
+        "un appel dont le cout est inconnu n'est ni un depassement ni un respect")
+    assert resume["cout_aujourdhui"] is None, "`None` n'est pas `0.0`"
+
+
+def test_a_zero_le_plafond_par_requete_est_un_choix_ecrit(tmp_path):
+    compteur = CompteurUsage(cout_max_par_requete=0.0)
+
+    assert compteur.resume()["controle_cout_par_requete"] == "DESACTIVE"
+    assert compteur.resume()["cout_max_par_requete"] is None
+
+
+def test_avec_un_tarif_le_depassement_est_constate_apres_coup(tmp_path, monkeypatch):
+    """Avec un tarif reel, le depassement devient mesurable — mais APRES la
+    reponse, jamais avant : personne ne connait les jetons de sortie d'une
+    reponse qui n'a pas encore ete ecrite. L'etat le dit tel quel."""
+    import core.models.usage as usage
+
+    monkeypatch.setitem(usage.TARIFS, "modele-cher", {"entree": 1000.0, "sortie": 3000.0})
+    compteur = CompteurUsage(cout_max_par_requete=0.02)
+    # Les tarifs sont en dollars par MILLION de jetons : 10k entree + 10k
+    # sortie a 1000/3000 font 10 + 30 = 40 $, tres au-dela des 0,02 $.
+    compteur.enregistrer(Appel(fournisseur="groq", modele="modele-cher",
+                               jetons_entree=10_000, jetons_sortie=10_000))
+    # Et un appel reellement bon marche : 1 + 1 jeton, soit 0,004 $, sous le
+    # plafond — il ne doit pas compter comme un depassement.
+    compteur.enregistrer(Appel(fournisseur="groq", modele="modele-cher",
+                               jetons_entree=1, jetons_sortie=1))
+
+    resume = compteur.resume()
+    assert resume["controle_cout_par_requete"] == "MESURE_APRES_COUP"
+    assert resume["depassements_par_requete_aujourdhui"] == 1, (
+        f"un seul des deux appels depasse le plafond : {resume}")
+    assert resume["cout_aujourdhui"] is not None, "avec un tarif, le cout se calcule"

@@ -6,7 +6,7 @@ refus ne laisse rien sur le disque.
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
@@ -176,6 +176,16 @@ async def upload_video(file: UploadFile = File(...)):
         logger.error(f"Erreur upload: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
 
+def _srt_si_reel(sub_res: Any) -> str:
+    """Le chemin du fichier de sous-titres, s'il existe vraiment sur le
+    disque. Un chemin annonce sans fichier derriere est une fausse reussite
+    de plus, meme si la video, elle, est bien la."""
+    chemin = sub_res.get("srt_path") if isinstance(sub_res, dict) else None
+    if chemin and Path(chemin).exists() and Path(chemin).stat().st_size > 0:
+        return str(chemin)
+    return ""
+
+
 @router.post("/api/process-video", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
 async def process_video_pipeline(video_path: str = Form(...)):
     try:
@@ -197,6 +207,19 @@ async def process_video_pipeline(video_path: str = Form(...)):
         })
 
         rendered_file_path = clip_res.get("clip_path") if isinstance(clip_res, dict) else None
+        # Un `clip_path` rendu par le selecteur n'est pas une preuve : trouve
+        # le 12/09/2026 en diagnostiquant ce meme correctif, ce chemin-ci
+        # court-circuitait toute verification des lors que le fichier
+        # EXISTAIT — un extrait vide ou tronque partait en "status":
+        # "success" avec son URL. Meme exigence que pour le rendu de repli
+        # ci-dessous : existe, non vide, et un vrai flux video (ffprobe).
+        if rendered_file_path and Path(rendered_file_path).exists():
+            if not editor_agent.crop_tool._sortie_est_valide(Path(rendered_file_path)):
+                logger.warning(
+                    "Extrait rendu par le selecteur invalide (%s) : on repasse "
+                    "par le rendu 9:16 plutot que de l'annoncer pret.",
+                    rendered_file_path)
+                rendered_file_path = None
         if not rendered_file_path or not Path(rendered_file_path).exists():
             # Purge paresseuse, avant d'ecrire : DEC-0037, aucun rendu ancien
             # ne doit s'accumuler indefiniment dans RENDERED_DIR.
@@ -229,7 +252,10 @@ async def process_video_pipeline(video_path: str = Form(...)):
             "video_original": p.name,
             "rendered_9_16": str(rendered_p),
             "video_web_url": video_web_url,
-            "subtitle_srt": sub_res.get("srt_path") if isinstance(sub_res, dict) else "",
+            # Un chemin SRT annonce mais absent du disque est la meme
+            # fausse reussite en plus petit : on ne le rapporte que s'il
+            # existe reellement (12/09/2026).
+            "subtitle_srt": _srt_si_reel(sub_res),
             "ai_summary": analysis_res.get("ai_analysis") if isinstance(analysis_res, dict) else ""
         }
     except HTTPException:

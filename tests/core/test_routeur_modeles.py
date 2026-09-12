@@ -557,3 +557,79 @@ class TestFluxVide:
 
         assert await routeur.is_available() is True
         assert routeur.etats[LOCAL].au_repos(0.0) is False
+
+
+class TestLePlafondTientSousConcurrence:
+    """Trou trouve le 12/09/2026, en diagnostic de l'etape 10 (DEC-0095).
+
+    Le plafond etait lu AVANT l'appel et compte APRES la reponse. Entre les
+    deux, toutes les requetes lancees en parallele voyaient un compteur
+    encore a zero : mesure avant correctif, **dix requetes simultanees
+    partaient au cloud pour un plafond de trois**. La mission demandait
+    explicitement de tenir compte des requetes concurrentes.
+
+    Une place se reserve maintenant dans la foulee du verdict — avant le
+    premier `await`, donc sans fenetre ou une autre tache se glisse — et se
+    rend a la fin de la requete.
+    """
+
+    class Lent(FauxFournisseur):
+        """Un fournisseur qui prend du temps : c'est ce delai qui laissait
+        passer les requetes concurrentes."""
+
+        async def generate(self, prompt, system_prompt=None):
+            self.appels.append(prompt)
+            await __import__("asyncio").sleep(0.02)
+            return f"{self.texte} ({self.nom})"
+
+        async def generate_stream(self, prompt, system_prompt=None):
+            self.appels.append(prompt)
+            await __import__("asyncio").sleep(0.02)
+            yield "Bonjour"
+
+    async def test_dix_requetes_simultanees_ne_depassent_pas_un_plafond_de_trois(self):
+        import asyncio
+
+        compteur = CompteurUsage(requetes_par_jour=3, budget_journalier=0)
+        groq, local = self.Lent("groq"), self.Lent(LOCAL)
+        r = RouteurModeles(local=local, distants={"groq": groq},
+                           mode="HYBRIDE", compteur=compteur)
+
+        await asyncio.gather(*[r.generate("quelle est la capitale du Senegal ?")
+                               for _ in range(10)])
+
+        assert len(groq.appels) == 3, (
+            f"{len(groq.appels)} appels sont partis au cloud pour un plafond de 3")
+        assert len(local.appels) == 7, (
+            "les requetes au-dela du plafond doivent retomber sur sa machine, "
+            "jamais etre refusees : un plafond ne casse rien")
+        assert compteur.appels_en_vol == 0, "une reservation n'a pas ete rendue"
+
+    async def test_le_flux_tient_le_meme_plafond(self):
+        """Deux chemins, une seule verite : `generate_stream` aussi."""
+        import asyncio
+
+        compteur = CompteurUsage(requetes_par_jour=3, budget_journalier=0)
+        groq, local = self.Lent("groq"), self.Lent(LOCAL)
+        r = RouteurModeles(local=local, distants={"groq": groq},
+                           mode="HYBRIDE", compteur=compteur)
+
+        async def lire():
+            return [m async for m in r.generate_stream("quelle est la capitale ?")]
+
+        await asyncio.gather(*[lire() for _ in range(10)])
+
+        assert len(groq.appels) == 3, (
+            f"{len(groq.appels)} appels en flux pour un plafond de 3")
+        assert compteur.appels_en_vol == 0
+
+    async def test_une_requete_locale_ne_prend_aucune_place(self):
+        """Sa machine ne coute rien : elle ne doit pas consommer de quota."""
+        compteur = CompteurUsage(requetes_par_jour=1, budget_journalier=0)
+        r = routeur(mode="LOCAL_ONLY", compteur=compteur)
+
+        await r.generate("bonjour")
+        await r.generate("encore")
+
+        assert compteur.appels_en_vol == 0
+        assert compteur.requetes_aujourdhui == 0
