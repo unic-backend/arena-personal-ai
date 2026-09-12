@@ -395,3 +395,102 @@ def test_les_metadonnees_de_l_ancienne_memoire_survivent(ancienne_memoire):
 
     proprietaire = [s for s in memoire.souvenirs() if "Ousmane" in s.contenu][0]
     assert proprietaire.metadonnees["role"] == "Proprietaire"
+
+
+# --- L'index du tri (DEC-0098) ------------------------------------------------
+
+def _plan_du_tri(chemin) -> list:
+    """Le plan que SQLite choisit pour la requete de lecture de la memoire."""
+    import sqlite3
+
+    with sqlite3.connect(chemin) as connexion:
+        return [
+            ligne[3] for ligne in connexion.execute(
+                "EXPLAIN QUERY PLAN SELECT * FROM souvenirs WHERE etat = ? "
+                "ORDER BY importance DESC, cree_le DESC LIMIT 500", ("ACTIF",)
+            )
+        ]
+
+
+class TestIndexDuTri:
+    """Les quatre index existants servent les `WHERE`. Aucun ne servait
+    `ORDER BY importance DESC, cree_le DESC`, que TOUTE lecture de la memoire
+    execute — donc deux fois par question, `souvenirs()` et
+    `souvenirs_correspondant_a_des_mots()`. SQLite construisait un TEMP B-TREE
+    a chaque fois : mesure du 12/09/2026 par `souvenirs(limite=500)` sur
+    50 000 souvenirs, **20,56 ms sans l'index contre 5,05 ms avec** (x4,1).
+    """
+
+    def test_le_tri_ne_construit_plus_de_temp_btree(self, memoire):
+        plan = " ".join(_plan_du_tri(memoire.db_path))
+
+        assert "idx_souvenirs_tri" in plan, plan
+        assert "TEMP B-TREE" not in plan, (
+            f"le tri repasse par un TEMP B-TREE : {plan}")
+
+    def test_sans_l_index_le_tri_repasse_par_un_temp_btree(self, tmp_path):
+        """La contre-mesure : l'index retire, le TEMP B-TREE revient. Sans ce
+        test, supprimer l'index ne ferait tomber personne."""
+        import sqlite3
+
+        chemin = str(tmp_path / "sans_index.db")
+        MemoirePersonnelle(db_path=chemin)
+        with sqlite3.connect(chemin) as connexion:
+            connexion.execute("DROP INDEX idx_souvenirs_tri")
+            connexion.commit()
+
+        assert "TEMP B-TREE" in " ".join(_plan_du_tri(chemin))
+
+    def test_une_base_deja_en_service_recoit_l_index_sans_rien_perdre(self, tmp_path):
+        """La zone est verrouillee sur « une migration qui n'efface rien » :
+        l'index s'ajoute a l'ouverture d'un fichier ancien, et le souvenir qui
+        s'y trouvait reste lisible."""
+        import sqlite3
+
+        chemin = str(tmp_path / "ancienne.db")
+        with sqlite3.connect(chemin) as connexion:
+            connexion.execute("""CREATE TABLE souvenirs (
+                identifiant TEXT PRIMARY KEY, contenu TEXT NOT NULL,
+                type TEXT NOT NULL, nature TEXT NOT NULL, source TEXT NOT NULL,
+                projet TEXT, importance REAL NOT NULL, metadonnees TEXT NOT NULL,
+                cree_le TEXT NOT NULL, vu_le TEXT NOT NULL, expire_le TEXT,
+                occurrences INTEGER NOT NULL DEFAULT 1)""")
+            connexion.execute(
+                "INSERT INTO souvenirs VALUES ('ancien', 'un souvenir d avant', "
+                "'SEMANTIC', 'FACT', 'proprietaire', NULL, 0.9, '{}', "
+                "'2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00', NULL, 1)")
+            connexion.commit()
+
+        memoire = MemoirePersonnelle(db_path=chemin)
+
+        survivant = memoire.lire("ancien")
+        assert survivant is not None, "la migration a perdu un souvenir"
+        assert survivant.contenu == "un souvenir d avant"
+        assert "TEMP B-TREE" not in " ".join(_plan_du_tri(chemin))
+
+    def test_les_quatre_index_de_filtre_sont_toujours_la(self, memoire):
+        """L'index du tri s'AJOUTE, il n'en remplace aucun."""
+        import sqlite3
+
+        with sqlite3.connect(memoire.db_path) as connexion:
+            noms = {
+                ligne[0] for ligne in connexion.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'index' "
+                    "AND name LIKE 'idx_souvenirs_%'")
+            }
+
+        assert {"idx_souvenirs_projet", "idx_souvenirs_type",
+                "idx_souvenirs_nature", "idx_souvenirs_etat",
+                "idx_souvenirs_tri"} <= noms
+
+    def test_le_tri_rend_le_meme_ordre_qu_avant_l_index(self, memoire):
+        """Un index change le CHEMIN, jamais le resultat. Verifie plutot que
+        suppose : trois souvenirs d'importances differentes reviennent dans le
+        meme ordre."""
+        faible = _retenir(memoire, contenu="peu important", importance=0.1)
+        fort = _retenir(memoire, contenu="tres important", importance=0.9)
+        moyen = _retenir(memoire, contenu="moyennement important", importance=0.5)
+
+        ordre = [s.identifiant for s in memoire.souvenirs(limite=10)]
+
+        assert ordre == [fort.identifiant, moyen.identifiant, faible.identifiant]

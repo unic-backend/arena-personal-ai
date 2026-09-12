@@ -1,36 +1,75 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-09-12, fin de session (DEC-0087 → DEC-0097).*
+*Mise à jour : 2026-09-12, fin de session (DEC-0087 → DEC-0098).*
 
 ## En cours
 
-**Deux PR attendent sa décision de fusion, empilées dans cet ordre :**
+**Une PR attend sa décision de fusion : PR #204 (DEC-0098), l'index de tri
+de la mémoire.** Branche `claude/memoire-index-de-tri`.
 
-1. **PR #202** (DEC-0096) — le coût de la mémoire chiffrée. Branche
-   `claude/memoire-dechiffrement-cout`.
-2. **PR #203** (DEC-0097) — un souvenir sensible était introuvable par
-   mot-clé. Branche `claude/memoire-sensibles-introuvables`, construite
-   SUR la précédente (elle en a besoin : sans le déchiffrement bon marché,
-   la troisième fenêtre serait inabordable).
+Tout le reste est **fusionné** dans `master` par le propriétaire le
+12/09/2026 : PR #196 (DEC-0094, gitgui second passage — CI avait trouvé une
+vraie régression, `continuer_operation()` sans éditeur configuré, corrigée
+par `-c core.editor=true`, puis le conflit `Pillow`/`psutil` avec
+`browser-use` cherry-pické depuis DEC-0095), PR #197 (DEC-0095), PR #199
+(diagnostic des douze étapes), PR #202 (DEC-0096) et PR #203 (DEC-0097).
+Détail de chacune plus bas.
 
-Détail des deux juste en dessous. Tout le reste est fusionné dans `master`
-par le propriétaire, le 12/09/2026 :
+### Inventaire du travail inachevé, mesuré le 12/09/2026
 
-- **PR #196** (DEC-0094, gitgui second passage) — CI avait trouvé une
-  vraie régression (42 échecs au lieu des 39 attendus :
-  `continuer_operation()` sans éditeur configuré échouait sur le runner
-  GitHub Actions, invisible en local où `GIT_EDITOR` est déjà présent).
-  Corrigée (`-c core.editor=true`), reproduite et revérifiée avant push.
-  Un check-in programmé a ensuite trouvé CI de nouveau rouge pour une
-  cause distincte — un conflit `Pillow`/`psutil` réel avec `browser-use`,
-  présent sur `master` aussi, déjà diagnostiqué et corrigé côté DEC-0095 —
-  correctif porté ici tel quel (`d179877` cherry-pické) avant fusion.
-- **PR #197** (DEC-0095, douze défauts d'un audit externe) — fusionnée
-  après ses 12 checks CI verts (Docker inclus) et 5366 tests passés sur la
-  suite complète. Détail plus bas.
-- **PR #199** (diagnostic des douze étapes, à sa demande) — fusionnée le
-  12/09/2026. Quatre trous réels trouvés dans mes propres réparations et
-  corrigés, plus un correctif de test CI. Détail juste en dessous.
+Fait à sa demande (« regarde aussi s'il y a du travail non terminé, bloqué
+ou arrêté »). Le résultat tient en une ligne : **il n'y avait qu'un seul
+travail inachevé côté dépôt**, l'index de tri, et il est fait.
+
+| Cherché | Mesuré |
+|---|---|
+| `TODO`/`FIXME` dans notre code | **0** (les 3661 trouvés sont dans des dépendances tierces vendorisées) |
+| PR ouvertes | aucune |
+| tests sautés (31) | 25 identifiés : Pascal (11), Lean (8), krillinai (4), browser-use (1), graphify (1) — tous « outil absent de CETTE machine » |
+| tests désélectionnés (52) | tous `integration` : Ollama, Docker, réseau ou Chromium |
+| `doctor.py` | 18 capacités indisponibles, **toutes** chez lui |
+| connecteurs dormants | 1, `txtai_search`, bloqué par DEC-0051 — sa décision |
+
+**Deux branches non fusionnées, et ce qu'il faut en faire :**
+
+- `claude/hidream-i1-image-generation` — **morte.** Son unique commit
+  ajoutait `psutil` à la liste d'installation du CI, que `master` a déjà
+  (avec `cryptography` et `mcp` en plus). HiDream lui-même est dans
+  `master` (`production_agent.py`, ses routes, ses tests). Rien à
+  récupérer.
+- `saer-video-wip` — **à ne pas fusionner.** Son travail vidéo d'août est
+  **déjà dans `master`** (`c8132c9 feat(video): take Saer's subtitle,
+  burn-in and transcription work`). Ce qui reste dans la branche, c'est
+  `librechat.yaml` et LibreChat dans `docker-compose.yml` — supprimés par
+  DEC-0007 après la fuite de 4 clés. La fusionner les remettrait.
+
+Supprimer une branche reste **sa** décision : rien n'a été supprimé.
+
+## DEC-0098 — toute lecture de la memoire construisait un TEMP B-TREE (12/09/2026)
+
+Quatre index existaient, tous sur des colonnes de `WHERE`. Aucun ne servait
+`ORDER BY importance DESC, cree_le DESC` — que TOUTE lecture execute, donc
+deux fois par question. Mesure par `souvenirs(limite=500)` sur 50 000
+souvenirs :
+
+```
+sans l'index : 20,56 ms   plan : idx_souvenirs_etat + USE TEMP B-TREE FOR ORDER BY
+avec l'index :  5,05 ms   plan : idx_souvenirs_tri
+```
+
+Un seul index composite ajoute dans le meme bloc que les quatre autres
+(`CREATE INDEX IF NOT EXISTS`, donc il s'ajoute aussi a une base deja en
+service). Zone verrouillee sur « une migration qui n'efface rien » :
+conditions 3, 4 et 6 de `LOCKED_ZONES.md`, et un index ne peut pas perdre
+une ligne — un test ouvre une base a l'ANCIEN format et verifie que le
+souvenir qui s'y trouvait survit.
+
+**Deux affirmations de l'assistant, fausses, corrigees avant le commit :**
+le `DESC` de l'index n'est PAS necessaire (0,49 contre 0,50 ms, aucun TEMP
+B-TREE des deux cotes — le test qui l'affirmait est remplace par sa
+contre-mesure), et une premiere serie de mesures comparait `'ACTIF'` a
+`Etat.ACTIF.value` qui vaut `'ACTIVE'` : zero ligne d'un cote, donc un
+« gain x111 » sans aucun sens. Refaite.
 
 ## DEC-0097 — un souvenir sensible etait introuvable par mot-cle (12/09/2026)
 

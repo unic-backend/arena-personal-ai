@@ -9042,3 +9042,64 @@ débranchée (1 échec), garde des messages d'échec retirée (1 échec), sel
 conservé ignoré à la lecture (2 échecs), coffre débranché du runtime
 (1 échec). Tous restaurés. Chiffres et suite complète dans le message de
 commit de la branche `claude/memoire-sensibles-introuvables`.
+
+---
+
+## DEC-0098 — Toute lecture de la mémoire construisait un TEMP B-TREE (PR #204)
+
+**2026-09-12.** Demande : « regarde aussi s'il y a du travail non terminé,
+bloqué ou arrêté et on le termine ». L'inventaire a été fait par mesure, pas
+de mémoire — et il n'a trouvé **qu'un seul** travail inachevé du côté du
+dépôt : celui-ci. Tout le reste attend une action sur sa machine (18
+capacités à `doctor.py`, 25 tests sautés pour outil absent, 52 tests
+`integration`) ou est une décision déjà prise (`txtai_search`, DEC-0051).
+
+### Le défaut
+
+Quatre index existaient, tous sur des colonnes de `WHERE` (`projet`, `type`,
+`nature`, `etat`). Aucun ne servait `ORDER BY importance DESC, cree_le DESC`
+— que **toute** lecture de la mémoire exécute, donc deux fois par question
+(`souvenirs()` et `souvenirs_correspondant_a_des_mots()`). SQLite
+construisait un TEMP B-TREE à chaque fois.
+
+Mesure par `souvenirs(limite=500)` lui-même, sur 50 000 souvenirs :
+
+```
+sans l'index : 20,56 ms   plan : idx_souvenirs_etat + USE TEMP B-TREE FOR ORDER BY
+avec l'index :  5,05 ms   plan : idx_souvenirs_tri
+```
+
+### La décision
+
+Un seul index composite, `idx_souvenirs_tri ON souvenirs (etat, importance,
+cree_le)`, créé dans le même bloc que les quatre autres —
+`CREATE INDEX IF NOT EXISTS`, donc il s'ajoute aussi à une base déjà en
+service.
+
+*Ce que ça coûte si c'est faux* : un index de plus à maintenir à chaque
+écriture. `retenir()` reste mesuré à ~1,9 ms par souvenir, inchangé, et un
+index ne peut pas perdre une ligne — c'est ce qui rend ce changement
+acceptable dans une zone verrouillée sur « une migration qui n'efface
+rien ». Conditions 3, 4 et 6 de `PROJECT_MEMORY/LOCKED_ZONES.md` (défaut
+confirmé, test qui le montre, le propriétaire le demande).
+
+### Deux affirmations de l'assistant, fausses, corrigées avant le commit
+
+1. **« le `DESC` de l'index est nécessaire »** — faux. Les deux colonnes
+   descendent ensemble, donc SQLite parcourt un index croissant à l'envers.
+   Mesuré : 0,49 ms avec `DESC`, 0,50 ms sans, aucun TEMP B-TREE dans les
+   deux cas. L'index simple est gardé, et le test qui affirmait le contraire
+   a été **remplacé par sa contre-mesure** (l'index retiré, le TEMP B-TREE
+   revient) plutôt que supprimé.
+2. **Une première série de mesures** insérait `etat = 'ACTIF'` et interrogeait
+   `Etat.ACTIF.value`, qui vaut `'ACTIVE'` : zéro ligne d'un côté, donc un
+   « gain x111 » qui ne voulait rien dire. Refaite.
+
+### Preuve
+
+5 nouveaux tests dans `tests/core/test_memoire_personnelle.py`, dont la
+contre-mesure ci-dessus, un test qui lit le plan de la requête, un qui ouvre
+une base à l'ANCIEN format et vérifie que le souvenir qui s'y trouvait
+survit, et un qui vérifie que l'ordre rendu est identique (un index change
+le chemin, jamais le résultat). Suite complète : **5497 passed, 31 skipped,
+52 deselected** (648 s). `ruff check .` propre.
