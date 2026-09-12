@@ -1672,3 +1672,27 @@ purge **parce que** le dépôt était privé, raison qui n'existe plus. Corrigé
 En revanche `docs/CURRENT_TASK.md` était **déjà à jour** (« repassé en public
 le 06/09/2026 », vérifié par l'API) : l'assistant avait eu tort de l'inclure
 dans son constat initial.
+
+---
+
+## 2026-09-12 (suite) — décision du propriétaire : la clé n'est pas changée
+
+« pas besoin de changer la clé ». C'est sa décision, elle est notée, et **on ne
+la lui redemande pas**.
+
+Ce qui la rend tenable, mesuré le même jour : ARENA écoute sur `127.0.0.1`
+partout où son démarrage est écrit (`scripts/start.ps1`, docstring de
+`apps/backend/main.py`). Les deux clés de 15 caractères lisibles dans
+l'historique public ne gardent alors rien qu'on puisse atteindre depuis
+l'extérieur. `docker-compose.yml` ayant été supprimé avec LibreChat (DEC-0007),
+rien ne publie ce port.
+
+**La condition qui annule cette décision, écrite pour être retrouvée :**
+`apps/backend/Dockerfile:64` lance `uvicorn --host 0.0.0.0`. Normal dans un
+conteneur — mais le jour où cette image tourne avec un port publié
+(`-p 8000:8000`) sur une machine joignable depuis un réseau, les deux clés
+redeviennent de vraies clés d'accès à `/api/*`. **Il faudra les changer AVANT
+d'exposer le port.** C'est le seul scénario mesuré où l'exposition devient
+exploitable.
+
+Détail complet dans `docs/CURRENT_TASK.md`.
