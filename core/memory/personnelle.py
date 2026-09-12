@@ -372,6 +372,26 @@ class MemoirePersonnelle:
                     f"CREATE INDEX IF NOT EXISTS idx_souvenirs_{colonne} "
                     f"ON {self.TABLE_SOUVENIRS} ({colonne})"
                 )
+            # L'index du TRI, et non d'un filtre. Les quatre ci-dessus servent
+            # les `WHERE` ; aucun ne sert `ORDER BY importance DESC, cree_le
+            # DESC`, que TOUTE lecture de la memoire execute (`souvenirs()` et
+            # `souvenirs_correspondant_a_des_mots()`, donc deux fois par
+            # question). SQLite construisait donc un TEMP B-TREE a chaque fois.
+            # Mesure du 12/09/2026, par `souvenirs(limite=500)` lui-meme sur
+            # 50 000 souvenirs (500 rendus) : **20,56 ms sans l'index, 5,05 ms
+            # avec** — x4,1. Le plan passe de
+            # « idx_souvenirs_etat + USE TEMP B-TREE FOR ORDER BY » a
+            # « idx_souvenirs_tri » seul.
+            #
+            # Pas de `DESC` dans l'index, et c'est mesure, pas suppose : les
+            # deux colonnes descendent ENSEMBLE, donc SQLite parcourt l'index
+            # croissant a l'envers. A 50 000 souvenirs, avec DESC 0,49 ms,
+            # sans DESC 0,50 ms, et aucun TEMP B-TREE dans les deux cas — le
+            # plus simple des deux est garde.
+            connexion.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_souvenirs_tri "
+                f"ON {self.TABLE_SOUVENIRS} (etat, importance, cree_le)"
+            )
             connexion.commit()
 
     # --- Ecriture -------------------------------------------------------------

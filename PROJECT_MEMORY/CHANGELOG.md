@@ -1543,3 +1543,35 @@ qu'il gardait est levée, et la raison est écrite dedans. Celui qui garde la
 limite du mot trop partagé reste intact — celle-là existe toujours.
 
 Quatre sabotages, quatre tests qui tombent, tous restaurés.
+
+
+---
+
+## 2026-09-12 (suite) — toute lecture de la mémoire construisait un TEMP B-TREE
+
+Demande : « regarde aussi s'il y a du travail non terminé, bloqué ou arrêté
+et on le termine ». L'inventaire, fait par mesure, n'a trouvé **qu'un seul**
+travail inachevé côté dépôt — celui-ci. Le reste attend sa machine (18
+capacités à `doctor.py`, 25 tests sautés pour outil absent, 52 tests
+`integration`) ou est une décision déjà prise (`txtai_search`, DEC-0051).
+Zéro `TODO`/`FIXME` dans notre code, zéro PR ouverte.
+
+Quatre index existaient, tous sur des colonnes de `WHERE` ; aucun ne servait
+le tri que **toute** lecture exécute, deux fois par question. Mesure par
+`souvenirs(limite=500)` sur 50 000 souvenirs : **20,56 ms → 5,05 ms**, et le
+plan passe de « idx_souvenirs_etat + USE TEMP B-TREE » à « idx_souvenirs_tri ».
+
+Un seul index composite, `CREATE INDEX IF NOT EXISTS`, donc il s'ajoute aussi
+à une base déjà en service — un test ouvre une base à l'ancien format et
+vérifie que le souvenir qui s'y trouvait survit.
+
+**Deux affirmations fausses de l'assistant, corrigées avant le commit** : le
+`DESC` de l'index n'était pas nécessaire (0,49 contre 0,50 ms), et une
+première mesure comparait `'ACTIF'` à `'ACTIVE'` — zéro ligne d'un côté.
+
+**Deux branches non fusionnées, inventoriées** : `claude/hidream-i1-image-generation`
+est morte (son commit CI est déjà dans `master`, HiDream aussi) et
+`saer-video-wip` **ne doit pas être fusionnée** — son travail vidéo est déjà
+dans `master` (`c8132c9`), et ce qui reste réintroduirait LibreChat, supprimé
+par DEC-0007 après la fuite de 4 clés. Rien n'a été supprimé : c'est sa
+décision.
