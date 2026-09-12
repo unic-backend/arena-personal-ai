@@ -118,3 +118,47 @@ def test_un_rendu_reussi_reste_annonce_normalement(
     corps = reponse.json()
     assert corps["status"] == "success"
     assert corps["video_web_url"].endswith("_vertical_9_16.mp4")
+
+
+def test_un_extrait_deja_pret_mais_invalide_n_est_pas_annonce_pret(
+    client, entetes, monkeypatch, video_source,
+):
+    """Trou trouve le 12/09/2026, en diagnostic de ce meme correctif.
+
+    Le correctif d'origine ne couvrait que le rendu de repli. Quand le
+    selecteur rendait un `clip_path` qui EXISTAIT, toute verification etait
+    court-circuitee : un extrait vide ou tronque partait en `"status":
+    "success"` avec son URL. Un fichier present n'est pas un fichier
+    valide.
+    """
+    async def _video(prompt, context=None):
+        return {"segments": []}
+
+    extrait_bidon = RENDERED_DIR / "extrait_invalide_diagnostic.mp4"
+    extrait_bidon.parent.mkdir(parents=True, exist_ok=True)
+    extrait_bidon.write_bytes(b"xx")  # existe, non vide, mais pas une video
+
+    async def _clip(prompt, context=None):
+        return {"clip_path": str(extrait_bidon)}
+
+    async def _sub(prompt, context=None):
+        return {"srt_path": ""}
+
+    monkeypatch.setattr(routeur_media.video_agent, "run", _video)
+    monkeypatch.setattr(routeur_media.clip_selector, "run", _clip)
+    monkeypatch.setattr(routeur_media.subtitle_agent, "run", _sub)
+    # Le rendu de repli echoue aussi : la seule issue honnete est une erreur.
+    monkeypatch.setattr(
+        routeur_media.editor_agent.crop_tool, "convert_to_vertical_9_16",
+        lambda entree, sortie: False)
+
+    try:
+        reponse = client.post("/api/process-video", data={"video_path": str(video_source)},
+                              headers=entetes)
+        corps = reponse.json()
+
+        assert corps["status"] == "error", (
+            f"un extrait present mais invalide a ete annonce pret : {corps}")
+        assert "video_web_url" not in corps
+    finally:
+        extrait_bidon.unlink(missing_ok=True)

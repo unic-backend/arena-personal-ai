@@ -86,6 +86,31 @@ class TestSabotageDeLaVerification:
             "un fichier tronque a ete accepte comme un rendu reussi : "
             "la verification ne verifie rien de reel")
 
+    def test_sans_ffprobe_la_verification_refuse_au_lieu_de_supposer(
+        self, tmp_path, monkeypatch,
+    ):
+        """Le cas le plus sournois, mesure le 12/09/2026 en diagnostic :
+        ffmpeg present et content de lui, ffprobe INTROUVABLE. Un repli
+        permissif (« pas de verificateur, donc c'est bon ») recreerait
+        exactement le defaut que cette etape a corrige — un montage annonce
+        pret dont personne n'a lu le fichier. Le fichier est bien ecrit ici,
+        et c'est quand meme un refus."""
+        import tools.video.crop_tool as module
+
+        source = _source_reelle(tmp_path)
+        sortie = tmp_path / "sans_ffprobe.mp4"
+        monkeypatch.setattr(
+            module, "_trouver_ffprobe", lambda _exe: "/introuvable/ffprobe-absent")
+
+        reussi = CropTool().convert_to_vertical_9_16(str(source), str(sortie))
+
+        assert sortie.exists() and sortie.stat().st_size > 0, (
+            "le rendu ffmpeg lui-meme doit avoir eu lieu, sinon le test ne "
+            "prouve rien sur la verification")
+        assert reussi is False, (
+            "sans verificateur, le rendu a ete annonce reussi : une capacite "
+            "absente se rapporte, elle ne se suppose pas")
+
     def test_un_fichier_vide_est_refuse(self, tmp_path):
         outil = CropTool()
         vide = tmp_path / "vide.mp4"
