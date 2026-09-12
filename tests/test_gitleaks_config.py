@@ -81,6 +81,71 @@ def test_la_ci_execute_le_scan():
     assert "--config .gitleaks.toml" in workflow
 
 
+# --- Le scan de l'historique entier -------------------------------------------
+#
+# Ce depot est PUBLIC : son historique est lisible par n'importe qui. Les deux
+# autres scans regardent les fichiers TELS QU'ILS SONT et le diff de la
+# branche ; un secret ajoute puis retire AVANT la branche de base leur
+# echappait. Le troisieme scan comble ce trou, et `.gitleaksignore` porte les
+# sept constats deja connus (mesures le 12/09/2026 sur 693 commits) pour que
+# l'etape puisse exister sans echouer en boucle.
+
+IGNORES = RACINE / ".gitleaksignore"
+
+
+def test_la_ci_scanne_l_historique_entier():
+    etapes = [
+        e for e in __import__("yaml").safe_load(_workflow())["jobs"]["secrets"]["steps"]
+        if "history" in str(e.get("name", "")).lower()
+    ]
+
+    assert etapes, "l'etape qui scanne l'historique entier a disparu"
+    script = etapes[0]["run"]
+    assert "gitleaks detect" in script
+    assert "--no-git" not in script, (
+        "`--no-git` ne regarde que les fichiers actuels : ce n'est pas un scan "
+        "de l'historique")
+    assert "--log-opts" not in script, (
+        "`--log-opts` borne le scan a une plage de commits : l'historique "
+        "entier n'est plus couvert")
+
+
+def test_le_fichier_d_empreintes_existe_et_est_documente():
+    lignes = IGNORES.read_text(encoding="utf-8").splitlines()
+    empreintes = [ligne for ligne in lignes if ligne.strip() and not ligne.startswith("#")]
+    commentaires = [ligne for ligne in lignes if ligne.startswith("#")]
+
+    assert len(empreintes) == 7, (
+        f"{len(empreintes)} empreintes au lieu des 7 mesurees : si l'historique "
+        "a change, remesurer et mettre a jour la raison ecrite dans le fichier")
+    assert len(commentaires) >= 20, (
+        "une empreinte sans sa raison est une absolution silencieuse : ce "
+        "fichier doit dire ce que chaque secret est et pourquoi il est ignore")
+    for empreinte in empreintes:
+        parties = empreinte.split(":")
+        assert len(parties) == 4, f"empreinte mal formee : {empreinte}"
+        assert len(parties[0]) == 40, "le commit doit etre un SHA complet"
+
+
+def test_chaque_empreinte_ignoree_designe_un_constat_reel():
+    """Une empreinte qui ne correspond plus a rien est un reste : elle donnerait
+    l'illusion d'un perimetre maitrise. Les sept designent trois commits connus
+    et deux fichiers, tous deux retires du depot par DEC-0007."""
+    empreintes = [
+        ligne for ligne in IGNORES.read_text(encoding="utf-8").splitlines()
+        if ligne.strip() and not ligne.startswith("#")
+    ]
+
+    fichiers = {e.split(":")[1] for e in empreintes}
+    commits = {e.split(":")[0] for e in empreintes}
+
+    assert fichiers == {"librechat.yaml", "docker-compose.yml"}
+    assert len(commits) == 3, f"{len(commits)} commits au lieu des 3 mesures"
+    for chemin in fichiers:
+        assert not (RACINE / chemin).exists(), (
+            f"{chemin} est revenu dans le depot : DEC-0007 l'avait retire")
+
+
 # --- Le nom de la branche de base ---------------------------------------------
 #
 # Ces deux tests existent a cause d'une panne silencieuse reelle. Le 12/09/2026

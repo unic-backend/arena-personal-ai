@@ -1,0 +1,41 @@
+# Empreintes des secrets DEJA PRESENTS dans l'historique public, mesurees le
+# 12/09/2026 sur les 693 commits du depot (gitleaks 8.28.0, `--redact`, la
+# meme version que la CI).
+#
+# Ce fichier existe pour une raison precise : sans lui, le scan de l'historique
+# complet serait impossible a ajouter a la CI — il echouerait sur ces sept
+# constats connus, a chaque execution, et personne ne le regarderait plus. Avec
+# lui, la CI echoue sur TOUT secret futur ajoute n'importe ou dans l'histoire.
+#
+# Ce n'est PAS une absolution. Les sept constats sont reels, ils sont publics,
+# et voici ce qu'ils sont exactement :
+#
+#   CREDS_KEY (64 car.), JWT_SECRET (63), JWT_REFRESH_SECRET (61) et
+#   WEBUI_SECRET_KEY (22)  -> secrets INTERNES a LibreChat et Open WebUI. Les
+#   deux services ont ete retires du depot (DEC-0007) : plus aucune instance ne
+#   les accepte. Morts.
+#
+#   OPENAI_API_KEY (15 car., AUCUN prefixe `sk-`) et l'`apiKey` de
+#   librechat.yaml (15 car., valeur DIFFERENTE) -> ce ne sont pas des cles de
+#   fournisseur. Ce sont deux cles de l'API LOCALE d'ARENA : LibreChat parlait
+#   le protocole OpenAI a `host.docker.internal:8000`. Elles gardent
+#   `/api/*`. **Ce sont les seules qui comptent, et la reponse est de les
+#   changer, pas de reecrire l'histoire.**
+#
+# Verifie le 12/09/2026 : AUCUNE cle de fournisseur externe dans l'historique.
+# Les motifs `sk-`, `sk-ant-`, `ghp_`, `gho_`, `AKIA`, `AIza` et `xoxb-` ne
+# correspondent que dans `tests/core/test_confidentialite.py` et
+# `tests/test_scanner_secrets.py`, sur des valeurs inventees qui se nomment
+# elles-memes (`ya29.SECRET-ABSOLU`, `SECRET-A-NE-PAS-ECRIRE`), chacune marquee
+# `# scanner-secrets: ignore`. Lues une par une, pas supposees.
+#
+# N'AJOUTER une empreinte ici que pour un faux positif demontre, jamais pour
+# faire taire un vrai secret : la reponse a un vrai secret est de le revoquer.
+
+3635ab68c682bf2e85effb060d6baa4fe8aababc:librechat.yaml:usman-librechat-apikey:7
+8f2426f0c8a3a3b56b3b387f3041239f71fa6a8c:librechat.yaml:usman-librechat-apikey:7
+e8e448cec4327bf8c1cf040267ff22846cfa86cc:docker-compose.yml:usman-compose-secret:44
+e8e448cec4327bf8c1cf040267ff22846cfa86cc:docker-compose.yml:usman-compose-secret:45
+8f2426f0c8a3a3b56b3b387f3041239f71fa6a8c:docker-compose.yml:usman-compose-secret:27
+8f2426f0c8a3a3b56b3b387f3041239f71fa6a8c:docker-compose.yml:usman-compose-secret:28
+8f2426f0c8a3a3b56b3b387f3041239f71fa6a8c:docker-compose.yml:usman-compose-secret:29

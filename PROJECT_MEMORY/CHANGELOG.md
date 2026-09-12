@@ -1623,3 +1623,52 @@ Deux constats au passage : le clone local ne suivait que `master`
 faux plus tôt dans la session ; et les documents affirment encore « le dépôt
 est privé depuis le 28/08/2026 » alors qu'il est **public** (`private: false`
 vérifié). `.env` est ignoré et n'a jamais été versionné.
+
+---
+
+## 2026-09-12 (suite) — ce que l'historique public expose vraiment, et la CI qui le scanne enfin
+
+Demande : mesurer avant de décider. Fait sur les **693 commits**, gitleaks
+8.28.0 (la version épinglée de la CI), `--redact` — aucune valeur lue.
+
+**7 constats, 6 secrets, 3 commits, tous du 25/08/2026**, tous dans
+`docker-compose.yml` et `librechat.yaml`, les fichiers retirés par DEC-0007.
+
+| Secret | Longueur | État |
+|---|---|---|
+| `CREDS_KEY` / `JWT_SECRET` / `JWT_REFRESH_SECRET` | 64 / 63 / 61 | internes LibreChat → **morts** |
+| `WEBUI_SECRET_KEY` | 22 | interne Open WebUI → **mort** |
+| `OPENAI_API_KEY` | **15** | **pas une clé OpenAI** : trop courte, aucun préfixe `sk-` — une clé de l'API **locale** d'ARENA |
+| `apiKey` (librechat.yaml) | 15 | clé de l'API locale aussi, **valeur différente** |
+
+**Aucune clé de fournisseur externe.** Les motifs `sk-`, `sk-ant-`, `ghp_`,
+`gho_`, `AKIA`, `AIza`, `xoxb-` ne correspondent que dans
+`tests/core/test_confidentialite.py` et `tests/test_scanner_secrets.py`, sur
+des fixtures inventées qui se nomment elles-mêmes — lues une par une. Le scan
+refait **sans aucune exclusion du projet** donne 16 constats au lieu de 7 : les
+12 en plus sont ces mêmes fixtures, donc les exclusions ne cachent rien.
+
+Conclusion : une seule action réelle, **changer `USMAN_API_KEY`**. La purge
+reste jamais autorisée, et devient inutile pour une raison mesurée plutôt que
+pour la confidentialité du dépôt.
+
+**La CI scanne désormais l'historique entier** (`.gitleaksignore` référence les
+7 constats connus par empreinte, chacun avec sa raison). Le trou qu'elle comble,
+prouvé par sabotage :
+
+```
+secret ajouté puis retiré dans deux commits
+  scan des fichiers courants → PASSE (invisible)
+  scan de l'HISTOIRE        → ÉCHEC (attrapé)
+```
+
+Le commentaire du workflow disait que l'historique « sera scannable en entier
+une fois T-01 exécutée » — T-01 étant la purge, jamais autorisée. Attendre une
+purge jamais autorisée pour scanner, c'était ne jamais scanner.
+
+**Documents : deux périmés, un qui ne l'était pas.** `DECISIONS.md` (index) et
+`ACTIVE_WORK.md` affirmaient encore le dépôt privé — la seconde refusait la
+purge **parce que** le dépôt était privé, raison qui n'existe plus. Corrigées.
+En revanche `docs/CURRENT_TASK.md` était **déjà à jour** (« repassé en public
+le 06/09/2026 », vérifié par l'API) : l'assistant avait eu tort de l'inclure
+dans son constat initial.

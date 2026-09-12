@@ -4,8 +4,25 @@
 
 ## En cours
 
-**Une PR attend sa décision de fusion : la CI après le renommage de la
-branche par défaut.** Branche `claude/ci-branche-main`.
+**Une PR attend sa décision de fusion : ce que l'historique public expose,
+et la CI qui le scanne.** Branche `claude/scan-histoire-et-depot-public`.
+
+Mesure du 12/09/2026 sur les 693 commits : **7 constats, 6 secrets, 3
+commits, tous du 25/08/2026**, tous dans les fichiers LibreChat/Open WebUI
+retirés par DEC-0007. **Aucune clé de fournisseur externe.** Quatre secrets
+sont internes à ces deux services, donc morts ; les deux autres (15
+caractères chacun, valeurs différentes) sont des clés de l'API **locale**
+d'ARENA — `OPENAI_API_KEY` n'en était pas une, trop courte et sans préfixe
+`sk-`. **Une seule action réelle : changer `USMAN_API_KEY`.** Détail complet
+dans `docs/CURRENT_TASK.md`.
+
+La CI scanne maintenant l'historique entier, trou prouvé par sabotage : un
+secret ajouté puis retiré passe le scan des fichiers courants et échoue au
+scan de l'histoire.
+
+La PR de la branche par défaut (`claude/ci-branche-main`) est
+**fusionnée** ; le commit de fusion sur `main` a déclenché 6 checks, ce qui
+prouve que les déclencheurs fonctionnent.
 
 Il a renommé `master` → `main` le 12/09/2026 (son dépôt est **public** et les
 outils tiers, qui supposent `main`, répondaient 404 — mesuré). Le dépôt
@@ -719,7 +736,7 @@ attendu : rien de tout ça n'y a jamais été installé.
 | Sujet | Ce qu'il faut de lui |
 |---|---|
 | **`USMAN_API_KEY`** | la changer s'il n'est pas certain de l'avoir fait (runbook, étape 1) |
-| **Purge de l'historique** | jamais autorisée. Le dépôt est privé — sa décision |
+| **Purge de l'historique** | jamais autorisée — **sa décision**. Attention : la raison écrite ici était « le dépôt est privé ». Il est **public** depuis le 06/09/2026. Ce qui la rend inutile aujourd'hui n'est plus la confidentialité mais la **mesure du 12/09/2026** : l'historique n'expose aucune clé de fournisseur externe, seulement six secrets dont quatre morts (LibreChat/Open WebUI retirés) et deux clés de l'API locale — à **changer**, ce qui suffit |
 | **Identifiants Google** | 3 valeurs dans `.env` pour réveiller courrier + agenda |
 | **MoneyPrinterTurbo** | `scripts/installer_moneyprinter.ps1`, puis `llm_provider = "ollama"` et une clé Pexels dans **leur** `config.toml` |
 | **OpenTakeoff** | `scripts/installer_opentakeoff.ps1`, puis `OPENTAKEOFF_MCP_DIR` dans `.env` — vérifié bout en bout dans cette session (ci-dessus), il ne reste que le geste chez lui |
