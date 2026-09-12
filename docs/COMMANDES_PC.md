@@ -34,7 +34,7 @@ fichier ne sert que quand quelque chose cloche ou quand tu veux un moteur lourd.
 ## 2. Quand j'ai poussé du travail
 
 ```
-git pull origin master
+git pull origin main
 ```
 
 Puis relance `.\Lancer_ARENA.bat`. Le lanceur reconstruit l'interface tout seul

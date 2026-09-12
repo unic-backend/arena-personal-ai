@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ["master", "claude/**"]
+    branches: ["main", "claude/**"]
   pull_request:
-    branches: ["master"]
+    branches: ["main"]
 
 jobs:
   lint-and-test:
@@ -165,7 +165,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Toute l'histoire : l'etape 2 compare la branche a master.
+          # Toute l'histoire : l'etape 2 compare la branche a la branche par
+          # defaut du depot.
           fetch-depth: 0
 
       - name: Install gitleaks
@@ -187,15 +188,27 @@ jobs:
 
       - name: No secret added by this branch
         # Un secret ajoute puis retire dans un commit de la branche reste dans
-        # l'historique : on compare donc la branche a master.
+        # l'historique : on compare donc la branche a la branche de base.
         # L'historique anterieur contient des secrets connus (voir P-01 du
         # worklog) ; il sera scannable en entier une fois T-01 executee.
-        if: github.ref != 'refs/heads/master'
+        #
+        # La base n'est PAS ecrite en dur. Elle l'etait (« master »), et le
+        # renommage de la branche par defaut en `main` le 12/09/2026 a fait
+        # disparaitre ce ref : la comparaison tombait alors dans son repli
+        # « etape ignoree » et ne scannait plus rien, SANS echouer. Un controle
+        # de securite qui se desactive en silence est pire que pas de controle.
+        env:
+          BASE: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
+        if: github.ref_name != (github.event.repository.default_branch)
         run: |
-          git fetch origin master --quiet
-          if git rev-parse --verify --quiet origin/master >/dev/null; then
-            gitleaks detect --source . --no-banner --redact --config .gitleaks.toml \
-              --log-opts="origin/master..HEAD"
-          else
-            echo "Pas de branche master a comparer, etape ignoree."
+          if [ -z "$BASE" ]; then
+            echo "::error::Impossible de determiner la branche de base : le scan differentiel ne peut pas etre fait."
+            exit 1
           fi
+          git fetch origin "$BASE" --quiet
+          if ! git rev-parse --verify --quiet "origin/$BASE" >/dev/null; then
+            echo "::error::La branche de base '$BASE' est introuvable : le scan differentiel ne peut pas etre fait."
+            exit 1
+          fi
+          gitleaks detect --source . --no-banner --redact --config .gitleaks.toml \
+            --log-opts="origin/$BASE..HEAD"

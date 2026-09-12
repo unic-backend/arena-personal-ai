@@ -97,7 +97,11 @@ fige. Un `SUCCESS` sans preuve **ne se construit pas** (`core/actions/resultat.p
 **Un champ absent n'est pas zéro.** Une population inconnue vaut `None`, jamais
 `0` — qui se lirait « personne n'y habite ».
 
-**Jamais de secret, jamais de `.env`, jamais de push direct sur `master`.**
+**Jamais de secret, jamais de `.env`, jamais de push direct sur `main`.**
+*(La branche par defaut s'appelait `master` jusqu'au 12/09/2026 ; le
+proprietaire l'a renommee parce que les outils tiers supposent `main` et
+repondaient 404. Les mentions historiques de `master` ailleurs dans le
+depot racontent ce qui s'est passe sous ce nom : elles restent exactes.)*
 Le travail passe par une branche et une **pull request** qu'il fusionne
 lui-même : il ne peut pas lancer les tests, la PR est l'endroit où il voit ce
 qui entre.

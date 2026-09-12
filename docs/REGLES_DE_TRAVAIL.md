@@ -49,7 +49,7 @@ c'est une étape.
 Après chaque fusion, une seule commande tranche :
 
 ```
-git fetch origin master && git diff --stat <derniere-tete> origin/master
+git fetch origin main && git diff --stat <derniere-tete> origin/main
 ```
 
 **Rien en sortie = le contenu est bien passé.** Des lignes en sortie = ce qui
