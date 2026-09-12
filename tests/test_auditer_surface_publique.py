@@ -96,15 +96,22 @@ def test_chemin_concret_utilise_la_valeur_dediee_du_parametre():
 def test_toutes_les_routes_parametrees_sont_reellement_appelees():
     """Aucune route déclarée n'est plus jamais sautée à cause d'un `{...}`.
 
-    `/media/rendered/{nom}` est la seule exception légitime : elle a sa
-    propre sonde dédiée (`_auditer_mount_media`), avec un vrai fichier écrit
-    sur disque — un placeholder générique n'y prouverait rien.
+    `/media/rendered/{nom:path}` est la seule exception légitime : elle a
+    sa propre sonde dédiée (`_auditer_mount_media`), avec un vrai fichier
+    écrit sur disque — un placeholder générique n'y prouverait rien. Le
+    convertisseur `:path` (corrigé le 12/09/2026 pour servir les sorties
+    imbriquées de `file_conversion.py`, audit externe commit f7f0478) n'est
+    qu'un détail syntaxique du gabarit ici : `_chemin_concret` ne connaît
+    pas ce nom-là comme paramètre dédié et retombe sur la sonde générique,
+    donc cette route resterait couverte par le balayage générique même
+    sans cette exclusion explicite — mais la nommer ici garde le message
+    d'erreur ci-dessous exact plutôt que de compter sur une coïncidence.
     """
     constats = auditer()
     chemins_vus = {c.chemin for c in constats}
     routes_parametrees = [
         g for g, _ in _routes_api_declarees()
-        if "{" in g and g != "/media/rendered/{nom}"
+        if "{" in g and g != "/media/rendered/{nom:path}"
     ]
 
     assert routes_parametrees, "aucune route parametree a verifier : le test ne prouve rien"

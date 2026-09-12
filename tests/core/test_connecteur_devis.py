@@ -67,7 +67,7 @@ def test_le_pdf_produit_porte_l_adresse_par_laquelle_l_ouvrir(dossier, monkeypat
     le seul chemin par lequel le lien lui parvient depuis que la confirmation
     — qui le portait — ne s'affiche plus pour un devis.
 
-    Le dossier de sortie EST celui que `GET /media/rendered/{nom}` sert : c'est
+    Le dossier de sortie EST celui que `GET /media/rendered/{nom:path}` sert : c'est
     cette egalite, et elle seule, qui autorise a annoncer une adresse.
     """
     monkeypatch.setattr("core.connectors.devis.RENDERED_DIR", dossier)
@@ -294,7 +294,7 @@ class TestLeDevisSOuvreDepuisSonTelephone:
     téléphone il peut afficher le pdf ? » — la réponse était non.
 
     Ils sortent maintenant dans `media/rendered/`, servi par
-    `GET /media/rendered/{nom}` derrière `verify_media_access`. Réutiliser
+    `GET /media/rendered/{nom:path}` derrière `verify_media_access`. Réutiliser
     cette route plutôt qu'en ouvrir une seconde compte : elle a remplacé un
     `StaticFiles` qui servait n'importe quel fichier à qui devinait son nom.
     """

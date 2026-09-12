@@ -248,7 +248,7 @@ class TestLAdresseDuPdfRemonteJusquALaReponse:
         self, registre, plan_connu, monkeypatch, tmp_path
     ):
         # Le connecteur n'annonce une adresse que pour un fichier REELLEMENT
-        # servi par `GET /media/rendered/{nom}` : on fait donc du dossier de ce
+        # servi par `GET /media/rendered/{nom:path}` : on fait donc du dossier de ce
         # test le dossier servi, plutot que de faire semblant.
         dossier_servi = tmp_path / "devis"
         monkeypatch.setattr("core.connectors.devis.RENDERED_DIR", dossier_servi)

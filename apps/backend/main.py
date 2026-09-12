@@ -89,7 +89,7 @@ app.add_middleware(
 RENDERED_DIR.mkdir(parents=True, exist_ok=True)
 
 
-@app.get("/media/rendered/{nom}", dependencies=[Depends(verify_media_access)])
+@app.get("/media/rendered/{nom:path}", dependencies=[Depends(verify_media_access)])
 async def servir_media_rendu(nom: str):
     """Sert un fichier rendu — cle en en-tete ou en parametre, jamais sans.
 
@@ -98,6 +98,18 @@ async def servir_media_rendu(nom: str):
     fichier reel nomme comme `/api/upload` le nommerait (VOLET « ARENA en
     ligne », phase 4.1). `validate_media_path` refuse toute sortie de
     `media/` ; `verify_media_access` explique le parametre `cle`.
+
+    `{nom:path}`, pas `{nom}` : les conversions ecrivent leurs sorties dans
+    un sous-dossier (`media/rendered/conversions/...`,
+    core/connectors/file_conversion.py) et rendent une URL qui le porte —
+    un simple `{nom}` ne capture jamais un `/`, donc cette route ne
+    repondait meme pas (404 de FastAPI lui-meme, avant d'atteindre
+    `validate_media_path`) a l'URL qu'ARENA venait de rendre (audit
+    externe, commit f7f0478). Le confinement reste entier : `{nom:path}`
+    change seulement ce que la route ACCEPTE en entree, jamais ce que
+    `validate_media_path` verifie apres — une resolution reelle du
+    filesystem, contre laquelle un `..` echoue de la meme facon, imbrique
+    ou non, symlink ou non.
     """
     chemin = validate_media_path(str(RENDERED_DIR / nom))
     if not chemin.is_file():

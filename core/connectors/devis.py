@@ -49,7 +49,7 @@ logger = logging.getLogger("usman.connecteurs.devis")
 #: proprietaire travaille. Un devis qu'on ne peut pas ouvrir n'a pas ete
 #: produit pour grand-chose.
 #:
-#: `media/rendered/` est le dossier que `GET /media/rendered/{nom}` sert deja,
+#: `media/rendered/` est le dossier que `GET /media/rendered/{nom:path}` sert deja,
 #: derriere `verify_media_access` (`apps/backend/main.py`). Reutiliser cette
 #: route plutot qu'en ouvrir une seconde n'est pas un raccourci : celle-la a
 #: remplace un `StaticFiles` qui servait n'importe quel fichier a qui devinait

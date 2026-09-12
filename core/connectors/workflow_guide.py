@@ -10,7 +10,7 @@ produit un fichier — PDF, DOCX, HTML ou Markdown.
 **Deux regles, en plus de celles du module qu'il enveloppe :**
 
 1. **Ecrit dans `media/rendered/`, comme le devis.** Meme dossier, meme route
-   deja servie (`GET /media/rendered/{nom}`, `apps/backend/main.py`) : un
+   deja servie (`GET /media/rendered/{nom:path}`, `apps/backend/main.py`) : un
    guide produit est atteignable depuis le telephone sans qu'une seule ligne
    de route n'ait a etre ajoutee.
 2. **`ecriture=True`, sous `WRITE_FILES`** — la meme protection que le devis
