@@ -50,6 +50,7 @@ import logging
 import os
 from collections import OrderedDict
 from dataclasses import dataclass
+from pathlib import Path
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives import hashes
@@ -77,6 +78,12 @@ CLES_GARDEES = 256
 #: plafond, et renouveler regulierement garde cette marge intacte meme sur un
 #: coffre qui vivrait des annees.
 MESSAGES_PAR_SEL = 65_536
+
+#: Nom du fichier ou le sel d'ecriture est conserve, a cote de la base de
+#: souvenirs. Il vit ICI et non chez ses deux appelants (`apps/backend/runtime.py`
+#: et `core/mcp/memory_server.py`) parce que ces deux PROCESSUS doivent lire le
+#: MEME fichier : deux constantes qui divergent, et chacun rederive pour rien.
+NOM_FICHIER_SEL = "vault_salt"
 
 TAILLE_SEL = 16   # octets — tire au hasard, partage par lot d'ecritures (MESSAGES_PAR_SEL)
 TAILLE_NONCE = 12  # octets — la taille recommandee pour AES-GCM, jamais reutilisee
@@ -138,10 +145,22 @@ class Coffre:
     lot du 12/09/2026 — reste lisible.
     """
 
-    def __init__(self, passphrase: str) -> None:
+    def __init__(
+        self, passphrase: str, chemin_sel: "str | Path | None" = None
+    ) -> None:
+        """chemin_sel: fichier ou le sel d'ecriture est conserve entre deux
+        PROCESSUS. Sans lui, chaque nouveau coffre tire son propre sel, donc
+        chaque demarrage du serveur repaie une derivation pour relire les
+        souvenirs ecrits par le precedent (mesure DEC-0097 : 500 souvenirs
+        sensibles ecrits au fil de 100 sessions coutaient 26,7 s a la premiere
+        question). Un sel n'est PAS un secret — il existe pour qu'une table
+        pre-calculee ne serve pas deux coffres a la fois — mais le fichier est
+        ecrit en 0600 par principe de moindre privilege.
+        """
         if not (passphrase or "").strip():
             raise ValueError("Un coffre sans phrase de passe ne protege rien.")
         self._passphrase = passphrase
+        self._chemin_sel = Path(chemin_sel) if chemin_sel else None
         #: Cles deja derivees, par sel. Mesure du 12/09/2026 : lire 500
         #: souvenirs sensibles prenait 2 min 14 — 275 ms de PBKDF2 par
         #: souvenir, parce que chaque enveloppe portait son propre sel.
@@ -157,7 +176,11 @@ class Coffre:
         return "Coffre(passphrase=<masque>)"
 
     @classmethod
-    def depuis_environnement(cls, variable: str = VARIABLE_PASSPHRASE) -> "Coffre | None":
+    def depuis_environnement(
+        cls,
+        variable: str = VARIABLE_PASSPHRASE,
+        chemin_sel: "str | Path | None" = None,
+    ) -> "Coffre | None":
         """Construit un coffre depuis l'environnement, ou rend None si absent.
 
         None est un etat normal : la memoire fonctionne sans coffre pour tout
@@ -167,7 +190,7 @@ class Coffre:
         valeur = os.environ.get(variable)
         if not (valeur or "").strip():
             return None
-        return cls(valeur)
+        return cls(valeur, chemin_sel=chemin_sel)
 
     def _deriver_cle(self, sel: bytes) -> bytes:
         """La cle pour ce sel, derivee une fois puis gardee en memoire.
@@ -198,11 +221,53 @@ class Coffre:
         par message) et laisse le format d'enveloppe inchange — les
         souvenirs deja ecrits restent lisibles tels quels.
         """
-        if self._sel_courant is None or self._messages_sous_ce_sel >= MESSAGES_PAR_SEL:
-            self._sel_courant = os.urandom(TAILLE_SEL)
-            self._messages_sous_ce_sel = 0
+        if self._sel_courant is None:
+            self._sel_courant = self._sel_conserve() or self._nouveau_sel()
+        elif self._messages_sous_ce_sel >= MESSAGES_PAR_SEL:
+            self._sel_courant = self._nouveau_sel()
         self._messages_sous_ce_sel += 1
         return self._sel_courant
+
+    def _sel_conserve(self) -> "bytes | None":
+        """Le sel du fichier, quand il existe et fait la bonne taille.
+
+        Un fichier illisible ou tronque n'est PAS une raison de refuser
+        d'ecrire : on en tire un neuf et on le remplace. Rien n'est perdu —
+        chaque enveloppe porte son propre sel, donc les souvenirs deja ecrits
+        restent lisibles quoi qu'il arrive a ce fichier.
+        """
+        if self._chemin_sel is None or not self._chemin_sel.exists():
+            return None
+        try:
+            sel = self._chemin_sel.read_bytes()
+        except OSError as erreur:
+            logger.warning("Sel conserve illisible (%s) : un sel neuf est tire.", erreur)
+            return None
+        if len(sel) != TAILLE_SEL:
+            logger.warning(
+                "Sel conserve de taille inattendue (%d octets au lieu de %d) : "
+                "un sel neuf est tire.", len(sel), TAILLE_SEL,
+            )
+            return None
+        return sel
+
+    def _nouveau_sel(self) -> bytes:
+        """Un sel neuf, conserve pour les prochains processus si un chemin existe."""
+        sel = os.urandom(TAILLE_SEL)
+        self._messages_sous_ce_sel = 0
+        if self._chemin_sel is not None:
+            try:
+                self._chemin_sel.parent.mkdir(parents=True, exist_ok=True)
+                self._chemin_sel.write_bytes(sel)
+                os.chmod(self._chemin_sel, 0o600)
+            except OSError as erreur:
+                # Ne pas conserver le sel coute des derivations, jamais un
+                # souvenir : l'ecriture continue avec le sel en memoire.
+                logger.warning(
+                    "Sel non conserve dans %s (%s) : les prochains processus "
+                    "repaieront une derivation.", self._chemin_sel, erreur,
+                )
+        return sel
 
     def _deriver_vraiment(self, sel: bytes) -> bytes:
         kdf = PBKDF2HMAC(

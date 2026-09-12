@@ -33,7 +33,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
-from core.memory.personnelle import MemoirePersonnelle, Souvenir, TypeSouvenir
+from core.memory.personnelle import (
+    MemoirePersonnelle,
+    Souvenir,
+    TypeSouvenir,
+    est_un_echec_de_lecture,
+)
 
 logger = logging.getLogger("usman.memoire.recuperation")
 
@@ -205,6 +210,77 @@ def noter(
     return Resultat(souvenir=souvenir, score=score, signaux=signaux)
 
 
+#: Combien de souvenirs SENSIBLES sont dechiffres au maximum pour une question.
+#: Separe de `limite_lecture` volontairement : cette population est rare (le
+#: proprietaire marque `sensible=True` un code, un acces, un montant — pas une
+#: note de chantier), et la borne peut donc etre large sans rien couter. Mesure
+#: du 12/09/2026 : 2000 souvenirs sensibles dechiffres et filtres coutent
+#: **58,3 ms** quand ils partagent un sel, parce que la cle est alors derivee
+#: UNE fois (`core/memory/chiffrement.py`, DEC-0096) et que le reste est de
+#: l'AES-GCM. Le cout ne suit PAS le nombre de lignes mais le nombre de sels
+#: DISTINCTS a derive — c'est pour cela que le sel d'ecriture est conserve
+#: entre deux processus (`Coffre(chemin_sel=...)`, DEC-0097) : sans lui, 500
+#: souvenirs ecrits au fil de 100 sessions coutaient **26,7 s** a la premiere
+#: question, contre 285 ms avec.
+LIMITE_SENSIBLES = 2000
+
+
+def sensibles_correspondants(
+    memoire: MemoirePersonnelle,
+    mots_question: set,
+    projet: Optional[str] = None,
+    type: Optional[TypeSouvenir] = None,
+    limite: int = LIMITE_SENSIBLES,
+) -> List[Souvenir]:
+    """Les souvenirs SENSIBLES dont le contenu partage un mot avec la question.
+
+    La TROISIEME fenetre de `candidats_bornes`, et la seule qui ne peut pas
+    filtrer en SQL : un souvenir sensible est chiffre sur le disque
+    (DEC-0090), donc `LIKE '%portail%'` ne le trouvera jamais. Il faut
+    dechiffrer avant de filtrer — ce qui etait inabordable jusqu'au 12/09/2026
+    (275 ms de PBKDF2 par souvenir) et coute desormais une derivation pour
+    toute la fenetre (DEC-0096).
+
+    Ce que ca repare, mesure avant d'ecrire une ligne (DEC-0097) : « Le code du
+    portail du chantier Fast Group est 4821. », marque sensible, vieux de 400
+    jours et peu important, ne ressortait ni sur « quel est le code du portail
+    Fast Group ? », ni sur « code portail chantier », ni sur « 4821 ». Le
+    souvenir existait ; aucune question ne pouvait l'atteindre.
+
+    Deux precautions, chacune gardee par un test :
+
+    - **un message d'echec n'est pas un contenu.** Quand le coffre manque ou
+      refuse, `souvenirs()` rend un etat lisible (`SANS_COFFRE`,
+      `DECHIFFREMENT_REFUSE`) a la place du clair. Le filtrer sur des mots
+      ferait remonter tout souvenir illisible des que la question contient
+      « coffre » ou « sensible » : `est_un_echec_de_lecture` les ecarte.
+    - **sans coffre, on ne fouille rien** : rien n'est lisible, la fenetre est
+      vide, et ARENA le dit par l'absence de resultat, jamais par une
+      supposition.
+
+    Comme les deux autres fenetres, celle-ci est BORNEE (`limite`) : au-dela,
+    ce sont les souvenirs sensibles les moins importants et les plus anciens
+    qui restent hors de portee — la meme limite que partout ailleurs, ecrite
+    plutot que decouverte.
+
+    Le filtrage passe par `mots_utiles`, donc par `normaliser` : un mot
+    accentue du contenu original est compare sans accent, ce que le `LIKE` SQL
+    de la seconde fenetre ne sait pas faire.
+    """
+    if not mots_question or memoire.coffre is None:
+        return []
+
+    retenus: List[Souvenir] = []
+    for souvenir in memoire.souvenirs(
+        projet=projet, type=type, limite=limite, sensible=True
+    ):
+        if est_un_echec_de_lecture(souvenir.contenu):
+            continue
+        if mots_utiles(souvenir.contenu) & mots_question:
+            retenus.append(souvenir)
+    return retenus
+
+
 def candidats_bornes(
     memoire: MemoirePersonnelle,
     mots_question: set,
@@ -212,7 +288,7 @@ def candidats_bornes(
     type: Optional[TypeSouvenir],
     limite_lecture: int,
 ) -> List[Souvenir]:
-    """Les souvenirs a noter — deux chemins bornes, jamais un chargement complet.
+    """Les souvenirs a noter — trois chemins bornes, jamais un chargement complet.
 
     `souvenirs()` rend la fenetre importance/recence habituelle (au plus
     `limite_lecture`). Sans rien d'autre, un souvenir pertinent mais ancien et
@@ -227,6 +303,13 @@ def candidats_bornes(
     supplementaire (ceux-la restent decides par l'appelant semantique). Les
     deux fenetres sont fusionnees, dedupliquees par identifiant ; `noter()`
     scoire ensuite l'union exactement comme avant.
+
+    `sensibles_correspondants()` ajoute une TROISIEME fenetre, pour la seule
+    population que le `LIKE` SQL ne peut pas fouiller : les souvenirs chiffres
+    au repos. Elle est bornee comme les deux autres, et vide quand aucun
+    coffre n'est configure. Sans elle, un code de portail marque sensible
+    n'etait atteignable par AUCUN mot-cle une fois sorti de la premiere
+    fenetre (mesure DEC-0097).
     """
     candidats = memoire.souvenirs(projet=projet, type=type, limite=limite_lecture)
     if not mots_question:
@@ -236,6 +319,13 @@ def candidats_bornes(
     complement = memoire.souvenirs_correspondant_a_des_mots(
         mots_question, projet=projet, type=type, limite=limite_lecture)
     candidats = candidats + [s for s in complement if s.identifiant not in vus]
+
+    # TROISIEME fenetre : les sensibles, que le `LIKE` SQL ci-dessus ne peut
+    # pas fouiller puisque leur contenu est chiffre sur le disque.
+    vus = {souvenir.identifiant for souvenir in candidats}
+    chiffres = sensibles_correspondants(
+        memoire, mots_question, projet=projet, type=type)
+    candidats = candidats + [s for s in chiffres if s.identifiant not in vus]
     return candidats
 
 

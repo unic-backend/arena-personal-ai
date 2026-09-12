@@ -1505,7 +1505,41 @@ prémisse qui avait autorisé le défaut : le docstring du module affirmait que
 « la dérivation de clé ne tourne jamais sur un chemin chaud ». Elle y tourne,
 la mesure le dit, et c'est désormais écrit là.
 
-**Deux défauts de mémoire trouvés et NON corrigés**, écrits pour qu'ils ne
-se perdent pas : un souvenir sensible est introuvable par mot-clé (la
-requête exclut `sensible=1`, mesuré sur « le code du portail Fast Group »)
-et le tri par importance passe par un TEMP B-TREE sans index composite.
+**Deux défauts de mémoire trouvés dans la même lecture** : un souvenir
+sensible introuvable par mot-clé (corrigé juste après, voir ci-dessous) et
+le tri par importance qui passe par un TEMP B-TREE sans index composite
+(toujours ouvert, gardé par un test).
+
+
+---
+
+## 2026-09-12 (suite) — un souvenir sensible était introuvable par mot-clé
+
+Suite directe du correctif précédent : le déchiffrement devenu gratuit, ce
+second défaut devenait réparable. Mesuré avant d'écrire une ligne — « Le
+code du portail du chantier Fast Group est 4821. », marqué sensible, 400
+jours, importance 0,02 : il existait, et **ni « quel est le code du portail
+Fast Group ? », ni « code portail chantier », ni « 4821 » ne le
+retrouvaient**.
+
+Cause : le complément par mots-clés filtre en SQL et exclut `sensible = 0`
+— à raison, un `LIKE` ne trouve rien dans du chiffre. Hors de la fenêtre
+importance/récence, un souvenir sensible n'était plus joignable du tout.
+
+| Correction | Mesure |
+|---|---|
+| une TROISIÈME fenêtre bornée qui déchiffre puis filtre (`sensibles_correspondants`) | les trois questions répondent enfin, latence inchangée (15,9 ms contre 15,5) |
+| le sel d'écriture conservé entre deux processus (`vault_salt`, 0600) | 500 sensibles écrits au fil de 100 sessions : **26,7 s → 285 ms** |
+| le coffre branché dans `apps/backend/runtime.py` | `/api/memory` avec `sensible: true` : **422 toujours → 200**, et du chiffre sur le disque |
+
+La troisième corrige un défaut à part entière : la route **déclarait**
+`sensible: true` et le refusait toujours, parce que le backend construisait
+la mémoire sans coffre. Le chiffrement au repos n'était joignable que par
+le serveur MCP, jamais depuis son téléphone. Sans
+`USMAN_MEMORY_VAULT_PASSPHRASE`, rien ne change.
+
+Un test qui affirmait l'inverse a été **réécrit, pas supprimé** : la limite
+qu'il gardait est levée, et la raison est écrite dedans. Celui qui garde la
+limite du mot trop partagé reste intact — celle-là existe toujours.
+
+Quatre sabotages, quatre tests qui tombent, tous restaurés.

@@ -53,11 +53,12 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from mcp.server.mcpserver import MCPServer
 
-from core.memory.chiffrement import Coffre
+from core.memory.chiffrement import NOM_FICHIER_SEL, Coffre
 from core.memory.personnelle import (
     MemoirePersonnelle,
     Nature,
@@ -76,7 +77,11 @@ mcp = MCPServer("ARENA Memory")
 
 def _construire_memoire() -> MemoirePersonnelle:
     chemin = os.environ.get(VARIABLE_DB_PATH, DB_PATH_PAR_DEFAUT)
-    return MemoirePersonnelle(db_path=chemin, coffre=Coffre.depuis_environnement())
+    chemin_sel = Path(chemin).parent / NOM_FICHIER_SEL
+    return MemoirePersonnelle(
+        db_path=chemin,
+        coffre=Coffre.depuis_environnement(chemin_sel=chemin_sel),
+    )
 
 
 # Une seule instance pour la duree du processus — comme `memoire_personnelle`

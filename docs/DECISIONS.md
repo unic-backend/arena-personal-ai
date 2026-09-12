@@ -8903,3 +8903,142 @@ fusion : **5366 passed, 31 skipped, 52 deselected, 0 failed** (682.82s,
 mesurée le 12/09/2026). PR #197 **fusionnée dans `master` par le
 propriétaire** le 12/09/2026. Détail complet, étape par étape, dans les
 messages de commit de `claude/audit-repairs-f7f0478`.
+
+---
+
+## DEC-0096 — La mémoire chiffrée coûtait 275 ms par souvenir relu (PR #202)
+
+**2026-09-12.** Demande : « cherche de quoi tu peux faire ou améliorer
+surtout la mémoire aussi ». Mesuré **avant** d'écrire une ligne, sur
+`core/memory/` :
+
+```
+500 souvenirs sensibles, relus        : 133 590 ms  (2 min 14)
+une dérivation PBKDF2 (600 000 iter.) :      275 ms
+nonce différent par message           : True
+sel aussi différent par message       : True   <- la cause
+```
+
+### La décision
+
+`chiffrer()` tirait un **sel** neuf par message. AES-GCM n'exige l'unicité
+que du **nonce**, déjà tiré au hasard par message : ce sel par message
+n'achetait aucune sécurité et faisait repayer les 600 000 itérations à
+chaque lecture. Décision : **un cache borné de clés par sel**
+(`CLES_GARDEES = 256`) et **un sel partagé par lot d'écritures**
+(`MESSAGES_PAR_SEL = 65 536`) — la forme ordinaire d'un conteneur chiffré,
+un sel d'en-tête puis un nonce neuf par message.
+
+*Ce que ça coûte si c'est faux* : une clé couvrirait un nombre illimité de
+messages et la marge d'anniversaire du nonce 96 bits s'éroderait. C'est
+précisément ce que `MESSAGES_PAR_SEL` borne, et ce qu'un test vérifie en
+comptant les sels distincts sur un lot.
+
+### Ce qui n'a PAS changé, et pourquoi c'est le point important
+
+`dechiffrer()` n'est pas touché : il lit toujours le sel dans l'enveloppe.
+**Tout souvenir déjà écrit reste lisible** — prouvé par un test qui
+reconstruit l'ANCIEN format (un sel par message) à la main et le déchiffre.
+Aucun changement de schéma SQLite, aucune migration, aucune réécriture de
+donnée stockée : la zone verrouillée `core/memory/personnelle.py` est
+respectée.
+
+### La prémisse fausse qui avait autorisé le défaut
+
+Le docstring du module justifiait les 600 000 itérations par « la
+dérivation de clé ne tourne jamais sur un chemin chaud ». Elle y tournait,
+une fois par souvenir relu. Trois autres affirmations du dépôt disaient
+l'inverse de ce que fait le code (`TAILLE_SEL`, le docstring de `Coffre`,
+un commentaire de test) : les quatre sont corrigées sur place.
+
+### Mesure après
+
+```
+500 écritures sensibles   :   270,6 ms   (contre 138 s)
+relecture des 500         :     3,6 ms   (contre 133 590 ms)
+nonces distincts sur 500  :   500
+sels distincts sur 500    :     1
+```
+
+Suite complète : **5472 passed, 31 skipped, 52 deselected** (938 s, mesurée
+le 12/09/2026). `ruff check .` propre. PR #202.
+
+---
+
+## DEC-0097 — Un souvenir sensible était introuvable par mot-clé (PR #203)
+
+**2026-09-12.** Suite directe de DEC-0096 : une fois le déchiffrement
+devenu gratuit, le second défaut trouvé dans la même lecture de
+`core/memory/` devenait réparable. Mesuré avant d'écrire une ligne :
+
+```
+[le souvenir existe bien]                          True
+['quel est le code du portail Fast Group ?']       retrouve : False
+['code portail chantier']                          retrouve : False
+['4821']                                           retrouve : False
+```
+
+Le souvenir — « Le code du portail du chantier Fast Group est 4821. »,
+marqué `sensible=True`, vieux de 400 jours, importance 0,02 — existait et
+**aucune question ne pouvait l'atteindre**.
+
+### La cause
+
+Deux fenêtres bornées alimentaient `recuperer()` : la fenêtre
+importance/récence (`souvenirs()`) et le complément par mots-clés en SQL
+(`souvenirs_correspondant_a_des_mots`, DEC-0095 étape 9). La seconde
+**exclut** `sensible = 0` — à raison : sur le disque, ces lignes sont du
+chiffre, un `LIKE '%portail%'` n'y trouvera jamais rien. Hors de la
+première fenêtre, un souvenir sensible n'était donc plus joignable du tout.
+
+### Les trois décisions
+
+1. **Une troisième fenêtre, qui déchiffre puis filtre**
+   (`core/memory/recuperation.py::sensibles_correspondants`). Bornée comme
+   les deux autres (`LIMITE_SENSIBLES = 2000`), vide sans coffre, et le
+   filtrage passe par `normaliser` — donc un mot accentué du contenu
+   répond enfin, ce que le `LIKE` SQL ne sait pas faire.
+   *Coût si c'est faux* : un mot de la question pourrait faire remonter un
+   souvenir sensible non pertinent dans le prompt. Le score de `noter()`
+   reste le même juge qu'ailleurs, et la fenêtre ne change pas le budget.
+
+2. **Le sel d'écriture est conservé entre deux processus**
+   (`Coffre(chemin_sel=...)`, fichier `vault_salt` en 0600 à côté de la
+   base). Sans lui, le cache de DEC-0096 mourait avec le processus : le
+   coût ne suit pas le nombre de lignes mais le nombre de **sels
+   distincts** à dériver. Mesuré : 500 souvenirs sensibles écrits au fil de
+   100 sessions coûtaient **26,7 s** à la première question, **285 ms**
+   avec le sel conservé.
+   *Coût si c'est faux* : un sel réutilisé trop longtemps ramène au risque
+   que `MESSAGES_PAR_SEL` borne — la rotation par lot est conservée, et le
+   sel renouvelé est conservé à son tour. Un sel n'est pas un secret ; le
+   fichier n'en contient aucun et la phrase de passe reste dans
+   l'environnement seul.
+
+3. **Le coffre est branché dans `apps/backend/runtime.py`.** `/api/memory`
+   acceptait `sensible: true` dans son schéma et le refusait **toujours**
+   en 422, parce que le backend construisait `MemoirePersonnelle` sans
+   coffre : le chiffrement au repos (DEC-0090) n'était joignable que par le
+   serveur MCP, jamais depuis son téléphone. Le refus était honnête — jamais
+   un faux succès, jamais un souvenir écrit en clair sous couvert de
+   sécurité — c'est la capacité qui manquait.
+   *Coût si c'est faux* : rien ne change sans la variable
+   `USMAN_MEMORY_VAULT_PASSPHRASE` (`depuis_environnement` rend `None`), et
+   un test le vérifie sur le vrai module, dans un sous-processus.
+
+### Un test qui affirmait l'inverse, réécrit et non supprimé
+
+`test_un_souvenir_sensible_hors_fenetre_reste_hors_de_portee` gardait la
+limite quand elle était réelle. Elle est levée : le test devient
+`test_un_souvenir_sensible_hors_fenetre_est_maintenant_retrouve`, même
+scénario, assertion inversée, avec la raison écrite dedans. Le test voisin
+qui garde la limite du mot trop partagé (`limite_lecture`) reste intact :
+cette limite-là existe toujours.
+
+### Preuve
+
+Quatre sabotages, chacun repéré par un test précis : troisième fenêtre
+débranchée (1 échec), garde des messages d'échec retirée (1 échec), sel
+conservé ignoré à la lecture (2 échecs), coffre débranché du runtime
+(1 échec). Tous restaurés. Chiffres et suite complète dans le message de
+commit de la branche `claude/memoire-sensibles-introuvables`.
