@@ -1461,3 +1461,51 @@ inscrite dans `DORMANTS_CONNUS`.
 Tests : 3 nouveaux cas dans `test_recherche_unifiee.py`, plus
 `test_reveil_galsen_fresh_info.py` (12) et `test_reveil_guide_et_retours.py`
 (13) — tous par le vrai `dispatch_request` ou la vraie boucle de l'agent.
+
+---
+
+## 2026-09-12 (suite) — la mémoire chiffrée coûtait 275 ms par souvenir relu
+
+Demande : « cherche de quoi tu peux faire ou améliorer surtout la mémoire
+aussi ». Mesuré **avant** d'écrire quoi que ce soit :
+
+```
+500 souvenirs sensibles, relus       : 133 590 ms  (2 min 14)
+une dérivation PBKDF2 (600 000 iter.):      275 ms
+nonce différent par message          : True
+sel aussi différent par message      : True   <- la cause
+```
+
+`chiffrer()` tirait un **sel** neuf à chaque message, donc `dechiffrer()`
+repayait les 600 000 itérations **par souvenir**. Le nonce — la seule
+unicité qu'AES-GCM exige — était déjà aléatoire par message : le sel par
+message n'achetait aucune sécurité. Plus il enregistrait de souvenirs
+sensibles, plus ARENA devenait lente, sur exactement les données qui
+valent d'être protégées.
+
+Corrigé dans `core/memory/chiffrement.py`, sans toucher au format
+d'enveloppe : un cache borné de clés par sel (`CLES_GARDEES = 256`) et un
+sel partagé par lot (`MESSAGES_PAR_SEL = 65 536`) — la forme ordinaire
+d'un conteneur chiffré, sel en en-tête puis nonce neuf par message.
+
+Après, re-mesuré machine au repos : 500 écritures **270,6 ms** (contre
+138 s), relire ces 500 **3,6 ms** (contre 133 590 ms), 500 nonces distincts
+et **un seul** sel — donc une seule dérivation au lieu de 500 (assertée par
+un test qui compte les appels).
+
+Pas un troc sécurité/vitesse — un test par point : nonce `os.urandom` par
+message (50 enveloppes), sel toujours aléatoire et renouvelé par lot,
+mauvaise phrase toujours refusée malgré le cache, et `dechiffrer()`
+intact donc **tout souvenir déjà écrit reste lisible** (prouvé en
+reconstruisant l'ANCIEN format à la main). Aucun changement de schéma :
+la zone verrouillée `core/memory/personnelle.py` est respectée.
+
+**Quatre affirmations devenues fausses** corrigées sur place, dont la
+prémisse qui avait autorisé le défaut : le docstring du module affirmait que
+« la dérivation de clé ne tourne jamais sur un chemin chaud ». Elle y tourne,
+la mesure le dit, et c'est désormais écrit là.
+
+**Deux défauts de mémoire trouvés et NON corrigés**, écrits pour qu'ils ne
+se perdent pas : un souvenir sensible est introuvable par mot-clé (la
+requête exclut `sensible=1`, mesuré sur « le code du portail Fast Group »)
+et le tri par importance passe par un TEMP B-TREE sans index composite.
