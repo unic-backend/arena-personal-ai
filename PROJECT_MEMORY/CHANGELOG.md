@@ -1344,3 +1344,47 @@ pré-existants. Reproduit localement avant correction
 sur l'appel `--continue`), suite complète revérifiée sous les mêmes
 conditions : 5353 passed, 0 failed. CI confirmée retombée à 39 échecs
 pré-existants après le push du correctif.
+
+---
+
+## 2026-09-12 — session « réparation des 12 défauts d'un audit externe » (DEC-0095)
+
+### Livré et fusionné (PR #197, mergée le 12/09/2026 par le propriétaire)
+
+Mission reçue avec consigne explicite : revérifier chaque constat d'un audit
+externe (commit `f7f0478`) contre le code actuel avant de le corriger — onze
+des douze étaient encore exacts, le douzième (connecteurs dormants) déjà
+réparé avant l'audit (DEC-0068), revérifié et laissé tel quel.
+
+| Étape | Ce qui a changé | Preuve |
+|---|---|---|
+| 1. Deps/CI | `Pillow`/`psutil` en conflit réel avec `browser-use` ; outils natifs manquants en CI | 76/76 avec les outils présents |
+| 2. 8 intentions | absentes d'`AGENTS_SPECIALISES`, reconnues mais jamais exécutées | 16 tests via `dispatch_request` + `POST /agent/stream` |
+| 3. Continuité | `conversation_id` stable séparé de `run_id` | 4 tests Python + 3 vitest |
+| 4. Pièces jointes | repli `test_video.mp4` retiré, statut métier vérifié | 7 tests (Python + vitest) |
+| 5. Idempotence | `JournalExecutions` par `run_id` (256 entrées, mémoire) | 4 tests |
+| 6. Sortie vidéo | `ffprobe` réel avant d'annoncer un succès | 6 tests, sabotage d'un vrai rendu |
+| 7. Liens de sortie | `/media/rendered/{nom}` → `{nom:path}` | 6 tests, confinement revérifié |
+| 8. Uploads | `open(..., "xb")` + suffixe numérique | 7 tests dont un vrai test concurrent (threads) |
+| 9. Mémoire long terme | recherche complémentaire bornée au-delà de la fenêtre 500 | 7 tests, limite résiduelle documentée |
+| 10. Quotas cloud | plafond vérifié sur CHAQUE chemin, persistance SQLite | 7 tests dont redémarrage simulé et concurrence réelle |
+| 11. CORS | `DELETE` + `X-Usman-Run-ID`/`Last-Event-ID` autorisés | 3 tests, vrai préflight (400 → 200) |
+| 12. Affirmations trompeuses | `RAPPORT_TRAVAIL.txt` (cliché 25/08) marqué non à jour | 1 test qui fixe le bandeau |
+
+Chaque étape porte son propre test de régression, confirmé en échec avant
+correction et en succès après (`git stash`, jamais supposé). `python -m ruff
+check .` propre sur tout le dépôt. PWA : `tsc --noEmit` propre, `vitest run`
+34 passed, `vite build` réussi — vérifiés en local et verts sur les 12 checks
+CI de la PR (y compris « Docker image builds », réellement construite).
+Suite Python complète mesurée après fusion : **5366 passed, 31 skipped, 52
+deselected, 0 failed** (682.82s, mesurée le 12/09/2026). Détail et ce qui
+reste non vérifié depuis cet environnement (Ollama réel, persistance réelle
+du compteur d'usage après un vrai redémarrage) : `docs/DECISIONS.md`,
+DEC-0095.
+
+En aparté, sur le check-in programmé de PR #196 (gitgui) : CI y était rouge
+pour la même cause que l'étape 1 ci-dessus (conflit Pillow/psutil réel avec
+`browser-use`, présent sur `master` aussi) — correctif porté tel quel
+(commit `d179877` cherry-pické), PR #196 fusionnée aussi le 12/09/2026.
+
+12 commits sur `claude/audit-repairs-f7f0478`, PR #197, fusionnée.
