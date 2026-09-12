@@ -204,6 +204,7 @@ class BoucleAgentique:
         budget: Optional[Budget] = None,
         observateur: Optional[Callable[[Trace], None]] = None,
         compteur_outils: Optional[Callable[[], int]] = None,
+        parallelisme: Optional[int] = None,
     ) -> None:
         """
         Args:
@@ -215,6 +216,11 @@ class BoucleAgentique:
             observateur: relaye les changements d'etat de chaque etape.
             compteur_outils: lit le compteur REEL d'appels d'outils. Sans lui,
                 `appels_outils` reste `None` et le plafond ne s'applique pas.
+            parallelisme: si donne, les etapes d'un tour partent en parallele
+                (borne a cette valeur) au lieu d'etre attendues une par une.
+                Existe pour un appelant qui consultait DEJA en parallele :
+                passer par la boucle ne doit pas serialiser ce qui ne l'etait
+                pas — ce serait payer la replanification avec de la latence.
         """
         if not (objectif or "").strip():
             raise ValueError("Une boucle sans objectif ne peut rien evaluer.")
@@ -224,6 +230,9 @@ class BoucleAgentique:
         self.budget = budget or Budget()
         self.observateur = observateur
         self.compteur_outils = compteur_outils
+        if parallelisme is not None and parallelisme < 1:
+            raise ValueError("Un parallelisme inferieur a 1 n'execute rien.")
+        self.parallelisme = parallelisme
         self.etat = EtatBoucle(objectif=objectif, budget=self.budget)
 
     def _outils_consommes(self, depart: Optional[int]) -> Optional[int]:
@@ -285,10 +294,14 @@ class BoucleAgentique:
                 return self._arreter(RaisonDArret.BUDGET_ETAPES, depart)
 
             numero = len(self.etat.tours) + 1
-            resultat = await Coordination(
+            coordination = Coordination(
                 tache=f"{self.objectif} — tour {numero}",
                 etapes=etapes, observateur=self.observateur,
-            ).executer()
+            )
+            resultat = await (
+                coordination.executer_parallele(parallelisme=self.parallelisme)
+                if self.parallelisme is not None else coordination.executer()
+            )
 
             self.etat.etapes_consommees += len(etapes)
             self.etat.acquis = resultat.resultats

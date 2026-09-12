@@ -201,17 +201,20 @@ sa réponse, et elles ne se tranchent pas sans lui.
 
 ---
 
-## Le seul module construit mais pas encore branché (12/09/2026)
+## `core/execution/boucle.py` — branché le 12/09/2026, le jour même
 
-`python scripts/orphelins.py` le nomme, et c'est volontaire :
+Déclaré ici comme dormant quelques heures, puis **réveillé** : la
+consultation des rôles exécutifs passe désormais par lui
+(`core/executive/moteur.py::_consulter_avec_seconde_chance`), et
+`python scripts/orphelins.py` ne le nomme plus — **0 orphelin réel**, 241
+modules atteints.
 
-| # | Module | Ce qui lui manque, et pourquoi ce n'est pas un oubli |
-|---|---|---|
-| 1 | `core/execution/boucle.py` | **Son consommateur.** Le mécanisme est écrit et prouvé — 20 tests, 4 sabotages : plafond de tours desserré, plan tronqué au lieu d'être refusé, `appels_outils` à 0 au lieu de `None`, budget de temps désactivé ; chacun fait tomber un test précis. Ce qu'il n'a pas, c'est une phrase du propriétaire qui le fasse tourner, et **c'est la cinquième condition ci-dessous**. Le brancher au hasard serait pire que le laisser ici : `ReasoningEngine` n'a pas de vraie replanification à faire (son étape `calcul` est déjà `facultative`, un échec n'emporte pas la réponse), et forcer la boucle là serait l'abstraction sans cas d'usage que la mission interdit. Son consommateur est l'**Executive Brain** — chunk suivant. |
-
-**Ce module ne compte donc pas comme réveillé**, et rien dans le dépôt ne
-l'annonce comme tel. Il est ici pour que sa dette soit visible, pas pour
-qu'elle soit oubliée.
+Ce qu'il apporte, mesuré : un rôle en panne **passagère** (modèle surchargé,
+recherche qui dépasse son délai) trouait la décision **définitivement**, parce
+que la consultation était un unique `asyncio.gather`. Il reçoit maintenant une
+seconde chance, seul, et le tour courant ne repaie rien pour les rôles qui ont
+déjà répondu. Un rôle toujours muet reste `INDISPONIBLE` et son inconnue
+voyage jusqu'à la synthèse : **aucun trou n'est comblé en silence**.
 
 ---
 
