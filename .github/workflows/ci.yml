@@ -186,6 +186,23 @@ jobs:
         # C'est celui qui attrape une valeur recopiee dans un test ou un document.
         run: gitleaks detect --source . --no-git --no-banner --redact --config .gitleaks.toml
 
+      - name: No secret anywhere in the history
+        # Le controle qui manquait. Les deux autres regardent les fichiers TELS
+        # QU'ILS SONT et le diff de la branche : un secret ajoute puis retire
+        # AVANT la branche de base leur echappait completement.
+        #
+        # Ce depot est PUBLIC : son historique entier est lisible par n'importe
+        # qui, donc c'est l'historique entier qui doit etre propre.
+        #
+        # Le commentaire precedent disait que l'historique « sera scannable en
+        # entier une fois T-01 executee » — T-01 etant la purge d'historique.
+        # Elle n'a jamais ete autorisee, et elle n'est pas necessaire : les sept
+        # constats connus sont references par empreinte dans `.gitleaksignore`
+        # (mesures le 12/09/2026 sur les 693 commits, detail dans ce fichier),
+        # et tout secret AJOUTE ailleurs dans l'histoire fait echouer cette
+        # etape. Attendre une purge pour scanner, c'etait ne jamais scanner.
+        run: gitleaks detect --source . --no-banner --redact --config .gitleaks.toml
+
       - name: No secret added by this branch
         # Un secret ajoute puis retire dans un commit de la branche reste dans
         # l'historique : on compare donc la branche a la branche de base.

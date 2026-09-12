@@ -36,4 +36,4 @@ d'ouvrir le document entier quand on cherche juste « a-t-on déjà tranché ça
 | il n'écrit pas de code — une commande à la fois, fichier entier | idem |
 | toute garantie déclarée doit avoir été **sabotée** une fois | `CLAUDE.md` |
 | une capacité absente se rapporte (`NOT_CONFIGURED`), ne se simule pas | `CLAUDE.md` |
-| le dépôt est **privé** depuis le 28/08/2026 | `docs/CURRENT_TASK.md` |
+| le dépôt est **public** — privé du 28/08 au 06/09/2026, repassé public depuis | `docs/CURRENT_TASK.md` ; `private: false` remesuré le 12/09/2026 |

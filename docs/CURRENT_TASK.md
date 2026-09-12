@@ -368,6 +368,41 @@ dans le flou.
    reste **jamais autorisée**, c'est sa décision. Il a dit changer
    `USMAN_API_KEY` lui-même à ce moment-là : **non vérifié par une mesure**,
    à confirmer avant de l'écrire ailleurs comme fait.
+
+   **Mesure du 12/09/2026 — ce que l'historique public expose exactement.**
+   gitleaks 8.28.0 (la version épinglée de la CI), `--redact`, sur les 693
+   commits : **7 constats, 6 lignes, 3 commits, tous du 25/08/2026**, tous
+   dans `docker-compose.yml` et `librechat.yaml` — les fichiers retirés par
+   DEC-0007.
+
+   | Secret | Longueur | État |
+   |---|---|---|
+   | `CREDS_KEY` | 64 | interne LibreChat → **mort**, service retiré |
+   | `JWT_SECRET` | 63 | idem |
+   | `JWT_REFRESH_SECRET` | 61 | idem |
+   | `WEBUI_SECRET_KEY` | 22 | interne Open WebUI → **mort** |
+   | `OPENAI_API_KEY` | **15** | **pas une clé OpenAI** : trop courte, aucun préfixe `sk-`. C'est une clé de l'API LOCALE d'ARENA (LibreChat parlait le protocole OpenAI à `host.docker.internal:8000`) |
+   | `apiKey` (librechat.yaml) | 15 | clé de l'API locale aussi, **valeur différente** de la précédente |
+
+   **Aucune clé de fournisseur externe dans l'historique.** Les motifs `sk-`,
+   `sk-ant-`, `ghp_`, `gho_`, `AKIA`, `AIza` et `xoxb-` ne correspondent que
+   dans `tests/core/test_confidentialite.py` et `tests/test_scanner_secrets.py`,
+   sur des valeurs inventées qui se nomment elles-mêmes, chacune marquée
+   `# scanner-secrets: ignore` — lues une par une. Le scan refait **sans
+   aucune exclusion du projet** donne 16 constats au lieu de 7 : les 12 en
+   plus sont ces mêmes fixtures. Les exclusions ne cachent donc rien.
+
+   **Conclusion : la purge reste inutile, et pour une raison mesurée.** Les
+   deux seules valeurs qui comptent gardent `/api/*` sur sa machine. Les
+   changer rend l'exposition inoffensive, sans casser un seul clone ni un
+   seul SHA cité dans ces documents. La purge reste **jamais autorisée**.
+
+   Depuis cette mesure, la CI scanne **l'historique entier** à chaque
+   exécution (`.gitleaksignore` référence les sept constats connus par
+   empreinte) : tout secret ajouté ailleurs dans l'histoire fait désormais
+   échouer le contrôle. Le commentaire de la CI disait que l'historique
+   « sera scannable en entier une fois T-01 exécutée » — attendre une purge
+   jamais autorisée pour scanner, c'était ne jamais scanner.
    ~~**Rouvre-t-on le chapitre 8 (connecteur e-mail) ?**~~ **Oui, le
    28/08/2026 — et il est terminé le jour même.** 8.1 : lire et chercher son
    courrier. 8.2 : trier, extraire, rédiger, et **envoyer derrière
