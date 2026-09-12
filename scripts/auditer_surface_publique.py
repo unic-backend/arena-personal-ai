@@ -202,7 +202,7 @@ def auditer() -> List[Constat]:
         constats = []
 
         for gabarit, methodes in _routes_api_declarees():
-            if gabarit == "/media/rendered/{nom}":
+            if gabarit == "/media/rendered/{nom:path}":
                 continue  # sonde dediee, avec un vrai fichier : _auditer_mount_media
             chemin = _chemin_concret(gabarit)
             corps = CORPS_MINIMAL.get(gabarit, {})

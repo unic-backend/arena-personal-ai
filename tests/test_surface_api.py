@@ -26,7 +26,11 @@ SURFACE_ATTENDUE = {
     "/offline.html": (["GET"], []),
     "/icons/{nom}": (["GET"], []),
     # Remplace le mount StaticFiles d'origine, joignable sans cle (phase 4.2).
-    "/media/rendered/{nom}": (["GET"], ["verify_media_access"]),
+    # `{nom:path}` (corrige le 12/09/2026, audit externe commit f7f0478) :
+    # les sorties de conversion s'ecrivent dans un sous-dossier
+    # (media/rendered/conversions/...) et {nom} seul ne capture jamais un
+    # `/` — cette route ne repondait meme pas a l'URL qu'ARENA rendait.
+    "/media/rendered/{nom:path}": (["GET"], ["verify_media_access"]),
     # Passerelle vers l'interface PWA du proprietaire.
     # Ce que CETTE machine sait faire, capacite par capacite. Sans elle,
     # le panneau video proposait sept capacites sans pouvoir demander
@@ -194,7 +198,7 @@ def test_toute_route_appelant_le_modele_est_limitee_en_debit():
 
 def test_le_dossier_des_rendus_reste_servi():
     """Route authentifiee depuis la 4.2 — plus un mount StaticFiles public."""
-    assert "/media/rendered/{nom}" in routes_declarees()
+    assert "/media/rendered/{nom:path}" in routes_declarees()
 
 
 def test_le_chemin_du_projet_est_pret_avant_tout_import_du_paquet():

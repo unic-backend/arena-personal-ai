@@ -21,7 +21,7 @@ genere hors des permissions serait un code genere hors de tout controle.
    avertissement glisse a cote d'un fichier quand meme ecrit. Le mandat de
    la mission (« controle des URLs externes ») est une porte, pas une note.
 2. **Ecrit dans `media/rendered/`, comme le devis.** Meme dossier, meme
-   route deja servie (`GET /media/rendered/{nom}`) : une interface generee
+   route deja servie (`GET /media/rendered/{nom:path}`) : une interface generee
    est ouvrable depuis le telephone sans route nouvelle.
 """
 from __future__ import annotations

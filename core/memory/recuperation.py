@@ -205,6 +205,40 @@ def noter(
     return Resultat(souvenir=souvenir, score=score, signaux=signaux)
 
 
+def candidats_bornes(
+    memoire: MemoirePersonnelle,
+    mots_question: set,
+    projet: Optional[str],
+    type: Optional[TypeSouvenir],
+    limite_lecture: int,
+) -> List[Souvenir]:
+    """Les souvenirs a noter — deux chemins bornes, jamais un chargement complet.
+
+    `souvenirs()` rend la fenetre importance/recence habituelle (au plus
+    `limite_lecture`). Sans rien d'autre, un souvenir pertinent mais ancien et
+    peu important — hors de cette fenetre — n'etait jamais meme EXAMINE par
+    `noter()`, quel que soit son score potentiel (mission ARENA x AUDIT,
+    corrige le 12/09/2026 : « plus de 500 souvenirs, celui qui compte est hors
+    de la fenetre »).
+
+    `souvenirs_correspondant_a_des_mots()` ajoute une SECONDE fenetre, elle
+    aussi bornee a `limite_lecture`, filtree en SQL sur les mots de la
+    question — jamais un troisieme chargement complet, jamais un embedding
+    supplementaire (ceux-la restent decides par l'appelant semantique). Les
+    deux fenetres sont fusionnees, dedupliquees par identifiant ; `noter()`
+    scoire ensuite l'union exactement comme avant.
+    """
+    candidats = memoire.souvenirs(projet=projet, type=type, limite=limite_lecture)
+    if not mots_question:
+        return candidats
+
+    vus = {souvenir.identifiant for souvenir in candidats}
+    complement = memoire.souvenirs_correspondant_a_des_mots(
+        mots_question, projet=projet, type=type, limite=limite_lecture)
+    candidats = candidats + [s for s in complement if s.identifiant not in vus]
+    return candidats
+
+
 def recuperer(
     memoire: MemoirePersonnelle,
     question: str,
@@ -235,7 +269,7 @@ def recuperer(
 
     # Les perimes sont deja ecartes par `souvenirs()` : un contexte temporaire
     # perime ne doit pas revenir par la porte de la recuperation.
-    candidats = memoire.souvenirs(projet=projet, type=type, limite=limite_lecture)
+    candidats = candidats_bornes(memoire, mots_question, projet, type, limite_lecture)
 
     notes = [noter(souvenir, mots_question, fenetre, maintenant) for souvenir in candidats]
     notes = [resultat for resultat in notes if resultat.score >= SEUIL]

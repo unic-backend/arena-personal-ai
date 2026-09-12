@@ -19,6 +19,20 @@ jobs:
           python-version: "3.11"
           cache: pip
 
+      - name: Install native tools required by the offline suite
+        # weasyprint/cairosvg render through libcairo/libpango/libgdk-pixbuf ;
+        # LibreOffice (`soffice`) and ffmpeg are real subprocess dependencies of
+        # tests/core/test_connecteur_file_conversion.py and
+        # tests/core/test_connecteur_pdf.py, neither marked `integration` (that
+        # marker means "external SERVICE" — Ollama/Docker/network/Chromium —
+        # not "a local library"). Their absence here, not in the code, is what
+        # turned 39 real conversion tests into failures on the audited commit.
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 \
+            libreoffice ffmpeg
+
       - name: Install test dependencies
         # Only what the offline suite imports, pinned by requirements.txt used as
         # a constraints file. Installing the full dependency tree (browser-use,
@@ -30,7 +44,8 @@ jobs:
           pip install -r requirements-dev.txt
           pip install -c requirements.txt fastapi httpx pyyaml python-dotenv pydantic \
             python-multipart pypdf python-docx openpyxl python-pptx pypdfium2 pytesseract reportlab \
-            gitingest numpy txtai_minimal ifcopenshell psutil cryptography mcp
+            gitingest numpy txtai_minimal ifcopenshell psutil cryptography mcp \
+            weasyprint cairosvg markdown
           pip install ruff
 
       - name: Ruff

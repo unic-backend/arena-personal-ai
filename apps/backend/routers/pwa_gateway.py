@@ -8,7 +8,11 @@ parle. **C'est la seconde qui est retenue.**
 Le protocole, releve dans son code (`src/lib/activity/`) :
 
 - `POST /agent/stream` — corps JSON `{text, locale, history, attachments,
-  connectors, run_id, persona, memories}`, reponse en `text/event-stream`.
+  connectors, run_id, conversation_id, persona, memories}`, reponse en
+  `text/event-stream`. `conversation_id` (stable, un par fil) porte la
+  session memoire ; `run_id` (nouveau a chaque message) reste ce qu'il a
+  toujours ete, un identifiant d'EXECUTION — les deux ne se confondent plus
+  depuis le 12/09/2026.
 - `POST /files` — **un** fichier sous le nom `file`, un champ `kind`, et en
   reponse **un objet seul**. Suppose au pluriel le 2026-08-27, ce qui rendait
   un 422 : le protocole se lit, il ne se devine pas.
@@ -25,7 +29,10 @@ remplace pas.
 import json
 import logging
 import time
+from collections import OrderedDict
+from dataclasses import dataclass, field
 from datetime import date
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -115,6 +122,14 @@ class DemandeAgent(BaseModel):
     attachments: List[str] = Field(default_factory=list)
     connectors: Any = None
     run_id: Optional[str] = None
+    # Identite STABLE de la conversation (le `activeId` de son store cote
+    # PWA) — distincte de `run_id`, qui identifie UNE execution et change a
+    # chaque message (mission ARENA x AUDIT, corrige le 12/09/2026 : le
+    # serveur utilisait `run_id` comme session de memoire, donc chaque
+    # nouveau message perdait l'historique des tours precedents). Optionnel
+    # pour les anciens clients qui ne l'envoient pas encore : `run_id` reste
+    # le repli, exactement le comportement d'avant ce champ.
+    conversation_id: Optional[str] = None
     persona: Optional[Dict[str, Any]] = None
     memories: Any = None
     # L'espace choisi dans la barre laterale de la PWA (VOLET « espaces
@@ -139,6 +154,80 @@ def fin(meta: Optional[Dict[str, Any]] = None) -> str:
 
 def erreur(message: str) -> str:
     return trame({"type": "error", "message": message})
+
+
+class EtatExecution(str, Enum):
+    """Ce que le journal sait d'un `run_id` — jamais un troisieme etat
+    devine : soit l'execution tourne encore, soit elle a fini (avec les
+    trames qu'elle a rendues, rejouables telles quelles)."""
+
+    EN_COURS = "EN_COURS"
+    TERMINEE = "TERMINEE"
+
+
+@dataclass
+class EntreeExecution:
+    etat: EtatExecution
+    trames: List[str] = field(default_factory=list)
+
+
+class JournalExecutions:
+    """Idempotence par `run_id`, pour la branche `AGENTS_SPECIALISES` de
+    `/agent/stream` — la seule qui a des effets reels (`dispatch_request` :
+    un e-mail parti, un devis genere...). Sans ca, un flux coupe avant que
+    le client ne voie `done` declenchait une relance identique (meme
+    `run_id`, `remoteTransport.ts`) qui rejouait l'action entiere (audit
+    externe, commit f7f0478).
+
+    Deux garanties, jamais une troisieme suppose :
+
+    - **Un `run_id` deja TERMINE ne re-execute jamais** : les memes trames
+      SSE sont rejouees telles quelles, y compris une erreur metier —
+      « ne jamais retenter un echec explicite » veut dire ne pas
+      redemander a l'agent, pas transformer un echec en succes au
+      deuxieme essai.
+    - **Un `run_id` encore EN_COURS refuse une deuxieme execution
+      concurrente** plutot que d'en lancer une seconde a l'aveugle — issue
+      honnete (« reessayez dans un instant »), jamais une supposition sur
+      ce que la premiere a fait.
+
+    En memoire du processus, plafonne comme le journal d'operations git
+    (`tools/atelier/git_ops.py`, DEC-0094) — un redemarrage du backend le
+    perd, ce qui est le tradeoff assume : la reprise au niveau tache reste
+    `core/execution/reprise.py`, pas ce module.
+    """
+
+    def __init__(self, capacite: int = 256) -> None:
+        self._capacite = capacite
+        self._entrees: "OrderedDict[str, EntreeExecution]" = OrderedDict()
+
+    def etat_de(self, run_id: Optional[str]) -> Optional[EntreeExecution]:
+        if not run_id:
+            return None
+        return self._entrees.get(run_id)
+
+    def marquer_en_cours(self, run_id: str) -> None:
+        self._entrees[run_id] = EntreeExecution(etat=EtatExecution.EN_COURS)
+        self._entrees.move_to_end(run_id)
+        while len(self._entrees) > self._capacite:
+            self._entrees.popitem(last=False)
+
+    def terminer(self, run_id: str, trames: List[str]) -> None:
+        self._entrees[run_id] = EntreeExecution(etat=EtatExecution.TERMINEE, trames=trames)
+        self._entrees.move_to_end(run_id)
+
+    def oublier(self, run_id: str) -> None:
+        """Retire un marqueur EN_COURS qui n'a jamais ete termine — une
+        execution qui a plante avant `terminer()` ne doit pas bloquer tout
+        essai futur pour toujours : un prochain appel avec ce `run_id` doit
+        pouvoir retenter pour de vrai."""
+        self._entrees.pop(run_id, None)
+
+
+#: Une instance partagee pour la duree du processus — les executions d'un
+#: meme `run_id` doivent se voir les unes les autres, quelle que soit la
+#: requete HTTP qui les porte.
+_journal_executions = JournalExecutions()
 
 
 def _signaler_non_applique(demande: DemandeAgent) -> None:
@@ -508,7 +597,11 @@ async def flux_agent(demande: DemandeAgent):
     relance la requete jusqu'a trois fois, et une reponse devient trois.
     """
     _signaler_non_applique(demande)
-    session = demande.run_id or "pwa"
+    # `conversation_id` (stable, un par fil) prime sur `run_id` (une nouvelle
+    # valeur par message) : sans ca, chaque tour ouvrait une session de
+    # memoire differente et un agent specialise ne voyait jamais le tour
+    # precedent (mission ARENA x AUDIT, corrige le 12/09/2026).
+    session = demande.conversation_id or demande.run_id or "pwa"
     proprietaire = memory.get_fact("owner") or "Ousmane"
 
     async def flux():
@@ -551,93 +644,137 @@ async def flux_agent(demande: DemandeAgent):
             depart = time.perf_counter()
 
             if intention in AGENTS_SPECIALISES:
-                # Un agent specialise a ses propres consignes. Un ton « concis »
-                # ne doit pas raccourcir un devis ni une recherche sourcee.
-                if instructions_persona(demande.persona):
-                    logger.info(
-                        "Persona non applique : la demande part vers l'agent %s, "
-                        "qui a ses propres consignes.", intention,
-                    )
-                # `chronometrer` n'aime que les appels sans argument et ne rend
-                # que la mesure : la reponse est recuperee par la fermeture.
-                rendu: Dict[str, Any] = {}
-
-                # PLAQUISTE recoit le FIL entier, pas la derniere ligne seule.
-                # Trouve le 31/08/2026, en direct avec le proprietaire : un
-                # devis se negocie sur plusieurs tours (« c'est fann hock »
-                # repond a « quel est le nom du client ? » d'un tour plus tot)
-                # — sans l'historique, l'agent ne voit jamais que la derniere
-                # phrase et redemande les memes informations en boucle, jamais
-                # assez pour finaliser un devis. Les autres agents specialises
-                # ne sont pas touches : rien ne dit qu'ils ont le meme besoin,
-                # et l'elargir sans le mesurer serait la meme erreur en sens
-                # inverse.
-                texte = (_prompt_conversation(demande, proprietaire)
-                         if intention == "PLAQUISTE" else demande.text)
-
-                async def _repondre():
-                    rendu["resultat"] = await dispatch_request(
-                        ChatRequest(
-                            prompt=texte, session_id=session,
-                            attachments=demande.attachments,
-                            # Structure encore intacte pour PLAQUISTE : `texte`
-                            # ci-dessus est deja le fil aplati (pour le modele
-                            # et les recherches par mots-cles existantes) ;
-                            # `history`/`message_actuel` gardent les tours
-                            # separes, pour que la capture deterministe du
-                            # destinataire (agents/plaquiste/plaquiste_agent.py)
-                            # sache exactement quelle reponse va avec quelle
-                            # question, sans avoir a redecouper le fil aplati.
-                            history=demande.history if intention == "PLAQUISTE" else [],
-                            message_actuel=demande.text if intention == "PLAQUISTE" else None,
-                        ),
-                        intent=intention,
-                    )
-
-                mesure = await chronometrer(f"agent {intention}", voie, _repondre)
-                noter_mesure(mesure)
-                if mesure.etat != ETAT_MESURE:
-                    # `chronometrer` avale toute exception par conception
-                    # (core/execution/mesures.py) : une campagne de mesures ne
-                    # doit pas s'arreter a la premiere scene impossible. Mais
-                    # ici ce n'est pas une campagne, c'est la reponse reelle a
-                    # son message — la laisser passer masquait tout echec de
-                    # `dispatch_request` derriere un KeyError('resultat')
-                    # opaque, mesure le 31/08/2026 (EMAIL en echec silencieux
-                    # apres la premiere vraie connexion Gmail). Le detail de
-                    # l'exception, deja capture par `chronometrer` et deja
-                    # plafonne a 120 caracteres pour ne rien divulguer, est
-                    # ce qui reste diagnosticable au lieu de disparaitre.
-                    yield erreur(
-                        f"L'agent {intention} n'a pas pu repondre : "
-                        f"{mesure.detail or 'raison inconnue'}.")
+                # Idempotence par `run_id` (mission ARENA x AUDIT, corrige le
+                # 12/09/2026) : `dispatch_request`, juste en dessous, a des
+                # effets reels (un e-mail parti, un devis genere). Sans
+                # cette porte, un flux coupe avant que le client ne voie
+                # `done` declenchait une relance identique (meme `run_id`,
+                # `remoteTransport.ts`) qui rejouait l'action entiere. Voir
+                # `JournalExecutions` ci-dessus pour les deux garanties.
+                run_id = demande.run_id
+                entree_existante = _journal_executions.etat_de(run_id)
+                if entree_existante is not None:
+                    if entree_existante.etat == EtatExecution.TERMINEE:
+                        for trame_deja_rendue in entree_existante.trames:
+                            yield trame_deja_rendue
+                    else:
+                        yield erreur(
+                            f"Cette demande ({intention}) est deja en cours de "
+                            "traitement. Merci de patienter avant de reessayer."
+                        )
                     return
-                resultat = rendu["resultat"]
-                if not a_produit_un_texte(resultat.get("response")):
-                    # Une bulle vide, sans texte ni erreur : le client n'a
-                    # aucun moyen de distinguer « l'agent s'est arrete » de
-                    # « ARENA n'avait rien a dire ». Le garde existait pour
-                    # LibreChat depuis le 26/08/2026 ; cette surface-ci, celle
-                    # du proprietaire, ne l'avait pas.
-                    yield erreur(garantir_un_texte(
-                        resultat.get("response"), intention))
+                if run_id:
+                    _journal_executions.marquer_en_cours(run_id)
+                trames_de_ce_tour: List[str] = []
+
+                def _rejouable(trame_sse: str) -> str:
+                    trames_de_ce_tour.append(trame_sse)
+                    return trame_sse
+
+                try:
+                    # Un ton « concis » ne doit pas raccourcir un devis ni une
+                    # recherche sourcee : un agent specialise a ses propres
+                    # consignes.
+                    if instructions_persona(demande.persona):
+                        logger.info(
+                            "Persona non applique : la demande part vers l'agent %s, "
+                            "qui a ses propres consignes.", intention,
+                        )
+                    # `chronometrer` n'aime que les appels sans argument et rend
+                    # que la mesure : la reponse est recuperee par la fermeture.
+                    rendu: Dict[str, Any] = {}
+
+                    # PLAQUISTE recoit le FIL entier, pas la derniere ligne seule.
+                    # Trouve le 31/08/2026, en direct avec le proprietaire : un
+                    # devis se negocie sur plusieurs tours (« c'est fann hock »
+                    # repond a « quel est le nom du client ? » d'un tour plus tot)
+                    # — sans l'historique, l'agent ne voit jamais que la derniere
+                    # phrase et redemande les memes informations en boucle, jamais
+                    # assez pour finaliser un devis. Les autres agents specialises
+                    # ne sont pas touches : rien ne dit qu'ils ont le meme besoin,
+                    # et l'elargir sans le mesurer serait la meme erreur en sens
+                    # inverse.
+                    texte = (_prompt_conversation(demande, proprietaire)
+                             if intention == "PLAQUISTE" else demande.text)
+
+                    async def _repondre():
+                        rendu["resultat"] = await dispatch_request(
+                            ChatRequest(
+                                prompt=texte, session_id=session,
+                                attachments=demande.attachments,
+                                # Structure encore intacte pour PLAQUISTE : `texte`
+                                # ci-dessus est deja le fil aplati (pour le modele
+                                # et les recherches par mots-cles existantes) ;
+                                # `history`/`message_actuel` gardent les tours
+                                # separes, pour que la capture deterministe du
+                                # destinataire (agents/plaquiste/plaquiste_agent.py)
+                                # sache exactement quelle reponse va avec quelle
+                                # question, sans avoir a redecouper le fil aplati.
+                                history=demande.history if intention == "PLAQUISTE" else [],
+                                message_actuel=demande.text if intention == "PLAQUISTE" else None,
+                            ),
+                            intent=intention,
+                        )
+
+                    mesure = await chronometrer(f"agent {intention}", voie, _repondre)
+                    noter_mesure(mesure)
+                    if mesure.etat != ETAT_MESURE:
+                        # `chronometrer` avale toute exception par conception
+                        # (core/execution/mesures.py) : une campagne de mesures ne
+                        # doit pas s'arreter a la premiere scene impossible. Mais
+                        # ici ce n'est pas une campagne, c'est la reponse reelle a
+                        # son message — la laisser passer masquait tout echec de
+                        # `dispatch_request` derriere un KeyError('resultat')
+                        # opaque, mesure le 31/08/2026 (EMAIL en echec silencieux
+                        # apres la premiere vraie connexion Gmail). Le detail de
+                        # l'exception, deja capture par `chronometrer` et deja
+                        # plafonne a 120 caracteres pour ne rien divulguer, est
+                        # ce qui reste diagnosticable au lieu de disparaitre.
+                        yield _rejouable(erreur(
+                            f"L'agent {intention} n'a pas pu repondre : "
+                            f"{mesure.detail or 'raison inconnue'}."))
+                        return
+                    resultat = rendu["resultat"]
+                    if not a_produit_un_texte(resultat.get("response")):
+                        # Une bulle vide, sans texte ni erreur : le client n'a
+                        # aucun moyen de distinguer « l'agent s'est arrete » de
+                        # « ARENA n'avait rien a dire ». Le garde existait pour
+                        # LibreChat depuis le 26/08/2026 ; cette surface-ci, celle
+                        # du proprietaire, ne l'avait pas.
+                        yield _rejouable(erreur(garantir_un_texte(
+                            resultat.get("response"), intention)))
+                        return
+                    yield _rejouable(jeton(resultat["response"]))
+                    yield _rejouable(fin({
+                        **moteur_utilise(),
+                        "sources": resultat.get("sources", []),
+                        "query": intention,
+                        # Ce qui attend un accord, pour que l'interface pose un
+                        # bouton dessus. Sans cela l'identifiant n'existait que
+                        # dans le texte de la reponse, et rien ne pouvait le
+                        # confirmer (defaut du 02/09/2026).
+                        "en_attente": _actions_en_attente(),
+                        # Ce qui vient d'etre ecrit et qu'il peut ouvrir tout de
+                        # suite — un devis PDF, depuis qu'il ne passe plus par la
+                        # confirmation (04/09/2026).
+                        "documents": _documents_produits(resultat),
+                    }))
                     return
-                yield jeton(resultat["response"])
-                yield fin({
-                    **moteur_utilise(),
-                    "sources": resultat.get("sources", []),
-                    "query": intention,
-                    # Ce qui attend un accord, pour que l'interface pose un
-                    # bouton dessus. Sans cela l'identifiant n'existait que
-                    # dans le texte de la reponse, et rien ne pouvait le
-                    # confirmer (defaut du 02/09/2026).
-                    "en_attente": _actions_en_attente(),
-                    # Ce qui vient d'etre ecrit et qu'il peut ouvrir tout de
-                    # suite — un devis PDF, depuis qu'il ne passe plus par la
-                    # confirmation (04/09/2026).
-                    "documents": _documents_produits(resultat),
-                })
-                return
+                finally:
+                    # Si un `return` ci-dessus a ete atteint, `trames_de_ce_tour`
+                    # porte tout ce qui a ete rendu : on le fige comme le
+                    # resultat definitif de ce `run_id`, y compris un echec
+                    # metier explicite (jamais retente automatiquement). Si
+                    # rien n'a ete fige (exception inattendue qui aurait
+                    # echappe a `chronometrer`), le marqueur EN_COURS est
+                    # retire : un essai futur avec ce `run_id` doit pouvoir
+                    # retenter pour de vrai plutot que de rester bloque a
+                    # jamais par une panne du serveur, pas de l'agent.
+                    if run_id:
+                        if trames_de_ce_tour:
+                            _journal_executions.terminer(run_id, trames_de_ce_tour)
+                        else:
+                            _journal_executions.oublier(run_id)
 
             memory.add_chat_message(session_id=session, role="user", content=demande.text)
             tour_du_proprietaire_ecrit = True

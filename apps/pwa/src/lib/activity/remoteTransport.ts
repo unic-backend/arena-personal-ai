@@ -51,6 +51,11 @@ interface UploadedAttachment {
   kind: string;
   metadata?: Record<string, unknown>;
   extractedCharacters?: number;
+  /** L'etat metier reel (PieceJointe.statut cote serveur) — LU/ECHEC/NON_PRIS_EN_CHARGE. */
+  status?: string;
+  /** Faux si le fichier n'a jamais ete lu (format non pris en charge, echec). */
+  readable?: boolean;
+  reason?: string | null;
 }
 
 function eventId(prefix: string) {
@@ -149,15 +154,35 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
             }
             const result = (await upload.json()) as UploadedAttachment;
             uploaded.push(result);
-            child = finishEvent(child, 'completed', {
-              description: fr ? 'Fichier reçu et inspecté' : 'File received and inspected',
-              output: {
-                id: result.id,
-                kind: result.kind,
-                metadata: result.metadata,
-                extractedCharacters: result.extractedCharacters,
-              },
-            });
+            // HTTP 200 ne veut dire que « le serveur a repondu » : `/files`
+            // rend toujours un objet, meme pour un fichier refuse
+            // (`ECHEC`/`NON_PRIS_EN_CHARGE`, voir apps/backend/pieces_jointes.py).
+            // Avant ce correctif, cette activite passait pour « reussie »
+            // dans les deux cas — un fichier audio joint, jamais lu, se
+            // voyait annoncer « recu et inspecte » (audit externe, commit
+            // f7f0478). L'etat metier, pas seulement le code HTTP, decide.
+            if (result.readable === false) {
+              child = finishEvent(child, 'failed', {
+                description: result.reason
+                  || (fr ? 'Ce fichier n\'a pas pu etre lu.' : 'This file could not be read.'),
+                output: {
+                  id: result.id,
+                  kind: result.kind,
+                  status: result.status,
+                  readable: false,
+                },
+              });
+            } else {
+              child = finishEvent(child, 'completed', {
+                description: fr ? 'Fichier reçu et inspecté' : 'File received and inspected',
+                output: {
+                  id: result.id,
+                  kind: result.kind,
+                  metadata: result.metadata,
+                  extractedCharacters: result.extractedCharacters,
+                },
+              });
+            }
             yield { type: 'activity', event: child };
 
             root = {
@@ -200,6 +225,14 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
         attachments: uploaded.map((value) => value.id),
         connectors: await resolveActiveConnectors(),
         run_id: runId,
+        // Identite STABLE du fil (le `activeId` du store), distincte de
+        // `run_id` ci-dessus qui change a chaque message : sans elle, le
+        // serveur utilisait `run_id` comme session de memoire et perdait
+        // les tours precedents a chaque nouveau message (corrige le
+        // 12/09/2026). Absent (ancien client, ou aucune conversation active
+        // encore creee) : le serveur retombe sur `run_id`, comportement
+        // inchange.
+        conversation_id: request.conversationId,
         // L'espace ouvert dans l'interface, pour que le serveur route direct
         // vers l'agent dedie au lieu de deviner l'intention depuis la phrase.
         // `null` (Usman general) ne change rien : le classifieur habituel

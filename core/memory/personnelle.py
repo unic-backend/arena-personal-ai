@@ -55,7 +55,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from core.actions.journal import masquer
 from core.memory.chiffrement import VARIABLE_PASSPHRASE, Coffre, EchecDechiffrement
@@ -647,6 +647,72 @@ class MemoirePersonnelle:
         souvenirs = [self._depuis_ligne(ligne) for ligne in lignes]
         if inclure_perimes:
             return souvenirs
+        return [souvenir for souvenir in souvenirs if not souvenir.est_perime()]
+
+    def souvenirs_correspondant_a_des_mots(
+        self,
+        mots: Iterable[str],
+        projet: Optional[str] = None,
+        type: Optional[TypeSouvenir] = None,
+        limite: int = 500,
+    ) -> List[Souvenir]:
+        """Les souvenirs dont le contenu contient au moins un des mots donnes.
+
+        Un SECOND chemin d'acces, complementaire a `souvenirs()` (qui trie par
+        importance/recence et s'arrete a `limite`) : sans lui, un souvenir
+        pertinent mais ancien et peu important, au-dela de cette fenetre,
+        n'etait jamais meme EXAMINE par `core/memory/recuperation.py::recuperer`
+        (mission ARENA x AUDIT, corrige le 12/09/2026 — « plus de 500
+        souvenirs, celui qui compte tombe hors de la fenetre »).
+
+        Filtre en SQL (`LIKE`), jamais un Python qui chargerait toute la table
+        en memoire pour la filtrer ensuite : `limite` borne ce qui revient,
+        comme pour `souvenirs()`. Ce n'est pas un index (SQLite ne peut pas en
+        utiliser un pour un `LIKE '%...%'` a joker des deux cotes), mais une
+        « autre strategie bornee » — le cout reste un balayage SQL en C sur les
+        souvenirs NON sensibles, jamais un chargement complet cote Python, et
+        jamais un appel d'embeddings supplementaire (ceux-la restent bornes par
+        l'appelant, `core/memory/semantique.py`).
+
+        Les souvenirs SENSIBLES (`sensible=True`) sont exclus : leur `contenu`
+        est chiffre sur le disque (DEC-0090) — un `LIKE` sur du texte chiffre
+        ne trouverait jamais rien d'utile. Ils restent atteignables par la
+        fenetre importance/recence habituelle de `souvenirs()`, exactement
+        comme avant cette methode : une limite reelle, pas une regression.
+
+        Limite mesuree, non contournee : `LIKE` compare le texte tel qu'il est
+        stocke (accents compris), alors que `mots` vient deja normalise
+        (`core/memory/recuperation.py::mots_utiles`, sans accent). Un mot
+        accentue dans le contenu original peut donc echapper a CE filtre
+        precisement, meme s'il reste trouve par la fenetre importance/recence
+        habituelle, qui normalise cote Python.
+        """
+        mots_valides = [mot for mot in mots if mot]
+        if not mots_valides:
+            return []
+
+        clauses = " OR ".join(["contenu LIKE ? ESCAPE '\\'"] * len(mots_valides))
+        requete = (
+            f"SELECT * FROM {self.TABLE_SOUVENIRS} "
+            f"WHERE etat = ? AND sensible = 0 AND ({clauses})"
+        )
+        arguments: List[Any] = [Etat.ACTIF.value]
+        for mot in mots_valides:
+            motif_echappe = mot.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            arguments.append(f"%{motif_echappe}%")
+        if type is not None:
+            requete += " AND type = ?"
+            arguments.append(type.value)
+        if projet is not None:
+            requete += " AND projet = ?"
+            arguments.append(projet)
+        requete += " ORDER BY importance DESC, cree_le DESC LIMIT ?"
+        arguments.append(limite)
+
+        with closing(self._connexion()) as connexion:
+            lignes = connexion.execute(requete, arguments).fetchall()
+
+        souvenirs = [self._depuis_ligne(ligne) for ligne in lignes]
         return [souvenir for souvenir in souvenirs if not souvenir.est_perime()]
 
     def projets(self) -> List[str]:

@@ -374,6 +374,13 @@ export interface AgentRequest {
   attachments?: PendingAttachment[];
   /** recent conversation turns, for remote backends */
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  /**
+   * Stable conversation identity (the store's `activeId`) — distinct from
+   * the per-execution run id the transport generates on every call. The
+   * backend uses this to key its memory session; without it, a specialized
+   * agent (fresh info, plaquiste…) never sees the previous turn.
+   */
+  conversationId?: string;
 }
 
 export async function* runAgent(

@@ -234,3 +234,118 @@ def test_sans_cle_api_rien_n_est_ecrit(client, dossier_media):
 
     assert res.status_code == 401
     assert not (dossier_media / "clip.mp4").exists()
+
+
+# --- Collision de noms ---------------------------------------------------------
+# Avant ce correctif (audit externe, commit f7f0478) : `ecrire_par_blocs`
+# ouvrait `destination` en `"wb"`, qui TRONQUE un fichier deja present des
+# l'ouverture — un deuxieme envoi du meme nom effacait le premier avant meme
+# de savoir si le sien allait reussir, et un echec ensuite supprimait meme ce
+# qui restait (le fichier partage n'existait plus du tout).
+
+def test_un_deuxieme_envoi_du_meme_nom_ne_detruit_pas_le_premier(client, dossier_media):
+    premier = envoyer(client, "chantier.mp4", contenu=b"PREMIER CONTENU REEL")
+    assert premier.status_code == 200
+    assert premier.json()["filename"] == "chantier.mp4"
+
+    second = envoyer(client, "chantier.mp4", contenu=b"SECOND CONTENU DIFFERENT")
+    assert second.status_code == 200
+    assert second.json()["filename"] == "chantier_1.mp4", (
+        "le second envoi n'a pas ete renomme : il a du ecraser le premier")
+    assert second.json()["original_filename"] == "chantier.mp4"
+
+    # Les DEUX fichiers existent, avec chacun leur VRAI contenu — ni l'un ni
+    # l'autre n'a ete tronque ou efface par l'autre.
+    assert (dossier_media / "chantier.mp4").read_bytes() == b"PREMIER CONTENU REEL"
+    assert (dossier_media / "chantier_1.mp4").read_bytes() == b"SECOND CONTENU DIFFERENT"
+
+
+def test_un_troisieme_envoi_du_meme_nom_prend_le_numero_suivant(client, dossier_media):
+    envoyer(client, "chantier.mp4", contenu=b"un")
+    envoyer(client, "chantier.mp4", contenu=b"deux")
+    troisieme = envoyer(client, "chantier.mp4", contenu=b"trois")
+
+    assert troisieme.json()["filename"] == "chantier_2.mp4"
+    assert (dossier_media / "chantier.mp4").read_bytes() == b"un"
+    assert (dossier_media / "chantier_1.mp4").read_bytes() == b"deux"
+    assert (dossier_media / "chantier_2.mp4").read_bytes() == b"trois"
+
+
+def test_un_nom_different_n_est_jamais_renomme(client, dossier_media):
+    """La grande majorite des envois ne collisionnent jamais : le nom
+    d'origine doit rester lisible, pas un identifiant genere par defaut."""
+    reponse = envoyer(client, "reunion_chantier.mp4")
+    assert reponse.json()["filename"] == "reunion_chantier.mp4"
+    assert reponse.json()["original_filename"] == "reunion_chantier.mp4"
+
+
+def test_un_envoi_qui_echoue_apres_collision_ne_touche_pas_le_premier(
+    client, dossier_media, monkeypatch
+):
+    """Le second envoi (renomme `chantier_1.mp4`) echoue pour sa propre
+    raison (taille) — le PREMIER fichier, sous son propre nom, doit rester
+    intact : le nettoyage d'un echec ne doit jamais toucher un chemin qu'il
+    n'a pas lui-meme ouvert."""
+    premier = envoyer(client, "chantier.mp4", contenu=b"contenu du premier")
+    assert premier.status_code == 200
+
+    monkeypatch.setattr(media, "TAILLE_MAX_ENVOI", 4)  # tout depasse ce plafond
+    second = envoyer(client, "chantier.mp4", contenu=b"un contenu bien trop long")
+    assert second.status_code == 413
+
+    assert (dossier_media / "chantier.mp4").read_bytes() == b"contenu du premier"
+    assert not (dossier_media / "chantier_1.mp4").exists()
+
+
+async def test_ecrire_par_blocs_ne_touche_jamais_un_fichier_deja_present(tmp_path):
+    """Le mecanisme central, isole de la route : `open(..., "xb")` refuse
+    d'ecrire quand `destination` existe deja, AVANT de lire le moindre
+    octet du nouvel envoi — le contenu existant reste bit pour bit
+    identique."""
+    destination = tmp_path / "partage.mp4"
+    destination.write_bytes(b"contenu original, jamais touche")
+
+    espion = FichierEspion(b"contenu du nouvel envoi, jamais ecrit")
+    with pytest.raises(FileExistsError):
+        await media.ecrire_par_blocs(espion, destination)
+
+    assert destination.read_bytes() == b"contenu original, jamais touche"
+    assert espion.tailles_demandees == [], (
+        "le nouvel envoi a ete lu alors que la reclamation du fichier a echoue")
+
+
+def test_deux_envois_reellement_concurrents_du_meme_nom_ne_se_marchent_pas_dessus(
+    client, dossier_media,
+):
+    """Pas une simulation sequentielle : deux VRAIS threads envoient
+    `chantier.mp4` en meme temps. Avant ce correctif, le `"wb"` de
+    `ecrire_par_blocs` n'offrait aucune garantie d'exclusion — deux
+    ecritures concurrentes pouvaient entrelacer leurs blocs dans le MEME
+    fichier, ou l'une ecraser silencieusement l'autre."""
+    import concurrent.futures
+
+    contenu_a = b"A" * (256 * 1024)
+    contenu_b = b"B" * (256 * 1024)
+
+    def _envoyer(contenu):
+        return envoyer(client, "chantier.mp4", contenu=contenu)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executeur:
+        futur_a = executeur.submit(_envoyer, contenu_a)
+        futur_b = executeur.submit(_envoyer, contenu_b)
+        reponse_a = futur_a.result()
+        reponse_b = futur_b.result()
+
+    assert reponse_a.status_code == 200 and reponse_b.status_code == 200
+    noms = {reponse_a.json()["filename"], reponse_b.json()["filename"]}
+    assert noms == {"chantier.mp4", "chantier_1.mp4"}, (
+        f"les deux envois concurrents n'ont pas obtenu deux noms distincts : {noms}")
+
+    # Chaque fichier ecrit porte un contenu ENTIER et COHERENT — jamais un
+    # melange des deux blocs entrelaces, jamais l'un vide parce que l'autre
+    # l'a rouvert en "wb" par-dessus.
+    contenus_sur_disque = {
+        (dossier_media / "chantier.mp4").read_bytes(),
+        (dossier_media / "chantier_1.mp4").read_bytes(),
+    }
+    assert contenus_sur_disque == {contenu_a, contenu_b}

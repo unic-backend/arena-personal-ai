@@ -17,6 +17,14 @@
 # La ligne langchain-openai==1.6.0 / openai==2.16.0 qui coexistaient sans pouvoir
 # se reproduire ensemble a disparu avec ce changement : langchain-openai==1.1.14
 # accepte l'openai==2.26.0 qu'exige desormais browser-use==0.13.10.
+#
+# 12/09/2026 : requirements.txt fixait encore Pillow==12.0.0 et psutil==6.1.1,
+# en conflit reel avec les pillow==12.3.0 / psutil==7.2.2 que browser-use==0.13.10
+# epingle exactement — `pip install -r requirements.txt` refusait de se resoudre
+# (audit externe, commit f7f0478). Ces deux lignes-ci du gel les portaient deja
+# (probablement d'un gel anterieur chez lui) ; requirements.txt est maintenant
+# aligne dessus. Meme regle que les sept lignes ci-dessus : ce ne sont pas des
+# lignes a "corriger" au prochain `pip freeze` fait chez lui, elles y sont deja.
 aiofiles==25.1.0
 aiohappyeyeballs==2.7.1
 aiohttp==3.14.3

@@ -38,6 +38,7 @@ from core.memory.recuperation import (
     BUDGET_PAR_DEFAUT,
     SEUIL,
     Resultat,
+    candidats_bornes,
     fenetre_evoquee,
     mots_utiles,
     noter,
@@ -298,11 +299,18 @@ async def recuperer_semantique(
         )
         return Recuperation(mode=MODE_LEXICAL, etat=etat, resultats=lexical)
 
-    candidats = memoire.souvenirs(projet=projet, type=type, limite=limite_lecture)
+    mots_question = mots_utiles(question)
+    # Meme fusion bornee qu'en lexical (`core/memory/recuperation.py`,
+    # mission ARENA x AUDIT, corrige le 12/09/2026) : sans elle, un souvenir
+    # hors de la fenetre importance/recence n'etait meme jamais VECTORISE,
+    # donc jamais comparable au sens de la question. Toujours borne a
+    # `limite_lecture` : au pire, deux fenetres de cette taille sont
+    # vectorisees, jamais la base entiere — aucun appel d'embeddings
+    # supplementaire non borne.
+    candidats = candidats_bornes(memoire, mots_question, projet, type, limite_lecture)
     if not candidats:
         return Recuperation(mode=MODE_SEMANTIQUE, etat=etat, resultats=[])
 
-    mots_question = mots_utiles(question)
     fenetre = fenetre_evoquee(question, maintenant)
 
     textes = [question] + [souvenir.contenu for souvenir in candidats]

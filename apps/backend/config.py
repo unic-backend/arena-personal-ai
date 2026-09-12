@@ -262,4 +262,15 @@ AGENTS_SPECIALISES = frozenset({
     "BROWSER", "SWE_FIX", "REPO_ENGINEERING", "RAG_DOCS", "GRAPHRAG",
     "PLAQUISTE", "EMAIL", "SOCIAL", "VISION", "MONTAGE", "AUDIO",
     "ATELIER",
+    # Ces huit intentions sont pleinement gerees par `dispatch_request`
+    # (apps/backend/routers/chat.py) depuis leurs missions respectives
+    # (DEC-0070, DEC-0067, production video, finance DEC-0078, DEC-0086,
+    # Faceplugin, UI/UX Pro Max, DEC-0050) mais en etaient absentes ici —
+    # audit externe, commit f7f0478 : le classement les reconnaissait, mais
+    # /agent/stream, /api/chat/stream et /v1/chat/completions les laissaient
+    # tomber sur une reponse conversationnelle ordinaire au lieu d'appeler
+    # leur agent. Corrige le 12/09/2026 : voir
+    # tests/test_configuration_clients.py::TestLesHuitIntentionsReconnectees.
+    "ARCHITECTURE_3D", "PREUVE_FORMELLE", "VIDEO_PROJET", "FINANCE",
+    "EXECUTIVE", "VISAGE", "DESIGN_UI", "UI_GENERATE",
 })

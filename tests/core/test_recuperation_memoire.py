@@ -321,6 +321,126 @@ def test_le_filtre_par_projet_est_applique(memoire, retenir):
     assert [r.souvenir.projet for r in resultats] == ["Medina"]
 
 
+# --- Au-dela de la fenetre importance/recence -----------------------------------
+# Avant ce correctif (audit externe, commit f7f0478) : `recuperer()` n'examinait
+# QUE les 500 souvenirs les plus importants/recents (`souvenirs(limite=500)`,
+# la fenetre de `MemoirePersonnelle.souvenirs`). Un souvenir pertinent mais peu
+# important et ancien, au-dela de cette fenetre, n'etait jamais meme NOTE par
+# `noter()` — quel que soit son score potentiel, il ne concourait pas.
+
+def _remplir_la_fenetre(retenir, effectif=520):
+    """Occupe la fenetre importance/recence avec des souvenirs SANS RAPPORT
+    avec la question posee ensuite — jamais le mot cherche."""
+    for index in range(effectif):
+        retenir(f"Chantier ordinaire numero {index}, cloison BA13 standard.",
+               jours=0, importance=0.9)
+
+
+def test_un_souvenir_hors_fenetre_mais_pertinent_est_desormais_trouve(memoire, retenir):
+    _remplir_la_fenetre(retenir)
+    # Hors de la fenetre par construction : peu important ET ancien, donc
+    # classe bien apres les 520 remplissages par
+    # `ORDER BY importance DESC, cree_le DESC`.
+    retenir("Le motif GIRAFETURQUOISE identifie le chantier de reference.",
+           jours=800, importance=0.02)
+
+    resultats = recuperer(memoire, "girafeturquoise", maintenant=MAINTENANT)
+
+    contenus = [r.souvenir.contenu for r in resultats]
+    assert any("GIRAFETURQUOISE" in c for c in contenus), (
+        "le souvenir pertinent, hors de la fenetre des 500, n'a pas ete trouve")
+
+
+def test_un_souvenir_hors_fenetre_sans_rapport_reste_absent(memoire, retenir):
+    """Le complement ne fait pas remonter n'importe quoi : sans mot commun
+    avec la question, un souvenir hors fenetre reste hors de la reponse,
+    exactement comme un souvenir DANS la fenetre sans rapport."""
+    _remplir_la_fenetre(retenir)
+    retenir("Un souvenir totalement sans rapport, invente pour ce test.",
+           jours=800, importance=0.02)
+
+    resultats = recuperer(memoire, "girafeturquoise", maintenant=MAINTENANT)
+
+    assert resultats == []
+
+
+def test_un_souvenir_hors_fenetre_mais_perime_reste_absent(memoire, retenir):
+    """L'expiration reste respectee meme pour le chemin complementaire.
+
+    `duree_heures` calcule `expire_le` par rapport a l'heure REELLE de
+    creation (pas `MAINTENANT`, une date fixee pour le test) : il faut donc
+    forcer directement une echeance passee, comme `retenir` (fixture
+    ci-dessus) force deja `cree_le` par SQL direct."""
+    _remplir_la_fenetre(retenir)
+    souvenir = retenir("Le motif GIRAFETURQUOISE marque un contexte temporaire.",
+                       jours=800, importance=0.02)
+    with sqlite3.connect(memoire.db_path) as connexion:
+        connexion.execute("UPDATE souvenirs SET expire_le = ? WHERE identifiant = ?",
+                          ("2020-01-01T00:00:00+00:00", souvenir.identifiant))
+
+    resultats = recuperer(memoire, "girafeturquoise", maintenant=MAINTENANT)
+
+    assert resultats == []
+
+
+def test_un_souvenir_hors_fenetre_reste_dans_le_budget(memoire, retenir):
+    """La fusion des deux fenetres ne casse pas la garantie de budget."""
+    _remplir_la_fenetre(retenir)
+    retenir("Le motif GIRAFETURQUOISE identifie le chantier de reference, "
+           "avec beaucoup de details superflus pour allonger ce souvenir "
+           "bien au-dela de ce qu'un tout petit budget pourrait contenir.",
+           jours=800, importance=0.02)
+
+    resultats = recuperer(memoire, "girafeturquoise", budget_caracteres=30,
+                          maintenant=MAINTENANT)
+
+    assert taille(resultats) <= 30
+
+
+def test_un_souvenir_sensible_hors_fenetre_reste_hors_de_portee(memoire, retenir, tmp_path):
+    """Limite reelle, pas une regression : le contenu chiffre ne peut pas
+    etre retrouve par un `LIKE` — documente, jamais contourne en silence."""
+    from core.memory.chiffrement import Coffre
+
+    memoire.coffre = Coffre(passphrase="phrase-de-test-suffisamment-longue")
+    _remplir_la_fenetre(retenir)
+    memoire.retenir(
+        contenu="Le motif GIRAFETURQUOISE identifie un chantier sensible.",
+        type=TypeSouvenir.EPISODIQUE, nature=Nature.FAIT,
+        source="devis confidentiel", importance=0.02, sensible=True,
+    )
+
+    resultats = recuperer(memoire, "girafeturquoise", maintenant=MAINTENANT)
+
+    assert resultats == [], (
+        "un souvenir sensible a ete trouve par mot-cle : son contenu chiffre "
+        "ne devrait jamais correspondre a un LIKE en clair")
+
+
+def test_limite_reelle_un_mot_partage_par_trop_de_souvenirs_peut_encore_manquer(
+    memoire, retenir,
+):
+    """Mesuree, pas cachee : le complement (`souvenirs_correspondant_a_des_mots`)
+    est LUI AUSSI borne a `limite_lecture`. Si plus de 500 AUTRES souvenirs
+    partagent le mot cherche, et sont tous plus importants ou plus recents,
+    le souvenir cible peut encore rester hors de portee — la meme classe de
+    limite qu'avant, juste repoussee, jamais pretendue resolue en toutes
+    circonstances. Un mot RARE (les tests ci-dessus) n'a pas ce probleme ;
+    un mot tres commun peut l'avoir encore."""
+    for index in range(520):
+        retenir(f"Chantier {index}, une phrase ordinaire.", jours=0, importance=0.9)
+    retenir("Chantier tres particulier, mais peu important et ancien.",
+           jours=800, importance=0.01)
+
+    resultats = recuperer(memoire, "chantier particulier tres", maintenant=MAINTENANT)
+
+    contenus = [r.souvenir.contenu for r in resultats]
+    assert not any("peu important et ancien" in c for c in contenus), (
+        "cette limite documentee n'est plus reproduite : soit elle a ete "
+        "resolue (mettre a jour ce test et sa documentation), soit ce test "
+        "est devenu faux pour une autre raison")
+
+
 # --- Vitesse -------------------------------------------------------------------
 
 def test_la_recuperation_reste_rapide_sur_mille_souvenirs(memoire, retenir):

@@ -150,9 +150,20 @@ class RouteurModeles(ModelProvider):
             return [LOCAL], "le proprietaire a demande sa machine"
         if self.fournisseur_demande in ("GROQ", "DEEPINFRA"):
             nom = self.fournisseur_demande.lower()
-            if nom in self.distants:
-                return [nom, LOCAL], f"le proprietaire a demande {nom}"
-            return [LOCAL], f"{nom} n'est pas configure : sa machine repond"
+            if nom not in self.distants:
+                return [LOCAL], f"{nom} n'est pas configure : sa machine repond"
+            # Mesure du 12/09/2026 (audit f7f0478, etape 10) : ce plafond
+            # etait verifie plus bas, uniquement sur le chemin AUTO — un
+            # fournisseur impose explicitement (AI_DEFAULT_PROVIDER=GROQ,
+            # ou un choix pousse par l'interface) contournait entierement le
+            # quota et le budget du jour. Le controle doit valoir pour
+            # CHAQUE chemin qui peut envoyer une phrase au cloud, impose ou
+            # non — sinon "imposer un fournisseur" est aussi "desactiver le
+            # plafond".
+            verdict = self.compteur.verdict()
+            if not verdict.autorise:
+                return [LOCAL], verdict.raison
+            return [nom, LOCAL], f"le proprietaire a demande {nom}"
 
         verdict = self.compteur.verdict()
         if not verdict.autorise:
