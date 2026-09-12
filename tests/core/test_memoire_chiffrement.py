@@ -238,3 +238,117 @@ class TestCoutDuDechiffrement:
         assert len(derivations) == 1, (
             f"{len(derivations)} derivations pour 500 lectures — chacune coute "
             f"275 ms, soit ce que ce correctif devait supprimer")
+
+
+class TestSelConserveEntreDeuxProcessus:
+    """DEC-0097 : le sel d'ecriture survit a un redemarrage.
+
+    Le cache de cles de DEC-0096 ne vit que dans un processus. Sans sel
+    conserve, chaque demarrage du serveur memoire tirait un sel neuf, donc
+    relire les souvenirs sensibles ecrits par le processus precedent repayait
+    une derivation PAR SEL : 26,7 s mesurees pour 500 souvenirs ecrits au fil
+    de 100 sessions, contre 285 ms avec le sel conserve.
+    """
+
+    @staticmethod
+    def _sel_de(enveloppe: str) -> str:
+        return json.loads(enveloppe)["sel"]
+
+    def test_deux_coffres_successifs_partagent_le_sel_conserve(self, tmp_path):
+        fichier = tmp_path / "vault_salt"
+        premier = Coffre("phrase-partagee-entre-deux-processus", chemin_sel=fichier)
+        premiere = premier.chiffrer("le code du portail est 4821")
+
+        # Un second processus : une instance neuve, le meme fichier.
+        second = Coffre("phrase-partagee-entre-deux-processus", chemin_sel=fichier)
+        seconde = second.chiffrer("la cle du local est B-12")
+
+        assert self._sel_de(premiere) == self._sel_de(seconde)
+        assert self._sel_de(premiere) != json.loads(premiere)["iv"]
+
+    def test_le_nonce_reste_different_malgre_le_sel_conserve(self, tmp_path):
+        fichier = tmp_path / "vault_salt"
+        enveloppes = [
+            Coffre("phrase-de-test-longue", chemin_sel=fichier).chiffrer(f"secret {i}")
+            for i in range(20)
+        ]
+
+        assert len({json.loads(e)["iv"] for e in enveloppes}) == 20
+        assert len({self._sel_de(e) for e in enveloppes}) == 1
+
+    def test_relire_ce_qu_un_autre_processus_a_ecrit_ne_derive_qu_une_fois(self, tmp_path):
+        fichier = tmp_path / "vault_salt"
+        ecrivain = Coffre("phrase-de-test-longue", chemin_sel=fichier)
+        enveloppes = [ecrivain.chiffrer(f"secret {i}") for i in range(50)]
+
+        lecteur = Coffre("phrase-de-test-longue", chemin_sel=fichier)
+        derivations = []
+        vrai = lecteur._deriver_vraiment
+        lecteur._deriver_vraiment = lambda sel: (derivations.append(sel), vrai(sel))[1]
+
+        clairs = [lecteur.dechiffrer(enveloppe) for enveloppe in enveloppes]
+
+        assert clairs == [f"secret {i}" for i in range(50)]
+        assert len(derivations) == 1, (
+            f"{len(derivations)} derivations pour 50 souvenirs ecrits par un "
+            "autre processus : le sel conserve n'est pas relu")
+
+    def test_sans_chemin_le_comportement_reste_celui_d_avant(self):
+        """Le sel conserve est une OPTION : sans chemin, deux instances gardent
+        chacune le sien, exactement comme avant DEC-0097."""
+        premier = Coffre("phrase-de-test-longue").chiffrer("un secret")
+        second = Coffre("phrase-de-test-longue").chiffrer("un autre secret")
+
+        assert self._sel_de(premier) != self._sel_de(second)
+
+    def test_le_fichier_ne_contient_que_le_sel_jamais_la_phrase(self, tmp_path):
+        fichier = tmp_path / "vault_salt"
+        Coffre("phrase-secrete-a-ne-jamais-ecrire", chemin_sel=fichier).chiffrer("x")
+
+        octets = fichier.read_bytes()
+
+        assert len(octets) == 16, "un sel de 16 octets, rien d'autre"
+        assert b"phrase-secrete-a-ne-jamais-ecrire" not in octets
+        assert oct(fichier.stat().st_mode)[-3:] == "600"
+
+    def test_un_fichier_tronque_ne_bloque_pas_et_ne_perd_rien(self, tmp_path):
+        """Sabotage : le fichier de sel est corrompu entre deux demarrages. Le
+        coffre doit continuer a ecrire, ET les souvenirs deja ecrits doivent
+        rester lisibles — chaque enveloppe porte son propre sel."""
+        fichier = tmp_path / "vault_salt"
+        ancien = Coffre("phrase-de-test-longue", chemin_sel=fichier)
+        enveloppe = ancien.chiffrer("le code du portail est 4821")
+
+        fichier.write_bytes(b"tronque")
+        apres = Coffre("phrase-de-test-longue", chemin_sel=fichier)
+
+        assert apres.dechiffrer(enveloppe) == "le code du portail est 4821"
+        assert apres.dechiffrer(apres.chiffrer("un nouveau secret")) == "un nouveau secret"
+        assert len(fichier.read_bytes()) == 16, "le fichier corrompu est remplace"
+
+    def test_un_dossier_en_lecture_seule_n_empeche_pas_d_ecrire(self, tmp_path):
+        """Ne pas pouvoir conserver le sel coute des derivations, jamais un
+        souvenir."""
+        dossier = tmp_path / "interdit"
+        dossier.mkdir()
+        dossier.chmod(0o500)
+        try:
+            coffre = Coffre("phrase-de-test-longue", chemin_sel=dossier / "vault_salt")
+            assert coffre.dechiffrer(coffre.chiffrer("un secret")) == "un secret"
+        finally:
+            dossier.chmod(0o700)
+
+    def test_le_sel_renouvele_par_lot_est_conserve_a_son_tour(self, tmp_path, monkeypatch):
+        import core.memory.chiffrement as module
+
+        monkeypatch.setattr(module, "MESSAGES_PAR_SEL", 3)
+        fichier = tmp_path / "vault_salt"
+        coffre = Coffre("phrase-de-test-longue", chemin_sel=fichier)
+        enveloppes = [coffre.chiffrer(f"secret {i}") for i in range(7)]
+
+        sels = [self._sel_de(e) for e in enveloppes]
+
+        assert len(set(sels)) == 3, "trois lots de trois messages"
+        assert base64.b64decode(sels[-1]) == fichier.read_bytes(), (
+            "le dernier sel utilise doit etre celui conserve, sinon le "
+            "prochain processus en derive un autre pour rien")

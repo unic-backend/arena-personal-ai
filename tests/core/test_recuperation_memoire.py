@@ -13,14 +13,17 @@ import pytest
 from core.memory.personnelle import MemoirePersonnelle, Nature, TypeSouvenir
 from core.memory.recuperation import (
     BUDGET_PAR_DEFAUT,
+    LIMITE_SENSIBLES,
     MARQUE_SUPPOSITION,
     POIDS,
+    candidats_bornes,
     fenetre_evoquee,
     formater,
     mots_utiles,
     normaliser,
     recuperer,
     rendre_ligne,
+    sensibles_correspondants,
     taille,
 )
 
@@ -397,9 +400,17 @@ def test_un_souvenir_hors_fenetre_reste_dans_le_budget(memoire, retenir):
     assert taille(resultats) <= 30
 
 
-def test_un_souvenir_sensible_hors_fenetre_reste_hors_de_portee(memoire, retenir, tmp_path):
-    """Limite reelle, pas une regression : le contenu chiffre ne peut pas
-    etre retrouve par un `LIKE` — documente, jamais contourne en silence."""
+def test_un_souvenir_sensible_hors_fenetre_est_maintenant_retrouve(memoire, retenir):
+    """Ce test asserait l'INVERSE jusqu'au 12/09/2026, et c'etait une vraie
+    limite : un souvenir sensible hors de la fenetre importance/recence
+    n'etait atteignable par AUCUN mot-cle, parce que son contenu est chiffre
+    sur le disque et qu'un `LIKE` ne trouve rien dans du chiffre.
+
+    La limite est levee, pas contournee : `sensibles_correspondants` ouvre une
+    TROISIEME fenetre bornee, qui dechiffre puis filtre cote Python (DEC-0097).
+    Ce que ca change pour lui : « le code du portail du chantier Fast Group est
+    4821 », marque sensible, se retrouve enfin.
+    """
     from core.memory.chiffrement import Coffre
 
     memoire.coffre = Coffre(passphrase="phrase-de-test-suffisamment-longue")
@@ -412,9 +423,138 @@ def test_un_souvenir_sensible_hors_fenetre_reste_hors_de_portee(memoire, retenir
 
     resultats = recuperer(memoire, "girafeturquoise", maintenant=MAINTENANT)
 
-    assert resultats == [], (
-        "un souvenir sensible a ete trouve par mot-cle : son contenu chiffre "
-        "ne devrait jamais correspondre a un LIKE en clair")
+    contenus = [resultat.souvenir.contenu for resultat in resultats]
+    assert any("GIRAFETURQUOISE" in contenu for contenu in contenus), (
+        "le souvenir sensible hors fenetre n'est plus retrouve : la troisieme "
+        "fenetre de candidats_bornes a ete debranchee")
+    assert all(resultat.souvenir.contenu for resultat in resultats), (
+        "un souvenir est revenu vide : le dechiffrement a echoue sans le dire")
+
+
+class TestLaTroisiemeFenetreDesSensibles:
+    """`sensibles_correspondants` — ce qu'elle trouve, et ce qu'elle refuse
+    d'inventer."""
+
+    @staticmethod
+    def _memoire_avec_coffre(tmp_path, phrase="phrase-de-test-longue"):
+        from core.memory.chiffrement import Coffre
+
+        return MemoirePersonnelle(
+            db_path=str(tmp_path / "sensibles.db"), coffre=Coffre(passphrase=phrase),
+        )
+
+    def _retenir_sensible(self, memoire, contenu, importance=0.02):
+        return memoire.retenir(
+            contenu=contenu, type=TypeSouvenir.SEMANTIQUE, nature=Nature.FAIT,
+            source="le proprietaire", importance=importance, sensible=True,
+        )
+
+    def test_le_code_du_portail_se_retrouve_par_ses_mots(self, tmp_path):
+        memoire = self._memoire_avec_coffre(tmp_path)
+        cible = self._retenir_sensible(
+            memoire, "Le code du portail du chantier Fast Group est 4821.")
+
+        for question in ("quel est le code du portail Fast Group ?",
+                         "code portail chantier", "4821"):
+            trouves = sensibles_correspondants(memoire, mots_utiles(question))
+            assert [s.identifiant for s in trouves] == [cible.identifiant], (
+                f"« {question} » ne retrouve pas le souvenir sensible")
+
+    def test_un_mot_accentue_du_contenu_est_compare_sans_accent(self, tmp_path):
+        """Ce que le `LIKE` SQL de la seconde fenetre ne sait pas faire : ici le
+        filtrage passe par `normaliser`, donc « Médina » repond a « medina »."""
+        memoire = self._memoire_avec_coffre(tmp_path)
+        cible = self._retenir_sensible(memoire, "Clé du local de Médina : B-12.")
+
+        trouves = sensibles_correspondants(memoire, mots_utiles("medina local"))
+
+        assert [s.identifiant for s in trouves] == [cible.identifiant]
+
+    def test_sans_coffre_la_fenetre_est_vide_jamais_une_supposition(self, tmp_path):
+        memoire = self._memoire_avec_coffre(tmp_path)
+        self._retenir_sensible(memoire, "Le code du portail est 4821.")
+        memoire.coffre = None
+
+        trouves = sensibles_correspondants(memoire, mots_utiles("code portail 4821"))
+
+        assert trouves == [], (
+            "sans coffre, rien n'est lisible : la fenetre doit etre vide, "
+            "jamais remplie d'un contenu suppose")
+
+    def test_un_message_d_echec_n_est_jamais_pris_pour_un_contenu(self, tmp_path):
+        """Le piege que ce filtrage aurait pu introduire : quand le coffre ne
+        peut pas lire une ligne, `souvenirs()` rend un ETAT (« coffre non
+        configure », « dechiffrement refuse »). Filtrer cet etat sur des mots
+        ferait remonter tout souvenir illisible des que la question contient
+        « coffre » ou « sensible »."""
+        from core.memory.chiffrement import Coffre
+
+        memoire = self._memoire_avec_coffre(tmp_path)
+        self._retenir_sensible(memoire, "Le code du portail est 4821.")
+        # Un autre coffre : les lignes existent, aucune n'est lisible.
+        memoire.coffre = Coffre(passphrase="une-tout-autre-phrase-longue")
+
+        for question in ("pourquoi ce coffre ?", "souvenir sensible",
+                         "dechiffrement refuse", "processus configure"):
+            trouves = sensibles_correspondants(memoire, mots_utiles(question))
+            assert trouves == [], (
+                f"« {question} » a ramene un souvenir illisible : son message "
+                "d'echec a ete filtre comme s'il etait du contenu")
+
+    def test_une_question_sans_mot_utile_ne_dechiffre_rien(self, tmp_path):
+        """Pas d'optimisation decorative : sans mot, aucune derivation, aucune
+        lecture. Compte les appels reels plutot que de le supposer."""
+        memoire = self._memoire_avec_coffre(tmp_path)
+        self._retenir_sensible(memoire, "Le code du portail est 4821.")
+        appels = []
+        vrai = memoire.souvenirs
+        memoire.souvenirs = lambda *a, **k: (appels.append(k), vrai(*a, **k))[1]
+
+        assert sensibles_correspondants(memoire, set()) == []
+        assert appels == []
+
+    def test_la_fenetre_est_bornee_et_la_borne_est_celle_annoncee(self, tmp_path):
+        memoire = self._memoire_avec_coffre(tmp_path)
+        demandes = []
+        vrai = memoire.souvenirs
+
+        def espionner(*args, **kwargs):
+            demandes.append(kwargs)
+            return vrai(*args, **kwargs)
+
+        memoire.souvenirs = espionner
+        sensibles_correspondants(memoire, mots_utiles("code portail"))
+
+        assert demandes and demandes[0]["limite"] == LIMITE_SENSIBLES
+        assert demandes[0]["sensible"] is True, (
+            "la troisieme fenetre doit demander les sensibles SEULEMENT : "
+            "sans ce filtre elle rechargerait toute la table")
+
+    def test_les_souvenirs_non_sensibles_ne_passent_pas_par_cette_fenetre(self, tmp_path):
+        """Sinon les deux fenetres se marcheraient dessus et le meme souvenir
+        serait note deux fois."""
+        memoire = self._memoire_avec_coffre(tmp_path)
+        memoire.retenir(
+            contenu="Le code du portail est 4821.", type=TypeSouvenir.SEMANTIQUE,
+            nature=Nature.FAIT, source="le proprietaire", importance=0.9,
+        )
+
+        assert sensibles_correspondants(memoire, mots_utiles("code portail")) == []
+
+    def test_un_seul_exemplaire_par_souvenir_dans_les_candidats(self, tmp_path):
+        """Un souvenir sensible ASSEZ important pour tenir dans la premiere
+        fenetre ne doit pas revenir une seconde fois par la troisieme."""
+        memoire = self._memoire_avec_coffre(tmp_path)
+        cible = self._retenir_sensible(
+            memoire, "Le code du portail du chantier Fast Group est 4821.",
+            importance=0.99)
+
+        candidats = candidats_bornes(
+            memoire, mots_utiles("code portail Fast Group"),
+            projet=None, type=None, limite_lecture=500)
+
+        identifiants = [s.identifiant for s in candidats]
+        assert identifiants.count(cible.identifiant) == 1
 
 
 def test_limite_reelle_un_mot_partage_par_trop_de_souvenirs_peut_encore_manquer(

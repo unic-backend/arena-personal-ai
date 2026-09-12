@@ -99,6 +99,7 @@ from core.execution.reprise import JournalDeReprise
 from core.execution.travaux import FileDeTravaux
 from core.guardian.file_maintenance import FileDeMaintenance
 from core.guardian.gardien import Gardien
+from core.memory.chiffrement import NOM_FICHIER_SEL, Coffre
 from core.memory.memory_manager import MemoryManager
 from core.memory.personnelle import MemoirePersonnelle
 from core.memory.semantique import IndexSemantique
@@ -491,7 +492,17 @@ registre.declarer(
 journal = JournalDesActions(db_path=str(DB_PATH))
 # Memoire personnelle (souvenirs, entites, relations). Construite en phase 6.1
 # et jusqu'ici lue par personne : c'est le defaut d'`agent_logs` qui recommencait.
-memoire_personnelle = MemoirePersonnelle(db_path=str(DB_PATH))
+# Le coffre : sans lui, `/api/memory` acceptait `sensible: true` dans son
+# schema et le refusait TOUJOURS en 422 — le chiffrement au repos (DEC-0090)
+# n'etait joignable que par le serveur MCP, jamais depuis son telephone.
+# `depuis_environnement` rend None quand USMAN_MEMORY_VAULT_PASSPHRASE est
+# absente : sans la variable, le comportement est exactement celui d'avant.
+# Le sel d'ecriture est conserve a cote de la base (DEC-0097) pour qu'un
+# redemarrage ne repaie pas une derivation PBKDF2 par sel a la relecture.
+memoire_personnelle = MemoirePersonnelle(
+    db_path=str(DB_PATH),
+    coffre=Coffre.depuis_environnement(chemin_sel=DB_PATH.parent / NOM_FICHIER_SEL),
+)
 # L'index des vecteurs vit ici, et non dans la passerelle : cree a chaque
 # question, son cache serait vide a chaque question, et chaque tour de chat
 # repaierait la vectorisation de toute la memoire. Il est partage et il dure.

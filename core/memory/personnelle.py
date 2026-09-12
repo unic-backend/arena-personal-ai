@@ -250,6 +250,28 @@ class Relation:
         }
 
 
+#: Ce que `_dechiffrer_ou_signaler` rend quand il ne PEUT pas lire un souvenir
+#: sensible. Deux etats, jamais un texte en clair suppose. Ils sont nommes
+#: parce qu'une recherche par mot-cle doit pouvoir les RECONNAITRE pour ne pas
+#: les fouiller : sans cela, la question « pourquoi ce coffre ? » ferait
+#: remonter tous les souvenirs illisibles, au seul motif que le mot « coffre »
+#: figure dans leur message d'echec.
+SANS_COFFRE = "[souvenir sensible — coffre non configure dans ce processus]"
+DECHIFFREMENT_REFUSE = (
+    "[souvenir sensible — dechiffrement refuse (mauvaise cle ou donnee alteree)]"
+)
+
+
+def est_un_echec_de_lecture(contenu: str) -> bool:
+    """Vrai quand `contenu` est l'un des deux etats ci-dessus, pas un souvenir.
+
+    A utiliser avant de FILTRER un contenu sensible sur des mots : un message
+    d'echec n'est pas du texte du proprietaire, et le traiter comme tel
+    fabriquerait une correspondance.
+    """
+    return contenu in (SANS_COFFRE, DECHIFFREMENT_REFUSE)
+
+
 class MemoirePersonnelle:
     """Ecrit et relit les souvenirs, les entites et leurs liens."""
 
@@ -585,7 +607,7 @@ class MemoirePersonnelle:
         son contenu.
         """
         if self.coffre is None:
-            return "[souvenir sensible — coffre non configure dans ce processus]"
+            return SANS_COFFRE
         try:
             return self.coffre.dechiffrer(contenu_stocke)
         except EchecDechiffrement as erreur:
@@ -593,7 +615,7 @@ class MemoirePersonnelle:
                 "Souvenir sensible %s illisible avec le coffre configure : %s",
                 identifiant, erreur,
             )
-            return "[souvenir sensible — dechiffrement refuse (mauvaise cle ou donnee alteree)]"
+            return DECHIFFREMENT_REFUSE
 
     def lire(self, identifiant: str) -> Optional[Souvenir]:
         """Relit un souvenir par son identifiant, perime ou non."""
@@ -612,6 +634,7 @@ class MemoirePersonnelle:
         inclure_perimes: bool = False,
         inclure_rejetes: bool = False,
         inclure_archives: bool = False,
+        sensible: Optional[bool] = None,
     ) -> List[Souvenir]:
         """Les souvenirs, filtres. Les perimes, rejetes et archives sont ecartes
         sauf demande expresse.
@@ -620,6 +643,12 @@ class MemoirePersonnelle:
         avec l'assurance d'un fait. Rendre un souvenir REJETE dans la lecture
         normale annulerait le sens meme de `rejeter()` — le proprietaire a dit
         non, pas "pas encore" — c'est pour cela que les trois se demandent.
+
+        `sensible` vaut None par defaut : les deux populations reviennent
+        ensemble, comme toujours. `sensible=True` isole les souvenirs chiffres
+        — la seule population qu'un `LIKE` SQL ne peut pas fouiller, puisque
+        sur le disque c'est du chiffre (voir
+        `core/memory/recuperation.py::sensibles_correspondants`).
         """
         etats_admis = [Etat.ACTIF.value]
         if inclure_rejetes:
@@ -638,6 +667,9 @@ class MemoirePersonnelle:
         if projet is not None:
             requete += " AND projet = ?"
             arguments.append(projet)
+        if sensible is not None:
+            requete += " AND sensible = ?"
+            arguments.append(int(sensible))
         requete += " ORDER BY importance DESC, cree_le DESC, rowid DESC LIMIT ?"
         arguments.append(limite)
 
@@ -674,11 +706,15 @@ class MemoirePersonnelle:
         jamais un appel d'embeddings supplementaire (ceux-la restent bornes par
         l'appelant, `core/memory/semantique.py`).
 
-        Les souvenirs SENSIBLES (`sensible=True`) sont exclus : leur `contenu`
-        est chiffre sur le disque (DEC-0090) — un `LIKE` sur du texte chiffre
-        ne trouverait jamais rien d'utile. Ils restent atteignables par la
-        fenetre importance/recence habituelle de `souvenirs()`, exactement
-        comme avant cette methode : une limite reelle, pas une regression.
+        Les souvenirs SENSIBLES (`sensible=True`) restent exclus D'ICI : leur
+        `contenu` est chiffre sur le disque (DEC-0090) et un `LIKE` sur du
+        chiffre ne trouvera jamais rien. Ce n'est plus une limite de la
+        recherche pour autant — `core/memory/recuperation.py::sensibles_correspondants`
+        leur ouvre une TROISIEME fenetre bornee, qui les dechiffre puis filtre
+        les mots cote Python. Elle n'existait pas avant le 12/09/2026 : jusque
+        la, « le code du portail du chantier Fast Group est 4821 » ne ressortait
+        sur AUCUN mot-cle des qu'il tombait hors de la fenetre
+        importance/recence (mesure DEC-0097).
 
         Limite mesuree, non contournee : `LIKE` compare le texte tel qu'il est
         stocke (accents compris), alors que `mots` vient deja normalise

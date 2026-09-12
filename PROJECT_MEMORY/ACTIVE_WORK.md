@@ -1,13 +1,20 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-09-12, fin de session (DEC-0087 → DEC-0096).*
+*Mise à jour : 2026-09-12, fin de session (DEC-0087 → DEC-0097).*
 
 ## En cours
 
-**Une PR attend sa décision de fusion : le coût de la mémoire chiffrée
-(DEC-0096).** Branche `claude/memoire-dechiffrement-cout`, détail juste
-en dessous. Tout le reste est fusionné dans `master` par le propriétaire,
-le 12/09/2026 :
+**Deux PR attendent sa décision de fusion, empilées dans cet ordre :**
+
+1. **PR #202** (DEC-0096) — le coût de la mémoire chiffrée. Branche
+   `claude/memoire-dechiffrement-cout`.
+2. **PR #203** (DEC-0097) — un souvenir sensible était introuvable par
+   mot-clé. Branche `claude/memoire-sensibles-introuvables`, construite
+   SUR la précédente (elle en a besoin : sans le déchiffrement bon marché,
+   la troisième fenêtre serait inabordable).
+
+Détail des deux juste en dessous. Tout le reste est fusionné dans `master`
+par le propriétaire, le 12/09/2026 :
 
 - **PR #196** (DEC-0094, gitgui second passage) — CI avait trouvé une
   vraie régression (42 échecs au lieu des 39 attendus :
@@ -24,6 +31,59 @@ le 12/09/2026 :
 - **PR #199** (diagnostic des douze étapes, à sa demande) — fusionnée le
   12/09/2026. Quatre trous réels trouvés dans mes propres réparations et
   corrigés, plus un correctif de test CI. Détail juste en dessous.
+
+## DEC-0097 — un souvenir sensible etait introuvable par mot-cle (12/09/2026)
+
+Suite directe de DEC-0096 : le dechiffrement devenu gratuit, le second
+defaut trouve dans la meme lecture de `core/memory/` devenait reparable.
+Mesure avant d'ecrire une ligne :
+
+```
+[le souvenir existe bien]                     True
+['quel est le code du portail Fast Group ?']  retrouve : False
+['code portail chantier']                     retrouve : False
+['4821']                                      retrouve : False
+```
+
+« Le code du portail du chantier Fast Group est 4821. », marque
+`sensible=True`, 400 jours, importance 0,02 : il existait, **aucune
+question ne pouvait l'atteindre**. Cause : le complement par mots-cles
+filtre en SQL et exclut `sensible = 0` — a raison, un `LIKE` ne trouve
+rien dans du chiffre. Hors de la fenetre importance/recence, un souvenir
+sensible n'etait donc plus joignable du tout.
+
+**Trois corrections, dans cet ordre de dependance :**
+
+| Correction | Ou | Mesure |
+|---|---|---|
+| une TROISIEME fenetre bornee qui dechiffre puis filtre | `core/memory/recuperation.py::sensibles_correspondants` | les trois questions ci-dessus repondent `True`, latence inchangee (15,9 ms contre 15,5) |
+| le sel d'ecriture conserve entre deux processus (`vault_salt`, 0600) | `core/memory/chiffrement.py`, `Coffre(chemin_sel=...)` | 500 sensibles ecrits au fil de 100 sessions : **26,7 s → 285 ms** a la premiere question |
+| le coffre branche dans le backend | `apps/backend/runtime.py` | `/api/memory` avec `sensible: true` : **422 toujours → 200**, et du chiffre sur le disque |
+
+La troisieme n'est pas un ajout de confort : `/api/memory` **declarait**
+`sensible: true` dans son schema et le refusait TOUJOURS en 422, parce que
+le backend construisait `MemoirePersonnelle` sans coffre. Le chiffrement au
+repos de DEC-0090 n'etait joignable que par le serveur MCP — jamais depuis
+son telephone. Le refus etait honnete (jamais un faux succes, jamais un
+souvenir en clair sous couvert de securite) : c'est la capacite qui
+manquait. Sans `USMAN_MEMORY_VAULT_PASSPHRASE`, rien ne change.
+
+Le cout de la troisieme fenetre ne suit **pas** le nombre de lignes mais le
+nombre de **sels distincts** a deriver — c'est pour cela que la deuxieme
+correction existe, et c'est ce qui la rend necessaire plutot
+qu'optionnelle.
+
+**Un test qui affirmait l'inverse, reecrit et non supprime.**
+`test_un_souvenir_sensible_hors_fenetre_reste_hors_de_portee` gardait cette
+limite quand elle etait reelle ; il devient
+`test_un_souvenir_sensible_hors_fenetre_est_maintenant_retrouve`, meme
+scenario, assertion inversee, raison ecrite dedans. Le test voisin qui
+garde la limite du mot trop partage reste intact : celle-la existe
+toujours.
+
+**Quatre sabotages, quatre tests qui tombent** : troisieme fenetre
+debranchee (1), garde des messages d'echec retiree (1), sel conserve ignore
+(2), coffre debranche du runtime (1). Tous restaures.
 
 ## DEC-0096 — la memoire chiffree coutait 275 ms par souvenir relu (12/09/2026)
 
@@ -94,21 +154,17 @@ tourne jamais sur un chemin chaud ». Cette phrase etait fausse, et c'est
 elle qui a autorise le defaut : elle vient d'etre remplacee par la mesure
 qui la contredit.
 
-### Deux defauts de memoire trouves, PAS corriges
+### Deux defauts de memoire trouves ici — un corrige depuis, un ouvert
 
-1. **Un souvenir sensible est introuvable par mot-cle.** Mesure : « Le
-   code du portail du chantier Fast Group est 4821. » (`sensible=True`)
-   ne ressort ni sur « quel est le code du portail Fast Group ? », ni sur
-   « code portail chantier », ni sur « 4821 » — alors que le souvenir
-   existe bien. Cause : `souvenirs_correspondant_a_des_mots` exclut
-   `sensible=1`, parce qu'au niveau SQL ces lignes sont du chiffre.
-   Maintenant que dechiffrer est gratuit, un passage borne
-   « dechiffrer puis filtrer » devient faisable.
-2. **`ORDER BY importance DESC, cree_le DESC` passe par un TEMP B-TREE**
-   (aucun index composite), et la requete par mots-cles classe par
+1. ~~Un souvenir sensible est introuvable par mot-cle.~~ **Corrige par
+   DEC-0097**, juste au-dessus.
+2. **Ouvert : `ORDER BY importance DESC, cree_le DESC` passe par un TEMP
+   B-TREE** (aucun index composite), et la requete par mots-cles classe par
    importance et non par pertinence lexicale — un mot partage par plus de
    `limite_lecture` souvenirs peut donc cacher une correspondance peu
-   importante.
+   importante. Le test
+   `test_limite_reelle_un_mot_partage_par_trop_de_souvenirs_peut_encore_manquer`
+   garde cette limite : elle est mesuree, pas cachee.
 
 ## Quatre des cinq connecteurs dormants reveilles — le cinquieme refuse par sa propre decision (12/09/2026)
 

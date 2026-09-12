@@ -5,6 +5,8 @@ reellement `MemoirePersonnelle`, jamais un double qui rejouerait sa propre
 logique. `memoire_personnelle` est remplace par une instance isolee (fichier
 temporaire) pour que ces tests ne touchent jamais `data/database/memory.db`.
 """
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -14,6 +16,10 @@ from apps.backend.routers import memory as routeur_memoire
 from core.memory.personnelle import MemoirePersonnelle
 
 CLE_DE_TEST = "cle-de-test"
+
+#: La racine du depot, pour lancer `apps/backend/runtime.py` dans un
+#: sous-processus sans dependre du repertoire courant de pytest.
+RACINE = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
@@ -148,3 +154,124 @@ class TestImport:
         fichier = ("fichier.exe", b"binaire", "application/octet-stream")
         res = client.post("/api/memory/import", headers=entetes, files={"fichier": fichier})
         assert res.status_code == 400
+
+
+class TestLeCoffreEstJoignableDepuisLeBackend:
+    """DEC-0097 : `/api/memory` acceptait `sensible: true` dans son schema et
+    le refusait TOUJOURS en 422, parce que `apps/backend/runtime.py` construisait
+    `MemoirePersonnelle` SANS coffre. Le chiffrement au repos (DEC-0090) n'etait
+    joignable que par le serveur MCP — jamais depuis son telephone.
+
+    Le refus etait honnete (jamais un faux succes, jamais un souvenir ecrit en
+    clair sous couvert de securite) : c'est la capacite qui manquait, pas la
+    garantie.
+    """
+
+    def test_sans_phrase_de_passe_la_route_refuse_toujours_proprement(
+        self, monkeypatch, tmp_path, entetes,
+    ):
+        """Sans la variable d'environnement, rien ne change : 422, jamais un
+        souvenir sensible ecrit en clair."""
+        monkeypatch.setattr(securite, "USMAN_API_KEY", CLE_DE_TEST)
+        monkeypatch.setattr(
+            routeur_memoire, "memoire_personnelle",
+            MemoirePersonnelle(db_path=str(tmp_path / "memoire.db"), coffre=None),
+        )
+        client = TestClient(main.app, raise_server_exceptions=False)
+
+        res = client.post("/api/memory", headers=entetes, json={
+            "contenu": "Le code du portail est 4821.", "type": "semantic",
+            "source": "le proprietaire", "sensible": True,
+        })
+
+        assert res.status_code == 422
+        assert "coffre" in res.json()["detail"].lower()
+
+    def test_avec_une_phrase_de_passe_le_souvenir_sensible_est_ecrit_chiffre(
+        self, monkeypatch, tmp_path, entetes,
+    ):
+        import sqlite3
+
+        from core.memory.chiffrement import Coffre
+
+        monkeypatch.setattr(securite, "USMAN_API_KEY", CLE_DE_TEST)
+        base = tmp_path / "memoire.db"
+        monkeypatch.setattr(
+            routeur_memoire, "memoire_personnelle",
+            MemoirePersonnelle(
+                db_path=str(base),
+                coffre=Coffre("phrase-de-test-longue", chemin_sel=tmp_path / "vault_salt"),
+            ),
+        )
+        client = TestClient(main.app, raise_server_exceptions=False)
+
+        res = client.post("/api/memory", headers=entetes, json={
+            "contenu": "Le code du portail est 4821.", "type": "semantic",
+            "source": "le proprietaire", "sensible": True,
+        })
+
+        assert res.status_code == 200, res.text
+        assert res.json()["sensible"] is True
+        # Sur le DISQUE, ce doit etre du chiffre — la garantie de DEC-0090.
+        with sqlite3.connect(base) as connexion:
+            stocke = connexion.execute(
+                "SELECT contenu FROM souvenirs WHERE identifiant = ?",
+                (res.json()["id"],),
+            ).fetchone()[0]
+        assert "4821" not in stocke, "le souvenir sensible est en clair sur le disque"
+        # Et relu par la route, il redevient lisible.
+        relu = client.get(f"/api/memory/{res.json()['id']}", headers=entetes)
+        assert "4821" in relu.json()["contenu"]
+
+    @pytest.mark.parametrize("phrase,coffre_attendu,sel_attendu", [
+        (None, "NoneType", False),
+        ("phrase-de-test-longue", "Coffre", True),
+    ])
+    def test_le_runtime_branche_le_coffre_sur_l_environnement(
+        self, tmp_path, phrase, coffre_attendu, sel_attendu,
+    ):
+        """La ligne qui manquait, verifiee sur le VRAI `apps/backend/runtime.py`.
+
+        Dans un sous-processus, parce que ce module construit la plateforme a
+        l'import : le recharger dans celui-ci remplacerait les objets que les
+        autres tests utilisent. Sans variable -> aucun coffre, exactement le
+        comportement d'avant ; avec variable -> un coffre, et le sel conserve
+        a cote de la base.
+        """
+        import json
+        import os
+        import subprocess
+        import sys
+
+        from core.memory.chiffrement import NOM_FICHIER_SEL, VARIABLE_PASSPHRASE
+
+        base = tmp_path / "database" / "memory.db"
+        base.parent.mkdir(parents=True)
+        environnement = {
+            **os.environ,
+            "USMAN_DB_PATH": str(base),
+            "PYTHONPATH": str(RACINE),
+        }
+        if phrase is None:
+            environnement.pop(VARIABLE_PASSPHRASE, None)
+        else:
+            environnement[VARIABLE_PASSPHRASE] = phrase
+
+        programme = (
+            "import json\n"
+            "from apps.backend.runtime import memoire_personnelle\n"
+            "coffre = memoire_personnelle.coffre\n"
+            "print(json.dumps({'coffre': type(coffre).__name__}))\n"
+        )
+        acheve = subprocess.run(
+            [sys.executable, "-c", programme], capture_output=True, text=True,
+            env=environnement, cwd=str(RACINE), timeout=300,
+        )
+
+        assert acheve.returncode == 0, acheve.stderr[-2000:]
+        mesure = json.loads(acheve.stdout.strip().splitlines()[-1])
+        assert mesure["coffre"] == coffre_attendu
+        assert (base.parent / NOM_FICHIER_SEL).exists() is False, (
+            "le sel ne doit etre ecrit qu'a la premiere ECRITURE sensible, "
+            "jamais au seul demarrage")
+        assert sel_attendu == (mesure["coffre"] == "Coffre")
