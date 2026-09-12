@@ -394,8 +394,27 @@ dans le flou.
 
    **Conclusion : la purge reste inutile, et pour une raison mesurée.** Les
    deux seules valeurs qui comptent gardent `/api/*` sur sa machine. Les
-   changer rend l'exposition inoffensive, sans casser un seul clone ni un
+   changer rendrait l'exposition inoffensive, sans casser un seul clone ni un
    seul SHA cité dans ces documents. La purge reste **jamais autorisée**.
+
+   **Décision du propriétaire, 12/09/2026 : la clé n'est PAS changée.**
+   « pas besoin de changer la clé ». Ne pas la lui redemander.
+
+   Ce qui rend cette décision tenable, mesuré le même jour : ARENA écoute sur
+   `127.0.0.1` partout où son démarrage est écrit — `scripts/start.ps1` et le
+   docstring de `apps/backend/main.py`. Une clé exposée ne garde alors rien
+   qu'on puisse atteindre depuis l'extérieur. `docker-compose.yml` a été
+   supprimé avec LibreChat (DEC-0007), donc rien ne publie ce port.
+
+   **La condition qui la fait tomber, et elle est écrite ici pour être
+   retrouvée :** `apps/backend/Dockerfile:64` lance
+   `uvicorn --host 0.0.0.0`. C'est normal dans un conteneur, mais le jour où
+   cette image tourne avec un port publié (`-p 8000:8000`) sur une machine
+   joignable depuis un réseau, les deux clés de 15 caractères lisibles dans
+   l'historique public redeviennent de vraies clés d'accès à `/api/*`. **À ce
+   moment-là, il faut les changer avant d'exposer le port**, et cette phrase
+   n'est pas une suggestion : c'est le seul scénario mesuré où l'exposition
+   devient exploitable.
 
    Depuis cette mesure, la CI scanne **l'historique entier** à chaque
    exécution (`.gitleaksignore` référence les sept constats connus par

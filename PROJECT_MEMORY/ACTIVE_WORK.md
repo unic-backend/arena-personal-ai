@@ -735,7 +735,7 @@ attendu : rien de tout ça n'y a jamais été installé.
 
 | Sujet | Ce qu'il faut de lui |
 |---|---|
-| **`USMAN_API_KEY`** | la changer s'il n'est pas certain de l'avoir fait (runbook, étape 1) |
+| ~~**`USMAN_API_KEY`**~~ | **Réglé le 12/09/2026 : il a décidé de ne PAS la changer** (« pas besoin de changer la clé »). Ne pas le lui redemander. Tenable parce qu'ARENA écoute sur `127.0.0.1` (mesuré : `scripts/start.ps1`, docstring de `main.py`) et que rien ne publie ce port. **Condition qui l'annule** : `apps/backend/Dockerfile:64` lance `--host 0.0.0.0` — si cette image tourne un jour avec `-p 8000:8000` sur une machine joignable, les deux clés de l'historique public redeviennent de vraies clés d'accès et il faut les changer AVANT d'exposer le port. Détail → `docs/CURRENT_TASK.md` |
 | **Purge de l'historique** | jamais autorisée — **sa décision**. Attention : la raison écrite ici était « le dépôt est privé ». Il est **public** depuis le 06/09/2026. Ce qui la rend inutile aujourd'hui n'est plus la confidentialité mais la **mesure du 12/09/2026** : l'historique n'expose aucune clé de fournisseur externe, seulement six secrets dont quatre morts (LibreChat/Open WebUI retirés) et deux clés de l'API locale — à **changer**, ce qui suffit |
 | **Identifiants Google** | 3 valeurs dans `.env` pour réveiller courrier + agenda |
 | **MoneyPrinterTurbo** | `scripts/installer_moneyprinter.ps1`, puis `llm_provider = "ollama"` et une clé Pexels dans **leur** `config.toml` |
