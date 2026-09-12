@@ -143,7 +143,18 @@ async def process_video_pipeline(video_path: str = Form(...)):
             # ne doit s'accumuler indefiniment dans RENDERED_DIR.
             purger_artefacts_anciens(RENDERED_DIR)
             target_rendered = RENDERED_DIR / f"{p.stem}_vertical_9_16.mp4"
-            editor_agent.crop_tool.convert_to_vertical_9_16(str(p), str(target_rendered))
+            reussi = editor_agent.crop_tool.convert_to_vertical_9_16(str(p), str(target_rendered))
+            # Avant ce correctif, ce retour etait ignore : `False` (ffmpeg
+            # indisponible, rendu tronque) n'empechait jamais d'annoncer
+            # "status": "success" avec une URL qui pointait sur un fichier
+            # absent ou invalide (audit externe, commit f7f0478).
+            # `convert_to_vertical_9_16` verifie deja son propre fichier
+            # (existence, taille, flux video reel via ffprobe) ; ceci est
+            # une seconde lecture au point d'usage, jamais une confiance
+            # aveugle dans son retour.
+            if not reussi or not target_rendered.exists() or target_rendered.stat().st_size == 0:
+                return {"status": "error",
+                        "message": "Le rendu 9:16 a echoue : aucun fichier valide produit."}
             rendered_file_path = str(target_rendered)
 
         sub_res = await subtitle_agent.run("Génère sous-titres", context={
