@@ -19,6 +19,42 @@ fusionnés dans `master` par le propriétaire, le 12/09/2026 :
 - **PR #197** (DEC-0095, douze défauts d'un audit externe) — fusionnée
   après ses 12 checks CI verts (Docker inclus) et 5366 tests passés sur la
   suite complète. Détail plus bas.
+- **PR #199** (diagnostic des douze étapes, à sa demande) — fusionnée le
+  12/09/2026. Quatre trous réels trouvés dans mes propres réparations et
+  corrigés, plus un correctif de test CI. Détail juste en dessous.
+
+## Diagnostic des douze etapes de DEC-0095 (12/09/2026, PR #199, fusionnee)
+
+Le proprietaire a demande de rediagnostiquer les douze reparations **une par
+une**, et de corriger mes propres erreurs. **Huit** etapes ont tenu sans
+retouche (1, 2, 3, 4, 8, 9, 11, 12) ; **quatre portaient un vrai trou**, tous corriges,
+chacun prouve en echec avant / succes apres :
+
+| Etape | Trou trouve en diagnostic | Mesure avant correctif |
+|---|---|---|
+| 5 idempotence | une ANNULATION (client deconnecte) traverse `chronometrer` sans produire de trame ; `trames vides` etait lu comme « rien ne s'est passe » et le `run_id` oublie | **2 executions pour une seule demande** |
+| 6 video | seul le rendu de repli etait verifie : un `clip_path` fourni et existant court-circuitait tout controle ; `subtitle_srt` annonce sans fichier | un extrait de **2 octets** annonce `status: success` |
+| 7 liens | `{nom:path}` a rendu un SYMLINK imbrique atteignable pour la premiere fois ; `resolve()` protegeait deja, rien ne l'epinglait | sabotage `resolve()`->`absolute()` : `/etc/passwd` servi en **200** |
+| 10 quotas | plafond lu avant l'appel, compte apres la reponse ; et `AI_MAX_COST_PER_REQUEST` declare dans `config.py` + `.env.example`, lu par **zero** ligne | **10 requetes paralleles** passaient un plafond de **3** |
+
+Corrections : drapeau `agent_lance` + trois cas dans le `finally`
+(`pwa_gateway.py`) ; verification `ffprobe` du clip fourni et
+`_srt_si_reel()` (`media.py`) ; tests symlink + traversees encodees ;
+reservation de quota (`reserver_une_place`/`liberer_une_place`, comptee par
+`verdict()`) sur `generate` ET le flux, plus trois etats honnetes pour le
+plafond par requete (`DESACTIVE` / `NON_VERIFIABLE` / `MESURE_APRES_COUP`) —
+il vaut `NON_VERIFIABLE` aujourd'hui, faute de tarif configure.
+
+Au passage, CI rouge sur #199 : `test_scripts_powershell.py` attendait un
+delai FIXE de 4 s que `pwsh` demarre et poste. Cause racine reproduite en
+abaissant ce delai a 0,15 s ; le test attend desormais la condition (le POST
+recu), et tourne plus vite (3,2 s au lieu de 7 s).
+
+**Trois faux positifs de mon propre diagnostic**, signales pour ne pas laisser
+croire a des regressions : l'inventaire des medias (mauvais module importe
+dans mon script), la surface de l'API (`app.routes` contient des `Mount`), et
+le compte des verifications de `doctor.py` (le test compte les appels
+`mesurer("`, pas les fonctions `verifier_*` — 30 est exact).
 
 ## Dernier chunk : DEC-0095 — douze défauts confirmés d'un audit externe, réparés un par un (PR #197)
 

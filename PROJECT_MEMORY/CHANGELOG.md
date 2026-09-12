@@ -1388,3 +1388,42 @@ pour la même cause que l'étape 1 ci-dessus (conflit Pillow/psutil réel avec
 (commit `d179877` cherry-pické), PR #196 fusionnée aussi le 12/09/2026.
 
 12 commits sur `claude/audit-repairs-f7f0478`, PR #197, fusionnée.
+
+---
+
+## 2026-09-12 (suite) — diagnostic des douze étapes de DEC-0095, une par une (PR #199)
+
+Le propriétaire a demandé de rediagnostiquer chacune des douze réparations
+séparément, et de corriger mes propres erreurs plutôt que de les défendre.
+
+**Huit étapes ont tenu** sans retouche, revérifiées par la mesure et non par
+relecture : dépendances/CI (76 tests relancés), les 27 intentions de chat
+(symétrie exacte porte ↔ `dispatch_request`), la continuité (les **trois**
+chemins client, régénération incluse), les pièces jointes (contrat `readable`
+prouvé de bout en bout), les uploads (413 sur un nom déjà pris sans détruire
+l'existant), la mémoire long terme (34 ms sur 5000 souvenirs, isolation par
+projet, injection SQL sans effet), le CORS (aucune méthode oubliée : l'API
+n'utilise que GET/POST/DELETE) et les affirmations de complétude (300/240
+modules, 30 vérifications, 8 connecteurs dormants — tous exacts).
+
+**Quatre portaient un vrai trou**, chacun mesuré avant/après :
+
+| Étape | Mesure avant correctif |
+|---|---|
+| 5 idempotence | une annulation (client déconnecté) traverse `chronometrer` sans trame → **2 exécutions pour une seule demande** |
+| 6 vidéo | un extrait de **2 octets** annoncé `status: success` (seul le rendu de repli était vérifié) |
+| 7 liens | sabotage `resolve()`→`absolute()` : `/etc/passwd` servi en **200** via un symlink imbriqué, désormais épinglé |
+| 10 quotas | **10 requêtes parallèles** passaient un plafond de **3** ; `AI_MAX_COST_PER_REQUEST` déclaré et lu par zéro ligne |
+
+Plus un correctif de CI : `test_scripts_powershell.py` attendait un délai
+**fixe** de 4 s que `pwsh` démarre et poste — cause racine reproduite en
+abaissant ce délai à 0,15 s, remplacée par une attente de la condition (3,2 s
+au lieu de 7 s, rien de sauté ni d'affaibli).
+
+**Trois faux positifs de mon propre diagnostic**, signalés plutôt que
+silencieux : l'inventaire des médias (mauvais module dans mon script de test),
+la surface de l'API (`app.routes` contient des `Mount`) et le compte des
+vérifications de `doctor.py` (30 est exact — le test compte les appels
+`mesurer("`, pas les fonctions).
+
+6 commits, CI verte sur chacun, `ruff check .` propre. PR #199 fusionnée.
