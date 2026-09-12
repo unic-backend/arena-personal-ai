@@ -866,7 +866,16 @@ def continuer_operation(racine: Path, identifiant_operation: Optional[str] = Non
             return _resultat_echec("continuer_operation",
                                    "Aucune operation (fusion/rebase/cherry-pick/revert) en cours a continuer.",
                                    identifiant_operation, tete_avant)
-        p = _executer(racine, [sous, "--continue"], delai)
+        # `-c core.editor=true` : `--continue` doit parfois finaliser un
+        # message de commit (fusion, cherry-pick, revert) et ouvrirait sinon
+        # un editeur interactif. En local ca passe (un editeur ou un terminal
+        # suffisamment interactif existe) ; sur le runner CI, aucun des deux
+        # n'existe (« Terminal is dumb, but EDITOR unset ») et la commande
+        # echoue — mesure sur PR #196, pas suppose. `core.editor=true` fait
+        # pointer git vers la commande no-op `true(1)` : le message deja
+        # prepare par git (avec ses marqueurs de conflit resolus) est accepte
+        # tel quel, jamais un editeur ouvert, jamais un message invente ici.
+        p = _executer(racine, ["-c", "core.editor=true", sous, "--continue"], delai)
         if p.returncode != 0:
             texte = (p.stdout + "\n" + p.stderr).strip()
             return _resultat_echec("continuer_operation", texte or f"echec de {sous} --continue",
