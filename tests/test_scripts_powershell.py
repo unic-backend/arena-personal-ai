@@ -26,6 +26,7 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Optional
@@ -284,9 +285,22 @@ def test_la_re_annonce_envoie_vraiment_ce_quil_faut():
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                      text=True)
         try:
-            processus.wait(timeout=4)  # la boucle est infinie : on la coupe
-        except subprocess.TimeoutExpired:
+            # On attend la CONDITION (un POST recu), pas une duree fixe. Le
+            # `wait(timeout=4)` d'origine supposait que `pwsh` demarre, lise
+            # le bloc et poste en moins de 4 s : vrai en local, faux sur un
+            # runner charge — mesure le 12/09/2026, CI run 34687885094, ce
+            # test seul en echec avec « rien envoye » sur 5420 tests verts,
+            # et reproduit ici en abaissant ce meme delai a 0,15 s. La
+            # boucle du bloc PowerShell est infinie : on la coupe des qu'on
+            # a ce qu'on venait verifier.
+            limite = time.monotonic() + 60
+            while not recu and time.monotonic() < limite:
+                if processus.poll() is not None:
+                    break          # pwsh s'est arrete tout seul : inutile d'attendre
+                time.sleep(0.1)
+        finally:
             processus.kill()
+            processus.wait(timeout=10)
     finally:
         serveur.shutdown()
 
