@@ -55,7 +55,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.actions.journal import masquer
 from core.memory.chiffrement import VARIABLE_PASSPHRASE, Coffre, EchecDechiffrement
@@ -129,6 +129,11 @@ DUREE_CONTEXTE_HEURES = 12
 # Le milieu, jamais le haut : un souvenir n'est pas important parce qu'il est neuf.
 IMPORTANCE_PAR_DEFAUT = 0.5
 
+# Ce qui joint les sources dans le champ `source` lisible. Nomme parce que la
+# lecture d'une ligne d'avant DEC-0104 s'en sert pour savoir si le souvenir a
+# deja ete confirme — pas pour compter combien de fois.
+SEPARATEUR_SOURCES = " + "
+
 
 def _maintenant() -> datetime:
     """Isole pour que les tests fixent l'heure."""
@@ -169,7 +174,14 @@ class Souvenir:
             septembre et ne doit pas etre servi comme verite courante avant
             octobre. `None` veut dire « vrai depuis toujours », ce qui est le
             cas de la quasi-totalite des souvenirs.
-        occurrences: combien de fois le souvenir a ete revu ou reconfirme.
+        sources: les sources DISTINCTES qui affirment le contenu, dans leur
+            ordre d'arrivee. `source` dit qui l'a dit en premier ; celle-ci dit
+            combien de voix differentes le disent. Un document qui se repete
+            trois fois reste UNE voix, et c'est toute la difference entre
+            « corrobore » et « insiste ».
+        occurrences: combien de fois le souvenir a ete revu ou reconfirme —
+            distinct de `sources` : trois occurrences pour une seule source,
+            c'est une source qui se repete, pas une confirmation.
         etat: actif, rejete ou archive — le cycle de vie, distinct de la nature.
         sensible: si vrai, `contenu` est chiffre au repos (voir `chiffrement.py`).
             Cette instance en memoire porte toujours le clair ; seule la ligne
@@ -188,6 +200,7 @@ class Souvenir:
     vu_le: str = ""
     expire_le: Optional[str] = None
     valide_depuis: Optional[str] = None
+    sources: Tuple[str, ...] = ()
     occurrences: int = 1
     etat: Etat = Etat.ACTIF
     sensible: bool = False
@@ -232,6 +245,22 @@ class Souvenir:
         return not self.pas_encore_vrai(maintenant) and not self.est_perime(maintenant)
 
     @property
+    def nombre_de_sources(self) -> Optional[int]:
+        """Combien de voix DISTINCTES affirment le contenu — ou `None`.
+
+        Derive de `sources`, jamais stocke : un compteur range a cote de la
+        liste finit par la contredire, et c'est alors le compteur qu'on croit.
+
+        `None` veut dire « jamais compte ici », et ce n'est pas `1`. Le cas
+        reel est un souvenir ecrit avant le 13/09/2026 et deja confirme : son
+        champ `source` porte « a + b », on sait qu'il a ete corrobore mais pas
+        par combien de voix distinctes — decouper la chaine pour le deviner
+        fabriquerait un chiffre. Un souvenir jamais confirme, lui, est sans
+        ambiguite a une voix.
+        """
+        return len(self.sources) or None
+
+    @property
     def est_une_supposition(self) -> bool:
         """Vrai pour ce qu'ARENA a deduit plutot qu'appris."""
         return self.nature is Nature.INFERENCE
@@ -250,6 +279,10 @@ class Souvenir:
             "vu_le": self.vu_le,
             "expire_le": self.expire_le,
             "valide_depuis": self.valide_depuis,
+            "sources": list(self.sources),
+            # Rendu a cote de la liste pour que l'appelant n'ait pas a la
+            # compter lui-meme — et `None` plutot que `0` quand rien n'a compte.
+            "nombre_de_sources": self.nombre_de_sources,
             "occurrences": self.occurrences,
             "etat": self.etat.value,
             "sensible": self.sensible,
@@ -377,7 +410,8 @@ class MemoirePersonnelle:
                     occurrences  INTEGER NOT NULL DEFAULT 1,
                     etat         TEXT NOT NULL DEFAULT 'ACTIVE',
                     sensible     INTEGER NOT NULL DEFAULT 0,
-                    valide_depuis TEXT
+                    valide_depuis TEXT,
+                    sources      TEXT
                 )
             """)
             # Migration d'une base existante (creee avant le 11/09/2026, DEC-0090) :
@@ -406,6 +440,15 @@ class MemoirePersonnelle:
             if "valide_depuis" not in colonnes:
                 connexion.execute(
                     f"ALTER TABLE {self.TABLE_SOUVENIRS} ADD COLUMN valide_depuis TEXT"
+                )
+            # Migration du 13/09/2026 (DEC-0104), meme forme que les trois
+            # au-dessus. `NULL` ne veut PAS dire « zero source » : il veut dire
+            # « les sources distinctes n'ont jamais ete comptees pour cette
+            # ligne », et `_depuis_ligne` ne comble ce vide que quand la reponse
+            # est certaine. **Aucune ligne n'est touchee.**
+            if "sources" not in colonnes:
+                connexion.execute(
+                    f"ALTER TABLE {self.TABLE_SOUVENIRS} ADD COLUMN sources TEXT"
                 )
             connexion.execute(f"""
                 CREATE TABLE IF NOT EXISTS {self.TABLE_ENTITES} (
@@ -526,6 +569,8 @@ class MemoirePersonnelle:
             vu_le=debut.isoformat(timespec="seconds"),
             expire_le=expire_le,
             valide_depuis=valide_depuis,
+            # La premiere voix. `source` est deja validee non vide plus haut.
+            sources=(source.strip(),),
             sensible=sensible,
         )
         self._ecrire(souvenir)
@@ -539,8 +584,8 @@ class MemoirePersonnelle:
             connexion.execute(
                 f"INSERT INTO {self.TABLE_SOUVENIRS} (identifiant, contenu, type, nature, "
                 f"source, projet, importance, metadonnees, cree_le, vu_le, expire_le, "
-                f"occurrences, etat, sensible, valide_depuis) "
-                f"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                f"occurrences, etat, sensible, valide_depuis, sources) "
+                f"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     souvenir.identifiant, contenu_stocke, souvenir.type.value,
                     souvenir.nature.value, souvenir.source, souvenir.projet,
@@ -549,6 +594,7 @@ class MemoirePersonnelle:
                     souvenir.cree_le, souvenir.vu_le, souvenir.expire_le,
                     souvenir.occurrences, souvenir.etat.value, int(souvenir.sensible),
                     souvenir.valide_depuis,
+                    json.dumps(list(souvenir.sources), ensure_ascii=False),
                 ),
             )
             connexion.commit()
@@ -556,16 +602,25 @@ class MemoirePersonnelle:
     def confirmer(self, identifiant: str, source: str) -> Optional[Souvenir]:
         """Le **seul** chemin par lequel une inference devient un fait.
 
-        Elle exige une source nouvelle : c'est ce qui distingue « le
-        proprietaire me l'a confirme » de « je le pense depuis assez longtemps
-        pour y croire ».
+        Elle exige une source **nouvelle**, et depuis DEC-0104 elle le verifie
+        vraiment. Avant, elle se contentait de le promettre : trois appels avec
+        `devis_aout.pdf` rendaient `source = "devis_aout.pdf + devis_aout.pdf +
+        devis_aout.pdf"` et une `INFERENCE` devenue `FAIT` sur une seule voix
+        qui s'etait repetee. Mesure du 13/09/2026, avant correction.
+
+        Une source deja connue ne corrobore rien. Le souvenir est quand meme
+        **revu** — `vu_le` et `occurrences` bougent, parce que c'est vrai : il a
+        ete redit. Mais `nature` ne bouge pas, et le nombre de voix ne bouge
+        pas. « Trois fois par une source » et « une fois par trois sources »
+        cessent de se ressembler.
 
         Args:
             identifiant: le souvenir a confirmer.
             source: qui ou quoi le confirme. Obligatoire.
 
         Returns:
-            Le souvenir mis a jour, ou None s'il n'existe pas.
+            Le souvenir mis a jour, ou None s'il n'existe pas. Comparer
+            `nombre_de_sources` avant et apres dit si la voix etait nouvelle.
 
         Raises:
             ValueError: source vide.
@@ -580,19 +635,61 @@ class MemoirePersonnelle:
         if souvenir is None:
             return None
 
+        propre = source.strip()
+        if propre in self._voix_deja_connues(souvenir):
+            return self._revoir_sans_corroborer(identifiant)
+
         nouvelle_nature = (
             Nature.FAIT if souvenir.nature is Nature.INFERENCE else souvenir.nature
         )
+        voix = (*souvenir.sources, propre) if souvenir.sources else ()
         with closing(self._connexion()) as connexion:
             connexion.execute(
                 f"UPDATE {self.TABLE_SOUVENIRS} SET nature = ?, source = ?, vu_le = ?, "
-                f"occurrences = occurrences + 1 WHERE identifiant = ?",
+                f"sources = ?, occurrences = occurrences + 1 WHERE identifiant = ?",
                 (
                     nouvelle_nature.value,
-                    f"{souvenir.source} + {source.strip()}",
+                    f"{souvenir.source}{SEPARATEUR_SOURCES}{propre}",
                     _maintenant().isoformat(timespec="seconds"),
+                    # Une ligne dont les voix n'ont jamais ete comptees le reste :
+                    # y ecrire `[nouvelle]` affirmerait qu'elle n'a qu'une voix
+                    # alors que son champ `source` en montre plusieurs.
+                    json.dumps(list(voix), ensure_ascii=False) if voix else None,
                     identifiant,
                 ),
+            )
+            connexion.commit()
+        return self.lire(identifiant)
+
+    @staticmethod
+    def _voix_deja_connues(souvenir: Souvenir) -> Tuple[str, ...]:
+        """Les sources qui affirment deja ce souvenir, liste tenue ou non.
+
+        Quand la liste existe, elle fait foi. Sinon on decoupe le champ `source`
+        — pour un test d'APPARTENANCE seulement, jamais pour compter : savoir si
+        une chaine donnee figure parmi les segments est fiable dans les deux
+        sens, alors que savoir combien il y a de segments ne l'est pas.
+        """
+        if souvenir.sources:
+            return souvenir.sources
+        return tuple(
+            segment.strip()
+            for segment in (souvenir.source or "").split(SEPARATEUR_SOURCES)
+            if segment.strip()
+        )
+
+    def _revoir_sans_corroborer(self, identifiant: str) -> Optional[Souvenir]:
+        """Une source qui se repete : le souvenir est revu, jamais renforce.
+
+        `nature` et `sources` sont laisses intacts — c'est la difference entre
+        « redit » et « confirme », et c'est la seule raison d'etre de cette
+        methode.
+        """
+        with closing(self._connexion()) as connexion:
+            connexion.execute(
+                f"UPDATE {self.TABLE_SOUVENIRS} SET vu_le = ?, "
+                f"occurrences = occurrences + 1 WHERE identifiant = ?",
+                (_maintenant().isoformat(timespec="seconds"), identifiant),
             )
             connexion.commit()
         return self.lire(identifiant)
@@ -615,7 +712,9 @@ class MemoirePersonnelle:
                 f"occurrences = occurrences + 1 WHERE identifiant = ?",
                 (
                     nouvel_etat.value,
-                    f"{souvenir.source} + {source.strip()}",
+                    # Qui a decide est trace, mais celui qui rejette ou archive
+                    # n'affirme pas le contenu : `sources` n'est pas touche.
+                    f"{souvenir.source}{SEPARATEUR_SOURCES}{source.strip()}",
                     _maintenant().isoformat(timespec="seconds"),
                     identifiant,
                 ),
@@ -688,7 +787,42 @@ class MemoirePersonnelle:
             # migration, relue par un processus qui n'a pas encore appele
             # `_creer_tables`, n'a pas la colonne.
             valide_depuis=(ligne["valide_depuis"] if "valide_depuis" in colonnes else None),
+            sources=self._sources_depuis_ligne(ligne, colonnes),
         )
+
+    @staticmethod
+    def _sources_depuis_ligne(ligne: sqlite3.Row, colonnes: Iterable[str]) -> Tuple[str, ...]:
+        """Les sources distinctes d'une ligne — comptees, deduites, ou vides.
+
+        Trois cas, et le troisieme est celui qui compte :
+
+        1. La colonne porte une liste : elle fait foi, elle a ete tenue a jour
+           a chaque confirmation.
+        2. Elle est vide (ligne d'avant DEC-0104) et `source` ne contient pas le
+           separateur : le souvenir n'a jamais ete confirme, donc il a
+           exactement une voix. La deduction est certaine.
+        3. Elle est vide et `source` contient le separateur : le souvenir A ete
+           corrobore, mais par combien de voix distinctes ? Decouper la chaine
+           donnerait un chiffre, pas une mesure — une source nommee « a + b »
+           en vaudrait deux. On rend un tuple vide, et `nombre_de_sources`
+           repond `None` : **jamais compte ici** n'est pas la meme chose que
+           « une seule ».
+        """
+        brut = ligne["sources"] if "sources" in colonnes else None
+        if brut:
+            try:
+                liste = json.loads(brut)
+            except (TypeError, ValueError):
+                logger.warning("Liste de sources illisible pour %s : traitee "
+                               "comme non comptee.", ligne["identifiant"])
+                return ()
+            if isinstance(liste, list):
+                return tuple(str(element) for element in liste)
+            return ()
+        source = (ligne["source"] or "").strip()
+        if source and SEPARATEUR_SOURCES not in source:
+            return (source,)
+        return ()
 
     def _dechiffrer_ou_signaler(self, identifiant: str, contenu_stocke: str) -> str:
         """Dechiffre un contenu sensible, ou rend un etat lisible plutot que de

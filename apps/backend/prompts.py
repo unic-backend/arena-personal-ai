@@ -47,8 +47,9 @@ def date_du_jour() -> date:
 #:   capacites dont six n'existaient pas sur la machine branchee.
 #: - Regle 3 : un bouton « Confirmer » etait offert juste sous un message
 #:   disant que le moteur ne repondait pas.
-#: - Regle 4 : `ABSENT` et `UNKNOWN` sont deja distingues partout dans le code
-#:   (`src/live_context/`) ; le modele, lui, melangeait les deux en parlant.
+#: - Regle 4 : `ABSENT` et `UNKNOWN` sont deja distingues dans le code
+#:   (`core/memory/semantique.py`, `ETAT_SERVEUR_ABSENT` / `ETAT_MODELE_ABSENT`) ;
+#:   le modele, lui, melangeait les deux en parlant.
 #: - Regle 5 : quatre tests ont deja fige des valeurs fabriquees dans ce depot
 #:   — une reunion que personne n'avait planifiee y a survecu jusqu'a `main`.
 #:
