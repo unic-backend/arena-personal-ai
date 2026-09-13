@@ -1714,17 +1714,22 @@ mesuré** (l'autorisation d'aller vite n'autorise pas à fabriquer).
 | #212 | `DECISION`/`ERREUR` + détection de contradiction (DEC-0099) | 37 tests, 8 sabotages |
 | #213 | `X-Request-ID` du premier octet à la dernière action (DEC-0100) | `/api/actions?request_id=` |
 
-### Ouvert, en attente de sa décision
+### Fusionné par lui le matin du 13/09, et ce qui reste
 
-| PR | Base | Sujet |
+| PR | Sujet | État |
 |---|---|---|
-| #214 | `main` | statistiques du routeur par type de tâche (DEC-0101) |
-| #215 | `main` | frontière de confiance gardée sur le chemin exécutif — 16 tests, zéro code de production |
-| #216 | #214 | `/api/plans` : ce qu'un plan a fait, et pourquoi il s'est arrêté (DEC-0102) |
-| #217 | `main` | `valide_depuis` : depuis quand un souvenir est vrai (DEC-0103) |
-| #218 | #217 | une source qui se répète n'est pas une source de plus (DEC-0104) |
+| #214 | statistiques du routeur par type de tâche (DEC-0101) | fusionnée |
+| #215 | frontière de confiance gardée sur le chemin exécutif — 16 tests, zéro code de production | fusionnée |
+| #216 | `/api/plans` : ce qu'un plan a fait, et pourquoi il s'est arrêté (DEC-0102) | fusionnée |
+| #219 | cette mémoire, remise à jour | fusionnée |
+| #218 | une source qui se répète n'est pas une source de plus (DEC-0104) | fusionnée **dans la branche de #217**, pas dans `main` |
+| #217 | `valide_depuis` (DEC-0103) **et**, par l'effondrement de la pile, DEC-0104 | **ouverte** |
 
-**L'ordre compte** : #216 repose sur #214, #218 sur #217.
+**L'empilement n'existe plus.** Il a fusionné #218 dans `claude/memoire-validite`
+au lieu d'attendre : #217 porte donc les deux décisions et vise `main`
+directement. Le conflit qui a suivi (`docs/DECISIONS.md`, `append` contre
+`append` — DEC-0101/0102 contre DEC-0103/0104) a été résolu en **gardant les
+quatre**, dans l'ordre de leur numérotation. Rien n'a été arbitré.
 
 ### Le motif de la nuit : six sabotages passés au vert
 

@@ -1,39 +1,50 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-09-13, travail de nuit (DEC-0099 → DEC-0104).*
+*Mise à jour : 2026-09-13 11:00 UTC — après ses fusions du matin.*
 
 ## En cours
 
-**Rien n'est en cours.** Le propriétaire a autorisé un travail de nuit sans
-interruption (« tu dois enchaîner tout ce qui reste sans attendre rien de
-moi »). Ce qui restait a été fait. **Aucune fusion dans `main` n'a été faite :
-c'est sa décision** (`docs/REGLES_DE_TRAVAIL.md` : tout passe par une pull
-request qu'il fusionne lui-même).
+**Une seule PR reste ouverte : #217.** Le propriétaire a autorisé un travail
+de nuit sans interruption (« tu dois enchaîner tout ce qui reste sans attendre
+rien de moi ») ; ce qui restait a été fait, puis il a fusionné le matin du
+13/09. Aucune fusion n'a jamais été faite par l'assistant — c'est sa décision
+(`docs/REGLES_DE_TRAVAIL.md` : tout passe par une pull request qu'il fusionne
+lui-même).
 
-### Ce qui a été fusionné par lui pendant la nuit
+### Tout ce qui est fusionné dans `main` (nuit du 12 au 13, puis matin du 13)
 
 | PR | DEC | Ce qu'elle apporte |
 |---|---|---|
 | #211 | — | la boucle agentique greffée sur l'Executive Brain (seconde chance, budgets `TOURS_MAX`/`SECONDES_MAX`) |
 | #212 | DEC-0099 | `TypeSouvenir.DECISION` et `ERREUR`, détection de contradiction qui **enregistre et n'arbitre jamais** |
 | #213 | DEC-0100 | un identifiant du premier octet HTTP à la dernière action (`X-Request-ID`) |
+| #214 | DEC-0101 | ce que chaque type de tâche coûte vraiment — mesuré, `None` quand rien n'a tourné |
+| #215 | — | la frontière de confiance **gardée** sur les deux entrées du chemin exécutif (aucun code de production changé) |
+| #216 | DEC-0102 | un plan dit ce qu'il a fait et pourquoi il s'est arrêté (`/api/plans`) |
+| #219 | — | cette mémoire elle-même, remise à jour |
 
-### Ce qui attend sa décision de fusion — cinq PR, deux empilements
+`main` est à `c67f907`.
 
-| PR | Branche | Base | Ce qu'elle répare |
-|---|---|---|---|
-| #214 | `claude/routeur-statistiques` | `main` | ce que chaque type de tâche coûte vraiment — mesuré, `None` quand rien n'a tourné |
-| #215 | `claude/page-piegee-executif` | `main` | la frontière de confiance **gardée** sur les deux entrées du chemin exécutif (aucun code de production changé) |
-| #216 | `claude/plans-observables` | **#214** | un plan dit ce qu'il a fait et pourquoi il s'est arrêté (`/api/plans`) |
-| #217 | `claude/memoire-validite` | `main` | DEC-0103 — `valide_depuis` : depuis quand un souvenir est vrai |
-| #218 | `claude/memoire-sources` | **#217** | DEC-0104 — une source qui se répète n'est pas une source de plus |
+### La seule PR encore ouverte : #217
 
-**L'ordre compte** : #216 repose sur #214, #218 repose sur #217. Fusionner la
-base avant l'empilée, sinon la seconde emporte le diff de la première.
+Elle porte **deux** décisions, parce que la pile s'est effondrée : le
+propriétaire a fusionné #218 (`claude/memoire-sources`) **dans la branche de
+#217** plutôt que d'attendre. `claude/memoire-validite` contient donc :
 
-CI mesurée le 13/09/2026 : #214, #215 et #216 **vertes sur les six checks**.
-#217 et #218 étaient encore en cours d'exécution au moment d'écrire ceci — à
-vérifier avant de fusionner, jamais à supposer.
+| DEC | Ce qu'elle répare |
+|---|---|
+| DEC-0103 | `valide_depuis` — depuis quand un souvenir est vrai, le miroir d'`expire_le` |
+| DEC-0104 | une source qui se répète n'est pas une source de plus |
+
+**Ce qui a été fait dessus après ses fusions**, et qu'il faut savoir avant de
+la relire : `main` a été fusionné dans la branche pour résoudre un conflit
+d'`append` contre `append` à la fin de `docs/DECISIONS.md` — DEC-0101/0102
+d'un côté, DEC-0103/0104 de l'autre. **Rien n'a été arbitré, les quatre
+décisions sont gardées**, dans l'ordre de leur numérotation. Suite complète
+après résolution : **5700 passed, 31 skipped, 52 deselected**.
+
+Plus aucun empilement : #217 vise `main` directement, et ne conflit pas avec
+`c67f907` (mesuré).
 
 ### Les deux défauts réels trouvés cette nuit
 
@@ -70,25 +81,29 @@ fixer.
 les quatre P1 sont livrés. Il reste **un P2 : le banc d'essai des modèles
 locaux**, qui exige sa machine — aucun modèle n'a jamais tourné ici.
 
-### État mesuré au moment d'écrire
+### État mesuré
 
-**Sur la tête de la pile** (`claude/memoire-sources`, PR #218, qui contient tout
-le travail de la nuit) :
+Deux chiffres, donnés séparément pour qu'aucun ne se lise à la place de l'autre.
+
+**Sur `claude/memoire-validite`** (#217, `main` fusionné dedans, conflit résolu) :
 
 ```
-python -m pytest -q  → 5631 passed, 31 skipped, 52 deselected
+python -m pytest -q  → 5700 passed, 31 skipped, 52 deselected
 ruff check core tests apps agents scripts → All checks passed!
 python scripts/orphelins.py → 304 modules, 243 atteints, 0 orphelin réel
 ```
 
-**Sur `main` tel qu'il est** (avant toute fusion des cinq PR ouvertes) :
+**Sur `main`** (`c67f907`, ses six fusions faites, #217 pas encore) :
 
 ```
-python -m pytest -q  → 5606 passed, 31 skipped, 52 deselected
-ruff check core tests apps agents scripts → All checks passed!
+python -m pytest -q  → 5675 passed, 31 skipped, 52 deselected
 ```
 
-L'écart de 25 tests, ce sont les tests que les PR ouvertes apportent.
+L'écart de 25 tests, ce sont ceux que #217 apporte encore : 9 pour DEC-0103,
+16 pour DEC-0104.
+
+*Les chiffres 5631 / 5606 écrits cette nuit valaient pour un empilement qui
+n'existe plus ; ils sont remplacés, pas corrigés à la marge.*
 
 ---
 
