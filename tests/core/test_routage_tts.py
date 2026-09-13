@@ -267,3 +267,68 @@ class TestSesameCsmLangueEtConversationnel:
         assert choisi.identifiant == "sesame-csm-1b"
         with pytest.raises(ErreurDeMoteur):
             choisir([_moteur("sesame-csm-1b")], usage=Usage.COMMERCIAL, langue="FR-fr")
+
+
+class TestAudiocppLeSecondPiegeDeLicence:
+    """`audiocpp` — le même défaut qu'OmniVoice, apparu six jours plus tard.
+
+    L'amont a bougé : au commit `eaf8bb9` (v0.5.2, lu le 13/09/2026)
+    `_LAZY_REGISTRY` porte un moteur qui n'existait pas au relevé du
+    07/09/2026. `audiocpp` sert **Breeze-TTS-2**, dont les poids sont
+    « research and non-commercial use only » — et la source amont ajoute la
+    phrase qui tranche : *« Self-hosted outputs inherit the restriction »*.
+    L'audio PRODUIT hérite de la restriction.
+
+    Mesure du 13/09/2026, **avant** cette entrée : `choisir([audiocpp])` en
+    usage commercial rendait `audiocpp`, là où le même appel sur `omnivoice`
+    refusait. Le moteur tombait sur `LICENCE_INCONNUE`, et la règle 4 laisse
+    passer `INCONNU` — délibérément, pour qu'ARENA ne se taise pas devant un
+    moteur neuf. C'est donc le tableau qu'il fallait corriger, pas la règle.
+    """
+
+    def test_audiocpp_ne_parle_pas_pour_un_travail_commercial(self):
+        """Le test qui tient la correction."""
+        with pytest.raises(ErreurDeMoteur) as erreur:
+            choisir([_moteur("audiocpp")], usage=Usage.COMMERCIAL, langue="en")
+
+        assert "audiocpp" in str(erreur.value)
+        assert "non-commercial" in str(erreur.value)
+
+    def test_il_reste_joignable_pour_un_travail_de_recherche(self):
+        """La porte de la règle 3 ne se referme pas : interdit ≠ inexistant."""
+        choisi = choisir([_moteur("audiocpp")], usage=Usage.RECHERCHE, langue="en")
+
+        assert choisi.identifiant == "audiocpp"
+
+    def test_un_moteur_permissif_le_remplace_sans_que_l_appelant_choisisse(self):
+        """Le repli : la licence écarte, elle ne fait pas taire ARENA."""
+        choisi = choisir([_moteur("audiocpp"), _moteur("cosyvoice")],
+                         usage=Usage.COMMERCIAL, langue="en")
+
+        assert choisi.identifiant == "cosyvoice"
+        assert choisi.licence.commercial is Commercial.AUTORISE
+
+    def test_il_est_ecarte_du_francais_car_ses_langues_sont_mesurees(self):
+        """`en` + `zh` d'après la source amont. Le français n'en fait pas
+        partie, et la raison du refus le nomme."""
+        with pytest.raises(ErreurDeMoteur) as erreur:
+            choisir([_moteur("audiocpp")], usage=Usage.RECHERCHE, langue="fr")
+
+        assert "fr" in str(erreur.value)
+
+    def test_sa_licence_porte_sa_propre_source_pas_celle_du_reste_du_tableau(self):
+        """Les autres entrées viennent du commit `53ff367` ; celle-ci d'un
+        commit plus récent. Les fondre sous une seule étiquette ferait mentir
+        la provenance de l'une des deux."""
+        licence = licence_de("audiocpp")
+
+        assert licence.commercial is Commercial.INTERDIT
+        assert "eaf8bb9" in licence.source
+        assert "53ff367" not in licence.source
+
+    def test_il_n_est_plus_inconnu(self):
+        """Le sabotage le plus direct : retirer l'entrée doit faire tomber
+        ce test, parce que le moteur redeviendrait `INCONNU` — donc servable
+        en commercial."""
+        assert licence_de("audiocpp") is not LICENCE_INCONNUE
+        assert "audiocpp" in LICENCES
