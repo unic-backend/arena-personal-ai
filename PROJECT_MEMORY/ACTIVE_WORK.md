@@ -1,17 +1,29 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-09-13 11:00 UTC — après ses fusions du matin.*
+*Mise à jour : 2026-09-13, après ses fusions du matin (`main` à `638ec90`).*
 
 ## En cours
 
-**Une seule PR reste ouverte : #217.** Le propriétaire a autorisé un travail
-de nuit sans interruption (« tu dois enchaîner tout ce qui reste sans attendre
-rien de moi ») ; ce qui restait a été fait, puis il a fusionné le matin du
-13/09. Aucune fusion n'a jamais été faite par l'assistant — c'est sa décision
+**Rien n'est en cours.** Le propriétaire a autorisé un travail de nuit sans
+interruption (« tu dois enchaîner tout ce qui reste sans attendre rien de
+moi ») ; ce qui restait a été fait, puis il a tout fusionné le matin du 13/09.
+Aucune fusion n'a jamais été faite par l'assistant — c'est sa décision
 (`docs/REGLES_DE_TRAVAIL.md` : tout passe par une pull request qu'il fusionne
 lui-même).
 
+> **Ce fichier ne tient plus de file de PR.** Décision du 13/09/2026 — trois
+> fois en six heures, la liste « ce qui attend ta décision » était **fausse
+> avant même d'être fusionnée** : il fusionnait pendant qu'elle s'écrivait.
+> GitHub suit l'état des PR mieux qu'un fichier Markdown ne le fera jamais.
+> Ce que la mémoire garde, c'est ce qui est **décidé** et ce qui est **sur
+> `main`** — des faits qui ne périment pas en une heure.
+> *Coût si c'est faux* : en ouvrant une session, il faut une commande
+> (`git log`, ou la liste des PR) pour savoir ce qui est en vol. C'est une
+> commande contre une mémoire qui ment.
+
 ### Tout ce qui est fusionné dans `main` (nuit du 12 au 13, puis matin du 13)
+
+Neuf PR, plus rien d'ouvert.
 
 | PR | DEC | Ce qu'elle apporte |
 |---|---|---|
@@ -21,30 +33,20 @@ lui-même).
 | #214 | DEC-0101 | ce que chaque type de tâche coûte vraiment — mesuré, `None` quand rien n'a tourné |
 | #215 | — | la frontière de confiance **gardée** sur les deux entrées du chemin exécutif (aucun code de production changé) |
 | #216 | DEC-0102 | un plan dit ce qu'il a fait et pourquoi il s'est arrêté (`/api/plans`) |
+| #217 | DEC-0103 | `valide_depuis` — depuis quand un souvenir est vrai, le miroir d'`expire_le` |
+| #218 | DEC-0104 | une source qui se répète n'est pas une source de plus |
 | #219 | — | cette mémoire elle-même, remise à jour |
 
-`main` est à `c67f907`.
+`main` est à `638ec90`.
 
-### La seule PR encore ouverte : #217
-
-Elle porte **deux** décisions, parce que la pile s'est effondrée : le
-propriétaire a fusionné #218 (`claude/memoire-sources`) **dans la branche de
-#217** plutôt que d'attendre. `claude/memoire-validite` contient donc :
-
-| DEC | Ce qu'elle répare |
-|---|---|
-| DEC-0103 | `valide_depuis` — depuis quand un souvenir est vrai, le miroir d'`expire_le` |
-| DEC-0104 | une source qui se répète n'est pas une source de plus |
-
-**Ce qui a été fait dessus après ses fusions**, et qu'il faut savoir avant de
-la relire : `main` a été fusionné dans la branche pour résoudre un conflit
-d'`append` contre `append` à la fin de `docs/DECISIONS.md` — DEC-0101/0102
-d'un côté, DEC-0103/0104 de l'autre. **Rien n'a été arbitré, les quatre
-décisions sont gardées**, dans l'ordre de leur numérotation. Suite complète
-après résolution : **5700 passed, 31 skipped, 52 deselected**.
-
-Plus aucun empilement : #217 vise `main` directement, et ne conflit pas avec
-`c67f907` (mesuré).
+**#218 n'a pas été fusionnée dans `main` mais dans la branche de #217**, ce qui
+a effondré la pile : #217 portait les deux décisions quand elle est arrivée.
+Le conflit qui a suivi — `docs/DECISIONS.md`, `append` contre `append`,
+DEC-0101/0102 d'un côté et DEC-0103/0104 de l'autre — a été résolu en
+**gardant les quatre**, dans l'ordre de leur numérotation. Rien n'a été
+arbitré. C'est la seule chose de cet épisode qui mérite d'être retenue : un
+conflit de fin de fichier entre deux `append` ne se tranche pas, il se
+concatène.
 
 ### Les deux défauts réels trouvés cette nuit
 
@@ -81,26 +83,19 @@ fixer.
 les quatre P1 sont livrés. Il reste **un P2 : le banc d'essai des modèles
 locaux**, qui exige sa machine — aucun modèle n'a jamais tourné ici.
 
-### État mesuré
-
-Deux chiffres, donnés séparément pour qu'aucun ne se lise à la place de l'autre.
-
-**Sur `claude/memoire-validite`** (#217, `main` fusionné dedans, conflit résolu) :
+### État mesuré sur `main` (`638ec90`, tout fusionné)
 
 ```
 python -m pytest -q  → 5700 passed, 31 skipped, 52 deselected
 ruff check core tests apps agents scripts → All checks passed!
-python scripts/orphelins.py → 304 modules, 243 atteints, 0 orphelin réel
+python scripts/orphelins.py → 306 modules, 245 atteints, 0 orphelin réel
 ```
 
-**Sur `main`** (`c67f907`, ses six fusions faites, #217 pas encore) :
-
-```
-python -m pytest -q  → 5675 passed, 31 skipped, 52 deselected
-```
-
-L'écart de 25 tests, ce sont ceux que #217 apporte encore : 9 pour DEC-0103,
-16 pour DEC-0104.
+*Un chiffre écrit ici sort d'une commande lancée, jamais d'une soustraction.
+Le 13/09, un brouillon annonçait `5684` pour `main` : ce nombre venait d'une
+branche intermédiaire et avait été déduit, pas mesuré. `CLAUDE.md` le nomme —
+« un chiffre plausible à la place d'une mesure est un mensonge qui devient
+permanent le jour où un test le fige ».*
 
 *Les chiffres 5631 / 5606 écrits cette nuit valaient pour un empilement qui
 n'existe plus ; ils sont remplacés, pas corrigés à la marge.*

@@ -1723,7 +1723,10 @@ mesuré** (l'autorisation d'aller vite n'autorise pas à fabriquer).
 | #216 | `/api/plans` : ce qu'un plan a fait, et pourquoi il s'est arrêté (DEC-0102) | fusionnée |
 | #219 | cette mémoire, remise à jour | fusionnée |
 | #218 | une source qui se répète n'est pas une source de plus (DEC-0104) | fusionnée **dans la branche de #217**, pas dans `main` |
-| #217 | `valide_depuis` (DEC-0103) **et**, par l'effondrement de la pile, DEC-0104 | **ouverte** |
+| #217 | `valide_depuis` (DEC-0103) **et**, par l'effondrement de la pile, DEC-0104 | fusionnée à 11:06 UTC |
+
+**Plus rien d'ouvert.** `main` est à `638ec90` : 5700 tests passent, ruff est
+propre, zéro orphelin réel (306 modules, 245 atteints).
 
 **L'empilement n'existe plus.** Il a fusionné #218 dans `claude/memoire-validite`
 au lieu d'attendre : #217 porte donc les deux décisions et vise `main`
