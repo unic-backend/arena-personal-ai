@@ -109,6 +109,7 @@ from core.models.ollama_provider import OllamaProvider
 from core.models.routeur import RouteurModeles
 from core.models.statistiques import StatistiquesRoutage
 from core.models.usage import CompteurUsage
+from core.observabilite.plans import JournalDesPlans
 from core.permissions.controle import ControleAcces
 from core.permissions.permission_manager import PermissionManager
 from core.permissions.politique import PolitiqueDePermissions
@@ -692,9 +693,15 @@ finance_agent = FinanceAgent(provider=deep_provider, memory=memory, registre=reg
 # decision d'affaires — jamais un second agent-plateforme. `deep_provider` :
 # synthetiser plusieurs analyses en une recommandation coherente demande plus
 # qu'une passe rapide, meme raison que FinanceAgent juste au-dessus.
+#: Ou les executions de plan sont enregistrees — meme fichier SQLite que la
+#: memoire et le journal des actions, table distincte. C'est ce qui relie une
+#: demande HTTP a la raison pour laquelle son plan s'est arrete.
+journal_des_plans = JournalDesPlans(db_path=str(DB_PATH))
+
 executive_agent = ExecutiveAgent(
     provider=deep_provider, memory=memory,
     lightrag_query=lambda q: lightrag_tool.query(q, mode="hybrid"),
+    journal_des_plans=journal_des_plans,
 )
 repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory, registre=registre)
 swe_agent = SWEAgent(provider=coder_provider, memory=memory)

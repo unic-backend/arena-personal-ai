@@ -15,6 +15,7 @@ from core.agent.base_agent import BaseAgent
 from core.executive.moteur import MoteurExecutif
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
+from core.observabilite.plans import JournalDesPlans
 from tools.search.web_search_tool import WebSearchTool
 
 logger = logging.getLogger("usman.agent.executive")
@@ -45,6 +46,7 @@ class ExecutiveAgent(BaseAgent):
         memory: Optional[MemoryManager] = None,
         recherche: Optional[Any] = None,
         lightrag_query: Optional[Callable[[str], str]] = None,
+        journal_des_plans: Optional[JournalDesPlans] = None,
     ):
         super().__init__(
             name="ExecutiveAgent",
@@ -58,6 +60,7 @@ class ExecutiveAgent(BaseAgent):
             provider=provider, memory=memory,
             lightrag_query=lightrag_query,
             chercheur=_chercheur_web(outil_recherche),
+            journal_des_plans=journal_des_plans,
         )
 
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
