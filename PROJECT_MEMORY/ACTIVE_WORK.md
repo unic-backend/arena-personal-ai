@@ -1,8 +1,98 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-09-12, fin de session (DEC-0087 → DEC-0098).*
+*Mise à jour : 2026-09-13, travail de nuit (DEC-0099 → DEC-0104).*
 
 ## En cours
+
+**Rien n'est en cours.** Le propriétaire a autorisé un travail de nuit sans
+interruption (« tu dois enchaîner tout ce qui reste sans attendre rien de
+moi »). Ce qui restait a été fait. **Aucune fusion dans `main` n'a été faite :
+c'est sa décision** (`docs/REGLES_DE_TRAVAIL.md` : tout passe par une pull
+request qu'il fusionne lui-même).
+
+### Ce qui a été fusionné par lui pendant la nuit
+
+| PR | DEC | Ce qu'elle apporte |
+|---|---|---|
+| #211 | — | la boucle agentique greffée sur l'Executive Brain (seconde chance, budgets `TOURS_MAX`/`SECONDES_MAX`) |
+| #212 | DEC-0099 | `TypeSouvenir.DECISION` et `ERREUR`, détection de contradiction qui **enregistre et n'arbitre jamais** |
+| #213 | DEC-0100 | un identifiant du premier octet HTTP à la dernière action (`X-Request-ID`) |
+
+### Ce qui attend sa décision de fusion — cinq PR, deux empilements
+
+| PR | Branche | Base | Ce qu'elle répare |
+|---|---|---|---|
+| #214 | `claude/routeur-statistiques` | `main` | ce que chaque type de tâche coûte vraiment — mesuré, `None` quand rien n'a tourné |
+| #215 | `claude/page-piegee-executif` | `main` | la frontière de confiance **gardée** sur les deux entrées du chemin exécutif (aucun code de production changé) |
+| #216 | `claude/plans-observables` | **#214** | un plan dit ce qu'il a fait et pourquoi il s'est arrêté (`/api/plans`) |
+| #217 | `claude/memoire-validite` | `main` | DEC-0103 — `valide_depuis` : depuis quand un souvenir est vrai |
+| #218 | `claude/memoire-sources` | **#217** | DEC-0104 — une source qui se répète n'est pas une source de plus |
+
+**L'ordre compte** : #216 repose sur #214, #218 repose sur #217. Fusionner la
+base avant l'empilée, sinon la seconde emporte le diff de la première.
+
+CI mesurée le 13/09/2026 : #214, #215 et #216 **vertes sur les six checks**.
+#217 et #218 étaient encore en cours d'exécution au moment d'écrire ceci — à
+vérifier avant de fusionner, jamais à supposer.
+
+### Les deux défauts réels trouvés cette nuit
+
+Aucun des deux n'était dans la liste de l'audit : ils sont apparus **en
+faisant** le travail que l'audit demandait.
+
+1. **`confirmer()` promettait sans vérifier.** Sa docstring disait « elle exige
+   une source nouvelle ». Elle ne le vérifiait pas : trois appels avec le même
+   document promouvaient une inférence en **fait**, et ARENA répondait ensuite
+   un tarif avec l'assurance d'un fait corroboré qu'une seule voix avait dit.
+   Mesuré avant correction, corrigé dans #218.
+2. **Trois références pointaient vers un projet qui n'est pas celui-ci.**
+   `core/live_context/` et `src/live_context/` étaient cités dans DEC-0099,
+   `core/memory/contradiction.py` et `apps/backend/prompts.py`. Ces chemins
+   n'existent pas ici. Les règles qu'ils nommaient sont bonnes, l'attribution
+   était fausse. Corrigées en place, jamais effacées.
+
+### Ce qui a été refusé, et pourquoi
+
+**`confidence` n'est pas implémenté.** C'était le troisième manque nommé par
+DEC-0099. Un flottant `0.82` à côté d'un souvenir serait lu comme une mesure ;
+rien ici ne le mesure, il serait dérivé d'une pondération choisie par
+l'assistant puis cité comme un fait. Ce qu'un lecteur veut savoir existe déjà
+et **est mesuré** : `nature`, `nombre_de_sources`, `est_en_vigueur()`, et le
+rapport de contradictions.
+
+**Ce qui rouvrirait la question :** que le propriétaire décide d'une pondération
+et la nomme. Un score est un jugement produit — ce n'est pas à l'assistant de le
+fixer.
+
+### La liste de l'audit PHASE 0 est épuisée
+
+`docs/audits/audit_phase0_2026-09-12.md`, tableau des priorités : les deux P0 et
+les quatre P1 sont livrés. Il reste **un P2 : le banc d'essai des modèles
+locaux**, qui exige sa machine — aucun modèle n'a jamais tourné ici.
+
+### État mesuré au moment d'écrire
+
+**Sur la tête de la pile** (`claude/memoire-sources`, PR #218, qui contient tout
+le travail de la nuit) :
+
+```
+python -m pytest -q  → 5631 passed, 31 skipped, 52 deselected
+ruff check core tests apps agents scripts → All checks passed!
+python scripts/orphelins.py → 304 modules, 243 atteints, 0 orphelin réel
+```
+
+**Sur `main` tel qu'il est** (avant toute fusion des cinq PR ouvertes) :
+
+```
+python -m pytest -q  → 5606 passed, 31 skipped, 52 deselected
+ruff check core tests apps agents scripts → All checks passed!
+```
+
+L'écart de 25 tests, ce sont les tests que les PR ouvertes apportent.
+
+---
+
+## Chunk précédent : 12/09/2026 — historique public, CI sur `main`, inventaire
 
 **Une PR attend sa décision de fusion : ce que l'historique public expose,
 et la CI qui le scanne.** Branche `claude/scan-histoire-et-depot-public`.

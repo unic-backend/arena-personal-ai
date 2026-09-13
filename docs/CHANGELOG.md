@@ -2,6 +2,44 @@
 
 ## [Non publié]
 
+### Corrigé — 13/09/2026 — Une source qui se répète promouvait une supposition en fait
+
+`MemoirePersonnelle.confirmer()` est le seul chemin par lequel une inférence
+devient un fait, et sa docstring promettait « elle exige une source nouvelle ».
+Elle ne le vérifiait pas. Trois confirmations par le **même** document rendaient
+`nature = FACT` et `source = 'devis_aout.pdf + devis_aout.pdf + devis_aout.pdf'`
+— mesuré avant correction. ARENA répondait ensuite un tarif avec l'assurance
+d'un fait corroboré alors qu'une seule voix l'avait dit.
+
+- `Souvenir.sources` porte les voix distinctes ; `nombre_de_sources` en est
+  **dérivé**, jamais stocké.
+- `occurrences` compte les fois, `nombre_de_sources` compte les voix. Une
+  répétition bouge le premier et jamais le second.
+- « Jamais compté » rend `None`, pas `1` : découper `'a + b'` pour deviner
+  produirait un chiffre, pas une mesure.
+- Rejeter ou archiver trace qui a décidé et n'ajoute **pas** de voix.
+
+Détail et coûts : DEC-0104. Zone verrouillée respectée, `ALTER TABLE` protégé,
+aucune ligne existante touchée.
+
+### Ajouté — 13/09/2026 — Depuis quand un souvenir est vrai
+
+`expire_le` disait quand cesser de croire ; rien ne disait quand commencer. « À
+partir du 1er octobre, le tarif passe à 5500 F/m² », enregistré en septembre,
+était servi dès septembre comme le tarif courant.
+
+`valide_depuis`, `pas_encore_vrai()`, `est_en_vigueur()`, et le filtre
+`inclure_a_venir` sur `souvenirs()` et `GET /api/memory`. Une date illisible
+tait le souvenir plutôt que d'affirmer une chose fausse. Détail : DEC-0103.
+
+### Corrigé — 13/09/2026 — Trois références vers un projet qui n'est pas celui-ci
+
+`core/live_context/` et `src/live_context/` étaient cités dans DEC-0099,
+`core/memory/contradiction.py` et `apps/backend/prompts.py`. Ces chemins
+n'existent pas dans ce dépôt. Les règles qu'ils nommaient sont bonnes,
+l'attribution était fausse — corrigée vers ce que le dépôt contient vraiment
+(`CLAUDE.md`, `core/memory/semantique.py`), jamais effacée.
+
 ### Corrigé — 09/09/2026 — Trois lenteurs/blocages trouvés pendant DEC-0077
 
 Suite à DEC-0077, sur demande du propriétaire : correction séparée des trois
