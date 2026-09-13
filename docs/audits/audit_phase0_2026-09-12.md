@@ -264,13 +264,31 @@ extension passe par `ALTER TABLE`/table annexe, jamais par une réécriture.
 
 ## G. Observabilité — PARTIAL
 
-`GET /api/observability` existe et un travail est suivable de bout en bout
-(`/observability/trail/{id}`). Le journal des actions masque les secrets
+`GET /api/observability` existe. Le journal des actions masque les secrets
 (`core/actions/journal.py`, zone verrouillée).
 
-Ce qui **manque** au regard de la Phase 13 : pas de `request_id` unifié
-traversant toute la chaîne, pas de `plan_id`, pas de `memory_hits`, pas de
-`stop_reason`, pas de `verification_used`.
+Ce qui **manque** au regard de la Phase 13 : `plan_id` pour la boucle agentique,
+`memory_hits`, et la sortie de `stop_reason` hors de la boucle.
+
+> **Correction du 13/09/2026 — troisième correction de ce rapport.**
+> Ce paragraphe portait deux erreurs, en sens opposés, vérifiées par exécution :
+>
+> | Annoncé | Mesuré |
+> |---|---|
+> | « un travail est suivable de bout en bout (`/observability/trail/{id}`) » | **cette route n'existe pas.** 55 routes déclarées (`tests/test_surface_api.py::routes_declarees()`), aucune ne contient `trail` |
+> | `stop_reason` manquant | **le concept existe** — `RaisonDArret`, 7 valeurs, porté par `EtatBoucle.raison_d_arret` (`core/execution/boucle.py`). Ce qui manque, c'est qu'il **sorte** de la boucle |
+> | `verification_used` manquant | le journal porte déjà `verification` : `VERIFIED` / `UNVERIFIED` / `NOT_APPLICABLE` |
+> | `plan_id` manquant | présent dans 3 fichiers — mais c'est **un autre plan** (réorganisation de fichiers, `core/connectors/file_organization.py`). Absent pour la boucle agentique, donc le constat tient pour ce qui compte |
+>
+> `request_id` et `memory_hits` étaient, eux, réellement absents — zéro
+> occurrence dans `core/`, `apps/`, `agents/`. **`request_id` est fait**
+> (DEC-0100, `core/observabilite/fil.py`) : l'identifiant traverse le
+> middleware HTTP, le journal des actions, et `/api/actions?request_id=…`
+> retrouve exactement les actions d'une demande.
+>
+> Ce rapport annonçait donc à la fois une capacité qui n'existait pas et
+> l'absence d'une qui existait. **Les deux erreurs coûtent** : la première fait
+> croire le travail fait, la seconde fait reconstruire ce qui est là.
 
 **STATUS : PARTIAL. ACTION (P1)**, à faire **en même temps** que la boucle
 agentique : ces champs n'ont de sens que s'il y a un plan à identifier.
