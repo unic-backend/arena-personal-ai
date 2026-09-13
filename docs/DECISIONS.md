@@ -9155,9 +9155,11 @@ contradiction. Réellement absents, et **non faits** : `confidence`,
 - Décision : `core/memory/contradiction.py` rapporte les conflits et n'en
   résout aucun. `resolue_par` vaut toujours `null`, les deux souvenirs
   reviennent entiers avec leur source, leur nature et leur date.
-- Pourquoi : c'est la règle de fusion de `core/live_context/` — deux sources
-  qui divergent produisent deux observations et un conflit rapporté, jamais une
-  moyenne et jamais un gagnant. Garder « le plus récent » serait choisir un
+- Pourquoi : deux sources qui divergent produisent deux observations et un
+  conflit rapporté, jamais une moyenne et jamais un gagnant. *(Correction du
+  13/09/2026 : cette ligne attribuait la règle à `core/live_context/`, qui
+  n'existe pas dans ce dépôt — une référence importée d'un autre projet. La
+  règle est bonne, l'attribution était fausse.)* Garder « le plus récent » serait choisir un
   prix à la place du propriétaire, et un mauvais tarif choisi par ARENA est
   indiscernable du bon tant qu'une facture n'arrive pas.
 - Coût si c'est faux : le propriétaire doit trancher lui-même à chaque conflit.
@@ -9488,3 +9490,189 @@ véritablement que quand il passe.
 26 tests dans `tests/core/test_plans_observables.py`, 7 sabotages, tous mordent.
 Les 44 tests existants de la boucle et du moteur exécutif passent sans
 modification, et les 57 de la récupération mémoire aussi.
+
+---
+
+## DEC-0103 — Rien ne disait à partir de quand un souvenir est vrai
+
+**2026-09-13.** Le dernier point que `DEC-0099` avait nommé sans le faire.
+Travail de nuit autorisé par le propriétaire.
+
+### Le défaut
+
+`expire_le` existe depuis le premier jour : il dit **quand cesser de croire**.
+Rien ne disait **à partir de quand commencer**. Le cas qui le rend nécessaire est
+celui du propriétaire :
+
+> « À partir du 1er octobre, le tarif de pose passe à 5500 F/m². »
+
+Enregistré en septembre. Sans début de validité, ARENA le sert **dès septembre**
+comme le tarif courant et répond un prix faux avec l'assurance d'un fait — la
+faute précise que `DUREE_CONTEXTE_HEURES` évite dans l'autre sens.
+
+### Décision 1 : `valide_depuis` n'est pas `cree_le`
+
+- Décision : un champ distinct. `cree_le` dit quand le souvenir a été **écrit**,
+  `valide_depuis` depuis quand il est **vrai**.
+- Pourquoi : les confondre est exactement ce qui fait servir une annonce comme
+  un fait. Un souvenir écrit aujourd'hui peut être vrai depuis un an, ou pas
+  avant le mois prochain.
+- Coût si c'est faux : une colonne de plus, `NULL` sur la quasi-totalité des
+  souvenirs. `None` veut dire « vrai depuis toujours », ce qui est exact.
+
+### Décision 2 : un souvenir pas encore vrai est écarté de la lecture courante
+
+- Décision : miroir exact du filtre des périmés. `inclure_a_venir=False` par
+  défaut, sur `souvenirs()` et sur `GET /api/memory`.
+- Pourquoi : le garder en mémoire sans le servir est précisément ce qu'on veut —
+  il sera vrai le mois prochain, et il n'est perdu ni effacé.
+- Coût si c'est faux : un appelant qui veut voir ce qui vient doit le demander.
+  C'est le même contrat qu'`inclure_perimes`, déjà en place.
+
+### Décision 3 : une date illisible tait le souvenir
+
+- Décision : `pas_encore_vrai` rend `True` sur une date illisible.
+- Pourquoi : même prudence qu'`est_perime`, qui traite une échéance illisible
+  comme passée. Des deux erreurs possibles, **taire un souvenir coûte moins cher
+  que d'affirmer une chose fausse**.
+- Coût si c'est faux : un souvenir dont la date a été mal saisie disparaît de la
+  lecture courante. Il reste lisible par identifiant et par `inclure_a_venir`.
+
+### Zone verrouillée
+
+`core/memory/personnelle.py`, conditions 1 et 6 de
+`PROJECT_MEMORY/LOCKED_ZONES.md`. Une colonne ajoutée par `ALTER TABLE` protégé
+d'une lecture de `PRAGMA table_info` — la même forme que `etat`, `sensible` et,
+cette nuit, `requete` du journal des actions. **Aucune ligne existante n'est
+touchée** : `NULL` veut dire « vrai depuis toujours », ce qui est exact pour
+tous les souvenirs d'avant.
+
+### Un sixième sabotage passé au vert cette nuit
+
+Retirer l'`ALTER TABLE` laissait **72 tests au vert**. Mon test de migration
+vérifiait que l'ancien souvenir survit — vrai avec ou sans la migration, puisque
+`_depuis_ligne` tolère la colonne absente et rend `None`. Il ne prouvait rien.
+
+Ce qui le prouve : **écrire** dans la base migrée. Sans la colonne, l'`INSERT`
+nomme un champ qui n'existe pas.
+
+C'est le sixième de la nuit, et le motif ne varie pas : un test qui mesure sa
+propre mise en scène plutôt que le code.
+
+### Preuve
+
+9 tests dans `tests/core/test_memoire_validite.py`, 4 sabotages, tous mordent.
+Les 120 tests existants de la mémoire et de la récupération passent sans
+modification.
+
+
+---
+
+## DEC-0104 — Une source qui se répète n'est pas une source de plus
+
+**2026-09-13.** Le dernier point que `DEC-0099` avait nommé sans le faire, après
+l'intervalle de validité (`DEC-0103`). Travail de nuit autorisé par le
+propriétaire.
+
+### Le défaut, mesuré avant d'écrire une ligne
+
+`confirmer()` est « le **seul** chemin par lequel une inférence devient un
+fait », et sa docstring promettait : « Elle exige une source nouvelle ». Elle ne
+le vérifiait pas. Mesure du 13/09/2026 :
+
+```
+depart          : INFERENCE | source = 'devis_aout.pdf'
+3x MEME source  : FACT      | source = 'devis_aout.pdf + devis_aout.pdf + devis_aout.pdf'
+```
+
+Un document qui se répète trois fois promouvait sa propre supposition en fait.
+ARENA répondait ensuite un tarif **avec l'assurance d'un fait corroboré** alors
+qu'une seule voix l'avait dit. C'est exactement la classe de défaut que la
+mission du propriétaire vise : *ne pas considérer qu'une fonctionnalité existe
+parce qu'un nom l'annonce*.
+
+### Décision 1 : deux chiffres, parce que ce sont deux questions
+
+- Décision : `occurrences` compte les **fois**, `nombre_de_sources` compte les
+  **voix**. Une répétition fait bouger le premier, jamais le second.
+- Pourquoi : « trois fois par une source » et « une fois par trois sources » se
+  ressemblaient dans le stockage et ne se ressemblent pas du tout dans la
+  réalité. Seul le second corrobore.
+- Coût si c'est faux : un champ de plus à lire. `occurrences` garde exactement
+  le sens qu'il avait.
+
+### Décision 2 : le compte est dérivé de la liste, jamais stocké
+
+- Décision : `sources` (liste JSON des voix distinctes) est la donnée ;
+  `nombre_de_sources` est une propriété calculée. Aucune colonne ne porte le
+  compte — un test structurel le vérifie sur le schéma.
+- Pourquoi : un compteur rangé à côté de la liste finit par la contredire, et
+  c'est alors **le compteur qu'on croit**, parce qu'il est plus facile à lire.
+- Coût si c'est faux : un `len()` à chaque lecture. Mesuré nul à cette échelle.
+
+### Décision 3 : « jamais compté » n'est pas « une seule »
+
+- Décision : `nombre_de_sources` rend `None` quand les voix n'ont pas été
+  comptées pour cette ligne. Trois cas, et le troisième est celui qui compte :
+  la liste existe → elle fait foi ; elle est absente et `source` n'a pas de
+  séparateur → le souvenir n'a jamais été confirmé, **une** voix, déduction
+  certaine ; elle est absente et `source` porte « a + b » → `None`.
+- Pourquoi : découper la chaîne pour deviner donnerait un chiffre, pas une
+  mesure — une source nommée « a + b » en vaudrait deux. C'est la règle de
+  `CLAUDE.md` appliquée ici : *un champ absent n'est pas zéro ; une population
+  inconnue vaut `None`, jamais `0` — qui se lirait « personne n'y habite »*.
+- Coût si c'est faux : les souvenirs confirmés avant cette nuit affichent `None`
+  au lieu d'un chiffre. Ils restent lisibles, et la **promotion** reste correcte
+  pour eux (décision 4).
+
+### Décision 4 : compter et appartenir ne sont pas la même fiabilité
+
+- Décision : pour une ligne ancienne, on découpe quand même `source` — mais pour
+  un test d'**appartenance** seulement, jamais pour compter.
+- Pourquoi : savoir si une chaîne donnée figure parmi les segments est fiable
+  dans les deux sens ; savoir combien il y a de segments ne l'est pas. La
+  distinction sauve la correction de `confirmer()` sur les anciennes lignes sans
+  fabriquer le moindre chiffre.
+- Coût si c'est faux : une source littéralement nommée « a + b » serait mal
+  jugée. Elle n'existe dans aucune ligne du dépôt, et pour les lignes neuves la
+  liste fait foi — le découpage n'est jamais atteint.
+
+### Décision 5 : celui qui rejette n'est pas une voix
+
+- Décision : `rejeter`, `archiver` et `reactiver` tracent qui a décidé dans
+  `source`, et ne touchent pas `sources`.
+- Pourquoi : dire non au contenu n'est pas l'affirmer.
+- Coût si c'est faux : rien — s'il l'affirme plus tard, `confirmer` le comptera.
+
+### Décision 6 : `confidence` n'est **pas** implémenté, et c'est délibéré
+
+`DEC-0099` nommait trois manques. Deux sont faits (`DEC-0103`, celui-ci). Le
+troisième ne le sera pas sous cette forme.
+
+- Décision : aucun score de confiance n'est calculé ni stocké.
+- Pourquoi : un flottant `0.82` à côté d'un souvenir serait lu comme une mesure.
+  Rien ici ne le mesure — il serait dérivé d'une pondération choisie par moi,
+  puis cité comme un fait. `CLAUDE.md` l'interdit nommément : *un chiffre
+  plausible à la place d'une mesure est un mensonge qui devient permanent le
+  jour où un test le fige*.
+  Ce qu'un lecteur veut savoir existe déjà, **et c'est mesuré** : `nature`
+  (fait ou supposition), `nombre_de_sources` (combien de voix, ou `None`),
+  `est_en_vigueur()` (vrai maintenant ou pas), et le rapport de contradictions.
+- Coût si c'est faux : un appelant qui voudrait trier par confiance doit
+  composer ces quatre-là lui-même. C'est plus de travail, et c'est vérifiable.
+- **Ce qui le rouvrirait** : que le propriétaire décide d'une pondération, et
+  la nomme. Un score est un jugement produit ; ce n'est pas à moi de le fixer.
+
+### Zone verrouillée
+
+`core/memory/personnelle.py`, conditions 1 et 6 de
+`PROJECT_MEMORY/LOCKED_ZONES.md`. Une colonne ajoutée par `ALTER TABLE` protégé
+d'une lecture de `PRAGMA table_info` — quatrième de la même forme après `etat`,
+`sensible` et `valide_depuis`. **Aucune ligne existante n'est touchée.**
+
+### Preuve
+
+16 tests dans `tests/core/test_memoire_sources.py`. Six sabotages, tous mordent,
+chacun sur les tests qui le couvrent et aucun autre — dont le retrait de la
+vérification de nouveauté, qui fait tomber cinq tests et restitue exactement le
+défaut mesuré ci-dessus.
