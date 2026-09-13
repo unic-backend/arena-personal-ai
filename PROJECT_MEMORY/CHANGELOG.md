@@ -1696,3 +1696,71 @@ d'exposer le port.** C'est le seul scénario mesuré où l'exposition devient
 exploitable.
 
 Détail complet dans `docs/CURRENT_TASK.md`.
+
+---
+
+## 2026-09-13 (nuit) — session « tout ce qui reste », DEC-0099 → DEC-0104
+
+Autorisée par le propriétaire avant d'aller dormir : « tu dois enchaîner tout ce
+qui reste sans attendre rien de moi ». Deux limites tenues malgré l'autorisation
+large : **aucune fusion dans `main`** (sa décision), et **aucun chiffre non
+mesuré** (l'autorisation d'aller vite n'autorise pas à fabriquer).
+
+### Fusionné par lui pendant la nuit
+
+| PR | Ce qui change | Preuve |
+|---|---|---|
+| #211 | boucle agentique greffée sur l'Executive Brain | seconde chance + budgets, suite complète verte |
+| #212 | `DECISION`/`ERREUR` + détection de contradiction (DEC-0099) | 37 tests, 8 sabotages |
+| #213 | `X-Request-ID` du premier octet à la dernière action (DEC-0100) | `/api/actions?request_id=` |
+
+### Ouvert, en attente de sa décision
+
+| PR | Base | Sujet |
+|---|---|---|
+| #214 | `main` | statistiques du routeur par type de tâche (DEC-0101) |
+| #215 | `main` | frontière de confiance gardée sur le chemin exécutif — 16 tests, zéro code de production |
+| #216 | #214 | `/api/plans` : ce qu'un plan a fait, et pourquoi il s'est arrêté (DEC-0102) |
+| #217 | `main` | `valide_depuis` : depuis quand un souvenir est vrai (DEC-0103) |
+| #218 | #217 | une source qui se répète n'est pas une source de plus (DEC-0104) |
+
+**L'ordre compte** : #216 repose sur #214, #218 sur #217.
+
+### Le motif de la nuit : six sabotages passés au vert
+
+Six fois, un test écrit dans la soirée a survécu à la suppression du code qu'il
+prétendait garder. À chaque fois la cause était la même — **le test mesurait sa
+propre mise en scène**, pas le code :
+
+- `_taux(n, 0)` : le zéro était fourni par le test lui-même ;
+- `with tache(intent)` : l'intention était déjà posée par le harnais ;
+- candidats contre souvenirs retenus : le compteur lisait la mauvaise liste ;
+- remise à zéro par plan : il fallait **imbriquer** deux plans, pas les
+  enchaîner ;
+- migration `valide_depuis` : lire la base migrée passait sans la migration ;
+  seule une **écriture** le prouve.
+
+C'est le constat le plus réutilisable de la nuit, et il vaut pour tout test
+futur : *si le sabotage ne fait rien tomber, le test mesure le décor.*
+
+### Deux défauts réels, tous deux trouvés en faisant le travail
+
+1. **`confirmer()` promettait sans vérifier** — trois appels avec le même
+   document promouvaient une inférence en fait. Mesuré avant correction :
+   `source = 'devis_aout.pdf + devis_aout.pdf + devis_aout.pdf'`, `nature =
+   FACT`. Corrigé dans #218.
+2. **Trois chemins d'un autre projet cités comme s'ils étaient d'ici**
+   (`core/live_context/`, `src/live_context/`) dans DEC-0099,
+   `core/memory/contradiction.py` et `apps/backend/prompts.py`. Corrigés en
+   place, jamais effacés.
+
+### Refusé, et écrit pour ne pas être redemandé
+
+**`confidence`.** Un flottant à côté d'un souvenir serait lu comme une mesure.
+Rien ne le mesure. Ce qui le rouvrirait : que le propriétaire décide d'une
+pondération et la nomme.
+
+### Reste
+
+Un seul point de l'audit PHASE 0 : le **banc d'essai des modèles locaux** (P2),
+qui exige sa machine — aucun modèle n'a jamais tourné ici.
