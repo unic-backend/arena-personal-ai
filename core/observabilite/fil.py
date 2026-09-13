@@ -68,6 +68,19 @@ _fil: ContextVar[Optional[str]] = ContextVar("fil_de_demande", default=None)
 #: information qui ne change aucun comportement — elle ne fait que se mesurer.
 _type_tache: ContextVar[Optional[str]] = ContextVar("type_de_tache", default=None)
 
+#: Le plan en cours d'execution, quand il y en a un. Meme mecanisme que les deux
+#: au-dessus, et pour la meme raison : une action declenchee par une etape de
+#: plan doit pouvoir nommer ce plan sans qu'on ait fait descendre un parametre
+#: a travers `Coordination`, `Etape` et chaque connecteur.
+_plan: ContextVar[Optional[str]] = ContextVar("plan_en_cours", default=None)
+
+#: Combien de souvenirs la recuperation a rendus depuis le debut du bloc
+#: courant. Une LISTE d'un seul entier plutot qu'un entier : un `ContextVar`
+#: pose une valeur, il ne l'incremente pas — et reposer une valeur incrementee
+#: depuis une tache fille ne remonterait pas a la tache mere, qui est justement
+#: celle qui lit le total a la fin du plan.
+_souvenirs_lus: ContextVar[Optional[list]] = ContextVar("souvenirs_lus", default=None)
+
 
 def identifiant_acceptable(propose: Optional[str]) -> bool:
     """Un identifiant propose de l'exterieur peut-il etre adopte tel quel ?
@@ -153,3 +166,61 @@ def type_tache_courant() -> Optional[str]:
         statistique qu'on cherche a etablir.
     """
     return _type_tache.get()
+
+
+@contextmanager
+def plan(plan_id: str) -> Iterator[str]:
+    """Declare le plan en cours, et remet a zero le compteur de souvenirs lus.
+
+    Args:
+        plan_id: l'identifiant de cette execution de boucle.
+
+    Yields:
+        L'identifiant, tel quel.
+    """
+    jeton_plan = _plan.set(plan_id)
+    # Le compteur appartient au plan : le remettre a zero ICI est ce qui fait
+    # que « 12 souvenirs consultes » veut dire « par ce plan », et non « depuis
+    # le demarrage du serveur ».
+    jeton_compteur = _souvenirs_lus.set([0])
+    try:
+        yield plan_id
+    finally:
+        _souvenirs_lus.reset(jeton_compteur)
+        _plan.reset(jeton_plan)
+
+
+def plan_courant() -> Optional[str]:
+    """L'identifiant du plan en cours, ou `None` hors d'un plan.
+
+    Returns:
+        L'identifiant, ou `None` — une action peut tres bien avoir lieu sans
+        plan (une demande simple, un script), et le dire vaut mieux que de lui
+        en attribuer un.
+    """
+    return _plan.get()
+
+
+def compter_souvenirs_lus(combien: int) -> None:
+    """Ajoute au compteur de souvenirs du plan courant.
+
+    Args:
+        combien: le nombre de souvenirs qu'une recuperation vient de rendre.
+
+    Hors d'un plan, ne fait rien : compter des lectures qui n'appartiennent a
+    aucun plan gonflerait le total du plan suivant.
+    """
+    compteur = _souvenirs_lus.get()
+    if compteur is not None and combien > 0:
+        compteur[0] += combien
+
+
+def souvenirs_lus() -> int:
+    """Combien de souvenirs ont ete consultes depuis le debut du plan courant.
+
+    Returns:
+        Le compte, ou `0` hors d'un plan. Le zero est exact dans les deux cas :
+        hors plan, aucun souvenir n'a ete compte POUR un plan.
+    """
+    compteur = _souvenirs_lus.get()
+    return compteur[0] if compteur is not None else 0

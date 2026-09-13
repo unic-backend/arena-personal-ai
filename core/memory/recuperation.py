@@ -39,6 +39,7 @@ from core.memory.personnelle import (
     TypeSouvenir,
     est_un_echec_de_lecture,
 )
+from core.observabilite.fil import compter_souvenirs_lus
 
 logger = logging.getLogger("usman.memoire.recuperation")
 
@@ -385,6 +386,12 @@ def recuperer(
 
     logger.debug("Recuperation : %s candidat(s), %s retenu(s), %s caracteres.",
                  len(candidats), len(retenus), total)
+    # Ce que le plan courant a REELLEMENT lu, compte ici et nulle part ailleurs :
+    # c'est le seul point ou l'on sait combien de souvenirs sont partis vers une
+    # invite. Compter les candidats plutot que les retenus gonflerait le chiffre
+    # de tout ce que le budget a ecarte — un souvenir non pris n'a pas ete
+    # consulte par le modele. Hors plan, `compter_souvenirs_lus` ne fait rien.
+    compter_souvenirs_lus(len(retenus))
     return retenus
 
 

@@ -24,6 +24,7 @@ from apps.backend.runtime import (
     acces,
     file_attente,
     journal,
+    journal_des_plans,
     mesures_execution,
     statistiques_routage,
 )
@@ -34,6 +35,7 @@ from core.execution.mesures import Rapport, non_lancee, resume_chiffre
 from core.execution.voies import ORDRE, budget_de
 from core.models.statistiques import LIMITE_PAR_DEFAUT as LIMITE_PASSAGES
 from core.observabilite.fil import LONGUEUR_MAX as LONGUEUR_MAX_FIL
+from core.observabilite.plans import LIMITE_PAR_DEFAUT as LIMITE_PLANS
 
 logger = logging.getLogger("usman.backend")
 
@@ -170,6 +172,31 @@ async def lire_permissions(compte: Optional[str] = Query(None)) -> Dict[str, Any
         "coupe_circuits": dict(acces.permissions.permissions),
         "services": resolu,
     }
+
+
+@router.get("/api/plans", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
+async def lire_les_plans(
+    limite: int = Query(default=LIMITE_PLANS, ge=1, le=1000),
+    request_id: Optional[str] = Query(None, max_length=LONGUEUR_MAX_FIL),
+) -> Dict[str, Any]:
+    """Ce qu'un plan a fait, et **pourquoi il s'est arrete**.
+
+    Avant le 13/09/2026, `raison_d_arret` existait dans la boucle mais n'en
+    sortait jamais : elle finissait dans une ligne de journal applicatif,
+    c'est-a-dire nulle part ou quelqu'un puisse la retrouver le lendemain.
+
+    Le manque etait concret : quand une demande aboutissait a une reponse
+    incomplete, rien ne disait si le plan avait **atteint son objectif**,
+    **epuise son budget de tours**, ou **manque de temps**. Les trois se
+    ressemblent vues de l'exterieur et appellent trois gestes differents.
+
+    Avec `request_id`, la chaine est complete : l'en-tete `X-Request-ID` rendu
+    par la reponse retrouve les actions (`/api/actions`) **et** les plans que
+    cette demande a declenches.
+
+    `atteint` mesure l'arret, pas la qualite : aucun plan n'est juge ici.
+    """
+    return journal_des_plans.resume(limite=limite, requete_id=request_id)
 
 
 @router.get("/api/models/statistics",

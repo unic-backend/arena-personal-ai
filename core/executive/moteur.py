@@ -29,6 +29,7 @@ from core.executive.specialistes import CONSULTANTS, ConsultationEntree
 from core.executive.synthese import synthetiser
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
+from core.observabilite.plans import JournalDesPlans
 
 logger = logging.getLogger("usman.executive.moteur")
 
@@ -86,6 +87,9 @@ class MoteurExecutif:
     memory: Optional[MemoryManager] = None
     lightrag_query: Optional[Callable[[str], str]] = None
     chercheur: Optional[Callable[[str], List[Dict[str, str]]]] = None
+    #: Ou l'execution du plan de consultation sera enregistree. `None` : elle
+    #: tourne sans laisser de trace, ce qui est le cas d'un test.
+    journal_des_plans: Optional[JournalDesPlans] = None
 
     async def analyser(self, question: str) -> DecisionExecutive:
         question = (question or "").strip()
@@ -194,6 +198,7 @@ class MoteurExecutif:
             budget=Budget(etapes_max=max(1, len(roles) * TOURS_MAX),
                           tours_max=TOURS_MAX, secondes_max=SECONDES_MAX),
             parallelisme=max(1, len(roles)),
+            journal=self.journal_des_plans,
         ).executer()
 
         if etat.replanifications:

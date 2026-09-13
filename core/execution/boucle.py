@@ -39,11 +39,19 @@ from __future__ import annotations
 import inspect
 import logging
 import time
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from core.execution.coordination import Coordination, Etape, Resultat, Trace
+from core.observabilite.fil import (
+    fil_courant,
+    plan,
+    souvenirs_lus,
+    type_tache_courant,
+)
+from core.observabilite.plans import JournalDesPlans, PlanExecute
 
 logger = logging.getLogger("usman.execution.boucle")
 
@@ -136,6 +144,10 @@ class EtatBoucle:
 
     objectif: str
     budget: Budget
+    #: L'identifiant de CETTE execution. Deux executions du meme objectif en ont
+    #: deux differents : c'est ce qui permet de les distinguer quand la premiere
+    #: a echoue.
+    plan_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     tours: List[Observation] = field(default_factory=list)
     etapes_consommees: int = 0
     #: `None` tant qu'aucun compteur d'outils n'est branche (regle 5).
@@ -156,6 +168,7 @@ class EtatBoucle:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "plan_id": self.plan_id,
             "objectif": self.objectif,
             "atteint": self.atteint,
             "raison_d_arret": self.raison_d_arret.value if self.raison_d_arret else None,
@@ -205,6 +218,7 @@ class BoucleAgentique:
         observateur: Optional[Callable[[Trace], None]] = None,
         compteur_outils: Optional[Callable[[], int]] = None,
         parallelisme: Optional[int] = None,
+        journal: Optional[JournalDesPlans] = None,
     ) -> None:
         """
         Args:
@@ -233,6 +247,10 @@ class BoucleAgentique:
         if parallelisme is not None and parallelisme < 1:
             raise ValueError("Un parallelisme inferieur a 1 n'execute rien.")
         self.parallelisme = parallelisme
+        #: Ou l'execution sera enregistree. `None` : la boucle tourne sans
+        #: laisser de trace — c'est le cas d'un test ou d'un appel direct, et
+        #: ce n'est pas une panne.
+        self.journal = journal
         self.etat = EtatBoucle(objectif=objectif, budget=self.budget)
 
     def _outils_consommes(self, depart: Optional[int]) -> Optional[int]:
@@ -246,15 +264,56 @@ class BoucleAgentique:
             return None
 
     def _arreter(self, raison: RaisonDArret, depart: float) -> EtatBoucle:
+        """Le passage OBLIGE de tout arret — donc le seul endroit ou enregistrer.
+
+        La boucle ne sort jamais sans raison : chaque `return` du corps passe
+        ici. Une ligne sans raison dans le journal des plans signalerait donc un
+        chemin qui contourne cette methode, et c'est exactement ce qu'on veut
+        pouvoir voir.
+        """
         self.etat.secondes = time.perf_counter() - depart
         self.etat.raison_d_arret = raison
         logger.info("Boucle « %s » arretee : %s (%s etape(s), %s tour(s))",
                     self.objectif[:60], raison.value,
                     self.etat.etapes_consommees, len(self.etat.tours))
+        self._enregistrer()
         return self.etat
+
+    def _enregistrer(self) -> None:
+        """Ecrit l'execution au journal des plans. Ne leve jamais.
+
+        Avant le 13/09/2026, `raison_d_arret` finissait dans une ligne de
+        journal applicatif — c'est-a-dire nulle part ou quelqu'un puisse la
+        retrouver le lendemain. « Objectif atteint », « budget de tours
+        epuise » et « plus de temps » se ressemblent vues de l'exterieur, et
+        elles appellent trois gestes differents.
+        """
+        if self.journal is None:
+            return
+        self.journal.enregistrer(PlanExecute(
+            plan_id=self.etat.plan_id,
+            objectif=self.objectif,
+            raison_d_arret=self.etat.raison_d_arret.value,
+            atteint=self.etat.atteint,
+            tours=len(self.etat.tours),
+            etapes=self.etat.etapes_consommees,
+            secondes=self.etat.secondes,
+            requete=fil_courant(),
+            type_tache=type_tache_courant(),
+            # `None` quand aucun compteur n'etait branche : la regle 5 de cette
+            # boucle. Ecrire `0` ferait lire « aucun outil appele » la ou la
+            # verite est « personne n'a compte ».
+            appels_outils=self.etat.appels_outils,
+            souvenirs_consultes=souvenirs_lus(),
+        ))
 
     async def executer(self) -> EtatBoucle:
         """Conduit la boucle jusqu'a une raison d'arret. N'en sort jamais sans."""
+        with plan(self.etat.plan_id):
+            return await self._conduire()
+
+    async def _conduire(self) -> EtatBoucle:
+        """Le corps de la boucle, sous le plan pose par `executer`."""
         depart = time.perf_counter()
         outils_au_depart: Optional[int] = None
         if self.compteur_outils is not None:
