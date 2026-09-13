@@ -7,10 +7,9 @@ deux avec leur source, et la recuperation rendait celui qui gagnait au score.
 Le proprietaire recevait donc un chiffre au hasard, presente avec l'assurance
 d'un fait.
 
-**Ce module enregistre le conflit et n'en resout aucun.** C'est la meme regle
-que la fusion de `core/live_context/` : deux sources qui divergent produisent
-deux observations et un conflit rapporte, jamais une moyenne et jamais un
-gagnant. Choisir a la place du proprietaire serait pire que se taire : un
+**Ce module enregistre le conflit et n'en resout aucun.** Deux sources qui
+divergent produisent deux observations et un conflit rapporte, jamais une
+moyenne et jamais un gagnant. Choisir a la place du proprietaire serait pire que se taire : un
 mauvais tarif choisi par ARENA est indiscernable du bon tant qu'une facture
 n'arrive pas.
 

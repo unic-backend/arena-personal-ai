@@ -43,6 +43,10 @@ class CreationSouvenir(BaseModel):
     projet: Optional[str] = None
     importance: float = 0.5
     sensible: bool = False
+    #: A partir de quand le contenu est vrai (ISO 8601). `None` = depuis
+    #: toujours. « A partir du 1er octobre, le tarif passe a 5500 » s'enregistre
+    #: en septembre et n'est pas servi comme verite courante avant octobre.
+    valide_depuis: Optional[str] = None
 
 
 class ChangementEtat(BaseModel):
@@ -66,12 +70,19 @@ async def lister(
     limite: int = Query(default=50, ge=1, le=500),
     inclure_rejetes: bool = False,
     inclure_archives: bool = False,
+    inclure_a_venir: bool = False,
 ) -> List[Dict[str, Any]]:
-    """Les souvenirs actifs (et rejetes/archives si demande explicitement)."""
+    """Les souvenirs en vigueur (et rejetes/archives/a venir si demande).
+
+    `inclure_a_venir` rend aussi ceux dont la validite n'a pas commence — un
+    tarif annonce pour le mois prochain. Ils sont ecartes par defaut : les
+    rendre ferait repondre « le tarif est 5500 » un mois trop tot.
+    """
     type_souvenir = _type_depuis_texte(type) if type else None
     souvenirs = memoire_personnelle.souvenirs(
         type=type_souvenir, projet=projet, limite=limite,
         inclure_rejetes=inclure_rejetes, inclure_archives=inclure_archives,
+        inclure_a_venir=inclure_a_venir,
     )
     return [s.to_dict() for s in souvenirs]
 
@@ -128,6 +139,7 @@ async def creer(demande: CreationSouvenir) -> Dict[str, Any]:
             contenu=demande.contenu, type=_type_depuis_texte(demande.type),
             nature=Nature.INFERENCE, source=demande.source, projet=demande.projet,
             importance=demande.importance, sensible=demande.sensible,
+            valide_depuis=demande.valide_depuis,
         )
     except ValueError as erreur:
         raise HTTPException(status_code=422, detail=str(erreur)) from erreur
