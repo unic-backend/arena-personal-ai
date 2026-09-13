@@ -23,6 +23,8 @@ from pydantic import BaseModel, Field
 
 from apps.backend.runtime import memoire_personnelle
 from apps.backend.security import limiter_debit, verify_api_key
+from core.memory.contradiction import LIMITE_PAR_DEFAUT
+from core.memory.contradiction import rapport as rapport_contradictions
 from core.memory.import_conversations import FormatImportInconnu, importer_dans_la_memoire
 from core.memory.personnelle import Nature, TypeSouvenir
 from core.memory.recuperation import BUDGET_PAR_DEFAUT, recuperer
@@ -83,6 +85,29 @@ async def chercher(
     """Recherche pertinente et bornee (§10) — jamais toute la memoire."""
     resultats = recuperer(memoire_personnelle, q, budget_caracteres=budget_caracteres, projet=projet)
     return [{**r.souvenir.to_dict(), "score": r.score, "pourquoi": r.pourquoi()} for r in resultats]
+
+
+# ATTENTION A L'ORDRE : cette route doit rester AVANT `/api/memory/{identifiant}`.
+# FastAPI resout dans l'ordre de declaration ; placee apres, « contradictions »
+# serait lu comme un identifiant de souvenir et la route rendrait un 404.
+# `tests/test_memory_router.py` epingle ce point precis.
+@router.get("/api/memory/contradictions", dependencies=_PROTECTIONS)
+async def lister_contradictions(
+    projet: Optional[str] = None,
+    limite: int = Query(default=LIMITE_PAR_DEFAUT, ge=1, le=5_000),
+) -> Dict[str, Any]:
+    """Ce que la memoire croit et qui ne peut pas etre vrai ensemble.
+
+    ARENA **rapporte** le conflit et n'en tranche aucun : les deux souvenirs
+    reviennent entiers, avec leur source, leur nature et leur date, et
+    `resolue_par` vaut toujours `null`. Choisir un tarif a la place du
+    proprietaire serait indiscernable du bon tant qu'une facture n'arrive pas.
+
+    La reponse porte toujours `portee` : la detection est numerique, la
+    negation n'en fait pas partie, et « 0 contradiction » ne veut donc pas dire
+    « memoire coherente ».
+    """
+    return rapport_contradictions(memoire_personnelle, projet=projet, limite=limite)
 
 
 @router.get("/api/memory/{identifiant}", dependencies=_PROTECTIONS)

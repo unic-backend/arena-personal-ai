@@ -9103,3 +9103,97 @@ une base à l'ANCIEN format et vérifie que le souvenir qui s'y trouvait
 survit, et un qui vérifie que l'ordre rendu est identique (un index change
 le chemin, jamais le résultat). Suite complète : **5497 passed, 31 skipped,
 52 deselected** (648 s). `ruff check .` propre.
+
+---
+
+## DEC-0099 — La mémoire se contredisait sans que rien ne le remarque (PR à venir)
+
+**2026-09-13.** Suite de l'audit PHASE 0, priorité P1 : « types de mémoire
+manquants + contradiction ». Demande du propriétaire : « continue ».
+
+### Le constat de l'audit était faux sur deux points
+
+Vérifié par exécution avant d'écrire une ligne, pas lu :
+
+| Annoncé absent (section F) | Mesuré | Écrit par |
+|---|---|---|
+| `EPISODE` | existe — `TypeSouvenir.EPISODIQUE = "EPISODIC"` | `agents/plaquiste/plaquiste_agent.py:1338` |
+| `PROCEDURE` | existe — `TypeSouvenir.PROCEDURALE = "PROCEDURAL"` | `core/production/organisation/memoire.py:49` |
+| validité temporelle | existe — `expire_le`, `est_perime()`, `DUREE_CONTEXTE_HEURES` | `retenir(duree_heures=…)` |
+
+Cause : l'audit a comparé la liste de la Phase 4 à l'énumération `Nature` sans
+lire `TypeSouvenir`, qui est l'autre axe et portait déjà deux des quatre types
+réclamés. Corrigé **dans le rapport**, pas effacé — c'est sa deuxième
+correction après la section C (PR #209).
+
+Réellement absents, et faits ici : `DECISION`, `MISTAKE`, la détection de
+contradiction. Réellement absents, et **non faits** : `confidence`,
+`source_count`, un intervalle de validité (*valide à partir de*).
+
+### Décision 1 : deux types de plus, zéro changement de schéma
+
+- Décision : ajouter `TypeSouvenir.DECISION` et `TypeSouvenir.ERREUR`
+  (`"MISTAKE"`).
+- Pourquoi ils ne sont pas des épisodes déguisés : un épisode raconte **ce qui
+  s'est passé** et il est neutre ; une décision dit **ce qui a été tranché**,
+  donc ce qui n'est plus à rediscuter, et classée `EPISODIQUE` elle entre en
+  concurrence d'importance avec tous les autres événements du jour — ARENA
+  repose alors une question déjà réglée. Une erreur porte en plus un « ne pas
+  refaire », et c'est la seule catégorie dont l'intérêt est d'être remontée
+  **avant** de recommencer.
+- Zone verrouillée respectée : la colonne `type` est `TEXT` sans contrainte
+  `CHECK`. **Aucune migration, aucun `ALTER TABLE`, aucune table annexe** —
+  vérifié en écrivant les deux valeurs dans une base créée avant le changement
+  puis rouverte. C'est le plus petit changement possible, et la condition 6 de
+  `PROJECT_MEMORY/LOCKED_ZONES.md` (le propriétaire le demande) est remplie.
+- Coût si c'est faux : deux étiquettes que personne n'écrit. Atténué — les deux
+  passent par `/api/memory` sans plomberie nouvelle, et `DECISION` sert
+  immédiatement de type comparable à la détection ci-dessous.
+
+### Décision 2 : la contradiction est enregistrée, jamais arbitrée
+
+- Décision : `core/memory/contradiction.py` rapporte les conflits et n'en
+  résout aucun. `resolue_par` vaut toujours `null`, les deux souvenirs
+  reviennent entiers avec leur source, leur nature et leur date.
+- Pourquoi : c'est la règle de fusion de `core/live_context/` — deux sources
+  qui divergent produisent deux observations et un conflit rapporté, jamais une
+  moyenne et jamais un gagnant. Garder « le plus récent » serait choisir un
+  prix à la place du propriétaire, et un mauvais tarif choisi par ARENA est
+  indiscernable du bon tant qu'une facture n'arrive pas.
+- Coût si c'est faux : le propriétaire doit trancher lui-même à chaque conflit.
+  C'est délibéré, et un test structurel (`test_le_module_n_expose_aucun_resolveur`)
+  empêche qu'une fonction de confort soit ajoutée six mois plus tard.
+
+### Décision 3 : la portée est étroite, et déclarée à chaque appel
+
+- Décision : seules les divergences **numériques** sur un même sujet sont
+  détectées. La négation (« on travaille avec X » / « on ne travaille plus avec
+  X ») ne l'est pas, et `PORTEE` le dit dans chaque réponse HTTP.
+- Pourquoi : aucun modèle n'est appelé — le verdict doit être identique à
+  chaque exécution, et une contradiction annoncée par un modèle serait une
+  affirmation de plus à vérifier. Un prix, une surface, un délai : c'est la
+  forme qui coûte le plus cher ici, et la seule qui se mesure sans interpréter.
+- Coût si c'est faux : des contradictions de sens passent inaperçues. Atténué
+  par la déclaration — « 0 contradiction » n'est jamais rendu seul, la note dit
+  qu'il ne signifie pas « mémoire cohérente ». Un détecteur qui laisse croire
+  qu'il voit tout est plus dangereux que pas de détecteur.
+
+### Décision 4 : trois types seulement peuvent se contredire
+
+- Décision : `SEMANTIQUE`, `PROCEDURALE` et `DECISION`. Ni `EPISODIQUE`, ni
+  `TACHE`, ni `ERREUR`, et jamais `Nature.CONTEXTE_TEMPORAIRE`.
+- Pourquoi : « le 4 août, 18 parois » et « le 5 août, 20 parois » partagent
+  leur sujet et diffèrent par leurs nombres — ce sont deux journées, pas un
+  conflit. Sans cette exclusion, le détecteur crierait à chaque journée de
+  chantier, serait coupé en une semaine, et la vraie contradiction partirait
+  avec lui.
+- Coût si c'est faux : deux décisions notées comme épisodes ne sont pas
+  comparées. C'est ce que le type `DECISION` corrige.
+
+### Preuve
+
+28 tests dans `tests/core/test_memoire_contradiction.py`, 9 dans
+`tests/test_memory_router.py`. Huit sabotages, chacun faisant tomber les tests
+qui le couvrent et aucun autre — dont l'ordre de déclaration FastAPI : placée
+après `/api/memory/{identifiant}`, la route `contradictions` serait lue comme
+un identifiant et rendrait un 404 muet.

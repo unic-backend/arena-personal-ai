@@ -230,9 +230,30 @@ chiffrement au repos, la provenance (`source` obligatoire), et la règle « une
 inférence ne devient pas un fait toute seule » — **testée nommément**
 (`test_une_inference_ne_devient_pas_un_fait_toute_seule`).
 
-Ce qui **n'existe pas** : `EPISODE`, `DECISION`, `PROCEDURE`, `MISTAKE`, la
-`confidence`, le `source_count`, la validité temporelle, et **la détection de
-contradiction**.
+Ce qui **n'existe pas** : `DECISION`, `MISTAKE`, la `confidence`, le
+`source_count`, un intervalle de validité (*valide à partir de*), et **la
+détection de contradiction**.
+
+> **Correction du 13/09/2026 — ce paragraphe portait un constat faux.**
+> Il annonçait aussi `EPISODE`, `PROCEDURE` et « la validité temporelle »
+> comme absents. Les trois existent, et pas seulement sur le papier :
+>
+> | Annoncé absent | Mesuré | Écrit par |
+> |---|---|---|
+> | `EPISODE` | `TypeSouvenir.EPISODIQUE = "EPISODIC"` | `agents/plaquiste/plaquiste_agent.py:1338` |
+> | `PROCEDURE` | `TypeSouvenir.PROCEDURALE = "PROCEDURAL"` | `core/production/organisation/memoire.py:49` |
+> | validité temporelle | `Souvenir.expire_le` + `est_perime()` + `DUREE_CONTEXTE_HEURES` | `retenir(duree_heures=...)` |
+>
+> La cause de l'erreur : l'audit a comparé la liste de la Phase 4 à l'énumération
+> `Nature` (FAIT / PREFERENCE / INFERENCE / CONTEXTE_TEMPORAIRE) sans lire
+> `TypeSouvenir`, qui est l'autre axe et qui porte déjà deux des quatre types
+> réclamés. Ce qui manquait réellement de la validité temporelle, c'est le
+> **début** d'un intervalle : `expire_le` dit quand cesser de croire, rien ne dit
+> depuis quand c'était vrai.
+>
+> C'est la **deuxième** correction de ce rapport après celle de la section C
+> (PR #209). Un audit qui se corrige reste utile ; un audit qu'on croit sur
+> parole fait construire ce qui existe déjà.
 
 **STATUS : LIVE pour ce qu'elle couvre, les 4 types manquants sont ABSENTS.**
 **ACTION (P1) :** ajouter les types, pas réécrire. `core/memory/personnelle.py`
