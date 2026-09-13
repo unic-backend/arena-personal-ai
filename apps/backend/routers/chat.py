@@ -55,6 +55,7 @@ from apps.backend.security import limiter_debit, validate_media_path, verify_api
 from apps.backend.studio import lancer_studio
 from core.architecture.plan import executer as executer_architecture
 from core.context.recherche_unifiee import MOTS_MEMOIRE
+from core.observabilite.fil import tache
 from tools.documents.indexer import (
     DOSSIER_DOCUMENTS,
     FICHIER_INVENTAIRE,
@@ -430,14 +431,31 @@ async def _donnees_senegal(question: str) -> Optional[Dict[str, Any]]:
 
 
 async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -> Dict[str, Any]:
-    """Aiguille la demande vers l'agent choisi.
+    """Aiguille la demande vers l'agent choisi, en declarant son type de tache.
 
     `intent` permet a l'appelant de transmettre une classification deja faite :
     elle coute un appel au modele, inutile de la refaire.
+
+    **C'est ici, et seulement ici, que le type de tache est pose** (13/09/2026).
+    L'intention est deja calculee une fois par demande, et les cinq appelants
+    passent tous par cette fonction : la poser ailleurs la manquerait pour l'un
+    d'eux, et la statistique de routage rangerait ses appels sous
+    `HORS_INTENTION` sans que rien ne le signale.
+
+    Le corps est dans `_aiguiller` plutot qu'enveloppe ici : envelopper les
+    cent-quatre-vingts lignes de l'aiguillage aurait demande de toutes les
+    reindenter, pour un diff illisible et un risque sans rapport avec ce qu'on
+    cherche a mesurer.
     """
-    session_id = request.session_id or "default"
     if intent is None:
         intent = await orchestrator.analyze_intent(request.prompt)
+    with tache(intent):
+        return await _aiguiller(request, intent)
+
+
+async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
+    """Le corps de l'aiguillage. `intent` est toujours connu ici."""
+    session_id = request.session_id or "default"
     logger.info(f"Intention détectée par Usman: {intent}")
 
     if intent == "DEEP_REASONING":

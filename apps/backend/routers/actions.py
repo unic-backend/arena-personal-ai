@@ -20,13 +20,22 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from apps.backend.runtime import acces, file_attente, journal, mesures_execution
+from apps.backend.runtime import (
+    acces,
+    file_attente,
+    journal,
+    journal_des_plans,
+    mesures_execution,
+    statistiques_routage,
+)
 from apps.backend.security import limiter_debit, verify_api_key
 from core.actions.resultat import Statut
 from core.actions.timeline import to_dict
 from core.execution.mesures import Rapport, non_lancee, resume_chiffre
 from core.execution.voies import ORDRE, budget_de
+from core.models.statistiques import LIMITE_PAR_DEFAUT as LIMITE_PASSAGES
 from core.observabilite.fil import LONGUEUR_MAX as LONGUEUR_MAX_FIL
+from core.observabilite.plans import LIMITE_PAR_DEFAUT as LIMITE_PLANS
 
 logger = logging.getLogger("usman.backend")
 
@@ -163,6 +172,56 @@ async def lire_permissions(compte: Optional[str] = Query(None)) -> Dict[str, Any
         "coupe_circuits": dict(acces.permissions.permissions),
         "services": resolu,
     }
+
+
+@router.get("/api/plans", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
+async def lire_les_plans(
+    limite: int = Query(default=LIMITE_PLANS, ge=1, le=1000),
+    request_id: Optional[str] = Query(None, max_length=LONGUEUR_MAX_FIL),
+) -> Dict[str, Any]:
+    """Ce qu'un plan a fait, et **pourquoi il s'est arrete**.
+
+    Avant le 13/09/2026, `raison_d_arret` existait dans la boucle mais n'en
+    sortait jamais : elle finissait dans une ligne de journal applicatif,
+    c'est-a-dire nulle part ou quelqu'un puisse la retrouver le lendemain.
+
+    Le manque etait concret : quand une demande aboutissait a une reponse
+    incomplete, rien ne disait si le plan avait **atteint son objectif**,
+    **epuise son budget de tours**, ou **manque de temps**. Les trois se
+    ressemblent vues de l'exterieur et appellent trois gestes differents.
+
+    Avec `request_id`, la chaine est complete : l'en-tete `X-Request-ID` rendu
+    par la reponse retrouve les actions (`/api/actions`) **et** les plans que
+    cette demande a declenches.
+
+    `atteint` mesure l'arret, pas la qualite : aucun plan n'est juge ici.
+    """
+    return journal_des_plans.resume(limite=limite, requete_id=request_id)
+
+
+@router.get("/api/models/statistics",
+            dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
+async def lire_statistiques_de_routage(
+    limite: int = Query(default=LIMITE_PASSAGES, ge=1, le=50_000),
+) -> Dict[str, Any]:
+    """Ce que chaque type de tache a reellement donne, fournisseur par fournisseur.
+
+    Le manque que ceci comble (audit PHASE 0, section E) : le routeur choisissait
+    — d'abord sur la confidentialite, ce qui est la bonne garantie — mais rien ne
+    gardait trace de ce que ce choix donnait. Rien ne disait que Groq echoue une
+    fois sur trois sur `CODE_EXECUTION` alors qu'il tient sur `CHAT`.
+
+    Trois choses que cette reponse ne fait jamais :
+
+    - **elle ne rend aucun taux sur zero passage.** `null`, jamais `0` : un
+      fournisseur jamais essaye n'a pas « 0 % de reussite » ;
+    - **elle ne rend aucune qualite.** `qualite` vaut toujours `null`, et le
+      rapport dit pourquoi — il n'existe pas de source honnete pour un tel
+      score ici ;
+    - **elle ne change rien au routage.** Ces mesures ne sont lues par personne
+      au moment de choisir : le classement de confidentialite reste seul maitre.
+    """
+    return statistiques_routage.par_type_de_tache(limite=limite)
 
 
 @router.get("/api/observability",

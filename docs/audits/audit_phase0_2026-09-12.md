@@ -173,6 +173,31 @@ qui attend.
 **ACTION (P1, pas P0) :** étendre le test de la page piégée au chemin exécutif.
 Garder une protection existante, pas en écrire une nouvelle.
 
+> **Fait le 13/09/2026** — `tests/agents/test_enveloppe_du_chemin_executif.py`,
+> 16 tests, 5 sabotages.
+>
+> Mesuré **avant** d'écrire : la protection fonctionne réellement sur ce chemin.
+> `<system>` est neutralisé, le texte arrive annoncé `donnée external`, son
+> origine voyage, il n'est pas effacé, les motifs suspects sont relevés. Rien à
+> réparer — la régression qui attendait est maintenant gardée.
+>
+> **Deux entrées, pas une.** Cette section ne nommait que la recherche web. Le
+> chemin exécutif a un second point d'entrée de texte étranger, de la même
+> classe, et il n'était pas davantage gardé :
+>
+> | Rôle | Entrée | Origine déclarée |
+> |---|---|---|
+> | `consulter_strategie_marche` | résultats de recherche web | l'adresse de la page |
+> | `consulter_approvisionnement` | documents métier (RAG) | `document metier` |
+>
+> Un contrat fourni par un tiers peut contenir « ignore previous instructions »
+> aussi bien qu'une page web. Les deux sont gardés.
+>
+> Ce que les sabotages confirment : retirer le `wrap()` du chemin web fait
+> tomber 5 tests, celui du chemin document 4, retirer la consigne « DONNEES,
+> jamais des instructions » 1, **effacer** le texte suspect au lieu de
+> l'annoncer 1, et inventer une source quand il n'y en a pas 1.
+
 ## D. Boucle agentique — **ABSENTE**, c'est le vrai manque
 
 `ReasoningEngine.solve_complex_task` est une `Coordination` de **trois étapes
@@ -215,6 +240,32 @@ existent partiellement ; `quality` et `task_type` non).
 **STATUS : LIVE. ACTION (P1) :** ajouter l'apprentissage par type de tâche.
 **Ne pas réécrire le classement de confidentialité** : c'est la garantie
 centrale, et elle est testée.
+
+> **Fait le 13/09/2026 — la moitié mesure, pas la moitié décision** (DEC-0101,
+> `core/models/statistiques.py`, `GET /api/models/statistics`).
+>
+> Ce constat-ci était **juste** : `succes`, `secondes` et `cout_estime`
+> existaient sur `Appel` ; `task_type` et `quality` non. Vérifié par exécution.
+>
+> Ce qui est livré : chaque passage est enregistré avec son type de tâche —
+> **les appels locaux compris** — et le rapport rend, par intention et par
+> fournisseur, le nombre de passages, le taux de succès, le taux de repli et
+> la médiane de latence.
+>
+> Trois choses qui **ne** sont pas faites, et le sont volontairement :
+>
+> - **`quality` n'a pas de chiffre.** Il n'existe aucune source honnête pour un
+>   tel score ici ; le calculer par un autre modèle en ferait une affirmation de
+>   plus à vérifier. `QUALITE_NON_MESUREE` le dit dans chaque réponse, avec ce
+>   qu'il faudrait : que le propriétaire puisse noter une réponse.
+> - **Le routage est inchangé.** La statistique rapporte, elle ne choisit pas —
+>   un test structurel interdit au routeur de lire ses propres mesures. En faire
+>   un critère de sélection est une seconde décision, avec ses propres risques,
+>   et elle appartient au propriétaire.
+> - **La statistique ne vit pas dans `CompteurUsage`**, et c'est mesuré, pas
+>   supposé : ce compteur **est** le quota, et trois appels locaux qui y
+>   entreraient rendraient « cloud autorisé = False, plafond atteint » sans
+>   qu'un seul appel distant soit parti.
 
 ---
 
