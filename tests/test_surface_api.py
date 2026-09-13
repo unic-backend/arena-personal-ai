@@ -60,6 +60,7 @@ SURFACE_ATTENDUE = {
     "/api/actions/{identifiant}/cancel": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/permissions": (["GET"], ["verify_api_key", "limiter_debit"]),
     # Ce que les reponses ont coute, face aux cibles des voies (phase B.2).
+    "/api/models/statistics": (["GET"], ["verify_api_key", "limiter_debit"]),
     "/api/observability": (["GET"], ["verify_api_key", "limiter_debit"]),
     # Le gardien (DEC-0014) : lecture de la file de maintenance, et
     # declenchement d'un cycle de diagnostic reel.

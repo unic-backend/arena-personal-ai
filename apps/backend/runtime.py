@@ -107,6 +107,7 @@ from core.models.deepinfra_provider import DeepInfraProvider
 from core.models.groq_provider import GroqProvider
 from core.models.ollama_provider import OllamaProvider
 from core.models.routeur import RouteurModeles
+from core.models.statistiques import StatistiquesRoutage
 from core.models.usage import CompteurUsage
 from core.permissions.controle import ControleAcces
 from core.permissions.permission_manager import PermissionManager
@@ -618,6 +619,14 @@ compteur_usage = CompteurUsage(requetes_par_jour=CLOUD_REQUETES_PAR_JOUR,
                                cout_max_par_requete=CLOUD_COUT_MAX_PAR_REQUETE)
 
 
+#: Ce que chaque type de tache a donne. **Un seul magasin pour les trois
+#: aiguilleurs** : `fast`, `deep` et `coder` servent le meme proprietaire, et
+#: trois jeux de mesures separes ne diraient rien de ce qu'une intention coute
+#: reellement. Separe de `compteur_usage`, qui porte le quota : y faire entrer
+#: les appels locaux couperait le cloud sans qu'un appel distant soit parti.
+statistiques_routage = StatistiquesRoutage(db_path=str(DB_PATH))
+
+
 def _aiguilleur(local: OllamaProvider) -> RouteurModeles:
     """Un aiguilleur pose devant un modele local. Le reste d'ARENA ne voit que lui."""
     return RouteurModeles(
@@ -625,6 +634,7 @@ def _aiguilleur(local: OllamaProvider) -> RouteurModeles:
         distants={"groq": GroqProvider(), "deepinfra": DeepInfraProvider()},
         mode=MODE_IA, fournisseur_demande=FOURNISSEUR_DEMANDE,
         compteur=compteur_usage,
+        statistiques=statistiques_routage,
     )
 
 

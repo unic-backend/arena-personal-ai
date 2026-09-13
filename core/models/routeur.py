@@ -30,7 +30,9 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Sequence
 
 from core.models.base import ModelProvider
 from core.models.confidentialite import Classement, classer, cloud_autorise
+from core.models.statistiques import HORS_INTENTION, Passage, StatistiquesRoutage
 from core.models.usage import Appel, CompteurUsage
+from core.observabilite.fil import type_tache_courant
 
 logger = logging.getLogger("usman.modeles.routeur")
 
@@ -93,7 +95,8 @@ class RouteurModeles(ModelProvider):
     def __init__(self, local: ModelProvider,
                  distants: Optional[Dict[str, ModelProvider]] = None,
                  mode: str = "HYBRIDE", fournisseur_demande: str = "AUTO",
-                 compteur: Optional[CompteurUsage] = None) -> None:
+                 compteur: Optional[CompteurUsage] = None,
+                 statistiques: Optional[StatistiquesRoutage] = None) -> None:
         self.local = local
         # Seuls les fournisseurs REELLEMENT configures entrent : un service sans
         # cle n'est pas une option a essayer, c'est une option qui n'existe pas.
@@ -104,6 +107,9 @@ class RouteurModeles(ModelProvider):
         self.mode = mode
         self.fournisseur_demande = (fournisseur_demande or "AUTO").upper()
         self.compteur = compteur or CompteurUsage()
+        #: Ce que chaque type de tache a donne. **Separe du compteur d'usage** :
+        #: celui-ci porte le quota, celle-la ne decide d'aucun plafond.
+        self.statistiques = statistiques or StatistiquesRoutage()
         self.etats: Dict[str, EtatFournisseur] = {
             nom: EtatFournisseur(nom=nom) for nom in list(self.distants) + [LOCAL]
         }
@@ -218,11 +224,34 @@ class RouteurModeles(ModelProvider):
         return False
 
     def _noter(self, nom: str, classement: Classement, repli: bool, succes: bool) -> None:
-        """Compte l'appel distant. Le local ne coute rien : il n'est pas compte."""
+        """Compte l'appel. Deux comptes distincts, et c'est le point important.
+
+        **La statistique de routage prend TOUS les passages**, le local compris :
+        une mesure par type de tache qui ignorerait le fournisseur le plus
+        sollicite serait aveugle sur l'essentiel.
+
+        **Le compteur d'usage ne prend que le distant**, et le retour anticipe
+        ci-dessous est ce qui le garantit. Mesure du 13/09/2026 : `CompteurUsage`
+        **est** le quota — `verdict()` compte ses lignes du jour et coupe le
+        cloud au plafond. Trois appels locaux qui y entreraient rendraient
+        « cloud autorise = False, plafond atteint » sans qu'un seul appel distant
+        soit parti.
+        """
+        fournisseur = self.distants.get(nom) if nom != LOCAL else self.local
+        mesure = getattr(fournisseur, "derniere_mesure", None)
+
+        self.statistiques.enregistrer(Passage(
+            type_tache=type_tache_courant() or HORS_INTENTION,
+            fournisseur=nom,
+            modele=getattr(fournisseur, "model_name", nom),
+            succes=succes,
+            repli=repli,
+            secondes=getattr(mesure, "secondes_total", None),
+            classement=classement.niveau.value,
+        ))
+
         if nom == LOCAL:
             return
-        fournisseur = self.distants.get(nom)
-        mesure = getattr(fournisseur, "derniere_mesure", None)
         self.compteur.enregistrer(Appel(
             fournisseur=nom,
             modele=getattr(fournisseur, "model_name", nom),
@@ -432,4 +461,5 @@ class RouteurModeles(ModelProvider):
             "modele": self.model_name,
             "fournisseurs": [etat.to_dict() for etat in self.etats.values()],
             "usage": self.compteur.resume(),
+            "statistiques": self.statistiques.par_type_de_tache(),
         }

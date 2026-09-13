@@ -214,3 +214,95 @@ def test_une_action_d_avant_le_fil_n_est_rendue_par_aucun_filtre(tmp_path):
 
     assert len(journal.dernieres()) == 1
     assert journal.dernieres(requete_id="n-importe-quoi") == []
+
+
+class TestStatistiquesDeRoutage:
+    """`/api/models/statistics` — ce que chaque type de tache a donne."""
+
+    def test_la_route_exige_la_cle(self, client):
+        assert client.get("/api/models/statistics").status_code == 401
+
+    def test_une_mesure_vide_repond_sans_pretendre_que_tout_va_bien(self, client, entetes):
+        rendu = client.get("/api/models/statistics", headers=entetes).json()
+
+        assert rendu["passages_totaux"] >= 0
+        assert rendu["types_mesures"] >= 0
+        assert "proprietaire" in rendu["qualite"], (
+            "la reponse doit nommer la seule source honnete d'un score de qualite"
+        )
+
+    def test_la_route_ne_rend_jamais_de_qualite_chiffree(self, client, entetes):
+        rendu = client.get("/api/models/statistics", headers=entetes).json()
+
+        for bloc in rendu["par_type_de_tache"].values():
+            assert bloc["qualite"] is None
+
+
+class TestLeTypeDeTacheEstPoseSurLeVraiChemin:
+    """Le type de tache doit etre pose par `dispatch_request`, pas par le test.
+
+    **Ces tests existent parce qu'un sabotage les a reclames (13/09/2026) :**
+    retirer `with tache(intent)` de `dispatch_request` laissait 35 tests au
+    vert. Les tests de statistiques posaient le type eux-memes
+    (`with tache(...)`), donc ils mesuraient leur propre mise en scene et pas
+    le cablage. Ceux-ci passent par la fonction reelle.
+    """
+
+    @pytest.fixture
+    def espion(self, monkeypatch):
+        """Remplace le corps de l'aiguillage par un temoin du type de tache.
+
+        C'est `_aiguiller` qui est double, pas `dispatch_request` : ce qu'on
+        veut mesurer est precisement ce que `dispatch_request` fait AVANT de
+        l'appeler.
+        """
+        from apps.backend.routers import chat as routeur_chat
+        from core.observabilite.fil import type_tache_courant
+
+        vus = []
+
+        async def _temoin(request, intent):
+            vus.append(type_tache_courant())
+            return {"response": "ok", "agent": "TestAgent"}
+
+        monkeypatch.setattr(routeur_chat, "_aiguiller", _temoin)
+        return vus
+
+    def _demande(self):
+        from apps.backend.routers.chat import ChatRequest
+
+        return ChatRequest(prompt="pose deux cloisons")
+
+    def test_l_intention_fournie_devient_le_type_de_tache(self, espion):
+        import asyncio
+
+        from apps.backend.routers.chat import dispatch_request
+
+        asyncio.run(dispatch_request(self._demande(), intent="PLAQUISTE"))
+
+        assert espion == ["PLAQUISTE"]
+
+    def test_l_intention_calculee_devient_le_type_de_tache(self, espion, monkeypatch):
+        """Quand l'appelant n'en fournit pas, c'est celle du classement."""
+        import asyncio
+
+        from apps.backend.routers import chat as routeur_chat
+
+        async def _classer(_prompt):
+            return "CODE_EXECUTION"
+
+        monkeypatch.setattr(routeur_chat.orchestrator, "analyze_intent", _classer)
+        asyncio.run(routeur_chat.dispatch_request(self._demande()))
+
+        assert espion == ["CODE_EXECUTION"]
+
+    def test_le_type_de_tache_est_rendu_a_la_sortie(self, espion):
+        """Il ne doit pas fuir sur l'appel suivant, qui aurait une autre intention."""
+        import asyncio
+
+        from apps.backend.routers.chat import dispatch_request
+        from core.observabilite.fil import type_tache_courant
+
+        asyncio.run(dispatch_request(self._demande(), intent="PLAQUISTE"))
+
+        assert type_tache_courant() is None

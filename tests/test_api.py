@@ -205,20 +205,45 @@ class TestSanteNAnnoncePasPlusQueCeQuiExiste:
         assert not inventes, f"/health annonce ce qui n'existe pas : {inventes}"
 
     def test_les_trois_moteurs_non_agents_sont_vraiment_atteignables(self):
-        """Ils n'ont pas de classe commune : leur présence se vérifie autrement."""
+        """Ils n'ont pas de classe commune : leur présence se vérifie autrement.
+
+        **La garde a suivi son sujet le 13/09/2026** (DEC-0101). Elle lisait la
+        source de `dispatch_request` ; le corps de l'aiguillage a été déplacé
+        dans `_aiguiller` pour poser le type de tâche sans réindenter
+        cent-quatre-vingts lignes. La garde s'est donc mise à lire une enveloppe
+        de six lignes — **elle est devenue aveugle**, et c'est elle qui l'a dit.
+
+        Elle n'est pas affaiblie : elle lit désormais la fonction qui contient
+        réellement l'aiguillage, **et** vérifie que `dispatch_request` lui
+        délègue. Le jour où quelqu'un coupe la délégation, elle tombe aussi.
+
+        **Ce qu'elle ne voit pas, et ne voyait pas davantage avant** : c'est un
+        contrôle *textuel*. Elle attrape un moteur supprimé, renommé ou sorti de
+        l'aiguillage ; elle n'attrape pas une branche `if` désactivée qui
+        laisserait l'appel dans du code mort. Mesuré le 13/09/2026 en
+        remplaçant `if intent == "DEEP_REASONING"` par `if False` : la suite
+        reste verte. Le dire ici vaut mieux que laisser croire à une garde
+        comportementale.
+        """
         import inspect
 
         import apps.backend.routers.chat as chat
         import apps.backend.runtime as runtime
 
-        source = inspect.getsource(chat.dispatch_request)
-        for objet, marque in (("reasoning_engine", "reasoning_engine"),
-                              ("lightrag_tool", "lightrag_tool"),
-                              ("graphrag_tool", "graphrag_tool")):
+        source = inspect.getsource(chat._aiguiller)
+        for objet in ("reasoning_engine", "lightrag_tool", "graphrag_tool"):
             assert hasattr(runtime, objet), f"{objet} n'existe plus dans runtime"
-            assert marque in source, (
+            assert objet in source, (
                 f"{objet} est annoncé par /health mais plus aucun aiguillage ne l'atteint"
             )
+
+        # Le maillon entre les deux : sans lui, la source lue ci-dessus ne
+        # serait plus celle qu'une demande traverse.
+        entree = inspect.getsource(chat.dispatch_request)
+        assert "_aiguiller(" in entree, (
+            "dispatch_request ne délègue plus à _aiguiller : la garde "
+            "ci-dessus lirait du code que plus aucune demande n'atteint"
+        )
 
 
 class TestUnFluxNeMeurtPasEnSilence:
