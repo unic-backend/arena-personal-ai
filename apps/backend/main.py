@@ -43,6 +43,8 @@ from apps.backend.runtime import (
 )
 from apps.backend.security import cle_presentee_valide, validate_media_path, verify_media_access
 from apps.backend.verification_modeles import verifier_modeles
+from core.observabilite.fil import ENTETE as ENTETE_FIL
+from core.observabilite.fil import nouveau_fil
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("usman.backend")
@@ -90,8 +92,35 @@ app.add_middleware(
     # 12/09/2026) : le navigateur bloque la vraie requete avant meme qu'elle
     # ne parte, sans qu'aucun log applicatif ne le montre.
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Authorization", "Content-Type", "X-Usman-Run-ID", "Last-Event-ID"],
+    allow_headers=["Authorization", "Content-Type", "X-Usman-Run-ID", "Last-Event-ID",
+                   ENTETE_FIL],
+    # `expose_headers` : sans lui, le navigateur REÇOIT l'en-tete et refuse de
+    # le laisser lire au code de la page. Le client ne pourrait donc pas
+    # rattacher sa trace a celle du serveur — l'identifiant existerait des deux
+    # cotes sans jamais pouvoir etre rapproche.
+    expose_headers=[ENTETE_FIL],
 )
+
+
+@app.middleware("http")
+async def poser_le_fil_de_la_demande(request, call_next):
+    """Donne un identifiant a chaque demande, et le rend dans la reponse.
+
+    C'est le seul endroit ou le fil est pose : un identifiant cree plus loin
+    dans la chaine ne couvrirait pas ce qui s'est passe avant lui, donc ne
+    servirait a rien pour retrouver une demande entiere.
+
+    L'en-tete propose par le client est une **donnee**, pas une consigne : il
+    n'est adopte que s'il passe `identifiant_acceptable` (lettres, chiffres,
+    tiret, souligne, 64 au plus). Sans cette validation, un appelant ecrirait
+    des retours a la ligne dans le journal, et une ligne falsifiee y serait
+    indiscernable d'une vraie. Un en-tete mal forme n'empeche pas de servir la
+    demande — il est simplement remplace.
+    """
+    with nouveau_fil(request.headers.get(ENTETE_FIL)) as identifiant:
+        reponse = await call_next(request)
+        reponse.headers[ENTETE_FIL] = identifiant
+        return reponse
 
 RENDERED_DIR.mkdir(parents=True, exist_ok=True)
 

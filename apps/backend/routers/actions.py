@@ -26,6 +26,7 @@ from core.actions.resultat import Statut
 from core.actions.timeline import to_dict
 from core.execution.mesures import Rapport, non_lancee, resume_chiffre
 from core.execution.voies import ORDRE, budget_de
+from core.observabilite.fil import LONGUEUR_MAX as LONGUEUR_MAX_FIL
 
 logger = logging.getLogger("usman.backend")
 
@@ -58,13 +59,24 @@ def _ligne(mesure) -> Dict[str, Any]:
 async def lire_chronologie(
     limite: int = Query(50, ge=1, le=LIMITE_MAX),
     cible: Optional[str] = Query(None),
+    request_id: Optional[str] = Query(None, max_length=LONGUEUR_MAX_FIL),
 ) -> Dict[str, Any]:
     """Rend les actions les plus recentes, resume compris.
 
     Un journal vide rend un resume a zero et une liste vide — jamais une erreur.
     « Rien ne s'est passe » est une reponse, pas une panne.
+
+    `request_id` est ce qui rend une demande suivable de bout en bout (13/09/2026) :
+    l'identifiant que la reponse HTTP a renvoye dans `X-Request-ID` retrouve
+    **exactement** les actions que cette demande-la a causees. Sans lui,
+    « ce truc de ce matin n'a pas marche » obligeait a lire trente actions pour
+    deviner lesquelles venaient de la phrase du proprietaire.
+
+    Les actions d'avant cette date portent `requete = null`, ce qui est vrai :
+    elles n'ont jamais eu de fil. Elles ne sont donc rendues par aucun filtre,
+    et c'est voulu — les attribuer a une demande serait une trace fabriquee.
     """
-    return to_dict(journal.dernieres(limite=limite, cible=cible))
+    return to_dict(journal.dernieres(limite=limite, cible=cible, requete_id=request_id))
 
 
 @router.get("/api/actions/pending",

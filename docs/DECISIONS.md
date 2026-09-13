@@ -9197,3 +9197,105 @@ contradiction. Réellement absents, et **non faits** : `confidence`,
 qui le couvrent et aucun autre — dont l'ordre de déclaration FastAPI : placée
 après `/api/memory/{identifiant}`, la route `contradictions` serait lue comme
 un identifiant et rendrait un 404 muet.
+## DEC-0100 — Rien ne reliait une demande aux actions qu'elle causait (PR à venir)
+
+**2026-09-13.** Audit PHASE 0, section G, priorité P1. Demande du propriétaire :
+« continue avec le 1 après la PR ».
+
+### Le défaut
+
+`request_id` n'existait **nulle part** — zéro occurrence dans `core/`, `apps/`,
+`agents/`. `/api/actions` montrait ce qu'ARENA avait tenté, `/api/observability`
+ce que les voies avaient coûté, et **rien ne reliait les deux à une même
+demande**. Quand le propriétaire disait « ce truc de ce matin n'a pas marché »,
+il fallait lire trente actions pour deviner lesquelles venaient de sa phrase.
+
+### Deux erreurs de la section G, en sens opposés
+
+L'audit annonçait `/observability/trail/{id}` comme existant — **cette route
+n'existe pas** (55 routes déclarées, aucune ne s'en approche). Et il annonçait
+`stop_reason` absent alors que le concept existe (`RaisonDArret`, 7 valeurs,
+porté par `EtatBoucle.raison_d_arret`). Corrigé dans le rapport ; c'est sa
+troisième correction. **Les deux erreurs coûtent** : la première fait croire le
+travail fait, la seconde fait reconstruire ce qui est là.
+
+### Décision 1 : `contextvars`, pas un paramètre de plus
+
+- Décision : le fil vit dans un `ContextVar` (`core/observabilite/fil.py`), posé
+  une seule fois par le middleware HTTP.
+- Pourquoi pas un paramètre : le faire descendre à travers les signatures
+  existantes demanderait de toucher routeurs, agents, connecteurs et journal —
+  la réécriture que la mission interdit, pour une information qui ne change
+  aucun comportement.
+- Pourquoi pas une variable de module : le serveur est `async` et sert plusieurs
+  demandes à la fois. Une globale serait écrasée par la demande suivante, et le
+  journal attribuerait les actions de l'un au fil de l'autre. **Une trace fausse
+  est pire qu'aucune trace** — c'est le seul point de cette décision qui ne se
+  rattrape pas après coup.
+- Coût si c'est faux : un appel qui franchirait une frontière de thread sans
+  `contextvars.copy_context()` perdrait le fil et écrirait `None`. C'est visible
+  (une action sans fil au milieu d'une demande) et ce n'est jamais une fausse
+  attribution.
+
+### Décision 2 : hors demande, `None` — jamais un identifiant fabriqué
+
+- Décision : `fil_courant()` rend `None` quand aucun fil n'est posé.
+- Pourquoi : un script, une tâche de fond, un test n'ont pas de demande derrière
+  eux. `None` se lit « hors demande » ; un identifiant fabriqué se lirait
+  « demande introuvable », et ferait chercher une demande qui n'a jamais existé.
+- Coût si c'est faux : la colonne du journal contient des `NULL`. C'est exact.
+
+### Décision 3 : l'en-tête du client est une donnée, jamais une consigne
+
+- Décision : `X-Request-ID` proposé par un client est accepté, mais **validé**
+  (`identifiant_acceptable` : lettres, chiffres, tiret, souligné, 64 au plus).
+  Un en-tête mal formé est remplacé, et la demande est **servie** normalement.
+- Pourquoi l'accepter du tout : c'est ce qui permet de recoller une trace côté
+  client. Pourquoi le valider : sans cela un appelant écrirait des retours à la
+  ligne dans le journal et dans les logs, et une ligne falsifiée y serait
+  indiscernable d'une vraie. Même discipline que `core/security/trust.py`.
+- Pourquoi ne pas refuser la requête : un en-tête mal formé n'est pas une raison
+  de ne pas servir quelqu'un.
+- Coût si c'est faux : un client dont l'identifiant contient un point ou un
+  deux-points le voit remplacé, et doit lire celui rendu dans la réponse. La
+  réponse le porte toujours, donc rien n'est perdu.
+
+### Décision 4 : le journal prend le fil lui-même, l'appelant ne le passe pas
+
+- Décision : `ActionEnregistree.requete` a pour valeur par défaut
+  `fil_courant()`. Aucun appelant ne le fournit.
+- Pourquoi : un identifiant qu'on peut fournir à la main est un identifiant
+  qu'on peut fournir **faux**. C'est la même raison qui fait que
+  `depuis_resultat()` dérive le résultat du `ResultatAction` au lieu de
+  l'accepter en argument.
+- Zone verrouillée respectée : une colonne ajoutée par `ALTER TABLE` protégé
+  d'une lecture de `PRAGMA table_info`, même forme que
+  `core/memory/personnelle.py`. **Aucune ligne existante n'est touchée** : les
+  actions d'avant portent `requete = NULL`, ce qui est vrai — elles n'ont jamais
+  eu de fil. Conditions 1 et 6 de `PROJECT_MEMORY/LOCKED_ZONES.md`.
+- Coût si c'est faux : un appelant qui voudrait rattacher une action à une autre
+  demande que la courante ne peut pas. Personne n'en a le besoin, et le
+  permettre ouvrirait exactement la falsification qu'on ferme.
+
+### Décision 5 : le fil sort en JSON, pas dans le tableau texte
+
+- Décision : `requete` rejoint `horodatage`, `erreurs` et `id` — rendus en JSON,
+  **hors** de `COLONNES`.
+- Pourquoi : 32 caractères par ligne rendraient la chronologie illisible pour
+  l'humain qu'elle sert, alors qu'un client a besoin de l'identifiant.
+- Coût si c'est faux : un opérateur qui lit le tableau texte doit passer par le
+  JSON pour voir le fil. Le contre-test `test_le_fil_reste_hors_du_tableau_texte`
+  fixe la frontière.
+
+### Preuve
+
+23 tests dans `tests/core/test_observabilite_fil.py`, 13 dans
+`tests/test_tracabilite_requete.py` — dont la traversée complète sur du vrai
+HTTP : deux demandes identiques, 4 actions, chaque identifiant retrouve
+exactement **ses** 2 actions. Huit sabotages, chacun faisant tomber les tests
+qui le couvrent et aucun autre.
+
+### Ce qui reste de la section G, et n'est pas fait ici
+
+`plan_id` pour la boucle agentique, `memory_hits`, et la sortie de `stop_reason`
+hors de la boucle. Ils sont nommés plutôt que faits à moitié.

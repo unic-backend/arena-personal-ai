@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.actions.resultat import ResultatAction, Statut
+from core.observabilite.fil import fil_courant
 
 logger = logging.getLogger("usman.actions.journal")
 
@@ -113,6 +114,13 @@ class ActionEnregistree:
         erreurs: le message d'erreur, ou None.
         verification: ce que l'on sait de l'effet reel.
         preuve: ce qui atteste l'effet, quand il y en a un.
+        requete: l'identifiant de la demande qui a cause cette action, ou None
+            hors d'une demande HTTP (tache de fond, script, test). Pris au fil
+            courant (`core/observabilite/fil.py`) et non passe par l'appelant :
+            un identifiant qu'on peut fournir a la main est un identifiant qu'on
+            peut fournir FAUX, et une trace fausse est pire qu'aucune trace.
+            `None` se lit « hors demande » ; un identifiant fabrique se lirait
+            « demande introuvable ».
     """
 
     outil: str
@@ -126,6 +134,7 @@ class ActionEnregistree:
     preuve: Optional[str] = None
     identifiant: str = field(default_factory=lambda: uuid.uuid4().hex)
     horodatage: str = field(default_factory=_maintenant)
+    requete: Optional[str] = field(default_factory=fil_courant)
 
     def __post_init__(self) -> None:
         # Le masquage a lieu ici, avant toute ecriture : une passe faite au
@@ -218,13 +227,34 @@ class JournalDesActions:
                     resultat          TEXT NOT NULL,
                     erreurs           TEXT,
                     verification      TEXT NOT NULL,
-                    preuve            TEXT
+                    preuve            TEXT,
+                    requete           TEXT
                 )
             """)
+            # Migration d'une base existante (creee avant le 13/09/2026) :
+            # `CREATE TABLE IF NOT EXISTS` ne touche pas une table deja la, donc
+            # la colonne manque sur un fichier deja en service. Meme forme que
+            # `core/memory/personnelle.py` — `ADD COLUMN` protege par une
+            # lecture de `PRAGMA table_info`, SQLite le refusant sur une colonne
+            # deja presente. **Aucune ligne existante n'est touchee** : les
+            # actions d'avant portent `requete = NULL`, ce qui est vrai — elles
+            # n'ont jamais eu de fil.
+            colonnes = {
+                ligne["name"] for ligne in connexion.execute(
+                    f"PRAGMA table_info({self.TABLE})").fetchall()
+            }
+            if "requete" not in colonnes:
+                connexion.execute(f"ALTER TABLE {self.TABLE} ADD COLUMN requete TEXT")
             # L'ordre de lecture est toujours « le plus recent d'abord ».
             connexion.execute(
                 f"CREATE INDEX IF NOT EXISTS idx_{self.TABLE}_horodatage "
                 f"ON {self.TABLE} (horodatage DESC)"
+            )
+            # L'index du filtre qui rend une demande suivable : sans lui,
+            # retrouver les actions d'un fil balaierait tout le journal.
+            connexion.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_{self.TABLE}_requete "
+                f"ON {self.TABLE} (requete)"
             )
             connexion.commit()
 
@@ -238,13 +268,14 @@ class JournalDesActions:
             with closing(self._connexion()) as connexion:
                 connexion.execute(
                     f"INSERT INTO {self.TABLE} (identifiant, horodatage, outil, action, cible, "
-                    f"parametres, niveau_permission, resultat, erreurs, verification, preuve) "
-                    f"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    f"parametres, niveau_permission, resultat, erreurs, verification, preuve, "
+                    f"requete) "
+                    f"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         action.identifiant, action.horodatage, action.outil, action.action,
                         action.cible, json.dumps(action.parametres, ensure_ascii=False),
                         action.niveau_permission, action.resultat, action.erreurs,
-                        action.verification.value, action.preuve,
+                        action.verification.value, action.preuve, action.requete,
                     ),
                 )
                 connexion.commit()
@@ -268,6 +299,10 @@ class JournalDesActions:
             erreurs=ligne["erreurs"],
             verification=EtatVerification(ligne["verification"]),
             preuve=ligne["preuve"],
+            # `ligne.keys()` plutot qu'un acces direct : une base d'avant la
+            # migration, relue par un processus qui n'a pas encore appele
+            # `_creer_table`, n'a pas la colonne.
+            requete=ligne["requete"] if "requete" in ligne.keys() else None,
         )
 
     def lire(self, identifiant: str) -> Optional[ActionEnregistree]:
@@ -278,13 +313,28 @@ class JournalDesActions:
             ).fetchone()
         return self._depuis_ligne(ligne) if ligne else None
 
-    def dernieres(self, limite: int = 50, cible: Optional[str] = None) -> List[ActionEnregistree]:
-        """Les actions les plus recentes d'abord, filtrees par cible si demande."""
+    def dernieres(self, limite: int = 50, cible: Optional[str] = None,
+                  requete_id: Optional[str] = None) -> List[ActionEnregistree]:
+        """Les actions les plus recentes d'abord, filtrees si demande.
+
+        Args:
+            limite: combien au plus.
+            cible: sur quoi l'action portait.
+            requete_id: l'identifiant d'une demande. C'est lui qui rend une
+                demande suivable de bout en bout : « ce truc de ce matin n'a pas
+                marche » devient une liste de quatre actions au lieu de trente.
+        """
         requete = f"SELECT * FROM {self.TABLE}"
+        conditions: List[str] = []
         arguments: List[Any] = []
         if cible:
-            requete += " WHERE cible = ?"
+            conditions.append("cible = ?")
             arguments.append(cible)
+        if requete_id:
+            conditions.append("requete = ?")
+            arguments.append(requete_id)
+        if conditions:
+            requete += " WHERE " + " AND ".join(conditions)
         requete += " ORDER BY horodatage DESC, rowid DESC LIMIT ?"
         arguments.append(limite)
 

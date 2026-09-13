@@ -43,6 +43,14 @@ def en_lignes(actions: List[ActionEnregistree]) -> List[Dict[str, str]]:
             "preuve": action.preuve or SANS_PREUVE,
             "erreurs": action.erreurs or "",
             "id": action.identifiant,
+            # Le fil de la demande (13/09/2026). Il rejoint `horodatage`,
+            # `erreurs` et `id` : rendu en JSON, **hors** de `COLONNES**, donc
+            # absent du tableau texte. Un identifiant de 32 caracteres par
+            # ligne rendrait la chronologie illisible pour l'humain qu'elle
+            # sert, alors qu'un client a besoin de lui pour recoller la trace.
+            # `None` pour une action d'avant cette date : elle n'a jamais eu de
+            # fil, et lui en inventer un serait une trace fabriquee.
+            "requete": action.requete,
         }
         for action in actions
     ]
