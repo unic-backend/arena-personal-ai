@@ -61,6 +61,13 @@ _ACCEPTABLE = re.compile(r"\A[A-Za-z0-9_-]{1,%d}\Z" % LONGUEUR_MAX)
 
 _fil: ContextVar[Optional[str]] = ContextVar("fil_de_demande", default=None)
 
+#: Le type de tache en cours — l'intention calculee par `analyze_intent`. Meme
+#: mecanisme et meme raison que le fil ci-dessus : le routeur de modeles est un
+#: `ModelProvider` dont l'interface est `generate(prompt)`, et y ajouter un
+#: parametre toucherait les quatre fournisseurs et tous leurs appelants pour une
+#: information qui ne change aucun comportement — elle ne fait que se mesurer.
+_type_tache: ContextVar[Optional[str]] = ContextVar("type_de_tache", default=None)
+
 
 def identifiant_acceptable(propose: Optional[str]) -> bool:
     """Un identifiant propose de l'exterieur peut-il etre adopte tel quel ?
@@ -114,3 +121,35 @@ def fil_courant() -> Optional[str]:
         journal des demandes qui n'ont jamais existe.
     """
     return _fil.get()
+
+
+@contextmanager
+def tache(type_tache: Optional[str]) -> Iterator[Optional[str]]:
+    """Declare le type de tache en cours pour la duree du bloc.
+
+    Args:
+        type_tache: l'intention, telle que `analyze_intent` la rend
+            (`CHAT`, `CODE_EXECUTION`, `PLAQUISTE`…). `None` est accepte : un
+            appel qui ne vient d'aucune intention ne doit pas etre range sous
+            une intention inventee.
+
+    Yields:
+        Le type retenu, tel quel.
+    """
+    jeton = _type_tache.set(type_tache)
+    try:
+        yield type_tache
+    finally:
+        _type_tache.reset(jeton)
+
+
+def type_tache_courant() -> Optional[str]:
+    """Le type de tache en cours, ou `None` hors d'une intention connue.
+
+    Returns:
+        L'intention, ou `None`. Le `None` est une reponse : il dit que cet
+        appel ne vient d'aucune intention — un script, une tache de fond, un
+        appel direct. Le ranger d'office sous `CHAT` fausserait exactement la
+        statistique qu'on cherche a etablir.
+    """
+    return _type_tache.get()

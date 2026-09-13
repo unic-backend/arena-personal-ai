@@ -9299,3 +9299,108 @@ qui le couvrent et aucun autre.
 
 `plan_id` pour la boucle agentique, `memory_hits`, et la sortie de `stop_reason`
 hors de la boucle. Ils sont nommés plutôt que faits à moitié.
+
+---
+
+## DEC-0101 — Le routeur choisissait sans jamais savoir ce que ça donnait (PR à venir)
+
+**2026-09-13.** Audit PHASE 0, section E, priorité P1. Demande du propriétaire :
+« continue avec le 2 ».
+
+### Le défaut, et ce que l'audit disait juste
+
+`core/models/routeur.py` choisit — d'abord sur la confidentialité, ce qui est la
+bonne garantie — mais **rien ne gardait trace de ce que ce choix donnait, par
+type de tâche**. Rien ne disait que Groq échoue une fois sur trois sur
+`CODE_EXECUTION` alors qu'il tient sur `CHAT`.
+
+Vérifié par exécution avant d'écrire : `Appel` portait `succes`, `secondes` et
+`cout_estime` ; `task_type` et `quality` étaient bien absents. **Ce constat-là
+était exact** — contrairement aux sections C, F et G.
+
+### Décision 1 : un magasin séparé de `CompteurUsage`, et c'est mesuré
+
+- Décision : `core/models/statistiques.py` a sa propre table.
+- Pourquoi : `CompteurUsage` **est** le quota — `verdict()` compte ses lignes du
+  jour et coupe le cloud au plafond. Mesuré : trois appels **locaux** qui y
+  entreraient rendent « cloud autorisé = False, plafond atteint : 3 requête(s)
+  cloud » sans qu'un seul appel distant soit parti. Or une statistique par type
+  de tâche qui ignorerait le local serait aveugle sur le fournisseur le plus
+  sollicité. Les deux besoins sont incompatibles dans la même table.
+- Coût si c'est faux : une table de plus dans le même fichier SQLite. Faible, et
+  la table est indexée sur `type_tache`.
+
+### Décision 2 : `contextvars` pour le type de tâche, et le même que le fil
+
+- Décision : `type_tache` rejoint `request_id` dans `core/observabilite/fil.py`,
+  posé une seule fois dans `dispatch_request` (DEC-0100 pour le mécanisme).
+- Pourquoi le même module : les deux sont la même chose — un contexte ambiant du
+  travail en cours, posé à l'entrée, lu en profondeur. Deux modules auraient
+  dupliqué le raisonnement sur le `contextvars` et laissé croire à deux
+  mécanismes.
+- Pourquoi `dispatch_request` et pas ailleurs : l'intention y est déjà calculée
+  une fois par demande, et les **cinq** appelants y passent tous. La poser
+  ailleurs la manquerait pour l'un d'eux, et ses appels seraient rangés sous
+  `HORS_INTENTION` sans que rien ne le signale.
+- Le corps est déplacé dans `_aiguiller` plutôt qu'enveloppé : envelopper les
+  cent-quatre-vingts lignes de l'aiguillage aurait demandé de toutes les
+  réindenter, pour un diff illisible et un risque sans rapport avec la mesure.
+- Coût si c'est faux : un appel modèle déclenché hors de `dispatch_request` est
+  compté `HORS_INTENTION`. C'est exact, et c'est une catégorie visible du
+  rapport — jamais un rangement d'office sous `CHAT`.
+
+### Décision 3 : aucun chiffre de qualité, et la raison est rendue
+
+- Décision : `quality` vaut toujours `null`. `QUALITE_NON_MESUREE` accompagne
+  chaque rapport.
+- Pourquoi : il n'existe **aucune source honnête** pour un score de qualité dans
+  ce dépôt. Le calculer par un autre modèle en ferait une affirmation de plus à
+  vérifier ; l'inventer serait exactement ce que ce dépôt refuse partout
+  ailleurs. La seule source réelle est le propriétaire, et rien ne lui permet
+  encore de noter une réponse.
+- Coût si c'est faux : la colonne que l'audit réclamait reste vide. C'est
+  délibéré, et le rapport dit ce qu'il faudrait pour la remplir — un chiffre
+  inventé serait pire que cette absence.
+
+### Décision 4 : la mesure rapporte, elle ne choisit pas
+
+- Décision : rien dans le routeur ne lit ses propres statistiques au moment de
+  router. Un test **structurel** le vérifie sur la source.
+- Pourquoi : un routeur qui changerait son choix d'après des mesures à peine
+  commencées changerait de comportement sur des données minces — et pourrait
+  passer devant le classement de confidentialité, que l'audit dit lui-même de ne
+  pas toucher. S'en servir pour choisir est une seconde décision, et elle
+  appartient au propriétaire.
+- Coût si c'est faux : le routeur ne s'améliore pas tout seul. Assumé : la
+  mesure est le préalable de cette amélioration, pas son substitut.
+
+### Décision 5 : un taux sur zéro passage vaut `None`
+
+- Décision : `_taux(n, 0)` rend `None`, jamais `0.0`. Idem pour la médiane sans
+  échantillon.
+- Pourquoi : `0.0` se lirait « ce fournisseur échoue toujours » et le ferait
+  écarter alors qu'il n'a **jamais été essayé**. Zéro sur deux passages est une
+  mesure ; zéro sur zéro passage est une supposition.
+- Coût si c'est faux : un appelant doit traiter `null`. C'est le prix de la
+  distinction.
+
+### Deux sabotages passés au vert, et ce qu'ils ont révélé
+
+Deux des sept sabotages n'ont fait tomber aucun test la première fois :
+
+1. **`_taux(n, 0)` rendant `0.0`** → 30 tests au vert. Mon test s'appelait
+   `test_un_taux_sur_zero_passage_vaut_none` mais ne touchait que le rapport
+   vide : il n'atteignait jamais le helper. Corrigé par un test unitaire
+   paramétré, qui distingue `(0, 2) -> 0.0` de `(0, 0) -> None`.
+2. **`with tache(intent)` retiré de `dispatch_request`** → 35 tests au vert. Les
+   tests de statistiques posaient le type eux-mêmes : ils mesuraient leur propre
+   mise en scène, pas le câblage. Corrigé par trois tests qui passent par la
+   fonction réelle.
+
+C'est le seul moment où un sabotage sert vraiment : quand il passe.
+
+### Preuve
+
+19 tests dans `tests/core/test_routeur_statistiques.py`, 6 de plus dans
+`tests/test_tracabilite_requete.py`. 124 tests existants du routeur et de
+l'usage passent sans modification — la compatibilité tient.

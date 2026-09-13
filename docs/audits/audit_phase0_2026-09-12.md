@@ -216,6 +216,32 @@ existent partiellement ; `quality` et `task_type` non).
 **Ne pas réécrire le classement de confidentialité** : c'est la garantie
 centrale, et elle est testée.
 
+> **Fait le 13/09/2026 — la moitié mesure, pas la moitié décision** (DEC-0101,
+> `core/models/statistiques.py`, `GET /api/models/statistics`).
+>
+> Ce constat-ci était **juste** : `succes`, `secondes` et `cout_estime`
+> existaient sur `Appel` ; `task_type` et `quality` non. Vérifié par exécution.
+>
+> Ce qui est livré : chaque passage est enregistré avec son type de tâche —
+> **les appels locaux compris** — et le rapport rend, par intention et par
+> fournisseur, le nombre de passages, le taux de succès, le taux de repli et
+> la médiane de latence.
+>
+> Trois choses qui **ne** sont pas faites, et le sont volontairement :
+>
+> - **`quality` n'a pas de chiffre.** Il n'existe aucune source honnête pour un
+>   tel score ici ; le calculer par un autre modèle en ferait une affirmation de
+>   plus à vérifier. `QUALITE_NON_MESUREE` le dit dans chaque réponse, avec ce
+>   qu'il faudrait : que le propriétaire puisse noter une réponse.
+> - **Le routage est inchangé.** La statistique rapporte, elle ne choisit pas —
+>   un test structurel interdit au routeur de lire ses propres mesures. En faire
+>   un critère de sélection est une seconde décision, avec ses propres risques,
+>   et elle appartient au propriétaire.
+> - **La statistique ne vit pas dans `CompteurUsage`**, et c'est mesuré, pas
+>   supposé : ce compteur **est** le quota, et trois appels locaux qui y
+>   entreraient rendraient « cloud autorisé = False, plafond atteint » sans
+>   qu'un seul appel distant soit parti.
+
 ---
 
 ## F. Mémoire — LIVE, et réparée aujourd'hui même
