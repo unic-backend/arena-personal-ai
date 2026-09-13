@@ -162,6 +162,13 @@ class Souvenir:
         metadonnees: informations libres, secrets masques.
         expire_le: pour un contexte temporaire, la date au-dela de laquelle il
             ne doit plus etre rendu.
+        valide_depuis: la date A PARTIR DE LAQUELLE le contenu est vrai. C'est
+            le miroir d'`expire_le`, et ce n'est pas `cree_le` : celui-ci dit
+            quand le souvenir a ete ECRIT, celui-la depuis quand il est VRAI.
+            « A partir du 1er octobre, le tarif passe a 5500 » s'enregistre en
+            septembre et ne doit pas etre servi comme verite courante avant
+            octobre. `None` veut dire « vrai depuis toujours », ce qui est le
+            cas de la quasi-totalite des souvenirs.
         occurrences: combien de fois le souvenir a ete revu ou reconfirme.
         etat: actif, rejete ou archive — le cycle de vie, distinct de la nature.
         sensible: si vrai, `contenu` est chiffre au repos (voir `chiffrement.py`).
@@ -180,6 +187,7 @@ class Souvenir:
     cree_le: str = ""
     vu_le: str = ""
     expire_le: Optional[str] = None
+    valide_depuis: Optional[str] = None
     occurrences: int = 1
     etat: Etat = Etat.ACTIF
     sensible: bool = False
@@ -195,6 +203,33 @@ class Souvenir:
                            self.expire_le)
             return True
         return (maintenant or _maintenant()) >= limite
+
+    def pas_encore_vrai(self, maintenant: Optional[datetime] = None) -> bool:
+        """Vrai si le souvenir annonce une verite qui n'a pas encore commence.
+
+        Le miroir exact d'`est_perime`. Sans lui, « a partir du 1er octobre, le
+        tarif passe a 5500 » serait servi des septembre comme le tarif courant,
+        et ARENA repondrait un prix faux avec l'assurance d'un fait — la faute
+        precise que `DUREE_CONTEXTE_HEURES` evite dans l'autre sens.
+
+        Une date illisible est traitee comme **pas encore vraie**, par la meme
+        prudence qu'`est_perime` traite une echeance illisible comme passee :
+        des deux erreurs possibles, taire un souvenir est moins couteux que
+        d'affirmer une chose fausse.
+        """
+        if not self.valide_depuis:
+            return False
+        try:
+            debut = datetime.fromisoformat(self.valide_depuis)
+        except ValueError:
+            logger.warning("Debut de validite illisible (%s) : souvenir tenu "
+                           "pour pas encore vrai.", self.valide_depuis)
+            return True
+        return (maintenant or _maintenant()) < debut
+
+    def est_en_vigueur(self, maintenant: Optional[datetime] = None) -> bool:
+        """Vrai quand le souvenir est vrai MAINTENANT : commence et pas fini."""
+        return not self.pas_encore_vrai(maintenant) and not self.est_perime(maintenant)
 
     @property
     def est_une_supposition(self) -> bool:
@@ -214,6 +249,7 @@ class Souvenir:
             "cree_le": self.cree_le,
             "vu_le": self.vu_le,
             "expire_le": self.expire_le,
+            "valide_depuis": self.valide_depuis,
             "occurrences": self.occurrences,
             "etat": self.etat.value,
             "sensible": self.sensible,
@@ -340,7 +376,8 @@ class MemoirePersonnelle:
                     expire_le    TEXT,
                     occurrences  INTEGER NOT NULL DEFAULT 1,
                     etat         TEXT NOT NULL DEFAULT 'ACTIVE',
-                    sensible     INTEGER NOT NULL DEFAULT 0
+                    sensible     INTEGER NOT NULL DEFAULT 0,
+                    valide_depuis TEXT
                 )
             """)
             # Migration d'une base existante (creee avant le 11/09/2026, DEC-0090) :
@@ -361,6 +398,14 @@ class MemoirePersonnelle:
             if "sensible" not in colonnes:
                 connexion.execute(
                     f"ALTER TABLE {self.TABLE_SOUVENIRS} ADD COLUMN sensible INTEGER NOT NULL DEFAULT 0"
+                )
+            # Migration du 13/09/2026, meme forme que les deux au-dessus.
+            # `NULL` sur une ligne existante veut dire « vrai depuis toujours »,
+            # ce qui est exact : aucun souvenir d'avant n'annoncait une verite a
+            # venir. **Aucune ligne n'est touchee.**
+            if "valide_depuis" not in colonnes:
+                connexion.execute(
+                    f"ALTER TABLE {self.TABLE_SOUVENIRS} ADD COLUMN valide_depuis TEXT"
                 )
             connexion.execute(f"""
                 CREATE TABLE IF NOT EXISTS {self.TABLE_ENTITES} (
@@ -426,6 +471,7 @@ class MemoirePersonnelle:
         metadonnees: Optional[Dict[str, Any]] = None,
         duree_heures: Optional[int] = None,
         sensible: bool = False,
+        valide_depuis: Optional[str] = None,
     ) -> Souvenir:
         """Retient quelque chose. La source est obligatoire.
 
@@ -479,6 +525,7 @@ class MemoirePersonnelle:
             cree_le=debut.isoformat(timespec="seconds"),
             vu_le=debut.isoformat(timespec="seconds"),
             expire_le=expire_le,
+            valide_depuis=valide_depuis,
             sensible=sensible,
         )
         self._ecrire(souvenir)
@@ -492,7 +539,8 @@ class MemoirePersonnelle:
             connexion.execute(
                 f"INSERT INTO {self.TABLE_SOUVENIRS} (identifiant, contenu, type, nature, "
                 f"source, projet, importance, metadonnees, cree_le, vu_le, expire_le, "
-                f"occurrences, etat, sensible) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                f"occurrences, etat, sensible, valide_depuis) "
+                f"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     souvenir.identifiant, contenu_stocke, souvenir.type.value,
                     souvenir.nature.value, souvenir.source, souvenir.projet,
@@ -500,6 +548,7 @@ class MemoirePersonnelle:
                     json.dumps(souvenir.metadonnees, ensure_ascii=False),
                     souvenir.cree_le, souvenir.vu_le, souvenir.expire_le,
                     souvenir.occurrences, souvenir.etat.value, int(souvenir.sensible),
+                    souvenir.valide_depuis,
                 ),
             )
             connexion.commit()
@@ -635,6 +684,10 @@ class MemoirePersonnelle:
             cree_le=ligne["cree_le"], vu_le=ligne["vu_le"],
             expire_le=ligne["expire_le"], occurrences=ligne["occurrences"],
             etat=etat, sensible=sensible,
+            # `ligne.keys()` plutot qu'un acces direct : une base d'avant la
+            # migration, relue par un processus qui n'a pas encore appele
+            # `_creer_tables`, n'a pas la colonne.
+            valide_depuis=(ligne["valide_depuis"] if "valide_depuis" in colonnes else None),
         )
 
     def _dechiffrer_ou_signaler(self, identifiant: str, contenu_stocke: str) -> str:
@@ -671,6 +724,7 @@ class MemoirePersonnelle:
         projet: Optional[str] = None,
         limite: int = 50,
         inclure_perimes: bool = False,
+        inclure_a_venir: bool = False,
         inclure_rejetes: bool = False,
         inclure_archives: bool = False,
         sensible: Optional[bool] = None,
@@ -716,9 +770,14 @@ class MemoirePersonnelle:
             lignes = connexion.execute(requete, arguments).fetchall()
 
         souvenirs = [self._depuis_ligne(ligne) for ligne in lignes]
-        if inclure_perimes:
-            return souvenirs
-        return [souvenir for souvenir in souvenirs if not souvenir.est_perime()]
+        if not inclure_perimes:
+            souvenirs = [s for s in souvenirs if not s.est_perime()]
+        # Le miroir : un souvenir qui annonce une verite a venir n'est pas encore
+        # vrai. Le rendre ferait repondre « le tarif est 5500 » des septembre
+        # pour un tarif qui prend effet en octobre.
+        if not inclure_a_venir:
+            souvenirs = [s for s in souvenirs if not s.pas_encore_vrai()]
+        return souvenirs
 
     def souvenirs_correspondant_a_des_mots(
         self,

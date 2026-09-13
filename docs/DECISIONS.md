@@ -9299,3 +9299,78 @@ qui le couvrent et aucun autre.
 
 `plan_id` pour la boucle agentique, `memory_hits`, et la sortie de `stop_reason`
 hors de la boucle. Ils sont nommés plutôt que faits à moitié.
+
+
+---
+
+## DEC-0103 — Rien ne disait à partir de quand un souvenir est vrai
+
+**2026-09-13.** Le dernier point que `DEC-0099` avait nommé sans le faire.
+Travail de nuit autorisé par le propriétaire.
+
+### Le défaut
+
+`expire_le` existe depuis le premier jour : il dit **quand cesser de croire**.
+Rien ne disait **à partir de quand commencer**. Le cas qui le rend nécessaire est
+celui du propriétaire :
+
+> « À partir du 1er octobre, le tarif de pose passe à 5500 F/m². »
+
+Enregistré en septembre. Sans début de validité, ARENA le sert **dès septembre**
+comme le tarif courant et répond un prix faux avec l'assurance d'un fait — la
+faute précise que `DUREE_CONTEXTE_HEURES` évite dans l'autre sens.
+
+### Décision 1 : `valide_depuis` n'est pas `cree_le`
+
+- Décision : un champ distinct. `cree_le` dit quand le souvenir a été **écrit**,
+  `valide_depuis` depuis quand il est **vrai**.
+- Pourquoi : les confondre est exactement ce qui fait servir une annonce comme
+  un fait. Un souvenir écrit aujourd'hui peut être vrai depuis un an, ou pas
+  avant le mois prochain.
+- Coût si c'est faux : une colonne de plus, `NULL` sur la quasi-totalité des
+  souvenirs. `None` veut dire « vrai depuis toujours », ce qui est exact.
+
+### Décision 2 : un souvenir pas encore vrai est écarté de la lecture courante
+
+- Décision : miroir exact du filtre des périmés. `inclure_a_venir=False` par
+  défaut, sur `souvenirs()` et sur `GET /api/memory`.
+- Pourquoi : le garder en mémoire sans le servir est précisément ce qu'on veut —
+  il sera vrai le mois prochain, et il n'est perdu ni effacé.
+- Coût si c'est faux : un appelant qui veut voir ce qui vient doit le demander.
+  C'est le même contrat qu'`inclure_perimes`, déjà en place.
+
+### Décision 3 : une date illisible tait le souvenir
+
+- Décision : `pas_encore_vrai` rend `True` sur une date illisible.
+- Pourquoi : même prudence qu'`est_perime`, qui traite une échéance illisible
+  comme passée. Des deux erreurs possibles, **taire un souvenir coûte moins cher
+  que d'affirmer une chose fausse**.
+- Coût si c'est faux : un souvenir dont la date a été mal saisie disparaît de la
+  lecture courante. Il reste lisible par identifiant et par `inclure_a_venir`.
+
+### Zone verrouillée
+
+`core/memory/personnelle.py`, conditions 1 et 6 de
+`PROJECT_MEMORY/LOCKED_ZONES.md`. Une colonne ajoutée par `ALTER TABLE` protégé
+d'une lecture de `PRAGMA table_info` — la même forme que `etat`, `sensible` et,
+cette nuit, `requete` du journal des actions. **Aucune ligne existante n'est
+touchée** : `NULL` veut dire « vrai depuis toujours », ce qui est exact pour
+tous les souvenirs d'avant.
+
+### Un sixième sabotage passé au vert cette nuit
+
+Retirer l'`ALTER TABLE` laissait **72 tests au vert**. Mon test de migration
+vérifiait que l'ancien souvenir survit — vrai avec ou sans la migration, puisque
+`_depuis_ligne` tolère la colonne absente et rend `None`. Il ne prouvait rien.
+
+Ce qui le prouve : **écrire** dans la base migrée. Sans la colonne, l'`INSERT`
+nomme un champ qui n'existe pas.
+
+C'est le sixième de la nuit, et le motif ne varie pas : un test qui mesure sa
+propre mise en scène plutôt que le code.
+
+### Preuve
+
+9 tests dans `tests/core/test_memoire_validite.py`, 4 sabotages, tous mordent.
+Les 120 tests existants de la mémoire et de la récupération passent sans
+modification.
