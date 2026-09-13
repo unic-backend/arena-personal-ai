@@ -116,6 +116,9 @@ SURFACE_ATTENDUE = {
     # routes a une seule methode ci-dessus.
     "/api/memory": (["GET", "POST"], ["limiter_debit", "verify_api_key"]),
     "/api/memory/search": (["GET"], ["verify_api_key", "limiter_debit"]),
+    # DEC-0099. Declaree AVANT `/api/memory/{identifiant}` dans le routeur :
+    # apres, FastAPI la lirait comme un identifiant de souvenir.
+    "/api/memory/contradictions": (["GET"], ["verify_api_key", "limiter_debit"]),
     "/api/memory/export/all": (["GET"], ["verify_api_key", "limiter_debit"]),
     "/api/memory/import": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/memory/{identifiant}": (["DELETE", "GET"], ["limiter_debit", "verify_api_key"]),

@@ -29,6 +29,18 @@ def client(monkeypatch, tmp_path) -> TestClient:
         routeur_memoire, "memoire_personnelle",
         MemoirePersonnelle(db_path=str(tmp_path / "memoire.db")),
     )
+    # Le compteur de debit est un objet de MODULE, partage par tous les
+    # fichiers de test, et sa cle est l'adresse du client — « testclient » pour
+    # tout le monde. Sans cette remise a zero, ce fichier echoue des qu'il
+    # depasse 60 requetes dans une session : les derniers tests recoivent 429
+    # au lieu de 200, et ils passent pourtant quand on les lance seuls.
+    #
+    # Mesure du 13/09/2026, en ajoutant 9 tests ici : 4 sont tombes dans la
+    # suite complete, aucun isole. Meme remede que
+    # `tests/test_route_file_attente.py:47`, qui connaissait deja le piege.
+    # Le limiteur lui-meme reste couvert par `tests/test_rate_limit.py`, sur
+    # sa propre instance.
+    securite.limiteur._passages.clear()
     return TestClient(main.app, raise_server_exceptions=False)
 
 
@@ -41,6 +53,7 @@ class TestAuthentification:
     @pytest.mark.parametrize("methode,chemin", [
         ("GET", "/api/memory"),
         ("GET", "/api/memory/search?q=x"),
+        ("GET", "/api/memory/contradictions"),
         ("POST", "/api/memory"),
         ("DELETE", "/api/memory/x"),
     ])
@@ -275,3 +288,95 @@ class TestLeCoffreEstJoignableDepuisLeBackend:
             "le sel ne doit etre ecrit qu'a la premiere ECRITURE sensible, "
             "jamais au seul demarrage")
         assert sel_attendu == (mesure["coffre"] == "Coffre")
+
+
+class TestContradictions:
+    """`/api/memory/contradictions` — le conflit est rendu, jamais tranche."""
+
+    def _tarif(self, client, entetes, contenu):
+        return client.post("/api/memory", headers=entetes, json={
+            "contenu": contenu, "type": "semantic", "source": "le proprietaire",
+        })
+
+    def test_la_route_est_declaree_avant_celle_de_l_identifiant(self, client, entetes):
+        """Le piege d'ordre de FastAPI, epingle.
+
+        Declaree APRES `/api/memory/{identifiant}`, « contradictions » serait lu
+        comme un identifiant de souvenir et la route rendrait un 404 — sans que
+        rien d'autre ne bouge dans la suite.
+        """
+        res = client.get("/api/memory/contradictions", headers=entetes)
+
+        assert res.status_code == 200, res.text
+        assert "portee" in res.json(), (
+            "un 404 deguise : la route a ete captee par /api/memory/{identifiant}"
+        )
+
+    def test_deux_tarifs_differents_remontent_avec_leur_portee(self, client, entetes):
+        self._tarif(client, entetes, "Le tarif de pose est 5000 F/m2.")
+        self._tarif(client, entetes, "Le tarif de pose est 5500 F/m2.")
+
+        rendu = client.get("/api/memory/contradictions", headers=entetes).json()
+
+        assert rendu["total"] == 1
+        assert "negation" in rendu["portee"].lower()
+
+    def test_la_route_ne_designe_aucun_gagnant(self, client, entetes):
+        self._tarif(client, entetes, "Le tarif de pose est 5000 F/m2.")
+        self._tarif(client, entetes, "Le tarif de pose est 5500 F/m2.")
+
+        conflit = client.get("/api/memory/contradictions", headers=entetes).json()["contradictions"][0]
+
+        assert conflit["resolue_par"] is None
+        assert len(conflit["souvenirs"]) == 2
+
+    def test_la_route_ne_modifie_pas_la_memoire(self, client, entetes):
+        """Consulter n'arbitre pas : les deux souvenirs restent ACTIFS."""
+        self._tarif(client, entetes, "Le tarif de pose est 5000 F/m2.")
+        self._tarif(client, entetes, "Le tarif de pose est 5500 F/m2.")
+        avant = client.get("/api/memory", headers=entetes).json()
+
+        client.get("/api/memory/contradictions", headers=entetes)
+
+        assert client.get("/api/memory", headers=entetes).json() == avant
+
+    def test_une_memoire_vide_repond_zero_sans_pretendre_a_la_coherence(self, client, entetes):
+        rendu = client.get("/api/memory/contradictions", headers=entetes).json()
+
+        assert rendu["total"] == 0
+        assert rendu["contradictions"] == []
+        assert "coherente" in rendu["note"]
+
+
+class TestLesTypesDeSouvenir:
+    """`DECISION` et `ERREUR` (13/09/2026) atteignent la route, sans migration."""
+
+    @pytest.mark.parametrize("type_texte", ["decision", "mistake"])
+    def test_les_deux_nouveaux_types_sont_acceptes(self, client, entetes, type_texte):
+        res = client.post("/api/memory", headers=entetes, json={
+            "contenu": "On ne sous-traite plus le poncage.",
+            "type": type_texte, "source": "le proprietaire",
+        })
+
+        assert res.status_code == 200, res.text
+        assert res.json()["type"] == type_texte.upper()
+
+    def test_ils_se_filtrent_comme_les_autres(self, client, entetes):
+        client.post("/api/memory", headers=entetes, json={
+            "contenu": "Devis envoye sans la TVA : refait deux fois.",
+            "type": "mistake", "source": "le proprietaire"})
+        client.post("/api/memory", headers=entetes, json={
+            "contenu": "Le tarif de pose est 5000 F/m2.",
+            "type": "semantic", "source": "le proprietaire"})
+
+        erreurs = client.get("/api/memory?type=mistake", headers=entetes).json()
+
+        assert [s["type"] for s in erreurs] == ["MISTAKE"]
+
+    def test_un_type_inconnu_liste_les_six(self, client, entetes):
+        res = client.post("/api/memory", headers=entetes, json={
+            "contenu": "x", "type": "souvenir_dete", "source": "test"})
+
+        assert res.status_code == 422
+        for valide in ("EPISODIC", "SEMANTIC", "PROCEDURAL", "TASK", "DECISION", "MISTAKE"):
+            assert valide in res.json()["detail"]

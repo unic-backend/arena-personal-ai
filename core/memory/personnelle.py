@@ -66,12 +66,31 @@ logger = logging.getLogger("usman.memoire.personnelle")
 
 
 class TypeSouvenir(str, Enum):
-    """Quatre memoires, parce qu'on ne se souvient pas de tout de la meme facon."""
+    """Six memoires, parce qu'on ne se souvient pas de tout de la meme facon.
+
+    Les quatre premieres sont d'origine. `DECISION` et `ERREUR` sont ajoutees
+    le 13/09/2026, et elles ne sont PAS des episodes deguises :
+
+    - un episode raconte **ce qui s'est passe**, et il est neutre ; une decision
+      dit **ce qui a ete tranche**, donc ce qui n'est plus a rediscuter. Classee
+      `EPISODIQUE`, elle se retrouve en concurrence d'importance avec tous les
+      autres evenements du meme jour, et ARENA repose une question deja reglee ;
+    - une erreur porte, en plus du fait, un **« ne pas refaire »**. C'est la
+      seule categorie dont l'interet est d'etre remontee AVANT de recommencer,
+      pas apres.
+
+    Aucun changement de schema : la colonne `type` est `TEXT` sans contrainte
+    `CHECK`. Une base existante lit et ecrit ces deux valeurs sans migration —
+    c'est precisement pourquoi l'extension d'une zone verrouillee passe par
+    l'enumeration et jamais par la table.
+    """
 
     EPISODIQUE = "EPISODIC"      # ce qui s'est passe, date : « le 4 aout, 18 parois »
     SEMANTIQUE = "SEMANTIC"      # ce qui est vrai : « le tarif pose est 5000 F/m2 »
     PROCEDURALE = "PROCEDURAL"   # comment on fait : « un devis se numerote UC-AAAA-MMJJ »
     TACHE = "TASK"               # ce qui reste a faire
+    DECISION = "DECISION"        # ce qui a ete tranche : « on ne travaille plus avec X »
+    ERREUR = "MISTAKE"           # ce qui a rate, pour ne pas le refaire
 
 
 class Nature(str, Enum):

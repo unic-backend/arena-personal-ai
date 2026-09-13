@@ -225,11 +225,24 @@ def test_les_souvenirs_importants_viennent_en_premier(memoire):
     assert memoire.souvenirs()[0].contenu == "Essentiel."
 
 
-# --- Les quatre memoires ------------------------------------------------------
+# --- Les six memoires ---------------------------------------------------------
 
-def test_les_quatre_types_de_la_specification_existent():
+def test_les_types_de_la_specification_existent_et_pas_un_de_plus():
+    """L'egalite reste EXACTE, et c'est tout son interet.
+
+    Elle a fait son travail le 13/09/2026 : l'ajout de `DECISION` et `ERREUR`
+    (DEC-0099) l'a fait tomber, ce qui est exactement ce qu'on lui demande —
+    aucun type n'entre dans la memoire sans que quelqu'un vienne ici l'ecrire.
+    Elle n'est donc PAS affaiblie en un `>=` ou un `issuperset` : les deux
+    valeurs sont ajoutees a la liste attendue, une par une.
+
+    Les quatre premieres viennent de la specification d'origine ; les deux
+    dernieres de l'audit PHASE 0, section F, qui les nommait absentes — a
+    juste titre, contrairement a `EPISODE` et `PROCEDURE` qu'il annoncait
+    absents alors qu'ils sont ici depuis le premier jour.
+    """
     assert {t.value for t in TypeSouvenir} == {
-        "EPISODIC", "SEMANTIC", "PROCEDURAL", "TASK",
+        "EPISODIC", "SEMANTIC", "PROCEDURAL", "TASK", "DECISION", "MISTAKE",
     }
 
 
