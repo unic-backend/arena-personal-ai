@@ -230,3 +230,87 @@ une — donc la bonne pour la RTX A2000, sans rien faire de plus.
 
 Sans lui, ARENA répond `NOT_CONFIGURED` et dit ce qui manque. Il ne simule
 rien.
+
+---
+
+# Second relevé — VoiceStudio v0.5.2, commit `eaf8bb9` (13/09/2026)
+
+Le premier relevé de ce document porte sur `53ff367` (07/09/2026, v0.5.1).
+L'amont a bougé trois jours plus tard. Ce qui suit est **mesuré sur un clone
+du dépôt courant**, pas lu dans un changelog.
+
+## Ce qui n'a pas bougé, et qui fonde l'architecture d'ARENA
+
+| Hypothèse écrite en dur dans ARENA | État en `eaf8bb9` |
+|---|---|
+| Licence applicative **AGPL-3.0** | inchangée — la frontière « processus séparé, HTTP » reste nécessaire |
+| Port par défaut **3900** | confirmé (`backend/main.py:1898`, `backend/mcp_server.py:433`) |
+| `_REGISTRY` commence par **`omnivoice`** | toujours vrai — le défaut que `routage_tts.py` corrige est toujours là |
+| Poids OmniVoice **CC-BY-NC** | toujours écrit dans `LICENSE-NOTICE.md` |
+
+**Les six routes qu'ARENA appelle existent toutes** : `/system/info`,
+`/engines/tts`, `/engines/asr`, `/v1/audio/speech`,
+`/v1/audio/transcriptions`, `/profiles`. **Aucune rupture d'API.**
+
+## Ce qui a bougé, et qui a exigé un correctif
+
+`_LAZY_REGISTRY` porte un moteur qui n'existait pas au premier relevé :
+**`audiocpp`** (audio.cpp / Breeze-TTS-2, 3B, en+zh, clone + design, 24 kHz).
+
+Sa licence, source primaire `docs/engines/audio-cpp.md` :
+
+> - **audio.cpp code:** Apache-2.0.
+> - **Breeze-TTS-2 weights** [...] **research and non-commercial use only** [...]
+>   **Self-hosted outputs inherit the restriction**
+
+C'est le piège OmniVoice, à l'identique : code permissif, **poids non
+commerciaux**, et cette fois la source dit explicitement que **l'audio produit
+hérite de la restriction**.
+
+**Mesure du 13/09/2026, avant correction** — `choisir([audiocpp])` en usage
+commercial **rendait `audiocpp`**, là où le même appel sur `omnivoice`
+refusait. Le moteur tombait sur `LICENCE_INCONNUE`, et la règle 4 du module
+laisse délibérément passer `INCONNU` pour qu'ARENA ne se taise pas devant un
+moteur neuf. **C'est donc le tableau qu'il fallait corriger, pas la règle.**
+
+Corrigé : entrée `audiocpp` → `Commercial.INTERDIT`, langues `en`/`zh`, avec
+sa **propre source** (`_VS_0_5_2`) — les autres entrées viennent de `53ff367`,
+les fondre sous une seule étiquette ferait mentir la provenance de l'une des
+deux.
+
+## Surface amont qu'ARENA n'exploite pas
+
+L'amont compte **39 routeurs** (`backend/api/routers/`). ARENA en utilise le
+noyau — synthèse, transcription, catalogue de moteurs, profils, état système —
+et **ne touche à aucun des sous-systèmes suivants** (mesuré : 0 fichier
+d'ARENA ne les mentionne) :
+
+| Capacité | Routeur amont | État dans ARENA |
+|---|---|---|
+| Voice design par description | `describe_voice.py` → `/design/describe` | NOT_PRESENT (ARENA a `instruct`, pas cette route) |
+| Doublage vidéo | `dub_core/dub_generate/dub_translate/dub_export`, `sonitranslate` | NOT_PRESENT |
+| Dictée | `dictation.py`, `capture_ws.py` | NOT_PRESENT |
+| Long-format / audiobook | `audiobook.py`, `longform_jobs.py` | NOT_PRESENT |
+| Speech-to-speech | `voice_convert.py` | NOT_PRESENT |
+| Streaming TTS | `tts_stream.py`, `events.py` | NOT_PRESENT |
+| Lots / travailleurs distants | `batch.py`, `workers.py` | NOT_PRESENT |
+| MCP amont | `mcp_bindings.py` | NOT_PRESENT — et c'est **voulu** : ARENA a son propre MCP canonique (mission §45) |
+
+**Ce tableau n'est pas une liste de choses à faire.** C'est l'inventaire de ce
+qui est disponible si le propriétaire en a besoin. Chacune de ces lignes
+demanderait sa propre mesure de licence des poids, exactement comme `audiocpp`
+vient de le montrer.
+
+## Ce que ce relevé n'a PAS pu mesurer
+
+Sur la machine de vérification (conteneur cloud) :
+
+- **aucun GPU** (`nvidia-smi` absent, `torch` non installé) ;
+- **15 Go de RAM**, pas 32 ;
+- **3,8 Go de disque libre** (90 % occupé) ;
+- **VoiceStudio n'y tourne pas**, et aucun poids ne peut y être téléchargé.
+
+Donc : **aucune mesure RTX A2000, aucune synthèse réelle, aucune
+transcription réelle, aucun essai de moteur** n'a été faite ici. Les annoncer
+serait exactement la faute que `CLAUDE.md` interdit. Ces mesures exigent la
+machine du propriétaire.
