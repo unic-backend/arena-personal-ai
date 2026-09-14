@@ -12,6 +12,7 @@
 
 import { create } from 'zustand';
 import { activeRemoteCfg, signalerSiPanne } from '../store/backendStore';
+import { adresseDuServeur } from '../activity/remoteTransport';
 
 /* ── Web Speech API Type Shims ── */
 interface SpeechRecognitionEventLike extends Event {
@@ -130,7 +131,7 @@ async function demarrerDictationServeur(
           form.append('file', blob, 'dictee.webm');
           form.append('langue', lang.startsWith('fr') ? 'fr' : 'en');
 
-          const res = await fetch(`${cfg.url}/api/speech/transcribe`, {
+          const res = await fetch(`${adresseDuServeur(cfg.url)}/api/speech/transcribe`, {
             method: 'POST',
             headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
             body: form,

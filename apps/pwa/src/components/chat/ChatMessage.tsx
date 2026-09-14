@@ -19,6 +19,7 @@ import { useChat, estMessageDeLiaison } from '../../lib/store/chatStore';
 import { triggerHaptic } from '../../lib/theme';
 import type { ItemCtx } from '../activity/ActivityItem';
 import { cn } from '../../utils/cn';
+import { adresseDuServeur } from '../../lib/activity/remoteTransport';
 
 /* Ce qui attend un accord, avec de quoi le donner.
  *
@@ -45,7 +46,7 @@ function DocumentsProduits({ msg }: { msg: Msg }) {
   // Sans backend connu, on ne fabrique pas une adresse qui ne menerait nulle
   // part : mieux vaut ne rien afficher qu'un lien mort.
   if (!cfg) return null;
-  const base = cfg.url.replace(/\/+$/, '');
+  const base = adresseDuServeur(cfg.url);
 
   return (
     <div className="space-y-2 pt-1">
