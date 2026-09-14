@@ -253,11 +253,13 @@ class ReasoningEngine:
             )
             if calcul_a_echoue and analyse.get("ok") is True:
                 analyse["ok"] = False
+                # Message court et clair, pas de jargon interne : il sera
+                # lu par un humain dans l'interface, ou consigne dans un
+                # log. ? correction deterministe ? et ? Raison initiale ?
+                # ne veulent rien dire pour le lecteur ? la seule chose qui
+                # compte est que le calcul n'a pas tourne.
                 analyse["raison"] = (
-                    "correction deterministe : le calcul a echoue, "
-                    "aucune verification par execution n'a eu lieu. "
-                    "Raison initiale de la critique : "
-                    + (analyse.get("raison") or "sans raison")
+                    "le calcul a echoue, la reponse n'a pas ete verifiee"
                 )
                 analyse["force_ko"] = True
 

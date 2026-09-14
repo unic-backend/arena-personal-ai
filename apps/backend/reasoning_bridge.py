@@ -174,13 +174,16 @@ async def resoudre_profondement(
     critique = raisonnement.get("critique")
     profondeur_effective = raisonnement.get("profondeur", profondeur)
 
-    # La note de calcul d'abord (comportement historique inchange), la note
-    # de critique ensuite. Un utilisateur qui voit les deux comprend qu'il y
-    # a un probleme a deux niveaux : pas de verification, et verdict KO.
+    # Seule la note de calcul reste dans le texte de la reponse : elle
+    # informe sur ce qui n'a pas tourne, c'est une information sur le
+    # CALCUL. Le verdict de critique, lui, voyage dans le champ `critique`
+    # du JSON et s'affiche dans un badge dedie cote PWA ? le repeter dans
+    # le texte creerait un doublon visuel et un message technique de plus
+    # a lire. La fonction `note_de_critique` reste definie pour les
+    # appelants qui n'ont pas de badge (l'API OpenAI, un script).
     reponse_finale = (
         str(raisonnement.get("final_response", ""))
         + note_de_calcul(calcul)
-        + note_de_critique(critique)
     )
 
     resultat: Dict[str, Any] = {
