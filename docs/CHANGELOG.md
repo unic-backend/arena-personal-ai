@@ -23,6 +23,50 @@ pour une raison que rien ne disait.**
 Sabotage vérifié : en faisant rendre à la clé des `\` comme sur Windows, les
 deux tests tombent, et le nouveau nomme la cause là où l'ancien accusait
 `ChatMessage.tsx`.
+### Corrigé — 14/09/2026 — La PR #222 est entrée avec CI rouge : 15 tests et 9 erreurs de style
+
+`main` était rouge depuis la fusion de la PR #222 (`5076dae`), et l'est resté
+après la #223. Mesuré : `ruff check .` → **9 erreurs**, `pytest` → **15 échecs**,
+identiques sur `5076dae` et sur `dd4d89b`. Aucun des deux n'est imputable au
+travail de la #223 — vérifié en rejouant les mêmes fichiers sur les deux
+commits.
+
+**Trois causes racines, pas une.**
+
+1. **`apps/backend/routers/chat.py` relu en cp1252 puis ré-enregistré** — 61
+   lignes corrompues dans le fichier, pas seulement à l'affichage. Les accents
+   ne décorent pas ici, ils **servent à reconnaître** : `"référence"`, `"d'où"`,
+   `"système de design"`, `"même personne"`, `"kédougou"`, `"sédhiou"` étaient
+   devenus leur version doublement encodée — chaque `é` remplacé par deux
+   caractères. Une question posée avec ses accents ne déclenchait plus rien. Quatre fichiers de tests tombaient par ce seul défaut
+   (`test_encodage`, `test_fresh_info_routing`, `test_vitesse_et_sources`,
+   `test_indexation_branchee`, plus `test_studio`). Réparé ligne à ligne par
+   `encode("cp1252").decode("utf-8")` comme le prescrit `tests/test_encodage.py`
+   — **les 61 lignes réparées sont identiques au caractère près à la version
+   saine `fdc18be`**, ce qui est la preuve que la réparation restitue et
+   n'invente pas.
+
+2. **Le test du branchement du raisonnement patchait un nom que plus personne ne
+   lit.** Depuis la #222, `DEEP_REASONING` passe par `resoudre_profondement`,
+   qui importe le moteur depuis `apps.backend.runtime` **au moment de l'appel**.
+   `tests/test_raisonnement_branche.py` posait son faux moteur sur
+   `apps.backend.routers.chat` : le vrai moteur était appelé, `engin.appels`
+   restait vide, et les six tests échouaient sans dire pourquoi. Le fixture vise
+   maintenant `apps.backend.runtime`. L'import resté dans `chat.py` était mort :
+   retiré.
+
+3. **`note_de_calcul` dupliquée dans le pont avait dérivé de deux apostrophes.**
+   Le module promet en tête un « comportement historique inchangé » ; il rendait
+   `n'a donc ete verifie` là où `chat.py` rend `n a donc ete verifie`. Le texte
+   du pont est réaligné sur celui de `chat.py`, au caractère près — **c'est la
+   source qui est corrigée, pas l'assertion du test**.
+
+Accessoirement : `CLAUDE.md` annonçait `306 modules, 245 atteints` alors que la
+#222 en a ajouté un. Mesuré le 14/09/2026 par `python scripts/orphelins.py` :
+**307 modules, 246 atteints**.
+
+Les 9 erreurs `ruff` (six fichiers sans saut de ligne final, un bloc d'imports
+non trié, deux imports inutilisés) venaient toutes de la #222 et sont corrigées.
 
 
 ### Corrigé — 13/09/2026 — Une source qui se répète promouvait une supposition en fait

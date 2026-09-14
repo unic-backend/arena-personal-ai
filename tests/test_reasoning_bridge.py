@@ -7,7 +7,6 @@ Deux categories :
 - **`resoudre_profondement`** : avec un FAUX moteur injecte. Aucun appel
   reseau, aucun Ollama, aucun bac a sable.
 """
-import pytest
 
 from apps.backend.reasoning_bridge import (
     note_de_calcul,
@@ -15,7 +14,6 @@ from apps.backend.reasoning_bridge import (
     profondeur_pour,
     resoudre_profondement,
 )
-
 
 # --- profondeur_pour ---------------------------------------------------------
 
