@@ -10,6 +10,7 @@ Aucun test n'appelle Ollama ni Docker.
 """
 import pytest
 
+from apps.backend import runtime as runtime_backend
 from apps.backend.routers import chat as routeur_chat
 from apps.backend.routers.chat import ChatRequest, dispatch_request, note_de_calcul
 from core.reasoning.reasoning_engine import ReasoningEngine
@@ -34,7 +35,12 @@ def moteur(monkeypatch, provider_factory):
                 "success": True, "stdout": "[2, 3]", "stderr": ""}
 
         monkeypatch.setattr(engin.interpreter, "execute_python_code", _executer)
-        monkeypatch.setattr(routeur_chat, "reasoning_engine", engin)
+        # Le moteur se patche sur `apps.backend.runtime`, pas sur le routeur :
+        # depuis la PR #222, la branche DEEP_REASONING passe par
+        # `resoudre_profondement`, qui importe le moteur depuis le runtime au
+        # moment de l'appel. Patcher le nom du routeur ne changeait plus rien —
+        # le vrai moteur etait appele, et `engin.appels` restait vide.
+        monkeypatch.setattr(runtime_backend, "reasoning_engine", engin)
         engin.appels = appels
         return engin
     return _installer
