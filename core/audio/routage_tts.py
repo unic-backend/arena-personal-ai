@@ -115,6 +115,12 @@ class LicenceMoteur:
 #: que ce module existe pour empêcher.
 _VS = "VoiceStudio README.md + LICENSE-NOTICE.md, commit 53ff367, lu le 07/09/2026"
 
+#: L'amont a bouge depuis. `audiocpp` n'existait pas au 07/09/2026 ; sa licence
+#: vient donc d'un second relevé, et porte sa propre source — fondre les deux
+#: sous `_VS` ferait mentir la provenance de l'un des deux.
+_VS_0_5_2 = ("VoiceStudio docs/engines/audio-cpp.md, commit eaf8bb9 (v0.5.2), "
+             "lu le 13/09/2026")
+
 LICENCES: Dict[str, LicenceMoteur] = {
     "omnivoice": LicenceMoteur(
         Commercial.INTERDIT, "poids CC-BY-NC (code Apache-2.0)", True, _VS),
@@ -144,6 +150,25 @@ LICENCES: Dict[str, LicenceMoteur] = {
         "licence modele Bilibili : libre en dessous de 100 M d'utilisateurs "
         "mensuels et 1 Md RMB de revenus — UniC est tres en dessous",
         False, _VS),
+    # `audiocpp` (audio.cpp / Breeze-TTS-2) est apparu APRES le relevé du
+    # 07/09/2026. Sans cette entree il tombait sur `LICENCE_INCONNUE`, donc
+    # `INCONNU` — et la regle 4 laisse passer `INCONNU` en usage commercial.
+    # Mesure du 13/09/2026, avant correction : `choisir([audiocpp])` en usage
+    # commercial RENDAIT audiocpp, quand le meme appel sur `omnivoice` refusait.
+    #
+    # La source amont est explicite, et c'est la derniere phrase qui tranche :
+    #   « Breeze-TTS-2 weights [...] research and non-commercial use only [...]
+    #     **Self-hosted outputs inherit the restriction** »
+    # L'audio PRODUIT herite de la restriction. Pour UniC Plaquiste, dont les
+    # voix off sont commerciales, c'est donc `INTERDIT`, exactement comme
+    # OmniVoice — et pour la meme raison : le code est Apache-2.0, les poids
+    # ne le sont pas.
+    "audiocpp": LicenceMoteur(
+        Commercial.INTERDIT,
+        "poids Breeze-TTS-2 sous licence BreezeBlue « research and "
+        "non-commercial » — la sortie audio herite de la restriction "
+        "(code audio.cpp Apache-2.0)",
+        True, _VS_0_5_2, langues=frozenset({"en", "zh"})),
     # `mlx-audio` charge un modele tiers choisi par l'utilisateur : sa licence
     # depend de ce modele, et VoiceStudio l'ecrit « Varies ». INCONNU est donc
     # la mesure exacte, pas une paresse.

@@ -2,6 +2,104 @@
 
 ## [Non publié]
 
+### Corrigé — 14/09/2026 — Une adresse sans schéma partait vers la PWA au lieu du serveur
+
+**Mesuré à 03h41**, sur le téléphone du propriétaire : le panneau affichait
+`BACKEND · INACCESSIBLE` et « Provider probe failed » alors que Railway
+répondait `200` en 0,7 s, `status: healthy`, 28 agents. Le champ d'adresse
+portait `arena-personal-ai-production.up.railway.app` — **sans `https://`**. Le
+navigateur l'a lue comme un chemin *relatif* : depuis une PWA servie par ce même
+domaine, le sondage partait vers
+`…railway.app/arena-personal-ai-production.up.railway.app/health` et rendait
+`404`.
+
+Deux défauts, pas un :
+
+1. **L'adresse était prise telle quelle**, et par onze appelants qui la
+   composaient chacun à la main — sondage, flux, dictée, téléversement,
+   capacités vidéo, projet vidéo, connecteurs (cinq), confirmation d'action,
+   synchronisation des conversations, et le href du lien « Ouvrir le document ».
+   *La règle apprise à un endroit et jamais portée sur les autres*, une fois de
+   plus. Tous passent maintenant par `adresseDuServeur()`, qui n'ajoute `https`
+   que si **rien** n'est écrit : un `http://127.0.0.1:8000` local reste intact.
+2. **L'échec ne désignait rien.** `pingBackend` rendait `{ ok: false }` sans
+   champ `error` sur toute réponse non-2xx, et l'appelant retombait sur son
+   message par défaut. Le code HTTP voyage désormais avec l'échec : `HTTP 404`
+   désigne l'adresse, `HTTP 502` désigne le serveur. Le message vague avait
+   envoyé chercher du côté de la clé, qui n'était pas en cause.
+
+Un test structurel tient la règle pour les onze : *aucun module ne compose une
+adresse à la main*. Sabotage vérifié — remettre `cfg.url.replace(...)` dans un
+seul appelant le fait tomber.
+
+
+### Corrigé — 14/09/2026 — Une règle structurelle qui ne s'appliquait pas sur Windows
+
+`apps/pwa/src/lib/store/regle-de-panne.test.ts` dérivait la clé d'un module
+avec `chemin.slice(chemin.indexOf('/src/') + 5)`. Sur Windows — la machine du
+propriétaire — `join` rend des `\`, `indexOf('/src/')` rend `-1`, et la clé
+devenait `sers\saer\...\ChatMessage.tsx` (mesuré). Aucune entrée de
+`EXEMPTES` ne pouvait plus correspondre : le test signalait `ChatMessage.tsx`
+alors que le dépôt l'exempte nommément depuis la DEC-0041, et affichait un
+chemin abîmé dans son message d'erreur. **Vert sur Linux, rouge sur Windows,
+pour une raison que rien ne disait.**
+
+- La clé passe par `relative(SRC, chemin).split(sep).join('/')` : elle ne
+  dépend plus de la présence de la chaîne `/src/`.
+- Un troisième test tient désormais la dérivation elle-même — *chaque exemption
+  désigne un fichier qui existe vraiment*. Les deux autres ne tenaient que son
+  résultat. Une exemption morte (fichier renommé, supprimé, ou clé mal calculée)
+  n'exempte rien et laissait la suite verte.
+
+Sabotage vérifié : en faisant rendre à la clé des `\` comme sur Windows, les
+deux tests tombent, et le nouveau nomme la cause là où l'ancien accusait
+`ChatMessage.tsx`.
+### Corrigé — 14/09/2026 — La PR #222 est entrée avec CI rouge : 15 tests et 9 erreurs de style
+
+`main` était rouge depuis la fusion de la PR #222 (`5076dae`), et l'est resté
+après la #223. Mesuré : `ruff check .` → **9 erreurs**, `pytest` → **15 échecs**,
+identiques sur `5076dae` et sur `dd4d89b`. Aucun des deux n'est imputable au
+travail de la #223 — vérifié en rejouant les mêmes fichiers sur les deux
+commits.
+
+**Trois causes racines, pas une.**
+
+1. **`apps/backend/routers/chat.py` relu en cp1252 puis ré-enregistré** — 61
+   lignes corrompues dans le fichier, pas seulement à l'affichage. Les accents
+   ne décorent pas ici, ils **servent à reconnaître** : `"référence"`, `"d'où"`,
+   `"système de design"`, `"même personne"`, `"kédougou"`, `"sédhiou"` étaient
+   devenus leur version doublement encodée — chaque `é` remplacé par deux
+   caractères. Une question posée avec ses accents ne déclenchait plus rien. Quatre fichiers de tests tombaient par ce seul défaut
+   (`test_encodage`, `test_fresh_info_routing`, `test_vitesse_et_sources`,
+   `test_indexation_branchee`, plus `test_studio`). Réparé ligne à ligne par
+   `encode("cp1252").decode("utf-8")` comme le prescrit `tests/test_encodage.py`
+   — **les 61 lignes réparées sont identiques au caractère près à la version
+   saine `fdc18be`**, ce qui est la preuve que la réparation restitue et
+   n'invente pas.
+
+2. **Le test du branchement du raisonnement patchait un nom que plus personne ne
+   lit.** Depuis la #222, `DEEP_REASONING` passe par `resoudre_profondement`,
+   qui importe le moteur depuis `apps.backend.runtime` **au moment de l'appel**.
+   `tests/test_raisonnement_branche.py` posait son faux moteur sur
+   `apps.backend.routers.chat` : le vrai moteur était appelé, `engin.appels`
+   restait vide, et les six tests échouaient sans dire pourquoi. Le fixture vise
+   maintenant `apps.backend.runtime`. L'import resté dans `chat.py` était mort :
+   retiré.
+
+3. **`note_de_calcul` dupliquée dans le pont avait dérivé de deux apostrophes.**
+   Le module promet en tête un « comportement historique inchangé » ; il rendait
+   `n'a donc ete verifie` là où `chat.py` rend `n a donc ete verifie`. Le texte
+   du pont est réaligné sur celui de `chat.py`, au caractère près — **c'est la
+   source qui est corrigée, pas l'assertion du test**.
+
+Accessoirement : `CLAUDE.md` annonçait `306 modules, 245 atteints` alors que la
+#222 en a ajouté un. Mesuré le 14/09/2026 par `python scripts/orphelins.py` :
+**307 modules, 246 atteints**.
+
+Les 9 erreurs `ruff` (six fichiers sans saut de ligne final, un bloc d'imports
+non trié, deux imports inutilisés) venaient toutes de la #222 et sont corrigées.
+
+
 ### Corrigé — 13/09/2026 — Une source qui se répète promouvait une supposition en fait
 
 `MemoirePersonnelle.confirmer()` est le seul chemin par lequel une inférence

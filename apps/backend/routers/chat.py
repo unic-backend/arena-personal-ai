@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from agents.video_analyzer.video_analyzer_agent import demande_de_suivi
 from apps.backend.config import AGENTS_SPECIALISES, MEDIA_DIR
 from apps.backend.prompts import prompt_avec_methode
+from apps.backend.reasoning_bridge import resoudre_profondement
 from apps.backend.runtime import (
     audio_agent,
     browser_agent,
@@ -38,7 +39,6 @@ from apps.backend.runtime import (
     orchestrator,
     plaquiste_agent,
     publisher_agent,
-    reasoning_engine,
     registre,
     repo_engineer,
     researcher_agent,
@@ -271,7 +271,7 @@ def note_de_calcul(calcul: str) -> str:
     """
     if not calcul or not calcul.startswith(CALCUL_REFUSE):
         return ""
-    return ("\n\n⚠️ Le calcul n a pas pu etre execute : "
+    return ("\n\nâš ï¸ Le calcul n a pas pu etre execute : "
             f"{calcul[len(CALCUL_REFUSE):].lstrip(' :')} "
             "Ce qui precede n a donc ete verifie par aucun calcul.")
 
@@ -459,21 +459,11 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
     logger.info(f"Intention détectée par Usman: {intent}")
 
     if intent == "DEEP_REASONING":
-        # Jusqu ici, « resous cette equation » recevait une passe du modele
-        # rapide et un chiffre sorti de sa tete. Le moteur de raisonnement
-        # planifie, EXECUTE le calcul en bac a sable, puis redige a partir du
-        # resultat obtenu — et quand le bac a sable refuse, la reponse le dit.
-        raisonnement = await reasoning_engine.solve_complex_task(request.prompt)
-        calcul = raisonnement.get("calculation_result") or ""
-        result = {
-            "status": raisonnement.get("status", "success"),
-            "agent": "ReasoningEngine",
-            "plan": raisonnement.get("plan", ""),
-            # Le calcul voyage avec la reponse : sans lui, personne ne peut
-            # verifier que le chiffre annonce vient d une execution.
-            "calcul": calcul,
-            "response": raisonnement.get("final_response", "") + note_de_calcul(calcul),
-        }
+        # Le pont `resoudre_profondement` choisit la profondeur selon la
+        # demande, appelle le moteur, et prepare la reponse (calcul + critique).
+        # La critique et la revision sont ainsi branchees SANS que ce routeur
+        # ait a connaitre les details du moteur de raisonnement.
+        result = await resoudre_profondement(request.prompt)
     elif intent == "FRESH_INFO":
         # Avant le web : la donnee OFFICIELLE, quand la question en releve
         # (« combien d'habitants a Ziguinchor ? »). Locale, gratuite,
@@ -645,7 +635,7 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
 async def chat_endpoint(request: ChatRequest):
     try:
         if not await fast_provider.is_available():
-            return {"status": "error", "model": fast_provider.model_name, "response": "❌ Ollama hors-ligne."}
+            return {"status": "error", "model": fast_provider.model_name, "response": "âŒ Ollama hors-ligne."}
 
         result = await dispatch_request(request)
         intention = result.get("intent", "CHAT")
@@ -663,7 +653,7 @@ async def chat_endpoint(request: ChatRequest):
         }
     except Exception as e:
         logger.error(f"Erreur endpoint chat: {e}", exc_info=True)
-        return {"status": "error", "model": "error", "response": f"❌ {str(e)}"}
+        return {"status": "error", "model": "error", "response": f"âŒ {str(e)}"}
 
 @router.post("/api/chat/stream", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
 async def chat_stream_endpoint(request: ChatRequest):

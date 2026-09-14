@@ -19,6 +19,7 @@ import { useChat, estMessageDeLiaison } from '../../lib/store/chatStore';
 import { triggerHaptic } from '../../lib/theme';
 import type { ItemCtx } from '../activity/ActivityItem';
 import { cn } from '../../utils/cn';
+import { adresseDuServeur } from '../../lib/activity/remoteTransport';
 
 /* Ce qui attend un accord, avec de quoi le donner.
  *
@@ -45,7 +46,7 @@ function DocumentsProduits({ msg }: { msg: Msg }) {
   // Sans backend connu, on ne fabrique pas une adresse qui ne menerait nulle
   // part : mieux vaut ne rien afficher qu'un lien mort.
   if (!cfg) return null;
-  const base = cfg.url.replace(/\/+$/, '');
+  const base = adresseDuServeur(cfg.url);
 
   return (
     <div className="space-y-2 pt-1">
@@ -170,6 +171,78 @@ function ActionsEnAttente({ msg }: { msg: Msg }) {
       ))}
     </div>
   );
+}
+
+/**
+ * Le verdict du relecteur independant, mode approfondie uniquement.
+ *
+ * Affiche un badge discret selon le verdict :
+ *  - ok: true  : coche verte, avec la confiance si elle est chiffree.
+ *  - ok: false : point d'exclamation orange, avec la raison du relecteur.
+ *  - ok: null  : rien. Le moteur a abandonne la critique, la reponse
+ *                originale est conservee, il n'y a rien a signaler.
+ *
+ * En mode standard, meta.critique est absent, le badge ne s'affiche pas.
+ *
+ * Les caracteres non-ASCII (coche, exclamation, accents) sont ecrits sous
+ * forme de sequences d'echappement Unicode (\\uXXXX), interpretees par le
+ * navigateur au runtime. Cela evite que l'encodage du terminal qui ecrit ce
+ * fichier ne les transforme en points d'interrogation.
+ */
+function VerdictCritique({ msg }: { msg: Msg }) {
+  const verdict = msg.meta?.critique;
+  if (!verdict) return null;
+  if (verdict.ok === null) return null;
+
+  const confiance =
+    verdict.confiance !== null && verdict.confiance !== undefined
+      ? ` (${Math.round(verdict.confiance * 100)}%)`
+      : "";
+
+  const raison = nettoyerRaison(verdict.raison);
+
+  if (verdict.ok) {
+    return (
+      <div className="flex items-center gap-1 pt-1 font-mono text-[9.5px] uppercase tracking-widest text-emerald-600/80">
+        <span>{"\u2713"}</span>
+        <span>{"v\u00e9rifi\u00e9e"}{confiance}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5 pt-1 font-mono text-[9.5px] uppercase tracking-widest text-amber-600/80">
+      <div className="flex items-center gap-1">
+        <span>{"\u26A0"}</span>
+        <span>{"non v\u00e9rifi\u00e9e"}{confiance}</span>
+      </div>
+      {raison && (
+        <span className="normal-case tracking-normal text-amber-700/70">
+          {raison}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Nettoie la raison d'un verdict avant affichage.
+ *
+ * Quand le verdict vient d'une correction deterministe (le LLM avait dit OK
+ * alors que le calcul avait echoue), la raison stockee melange un message
+ * technique et la raison initiale du LLM, qui n'avait PAS vu le probleme.
+ * Afficher tout cela noie l'utilisateur dans du jargon et peut preter a
+ * confusion.
+ *
+ * On rend un message court et clair a la place. Une raison ordinaire (une
+ * critique KO naturelle) passe telle quelle.
+ */
+function nettoyerRaison(raison: string | undefined): string {
+  if (!raison) return "";
+  if (raison.startsWith("correction deterministe")) {
+    return "le calcul n'a pas pu \u00eatre ex\u00e9cut\u00e9, la r\u00e9ponse n'a pas \u00e9t\u00e9 v\u00e9rifi\u00e9e";
+  }
+  return raison;
 }
 
 function SourcesStrip({ msg }: { msg: Msg }) {
@@ -570,6 +643,7 @@ export const ChatMessage = memo(function ChatMessage({
         )}
 
         <SourcesStrip msg={msg} />
+        <VerdictCritique msg={msg} />
 
         <ActionsEnAttente msg={msg} />
         <DocumentsProduits msg={msg} />

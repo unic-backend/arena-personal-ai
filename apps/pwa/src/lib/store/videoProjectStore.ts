@@ -12,6 +12,7 @@
 
 import { create } from 'zustand';
 import { activeRemoteCfg, signalerSiPanne } from './backendStore';
+import { adresseDuServeur } from '../activity/remoteTransport';
 
 /** The closed capability vocabulary — must mirror
  * `core/production/plan_video.py:CAPACITES_VIDEO` exactly. A UI list
@@ -135,7 +136,7 @@ export const useVideoProject = create<Store>((set, get) => ({
       return;
     }
     try {
-      const res = await fetch(`${cfg.url.replace(/\/+$/, '')}/agent/capabilities`, {
+      const res = await fetch(`${adresseDuServeur(cfg.url)}/agent/capabilities`, {
         headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
         signal: AbortSignal.timeout(8000),
       });
@@ -172,7 +173,7 @@ export const useVideoProject = create<Store>((set, get) => ({
       try {
         const form = new FormData();
         form.append('file', file);
-        const res = await fetch(`${cfg.url}/api/upload`, {
+        const res = await fetch(`${adresseDuServeur(cfg.url)}/api/upload`, {
           method: 'POST',
           headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
           body: form,
@@ -229,7 +230,7 @@ export const useVideoProject = create<Store>((set, get) => ({
       const pretes = references.filter((r) => r.status === 'ready' && r.path);
       if (pretes.length) body.references = pretes.map((r) => r.path);
 
-      const res = await fetch(`${cfg.url}/api/video/projet`, {
+      const res = await fetch(`${adresseDuServeur(cfg.url)}/api/video/projet`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

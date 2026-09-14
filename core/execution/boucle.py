@@ -11,7 +11,7 @@ Ce module ajoute la seule chose qui manquait : **apres avoir observe, on peut
 planifier autrement**. Il ne remplace ni `Coordination`, ni un agent : il les
 conduit.
 
-**Cinq regles, et la premiere commande les autres.**
+**Six regles, et la premiere commande les autres.**
 
 1. **L'etat vit en Python, jamais dans du texte genere.** Un modele peut
    *proposer* des etapes ; ce sont des objets `Etape` qui s'executent, et c'est
@@ -33,6 +33,18 @@ conduit.
 5. **Ce qui n'a pas ete compte vaut `None`, jamais zero.** Sans compteur
    d'outils branche, `appels_outils` reste `None` : « aucun appel » et « je ne
    compte pas » sont deux etats differents.
+
+6. **Les echecs s'accumulent, ils ne disparaissent pas.** Une etape qui a
+   echoue laisse une trace : `echecs_cumules` porte, par nom d'etape, toutes
+   les raisons d'echec vues depuis le debut. Le planificateur les relit a
+   chaque tour — il ne peut plus reproposer en silence ce qui a deja echoue.
+   C'est additif : aucun test existant ne change de comportement.
+
+**Note d'implementation.** `echecs_cumules` sur chaque `Observation` est une
+**copie profonde** de l'etat au moment du tour : chaque liste de raisons est
+recreee. Sans cela, toutes les observations partageraient les memes listes, et
+un echec survenu au tour 3 apparaitrait retroactivement dans l'observation du
+tour 1 — c'est-a-dire n'importe ou.
 """
 from __future__ import annotations
 
@@ -68,6 +80,12 @@ class RaisonDArret(str, Enum):
     BUDGET_ETAPES = "STEP_BUDGET"
     BUDGET_TEMPS = "TIME_BUDGET"
     BUDGET_OUTILS = "TOOL_BUDGET"
+    #: Le planificateur a propose exactement les memes etapes que le tour
+    #: precedent, sans que l'objectif soit atteint. Insister ne produirait
+    #: pas autre chose que ce qu'on vient d'obtenir. Seulement pose quand
+    #: `anti_repetition=True` : sans ce drapeau, la boucle garde son
+    #: comportement historique et consomme son budget de tours.
+    PLAN_REPETE = "REPEATED_PLAN"
 
 
 @dataclass
@@ -107,7 +125,9 @@ class Observation:
     """Ce qu'un tour a appris — c'est ce que le replanificateur relit.
 
     Ce n'est pas un resume redige : ce sont les noms des etapes et les raisons
-    reelles d'echec, telles que `Coordination` les a gardees.
+    reelles d'echec, telles que `Coordination` les a gardees. Depuis
+    l'ajout de `echecs_cumules`, un tour porte aussi la memoire des echecs
+    anterieurs : le planificateur n'a pas a recalculer l'historique.
     """
 
     tour: int
@@ -117,13 +137,23 @@ class Observation:
     abandonnees: List[str] = field(default_factory=list)
     atteint: bool = False
     pourquoi: str = ""
+    #: Par nom d'etape, toutes les raisons d'echec vues depuis le debut,
+    #: **ce tour inclus**. Un nom qui apparait 2 fois ou plus est une etape
+    #: qui resiste : le planificateur devrait la reconsiderer autrement.
+    #: Copie profonde au moment du tour — jamais une vue partagee.
+    echecs_cumules: Dict[str, List[str]] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"tour": self.tour, "plan": list(self.plan),
-                "reussies": list(self.reussies),
-                "echouees": [{"etape": n, "raison": r} for n, r in self.echouees],
-                "abandonnees": list(self.abandonnees),
-                "atteint": self.atteint, "pourquoi": self.pourquoi}
+        d: Dict[str, Any] = {"tour": self.tour, "plan": list(self.plan),
+                             "reussies": list(self.reussies),
+                             "echouees": [{"etape": n, "raison": r}
+                                          for n, r in self.echouees],
+                             "abandonnees": list(self.abandonnees),
+                             "atteint": self.atteint, "pourquoi": self.pourquoi}
+        if self.echecs_cumules:
+            d["echecs_cumules"] = {nom: list(raisons)
+                                   for nom, raisons in self.echecs_cumules.items()}
+        return d
 
     def rendre(self) -> str:
         lignes = [f"tour {self.tour} — plan : {', '.join(self.plan) or '(vide)'}"]
@@ -156,6 +186,11 @@ class EtatBoucle:
     raison_d_arret: Optional[RaisonDArret] = None
     #: Ce que la derniere execution a produit, par nom d'etape.
     acquis: Dict[str, Any] = field(default_factory=dict)
+    #: Par nom d'etape, la liste de toutes les raisons d'echec rencontrees
+    #: (etapes `FAILED` seulement). Toujours alimente : ce n'est pas une
+    #: option, c'est une memoire. La lire ne change rien pour les appelants
+    #: qui ne s'y interessent pas.
+    echecs_cumules: Dict[str, List[str]] = field(default_factory=dict)
 
     @property
     def atteint(self) -> bool:
@@ -166,8 +201,20 @@ class EtatBoucle:
         """Combien de fois le plan a ete refait. Zero = un seul plan."""
         return max(0, len(self.tours) - 1)
 
+    @property
+    def etapes_recalcitrantes(self) -> Dict[str, int]:
+        """Etapes echouees 2 fois ou plus, avec le nombre d'echecs.
+
+        Lecture seule : sert au diagnostic et a l'affichage. Le planificateur,
+        lui, lit `echecs_cumules` en entier pour decider — un echec unique
+        peut etre une panne transitoire, deux la meme chose commence a
+        ressembler a une mauvaise idee.
+        """
+        return {nom: len(raisons) for nom, raisons in self.echecs_cumules.items()
+                if len(raisons) >= 2}
+
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d: Dict[str, Any] = {
             "plan_id": self.plan_id,
             "objectif": self.objectif,
             "atteint": self.atteint,
@@ -179,6 +226,11 @@ class EtatBoucle:
             "secondes": round(self.secondes, 3),
             "budget": self.budget.to_dict(),
         }
+        if self.echecs_cumules:
+            d["echecs_cumules"] = {nom: list(raisons)
+                                   for nom, raisons in self.echecs_cumules.items()}
+            d["etapes_recalcitrantes"] = self.etapes_recalcitrantes
+        return d
 
     def rendre(self) -> str:
         lignes = [f"Objectif : {self.objectif}"]
@@ -189,6 +241,10 @@ class EtatBoucle:
             f"etape(s), {len(self.tours)}/{self.budget.tours_max} tour(s), "
             f"{self.secondes:.1f}/{self.budget.secondes_max:.0f} s"
         )
+        recalcitrantes = self.etapes_recalcitrantes
+        if recalcitrantes:
+            details = ", ".join(f"{nom} ({n}x)" for nom, n in recalcitrantes.items())
+            lignes.append(f"Etapes recalcitrantes : {details}")
         return "\n".join(lignes)
 
 
@@ -219,6 +275,7 @@ class BoucleAgentique:
         compteur_outils: Optional[Callable[[], int]] = None,
         parallelisme: Optional[int] = None,
         journal: Optional[JournalDesPlans] = None,
+        anti_repetition: bool = False,
     ) -> None:
         """
         Args:
@@ -235,6 +292,14 @@ class BoucleAgentique:
                 Existe pour un appelant qui consultait DEJA en parallele :
                 passer par la boucle ne doit pas serialiser ce qui ne l'etait
                 pas — ce serait payer la replanification avec de la latence.
+            journal: ou l'execution est enregistree. `None` = pas de trace.
+            anti_repetition: si vrai, la boucle s'arrete des que le
+                planificateur propose un plan dont les noms d'etapes sont
+                identiques a ceux du tour precedent, alors que l'objectif
+                n'etait pas atteint. **Opt-in** pour ne pas changer le
+                comportement historique : la valeur par defaut reste
+                `False`, et la boucle consomme son budget de tours comme
+                avant.
         """
         if not (objectif or "").strip():
             raise ValueError("Une boucle sans objectif ne peut rien evaluer.")
@@ -251,6 +316,12 @@ class BoucleAgentique:
         #: laisser de trace — c'est le cas d'un test ou d'un appel direct, et
         #: ce n'est pas une panne.
         self.journal = journal
+        self.anti_repetition = anti_repetition
+        #: Suivi de repetition : noms du dernier plan, et si l'objectif etait
+        #: atteint a ce moment-la. Utilises uniquement quand `anti_repetition`
+        #: est vrai. Toujours tenus a jour : coute une affectation.
+        self._dernier_plan: Optional[Tuple[str, ...]] = None
+        self._dernier_atteint: bool = False
         self.etat = EtatBoucle(objectif=objectif, budget=self.budget)
 
     def _outils_consommes(self, depart: Optional[int]) -> Optional[int]:
@@ -312,6 +383,31 @@ class BoucleAgentique:
         with plan(self.etat.plan_id):
             return await self._conduire()
 
+    def _memoriser_echecs(self, resultat: Resultat) -> None:
+        """Ajoute au passe les echecs du tour qui vient de tourner.
+
+        Seules les etapes `FAILED` (obligatoires et ratees) sont comptees :
+        une etape `ABANDONNEE` etait facultative, et le fait qu'elle n'ait
+        pas tourne n'est pas la meme information. Une etape `NON_ATTEINTE`
+        n'a jamais ete essayee du tout.
+        """
+        for trace in resultat.traces:
+            if trace.etat.value == "FAILED":
+                self.etat.echecs_cumules.setdefault(trace.nom, []).append(
+                    trace.raison or "sans raison"
+                )
+
+    def _copie_profonde_echecs(self) -> Dict[str, List[str]]:
+        """Copie des echecs ou chaque liste est independante.
+
+        `dict(...)` seul ne suffit pas : les listes seraient partagees, et un
+        echec ajoute au tour N apparaitrait retroactivement dans l'observation
+        du tour 1. Chaque observation doit voir l'historique tel qu'il etait
+        a SON moment.
+        """
+        return {nom: list(raisons)
+                for nom, raisons in self.etat.echecs_cumules.items()}
+
     async def _conduire(self) -> EtatBoucle:
         """Le corps de la boucle, sous le plan pose par `executer`."""
         depart = time.perf_counter()
@@ -347,6 +443,18 @@ class BoucleAgentique:
             if not etapes:
                 return self._arreter(RaisonDArret.PLAN_VIDE, depart)
 
+            # Regle 6 : anti-repetition (opt-in). Si le planificateur propose
+            # exactement les memes noms d'etapes qu'au tour precedent, alors
+            # que l'objectif n'etait pas atteint, insister n'apprendra rien de
+            # plus — la boucle s'arrete et le dit.
+            noms = tuple(e.nom for e in etapes)
+            if (self.anti_repetition
+                    and self._dernier_plan == noms
+                    and not self._dernier_atteint):
+                logger.info("Plan identique au tour precedent, sans succes : arret.")
+                return self._arreter(RaisonDArret.PLAN_REPETE, depart)
+            self._dernier_plan = noms
+
             # Regle 4 : un plan qui ne tient pas n'est pas execute a moitie.
             restantes = self.budget.etapes_max - self.etat.etapes_consommees
             if len(etapes) > restantes:
@@ -364,6 +472,11 @@ class BoucleAgentique:
 
             self.etat.etapes_consommees += len(etapes)
             self.etat.acquis = resultat.resultats
+
+            # Regle 6 : les echecs s'accumulent AVANT qu'on evalue, pour que
+            # l'observation du tour porte deja l'historique a jour.
+            self._memoriser_echecs(resultat)
+
             atteint, pourquoi = self.evaluer(resultat, resultat.resultats)
 
             self.etat.tours.append(Observation(
@@ -374,8 +487,13 @@ class BoucleAgentique:
                           if t.etat.value == "FAILED"],
                 abandonnees=[t.nom for t in resultat.abandonnees],
                 atteint=bool(atteint), pourquoi=str(pourquoi or ""),
+                # Copie profonde : chaque observation voit l'historique tel
+                # qu'il etait a SON moment, pas une vue partagee qui bouge
+                # apres coup.
+                echecs_cumules=self._copie_profonde_echecs(),
             ))
             self.etat.appels_outils = self._outils_consommes(outils_au_depart)
+            self._dernier_atteint = bool(atteint)
 
             if atteint:
                 return self._arreter(RaisonDArret.OBJECTIF_ATTEINT, depart)
