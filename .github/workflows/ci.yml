@@ -45,7 +45,7 @@ jobs:
           pip install -c requirements.txt fastapi httpx pyyaml python-dotenv pydantic \
             python-multipart pypdf python-docx openpyxl python-pptx pypdfium2 pytesseract reportlab \
             gitingest numpy txtai_minimal ifcopenshell psutil cryptography mcp \
-            weasyprint cairosvg markdown
+            weasyprint cairosvg markdown openai chromadb
           pip install ruff
 
       - name: Ruff

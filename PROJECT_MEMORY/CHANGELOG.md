@@ -1772,3 +1772,27 @@ pondération et la nomme.
 
 Un seul point de l'audit PHASE 0 : le **banc d'essai des modèles locaux** (P2),
 qui exige sa machine — aucun modèle n'a jamais tourné ici.
+
+# 2026-09-13 — Chat autonome demande par le proprietaire
+
+Base `4a66e0c`. Nouvelle route authentifiee `POST /api/v1/chat`, services sous
+`apps/backend/services/` : SQLite + Chroma, extraction de citations utilisateur
+en arriere-plan avec reprise, outils web/calcul, boucle de cinq tours.
+Reutilise la cle Bearer, les souvenirs historiques du proprietaire et le
+compteur cloud. Configuration et limites : `docs/AUTONOMOUS_CHAT.md`.
+Les routes et la PWA existantes conservent leur chemin actuel.
+
+Verification finale : 33 nouveaux tests reussis, Ruff vert. Sabotage en
+processus jetable : fusionner volontairement les namespaces utilisateur fait
+echouer le test d'isolation ; aucun fichier source n'a ete modifie pour cela.
+Regression complete hors reseau : 5571 reussis, 54 ignores, 52 deselectionnes
+et quatre echecs initiaux. Trois corriges dans les noms de configuration et
+la documentation ; le quatrieme venait du PATH du Python de sous-processus.
+Controle final des tests concernes, du nouveau chat et de la surface API :
+151 reussis. La suite complete n'a pas ete relancee apres ces corrections.
+Les souvenirs anciens marques sensibles imposent le modele local et ne sont
+pas recopies dans les nouvelles tables en clair.
+Le proprietaire a ensuite autorise explicitement publication, pull request
+et fusion dans main si les verifications passent. Integration de main
+2fba07b en conservant les deux historiques documentaires.
+OpenAI/Tavily/Ollama reels non testes sans services configures.

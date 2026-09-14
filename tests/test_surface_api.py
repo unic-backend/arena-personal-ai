@@ -51,6 +51,7 @@ SURFACE_ATTENDUE = {
     "/api/upload": (["POST"], ["verify_api_key"]),
     "/api/process-video": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/chat": (["POST"], ["verify_api_key", "limiter_debit"]),
+    "/api/v1/chat": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/chat/stream": (["POST"], ["verify_api_key", "limiter_debit"]),
     # Chronologie des actions, lecture seule (VOLET ARENA OS, phase 2.2).
     "/api/actions": (["GET"], ["verify_api_key", "limiter_debit"]),

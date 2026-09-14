@@ -22,6 +22,7 @@ RUN npm run build
 FROM python:3.11-slim
 
 WORKDIR /app
+ENV USMAN_CHROMA_PATH=/app/data/chroma_db
 
 # ffmpeg : audio/video (tools/audio, tools/video). curl : sonde de sante
 # ci-dessous. gosu : passer la main a l'utilisateur non-root sans jamais

@@ -16,6 +16,8 @@ PyYAML==6.0.3
 
 # --- Modele local Ollama (core/models/ollama_provider.py) ---
 httpx==0.28.1
+openai==2.26.0            # AsyncOpenAI; meme version que browser-use
+chromadb==1.5.9           # index persistant du chat autonome, charge a la demande
 
 # --- Outils ---
 faster-whisper==1.2.1     # tools/audio/transcription_tool.py

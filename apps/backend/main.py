@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from apps.backend.config import ALLOWED_ORIGINS, BASE_DIR, OLLAMA_URL, RENDERED_DIR, docs_actives
 from apps.backend.routers import (
     actions,
+    autonomous_chat,
     chat,
     connectors,
     contexte_unifie,
@@ -64,7 +65,13 @@ async def au_demarrage(_: FastAPI):
         [fast_provider.model_name, deep_provider.model_name, ollama_vision.model_name],
         OLLAMA_URL,
     )
-    yield
+    autonomous_runtime = autonomous_chat.get_runtime()
+    autonomous_runtime.start()
+    try:
+        yield
+    finally:
+        await autonomous_runtime.close()
+        autonomous_chat.get_runtime.cache_clear()
 
 
 app = FastAPI(
@@ -314,6 +321,7 @@ async def health_check(authorization: Optional[str] = Header(None)):
 app.include_router(openai_gateway.router)
 app.include_router(media.router)
 app.include_router(chat.router)
+app.include_router(autonomous_chat.router)
 app.include_router(actions.router)
 app.include_router(gardien.router)
 app.include_router(pwa_gateway.router)
