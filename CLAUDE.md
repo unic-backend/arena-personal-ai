@@ -18,7 +18,7 @@ vraiment.
 
 ```
 python scripts/orphelins.py
-→ 307 modules, 246 atteints. Aucun module réel endormi.   (mesuré le 14/09/2026)
+→ 316 modules, 253 atteints. Aucun module réel endormi.   (mesuré le 14/09/2026)
 ```
 
 C'est la mesure, et elle ne se raconte pas — **elle se refait**. Ce bloc a

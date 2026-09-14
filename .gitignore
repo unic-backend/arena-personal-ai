@@ -172,3 +172,6 @@ data/preuves/
 # `core/architecture/paquets.json` — il epingle `zod` a 4.3.5, sans quoi
 # toutes les ecritures de Pascal echouent. Voir `docs/COMMANDES_PC.md`.
 tools/architecture/pascal/
+
+# Memoire vectorielle personnelle du chat autonome
+chroma_db/
