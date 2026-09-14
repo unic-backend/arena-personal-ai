@@ -39,7 +39,6 @@ from apps.backend.runtime import (
     orchestrator,
     plaquiste_agent,
     publisher_agent,
-    reasoning_engine,
     registre,
     repo_engineer,
     researcher_agent,
@@ -74,10 +73,10 @@ class ChatRequest(BaseModel):
     prompt: str
     session_id: Optional[str] = "default"
     video_path: Optional[str] = None
-    region: Optional[str] = "SÃ©nÃ©gal"
+    region: Optional[str] = "Sénégal"
     attachments: List[str] = Field(default_factory=list)
     # Les deux champs suivants ne servent qu'a PLAQUISTE (chapitre metier,
-    # capture deterministe du destinataire d'un devis â€” DEC a venir) :
+    # capture deterministe du destinataire d'un devis — DEC a venir) :
     # `history` porte les tours precedents, structures ; `message_actuel`
     # porte la derniere phrase seule, distincte de `prompt` qui devient le
     # fil entier aplati pour cette seule intention (voir pwa_gateway.py).
@@ -92,11 +91,11 @@ class ChatRequest(BaseModel):
 #
 # La reponse continue de porter ses numeros [1], [2] : ils viennent du modele et
 # disent sur quelle source chaque affirmation repose. Ce qui disparait, c est la
-# liste d adresses en bas â€” jamais la tracabilite elle-meme, qui reste dans le
+# liste d adresses en bas — jamais la tracabilite elle-meme, qui reste dans le
 # champ `sources` de la reponse de l agent.
 DEMANDES_DE_SOURCES = (
-    "source", "sources", "rÃ©fÃ©rence", "reference", "d'oÃ¹", "d ou", "d'ou",
-    "lien", "liens", "url", "prouve", "preuve", "vÃ©rifiable", "verifiable",
+    "source", "sources", "référence", "reference", "d'où", "d ou", "d'ou",
+    "lien", "liens", "url", "prouve", "preuve", "vérifiable", "verifiable",
 )
 
 
@@ -120,11 +119,11 @@ EXTENSIONS_MONTABLES = frozenset({
 #: lui envoyer un `.mp4` echouerait dans le moteur, apres coup.
 EXTENSIONS_IMAGES = frozenset({".jpg", ".jpeg", ".png", ".webp"})
 
-#: Ce qui distingue Â« compose-moi un design system Â» d'une simple question de
+#: Ce qui distingue « compose-moi un design system » d'une simple question de
 #: style. Le moteur repond aux deux, mais pas avec la meme chose.
 FORMES_DESIGN_SYSTEM = (
-    "design system", "design-system", "systeme de design", "systÃ¨me de design",
-    "charte graphique", "identite visuelle", "identitÃ© visuelle",
+    "design system", "design-system", "systeme de design", "système de design",
+    "charte graphique", "identite visuelle", "identité visuelle",
 )
 
 
@@ -135,7 +134,7 @@ def _veut_un_design_system(demande: str) -> bool:
 
 
 def images_analysables(video_path: Optional[str] = None) -> List[str]:
-    """Ses images, et elles seules â€” meme discipline que `medias_montables`."""
+    """Ses images, et elles seules — meme discipline que `medias_montables`."""
     return [c for c in medias_montables(video_path)
             if Path(c).suffix.lower() in EXTENSIONS_IMAGES]
 
@@ -144,7 +143,7 @@ def _issue_en_reponse(issue: Any) -> Dict[str, Any]:
     """Un `ResultatAction` de connecteur, dans la forme que rend ce routeur.
 
     Reutilise la structure existante plutot que d'en inventer une : `status`,
-    `response`, et le detail du connecteur. Rien n'est reformule â€” un resultat
+    `response`, et le detail du connecteur. Rien n'est reformule — un resultat
     qui se ferait embellir en passant ici ne serait plus le sien.
     """
     favorable = issue.statut.value in {"SUCCESS", "PARTIAL", "NEEDS_CONFIRMATION"}
@@ -157,7 +156,7 @@ def _issue_en_reponse(issue: Any) -> Dict[str, Any]:
 
 
 def _contexte_openviking(prompt: str, session_id: str) -> Optional[str]:
-    """Un souvenir pertinent, injecte dans la conversation ordinaire â€” jamais
+    """Un souvenir pertinent, injecte dans la conversation ordinaire — jamais
     interroge par reflexe, seulement quand la phrase le demande elle-meme
     ("on a deja regle ca", `MOTS_MEMOIRE`, `core/context/recherche_unifiee.py`).
 
@@ -165,8 +164,8 @@ def _contexte_openviking(prompt: str, session_id: str) -> Optional[str]:
     chemin de conversation reel ne l'appelle jamais : reachable pour
     `scripts/orphelins.py` via `/api/contexte/rechercher`, mais aucune
     phrase d'Ousmane ne pouvait l'atteindre. C'est ici, dans le CHAT
-    ordinaire â€” le seul chemin que chaque message sans intention metier
-    emprunte â€” qu'elle sert reellement.
+    ordinaire — le seul chemin que chaque message sans intention metier
+    emprunte — qu'elle sert reellement.
 
     Un service absent ou en panne ne casse jamais la conversation :
     `registre.executer` rend NON_CONFIGURE/FAILED sans lever, et ce
@@ -190,25 +189,25 @@ def _analyse_de_visages(demande: str, images: List[str]) -> Dict[str, Any]:
     au lieu de fabriquer un chemin : le moteur echouerait de toute facon, mais
     plus tard et moins clairement.
 
-    Â« Comparer Â» demande deux images : avec une seule, on refuse ici plutot
+    « Comparer » demande deux images : avec une seule, on refuse ici plutot
     que de comparer une image avec elle-meme, ce qui rendrait 100 et se lirait
     comme un resultat.
     """
     texte = demande.lower()
     if not images:
         return {"status": "error",
-                "response": "Aucune image dans tes fichiers : dÃ©pose-les d'abord."}
+                "response": "Aucune image dans tes fichiers : dépose-les d'abord."}
 
-    if any(f in texte for f in ("compare", "mÃªme personne", "meme personne")):
+    if any(f in texte for f in ("compare", "même personne", "meme personne")):
         if len(images) < 2:
             return {"status": "error",
                     "response": "Comparer demande deux images ; il n'y en a qu'une."}
         return _issue_en_reponse(registre.executer(
             "faceplugin", "comparer", image=images[0], image2=images[1]))
 
-    if any(f in texte for f in ("caracteristique", "caractÃ©ristique", "gabarit")):
+    if any(f in texte for f in ("caracteristique", "caractéristique", "gabarit")):
         capacite = "caracteristiques"
-    elif any(f in texte for f in ("repere", "repÃ¨re", "landmark", "points du visage")):
+    elif any(f in texte for f in ("repere", "repère", "landmark", "points du visage")):
         capacite = "reperes"
     else:
         capacite = "detecter"
@@ -232,7 +231,7 @@ def medias_montables(video_path: Optional[str] = None) -> List[str]:
                 chemins.append(str(fichier))
 
     # Un fichier explicitement designe par le proprietaire entre aussi, a
-    # condition de rester dans media/ â€” `validate_media_path` leve sinon.
+    # condition de rester dans media/ — `validate_media_path` leve sinon.
     if video_path:
         chemins.append(str(validate_media_path(video_path)))
     return chemins
@@ -248,12 +247,12 @@ def formater_sources(sources: List[Dict[str, Any]], question: str = "") -> str:
     """Rend la liste des sources, uniquement si elle a ete demandee.
 
     Le format OpenAI n a pas de champ pour des sources : sans cela, le lecteur ne
-    saurait pas d ou vient la reponse. Mais l afficher a chaque fois encombre â€”
+    saurait pas d ou vient la reponse. Mais l afficher a chaque fois encombre —
     d ou le declenchement a la demande.
     """
     if not sources or not sources_demandees(question):
         return ""
-    lignes = [f"[{s['index']}] {s['title']} â€” {s['url']}" for s in sources]
+    lignes = [f"[{s['index']}] {s['title']} — {s['url']}" for s in sources]
     return "\n\n**Sources**\n" + "\n".join(lignes)
 
 
@@ -278,12 +277,12 @@ def note_de_calcul(calcul: str) -> str:
 
 
 #: Ce qui demande d INDEXER ses documents, et non de les interroger.
-#: Â« d apres mes documents, ... Â» est une question ; Â« indexe mes documents Â» est
+#: « d apres mes documents, ... » est une question ; « indexe mes documents » est
 #: un travail sur le classeur. Les deux arrivent par la meme intention RAG_DOCS,
 #: et seule la phrase les separe.
 DEMANDE_D_INDEXATION = re.compile(
-    r"(indexe|indexer|indexation|r[Ã©e]indexe|reindexer"
-    r"|mets? [Ã a] jour (?:mes|les) documents"
+    r"(indexe|indexer|indexation|r[ée]indexe|reindexer"
+    r"|mets? [àa] jour (?:mes|les) documents"
     r"|prends? en compte (?:mes|les) (?:nouveaux )?documents)",
     re.IGNORECASE,
 )
@@ -297,7 +296,7 @@ def demande_d_indexation(question: str) -> bool:
 def message_indexation(rapport: Rapport) -> str:
     """Ce qui s est reellement passe, en une phrase. Aucun compte n est refait ici.
 
-    Le rapport ne porte que des noms de fichiers et des comptes â€” jamais le
+    Le rapport ne porte que des noms de fichiers et des comptes — jamais le
     contenu des documents, qui porte des noms de clients et des montants.
     """
     if rapport.statut == "REFUSE":
@@ -305,7 +304,7 @@ def message_indexation(rapport: Rapport) -> str:
     if rapport.statut == "RIEN_A_FAIRE":
         return (f"Tes documents sont deja indexes : {len(rapport.inchanges)} inchange(s), "
                 "rien a refaire.")
-    return f"Indexation terminee â€” {rapport}"
+    return f"Indexation terminee — {rapport}"
 
 
 async def indexer_ses_documents(
@@ -317,7 +316,7 @@ async def indexer_ses_documents(
     """Indexe son classeur sur demande, et rend ce qui s est vraiment passe.
 
     L indexation lit des fichiers et fait travailler Ollama : elle part dans un
-    fil separe, sinon elle gelerait la boucle du serveur â€” donc toutes les
+    fil separe, sinon elle gelerait la boucle du serveur — donc toutes les
     conversations, pas seulement celle-ci.
 
     Les parametres sont injectables pour les tests ; en production, ce sont ceux
@@ -351,31 +350,31 @@ def garantir_un_texte(contenu: Optional[str], source: str,
     """Empeche qu'une reponse vide parte comme si c'etait une reponse.
 
     Chaque branche d'aiguillage lit `.get("response", "")`. Un agent qui
-    echoue renvoie un dictionnaire sans cette cle, donc la chaine vide â€” et
+    echoue renvoie un dictionnaire sans cette cle, donc la chaine vide — et
     `"" is not None` est vrai. LibreChat affichait alors **une bulle
     entierement vide**, sans texte ni erreur. Observe le 2026-08-26 sur
     `usman-research`.
 
     Le garde n'existait que sur la passerelle OpenAI. Mesure du 01/09/2026 :
     la PWA rendait `{"type": "token", "text": ""}` puis `done`, et
-    `/api/chat` rendait `{"status": "success", "response": ""}` â€” la meme
+    `/api/chat` rendait `{"status": "success", "response": ""}` — la meme
     bulle vide, sur les deux autres surfaces, dont celle que le proprietaire
     utilise. D'ou son deplacement ici, ou les trois surfaces l'atteignent.
 
     Args:
-        source: ce qui n'a rien produit â€” un agent, une intention, un modele.
+        source: ce qui n'a rien produit — un agent, une intention, un modele.
         alternative: quoi essayer a la place, quand l'appelant en connait une.
-            Vide par defaut : Â« choisis usman-chat Â» ne veut rien dire sur une
+            Vide par defaut : « choisis usman-chat » ne veut rien dire sur une
             interface sans menu de modeles.
     """
     if a_produit_un_texte(contenu):
         return contenu
 
-    logger.warning("Â« %s Â» n'a produit aucun texte", source)
+    logger.warning("« %s » n'a produit aucun texte", source)
     return (
-        f"`{source}` n'a produit aucune rÃ©ponse.\n\n"
-        "Ce n'est pas un refus : l'agent s'est arrÃªtÃ© sans rien renvoyer. "
-        "Les journaux du serveur disent Ã  quelle Ã©tape. "
+        f"`{source}` n'a produit aucune réponse.\n\n"
+        "Ce n'est pas un refus : l'agent s'est arrêté sans rien renvoyer. "
+        "Les journaux du serveur disent à quelle étape. "
         f"Reformule la demande{alternative}."
     )
 
@@ -385,17 +384,17 @@ def garantir_un_texte(contenu: Optional[str], source: str,
 #: recherche_unifiee.py`) : une heuristique de mots, pas un aller-retour
 #: modele pour une decision qui se lit dans la question.
 MOTS_SENEGAL = (
-    "region", "rÃ©gion", "departement", "dÃ©partement", "commune", "arrondissement",
+    "region", "région", "departement", "département", "commune", "arrondissement",
     "population", "habitants", "superficie", "chef-lieu", "collectivite",
-    "collectivitÃ©",
+    "collectivité",
 )
 
-#: Les quatorze regions, pour attraper Â« combien d'habitants a Ziguinchor ? Â»
+#: Les quatorze regions, pour attraper « combien d'habitants a Ziguinchor ? »
 #: quand aucun mot generique n'apparait.
 REGIONS_SENEGAL = (
-    "dakar", "diourbel", "fatick", "kaffrine", "kaolack", "kedougou", "kÃ©dougou",
-    "kolda", "louga", "matam", "saint-louis", "sedhiou", "sÃ©dhiou",
-    "tambacounda", "thies", "thiÃ¨s", "ziguinchor",
+    "dakar", "diourbel", "fatick", "kaffrine", "kaolack", "kedougou", "kédougou",
+    "kolda", "louga", "matam", "saint-louis", "sedhiou", "sédhiou",
+    "tambacounda", "thies", "thiès", "ziguinchor",
 )
 
 
@@ -405,16 +404,16 @@ def question_de_donnee_senegalaise(question: str) -> bool:
     return (any(mot in minuscules for mot in MOTS_SENEGAL)
             and any(lieu in minuscules for lieu in REGIONS_SENEGAL)) or (
         any(mot in minuscules for mot in MOTS_SENEGAL) and "senegal" in minuscules) or (
-        any(mot in minuscules for mot in MOTS_SENEGAL) and "sÃ©nÃ©gal" in minuscules)
+        any(mot in minuscules for mot in MOTS_SENEGAL) and "sénégal" in minuscules)
 
 
 async def _donnees_senegal(question: str) -> Optional[Dict[str, Any]]:
     """La donnee officielle du Senegal, quand la question en releve.
 
     `galsen` (API publique, sans cle, OPERATIONNEL) etait l'un des cinq
-    connecteurs qu'aucun chemin n'atteignait : Â« aucune intention ne les
-    convoque Â». Reveille le 12/09/2026, a la demande du proprietaire, sur
-    l'intention qui pose exactement ce genre de question â€” FRESH_INFO.
+    connecteurs qu'aucun chemin n'atteignait : « aucune intention ne les
+    convoque ». Reveille le 12/09/2026, a la demande du proprietaire, sur
+    l'intention qui pose exactement ce genre de question — FRESH_INFO.
 
     Rend `None` quand la question ne releve pas de ces donnees, ou quand
     l'API ne repond pas : le chemin web habituel reprend alors la main. Une
@@ -457,7 +456,7 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
 async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
     """Le corps de l'aiguillage. `intent` est toujours connu ici."""
     session_id = request.session_id or "default"
-    logger.info(f"Intention dÃ©tectÃ©e par Usman: {intent}")
+    logger.info(f"Intention détectée par Usman: {intent}")
 
     if intent == "DEEP_REASONING":
         # Le pont `resoudre_profondement` choisit la profondeur selon la
@@ -467,8 +466,8 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         result = await resoudre_profondement(request.prompt)
     elif intent == "FRESH_INFO":
         # Avant le web : la donnee OFFICIELLE, quand la question en releve
-        # (Â« combien d'habitants a Ziguinchor ? Â»). Locale, gratuite,
-        # instantanee â€” et c'est la source, pas un resultat de recherche.
+        # (« combien d'habitants a Ziguinchor ? »). Locale, gratuite,
+        # instantanee — et c'est la source, pas un resultat de recherche.
         officielle = await _donnees_senegal(request.prompt)
         if officielle is not None:
             result = officielle
@@ -482,18 +481,18 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         result = await lancer_studio(video_agent, editor_agent, subtitle_agent)
     elif intent == "EMAIL":
         # Son courrier : lecture et tri, ou brouillon soumis a confirmation.
-        # Le contexte porte le destinataire quand il y en a un â€” il n'est jamais
+        # Le contexte porte le destinataire quand il y en a un — il n'est jamais
         # lu dans la phrase.
         result = await email_agent.run(request.prompt, context={"session_id": session_id})
     elif intent == "SOCIAL":
         # Ses reseaux : la capacite est choisie par l'agent a partir de sa
-        # phrase â€” il n'a jamais a nommer une competence.
+        # phrase — il n'a jamais a nommer une competence.
         result = await social_agent.run(request.prompt, context={"session_id": session_id})
     elif intent == "PLAQUISTE":
         # Sans les pieces jointes, un plan envoye par upload PWA reste invisible :
         # seul un chemin tape en texte peut alors etre mesure. `historique` et
         # `message_actuel` alimentent la capture deterministe du destinataire
-        # d'un devis (nom du client, lieu) â€” jamais devinee dans une phrase
+        # d'un devis (nom du client, lieu) — jamais devinee dans une phrase
         # libre, seulement quand elle repond a une question posee au tour
         # precedent (agents/plaquiste/plaquiste_agent.py).
         result = await plaquiste_agent.run(request.prompt, context={
@@ -509,12 +508,12 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         # plan deterministe (`core/architecture/plan.py`, sans modele), et le
         # plan devient des appels au connecteur, qui applique permissions,
         # confirmation et journal. Un modele peut produire le meme plan sans
-        # rien changer en aval â€” c'est ce qui rend la capacite agnostique.
+        # rien changer en aval — c'est ce qui rend la capacite agnostique.
         result = executer_architecture(registre, request.prompt, session=session_id)
     elif intent == "PREUVE_FORMELLE":
         # Lean tranche, jamais le modele (DEC-0067). L'agent est mince : il
         # traduit la phrase en capacite du connecteur `formel` et rend le
-        # verdict tel quel â€” un `status` de succes ici veut dire qu'un
+        # verdict tel quel — un `status` de succes ici veut dire qu'un
         # binaire a compile la preuve, pas qu'un modele l'a affirmee.
         result = await formel_agent.run(request.prompt)
     elif intent == "SWE_FIX":
@@ -553,7 +552,7 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
     elif intent == "MONTAGE":
         # L inventaire ouvert au modele : ses propres fichiers, et rien
         # d autre. `validate_media_path` tient deja la frontiere du dossier
-        # media/ â€” le planificateur, lui, empeche le modele de nommer un
+        # media/ — le planificateur, lui, empeche le modele de nommer un
         # chemin du tout (`core/montage/planificateur.py`).
         result = await montage_agent.run(
             request.prompt, context={"medias": medias_montables(request.video_path)})
@@ -577,11 +576,11 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
     elif intent == "EXECUTIVE":
         # Executive Intelligence (mission ARENA x OPENEXECUTIVE, DEC-0086) :
         # coordonne les specialistes existants d'ARENA, jamais un second
-        # agent-plateforme. Recommande seulement â€” aucune action consequente
+        # agent-plateforme. Recommande seulement — aucune action consequente
         # n'est executee ici (core/executive/moteur.py).
         result = await executive_agent.run(request.prompt)
     elif intent == "VISAGE":
-        # Analyse de visages par le SDK Faceplugin, via le registre â€” jamais
+        # Analyse de visages par le SDK Faceplugin, via le registre — jamais
         # en direct : c'est le registre qui applique la permission, et deux de
         # ces quatre capacites sont de la biometrie, donc soumises a
         # confirmation (`config/permissions_services.yaml`).
@@ -598,10 +597,10 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         result = _issue_en_reponse(issue)
     elif intent == "UI_GENERATE":
         # Generer une interface EN CODE, distinct de DESIGN_UI (decider a
-        # quoi ca doit ressembler, sans rien ecrire) â€” DEC-0050.
+        # quoi ca doit ressembler, sans rien ecrire) — DEC-0050.
         result = await ui_agent.run(request.prompt)
     elif intent == "VIDEO_ANALYSIS":
-        # Â« ou en est ma video ? Â» ne parle d aucun fichier. Reclamer un chemin
+        # « ou en est ma video ? » ne parle d aucun fichier. Reclamer un chemin
         # ici renvoyait une erreur a une question parfaitement claire.
         if demande_de_suivi(request.prompt):
             result = await video_agent.run(request.prompt)
@@ -614,7 +613,7 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
             # la sienne comme si elle l'etait (audit externe, commit
             # f7f0478). `VideoAnalyzerAgent.run` sait deja repondre
             # honnetement a l'absence de video ("Aucune video valide fournie
-            # pour l'analyse") â€” ce chemin lui laisse simplement le faire.
+            # pour l'analyse") — ce chemin lui laisse simplement le faire.
             result = await video_agent.run(request.prompt, context={})
     elif "PUBLI" in request.prompt.upper() or "POSTER" in request.prompt.upper():
         result = await publisher_agent.run(request.prompt, context={"video_path": request.video_path})
@@ -625,7 +624,7 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         )
 
     # L'aiguilleur sait quelle branche il a prise ; sans cela, la reponse annoncait
-    # Â« CHAT Â» meme quand un agent specialise avait repondu.
+    # « CHAT » meme quand un agent specialise avait repondu.
     result["intent"] = intent
 
     memory.add_chat_message(session_id=session_id, role="user", content=request.prompt)
@@ -692,7 +691,7 @@ async def chat_stream_endpoint(request: ChatRequest):
 
             Sans le `try`, une panne du fournisseur (Ollama eteint) faisait
             remonter l'exception DANS la reponse deja commencee : le client
-            recevait un `200` et **zero ligne** â€” un flux vide indistinguable
+            recevait un `200` et **zero ligne** — un flux vide indistinguable
             d'une reponse vide. Mesure du 01/09/2026. `pwa_gateway.flux` tient
             deja cette regle ; celui-ci ne la tenait pas.
             """

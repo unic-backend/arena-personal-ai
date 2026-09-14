@@ -102,9 +102,13 @@ def note_de_calcul(calcul: str) -> str:
     """
     if not calcul or not calcul.startswith(CALCUL_REFUSE):
         return ""
-    return ("\n\n⚠️ Le calcul n'a pas pu etre execute : "
+    # Texte identique, au caractere pres, a celui de `chat.py` : ce module
+    # promet un comportement historique inchange, et une reformulation
+    # meme minime (ici deux apostrophes) casse les appelants qui lisent
+    # cette phrase.
+    return ("\n\n⚠️ Le calcul n a pas pu etre execute : "
             f"{calcul[len(CALCUL_REFUSE):].lstrip(' :')} "
-            "Ce qui precede n'a donc ete verifie par aucun calcul.")
+            "Ce qui precede n a donc ete verifie par aucun calcul.")
 
 
 def note_de_critique(critique: Optional[Dict[str, Any]]) -> str:
