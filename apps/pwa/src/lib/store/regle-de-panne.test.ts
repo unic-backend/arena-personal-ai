@@ -19,13 +19,28 @@
    qu'elle est branchee ».
    ───────────────────────────────────────────────────────────── */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 // `process.cwd()` est `apps/pwa` : vitest y est lance. `import.meta.url` rend
 // ici un chemin relatif au projet, pas au disque — premier essai : ENOENT '/src'.
 const SRC = join(process.cwd(), 'src');
+
+/**
+ * La cle d'un module dans `EXEMPTES` : son chemin relatif a `src`, toujours
+ * ecrit avec des `/`.
+ *
+ * **Mesure du 14/09/2026.** Ce calcul etait `chemin.slice(chemin.indexOf('/src/') + 5)`.
+ * Sur Windows — la machine du proprietaire — `join` rend des `\`, `indexOf('/src/')`
+ * rend `-1`, et la cle devenait `sers\saer\...\ChatMessage.tsx`. Aucune exemption
+ * ne pouvait plus correspondre : le test signalait `ChatMessage.tsx` alors que le
+ * depot l'exempte nommement, et affichait un chemin abime dans son message.
+ * Vert sur Linux, rouge sur Windows, pour une raison que rien ne disait.
+ */
+function cle(chemin: string): string {
+  return relative(SRC, chemin).split(sep).join('/');
+}
 
 /** Tous les .ts/.tsx de `src`, sauf les tests. */
 function sources(dossier: string): string[] {
@@ -64,7 +79,7 @@ describe('la regle du signalement de panne', () => {
       const texte = readFileSync(chemin, 'utf8');
       if (!texte.includes('activeRemoteCfg')) continue;
 
-      const relatif = chemin.slice(chemin.indexOf('/src/') + 5);
+      const relatif = cle(chemin);
       if (relatif in EXEMPTES) continue;
       if (!texte.includes('signalerSiPanne')) manquants.push(relatif);
     }
@@ -78,6 +93,28 @@ describe('la regle du signalement de panne', () => {
   it('chaque exemption porte sa raison', () => {
     for (const [fichier, raison] of Object.entries(EXEMPTES)) {
       expect(raison.length, `${fichier} est exempte sans raison ecrite`).toBeGreaterThan(20);
+    }
+  });
+
+  /**
+   * **Une exemption qui ne designe aucun fichier n'exempte rien**, et personne
+   * ne s'en apercoit : le test reste vert, et le module qu'elle croit couvrir
+   * est soit absent, soit signale sous une autre cle.
+   *
+   * C'est exactement ce qui arrivait sur Windows avant le 14/09/2026 — la cle
+   * calculee ne ressemblait a aucune entree, l'exemption de `ChatMessage.tsx`
+   * ne s'appliquait jamais, et le test echouait en montrant un chemin abime.
+   * Ce test-ci tient la derivation de la cle, la ou les deux autres ne tiennent
+   * que son resultat.
+   */
+  it('chaque exemption designe un fichier qui existe vraiment', () => {
+    const connus = new Set(sources(SRC).map(cle));
+
+    for (const fichier of Object.keys(EXEMPTES)) {
+      expect(connus.has(fichier),
+        `${fichier} est exempte mais ne figure pas parmi les sources de src/. `
+        + 'Soit le fichier a ete renomme ou supprime et l\'exemption est morte, '
+        + 'soit le calcul de la cle ne rend pas ce que EXEMPTES attend.').toBe(true);
     }
   });
 });

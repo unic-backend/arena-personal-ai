@@ -2,6 +2,27 @@
 
 ## [Non publié]
 
+### Corrigé — 14/09/2026 — Une règle structurelle qui ne s'appliquait pas sur Windows
+
+`apps/pwa/src/lib/store/regle-de-panne.test.ts` dérivait la clé d'un module
+avec `chemin.slice(chemin.indexOf('/src/') + 5)`. Sur Windows — la machine du
+propriétaire — `join` rend des `\`, `indexOf('/src/')` rend `-1`, et la clé
+devenait `sers\saer\...\ChatMessage.tsx` (mesuré). Aucune entrée de
+`EXEMPTES` ne pouvait plus correspondre : le test signalait `ChatMessage.tsx`
+alors que le dépôt l'exempte nommément depuis la DEC-0041, et affichait un
+chemin abîmé dans son message d'erreur. **Vert sur Linux, rouge sur Windows,
+pour une raison que rien ne disait.**
+
+- La clé passe par `relative(SRC, chemin).split(sep).join('/')` : elle ne
+  dépend plus de la présence de la chaîne `/src/`.
+- Un troisième test tient désormais la dérivation elle-même — *chaque exemption
+  désigne un fichier qui existe vraiment*. Les deux autres ne tenaient que son
+  résultat. Une exemption morte (fichier renommé, supprimé, ou clé mal calculée)
+  n'exempte rien et laissait la suite verte.
+
+Sabotage vérifié : en faisant rendre à la clé des `\` comme sur Windows, les
+deux tests tombent, et le nouveau nomme la cause là où l'ancien accusait
+`ChatMessage.tsx`.
 ### Corrigé — 14/09/2026 — La PR #222 est entrée avec CI rouge : 15 tests et 9 erreurs de style
 
 `main` était rouge depuis la fusion de la PR #222 (`5076dae`), et l'est resté
