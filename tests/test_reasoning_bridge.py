@@ -136,9 +136,13 @@ async def test_resoudre_profondement_propage_la_critique_ko():
 
     assert moteur.appels[0]["profondeur"] == "approfondie"
     assert res["profondeur"] == "approfondie"
+    # Le verdict voyage dans le champ JSON, pas dans le texte : c'est la
+    # PWA (et tout autre client) qui decide comment l'afficher.
     assert res["critique"]["ok"] is False
-    assert "🔍" in res["response"]
-    assert "cas limites" in res["response"]
+    assert res["critique"]["raison"] == "il manque les cas limites"
+    # Le texte de la reponse ne porte PAS la note de critique ? pas de
+    # doublon avec le badge cote interface.
+    assert "cas limites" not in res["response"]
 
 
 async def test_resoudre_profondement_ajoute_la_note_de_calcul():
