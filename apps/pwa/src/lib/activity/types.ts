@@ -128,6 +128,25 @@ export interface MessageMeta {
   attachments?: AttachmentSummary[];
   /** Legacy video field retained for already persisted conversations. */
   video?: { name: string; size: number; type: string };
+  /** Le mode de raisonnement utilise pour cette reponse.
+   *  - `standard` : plan, calcul (facultatif), synthese. Deux appels modele.
+   *  - `approfondie` : + critique independante + revision si la critique
+   *    dit KO. Quatre appels modele typiques.
+   *  Absent pour les agents specialises et les reponses historiques. */
+  profondeur?: "standard" | "approfondie";
+  /** Verdict de la critique independante (mode approfondie uniquement).
+   *  - `ok: true`  : le relecteur valide la reponse.
+   *  - `ok: false` : le relecteur signale une insuffisance. La reponse porte
+   *    alors un avertissement, et `raison` dit pourquoi.
+   *  - `ok: null`  : le relecteur n'a pas rendu de verdict exploitable ? la
+   *    reponse originale est conservee, aucun avertissement n'est affiche.
+   *  Absent en mode `standard` : ecrire `critique: undefined` ferait croire
+   *  qu'un verdict a ete rendu et n'a rien trouve. */
+  critique?: {
+    ok: boolean | null;
+    raison: string;
+    confiance: number | null;
+  };
 }
 
 export interface ActivityNode extends ActivityEvent {

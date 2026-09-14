@@ -231,10 +231,20 @@ class TestSanteNAnnoncePasPlusQueCeQuiExiste:
         import apps.backend.runtime as runtime
 
         source = inspect.getsource(chat._aiguiller)
+
+        # Certains moteurs sont atteints directement dans `_aiguiller` (ex:
+        # `lightrag_tool`), d'autres via un module dedie (ex: `reasoning_engine`
+        # est appele par `reasoning_bridge.resoudre_profondement`). Le test
+        # accepte les deux : ce qui compte est que le moteur soit ATTEINT
+        # depuis `_aiguiller`, pas qu'il soit nomme a un endroit precis.
+        import apps.backend.reasoning_bridge as bridge
+        source_du_bridge = inspect.getsource(bridge)
+
         for objet in ("reasoning_engine", "lightrag_tool", "graphrag_tool"):
             assert hasattr(runtime, objet), f"{objet} n'existe plus dans runtime"
-            assert objet in source, (
-                f"{objet} est annoncé par /health mais plus aucun aiguillage ne l'atteint"
+            atteint = objet in source or objet in source_du_bridge
+            assert atteint, (
+                f"{objet} est annonce par /health mais plus aucun aiguillage ne l'atteint"
             )
 
         # Le maillon entre les deux : sans lui, la source lue ci-dessus ne
