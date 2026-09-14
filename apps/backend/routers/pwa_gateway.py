@@ -758,7 +758,7 @@ async def flux_agent(demande: DemandeAgent):
                             resultat.get("response"), intention)))
                         return
                     yield _rejouable(jeton(resultat["response"]))
-                    yield _rejouable(fin({
+                    meta_final: Dict[str, Any] = {
                         **moteur_utilise(),
                         "sources": resultat.get("sources", []),
                         "query": intention,
@@ -768,10 +768,20 @@ async def flux_agent(demande: DemandeAgent):
                         # confirmer (defaut du 02/09/2026).
                         "en_attente": _actions_en_attente(),
                         # Ce qui vient d'etre ecrit et qu'il peut ouvrir tout de
-                        # suite — un devis PDF, depuis qu'il ne passe plus par la
+                        # suite ??? un devis PDF, depuis qu'il ne passe plus par la
                         # confirmation (04/09/2026).
                         "documents": _documents_produits(resultat),
-                    }))
+                    }
+                    # Le mode de raisonnement et le verdict de critique
+                    # voyagent avec la reponse quand ils existent ? donc
+                    # seulement en mode approfondie. Absents en mode
+                    # standard : ecrire `"critique": None` ferait croire
+                    # qu'un verdict a ete rendu et n'a rien trouve.
+                    if "profondeur" in resultat:
+                        meta_final["profondeur"] = resultat["profondeur"]
+                    if "critique" in resultat:
+                        meta_final["critique"] = resultat["critique"]
+                    yield _rejouable(fin(meta_final))
                     return
                 finally:
                     # Si un `return` ci-dessus a ete atteint, `trames_de_ce_tour`

@@ -172,6 +172,51 @@ function ActionsEnAttente({ msg }: { msg: Msg }) {
   );
 }
 
+/**
+ * Le verdict du relecteur independant ? mode `approfondie` uniquement.
+ *
+ * Affiche un badge discret selon le verdict :
+ *  - `ok: true`  : ? v?rifi?e, avec la confiance si elle est chiffr?e.
+ *  - `ok: false` : ? non v?rifi?e, avec la raison du relecteur.
+ *  - `ok: null`  : rien. Le moteur a abandonn? la critique, la r?ponse
+ *                  originale est conserv?e, il n'y a rien ? signaler.
+ *
+ * En mode `standard`, `meta.critique` est absent ? le badge ne s'affiche pas.
+ */
+function VerdictCritique({ msg }: { msg: Msg }) {
+  const verdict = msg.meta?.critique;
+  if (!verdict) return null;
+  if (verdict.ok === null) return null;
+
+  const confiance =
+    verdict.confiance !== null && verdict.confiance !== undefined
+      ? ` (${Math.round(verdict.confiance * 100)}%)`
+      : "";
+
+  if (verdict.ok) {
+    return (
+      <div className="flex items-center gap-1 pt-1 font-mono text-[9.5px] uppercase tracking-widest text-emerald-600/80">
+        <span>?</span>
+        <span>v?rifi?e{confiance}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5 pt-1 font-mono text-[9.5px] uppercase tracking-widest text-amber-600/80">
+      <div className="flex items-center gap-1">
+        <span>?</span>
+        <span>non v?rifi?e{confiance}</span>
+      </div>
+      {verdict.raison && (
+        <span className="normal-case tracking-normal text-amber-700/70">
+          {verdict.raison}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function SourcesStrip({ msg }: { msg: Msg }) {
   const sources = msg.meta?.sources;
   const { t } = useI18n();
@@ -570,6 +615,7 @@ export const ChatMessage = memo(function ChatMessage({
         )}
 
         <SourcesStrip msg={msg} />
+        <VerdictCritique msg={msg} />
 
         <ActionsEnAttente msg={msg} />
         <DocumentsProduits msg={msg} />
