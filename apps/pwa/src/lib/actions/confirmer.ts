@@ -12,6 +12,7 @@
  * lui nomme exactement ce qu'il valide.
  */
 import { activeRemoteCfg, signalerSiPanne } from '../store/backendStore';
+import { adresseDuServeur } from '../activity/remoteTransport';
 
 /** Une action preparee qui attend un accord. Miroir de `_actions_en_attente`. */
 export interface ActionEnAttente {
@@ -58,7 +59,7 @@ async function appeler(id: string, quoi: 'confirm' | 'cancel'): Promise<Resultat
   if (!cfg) {
     return { ok: false, message: 'Aucun backend connecté : impossible de confirmer.' };
   }
-  const base = cfg.url.replace(/\/+$/, '');
+  const base = adresseDuServeur(cfg.url);
   try {
     const res = await fetch(`${base}/api/actions/${encodeURIComponent(id)}/${quoi}`, {
       method: 'POST',

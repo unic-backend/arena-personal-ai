@@ -98,8 +98,30 @@ function makeRunId() {
     : eventId('run');
 }
 
+/**
+ * L'adresse d'un serveur, prete a etre appelee : sans `/` final, et TOUJOURS
+ * avec un schema.
+ *
+ * **Mesure du 14/09/2026.** Le champ de reglages accepte ce qu'on y tape. Colle
+ * `arena-personal-ai-production.up.railway.app` sans `https://` et le navigateur
+ * la lit comme un chemin RELATIF : depuis une PWA servie par ce meme domaine, le
+ * sondage partait vers
+ * `https://…railway.app/arena-personal-ai-production.up.railway.app/health` et
+ * rendait 404. Le panneau affichait « Provider probe failed » — un message qui
+ * ne designe ni l'adresse, ni le 404, et qui a envoye chercher du cote de la cle.
+ *
+ * On ne devine qu'une chose, et seulement quand rien n'est ecrit : `https`. Une
+ * adresse qui porte deja un schema — `http://` sur un reseau local, par
+ * exemple — n'est pas touchee.
+ */
+export function adresseDuServeur(url: string): string {
+  const propre = url.trim().replace(/\/+$/, '');
+  if (!propre) return '';
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(propre) ? propre : `https://${propre}`;
+}
+
 export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
-  const base = cfg.url.replace(/\/+$/, '');
+  const base = adresseDuServeur(cfg.url);
   return {
     async *run(request: AgentRequest, _ctx, signal: AbortSignal) {
       const fr = uiLocale() === 'fr';
@@ -336,14 +358,17 @@ export async function pingBackend(
   configured?: boolean;
   error?: string;
 }> {
-  const base = cfg.url.replace(/\/+$/, '');
+  const base = adresseDuServeur(cfg.url);
   const started = performance.now();
   const res = await fetch(`${base}/health`, {
     headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
     signal: AbortSignal.timeout(6000),
   });
   const latencyMs = Math.round(performance.now() - started);
-  if (!res.ok) return { ok: false, latencyMs };
+  // Le code HTTP voyage avec l'echec. Sans lui, l'appelant n'a que son
+  // message par defaut — « Provider probe failed » — qui ne dit ni ou ca a
+  // echoue ni pourquoi. Un `404` designe l'adresse, un `502` le serveur.
+  if (!res.ok) return { ok: false, latencyMs, error: `HTTP ${res.status}` };
   const data = (await res.json().catch(() => ({}))) as {
     ok?: boolean;
     name?: string;

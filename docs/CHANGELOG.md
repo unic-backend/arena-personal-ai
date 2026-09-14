@@ -2,6 +2,37 @@
 
 ## [Non publié]
 
+### Corrigé — 14/09/2026 — Une adresse sans schéma partait vers la PWA au lieu du serveur
+
+**Mesuré à 03h41**, sur le téléphone du propriétaire : le panneau affichait
+`BACKEND · INACCESSIBLE` et « Provider probe failed » alors que Railway
+répondait `200` en 0,7 s, `status: healthy`, 28 agents. Le champ d'adresse
+portait `arena-personal-ai-production.up.railway.app` — **sans `https://`**. Le
+navigateur l'a lue comme un chemin *relatif* : depuis une PWA servie par ce même
+domaine, le sondage partait vers
+`…railway.app/arena-personal-ai-production.up.railway.app/health` et rendait
+`404`.
+
+Deux défauts, pas un :
+
+1. **L'adresse était prise telle quelle**, et par onze appelants qui la
+   composaient chacun à la main — sondage, flux, dictée, téléversement,
+   capacités vidéo, projet vidéo, connecteurs (cinq), confirmation d'action,
+   synchronisation des conversations, et le href du lien « Ouvrir le document ».
+   *La règle apprise à un endroit et jamais portée sur les autres*, une fois de
+   plus. Tous passent maintenant par `adresseDuServeur()`, qui n'ajoute `https`
+   que si **rien** n'est écrit : un `http://127.0.0.1:8000` local reste intact.
+2. **L'échec ne désignait rien.** `pingBackend` rendait `{ ok: false }` sans
+   champ `error` sur toute réponse non-2xx, et l'appelant retombait sur son
+   message par défaut. Le code HTTP voyage désormais avec l'échec : `HTTP 404`
+   désigne l'adresse, `HTTP 502` désigne le serveur. Le message vague avait
+   envoyé chercher du côté de la clé, qui n'était pas en cause.
+
+Un test structurel tient la règle pour les onze : *aucun module ne compose une
+adresse à la main*. Sabotage vérifié — remettre `cfg.url.replace(...)` dans un
+seul appelant le fait tomber.
+
+
 ### Corrigé — 14/09/2026 — Une règle structurelle qui ne s'appliquait pas sur Windows
 
 `apps/pwa/src/lib/store/regle-de-panne.test.ts` dérivait la clé d'un module

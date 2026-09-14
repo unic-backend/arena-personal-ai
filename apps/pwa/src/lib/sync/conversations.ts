@@ -16,6 +16,7 @@
       montrer : la synchronisation se tait pour la session.
 */
 import type { Conversation } from '../store/chatStore';
+import { adresseDuServeur } from '../activity/remoteTransport';
 
 /** Ce que le serveur peut rendre a la place d'une conversation supprimee. */
 interface PierreTombale {
@@ -79,7 +80,7 @@ export async function pousserEtTirer(
 ): Promise<ResultatSync | DebitDepasse | null> {
   if (routeAbsente || !cfg.url) return null;
 
-  const base = cfg.url.replace(/\/+$/, '');
+  const base = adresseDuServeur(cfg.url);
   let reponse: Response;
   try {
     reponse = await fetch(`${base}/conversations/sync`, {

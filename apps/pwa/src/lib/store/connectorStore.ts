@@ -18,6 +18,7 @@
 import { create } from 'zustand';
 import { getConnector } from '../connectors/catalog';
 import { activeRemoteCfg, signalerSiPanne } from './backendStore';
+import { adresseDuServeur } from '../activity/remoteTransport';
 
 export interface ConnectorState {
   status: 'disconnected' | 'connecting' | 'connected';
@@ -90,7 +91,7 @@ export const useConnectors = create<Store>((set, get) => {
       const backendOrigin = new URL(cfg.url).origin;
       // `cle`, pas `key` : c'est le nom que le backend d'ARENA attend
       // (apps/backend/security.py, meme convention que /media/rendered).
-      const authUrl = `${cfg.url}/connectors/${id}/auth?cle=${encodeURIComponent(cfg.apiKey ?? 'anon')}`;
+      const authUrl = `${adresseDuServeur(cfg.url)}/connectors/${id}/auth?cle=${encodeURIComponent(cfg.apiKey ?? 'anon')}`;
       const popup = window.open(authUrl, 'usman_oauth', 'width=620,height=760,menubar=no,toolbar=no');
       const deadline = Date.now() + 180_000;
 
@@ -119,7 +120,7 @@ export const useConnectors = create<Store>((set, get) => {
           if (resolved) return true;
 
           try {
-            const res = await fetch(`${cfg.url}/connectors/${id}/status`, {
+            const res = await fetch(`${adresseDuServeur(cfg.url)}/connectors/${id}/status`, {
               headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
             });
             if (res.ok) {
@@ -141,7 +142,7 @@ export const useConnectors = create<Store>((set, get) => {
           if (popup && popup.closed) {
             // Give one final chance for status
             await new Promise((r) => setTimeout(r, 500));
-            const check = await fetch(`${cfg.url}/connectors/${id}/status`, {
+            const check = await fetch(`${adresseDuServeur(cfg.url)}/connectors/${id}/status`, {
               headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
             }).catch(() => null);
             if (check && check.ok) {
@@ -172,7 +173,7 @@ export const useConnectors = create<Store>((set, get) => {
     disconnect: (id) => {
       const cfg = activeRemoteCfg();
       if (cfg) {
-        void fetch(`${cfg.url}/connectors/${id}/disconnect`, {
+        void fetch(`${adresseDuServeur(cfg.url)}/connectors/${id}/disconnect`, {
           method: 'POST',
           headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
         }).catch((e) => signalerSiPanne(e, true));
