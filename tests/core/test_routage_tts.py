@@ -19,6 +19,7 @@ import pytest
 from core.audio.routage_tts import (
     LICENCE_INCONNUE,
     LICENCES,
+    MARQUEURS_INCONNU,
     Commercial,
     ErreurDeMoteur,
     MoteurTTS,
@@ -442,3 +443,49 @@ class TestCeQueLaFicheDuModeleACorrige:
         assert licence.commercial is Commercial.AUTORISE
         assert "Apache-2.0" in licence.licence
         assert "acces sous condition" in licence.licence
+
+
+class TestUnInconnuDitDeQuelInconnuIlParle:
+    """Deux inconnus vivent dans ce tableau, et les confondre a coute trois
+    incidents (DEC-0105).
+
+    - *« depend du modele charge »* : mesure, PERMANENT. `mlx-audio` charge ce
+      que l'utilisateur lui donne ; attendre n'y changera rien.
+    - *« pas encore mesure »* : en attente d'une mesure, donc PERISSABLE.
+
+    `omnivoice-gguf` a porte le second du 07/09 au 15/09/2026 pendant que
+    l'amont publiait ses termes le 09/09. Rien ne distinguait son inconnu de
+    celui de `mlx-audio`, donc rien ne signalait qu'il fallait le relire.
+
+    C'est la distinction `ABSENT` / `UNKNOWN` que le projet tient deja
+    ailleurs. Ce test ne change aucun verdict : il interdit seulement d'ecrire
+    `INCONNU` sans dire lequel.
+    """
+
+    def test_chaque_entree_inconnue_nomme_son_espece(self):
+        inconnus = {identifiant: licence
+                    for identifiant, licence in LICENCES.items()
+                    if licence.commercial is Commercial.INCONNU}
+
+        for identifiant, licence in inconnus.items():
+            texte = licence.licence.lower()
+            assert any(marqueur in texte for marqueur in MARQUEURS_INCONNU), (
+                f"{identifiant} est INCONNU sans dire de quel inconnu : "
+                f"« {licence.licence} ». Ecris « depend du modele charge » "
+                "(permanent) ou « pas encore mesure » (a relire).")
+
+    def test_le_defaut_d_un_moteur_absent_du_tableau_en_fait_partie(self):
+        """`LICENCE_INCONNUE` est l'inconnu perissable par excellence : un
+        moteur neuf, jamais mesure. Il doit le dire comme les autres."""
+        texte = LICENCE_INCONNUE.licence.lower() + " " + LICENCE_INCONNUE.source.lower()
+
+        assert any(marqueur in texte for marqueur in MARQUEURS_INCONNU)
+
+    def test_mlx_audio_est_l_inconnu_permanent(self):
+        """Celui qu'aucune mesure ne resoudra : la licence depend du modele
+        que l'utilisateur charge. Le distinguer evite de le « corriger » un
+        jour en croyant combler un oubli."""
+        licence = licence_de("mlx-audio")
+
+        assert licence.commercial is Commercial.INCONNU
+        assert "depend" in licence.licence.lower()

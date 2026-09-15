@@ -2,6 +2,43 @@
 
 ## [Non publié]
 
+### Ajouté — 15/09/2026 — Un `INCONNU` doit dire de quel inconnu il parle
+
+Deux inconnus vivaient dans le tableau des licences sans rien qui les
+distingue :
+
+- *« dépend du modèle chargé »* (`mlx-audio`) — **mesuré, permanent**. Aucune
+  mesure ne le résoudra : l'utilisateur charge ce qu'il veut.
+- *« pas encore mesuré »* — **en attente, donc périssable**.
+
+`omnivoice-gguf` a porté le second du 07/09 au 15/09/2026 pendant que l'amont
+publiait ses termes le 09/09. Rien ne distinguait son inconnu de celui de
+`mlx-audio`, donc rien ne signalait qu'il fallait le relire — c'est ainsi qu'un
+`INCONNU` vieillit sans bruit.
+
+C'est la distinction `ABSENT` / `UNKNOWN` que le projet tient déjà ailleurs :
+*l'un est mesuré et ne changera pas en attendant, l'autre attend une mesure*.
+Le tableau des licences ne la tenait pas.
+
+Un test l'exige désormais de chaque entrée `INCONNU`, y compris du défaut
+`LICENCE_INCONNUE`. **Aucun verdict ne change.** Sabotage vérifié : remplacer
+la raison de `mlx-audio` par « licence à voir » fait tomber deux tests.
+
+### Décision posée, non prise — 15/09/2026 — La règle 4 appartient au propriétaire
+
+`DEC-0105` réunit les trois incidents (`omnivoice` 07/09, `audiocpp` 13/09,
+`omnivoice-gguf` 15/09) et pose la question qu'ils ont en commun : la règle 4
+laisse passer `INCONNU` en usage commercial, délibérément.
+
+**Trois incidents, zéro faux positif.** À ce jour, chaque `INCONNU` servi en
+commercial s'est révélé, après mesure, être un moteur non commercial. La règle
+n'a jamais protégé un moteur légitime.
+
+Les deux options et leur coût sont écrits dans `DEC-0105`. Ce n'est pas un
+arbitrage technique — c'est un choix entre un risque juridique et une friction
+d'usage, et il engage l'entreprise du propriétaire. **Rien n'a été changé.**
+
+
 ### Corrigé — 15/09/2026 — Une troisième licence non commerciale était servie pour du travail commercial
 
 `omnivoice-gguf` était `INCONNU` dans le tableau des licences. La règle 4

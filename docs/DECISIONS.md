@@ -9676,3 +9676,82 @@ d'une lecture de `PRAGMA table_info` — quatrième de la même forme après `et
 chacun sur les tests qui le couvrent et aucun autre — dont le retrait de la
 vérification de nouveauté, qui fait tomber cinq tests et restitue exactement le
 défaut mesuré ci-dessus.
+
+---
+
+## DEC-0105 — Trois fois le même piège : la règle 4 est à trancher par le propriétaire
+
+**2026-09-15.** Travail de nuit autorisé par le propriétaire. Cette entrée ne
+décide rien : elle **pose la question**, parce que la réponse lui appartient.
+
+### Les trois incidents
+
+| Date | Moteur | État au moment du défaut | Poids réels |
+|---|---|---|---|
+| 07/09/2026 | `omnivoice` | absent du tableau → `INCONNU` | CC-BY-NC |
+| 13/09/2026 | `audiocpp` | absent du tableau → `INCONNU` | BreezeBlue « research and non-commercial » |
+| 15/09/2026 | `omnivoice-gguf` | présent, `INCONNU` « termes non vérifiés » | `cc-by-nc-4.0` (fiche publiée le 09/09) |
+
+Trois fois, un moteur dont les poids **interdisent** l'usage commercial a été
+servi pour un travail commercial. Trois fois, la cause immédiate était
+différente — un moteur neuf, un moteur neuf encore, puis une fiche amont
+publiée après notre relevé. **La cause commune ne change pas : la règle 4
+laisse passer `INCONNU` en usage commercial.**
+
+`_exclusion` n'écarte que `INTERDIT`. `INCONNU` est seulement déprécié dans
+`_rang` — donc servi dès qu'il est le seul moteur installé, ce qui est
+précisément la situation d'une machine où l'on vient d'installer un moteur.
+
+### Ce que la règle 4 protège, et il ne faut pas le perdre
+
+Elle est délibérée, et sa raison est bonne : *« `INCONNU` n'est pas une
+autorisation… mais il n'est jamais préféré… et le résultat le dit »*. Refuser
+tout `INCONNU` ferait taire ARENA devant un moteur neuf, alors que la plupart
+des moteurs neufs sont permissifs. Le silence a un coût lui aussi.
+
+### Ce qui a changé depuis qu'elle a été écrite
+
+**Trois incidents, zéro faux positif.** À ce jour, *chaque* `INCONNU` servi en
+commercial s'est révélé, après mesure, être un moteur non commercial. La règle
+n'a jamais protégé un moteur légitime ; elle a laissé passer trois moteurs
+interdits.
+
+Et le troisième incident ajoute quelque chose que les deux premiers ne
+montraient pas : **`INCONNU` n'est pas un état stable, il vieillit.** Un « non
+vérifié » écrit un jour reste dans le tableau quand l'amont, lui, a publié ses
+termes entre-temps. Aucune relecture n'est déclenchée par le passage du temps.
+
+### Les deux options, et leur coût
+
+**A — Laisser la règle 4 telle quelle.** Coût si c'est faux : un quatrième
+moteur non commercial sera servi, et cette fois peut-être sur une voix off
+livrée à un client d'UniC Plaquiste. Le défaut ne se voit pas à l'écoute — un
+fichier produit sous une licence non respectée est un risque juridique qu'on ne
+rattrape plus.
+
+**B — `INCONNU` refusé en usage commercial, comme `INTERDIT`.** Coût si c'est
+faux : un moteur neuf et parfaitement permissif est refusé jusqu'à ce que
+quelqu'un mesure sa fiche. Le message de refus nommerait déjà quoi faire — il
+liste les moteurs permissifs installables. Le coût est un aller-retour, pas une
+perte.
+
+**Le propriétaire tranche.** Ce n'est pas un choix technique : c'est un
+arbitrage entre un risque juridique et une friction d'usage, et il engage son
+entreprise.
+
+### Ce qui est fait en attendant, et qui ne présume rien
+
+Une seule chose, qui vaut sous les deux options : **une entrée `INCONNU` doit
+dire de quel inconnu elle parle.**
+
+- *« dépend du modèle chargé »* (`mlx-audio`) — mesuré, permanent, ne changera
+  pas en attendant.
+- *« pas encore mesuré »* — en attente d'une mesure, et donc périssable.
+
+C'est exactement la distinction `ABSENT` / `UNKNOWN` que `src/live_context/`
+tient déjà ailleurs : *« l'un est mesuré et ne changera pas en attendant,
+l'autre attend une mesure »*. Le tableau des licences ne la tenait pas, et
+c'est ce qui a permis au `INCONNU` d'`omnivoice-gguf` de vieillir sans que rien
+ne le signale.
+
+Un test l'exige désormais. Il ne change aucun verdict.
