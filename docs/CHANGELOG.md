@@ -2,6 +2,45 @@
 
 ## [Non publié]
 
+### Corrigé — 15/09/2026 — Une réponse de maths était illisible sur le téléphone
+
+**Mesuré sur le téléphone du propriétaire**, sur `Résous l'équation x² - 5x + 6 = 0`.
+Deux défauts d'affichage, indépendants.
+
+**1. Seul `###` était reconnu comme titre.**
+
+| Ligne | Avant |
+|---|---|
+| `# Titre` | texte littéral |
+| `## ✅ Solution finale` | texte littéral |
+| `### Titre` | titre |
+| `#### 1️⃣ Identification` | texte littéral |
+
+`parseBlocks` ne testait que `/^###\s+/`. `####` n'était même pas attrapé par
+erreur : la regex exige une espace après **exactement** trois dièses. Toutes les
+autres lignes tombaient dans le paragraphe courant et s'affichaient avec leurs
+dièses. Tous les niveaux sont désormais rendus — `#` et `##` en `h2` (un titre de
+niveau 1 écraserait le fil du chat), `###` en `h3`, le reste en `h4`.
+
+**2. LaTeX n'est rendu par rien.**
+
+`\[ x^{2}-5x+6=0 \]`, `\Delta = b^{2}-4ac`, `\frac{-b\pm\sqrt{\Delta}}{2a}`
+s'affichaient tels quels. Vérifié : `apps/pwa` n'embarque **ni KaTeX ni MathJax**,
+aucune trace.
+
+**Décision : interdire LaTeX dans le prompt plutôt qu'ajouter un moteur de rendu.**
+La PWA est un fichier unique de 703 kB embarqué sur un téléphone ; KaTeX et ses
+polices coûteraient plus que le problème qu'ils résolvent pour des équations du
+second degré. Le prompt système demande désormais de l'Unicode :
+`x² - 5x + 6 = 0`, `Δ = b² - 4ac = 1`, `x = (5 ± 1) / 2`.
+
+*Coût si c'est faux :* une démonstration qui aurait vraiment besoin d'une
+notation mathématique riche (matrices, intégrales, sommes indicées) sera écrite
+en Unicode approximatif. **Ce qui rouvrirait la décision** : que le propriétaire
+demande le vrai rendu — KaTeX reste ajoutable, rien dans ce correctif ne
+l'empêche.
+
+
 ### Corrigé — 15/09/2026 — « Aujourd'hui c'est quand » partait chercher sur le web
 
 **Mesuré sur le téléphone du propriétaire.** La question est partie en
