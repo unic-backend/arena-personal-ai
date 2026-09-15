@@ -856,6 +856,14 @@ class TestLaLicenceArriveJusquAuFichier:
 
         assert detail["non_commerciaux"] == ["omnivoice"]
         assert detail["appareils"] == ["cpu", "cuda:0"]
+        # La chaine de licence est celle du TABLEAU, qui documente les POIDS.
+        # Elle disait « MIT » jusqu'au 15/09/2026 : c'est la licence du code
+        # KittenTTS, pas celle de `KittenML/kitten-tts-mini-0.8`, dont la fiche
+        # porte `apache-2.0`. Le verdict n'a pas bouge (les deux sont
+        # permissives) ; c'est la phrase qui a ete corrigee, et ce test la suit
+        # parce qu'il verifie que la licence du tableau **arrive jusqu'au
+        # fichier** — pas qu'elle vaut telle chaine en particulier.
         assert {"id": "kittentts", "appareil": "cpu", "routage": "cpu_only",
-                "accelere": False, "licence": "MIT",
+                "accelere": False,
+                "licence": "poids Apache-2.0 (code KittenTTS MIT)",
                 "usage_commercial": "AUTORISE"} in detail["voix"]

@@ -2,6 +2,57 @@
 
 ## [Non publié]
 
+### Corrigé — 15/09/2026 — Une troisième licence non commerciale était servie pour du travail commercial
+
+`omnivoice-gguf` était `INCONNU` dans le tableau des licences. La règle 4
+n'écarte que `INTERDIT` — `INCONNU` est seulement déprécié dans `_rang`, jamais
+refusé. Mesuré **avant** correction :
+
+```
+Seul moteur installé : omnivoice-gguf, usage COMMERCIAL
+  choisi        : omnivoice-gguf
+  verdict ARENA : INCONNU
+omnivoice (mêmes poids, autre emballage) : refusé
+```
+
+La fiche de `Serveurperso/OmniVoice-GGUF`, lue le 15/09/2026, porte
+`license: cc-by-nc-4.0` **et** un `license_link` vers la section `#license` de
+`k2-fsa/OmniVoice` : le quantificateur déclare lui-même hériter. Le modèle de
+base tranche — *« The pre-trained model is licensed under the CC-BY-NC due to
+constraints from its training data »*. Verdict corrigé en `INTERDIT`.
+
+Troisième fois après `omnivoice` et `audiocpp`, et toujours la même cause : le
+code est permissif, les poids ne le sont pas. **Ce que celui-ci ajoute :
+`INCONNU` n'est pas un état stable, il vieillit.** Le `INCONNU` était honnête le
+07/09 ; la fiche a publié ses termes le 09/09 ; le tableau, lui, n'a pas bougé.
+
+**Le garde-fou qui aurait dû l'attraper ne gardait rien.**
+`test_la_famille_omnivoice_n_est_jamais_autorisee_par_erreur` exigeait
+`is not AUTORISE` — et `INCONNU` satisfait cette assertion tout en étant servi.
+Un test qui portait un nom de garde-fou en laissant passer exactement ce qu'il
+prétendait empêcher. Il exige maintenant `INTERDIT`.
+
+### Corrigé — 15/09/2026 — Trois formulations du tableau des licences, aucun verdict changé
+
+Les 17 moteurs TTS de VoiceStudio (amont `4e55180f`) ont été confrontés à la
+fiche du modèle qu'ils chargent réellement, et non plus à la colonne
+« License » de son `README` — **une colonne de README est une affirmation, pas
+une vérification**, et c'est elle qui avait laissé passer `audiocpp`.
+
+| Moteur | Avant | Mesure |
+|---|---|---|
+| `kittentts` | « MIT » | Poids `apache-2.0` ; MIT est la licence du **code**. Le tableau documente les poids. |
+| `supertonic3` | « OpenRAIL-M (restrictions d'usage, **pas de commerce**) », verdict `AUTORISE` | L'Attachment A du `LICENSE` énumère treize restrictions d'usage et **aucune clause commerciale**. La phrase disait le contraire de son propre verdict. |
+| `sesame-csm-1b` | « Apache-2.0 (code et poids) » | Licence inchangée, fiche passée `gated: auto` : condition d'**obtention**, pas restriction d'usage. |
+
+Aucun de ces trois ne changeait un verdict — c'est précisément pour cela qu'ils
+pouvaient rester faux longtemps. Un tableau dont les phrases contredisent les
+verdicts finit par faire corriger le verdict pour qu'il colle à la phrase.
+
+Couverture vérifiée : les 17 moteurs amont figurent tous dans `LICENCES`.
+Détail et sources → `docs/audits/voicestudio_audit.md`, *Troisième relevé*.
+
+
 ### Corrigé — 14/09/2026 — Une adresse sans schéma partait vers la PWA au lieu du serveur
 
 **Mesuré à 03h41**, sur le téléphone du propriétaire : le panneau affichait

@@ -314,3 +314,84 @@ Donc : **aucune mesure RTX A2000, aucune synthèse réelle, aucune
 transcription réelle, aucun essai de moteur** n'a été faite ici. Les annoncer
 serait exactement la faute que `CLAUDE.md` interdit. Ces mesures exigent la
 machine du propriétaire.
+
+---
+
+# Troisième relevé — 15/09/2026 : les licences confrontées aux fiches de modèle
+
+Les deux premiers relevés lisaient la colonne « License » du `README.md` de
+VoiceStudio. **Une colonne de README est une affirmation, pas une
+vérification.** C'est elle qui avait laissé passer `audiocpp` — permissif dans
+le tableau, non commercial dans les poids.
+
+Ce relevé-ci prend le problème par l'autre bout : pour chaque moteur, le dépôt
+de modèle **réellement chargé** a été lu dans
+`backend/services/tts_backend.py` à l'amont `4e55180f` (14/09/2026), puis sa
+fiche interrogée sur `https://huggingface.co/api/models/<dépôt>`.
+
+## Couverture
+
+`_REGISTRY` + `_LAZY_REGISTRY` à `4e55180f` déclarent **17 moteurs TTS**. Les
+17 figurent dans le tableau `LICENCES` d'ARENA : aucun moteur amont n'est
+inconnu du routeur à cette date.
+
+## Le défaut trouvé — `omnivoice-gguf`
+
+| | |
+|---|---|
+| Dépôt chargé | `Serveurperso/OmniVoice-GGUF` |
+| Fiche (15/09/2026) | `license: cc-by-nc-4.0` |
+| `license_link` | `https://huggingface.co/k2-fsa/OmniVoice#license` |
+| Modèle de base | *« The pre-trained model is licensed under the CC-BY-NC due to constraints from its training data (e.g., Emilia). »* |
+| ARENA avant correction | `INCONNU` — « termes du dérivé non vérifiés » |
+
+Le quantificateur **déclare lui-même** hériter des termes du modèle de base.
+La fiche a été modifiée le 09/09/2026, soit après le relevé du 07/09 — d'où le
+`INCONNU`, honnête à sa date et périmé depuis.
+
+**Pourquoi c'était servi.** La règle 4 n'écarte que `INTERDIT` ; `INCONNU` est
+seulement déprécié dans `_rang`. Mesuré avant correction :
+
+```
+Seul moteur installé : omnivoice-gguf, usage COMMERCIAL
+  choisi        : omnivoice-gguf
+  verdict ARENA : INCONNU
+omnivoice (mêmes poids, autre emballage) : refusé
+```
+
+Troisième fois que ce piège se referme ici, après `omnivoice` et `audiocpp`,
+et toujours pour la même raison : **le code est permissif, les poids ne le sont
+pas.**
+
+Ce que celui-ci apprend en plus des deux autres : **`INCONNU` n'est pas un état
+stable, il vieillit.** Un « non vérifié » écrit un jour reste dans le tableau
+quand l'amont, lui, a publié ses termes.
+
+## Trois formulations corrigées — aucun verdict changé
+
+| Moteur | Avant | Mesure du 15/09/2026 |
+|---|---|---|
+| `kittentts` | « MIT » | Poids `apache-2.0` (`KittenML/kitten-tts-mini-0.8`). MIT est la licence du **code**. |
+| `supertonic3` | « OpenRAIL-M (restrictions d'usage, **pas de commerce**) » sous un verdict `AUTORISE` | L'Attachment A du `LICENSE` énumère treize restrictions d'usage — illégalité, mineurs, désinformation, deepfake, harcèlement, discrimination, conseil médical… — et **aucune ne porte sur le commerce**. La phrase disait le contraire de son propre verdict. |
+| `sesame-csm-1b` | « Apache-2.0 (code et poids) » | Licence inchangée, mais la fiche est passée `gated: auto`. C'est une **condition d'obtention**, pas une restriction d'usage : les confondre ferait refuser un moteur utilisable. |
+
+## Deux dépôts renommés, licence inchangée
+
+- `OpenMOSS-Team/MOSS-TTS-Nano` → `OpenMOSS-Team/MOSS-TTS-Nano-100M` (`apache-2.0`)
+- `rednote-hilab/dots.tts-soar` → `dots-studio/dots.tts-soar` (`apache-2.0`)
+
+## Confirmations
+
+`cosyvoice` (`FunAudioLLM/Fun-CosyVoice3-0.5B-2512`), `voxcpm2`
+(`openbmb/VoxCPM2`), `moss-tts-v15` : `apache-2.0`, non *gated*.
+`pockettts` (`kyutai/pocket-tts`) : `cc-by-4.0`, `gated: auto` — ce que le
+tableau disait déjà. `indextts2` : `other` / `bilibili-model-license`.
+`audiocpp` : `other`, cohérent avec BreezeBlue.
+
+## Ce que ce relevé n'a toujours PAS mesuré
+
+Rien n'a été synthétisé, aucun moteur n'a tourné, aucune licence n'a été lue
+sur la machine du propriétaire. Ce relevé mesure des **fiches de modèle**, pas
+de l'audio. Les trois moteurs sans dépôt par défaut — `confucius4-tts`,
+`sherpa-onnx`, `gpt-sovits` — chargent ce que l'utilisateur fournit : leur
+licence dépend de ce qui sera installé, et ne peut pas être mesurée d'ici.

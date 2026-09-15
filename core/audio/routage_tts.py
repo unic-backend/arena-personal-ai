@@ -121,15 +121,46 @@ _VS = "VoiceStudio README.md + LICENSE-NOTICE.md, commit 53ff367, lu le 07/09/20
 _VS_0_5_2 = ("VoiceStudio docs/engines/audio-cpp.md, commit eaf8bb9 (v0.5.2), "
              "lu le 13/09/2026")
 
+#: Le tableau ci-dessous a longtemps eu UNE seule source : la colonne
+#: « License » du README de VoiceStudio. **Une colonne de README est une
+#: affirmation, pas une verification** — c'est exactement ce qui a laisse
+#: passer `audiocpp`. Le 15/09/2026, chaque moteur a donc ete confronte a la
+#: fiche du modele qu'il charge REELLEMENT (repertoire par defaut lu dans
+#: `backend/services/tts_backend.py` a l'amont `4e55180f`), via
+#: `https://huggingface.co/api/models/<depot>`. Les entrees que cette mesure a
+#: corrigees portent cette source-ci, pas `_VS`.
+_FICHES_15_09 = ("fiches de modele HuggingFace lues le 15/09/2026 "
+                 "(depots par defaut de VoiceStudio @ 4e55180f)")
+
 LICENCES: Dict[str, LicenceMoteur] = {
     "omnivoice": LicenceMoteur(
         Commercial.INTERDIT, "poids CC-BY-NC (code Apache-2.0)", True, _VS),
     "omnivoice-subprocess": LicenceMoteur(
         Commercial.INTERDIT, "poids CC-BY-NC (code Apache-2.0)", True, _VS),
+    # `omnivoice-gguf` a ete `INCONNU` du 07/09 au 15/09/2026, et c'etait
+    # honnete : le derive ne disait pas ses termes, et une quantification peut
+    # relicencier. Ce n'est plus vrai. La fiche de
+    # `Serveurperso/OmniVoice-GGUF` (mesuree le 15/09/2026) porte
+    # `license: cc-by-nc-4.0` ET un `license_link` qui pointe la section
+    # `#license` de `k2-fsa/OmniVoice` : le quantificateur declare lui-meme
+    # heriter des termes du modele de base. Le README de ce modele tranche —
+    #   « Our code is released under the Apache 2.0 License. The pre-trained
+    #     model is licensed under the CC-BY-NC due to constraints from its
+    #     training data (e.g., Emilia). »
+    #
+    # Pourquoi c'etait dangereux : la regle 4 ne retient QUE `INTERDIT`.
+    # `INCONNU` est seulement deprefere (`_rang`). Mesure du 15/09/2026, avant
+    # cette correction : `choisir([omnivoice-gguf], usage=COMMERCIAL)` RENDAIT
+    # le moteur, quand le meme appel sur `omnivoice` — memes poids, autre
+    # emballage — refusait. Troisieme fois que ce piege se referme ici, apres
+    # `omnivoice` et `audiocpp`, et toujours pour la meme raison : le code est
+    # permissif, les poids ne le sont pas.
     "omnivoice-gguf": LicenceMoteur(
-        Commercial.INCONNU,
-        "quantification derivee de poids CC-BY-NC ; termes du derive non verifies",
-        True, _VS),
+        Commercial.INTERDIT,
+        "quantification de poids CC-BY-NC : la fiche du derive porte "
+        "elle-meme cc-by-nc-4.0 et renvoie a la licence du modele de base "
+        "(code Apache-2.0)",
+        True, _FICHES_15_09),
     "cosyvoice": LicenceMoteur(Commercial.AUTORISE, "Apache-2.0", True, _VS),
     "voxcpm2": LicenceMoteur(Commercial.AUTORISE, "Apache-2.0", True, _VS),
     "moss-tts-nano": LicenceMoteur(Commercial.AUTORISE, "Apache-2.0", False, _VS),
@@ -138,13 +169,31 @@ LICENCES: Dict[str, LicenceMoteur] = {
     "confucius4-tts": LicenceMoteur(Commercial.AUTORISE, "Apache-2.0", False, _VS),
     "sherpa-onnx": LicenceMoteur(Commercial.AUTORISE, "Apache-2.0", False, _VS),
     "gpt-sovits": LicenceMoteur(Commercial.AUTORISE, "MIT", False, _VS),
-    "kittentts": LicenceMoteur(Commercial.AUTORISE, "MIT", False, _VS),
+    # Le README de VoiceStudio ecrit « MIT » — c'est la licence du CODE
+    # KittenTTS. La fiche de `KittenML/kitten-tts-mini-0.8`, le depot que
+    # VoiceStudio charge par defaut, porte `license: apache-2.0` pour les
+    # POIDS. Les deux sont permissives, donc le verdict ne bouge pas ; mais ce
+    # tableau documente les poids, et y laisser « MIT » entretenait justement
+    # la confusion code/poids que ce module existe pour empecher.
+    "kittentts": LicenceMoteur(
+        Commercial.AUTORISE, "poids Apache-2.0 (code KittenTTS MIT)", False,
+        _FICHES_15_09),
     "pockettts": LicenceMoteur(
         Commercial.AUTORISE, "CC-BY-4.0 (attribution requise), acces sous condition",
         False, _VS),
+    # « OpenRAIL-M (restrictions d'usage, pas de commerce) » : cette
+    # formulation disait le CONTRAIRE de son propre verdict. Un lecteur
+    # francais lit « pas de commerce » comme une interdiction, alors que le
+    # verdict etait `AUTORISE`. Lue le 15/09/2026, l'Attachment A du LICENSE
+    # de `Supertone/supertonic-3` enumere treize restrictions d'usage
+    # (illegalite, mineurs, desinformation, deepfake, harcelement,
+    # discrimination, conseil medical...) et **aucune ne porte sur le
+    # commerce**. Le verdict etait bon, la phrase etait un piege.
     "supertonic3": LicenceMoteur(
-        Commercial.AUTORISE, "OpenRAIL-M (restrictions d'usage, pas de commerce)",
-        False, _VS),
+        Commercial.AUTORISE,
+        "OpenRAIL-M : restrictions d'usage (deepfake, harcelement, "
+        "discrimination...), aucune clause n'interdit le commerce",
+        False, _FICHES_15_09),
     "indextts2": LicenceMoteur(
         Commercial.AUTORISE,
         "licence modele Bilibili : libre en dessous de 100 M d'utilisateurs "
@@ -184,8 +233,16 @@ LICENCES: Dict[str, LicenceMoteur] = {
     # due to data contamination [...] but it likely won't do well » — donc
     # `langues` le restreint a l'anglais, mesure jamais suppose ; French/Wolof
     # restent au tableau des moteurs VoiceStudio (DEC-0080).
+    # Mesure du 15/09/2026 : la fiche est passee en `gated: auto`. La licence
+    # n'a pas bouge (apache-2.0) ; l'ACCES, si. Un telechargement demande
+    # maintenant un compte HuggingFace ayant accepte les conditions. Ce n'est
+    # pas une restriction d'usage commercial — c'est une condition d'obtention,
+    # et la confondre avec l'autre ferait refuser un moteur parfaitement
+    # utilisable.
     "sesame-csm-1b": LicenceMoteur(
-        Commercial.AUTORISE, "Apache-2.0 (code et poids)", False,
+        Commercial.AUTORISE,
+        "Apache-2.0 (code et poids), acces sous condition (fiche « gated »)",
+        False,
         "LICENSE de SesameAILabs/csm @ daed31e + fiche HF sesame/csm-1b, "
         "lues le 10/09/2026",
         langues=frozenset({"en"}), conversationnel=True),
