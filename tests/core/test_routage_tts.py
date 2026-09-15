@@ -112,10 +112,21 @@ class TestLeTableauDesLicencesEstSource:
         assert len(licence.licence) >= 3, f"{identifiant} ne nomme pas sa licence"
 
     def test_la_famille_omnivoice_n_est_jamais_autorisee_par_erreur(self):
-        """Les trois emballages d'OmniVoice partagent les memes poids."""
+        """Les trois emballages d'OmniVoice partagent les memes poids.
+
+        **Ce test demandait `is not AUTORISE`, et c'etait trop faible.**
+        `INCONNU` satisfait cette assertion — et la regle 4 SERT un moteur
+        `INCONNU` en usage commercial. Le test portait donc un nom de
+        garde-fou (« n'est jamais autorisee par erreur ») en laissant passer
+        exactement ce qu'il pretendait empecher : mesure du 15/09/2026,
+        `omnivoice-gguf` etait `INCONNU`, et `choisir(...)` le rendait pour un
+        travail commercial. Il exige maintenant `INTERDIT`, qui est le seul
+        etat que le routeur ecarte vraiment.
+        """
         for identifiant in ("omnivoice", "omnivoice-subprocess", "omnivoice-gguf"):
-            assert LICENCES[identifiant].commercial is not Commercial.AUTORISE, (
-                f"{identifiant} vient d'etre declare commercialisable")
+            assert LICENCES[identifiant].commercial is Commercial.INTERDIT, (
+                f"{identifiant} ne porte plus INTERDIT : les memes poids "
+                "CC-BY-NC deviendraient servables par cet emballage-la")
 
 
 class TestCeQueLaMachineMesureVientDeLaMachine:
@@ -332,3 +343,102 @@ class TestAudiocppLeSecondPiegeDeLicence:
         en commercial."""
         assert licence_de("audiocpp") is not LICENCE_INCONNUE
         assert "audiocpp" in LICENCES
+
+
+class TestOmnivoiceGgufLeTroisiemePiegeDeLicence:
+    """`omnivoice-gguf` — le meme defaut, une troisieme fois.
+
+    Apres `omnivoice` (poids CC-BY-NC) et `audiocpp` (poids BreezeBlue), la
+    quantification GGUF d'OmniVoice. Elle etait `INCONNU` depuis le
+    07/09/2026, et c'etait honnete a cette date : le derive ne disait pas ses
+    termes, et une quantification PEUT relicencier.
+
+    Ce n'est plus vrai. Mesure du 15/09/2026 sur la fiche de
+    `Serveurperso/OmniVoice-GGUF` (modifiee le 09/09/2026, donc apres le
+    releve) : `license: cc-by-nc-4.0`, et un `license_link` qui pointe la
+    section `#license` de `k2-fsa/OmniVoice`. Le quantificateur declare
+    lui-meme heriter. Le README du modele de base tranche : *« The pre-trained
+    model is licensed under the CC-BY-NC due to constraints from its training
+    data »*.
+
+    Ce que ce piege apprend, et que les deux premiers n'avaient pas montre :
+    **`INCONNU` n'est pas un etat stable**. Il vieillit. Un « non verifie »
+    ecrit un jour reste dans le tableau quand l'amont, lui, a publie ses
+    termes — et pendant ce temps le routeur sert le moteur.
+    """
+
+    def test_il_ne_parle_plus_pour_un_travail_commercial(self):
+        """Le test qui tient la correction."""
+        with pytest.raises(ErreurDeMoteur) as erreur:
+            choisir([_moteur("omnivoice-gguf")], usage=Usage.COMMERCIAL)
+
+        assert "omnivoice-gguf" in str(erreur.value)
+        assert "CC-BY-NC" in str(erreur.value)
+
+    def test_il_reste_joignable_pour_un_travail_de_recherche(self):
+        """Interdit n'est pas inexistant : la porte de la regle 3 tient."""
+        choisi = choisir([_moteur("omnivoice-gguf")], usage=Usage.RECHERCHE)
+
+        assert choisi.identifiant == "omnivoice-gguf"
+
+    def test_un_moteur_permissif_le_remplace_sans_que_l_appelant_choisisse(self):
+        choisi = choisir([_moteur("omnivoice-gguf"), _moteur("voxcpm2")],
+                         usage=Usage.COMMERCIAL)
+
+        assert choisi.identifiant == "voxcpm2"
+        assert choisi.licence.commercial is Commercial.AUTORISE
+
+    def test_les_trois_emballages_refusent_identiquement(self):
+        """Memes poids, meme refus. C'est la propriete qui manquait : avant
+        le 15/09/2026 deux emballages refusaient et le troisieme servait."""
+        for identifiant in ("omnivoice", "omnivoice-subprocess", "omnivoice-gguf"):
+            with pytest.raises(ErreurDeMoteur):
+                choisir([_moteur(identifiant)], usage=Usage.COMMERCIAL)
+
+    def test_sa_licence_porte_la_source_qui_l_a_corrigee(self):
+        """Elle ne vient plus du README de VoiceStudio mais de la fiche du
+        modele. Fondre les deux ferait mentir la provenance."""
+        licence = licence_de("omnivoice-gguf")
+
+        assert licence.commercial is Commercial.INTERDIT
+        assert "HuggingFace" in licence.source
+        assert "15/09/2026" in licence.source
+
+
+class TestCeQueLaFicheDuModeleACorrige:
+    """Trois entrees que la colonne « License » du README decrivait mal.
+
+    Aucune ne changeait un verdict — c'est precisement pour cela qu'elles
+    pouvaient rester fausses longtemps. Un tableau de licences dont les
+    phrases ne correspondent pas aux verdicts finit par faire corriger le
+    verdict pour qu'il colle a la phrase.
+    """
+
+    def test_kittentts_documente_ses_poids_pas_son_code(self):
+        """VoiceStudio ecrit « MIT » (le code). Les poids de
+        `KittenML/kitten-tts-mini-0.8` sont Apache-2.0."""
+        licence = licence_de("kittentts")
+
+        assert licence.commercial is Commercial.AUTORISE
+        assert "Apache-2.0" in licence.licence
+        assert "MIT" in licence.licence, "la licence du code reste nommee"
+
+    def test_supertonic3_ne_dit_plus_le_contraire_de_son_verdict(self):
+        """« restrictions d'usage, pas de commerce » se lisait comme une
+        interdiction, sous un verdict `AUTORISE`. L'Attachment A du LICENSE
+        n'a aucune clause commerciale."""
+        licence = licence_de("supertonic3")
+
+        assert licence.commercial is Commercial.AUTORISE
+        assert "pas de commerce" not in licence.licence
+        assert "interdit le commerce" in licence.licence
+
+    def test_sesame_distingue_l_acces_de_l_usage(self):
+        """La fiche est passee `gated`. C'est une condition d'obtention, pas
+        une restriction d'usage commercial — les confondre ferait refuser un
+        moteur utilisable."""
+        licence = licence_de("sesame-csm-1b")
+
+        assert licence.commercial is Commercial.AUTORISE
+        assert "Apache-2.0" in licence.licence
+        assert "acces sous condition" in licence.licence
