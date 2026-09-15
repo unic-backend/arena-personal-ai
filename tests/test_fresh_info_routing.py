@@ -360,3 +360,85 @@ class TestQuestionsPersonnelles:
 
         assert intention == "CHAT"
         assert appels == [], "le modèle a été interrogé sur l'identité du propriétaire"
+
+
+class TestLaDateNEstPasUneRechercheWeb:
+    """« Aujourd'hui c'est quand » partait chercher sur le web.
+
+    **Mesure du 15/09/2026, sur le telephone du proprietaire.** La question
+    est partie en `FRESH_INFO`, le modele a recu une source `bfmtv.com`, et a
+    repondu : *« Les sources fournies ne mentionnent pas la date du jour. Je
+    ne peux donc pas repondre a la question. »*
+
+    La cause : « aujourd'hui » figure dans `FORMULATIONS_COURANTES` comme
+    QUALIFICATIF de fraicheur — « qui est president aujourd'hui » a bien
+    besoin du web. Dans cette phrase-ci, « aujourd'hui » est le SUJET. Le web
+    ne sait pas quel jour on est chez lui ; l'horloge de la machine, si, et
+    `apps/backend/prompts.py` met deja cette date dans le prompt du chemin
+    `CHAT`.
+
+    Troisieme detournement de `FORMULATIONS_COURANTES` apres le courrier et
+    la finance (31/08/2026), et la meme parade : un controle deterministe
+    place AVANT le controle date.
+    """
+
+    def test_la_question_du_proprietaire_ne_part_plus_au_web(self):
+        """Le cas exact de la capture d'ecran."""
+        assert OrchestratorAgent.demande_la_date("Aujourd'hui c'est quand")
+
+    @pytest.mark.parametrize("question", [
+        "on est quel jour",
+        "quel jour sommes-nous",
+        "quelle est la date",
+        "c'est quoi la date du jour",
+        "on est le combien",
+        "quelle heure est-il",
+    ])
+    def test_les_autres_facons_de_demander_le_jour(self, question):
+        assert OrchestratorAgent.demande_la_date(question)
+
+    @pytest.mark.parametrize("question", [
+        "quelle est la date de livraison du chantier",
+        "quel jour tu livres le BA13",
+        "quelle heure ouvre le magasin demain",
+        "quelle est la date de la coupe du monde",
+    ])
+    def test_une_date_qui_n_est_pas_LA_date_n_est_pas_prise(self, question):
+        """Phrase ENTIERE, jamais un `in` — sinon ce controle volerait au
+        metier toutes ses questions de planning."""
+        assert not OrchestratorAgent.demande_la_date(question)
+
+    def test_l_apostrophe_du_telephone_ne_change_rien(self):
+        """Le clavier insere U+2019, ce fichier ecrit U+0027."""
+        assert OrchestratorAgent.demande_la_date("Aujourd’hui c’est quand")
+
+
+class TestLApostropheTypographiqueNeDesarmePlusLaVerification:
+    """Un defaut silencieux, trouve en cherchant le precedent.
+
+    **Mesure du 15/09/2026.** `FORMULATIONS_COURANTES` est ecrit avec
+    l'apostrophe droite `'` (U+0027). Le clavier d'un telephone insere
+    l'apostrophe typographique `’` (U+2019). Consequence : « quel temps
+    fait-il aujourd'hui » tape sur un telephone ne declenchait AUCUNE
+    verification, et partait repondre de memoire.
+
+    Ce defaut ne se voit pas : la reponse arrive, elle a l'air normale, et
+    rien ne dit qu'elle n'a rien verifie. C'est exactement ce que la regle 2
+    du module veut empecher.
+    """
+
+    def test_la_meteo_du_jour_declenche_la_verification_dans_les_deux_graphies(self):
+        for apostrophe in ("'", "’"):
+            question = f"quel temps fait-il aujourd{apostrophe}hui"
+            assert OrchestratorAgent.exige_verification(question), question
+
+    def test_une_annee_future_reste_detectee(self):
+        """Le premier cas de `exige_verification` n'a pas bouge."""
+        futur = datetime.date(2026, 9, 15)
+        assert OrchestratorAgent.exige_verification(
+            "resultats de 2027", aujourd_hui=futur)
+
+    def test_une_annee_passee_ne_declenche_toujours_rien(self):
+        futur = datetime.date(2026, 9, 15)
+        assert not OrchestratorAgent.exige_verification(
+            "qui a gagne la coupe du monde 1998", aujourd_hui=futur)
