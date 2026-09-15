@@ -248,6 +248,21 @@ LICENCES: Dict[str, LicenceMoteur] = {
         langues=frozenset({"en"}), conversationnel=True),
 }
 
+#: **Un `INCONNU` doit dire de quel inconnu il parle.** Deux inconnus vivent
+#: dans ce tableau, et les confondre a coute trois incidents (DEC-0105) :
+#:
+#: - *« depend du modele charge »* — mesure, PERMANENT. `mlx-audio` charge ce
+#:   que l'utilisateur lui donne : sa licence ne sera jamais connue d'ici, et
+#:   attendre n'y changera rien.
+#: - *« pas encore mesure »* — en attente d'une mesure, donc PERISSABLE. C'est
+#:   celui-la qui vieillit : `omnivoice-gguf` l'a porte du 07/09 au 15/09/2026
+#:   pendant que l'amont publiait ses termes le 09/09.
+#:
+#: Meme distinction que `ABSENT` / `UNKNOWN` ailleurs dans le projet : l'un est
+#: mesure et ne changera pas en attendant, l'autre attend une mesure. Un test
+#: (`TestUnInconnuDitDeQuelInconnuIlParle`) l'exige de chaque entree.
+MARQUEURS_INCONNU = ("depend", "pas encore mesure", "aucune source")
+
 #: Ce qu'on répond d'un moteur absent du tableau. Un moteur neuf apparu chez
 #: VoiceStudio ne doit pas hériter d'une autorisation par défaut.
 LICENCE_INCONNUE = LicenceMoteur(
