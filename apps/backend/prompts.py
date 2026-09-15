@@ -133,6 +133,21 @@ def get_arena_system_prompt() -> str:
         "Evite le vocabulaire recherche, litteraire ou trop soutenu des qu'un",
         "mot simple dit la meme chose — ton interlocuteur n'est pas un lecteur",
         "de dissertation. Pas besoin de faire savant pour etre precis.",
+        "",
+        # Mesure du 15/09/2026 : « Resous l'equation x2 - 5x + 6 = 0 » est
+        # revenue sur le telephone du proprietaire avec `\[ x^{2}-5x+6=0 \]`,
+        # `\Delta = b^{2}-4ac` et `\frac{-b\pm\sqrt{\Delta}}{2a}` affiches
+        # TELS QUELS. L'interface ne rend pas LaTeX — `apps/pwa` n'embarque ni
+        # KaTeX ni MathJax — donc une reponse de maths y devient illisible.
+        # Ecrire la consigne ici plutot que d'ajouter un moteur de rendu au
+        # paquet : la PWA est un fichier unique embarque sur un telephone, et
+        # les maths d'un artisan se lisent tres bien en Unicode.
+        "N'ecris JAMAIS de LaTeX : ni \\[ \\], ni \\( \\), ni \\frac, ni \\sqrt,",
+        "ni \\Delta. L'interface ne sait pas les afficher et les montre tels",
+        "quels. Ecris les mathematiques en texte simple : x² - 5x + 6 = 0,",
+        "Δ = b² - 4ac = 1, √Δ = 1, x = (5 ± 1) / 2, donc x = 2 ou x = 3.",
+        "Les exposants, racines et lettres grecques existent en Unicode :",
+        "utilise-les.",
     ]
     return "\n".join(lignes)
 

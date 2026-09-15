@@ -43,7 +43,7 @@ function renderInline(str: string, sources: SourceMeta[] | undefined, keyBase: s
 /* ── blocks ── */
 type Block =
   | { t: 'p'; text: string }
-  | { t: 'h3'; text: string }
+  | { t: 'h'; niveau: 2 | 3 | 4; text: string }
   | { t: 'pre'; text: string }
   | { t: 'quote'; text: string }
   | { t: 'ul'; items: string[] }
@@ -71,7 +71,27 @@ function parseBlocks(text: string): Block[] {
       blocks.push({ t: 'pre', text: code.join('\n') });
       continue;
     }
-    if (/^###\s+/.test(line)) { flush(); blocks.push({ t: 'h3', text: line.replace(/^###\s+/, '') }); i++; continue; }
+    // Tous les niveaux de titre, pas seulement `###`.
+    //
+    // **Mesure du 15/09/2026.** Le parseur ne reconnaissait que `### `. Une
+    // reponse de maths du moteur de raisonnement arrivait avec `#`, `##` et
+    // `####` : ces lignes-la tombaient dans le paragraphe courant et
+    // s'affichaient avec leurs dieses, telles quelles, sur le telephone du
+    // proprietaire. `####` n'etait meme pas attrape par erreur — `/^###\s+/`
+    // exige une espace apres exactement trois dieses.
+    //
+    // `#` et `##` deviennent un `h2` : dans une bulle de chat, un titre de
+    // niveau 1 ecraserait le fil. Les niveaux plus profonds que `####` se
+    // rabattent sur `h4` plutot que de rester litteraux.
+    const titre = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (titre) {
+      flush();
+      const dieses = titre[1].length;
+      const niveau = dieses <= 2 ? 2 : dieses === 3 ? 3 : 4;
+      blocks.push({ t: 'h', niveau, text: titre[2] });
+      i++;
+      continue;
+    }
     if (/^>\s?/.test(line)) {
       flush();
       const q: string[] = [];
@@ -114,7 +134,10 @@ export const MarkdownLite = memo(function MarkdownLite({
     <div className="md text-zinc-300">
       {blocks.map((b, i) => {
         switch (b.t) {
-          case 'h3': return <h3 key={i}>{renderInline(b.text, sources, `h${i}`)}</h3>;
+          case 'h': {
+            const Titre = `h${b.niveau}` as 'h2' | 'h3' | 'h4';
+            return <Titre key={i}>{renderInline(b.text, sources, `h${i}`)}</Titre>;
+          }
           case 'pre': return <pre key={i} className="scroll-slim">{b.text}</pre>;
           case 'quote': return <blockquote key={i}>{renderInline(b.text, sources, `q${i}`)}</blockquote>;
           case 'ul': return <ul key={i}>{b.items.map((it, j) => <li key={j}>{renderInline(it, sources, `u${i}-${j}`)}</li>)}</ul>;
