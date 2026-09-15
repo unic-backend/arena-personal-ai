@@ -67,3 +67,35 @@ class TestRepliHorsLigne:
 
     def test_repli_ne_capte_pas_le_metier(self):
         assert OrchestratorAgent._classer_par_mots_cles(None, "chiffre-moi 18 parois de BA13") != "FINANCE"
+
+
+class TestAnalyzeIntentDate:
+    """**Le controle existe-t-il, ou est-il branche ?**
+
+    `demande_la_date()` peut etre parfait et ne servir a rien si
+    `analyze_intent` ne l'appelle pas. Mesure du 15/09/2026 : en retirant
+    l'appel, les tests de la methode restaient tous verts — *« une garde qui
+    verifie qu'une piece existe ne verifie pas qu'elle est branchee »*.
+
+    Ces tests-ci passent par `analyze_intent`, et le fournisseur est scripte
+    pour repondre `FRESH_INFO` : si le controle de date disparaissait, la
+    question partirait au web et l'assertion tomberait.
+    """
+
+    @pytest.mark.asyncio
+    async def test_la_date_du_jour_va_au_chat_pas_au_web(self, provider_factory):
+        agent = OrchestratorAgent(provider=provider_factory("FRESH_INFO"), memory=None)
+
+        intention = await agent.analyze_intent("Aujourd'hui c'est quand")
+
+        assert intention == "CHAT"
+
+    @pytest.mark.asyncio
+    async def test_une_vraie_question_de_fraicheur_va_toujours_au_web(
+            self, provider_factory):
+        """Le controle de date ne doit rien voler a `FRESH_INFO`."""
+        agent = OrchestratorAgent(provider=provider_factory("CHAT"), memory=None)
+
+        intention = await agent.analyze_intent("quel temps fait-il aujourd’hui")
+
+        assert intention == "FRESH_INFO"

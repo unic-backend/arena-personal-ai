@@ -2,6 +2,55 @@
 
 ## [Non publié]
 
+### Corrigé — 15/09/2026 — « Aujourd'hui c'est quand » partait chercher sur le web
+
+**Mesuré sur le téléphone du propriétaire.** La question est partie en
+`FRESH_INFO`, le modèle a reçu une source `bfmtv.com`, et a répondu :
+
+> *Les sources fournies ne mentionnent pas la date du jour. Je ne peux donc pas
+> répondre à la question « Aujourd'hui c'est quand » à partir de ces sources.*
+
+`« aujourd'hui »` est dans `FORMULATIONS_COURANTES` comme **qualificatif** de
+fraîcheur — « qui est président aujourd'hui » a bien besoin du web. Dans cette
+phrase-ci, il est le **sujet**. Le web ne sait pas quel jour on est chez lui ;
+l'horloge de la machine, si, et `apps/backend/prompts.py` met déjà cette date
+dans le prompt système du chemin `CHAT`.
+
+Troisième détournement de cette liste après le courrier et la finance
+(31/08/2026), et la même parade : `demande_la_date()`, contrôle déterministe
+placé **avant** le contrôle date. Comparaison sur la **phrase entière**, comme
+`salutation_pure` — « quelle est la date de livraison du chantier » demande une
+date, pas LA date.
+
+### Corrigé — 15/09/2026 — L'apostrophe du téléphone désarmait la vérification
+
+Trouvé en cherchant le précédent. `FORMULATIONS_COURANTES` est écrit avec
+l'apostrophe droite `'` (U+0027) ; un clavier de téléphone insère `’` (U+2019).
+Mesuré :
+
+```
+"quel temps fait-il aujourd’hui"  →  exige_verification = False
+"quel temps fait-il aujourd'hui"  →  exige_verification = True
+```
+
+Une question de fraîcheur tapée sur le téléphone ne déclenchait **aucune
+vérification** et repartait répondre de mémoire. **Le défaut est silencieux** :
+la réponse arrive, elle a l'air normale, et rien ne dit qu'elle n'a rien
+vérifié — exactement ce que la règle 2 du module existe pour empêcher.
+`normaliser()` ramène les apostrophes courantes à `'` avant toute comparaison.
+
+### Note de méthode — un test qui ne testait pas le branchement
+
+Les premiers tests de `demande_la_date()` restaient **tous verts** après avoir
+retiré son appel dans `analyze_intent` : ils tenaient la fonction, pas son
+câblage. *« Une garde qui vérifie qu'une pièce existe ne vérifie pas qu'elle
+est branchée »* — le dépôt le dit déjà dans `regle-de-panne.test.ts`, et c'est
+la deuxième fois en deux jours qu'un test porte un nom plus fort que son
+assertion. `TestAnalyzeIntentDate` passe désormais par `analyze_intent`, avec
+un fournisseur scripté pour répondre `FRESH_INFO` : si le contrôle disparaît,
+la question repart au web et le test tombe.
+
+
 ### Ajouté — 15/09/2026 — Un `INCONNU` doit dire de quel inconnu il parle
 
 Deux inconnus vivaient dans le tableau des licences sans rien qui les

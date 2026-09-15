@@ -511,6 +511,54 @@ SALUTATIONS_PURES = (
 )
 
 
+#: Les apostrophes que produisent les claviers. Le telephone du proprietaire
+#: insere U+2019 (') ; les listes de ce module sont ecrites avec U+0027 (').
+#: Sans cette normalisation, « quel temps fait-il aujourd'hui » tape sur un
+#: telephone ne declenchait AUCUNE verification — mesure du 15/09/2026 — et
+#: partait repondre de memoire. Le defaut est silencieux : la reponse arrive,
+#: elle a l'air normale, et rien ne dit qu'elle n'a rien verifie.
+APOSTROPHES = "\u2019\u02bc\u2018`"
+
+
+def normaliser(texte: str) -> str:
+    """Minuscules, apostrophes ramenees a `'`. Rien d'autre."""
+    minuscules = (texte or "").lower()
+    for signe in APOSTROPHES:
+        minuscules = minuscules.replace(signe, "'")
+    return minuscules
+
+
+#: Les questions dont la reponse EST la date ou l'heure de la machine.
+#:
+#: **Mesure du 15/09/2026, sur le telephone du proprietaire.** « Aujourd'hui
+#: c'est quand » partait en recherche web, et le modele repondait — sur une
+#: source bfmtv.com — *« Les sources fournies ne mentionnent pas la date du
+#: jour »*. Le mot « aujourd'hui » est dans `FORMULATIONS_COURANTES` comme
+#: QUALIFICATIF de fraicheur (« qui est president aujourd'hui ») ; ici il est
+#: le SUJET de la question. Le web ne sait pas quel jour on est chez lui ; la
+#: machine, si — `apps/backend/prompts.py` met deja la date lue sur l'horloge
+#: dans le prompt systeme du chemin CHAT.
+#:
+#: Troisieme fois que `FORMULATIONS_COURANTES` detourne une question qui ne
+#: releve pas du web, apres le courrier et la finance (31/08/2026) : la meme
+#: parade, un controle deterministe place AVANT le controle date.
+#:
+#: **Comparaison sur la phrase ENTIERE**, comme `salutation_pure`, et pour la
+#: meme raison : un simple `in` prendrait « quelle est la date de livraison du
+#: chantier » pour une demande de date du jour.
+QUESTIONS_DE_DATE = (
+    "aujourd'hui c'est quand", "c'est quand aujourd'hui",
+    "on est quel jour", "quel jour on est", "quel jour sommes-nous",
+    "quel jour sommes nous", "quel jour est-on", "quel jour est on",
+    "on est le combien", "le combien on est",
+    "quelle est la date", "quelle est la date du jour", "c'est quoi la date",
+    "c'est quoi la date du jour", "la date du jour", "date du jour",
+    "quel jour", "quelle date",
+    "quelle heure est-il", "quelle heure est il", "il est quelle heure",
+    "quelle heure", "on est quelle annee", "quelle annee on est",
+)
+
+
 ANNEE = re.compile(r"\b(19|20)\d{2}\b")
 
 # Formulations qui portent sur un état ou un résultat courant. Elles ne
@@ -616,7 +664,7 @@ class OrchestratorAgent(BaseAgent):
         tournent.
         """
         aujourd_hui = aujourd_hui or datetime.date.today()
-        texte = user_input.lower()
+        texte = normaliser(user_input)
 
         annees = [int(m.group()) for m in ANNEE.finditer(texte)]
         if any(annee >= aujourd_hui.year for annee in annees):
@@ -647,6 +695,23 @@ class OrchestratorAgent(BaseAgent):
         """
         texte = (user_input or "").strip().lower().rstrip("!.?").strip()
         return texte in SALUTATIONS_PURES
+
+    @staticmethod
+    def demande_la_date(user_input: str) -> bool:
+        """Vrai seulement si la phrase ENTIERE demande la date ou l'heure.
+
+        La reponse est sur l'horloge de la machine, pas sur le web. Evaluee
+        AVANT `exige_verification()`, comme le courrier et la finance : le mot
+        « aujourd'hui » y est un qualificatif de fraicheur, alors qu'ici il est
+        le sujet.
+
+        Phrase entiere, jamais un `in` : « quelle est la date de livraison du
+        chantier » demande une date, pas LA date. Le `?` final est retire comme
+        pour `salutation_pure`, et l'apostrophe est normalisee — le clavier du
+        telephone n'ecrit pas la meme que ce fichier.
+        """
+        texte = normaliser(user_input).strip().rstrip("!.?").strip()
+        return texte in QUESTIONS_DE_DATE
 
     @staticmethod
     def demande_de_courrier(user_input: str) -> bool:
@@ -742,6 +807,10 @@ class OrchestratorAgent(BaseAgent):
         if self.demande_executive(user_input):
             logger.info("Demande de decision d'affaires explicite -> EXECUTIVE, avant le controle date")
             return "EXECUTIVE"
+
+        if self.demande_la_date(user_input):
+            logger.info("Question de date : l'horloge de la machine repond -> CHAT")
+            return "CHAT"
 
         if self.exige_verification(user_input):
             logger.info("Contrôle daté : la question demande une vérification -> FRESH_INFO")
