@@ -58,6 +58,11 @@ RENDERED_DIR = MEDIA_DIR / "rendered"
 #: un test revient dans l'invite du test suivant. Les tests pointent donc
 #: ailleurs, et la memoire du proprietaire reste la sienne.
 DB_PATH = Path(os.getenv("USMAN_DB_PATH") or BASE_DIR / "data" / "database" / "memory.db")
+# L'etat durable des projets de production (core/production/journal_projet.py).
+# A cote de la base, pour qu'un volume monte sur `data/` porte les deux : un
+# journal qui survit au redemarrage mais pas au redeploiement ne sert a rien.
+JOURNAL_PROJETS_PATH = Path(
+    os.getenv("USMAN_JOURNAL_PROJETS") or BASE_DIR / "data" / "projets" / "journal.json")
 
 # --- Environnement -------------------------------------------------------------
 # `APP_ENV` existait deja dans `.env.example`, sans qu'aucun code ne le lise.

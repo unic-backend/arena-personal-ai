@@ -165,3 +165,117 @@ def test_une_exception_de_l_agent_devient_une_erreur_500_pas_un_crash_muet(
 
     assert res.status_code == 500
     assert "modele indisponible" in res.json()["detail"]
+
+
+class TestEtatDurableEtReprise:
+    """L'état d'un projet est-il réellement lisible et reprenable par l'API ?
+
+    Un état durable que personne ne peut nommer ne sert à rien : ces tests
+    tiennent le fait qu'un `job_id` remonte, qu'il se relit, et qu'il se
+    reprend — sans qu'aucune de ces routes ne réimplémente une production.
+    """
+
+    @pytest.fixture
+    def journal(self, tmp_path, monkeypatch):
+        from core.production.journal_projet import JournalProjets
+
+        journal = JournalProjets(tmp_path / "journal.json")
+        monkeypatch.setattr(video_production, "journal_projets", journal)
+        return journal
+
+    def test_l_etat_d_un_projet_inconnu_est_un_404(self, client, entetes, journal):
+        reponse = client.get("/api/video/projet/job-fantome", headers=entetes)
+        assert reponse.status_code == 404
+
+    def test_l_etat_d_un_projet_se_relit_etape_par_etape(self, client, entetes,
+                                                         journal, tmp_path):
+        from core.production.journal_projet import EtatJob
+
+        rendu = tmp_path / "final.mp4"
+        rendu.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+        job = journal.ouvrir("fabrique une video")
+        journal.declarer_etapes(job.job_id, [
+            {"step_id": "vue", "capacite": "vision"},
+            {"step_id": "assemblage", "capacite": "montage"}])
+        journal.demarrer_etape(job.job_id, "vue")
+        journal.conclure_etape(job.job_id, "vue", EtatJob.REUSSI,
+                               preuve={"secondes": 0.4})
+        journal.conclure(job.job_id, EtatJob.REUSSI, artefact_final=str(rendu))
+
+        corps = client.get(f"/api/video/projet/{job.job_id}", headers=entetes).json()
+
+        assert corps["status"] == "SUCCEEDED"
+        assert corps["artifact"] == str(rendu)
+        assert [e["step_id"] for e in corps["steps"]] == ["vue", "assemblage"]
+        assert corps["steps"][0]["proof"]["secondes"] == 0.4
+
+    def test_l_etat_exige_la_cle(self, client, journal):
+        assert client.get("/api/video/projet/x").status_code == 401
+        assert client.get("/api/video/projets").status_code == 401
+        assert client.post("/api/video/projet/x/reprendre").status_code == 401
+        assert client.post("/api/video/projet/x/annuler").status_code == 401
+
+    def test_la_liste_ne_montre_que_ce_qui_attend_vraiment(self, client, entetes,
+                                                           journal):
+        from core.production.journal_projet import EtatJob
+
+        fini = journal.ouvrir("projet fini")
+        journal.conclure(fini.job_id, EtatJob.REUSSI)
+        casse = journal.ouvrir("projet casse")
+        journal.declarer_etapes(casse.job_id, [{"step_id": "a", "capacite": "vision"}])
+        journal.conclure(casse.job_id, EtatJob.ECHOUE, erreur="ffmpeg absent")
+
+        corps = client.get("/api/video/projets", headers=entetes).json()
+
+        assert [j["job_id"] for j in corps["reprenables"]] == [casse.job_id]
+
+    def test_reprendre_atteint_reellement_l_agent(self, client, entetes, journal,
+                                                  monkeypatch):
+        appels = []
+
+        async def double(job_id):
+            appels.append(job_id)
+            return {"status": "success", "agent": "VideoProductionAgent",
+                    "response": "repris", "job_id": job_id}
+
+        monkeypatch.setattr(video_production.video_production_agent, "reprendre",
+                            double)
+
+        reponse = client.post("/api/video/projet/abc/reprendre", headers=entetes)
+
+        assert reponse.status_code == 200
+        assert appels == ["abc"]
+
+    def test_reprendre_un_projet_inconnu_est_un_404(self, client, entetes, journal):
+        reponse = client.post("/api/video/projet/job-fantome/reprendre",
+                              headers=entetes)
+        assert reponse.status_code == 404
+
+    def test_annuler_est_idempotent_et_ne_ressuscite_pas_un_succes(self, client,
+                                                                   entetes, journal):
+        from core.production.journal_projet import EtatJob
+
+        job = journal.ouvrir("projet fini")
+        journal.conclure(job.job_id, EtatJob.REUSSI)
+
+        for _ in range(2):
+            corps = client.post(f"/api/video/projet/{job.job_id}/annuler",
+                                headers=entetes).json()
+
+        assert corps["status"] == "SUCCEEDED"
+
+    def test_annuler_un_projet_casse_le_retire_des_reprenables(self, client, entetes,
+                                                               journal):
+        from core.production.journal_projet import EtatJob
+
+        job = journal.ouvrir("projet casse")
+        journal.declarer_etapes(job.job_id, [{"step_id": "a", "capacite": "vision"}])
+        journal.conclure(job.job_id, EtatJob.ECHOUE, erreur="ffmpeg absent")
+        assert journal.lire(job.job_id).reprenable is True
+
+        corps = client.post(f"/api/video/projet/{job.job_id}/annuler",
+                            headers=entetes).json()
+
+        assert corps["status"] == "CANCELLED"
+        assert client.get("/api/video/projets",
+                          headers=entetes).json()["reprenables"] == []

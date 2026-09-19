@@ -9959,3 +9959,47 @@ Trois autres choses ont ete ecartees en chemin :
    plutot que de pretendre le contraire. Si ce compromis se revele mauvais,
    `AI_DEFAULT_PROVIDER=GROQ` rend la main a Groq sans toucher au code, et
    retirer la cle ramene exactement le comportement d'avant.
+
+---
+
+## DEC-0113 — Un projet de production a un etat durable, et une reprise qui ne refait rien
+
+**2026-09-19.**
+
+**Decision** : les projets de production portent un etat durable
+(`core/production/journal_projet.py`) — `job_id`, `project_id`, et par etape
+`status`, `created_at`, `updated_at`, `input`, `output`, `artifact`, `proof`,
+`error`, `retry_count`, en six etats ecrits (`PENDING RUNNING SUCCEEDED FAILED
+CANCELLED PAUSED`). `VideoProductionAgent` l'alimente **par le hook
+`observateur` que `Coordination` exposait deja**, et `reprendre(job_id)` rejoue
+le graphe ECRIT sans rejouer les etapes dont le resultat tient encore. Quatre
+routes lisent, listent, reprennent et annulent.
+
+**Pourquoi** : un projet video tournait entierement en memoire. Un serveur
+redemarre au milieu d'une production laissait **zero trace** — ni le
+proprietaire ni ARENA ne pouvaient dire ce qui avait abouti, et la seule issue
+etait de tout relancer, y compris les etapes qui avaient deja produit leur
+fichier sur une carte graphique qui met des minutes.
+
+Quatre choses ont ete ecartees en chemin, et chacune aurait ete plus simple :
+
+- **Un second orchestrateur.** Rien n'aurait ete plus facile que d'ecrire une
+  boucle « reprise » a cote. `Coordination` decide toujours seule ; le journal
+  ne fait que noter ce qu'elle observe.
+- **Replanifier a la reprise.** Redemander un plan au modele rend un AUTRE
+  plan : d'autres identifiants d'etape, donc le travail deja fait refait sous
+  d'autres noms. Le graphe est persiste pour cette raison.
+- **Sauter une etape sur son seul statut.** Trois preuves sont exigees :
+  `SUCCEEDED`, meme empreinte d'entree, **et artefact present sur le disque**.
+  Un fichier efface entre-temps rend l'etape a refaire.
+- **Compter reussie une etape tuee en cours.** Elle n'est ni reussie ni
+  echouee : elle est NOMMEE dans la reponse, pour etre verifiee avant d'etre
+  relancee.
+
+**Ce que ca coute si c'est faux** : le journal ecrit sur disque apres chaque
+changement d'etat. Sur un graphe a vingt etapes cela fait une quarantaine de
+petites ecritures atomiques — negligeable devant une generation video, mais
+reel si ce modele etait un jour reutilise pour des etapes de l'ordre de la
+milliseconde. Et si la regle des trois preuves se revelait trop stricte, une
+etape dont l'artefact a legitimement ete deplace serait refaite : du temps
+perdu, jamais un mauvais resultat. Le sens de l'erreur a ete choisi.

@@ -39,6 +39,7 @@ from apps.backend.config import (
     CLOUD_REQUETES_PAR_JOUR,
     DB_PATH,
     FOURNISSEUR_DEMANDE,
+    JOURNAL_PROJETS_PATH,
     MODE_IA,
     MODELE_CODEUR,
     MODELE_PROFOND,
@@ -114,6 +115,7 @@ from core.observabilite.plans import JournalDesPlans
 from core.permissions.controle import ControleAcces
 from core.permissions.permission_manager import PermissionManager
 from core.permissions.politique import PolitiqueDePermissions
+from core.production.journal_projet import JournalProjets
 from core.reasoning.reasoning_engine import ReasoningEngine
 from social.tiktok.tiktok_connector import TikTokConnector
 from tools.atelier import Atelier
@@ -757,10 +759,15 @@ plaquiste_agent = PlaquisteAgent(
 # part. Le modele profond pour proposer un graphe (une redaction structuree,
 # comme le montage) ; `provider_vision` le meme `ollama_vision` que
 # VisionAgent et PlaquisteAgent, jamais un second modele pour ce seul agent.
+#: L'etat durable des projets de production. UN seul journal pour tout le
+#: processus : deux instances ecriraient le meme fichier et la derniere
+#: ecriture effacerait l'autre.
+journal_projets = JournalProjets(JOURNAL_PROJETS_PATH)
+
 video_production_agent = VideoProductionAgent(
     provider=deep_provider, memory=memory, provider_vision=ollama_vision,
     video_analyzer_agent=video_agent, audio_agent=audio_agent,
-    montage_agent=montage_agent, registre=registre)
+    montage_agent=montage_agent, registre=registre, journal=journal_projets)
 # Generation d'interface (DEC-0050) : produire du code d'interface est une
 # redaction structuree (comme le montage/le devis), donc le modele profond.
 ui_agent = UiGenerationAgent(provider=deep_provider, memory=memory, registre=registre)
