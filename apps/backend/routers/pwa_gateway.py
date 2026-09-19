@@ -741,10 +741,15 @@ def _etat_du_moteur(nom_connecteur: str) -> Dict[str, Any]:
     promet ce qu'elle ne fait pas — en plus couteux, parce qu'il demande un
     geste avant de dire non.
 
-    L'etat vient de la sonde du connecteur, jamais d'une seconde logique. La
-    file est vide la plupart du temps, donc ce controle ne coute rien au cas
-    courant ; quand elle ne l'est pas, c'est exactement le moment ou
-    l'information compte.
+    L'etat vient de la sonde du connecteur, jamais d'une seconde logique.
+
+    **Ce que coute une sonde, mesure le 19/09/2026** : `faceplugin` repond en
+    **2 990 ms**, `ui_ux_pro_max` en 71 ms, `gmail` en 0 ms. Cette fonction
+    est appelee a la fin de CHAQUE tour de conversation. Le commentaire qui
+    tenait ici disait « la file est vide la plupart du temps, donc ce controle
+    ne coute rien au cas courant » — c'est vrai, et c'est precisement
+    l'hypothese que l'appelant ne doit pas tenir pour acquise : voir
+    `_actions_en_attente`, qui ne sonde plus le meme connecteur deux fois.
 
     Une sonde qui leve ou un connecteur inconnu rend `disponible: True` :
     **on n'interdit pas une action parce qu'on n'a pas su la mesurer.** Le
@@ -796,20 +801,41 @@ def _actions_en_attente() -> List[Dict[str, Any]]:
     dans la charge utile d'un evenement de fin de flux.
     """
     try:
-        return [
-            {
-                "id": a.identifiant,
-                "action": a.action,
-                "cible": a.cible,
-                "risque": a.risque,
-                "expire_le": a.expire_le,
-                **_etat_du_moteur(a.connecteur),
-            }
-            for a in file_attente.en_attente(limite=5)
-        ]
+        attendues = file_attente.en_attente(limite=5)
     except Exception as erreur:  # noqa: BLE001 — pas de bouton vaut mieux qu'une panne
         logger.warning("Actions en attente illisibles : %s", erreur)
         return []
+
+    # Un connecteur n'est sonde qu'UNE fois, quel que soit le nombre
+    # d'actions qui l'attendent.
+    #
+    # **Mesure du 19/09/2026.** Cette fonction tourne a la fin de chaque tour,
+    # et sondait une fois PAR ACTION. Deux actions `faceplugin` en attente
+    # faisaient donc deux sondes identiques a la meme milliseconde, a 2 990 ms
+    # chacune : **six secondes ajoutees a chaque reponse**, jusqu'a ce qu'il
+    # confirme. Quatre actions, douze secondes — mesure directe, pas une
+    # extrapolation.
+    #
+    # Rien n'est perdu : sonder cinq fois le meme connecteur dans la meme
+    # milliseconde n'est pas cinq mesures, c'en est une. Cinq connecteurs
+    # DIFFERENTS sont toujours sondes cinq fois — la reponse de l'un ne dit
+    # rien de l'autre.
+    etats: Dict[str, Dict[str, Any]] = {}
+    for action in attendues:
+        if action.connecteur not in etats:
+            etats[action.connecteur] = _etat_du_moteur(action.connecteur)
+
+    return [
+        {
+            "id": a.identifiant,
+            "action": a.action,
+            "cible": a.cible,
+            "risque": a.risque,
+            "expire_le": a.expire_le,
+            **etats[a.connecteur],
+        }
+        for a in attendues
+    ]
 
 
 def _confirmer_par_la_phrase(texte: str) -> Optional[Dict[str, Any]]:

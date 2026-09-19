@@ -2,6 +2,71 @@
 
 ## [Non publié]
 
+### Corrigé — 19/09/2026 — Un bouton en attente ajoutait six secondes à chaque réponse
+
+Trouvé en cherchant pourquoi la suite de tests était lente. **Ce n'est pas un
+problème de tests : c'est un défaut que son téléphone subit.**
+
+`_actions_en_attente()` tourne à la fin de **chaque** tour de conversation.
+Pour chaque action qui attend son accord, elle interroge le moteur qui
+l'exécuterait — pour que l'interface puisse griser un bouton qui ne peut pas
+aboutir. L'intention est bonne et elle reste.
+
+Ce que coûte une sonde, **mesuré** :
+
+| Connecteur | Sonde |
+|---|---|
+| `faceplugin` | **2 990 ms** (lance le sous-processus du SDK) |
+| `ui_ux_pro_max` | 71 ms |
+| `gmail` | 0 ms |
+
+Et la sonde était faite **une fois par action**, pas une fois par moteur. Deux
+actions `faceplugin` en attente = deux sondes identiques à la même
+milliseconde :
+
+```
+2 actions en attente  →  _actions_en_attente()  =  5 967 ms
+4 actions en attente  →  _actions_en_attente()  = 12 484 ms
+```
+
+**Six secondes ajoutées à chacune de ses réponses**, jusqu'à ce qu'il confirme.
+Douze avec quatre actions. Mesuré directement, pas extrapolé.
+
+Un moteur n'est désormais sondé qu'une fois par tour. **Rien n'est perdu** :
+sonder cinq fois le même connecteur dans la même milliseconde n'est pas cinq
+mesures, c'en est une. Cinq connecteurs *différents* sont toujours sondés cinq
+fois — la réponse de l'un ne dit rien de l'autre.
+
+Le commentaire qui tenait dans `_etat_du_moteur` disait : « la file est vide la
+plupart du temps, donc ce contrôle ne coûte rien au cas courant ». C'est vrai.
+C'était aussi l'hypothèse qu'il ne fallait pas tenir pour acquise, et elle est
+maintenant écrite avec son prix mesuré à côté.
+
+**Ce qui reste, et qui est son choix :** tant qu'une action `faceplugin`
+attend, chaque réponse porte encore une sonde de ~3 s. La supprimer voudrait
+dire afficher un état plus vieux que l'instant — un cache court. Je ne l'ai pas
+fait : `_etat_du_moteur` promet « maintenant », et changer ce que ce mot veut
+dire est une décision, pas une optimisation.
+
+### Corrigé — 19/09/2026 — Un test laissait de vraies actions dans la vraie file
+
+Même cause, autre bout. `TestPermissionsBoutDeChaine` exécute le **vrai**
+registre : une capacité biométrique y dépose donc une **vraie** action en
+attente, dans la vraie base — et elle y restait après le test.
+
+Tous les tests exécutés plus tard payaient alors la sonde `faceplugin` à
+chaque tour. C'est ce qui rendait les tests de `test_pwa_gateway.py`
+**30 à 60 fois plus lents** dans la suite complète (6 à 12 s) que lorsque leur
+fichier tourne seul (0,19 s).
+
+| | Avant | Après |
+|---|---|---|
+| `test_integration_visage_et_design.py` + `test_pwa_gateway.py` | **175 s** | **16,5 s** |
+
+Le test garde toute sa portée : l'action est bien déposée, c'est justement ce
+qu'il vérifie. Elle est retirée après, comme le propriétaire la retirerait en
+refusant.
+
 ### Corrigé — 19/09/2026 — La suite de tests payait deux fois un prix qui n'était pas celui de la garantie
 
 « Tes tâches prennent trop de temps, vérifie. » Mesuré, pas supposé.
