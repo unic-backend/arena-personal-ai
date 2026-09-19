@@ -25,6 +25,7 @@ entrer dans la liste, et un connecteur réveillé qu'on aurait oublié d'en
 sortir.
 """
 import ast
+from functools import lru_cache
 from pathlib import Path
 
 import pytest
@@ -67,33 +68,44 @@ def _connecteurs_enregistres():
     return sorted(getattr(registre, "_fabriques", {}).keys())
 
 
-def _fichiers_de_production(nom: str):
-    """Les modules où un appel à ce connecteur compterait vraiment.
+#: Les deux fichiers qui NOMMENT chaque connecteur sans l'appeler : celui qui
+#: les enregistre, et le registre lui-meme. Les compter ferait passer tout
+#: connecteur enregistre pour vivant.
+FICHIERS_NEUTRES = ("apps/backend/runtime.py", "core/connectors/registre.py")
+
+
+def _fichiers_de_production():
+    """Les modules où un appel à un connecteur compterait vraiment.
 
     **Mesuré le 08/09/2026** : sans l'exclusion ci-dessous, ce parcours entre
     dans `tools/vision/faceplugin/.../.venv/` — un SDK externe installé sur
     la machine, gitignoré, jamais notre code (`scripts/orphelins.py` porte
     déjà l'exclusion, mesurée là le 03/09/2026 : « plus de 3000 modules »).
-    Répété une fois par connecteur enregistré (une quarantaine), le parcours
-    `ast.parse` de bibliothèques tierces entières — mesuré ici en train de
-    parser `sympy` — n'aboutissait jamais dans un temps raisonnable. La suite
-    complète ne peut pas se lancer tant que ce fichier existe sur le disque,
-    ce qui est le cas dès que `scripts/installer_faceplugin.ps1` a tourné.
+
+    **Ne prend plus le nom du connecteur en argument, mesure du 19/09/2026.**
+    Il le prenait, et le fichier était donc relu et `ast.parse` une fois PAR
+    connecteur enregistré — une quarantaine de parcours complets du dépôt,
+    41 s par test, et deux tests le faisaient chacun de son côté : 82 s pour
+    une mesure qui tient en une passe. Le module de chaque connecteur reste
+    écarté, mais à la fin, sur le chemin déjà relevé — pas en relisant tout.
     """
     for dossier in ("agents", "core", "apps", "tools", "social"):
         for fichier in (RACINE / dossier).rglob("*.py"):
             relatif = fichier.relative_to(RACINE).as_posix()
             if any(relatif.startswith(m) for m in MOTEURS_EXTERNES):
                 continue
-            if (relatif == f"core/connectors/{nom}.py"
-                    or relatif == "apps/backend/runtime.py"
-                    or relatif == "core/connectors/registre.py"):
+            if relatif in FICHIERS_NEUTRES:
                 continue
             yield relatif, fichier
 
 
-def _appelants(nom: str):
-    """Le code de production qui NOMME ce connecteur — dans du vrai code.
+@lru_cache(maxsize=1)
+def _noms_cites() -> dict:
+    """Chaque chaîne littérale citée en position d'appel, et où.
+
+    Une seule passe sur le dépôt, quel que soit le nombre de connecteurs.
+    La règle est mot pour mot celle d'avant — seul le nombre de lectures
+    change.
 
     **Mesure du 07/09/2026** : une première version cherchait la chaîne au
     `grep`, et comptait donc les COMMENTAIRES. Sabotage à l'appui : débrancher
@@ -112,8 +124,13 @@ def _appelants(nom: str):
     journal (qui contiennent le nom sans lui être égaux) et les étiquettes de
     retour, tout en attrapant l'indirection par une fonction.
     """
-    trouves = []
-    for relatif, fichier in _fichiers_de_production(nom):
+    cites: dict = {}
+
+    def relever(valeur, relatif, ligne):
+        if isinstance(valeur, str):
+            cites.setdefault(valeur, []).append((relatif, f"{relatif}:{ligne}"))
+
+    for relatif, fichier in _fichiers_de_production():
         try:
             arbre = ast.parse(fichier.read_text(encoding="utf-8"))
         except (SyntaxError, UnicodeDecodeError):  # pragma: no cover
@@ -127,19 +144,29 @@ def _appelants(nom: str):
             #    que la seule lecture du premier argument déclarait mort à
             #    tort (mesure du 07/09/2026).
             if isinstance(noeud, ast.Call):
-                arguments = list(noeud.args) + [m.value for m in noeud.keywords]
-                if any(isinstance(a, ast.Constant) and a.value == nom
-                       for a in arguments):
-                    trouves.append(f"{relatif}:{noeud.lineno}")
+                for argument in list(noeud.args) + [m.value for m in noeud.keywords]:
+                    if isinstance(argument, ast.Constant):
+                        relever(argument.value, relatif, noeud.lineno)
 
             # 2. La constante de module : `CONNECTEUR = "formel"`, puis
             #    `registre.executer(CONNECTEUR, ...)` — le motif de
             #    `audio_agent.py` et `formel_agent.py`.
             elif (isinstance(noeud, ast.Assign)
-                    and isinstance(noeud.value, ast.Constant)
-                    and noeud.value.value == nom):
-                trouves.append(f"{relatif}:{noeud.lineno}")
-    return trouves
+                    and isinstance(noeud.value, ast.Constant)):
+                relever(noeud.value.value, relatif, noeud.lineno)
+
+    return cites
+
+
+def _appelants(nom: str):
+    """Le code de production qui NOMME ce connecteur — dans du vrai code.
+
+    Son propre module ne compte pas : un connecteur qui se cite lui-même
+    n'est appelé par personne.
+    """
+    propre_module = f"core/connectors/{nom}.py"
+    return [endroit for relatif, endroit in _noms_cites().get(nom, [])
+            if relatif != propre_module]
 
 
 def test_aucun_connecteur_ne_s_endort_en_silence():
