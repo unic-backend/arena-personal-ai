@@ -15,10 +15,7 @@ se rattrape pas :
 4. **Le service repond-il ?** Sante gardee en memoire quelques secondes : la
    mesurer avant chaque phrase couterait plus cher que ce qu'elle economise.
 
-Puis le repli, dans cet ordre : **Anthropic → Groq → DeepInfra → Ollama**.
-Anthropic passe en premier parce qu'il est le meilleur raisonneur, pas le plus
-rapide ; sans `ANTHROPIC_API_KEY` il est absent et l'ordre redevient celui
-d'avant. Il s'arrete au
+Puis le repli, dans cet ordre : **Groq → DeepInfra → Ollama**. Il s'arrete au
 premier qui repond, et il ne boucle jamais : chaque fournisseur est essaye **une
 fois**. Un service qui echoue est mis au frais quelques minutes plutot que
 d'etre redemande a chaque phrase.
@@ -47,16 +44,9 @@ SANTE_VALIDE_SECONDES = 30.0
 #: pas le redemander a chaque phrase, assez peu pour qu'il revienne tout seul.
 REPOS_APRES_ECHEC_SECONDES = 120.0
 
-#: L'ordre du repli. Ollama est toujours dernier : c'est celui qui repond
-#: quand plus rien d'autre ne repond.
-#:
-#: **Anthropic d'abord, et ce n'est pas la vitesse qui le place la.** Groq rend
-#: le premier mot plus vite ; Claude rend une meilleure reponse. L'ordre dit
-#: laquelle des deux qualites ARENA prefere quand les deux sont joignables.
-#: Tant qu'`ANTHROPIC_API_KEY` est vide, ce fournisseur n'entre pas dans
-#: `self.distants` et cette ligne ne change rien. `AI_DEFAULT_PROVIDER=GROQ`
-#: rend la main a Groq sans toucher au code.
-ORDRE_CLOUD = ("anthropic", "groq", "deepinfra")
+#: L'ordre du repli, du plus rapide au plus sur. Ollama est toujours dernier :
+#: c'est celui qui repond quand plus rien d'autre ne repond.
+ORDRE_CLOUD = ("groq", "deepinfra")
 LOCAL = "local"
 
 
@@ -164,7 +154,7 @@ class RouteurModeles(ModelProvider):
 
         if self.fournisseur_demande == "LOCAL":
             return [LOCAL], "le proprietaire a demande sa machine"
-        if self.fournisseur_demande in ("ANTHROPIC", "GROQ", "DEEPINFRA"):
+        if self.fournisseur_demande in ("GROQ", "DEEPINFRA"):
             nom = self.fournisseur_demande.lower()
             if nom not in self.distants:
                 return [LOCAL], f"{nom} n'est pas configure : sa machine repond"

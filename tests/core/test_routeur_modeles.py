@@ -54,17 +54,11 @@ class FauxFournisseur:
 
 
 def routeur(mode="HYBRIDE", demande="AUTO", groq=None, deepinfra=None,
-            local=None, compteur=None, anthropic=None):
-    # `anthropic` n'entre QUE s'il est fourni : c'est exactement ce que fait le
-    # runtime sans `ANTHROPIC_API_KEY`, et c'est pourquoi ajouter ce
-    # fournisseur ne change aucun des tests ci-dessous.
-    distants = {"groq": groq or FauxFournisseur("groq"),
-                "deepinfra": deepinfra or FauxFournisseur("deepinfra")}
-    if anthropic is not None:
-        distants["anthropic"] = anthropic
+            local=None, compteur=None):
     return RouteurModeles(
         local=local or FauxFournisseur(LOCAL),
-        distants=distants,
+        distants={"groq": groq or FauxFournisseur("groq"),
+                  "deepinfra": deepinfra or FauxFournisseur("deepinfra")},
         mode=mode, fournisseur_demande=demande, compteur=compteur)
 
 
@@ -639,113 +633,3 @@ class TestLePlafondTientSousConcurrence:
 
         assert compteur.appels_en_vol == 0
         assert compteur.requetes_aujourdhui == 0
-
-
-# --- Anthropic : le raisonnement passe devant la vitesse ------------------------------
-
-async def test_anthropic_passe_avant_groq_quand_il_est_configure():
-    """L'ordre dit laquelle des deux qualites ARENA prefere.
-
-    Groq rend le premier mot plus vite ; Claude rend une meilleure reponse.
-    Les deux joignables, c'est Claude qui repond.
-    """
-    anthropic = FauxFournisseur("anthropic")
-    groq = FauxFournisseur("groq")
-    r = routeur(anthropic=anthropic, groq=groq)
-
-    reponse = await r.generate("explique-moi la pose d'une cloison")
-
-    assert "anthropic" in reponse
-    assert groq.appels == [], "Groq ne doit pas avoir ete sollicite"
-    assert r.dernier_choix.fournisseur == "anthropic"
-    assert r.dernier_choix.replis == []
-
-
-async def test_sans_cle_anthropic_l_ordre_redevient_celui_d_avant():
-    """`configure` faux : le fournisseur n'entre meme pas dans la liste.
-
-    C'est la garantie qui compte pour le proprietaire : tant qu'il n'a pas pose
-    sa cle, brancher Claude ne change rien a ce qu'ARENA fait aujourd'hui.
-    """
-    anthropic = FauxFournisseur("anthropic", configure=False)
-    groq = FauxFournisseur("groq")
-    r = routeur(anthropic=anthropic, groq=groq)
-
-    reponse = await r.generate("bonjour")
-
-    assert "groq" in reponse
-    assert "anthropic" not in r.distants
-    assert anthropic.appels == []
-
-
-async def test_anthropic_qui_tombe_replie_sur_groq():
-    """Un service en panne n'arrete pas ARENA : il descend d'un cran."""
-    anthropic = FauxFournisseur("anthropic", leve=True)
-    groq = FauxFournisseur("groq")
-    r = routeur(anthropic=anthropic, groq=groq)
-
-    reponse = await r.generate("bonjour")
-
-    assert "groq" in reponse
-    assert r.dernier_choix.replis == ["anthropic"]
-
-
-async def test_un_texte_sensible_ne_part_pas_chez_anthropic_non_plus():
-    """La regle de confidentialite est anterieure au choix du fournisseur.
-
-    Ajouter un service distant ne doit jamais rouvrir cette porte, quel que
-    soit le prestige du modele derriere.
-    """
-    anthropic = FauxFournisseur("anthropic")
-    r = routeur(anthropic=anthropic)
-
-    reponse = await r.generate("mon mot de passe est Azerty123")
-
-    assert "local" in reponse
-    assert anthropic.appels == []
-
-
-async def test_anthropic_impose_respecte_le_plafond_du_jour():
-    """Imposer un fournisseur n'est pas desactiver le plafond.
-
-    Meme regle que pour GROQ et DEEPINFRA (mesure du 12/09/2026) : le quota
-    vaut pour CHAQUE chemin qui peut envoyer une phrase au cloud.
-    """
-    compteur = CompteurUsage(requetes_par_jour=1)
-    compteur.enregistrer(Appel(fournisseur="anthropic", modele="claude-sonnet-5"))
-    anthropic = FauxFournisseur("anthropic")
-    r = routeur(demande="ANTHROPIC", anthropic=anthropic, compteur=compteur)
-
-    reponse = await r.generate("bonjour")
-
-    assert "local" in reponse
-    assert anthropic.appels == []
-
-
-async def test_anthropic_impose_ne_replie_jamais_sur_un_autre_service():
-    """Imposer Claude, c'est Claude ou sa machine. Jamais un troisieme.
-
-    C'est le test qui prouve que le nom `ANTHROPIC` est bien reconnu par la
-    branche du fournisseur impose : sans lui, la demande retomberait dans le
-    chemin AUTO, qui lui autorise le repli sur Groq — et une phrase confiee a
-    Claude partirait chez quelqu'un d'autre sans que rien ne le dise.
-    """
-    anthropic = FauxFournisseur("anthropic", leve=True)
-    groq = FauxFournisseur("groq")
-    r = routeur(demande="ANTHROPIC", anthropic=anthropic, groq=groq)
-
-    reponse = await r.generate("bonjour")
-
-    assert "local" in reponse
-    assert groq.appels == [], "un fournisseur impose n'autorise pas un tiers"
-    assert "le proprietaire a demande anthropic" in r.dernier_choix.raison
-
-
-async def test_anthropic_impose_mais_absent_retombe_sur_la_machine():
-    """Demander un fournisseur non configure ne doit pas faire echouer la reponse."""
-    r = routeur(demande="ANTHROPIC")
-
-    reponse = await r.generate("bonjour")
-
-    assert "local" in reponse
-    assert "n'est pas configure" in r.dernier_choix.raison

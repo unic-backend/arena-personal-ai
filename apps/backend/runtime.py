@@ -103,7 +103,6 @@ from core.memory.chiffrement import NOM_FICHIER_SEL, Coffre
 from core.memory.memory_manager import MemoryManager
 from core.memory.personnelle import MemoirePersonnelle
 from core.memory.semantique import IndexSemantique
-from core.models.anthropic_provider import AnthropicProvider
 from core.models.deepinfra_provider import DeepInfraProvider
 from core.models.groq_provider import GroqProvider
 from core.models.ollama_provider import OllamaProvider
@@ -633,11 +632,7 @@ def _aiguilleur(local: OllamaProvider) -> RouteurModeles:
     """Un aiguilleur pose devant un modele local. Le reste d'ARENA ne voit que lui."""
     return RouteurModeles(
         local=local,
-        # L'ordre est celui de `ORDRE_CLOUD`, pas celui de ce dictionnaire.
-        # Un fournisseur sans cle est ecarte par `RouteurModeles` : le citer
-        # ici ne le rend pas actif, il le rend seulement possible.
-        distants={"anthropic": AnthropicProvider(), "groq": GroqProvider(),
-                  "deepinfra": DeepInfraProvider()},
+        distants={"groq": GroqProvider(), "deepinfra": DeepInfraProvider()},
         mode=MODE_IA, fournisseur_demande=FOURNISSEUR_DEMANDE,
         compteur=compteur_usage,
         statistiques=statistiques_routage,

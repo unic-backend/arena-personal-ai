@@ -371,31 +371,6 @@ class TestLesModelesParDefautNeDiverguentPas:
 
         assert config.DEEPINFRA_MODELE == self._valeur_dans_exemple("DEEPINFRA_MODEL")
 
-    def test_le_modele_anthropic_est_le_meme_des_deux_cotes(self):
-        from apps.backend import config
-
-        assert config.ANTHROPIC_MODELE == self._valeur_dans_exemple("ANTHROPIC_MODEL")
-
-    def test_l_effort_anthropic_annonce_est_un_effort_accepte(self):
-        """`.env.example` ne doit pas proposer un reglage que le code refuse.
-
-        Une valeur hors liste retombe silencieusement sur `high` : l'ecrire
-        dans l'exemple ferait croire au proprietaire qu'il a change quelque
-        chose alors que rien n'a bouge.
-        """
-        from core.models.anthropic_provider import EFFORTS
-
-        assert self._valeur_dans_exemple("ANTHROPIC_EFFORT") in EFFORTS
-
-    def test_le_plafond_de_reponse_anthropic_est_un_entier_des_deux_cotes(self):
-        """`max_tokens` est obligatoire chez Anthropic : une valeur illisible
-        casserait chaque appel, et seulement au moment de l'appel."""
-        from apps.backend import config
-
-        assert config.ANTHROPIC_MAX_TOKENS > 0
-        assert int(self._valeur_dans_exemple("ANTHROPIC_MAX_TOKENS")) == (
-            config.ANTHROPIC_MAX_TOKENS)
-
     def test_le_modele_groq_retire_du_catalogue_ne_revient_pas(self):
         """`llama-3.3-70b-versatile` n'existe plus chez Groq — mesure du 30/08/2026."""
         from apps.backend import config
