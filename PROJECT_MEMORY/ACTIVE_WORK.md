@@ -1,32 +1,64 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-09-19, travail de nuit sur la mémoire et le raisonnement.*
+*Mise à jour : 2026-09-19, après six PR fusionnées (#232 à #237) et le
+fournisseur Anthropic.*
 
 ## En cours
 
-**Une pull request ouverte sur `claude/memoire-et-raisonnement`.** Travail de
-nuit autorisé : « la mémoire, le raisonnement, enlever les oublis, améliorer
-son penser ».
+**Une pull request ouverte sur `claude/fournisseur-anthropic`.** Demande
+directe : « construis le fournisseur Anthropic avec Sonnet 5 », après la
+question « pourquoi mon IA n'a pas le même raisonnement que Claude ».
 
-« Il oublie ce qu'on s'est dit » avait **trois** causes indépendantes :
+La réponse mesurée : elle ne parle pas à Claude. Groq ne sert aucun modèle
+Anthropic, et aucune quantité de prompt n'y change rien.
 
-1. le chemin du téléphone ne relisait jamais le fil que le serveur écrit
-   (`chatStore.ts` coupe à 8 messages ; `short_term_memory` a tout) ;
-2. **tout ce qui passait par un agent spécialisé n'était écrit nulle part** —
-   PLAQUISTE, DEEP_REASONING, EMAIL, FRESH_INFO, c'est-à-dire son travail réel ;
-3. sans Ollama, la recherche est lexicale, et « de quoi on parlait » n'a de mot
-   commun avec rien — réparé par le point 1, pas par une recherche plus fine.
+`core/models/anthropic_provider.py` parle à `api.anthropic.com` **en HTTP, pas
+par le SDK** : `browser-use==0.13.10` épingle `anthropic==0.76.0` exactement,
+version incapable de servir Sonnet 5 (ni réflexion adaptative, ni
+`output_config`, ni `stop_details` — vérifié dans la roue). Monter le SDK rend
+`requirements.txt` insoluble. Le choix réel était de perdre la navigation web
+ou d'écrire quatre appels HTTP. Voir **DEC-0112**.
 
-Et un quatrième, sur le raisonnement : `solve_complex_task` ne recevait que la
-dernière phrase — « vérifie ton calcul » arrivait **sans le calcul**.
+`anthropic` est **premier** dans `ORDRE_CLOUD`, devant Groq. Tant que
+`ANTHROPIC_API_KEY` est vide, il n'entre pas dans `self.distants` et **rien ne
+change**.
 
-DEC-0106 à DEC-0109. `GET /agent/memoire` répond désormais quelle cause agit.
+**Ce qui reste à lui**, et personne d'autre ne peut le faire :
 
-**Ce qui reste à lui** : lancer `GET /agent/memoire` depuis son téléphone après
-le prochain redéploiement Railway. Si `base.persistance` dit `CONFIRMEE`, le
-volume tient ; si elle dit `PAS_ENCORE_OBSERVEE` alors que le fil était plein
-avant, le disque est effacé à chaque déploiement et c'est un réglage Railway,
-pas du code.
+1. **Poser `ANTHROPIC_API_KEY` dans Railway** s'il veut que Claude réponde.
+   Rien ne se déclenche sans ça. `AI_DEFAULT_PROVIDER=GROQ` rend la main à Groq
+   en gardant la clé en place.
+2. Savoir ce que ça coûte : ~2 $ par million de jetons envoyés, ~10 $ par
+   million rendus. Le plafond qui tient est `AI_MAX_CLOUD_REQUESTS_PER_DAY`
+   (200/jour) ; **`AI_DAILY_BUDGET` ne freine rien** tant qu'aucun tarif n'est
+   saisi dans `TARIFS` — `/health` l'affiche `NON_VERIFIABLE`.
+3. Toujours en attente depuis le 19/09 : lancer `GET /agent/memoire` depuis son
+   téléphone après le prochain redéploiement Railway. Si `base.persistance` dit
+   `CONFIRMEE`, le volume tient ; si elle dit `PAS_ENCORE_OBSERVEE` alors que le
+   fil était plein avant, le disque est effacé à chaque déploiement — réglage
+   Railway, pas code.
+4. Un écran de la ligne « Lecture de la demande » la prochaine fois que l'IA
+   part de travers : ça tranche entre un mauvais aiguillage et le modèle.
+
+## Terminé le 19/09
+
+Six PR fusionnées, `main` à `cc6e9b2` :
+
+- **#232** — mémoire et raisonnement (DEC-0106 à DEC-0109).
+- **#233 / #234** — texte plus grand, et les étapes réelles en direct au lieu
+  du seul mot « Réflexion » (DEC-0110, DEC-0111).
+- **#235 / #236** — la suite passe de 14 min 06 à 8 min 49 en local, avec
+  **plus** de tests qu'avant ; et un défaut de production qui ajoutait 6 à 12 s
+  à **chaque** réponse (sondes de moteurs à chaque action).
+- **#237** — l'écran suit le texte qui descend sous le bord du téléphone.
+
+## Ce qu'il reste ouvert, sans urgence
+
+- La sonde `faceplugin` coûte encore ~3 s par réponse. Un cache court la
+  supprimerait, au prix d'afficher un état qui n'est plus « maintenant » — son
+  arbitrage.
+- `pip install "voxcpm>=2.0.3"` sur son PC ; KaTeX ; exposer le commit courant
+  dans `/health` ; la règle 4 de DEC-0105 (licences `INCONNU`).
 
 ---
 

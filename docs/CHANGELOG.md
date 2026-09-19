@@ -2,6 +2,38 @@
 
 ## [Non publié]
 
+### Ajouté — 19/09/2026 — Claude Sonnet 5 est branché (et inerte sans clé)
+
+Quatrième fournisseur : `core/models/anthropic_provider.py`. Il implémente
+`ModelProvider` directement — le protocole d'Anthropic n'est pas celui
+d'OpenAI : `system` est un paramètre et non un message, `max_tokens` est
+obligatoire, l'authentification est `x-api-key`, la réponse est une **liste de
+blocs typés**, et `temperature`, `top_p`, `top_k` et `budget_tokens` rendent un
+400. Un test fige chacun de ces points.
+
+**Sans le SDK `anthropic`, et c'est mesuré** : `browser-use==0.13.10` l'épingle
+à `0.76.0` exactement, version qui ne connaît ni la réflexion adaptative ni
+`output_config` — donc incapable de servir Sonnet 5. Monter le SDK rend
+`requirements.txt` insoluble. Le provider appelle donc l'API en HTTP avec
+`httpx`, déjà présent, plutôt que de sacrifier la navigation web. Aucune
+dépendance ajoutée. Voir DEC-0112.
+
+`anthropic` passe **en tête** de `ORDRE_CLOUD`, devant Groq : l'ordre du repli
+encodait la vitesse, il encode maintenant la qualité de la réponse d'abord.
+
+**Tant qu'`ANTHROPIC_API_KEY` est vide, rien ne change** : le fournisseur
+n'entre pas dans `self.distants`, il n'est jamais sondé, et aucune requête ne
+part. Un test le vérifie en inspectant le client injecté.
+
+Ce qui reste vrai quoi qu'il arrive : un texte classé sensible ne part pas chez
+Anthropic non plus, imposer `AI_DEFAULT_PROVIDER=ANTHROPIC` ne désactive pas le
+plafond du jour, et un fournisseur imposé ne replie jamais sur un troisième.
+
+**Ce qui ne freine pas encore** : `AI_DAILY_BUDGET` reste `NON_VERIFIABLE` —
+aucun tarif n'est saisi dans `TARIFS`, et en saisir un ferait passer tous les
+fournisseurs pour mesurés (voir DEC-0112). Le plafond qui tient aujourd'hui est
+`AI_MAX_CLOUD_REQUESTS_PER_DAY`.
+
 ### Corrigé — 19/09/2026 — L'écran ne suivait pas le texte qui descend
 
 **Mesuré sur son téléphone** : « quand mon IA écrit et qu'il descend en bas du
