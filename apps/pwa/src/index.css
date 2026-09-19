@@ -105,7 +105,9 @@ body {
   color: #09090b;
 }
 
-:root[data-theme="light"] .md h3, .light-mode .md h3 {
+:root[data-theme="light"] .md h2, .light-mode .md h2,
+:root[data-theme="light"] .md h3, .light-mode .md h3,
+:root[data-theme="light"] .md h4, .light-mode .md h4 {
   color: #09090b;
 }
 
@@ -137,18 +139,30 @@ body {
   background: #cbd5e1;
 }
 
-/* User-controlled reading and writing typography. */
+/* User-controlled reading and writing typography.
+
+   Echelle relevee le 19/09/2026, sur sa demande : « les ecritures de mon IA
+   sont tres petites par rapport a celle de Claude, je veux comme celle de
+   Claude, un peu grand, texte gras aussi ».
+
+   Mesure : le corps de texte etait a 13 px, et le plus GRAND reglage
+   disponible (15 px) restait sous les ~16-17 px que Claude affiche sur un
+   telephone. Autrement dit, aucun reglage ne pouvait lui donner ce qu'il
+   demandait — ce n'etait pas une preference mal reglee, c'etait une echelle
+   trop basse. Chaque cran monte de 2 px, et un cran `xlarge` est ajoute
+   au-dessus. */
 :root {
   --reading-font: var(--font-sans);
-  --reading-size: 13px;
+  --reading-size: 17px;
   --reading-weight: 400;
   --reading-leading: 1.72;
 }
 :root[data-reading-font="serif"] { --reading-font: var(--font-serif); }
 :root[data-reading-font="mono"] { --reading-font: var(--font-mono); }
-:root[data-reading-size="compact"] { --reading-size: 12px; }
-:root[data-reading-size="comfortable"] { --reading-size: 13px; }
-:root[data-reading-size="large"] { --reading-size: 15px; }
+:root[data-reading-size="compact"] { --reading-size: 15px; }
+:root[data-reading-size="comfortable"] { --reading-size: 17px; }
+:root[data-reading-size="large"] { --reading-size: 19px; }
+:root[data-reading-size="xlarge"] { --reading-size: 21px; }
 :root[data-reading-weight="regular"] { --reading-weight: 400; }
 :root[data-reading-weight="medium"] { --reading-weight: 500; }
 :root[data-reading-weight="bold"] { --reading-weight: 600; }
@@ -290,22 +304,37 @@ button, textarea { touch-action: manipulation; }
 .md { font-family: var(--reading-font); font-size: var(--reading-size); font-weight: var(--reading-weight); line-height: var(--reading-leading); }
 .md p { margin: 0 0 0.85em; line-height: inherit; }
 .md p:last-child { margin-bottom: 0; }
-.md h3 { font-family: var(--reading-font); font-size: 1.25rem; font-weight: 600; color: #fafafa; margin: 1.35em 0 0.5em; letter-spacing: 0.01em; }
-.md h3:first-child { margin-top: 0; }
+/* `h2` et `h4` n'avaient AUCUNE regle : depuis que tous les niveaux de
+   titre sont rendus (15/09/2026), un `#` ou un `####` sortait a la taille et
+   a la graisse du corps de texte — un titre qui ne se voyait pas.
+   Les tailles sont en `em`, donc relatives au reglage de lecture : un titre
+   grossit avec le texte au lieu de rester fige a une taille absolue. */
+.md h2, .md h3, .md h4 {
+  font-family: var(--reading-font);
+  color: #fafafa;
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+}
+.md h2 { font-size: 1.34em; font-weight: 700; margin: 1.5em 0 0.55em; }
+.md h3 { font-size: 1.17em; font-weight: 600; margin: 1.35em 0 0.5em; }
+.md h4 { font-size: 1.05em; font-weight: 600; margin: 1.2em 0 0.45em; }
+.md h2:first-child, .md h3:first-child, .md h4:first-child { margin-top: 0; }
 .md ul { margin: 0.4em 0 0.95em; padding: 0; list-style: none; }
 .md ul li { position: relative; padding-left: 1.15rem; margin: 0.42em 0; line-height: 1.65; }
 .md ul li::before { content: ""; position: absolute; left: 0.1rem; top: 0.62em; width: 5px; height: 5px; border-radius: 99px; background: var(--color-accent-500); }
 .md ol { margin: 0.4em 0 0.95em; padding-left: 1.3rem; }
 .md ol li { margin: 0.42em 0; line-height: 1.65; }
-.md strong { color: #fafafa; font-weight: 600; }
+.md strong { color: #ffffff; font-weight: 650; }
 .md code.inline { font-family: var(--font-mono); font-size: 0.82em; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.08); padding: 0.1em 0.38em; border-radius: 6px; color: var(--color-accent-300); }
-.md pre { font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.65; background: #0d0d0f; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 0.9rem 1.05rem; margin: 0.9em 0; overflow-x: auto; color: #d4d4d8; }
+.md pre { font-family: var(--font-mono); font-size: 0.85em; line-height: 1.65; background: #0d0d0f; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 0.9rem 1.05rem; margin: 0.9em 0; overflow-x: auto; color: #d4d4d8; }
 .md hr { border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 1.2em 0; }
 .md blockquote { border-left: 2px solid var(--color-accent-600); padding-left: 1rem; color: #a1a1aa; margin: 0.9em 0; font-style: italic; }
 .md em { color: #e4e4e7; }
 .md del { text-decoration-thickness: 1px; }
 .user-rich .md { color: #f4f4f5; }
-.user-rich .md h3 { font-size: 1.05rem; margin-top: 0.35em; }
+.user-rich .md h2 { font-size: 1.12em; margin-top: 0.35em; }
+.user-rich .md h3 { font-size: 1.05em; margin-top: 0.35em; }
+.user-rich .md h4 { font-size: 1em; margin-top: 0.35em; }
 .user-rich .md ul, .user-rich .md ol, .user-rich .md blockquote { margin-bottom: 0.25em; }
 
 .cite-chip {
