@@ -206,6 +206,21 @@ export function etapesTerminees(nodes: ActivityNode[]): ActivityNode[] {
     .slice(-ETAPES_VISIBLES_EN_DIRECT);
 }
 
+/** Un echec que rien n'a rattrape ensuite.
+ *
+ *  Sert a decider ce qui reste visible une fois la reponse ecrite : le detail
+ *  du travail s'efface (demande du 19/09/2026 — « apres qu'il livre sa reponse
+ *  il doit pas etre tres apparent »), **un echec non resolu reste**. Le cacher
+ *  parce que le tour est fini serait cacher ce qui n'a pas marche.
+ *
+ *  Un echec suivi d'etapes reussies n'en est plus un : c'est le premier essai
+ *  d'un build qui a fini par passer. */
+export function echecNonResolu(nodes: ActivityNode[], live: boolean): boolean {
+  if (live) return false;
+  const dernier = nodes[nodes.length - 1];
+  return collectStats(nodes).failed > 0 && !!dernier && dernier.status === 'failed';
+}
+
 export function activeLabel(nodes: ActivityNode[]): string | undefined {
   const all = flatten(nodes);
   const running = all.filter((n) => n.status === 'running');

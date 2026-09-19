@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, ChevronRight, Minus, X } from 'lucide-react';
 import {
-  ActivityNode, activeLabel, collectStats, etapesTerminees, formatDuration, flatten,
+  ActivityNode, activeLabel, collectStats, echecNonResolu, etapesTerminees,
+  formatDuration, flatten,
 } from '../../lib/activity/types';
 import { ActivityItem, ThinkingIndicator, ItemCtx } from './ActivityItem';
 import { Logo } from '../chat/Sidebar';
@@ -76,8 +77,7 @@ export function AIActivity({
   const current = live ? activeLabel(nodes) : undefined;
   const elapsed = live ? now - startedAt : stats.durationMs;
   /* a failure resolved by later steps (e.g. first build) is reported, not alarmed */
-  const lastRoot = nodes[nodes.length - 1];
-  const unresolved = !live && stats.failed > 0 && !!lastRoot && lastRoot.status === 'failed';
+  const unresolved = echecNonResolu(nodes, live);
   const recovered = !live && stats.failed > 0 && !unresolved;
 
   const headerText = live
@@ -173,7 +173,10 @@ export function AIActivity({
           ? 'border-accent-500/25 bg-accent-500/[0.035] activity-glow'
           : unresolved
             ? 'border-red-400/18 bg-red-400/[0.03]'
-            : 'border-white/8 bg-white/[0.02]',
+            // Terminé et sans échec : un liseré, pas un encadré. La réponse
+            // est ce qu'il vient lire ; le travail qui l'a produite reste
+            // atteignable sans lui disputer l'écran.
+            : 'border-white/[0.04] bg-transparent',
       )}
     >
       {/* header — always visible */}
@@ -190,7 +193,9 @@ export function AIActivity({
 
         {live && <span className="inline-block h-1.5 w-1.5 animate-pulse-dot rounded-full bg-accent-500" />}
         {!live && !unresolved && (
-          <span className="grid h-[14px] w-[14px] place-items-center rounded-full bg-emerald-400/12 text-emerald-400">
+          // Une coche sobre, sans pastille pleine : le travail est fini, il
+          // n'a plus besoin d'etre annonce — seulement d'etre retrouvable.
+          <span className="grid h-[14px] w-[14px] place-items-center text-zinc-600">
             <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
           </span>
         )}
@@ -198,8 +203,10 @@ export function AIActivity({
 
         <span
           className={cn(
-            'flex-1 truncate text-[12px] font-medium tracking-wide',
-            live ? 'text-shimmer' : unresolved ? 'text-red-300/90' : 'text-zinc-400',
+            'flex-1 truncate text-[12px] tracking-wide',
+            live ? 'text-shimmer font-medium'
+              : unresolved ? 'text-red-300/90 font-medium'
+                : 'text-zinc-600',
           )}
         >
           {headerText}
@@ -217,9 +224,18 @@ export function AIActivity({
         )}
       </button>
 
-      {/* collapsed peek: last few steps stay glanceable */}
+      {/* Replie, on ne garde un apercu que s'il reste un ECHEC.
+          **Demande du 19/09/2026** : « ce travail devrait etre apparent quand
+          il travaille ; apres qu'il livre sa reponse il doit pas etre tres
+          apparent ». Une fois la reponse ecrite, trois lignes de coches vertes
+          au-dessus d'elle disent une chose deja acquise, et prennent la place
+          de ce qu'il est venu lire.
+
+          Un echec, lui, reste visible : le cacher parce que le tour est fini
+          serait cacher ce qui n'a pas marche. Le detail complet reste a un
+          appui sur l'en-tete, pour les deux cas. */}
       <AnimatePresence initial={false}>
-        {!open && (
+        {!open && unresolved && (
           <motion.div
             key="peek"
             initial={{ height: 0, opacity: 0 }}

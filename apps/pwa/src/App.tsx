@@ -22,6 +22,7 @@ import { NetworkStatus } from './components/chat/NetworkStatus';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useCapacite, nomEspace } from './lib/capacites';
 import { cn } from './utils/cn';
+import { suivreLaHauteur } from './lib/suivre-la-hauteur';
 
 export default function App() {
   const { conversations, activeId, isRunning, send, cancel, toggleLog } = useChat();
@@ -67,11 +68,21 @@ export default function App() {
   // conversation ouverte) doit quand meme dire dans quel espace on se trouve.
   const { active: espaceActif } = useCapacite();
 
-  /* Défilement automatique : suit le flux sauf si l'utilisateur est remonté. */
+  /* Défilement automatique : suit le flux sauf si l'utilisateur est remonté.
+     Se déclenche sur les changements de DONNÉES (un message, un jeton reçu,
+     une étape annoncée). */
   useEffect(() => {
     const el = scrollRef.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
   }, [messages, messages[messages.length - 1]?.live, messages[messages.length - 1]?.activity]);
+
+  /* Et sur les changements de HAUTEUR, qui ne passent par aucune donnée :
+     la marche du texte révélé lettre par lettre, une image qui finit de
+     charger. Détail et mesure → `lib/suivre-la-hauteur.ts`. */
+  useEffect(
+    () => suivreLaHauteur(scrollRef.current, () => pinned.current),
+    [hasMessages, activeId],
+  );
 
   const onScroll = () => {
     const el = scrollRef.current;
