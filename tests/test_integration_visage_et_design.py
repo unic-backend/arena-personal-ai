@@ -122,10 +122,37 @@ class TestDispatch:
         assert reponse["status"] == "error"
 
 
+@pytest.fixture
+def file_rendue_propre(runtime):
+    """Retire de la file d'attente ce que ce test y a depose.
+
+    **Ces tests executent le vrai registre**, donc une capacite biometrique y
+    depose une vraie action en attente, dans la vraie base. Elle y restait
+    apres le test — et `_actions_en_attente()`, appele a la fin de CHAQUE tour
+    de conversation, sonde le moteur de chaque action en attente.
+
+    Mesure du 19/09/2026 : `faceplugin.sonder()` lance le sous-processus du
+    SDK et repond en **2 990 ms**. Deux actions oubliees ici ajoutaient donc
+    six secondes a chaque test de `test_pwa_gateway.py` execute plus tard dans
+    la suite — les memes tests qui prennent 0,19 s quand leur fichier tourne
+    seul. C'est ce qui separait 14 minutes de suite de 11.
+
+    Le test garde sa portee : l'action est bien deposee, c'est justement ce
+    qu'il verifie. Elle est retiree apres, comme le proprietaire la retirerait
+    en refusant.
+    """
+    avant = {a.identifiant for a in runtime.file_attente.en_attente(limite=100)}
+    yield
+    for action in runtime.file_attente.en_attente(limite=100):
+        if action.identifiant not in avant:
+            runtime.file_attente.annuler(action.identifiant)
+
+
 class TestPermissionsBoutDeChaine:
     """La protection tient depuis le registre, pas seulement dans le YAML."""
 
-    def test_lecture_de_visages_passe_sans_confirmation(self, runtime, tmp_path):
+    def test_lecture_de_visages_passe_sans_confirmation(
+            self, runtime, tmp_path, file_rendue_propre):
         image = tmp_path / "vide.jpg"
         image.write_bytes(b"x")
         resultat = runtime.registre.executer("faceplugin", "detecter", image=str(image))
@@ -136,14 +163,15 @@ class TestPermissionsBoutDeChaine:
         ("caracteristiques", {"image": "a.jpg"}),
         ("comparer", {"image": "a.jpg", "image2": "b.jpg"}),
     ])
-    def test_la_biometrie_exige_une_confirmation(self, runtime, capacite, arguments):
+    def test_la_biometrie_exige_une_confirmation(
+            self, runtime, capacite, arguments, file_rendue_propre):
         resultat = runtime.registre.executer("faceplugin", capacite, **arguments)
 
         assert resultat.statut.value == "NEEDS_CONFIRMATION", (
             "un gabarit biometrique partirait sans son accord")
         assert "Rien n'est parti" in resultat.message
 
-    def test_le_design_ne_demande_aucune_confirmation(self, runtime):
+    def test_le_design_ne_demande_aucune_confirmation(self, runtime, file_rendue_propre):
         """Lecture pure : demander un accord pour une recommandation de
         couleurs userait le mécanisme sans rien protéger."""
         resultat = runtime.registre.executer(
