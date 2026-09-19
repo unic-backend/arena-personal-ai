@@ -131,7 +131,7 @@ export const MarkdownLite = memo(function MarkdownLite({
 }) {
   const blocks = parseBlocks(text);
   return (
-    <div className="md text-zinc-300">
+    <div className="md text-zinc-200">
       {blocks.map((b, i) => {
         switch (b.t) {
           case 'h': {
