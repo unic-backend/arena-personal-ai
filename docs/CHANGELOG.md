@@ -2,6 +2,51 @@
 
 ## [Non publié]
 
+### Corrigé — 19/09/2026 — L'écran ne suivait pas le texte qui descend
+
+**Mesuré sur son téléphone** : « quand mon IA écrit et qu'il descend en bas du
+téléphone, les écritures continuent en bas sans que je le voie ; pour le voir
+je dois scroller ».
+
+Le défilement automatique existe pourtant et fonctionne. Il se déclenche sur
+les changements de **données** — un jeton reçu, une étape annoncée. Or **le
+texte n'apparaît pas quand il arrive** : il est révélé lettre par lettre par
+`useTexteRevele` (200 caractères/seconde, mis en place le 02/09/2026 à sa
+demande — « les réponses devraient venir comme en marchant »), dans un état
+local au composant qui l'affiche.
+
+La hauteur du fil grandit donc pendant **plusieurs secondes sans qu'aucune
+donnée ne change**, et la page reste où elle était pendant que le texte
+continue sous le bord de l'écran. Les deux demandes se contredisaient sans que
+ça se voie.
+
+`lib/suivre-la-hauteur.ts` suit la **hauteur réelle** plutôt que ce qui la
+cause : un `ResizeObserver` sur le contenu du conteneur. Il rattrape la marche
+du texte, mais aussi une image qui finit de charger ou un bloc de code qui se
+déplie.
+
+L'ancrage est consulté **à chaque changement de hauteur**, jamais mémorisé :
+remonter volontairement pendant qu'il écrit coupe le suivi tout de suite, comme
+avant. Un sabotage le vérifie.
+
+### Modifié — 19/09/2026 — Le détail du travail s'efface une fois la réponse écrite
+
+« Ce travail devrait être apparent quand il travaille ; après qu'il livre sa
+réponse il doit pas être très apparent. »
+
+Une fois le tour fini, la carte d'activité gardait un aperçu des trois
+dernières étapes avec leurs coches vertes, au-dessus de la réponse. Trois
+lignes qui disent une chose déjà acquise, à la place de ce qu'il est venu lire.
+
+Replié, l'aperçu ne subsiste plus que s'il reste un **échec non résolu** —
+le cacher parce que le tour est fini serait cacher ce qui n'a pas marché. Un
+échec suivi d'étapes réussies n'en est pas un : c'est le premier essai d'un
+build qui a fini par passer (`echecNonResolu`).
+
+Le reste s'efface d'un cran : coche sobre au lieu d'une pastille verte pleine,
+en-tête en gris, liseré au lieu d'un encadré. Le détail complet reste à un
+appui sur l'en-tête.
+
 ### Corrigé — 19/09/2026 — Un bouton en attente ajoutait six secondes à chaque réponse
 
 Trouvé en cherchant pourquoi la suite de tests était lente. **Ce n'est pas un
