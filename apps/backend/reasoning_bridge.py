@@ -141,11 +141,21 @@ def note_de_critique(critique: Optional[Dict[str, Any]]) -> str:
 async def resoudre_profondement(
     demande: str,
     moteur: Optional[Any] = None,
+    contexte: str = "",
 ) -> Dict[str, Any]:
     """Appelle le moteur de raisonnement et prepare le resultat pour le chat.
 
     Args:
         demande: la question de l'utilisateur, telle quelle.
+        contexte: le fil de la conversation, quand l'appelant en a un. Vide
+            par defaut — le comportement est alors celui d'avant le
+            19/09/2026, invite par invite.
+
+            **Il ne passe pas par `profondeur_pour`.** Le mode approfondie
+            coute deux appels de modele de plus ; le declencher parce que la
+            conversation depasse 200 caracteres le rendrait systematique au
+            neuvieme message, sans que la question ait rien gagne en
+            difficulte.
         moteur: le moteur de raisonnement a utiliser. `None` = celui du
             runtime de production (`apps.backend.runtime.reasoning_engine`).
             Ce parametre existe pour les tests : ils peuvent passer un faux
@@ -172,7 +182,8 @@ async def resoudre_profondement(
     profondeur = profondeur_pour(demande)
     logger.info("Raisonnement profond en mode %s.", profondeur)
 
-    raisonnement = await moteur.solve_complex_task(demande, profondeur=profondeur)
+    raisonnement = await moteur.solve_complex_task(
+        demande, profondeur=profondeur, contexte=contexte)
 
     calcul = raisonnement.get("calculation_result") or ""
     critique = raisonnement.get("critique")

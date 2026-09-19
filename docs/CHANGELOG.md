@@ -2,6 +2,91 @@
 
 ## [Non publié]
 
+### Corrigé — 19/09/2026 — « Il oublie ce qu'on s'est dit » : trois causes, trois correctifs
+
+Le propriétaire redit la même phrase depuis des semaines. Elle a **trois**
+causes indépendantes, et corriger une seule d'entre elles ne se voyait pas.
+
+**1. Le chemin du téléphone ne relisait jamais le fil que le serveur écrit.**
+
+`apps/pwa/src/lib/store/chatStore.ts` coupe l'historique à `.slice(-8)` à ses
+trois points d'appel. `pwa_gateway._prompt_conversation` ne lisait que ce
+`history`-là. Le serveur, lui, écrit **chaque** tour dans `short_term_memory`
+sous `session_id = conversation_id` — et ne s'en servait pas. Au neuvième
+message, ARENA ne voyait plus le premier, à un `SELECT` de distance.
+`apps/backend/routers/chat.py` lisait `get_recent_history(limit=6)` depuis
+toujours ; la surface que le propriétaire utilise réellement, non.
+
+`core/memory/conversation.tours_anterieurs()` relit ce que le navigateur a
+coupé, dédoublonne ce qu'il a déjà renvoyé, borne à 4000 caractères et s'arrête
+au premier tour qui ne tient pas — **un fil troué se lit comme un fil continu**,
+et le modèle en déduit des enchaînements qui n'ont jamais eu lieu.
+
+**On ne relit que sous `conversation_id`.** Sans identifiant, tout ce qui passe
+par cette route s'écrit dans un seau commun nommé « pwa » : le relire aurait
+fait entrer des conversations étrangères dans l'invite, ce qui est pire que
+l'oubli qu'on répare. Trouvé par un test existant, pas par relecture.
+
+**2. Tout ce qui passait par un agent spécialisé n'était écrit nulle part.**
+
+Ni `short_term_memory`, ni la mémoire longue. PLAQUISTE, DEEP_REASONING, EMAIL,
+FRESH_INFO — c'est-à-dire le travail réel du propriétaire — disparaissaient dès
+que le téléphone sortait le tour de sa fenêtre de huit messages. Seule la
+conversation ordinaire était retenue. La branche consigne désormais la question
+et la réponse, **y compris un échec d'agent tel qu'il a été affiché** : sans
+cela le fil garderait deux tours du propriétaire d'affilée, et le tour suivant
+ne saurait pas que celui-ci a raté.
+
+**3. La recherche de souvenirs tourne en mode lexical sur l'hébergeur.**
+
+`core/memory/semantique.py` exige des embeddings servis par Ollama. Il n'y a pas
+d'Ollama sur Railway : la récupération reste lexicale et le dit — ce n'est pas
+un défaut, c'est la règle qui marche. Mais une question qui renvoie à ce qui
+vient d'être dit ne se retrouve pas par mots-clés. Mesuré :
+`mots_utiles("de quoi on parlait")` ne garde que `parlait`, qui n'est dans aucun
+souvenir. **Ce n'est pas réparable ici** — c'est réparé par le point 1 : une
+question elliptique se résout en relisant le fil, pas en cherchant des mots.
+
+### Ajouté — 19/09/2026 — `GET /agent/memoire` : l'état de la mémoire se mesure
+
+Les trois causes ci-dessus produisent la même phrase, et aucune n'était
+observable depuis le téléphone. `core/memory/etat.py` les sépare : le chemin
+réel de la base et sa taille, le nombre de messages et de conversations, le
+nombre de souvenirs longs, et **par quoi un souvenir est retrouvé aujourd'hui**
+(`SEMANTIQUE` / `LEXICAL` / `INCONNUE`, avec la mesure qui l'établit).
+
+La persistance s'**observe** : une ligne plus ancienne que le démarrage du
+processus prouve que le disque a survécu à un redémarrage. Rien d'autre ne le
+prouve — surtout pas une variable d'environnement bien remplie. Tant qu'il n'y
+a pas de preuve, l'état est `PAS_ENCORE_OBSERVEE`, **jamais « non »**.
+
+Une mesure impossible rend `None` et sa raison, jamais `0` : zéro message et
+base introuvable sont deux faits différents, et les confondre envoie chercher la
+panne ailleurs.
+
+### Corrigé — 19/09/2026 — Le raisonnement profond recevait la question sans le calcul
+
+`resoudre_profondement(request.prompt)` ne recevait que la dernière phrase.
+« Vérifie ton calcul » arrivait au moteur **sans le calcul** : il ne pouvait que
+répondre à côté.
+
+`ReasoningEngine.solve_complex_task` accepte désormais un `contexte`, posé dans
+les invites de plan, de synthèse, de critique et de révision. Il est **borné par
+deux marqueurs** (`ce n'est pas la question` … `--- fin du contexte ---`) : sans
+elles, le modèle lit le fil comme faisant partie de la question et répond au
+mauvais tour, ce qui est pire que de ne rien lui donner. Vide par défaut, et les
+invites sont alors identiques au caractère près — un moteur dont les invites
+changent en silence n'est plus comparable à lui-même.
+
+**Le contexte ne passe pas par `profondeur_pour`.** Le mode approfondie coûte
+deux appels de modèle de plus ; le déclencher parce que la *conversation*
+dépasse 200 caractères le rendrait systématique au neuvième message, sans que la
+question ait gagné en difficulté.
+
+Portée volontairement limitée à `PLAQUISTE` et `DEEP_REASONING`
+(`INTENTIONS_AVEC_FIL`) : rien ne dit qu'EMAIL ou VISION ont le même besoin, et
+l'élargir sans le mesurer serait la même erreur en sens inverse.
+
 ### Corrigé — 15/09/2026 — Une réponse de maths était illisible sur le téléphone
 
 **Mesuré sur le téléphone du propriétaire**, sur `Résous l'équation x² - 5x + 6 = 0`.

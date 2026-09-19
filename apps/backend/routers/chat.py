@@ -55,6 +55,7 @@ from apps.backend.security import limiter_debit, validate_media_path, verify_api
 from apps.backend.studio import lancer_studio
 from core.architecture.plan import executer as executer_architecture
 from core.context.recherche_unifiee import MOTS_MEMOIRE
+from core.memory.conversation import rendre_le_fil
 from core.observabilite.fil import tache
 from tools.documents.indexer import (
     DOSSIER_DOCUMENTS,
@@ -453,6 +454,32 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
         return await _aiguiller(request, intent)
 
 
+#: Combien de tours on relit quand l'appelant n'a pas envoye d'historique.
+#: Meme valeur que la voie conversationnelle de ce fichier : deux chiffres
+#: differents pour le meme fil donneraient deux memoires a ARENA.
+TOURS_RELUS_DEFAUT = 6
+
+
+def _fil_de_la_session(request: ChatRequest, session_id: str) -> str:
+    """Le fil de cette conversation, aplati, pour un agent qui n'en a pas.
+
+    L'historique envoye par l'appelant fait foi quand il existe — il porte les
+    corrections et les regenerations. A defaut, on relit `short_term_memory`,
+    ou chaque tour est ecrit. Rend une chaine vide quand il n'y a rien : un
+    agent ne doit jamais recevoir un contexte invente pour en avoir un.
+    """
+    tours = request.history
+    if not tours:
+        try:
+            tours = memory.get_recent_history(session_id=session_id,
+                                              limit=TOURS_RELUS_DEFAUT)
+        except Exception as souci:  # noqa: BLE001 - la memoire ne bloque pas
+            logger.warning("Fil de session illisible : %s", souci)
+            return ""
+    proprietaire = memory.get_fact("owner") or "Ousmane"
+    return rendre_le_fil(tours, proprietaire)
+
+
 async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
     """Le corps de l'aiguillage. `intent` est toujours connu ici."""
     session_id = request.session_id or "default"
@@ -463,7 +490,17 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         # demande, appelle le moteur, et prepare la reponse (calcul + critique).
         # La critique et la revision sont ainsi branchees SANS que ce routeur
         # ait a connaitre les details du moteur de raisonnement.
-        result = await resoudre_profondement(request.prompt)
+        #
+        # Le fil est passe a part, jamais fondu dans la question. Jusqu'au
+        # 19/09/2026 le moteur ne recevait que la derniere phrase : « verifie
+        # ton calcul » arrivait sans le calcul, et il repondait a cote sans
+        # pouvoir faire autrement. L'appelant donne son historique quand il en
+        # a un (la PWA) ; sinon on relit la meme source que la voie
+        # conversationnelle quelques lignes plus bas.
+        result = await resoudre_profondement(
+            request.prompt,
+            contexte=_fil_de_la_session(request, session_id),
+        )
     elif intent == "FRESH_INFO":
         # Avant le web : la donnee OFFICIELLE, quand la question en releve
         # (« combien d'habitants a Ziguinchor ? »). Locale, gratuite,

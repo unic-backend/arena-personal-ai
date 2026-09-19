@@ -168,3 +168,128 @@ def retenir_l_echange(
             logger.warning("Reponse non retenue : %s", erreur)
 
     return ecrits
+
+
+# --- Le fil que le telephone n'a pas renvoye ---------------------------------
+#
+# Deuxieme moitie du meme defaut, mesuree le 19/09/2026. La premiere (ci-dessus)
+# etait que rien n'ecrivait dans la memoire longue ; elle est corrigee. Celle-ci
+# est que le chemin du TELEPHONE ne relit jamais le fil qu'il ecrit pourtant a
+# chaque tour :
+#
+# - `apps/backend/routers/chat.py` lit `get_recent_history(limit=6)` ;
+# - `apps/backend/routers/pwa_gateway.py` — la surface que le proprietaire
+#   utilise reellement — ne le lit **pas**. Son invite est construite a partir
+#   du seul `history` envoye par le navigateur, et `apps/pwa/src/lib/store/
+#   chatStore.ts` le coupe a `.slice(-8)` a ses trois points d'appel.
+#
+# Le serveur a donc le fil entier, sous `session_id = conversation_id`, et ne
+# s'en sert pas. Au neuvieme message, ARENA ne voit plus le premier — alors
+# qu'il est en base, a un `SELECT` de distance.
+#
+# Ce qui reste a la recherche de souvenirs : elle compare des mots
+# (`recuperation.py`) des que les embeddings n'ont pas repondu, et « de quoi on
+# parlait » ne garde qu'un mot utile — « parlait » — qui n'est dans aucun
+# souvenir. Une question qui renvoie a ce qui vient d'etre dit ne se retrouve
+# pas par mots-cles : elle se retrouve en relisant le fil.
+
+#: Ce que les tours anterieurs ont le droit d'ajouter a l'invite. Une limite
+#: dure, comme pour la memoire longue (`recuperation.py`, regle 1) : un fil qui
+#: grossit sans borne finit par ne plus tenir dans le modele, et c'est alors la
+#: question du jour qui est coupee.
+BUDGET_TOURS_ANTERIEURS = 4000
+
+#: Combien de tours on relit au plus dans le journal. Au-dela, le budget en
+#: caracteres aurait de toute facon deja tranche ; cette borne-ci protege la
+#: lecture elle-meme sur une conversation de plusieurs centaines de messages.
+TOURS_RELUS_MAX = 200
+
+
+def _cle(role: str, contenu: str) -> tuple:
+    """De quoi reconnaitre un tour deja envoye, malgre les espaces."""
+    return ((role or "").strip().lower(), " ".join((contenu or "").split()))
+
+
+def tours_anterieurs(
+    journal,
+    session_id: Optional[str],
+    deja_envoyes: Optional[List[dict]],
+    message_actuel: str = "",
+    budget_caracteres: int = BUDGET_TOURS_ANTERIEURS,
+    limite: int = TOURS_RELUS_MAX,
+) -> List[dict]:
+    """Les tours de CETTE conversation que l'interface n'a pas renvoyes.
+
+    Rend une liste `{"role", "content"}`, du plus ancien au plus recent, prete
+    a etre posee AVANT les tours du navigateur. Les tours deja envoyes en sont
+    retires : ils seraient lus deux fois, et ARENA se repeterait.
+
+    Ne leve jamais. Un journal illisible rend une liste vide et la conversation
+    continue exactement comme avant ce correctif — la memoire ne bloque pas la
+    reponse, c'est la regle du fichier.
+
+    Args:
+        journal: le `MemoryManager` qui tient `short_term_memory`.
+        session_id: l'identifiant stable du fil (`conversation_id`).
+        deja_envoyes: l'historique que le navigateur vient d'envoyer.
+        message_actuel: la question du tour en cours. Le chemin PWA l'ecrit
+            dans le journal **avant** de construire l'invite ; sans ca elle
+            reviendrait ici comme un ancien tour.
+        budget_caracteres: ce que ces tours ont le droit d'ajouter, au total.
+        limite: combien de tours on relit au plus.
+    """
+    if journal is None or not session_id:
+        return []
+
+    try:
+        lignes = journal.get_recent_history(session_id=session_id, limit=limite)
+    except Exception as erreur:  # noqa: BLE001 — la reponse passe avant la memoire
+        logger.warning("Journal de conversation illisible : %s", erreur)
+        return []
+
+    vus = {_cle(tour.get("role"), tour.get("content"))
+           for tour in (deja_envoyes or [])}
+    if (message_actuel or "").strip():
+        vus.add(_cle("user", message_actuel))
+
+    anciens = [tour for tour in lignes
+               if (tour.get("content") or "").strip()
+               and _cle(tour.get("role"), tour.get("content")) not in vus]
+
+    # On garde les plus RECENTS des anciens, et on s'arrete au premier qui ne
+    # tient pas — on ne saute pas par-dessus pour en prendre un plus court.
+    # Un fil troue se lit comme un fil continu : le modele n'a aucun moyen de
+    # voir le trou, et en deduit des enchainements qui n'ont jamais eu lieu.
+    gardes: List[dict] = []
+    reste = budget_caracteres
+    for tour in reversed(anciens):
+        cout = len(tour.get("content") or "") + 1
+        if cout > reste:
+            break
+        reste -= cout
+        gardes.append(tour)
+    gardes.reverse()
+    return gardes
+
+
+#: Le nom sous lequel ARENA se nomme dans un fil aplati. Ecrit ici parce que
+#: trois endroits le rendaient chacun de leur cote, avec le risque qu'un seul
+#: change un jour et que le modele lise deux interlocuteurs la ou il n'y en a
+#: qu'un.
+NOM_ASSISTANT = "Usman"
+
+
+def rendre_le_fil(tours, proprietaire: str,
+                  assistant: str = NOM_ASSISTANT) -> str:
+    """Le fil, une ligne par tour, nomme. Chaine vide s'il n'y a rien.
+
+    Args:
+        tours: des `{"role", "content"}`, du plus ancien au plus recent.
+        proprietaire: comment nommer celui qui parle a ARENA.
+        assistant: comment nommer ARENA.
+    """
+    return "\n".join(
+        f"{proprietaire if tour.get('role') == 'user' else assistant}: "
+        f"{tour.get('content', '')}"
+        for tour in (tours or [])
+    )

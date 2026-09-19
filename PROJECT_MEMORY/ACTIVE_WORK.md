@@ -1,10 +1,40 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-09-13, après ses fusions du matin (`main` à `638ec90`).*
+*Mise à jour : 2026-09-19, travail de nuit sur la mémoire et le raisonnement.*
 
 ## En cours
 
-**Rien n'est en cours.** Le propriétaire a autorisé un travail de nuit sans
+**Une pull request ouverte sur `claude/memoire-et-raisonnement`.** Travail de
+nuit autorisé : « la mémoire, le raisonnement, enlever les oublis, améliorer
+son penser ».
+
+« Il oublie ce qu'on s'est dit » avait **trois** causes indépendantes :
+
+1. le chemin du téléphone ne relisait jamais le fil que le serveur écrit
+   (`chatStore.ts` coupe à 8 messages ; `short_term_memory` a tout) ;
+2. **tout ce qui passait par un agent spécialisé n'était écrit nulle part** —
+   PLAQUISTE, DEEP_REASONING, EMAIL, FRESH_INFO, c'est-à-dire son travail réel ;
+3. sans Ollama, la recherche est lexicale, et « de quoi on parlait » n'a de mot
+   commun avec rien — réparé par le point 1, pas par une recherche plus fine.
+
+Et un quatrième, sur le raisonnement : `solve_complex_task` ne recevait que la
+dernière phrase — « vérifie ton calcul » arrivait **sans le calcul**.
+
+DEC-0106 à DEC-0109. `GET /agent/memoire` répond désormais quelle cause agit.
+
+**Ce qui reste à lui** : lancer `GET /agent/memoire` depuis son téléphone après
+le prochain redéploiement Railway. Si `base.persistance` dit `CONFIRMEE`, le
+volume tient ; si elle dit `PAS_ENCORE_OBSERVEE` alors que le fil était plein
+avant, le disque est effacé à chaque déploiement et c'est un réglage Railway,
+pas du code.
+
+---
+
+*État précédent : 2026-09-13, après ses fusions du matin (`main` à `638ec90`).*
+
+### Ce qui était en cours le 13/09
+
+**Rien n'était en cours.** Le propriétaire a autorisé un travail de nuit sans
 interruption (« tu dois enchaîner tout ce qui reste sans attendre rien de
 moi ») ; ce qui restait a été fait, puis il a tout fusionné le matin du 13/09.
 Aucune fusion n'a jamais été faite par l'assistant — c'est sa décision

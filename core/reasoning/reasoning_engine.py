@@ -65,6 +65,43 @@ CONFIANCE_RE = re.compile(r"CONFIANCE\s*:\s*([0-9]*\.?[0-9]+)", re.IGNORECASE)
 
 PROFONDEURS = ("standard", "approfondie")
 
+#: Ce que le fil de conversation a le droit d'ajouter aux invites du moteur.
+#: Meme raison que le budget de la memoire longue : une invite qui grossit
+#: avec la conversation finit par ne plus tenir, et c'est alors la question
+#: elle-meme qui est coupee.
+BUDGET_CONTEXTE = 4000
+
+
+def _bloc_contexte(contexte: str) -> str:
+    """Le fil de la conversation, annonce comme un rappel et borne.
+
+    Chaine vide quand il n'y a pas de contexte : les invites sont alors
+    **identiques au caractere pres** a ce qu'elles etaient avant le
+    19/09/2026. Un moteur de raisonnement dont les invites changent en
+    silence n'est plus comparable a lui-meme.
+
+    Le bloc est annonce, et sa fin est marquee. Sans ces deux bornes, le
+    modele lit le fil comme faisant partie de la question et repond au
+    mauvais tour — c'est pire que de ne rien lui donner.
+
+    Un contexte trop long garde sa **fin** : ce qui vient d'etre dit
+    explique la question du jour mieux que ce qui a ete dit en premier. La
+    coupe est dite, jamais muette.
+    """
+    contexte = (contexte or "").strip()
+    if not contexte:
+        return ""
+    if len(contexte) > BUDGET_CONTEXTE:
+        contexte = ("[...] (debut du contexte coupe)\n"
+                    + contexte[-BUDGET_CONTEXTE:])
+    return (
+        "Contexte - ce qui a deja ete dit dans cette conversation. C'est un "
+        "rappel, ce n'est pas la question :\n"
+        f"{contexte}\n"
+        "--- fin du contexte ---\n\n"
+    )
+
+
 
 def _non_vide(sortie: Any) -> Tuple[bool, str]:
     """Une reponse vide n'est pas une reponse."""
@@ -137,6 +174,7 @@ class ReasoningEngine:
         self,
         user_prompt: str,
         profondeur: str = "standard",
+        contexte: str = "",
     ) -> Dict[str, Any]:
         """Conduit les etapes et rend l'etat complet de la tache.
 
@@ -144,6 +182,18 @@ class ReasoningEngine:
         - "standard" : plan, calcul (facultatif), synthese.
         - "approfondie" : + critique (facultative) + revision (facultative,
           declenchee seulement si la critique dit KO).
+
+        `contexte` : le fil de la conversation, quand l'appelant en a un.
+        Vide par defaut, et les invites sont alors inchangees.
+
+        **Pourquoi ce parametre existe.** Jusqu'au 19/09/2026 le moteur ne
+        recevait que la derniere phrase : « verifie ton calcul » arrivait ici
+        sans le calcul, et il repondait a cote sans pouvoir faire autrement.
+        Le fil reste un **rappel** et n'est jamais la question : c'est ce que
+        disent les deux bornes de `_bloc_contexte`, et c'est pourquoi le choix
+        de la profondeur (`profondeur_pour`) continue de ne lire que la
+        question — sans quoi tout fil un peu long ferait basculer en mode
+        approfondie, qui coute deux appels de modele de plus.
         """
         if profondeur not in PROFONDEURS:
             raise ValueError(
@@ -155,12 +205,14 @@ class ReasoningEngine:
             "Raisonnement profond (%s) sur : %s", profondeur, user_prompt[:60]
         )
 
+        bloc = _bloc_contexte(contexte)
+
         plan_prompt = (
             "Tu es un moteur de raisonnement logique de haut niveau.\n"
             "Analyse la question suivante et décompose la résolution en 3 étapes claires.\n"
             "Si la question implique des maths, des statistiques ou des données, écris un script Python "
             "avec sympy/numpy/math pour calculer la réponse exacte.\n\n"
-            f"Question: {user_prompt}\n\n"
+            f"{bloc}Question: {user_prompt}\n\n"
             "Plan et Script Python (si nécessaire) dans des balises ```python ... ```:"
         )
 
@@ -182,7 +234,7 @@ class ReasoningEngine:
             return await self.provider.generate(prompt=(
                 "Tu es Usman. Présente la solution finale de manière élégante, "
                 "claire et irréprochable.\n"
-                f"Question originale : {user_prompt}\n"
+                f"{bloc}Question originale : {user_prompt}\n"
                 f"Raisonnement & Plan : {acquis.get('plan', '')}\n"
                 f"Résultat des calculs exacts dans le Bac à Sable : {sortie}\n\n"
                 "Solution Finale Sublime :"))
@@ -227,7 +279,7 @@ class ReasoningEngine:
                 "Tu es un critique rigoureux, sec, sans complaisance.\n"
                 "Verifie si la solution proposee repond vraiment a la question, "
                 "sans erreur, sans approximation, sans esquive.\n\n"
-                f"Question : {user_prompt}\n\n"
+                f"{bloc}Question : {user_prompt}\n\n"
                 f"Plan propose :\n{plan[:1500]}\n\n"
                 f"Etat reel du calcul :\n{etat_calcul}\n\n"
                 f"Solution proposee :\n{synthese}\n\n"
@@ -316,7 +368,7 @@ class ReasoningEngine:
             return await self.provider.generate(prompt=(
                 "Tu es Usman. La solution precedente a ete jugee insuffisante "
                 "par un relecteur independant.\n"
-                f"Question originale : {user_prompt}\n\n"
+                f"{bloc}Question originale : {user_prompt}\n\n"
                 f"Solution precedente :\n{synthese}\n\n"
                 f"Motif de la critique : {critique.get('raison', '')}\n\n"
                 f"CONTRAINTE IMPERATIVE sur ce que tu peux affirmer :\n"
