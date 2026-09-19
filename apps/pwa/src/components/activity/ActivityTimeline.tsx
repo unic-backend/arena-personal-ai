@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, ChevronRight, Minus, X } from 'lucide-react';
 import {
-  ActivityNode, activeLabel, collectStats, formatDuration, flatten,
+  ActivityNode, activeLabel, collectStats, etapesTerminees, formatDuration, flatten,
 } from '../../lib/activity/types';
 import { ActivityItem, ThinkingIndicator, ItemCtx } from './ActivityItem';
 import { Logo } from '../chat/Sidebar';
@@ -88,15 +88,28 @@ export function AIActivity({
         ? `${t('act.workedFor', { d: formatDuration(elapsed) })} · ${t(stats.failed === 1 ? 'act.failsFixed.one' : 'act.failsFixed.many', { n: stats.failed })}`
         : t('act.workedFor', { d: formatDuration(elapsed) });
 
+  const terminees = useMemo(() => etapesTerminees(nodes), [nodes]);
+
   const summary = useMemo(() => {
     const all = flatten(nodes).filter((n) => n.kind !== 'thinking' && n.kind !== 'planning');
     const done = all.filter((n) => n.status === 'completed');
     return { done: done.length, total: all.length, tail: [...all].slice(-3) };
   }, [nodes]);
 
-  /* En cours : le petit logo qui tourne, et ce qu'il fait a cote — jamais
-     un encadre. Une fois termine, le detail (etapes, duree) reste ouvert a
-     la demande sur la carte ci-dessous, inchangee. */
+  /* En cours : le petit logo qui tourne, ce qu'il fait a cote, et ce qu'il
+     vient de finir en dessous — jamais un encadre. Une fois termine, le
+     detail complet (etapes, duree) reste ouvert a la demande sur la carte
+     ci-dessous, inchangee.
+
+     Les etapes DEJA finies restent affichees depuis le 19/09/2026, sur sa
+     demande : « je veux voir ce que l'IA fait en temps reel — reflexion,
+     execution, raisonnement, memoire ». Une seule ligne qui se remplace
+     montre l'etape en cours et efface les precedentes : au moment ou il
+     regarde, il ne voit qu'un mot, et le travail deja fait a disparu.
+
+     Les quatre dernieres, pas toutes : un tour qui enchaine dix outils
+     pousserait sa question hors de l'ecran pendant qu'il attend la
+     reponse. */
   if (live) {
     return (
       <motion.div
@@ -105,10 +118,43 @@ export function AIActivity({
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25 }}
-        className="flex items-center gap-2 py-1"
+        className="py-1"
       >
-        <Logo size={15} className="thinking-logo shrink-0" />
-        <span className="truncate text-[12.5px] font-medium text-shimmer">{headerText}</span>
+        <div className="flex items-center gap-2">
+          <Logo size={15} className="thinking-logo shrink-0" />
+          <span className="truncate text-[12.5px] font-medium text-shimmer">{headerText}</span>
+        </div>
+        {terminees.length > 0 && (
+          <div className="mt-1 space-y-0.5 pl-[22px]">
+            {terminees.map((n) => (
+              <motion.div
+                key={n.id}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+                className="flex items-center gap-1.5"
+              >
+                {n.status === 'failed'
+                  ? <X size={10} className="shrink-0 text-red-400" />
+                  : <Check size={10} className="shrink-0 text-emerald-400/70" />}
+                <span className={cn(
+                  'truncate text-[11.5px]',
+                  n.status === 'failed' ? 'text-red-300/80' : 'text-zinc-500',
+                )}>
+                  {n.title}
+                </span>
+                {n.description && (
+                  <span className="truncate text-[10.5px] text-zinc-600">{n.description}</span>
+                )}
+                {n.durationMs !== undefined && (
+                  <span className="shrink-0 font-mono text-[9.5px] tabular-nums text-zinc-700">
+                    {formatDuration(n.durationMs)}
+                  </span>
+                )}
+              </motion.div>
+            ))}
+          </div>
+        )}
       </motion.div>
     );
   }

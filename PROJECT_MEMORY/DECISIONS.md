@@ -31,6 +31,8 @@ d'ouvrir le document entier quand on cherche juste « a-t-on déjà tranché ça
 | **DEC-0107** | **un agent spécialisé laisse une trace, même quand il échoue** | PLAQUISTE, DEEP_REASONING, EMAIL, FRESH_INFO n'écrivaient rien ; l'échec est consigné tel qu'il a été affiché |
 | **DEC-0108** | **le fil entre dans le raisonnement comme contexte, jamais comme question** | borné par deux marqueurs ; `profondeur_pour` ne lit que la question, sinon le mode approfondie deviendrait systématique |
 | **DEC-0109** | **la persistance de la mémoire s'observe** | `CONFIRMEE` seulement si une ligne précède le démarrage ; sinon `PAS_ENCORE_OBSERVEE`, jamais « non » |
+| **DEC-0110** | **on n'annonce que ce qui tourne** | une étape par travail réellement exécuté, durée mesurée ; une étape absente n'émet rien, une étape en cours n'annonce aucune durée |
+| **DEC-0111** | **une trame d'étape ne vaut pas conclusion** | le journal d'idempotence compte les résultats (réponse, erreur, `done`), pas les étapes — régression du jour même, attrapée par un test existant |
 
 ## Décisions de travail (hors ADR, mais qui gouvernent autant)
 

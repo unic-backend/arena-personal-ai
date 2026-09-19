@@ -183,6 +183,29 @@ export function findNode(nodes: ActivityNode[], id: string): ActivityNode | unde
 }
 
 /** deepest running leaf — drives the live "current status" text */
+/** Combien d'etapes deja finies restent affichees pendant qu'un tour tourne.
+ *  Quatre, pas toutes : un tour qui enchaine dix outils pousserait sa question
+ *  hors de l'ecran pendant qu'il attend la reponse. */
+export const ETAPES_VISIBLES_EN_DIRECT = 4;
+
+/** Ce qui est DEJA fini dans ce tour, pour rester sous les yeux pendant que la
+ *  suite tourne.
+ *
+ *  Demande du 19/09/2026 : « je veux voir ce que l'IA fait en temps reel —
+ *  reflexion, execution, raisonnement, memoire ». Une seule ligne qui se
+ *  remplace montre l'etape en cours et efface les precedentes : au moment ou
+ *  il regarde, il ne voit qu'un mot, et le travail deja fait a disparu.
+ *
+ *  Les `thinking` en sont exclus : ils ne nomment aucun travail — c'est
+ *  precisement le mot generique qu'on remplace. Les echecs, eux, restent :
+ *  une etape ratee qu'on cache est un echec qui ne se voit pas. */
+export function etapesTerminees(nodes: ActivityNode[]): ActivityNode[] {
+  return flatten(nodes)
+    .filter((n) => n.kind !== 'thinking'
+      && (n.status === 'completed' || n.status === 'failed'))
+    .slice(-ETAPES_VISIBLES_EN_DIRECT);
+}
+
 export function activeLabel(nodes: ActivityNode[]): string | undefined {
   const all = flatten(nodes);
   const running = all.filter((n) => n.status === 'running');

@@ -2,6 +2,67 @@
 
 ## [Non publié]
 
+### Ajouté — 19/09/2026 — Ce que l'IA fait pendant qu'elle travaille, en direct
+
+« Quand mon IA est en train de travailler il fait seulement *Réflexion* ; je
+veux comme celle de Claude, ce que l'IA fait en temps réel — réflexion,
+exécution, raisonnement, mémoire. »
+
+**L'interface savait déjà les afficher.** `ActivityEvent` est défini depuis
+longtemps, `chatStore.ts` range ces événements dans l'arbre d'activité à ses
+trois points d'appel, et `StatusIcon.tsx` a déjà une icône et une couleur par
+genre. Ce qui manquait était à l'autre bout : `pwa_gateway` n'envoyait que
+`token`, `done` et `error`. **Aucune étape n'était jamais annoncée**, donc
+l'interface n'avait qu'un mot générique à montrer.
+
+Mesuré sur un vrai tour, après ce correctif :
+
+```
+[completed] analysis  Lecture de la demande     CHAT                                    0 ms
+[completed] database  Mémoire                   2 tours relus · 2 souvenirs ·
+                                                recherche par les mots                 80 ms
+[completed] response  Rédaction de la réponse                                            …
+[completed] analysis  Relecture                 rien à signaler                          …
+```
+
+**La règle tenue, et ce n'est pas une préférence d'affichage : on n'annonce que
+ce qui tourne.** Une étape absente n'émet rien — pas une ligne grisée, pas un
+« en attente ». Le chemin d'un agent spécialisé ne passe ni par la rédaction ni
+par la relecture : ces deux lignes n'apparaissent nulle part. Un agent qui
+échoue ferme son étape en `failed`, jamais en `completed`. Les durées viennent
+de `perf_counter()`, et **une étape en cours n'annonce aucune durée** — elle
+serait inventée.
+
+La mémoire dit **par quoi** elle a cherché (`recherche par le sens` /
+`par les mots`). Sur l'hébergeur il n'y a pas d'Ollama, donc c'est toujours par
+les mots — une différence qu'il voyait dans la qualité des réponses et
+qu'aucun écran ne lui disait. `0 souvenir` s'affiche (« aucun souvenir ne se
+rapporte à cette question ») : la recherche a tourné et n'a rien trouvé. C'est
+l'absence de mesure, pas le zéro, qui n'affiche rien.
+
+**Côté écran, une seule ligne se remplaçait.** Pendant un tour, `AIActivity`
+n'affichait que l'étape en cours : au moment où il regarde, il ne voit qu'un
+mot et le travail déjà fait a disparu. Les quatre dernières étapes terminées
+restent maintenant sous les yeux, avec leur durée. Quatre et pas toutes : un
+tour qui enchaîne dix outils pousserait sa question hors de l'écran pendant
+qu'il attend la réponse.
+
+### Corrigé — 19/09/2026 — Une trame d'étape n'est pas un résultat
+
+Régression introduite par le correctif ci-dessus, et attrapée par un test déjà
+présent (`test_une_interruption_apres_le_lancement_ne_relance_jamais_l_action`).
+
+Le journal d'idempotence décidait sur `trames_de_ce_tour` : « quelque chose
+est-il parti vers son écran ? ». Une étape d'activité part vers son écran mais
+**ne conclut rien**. Une annulation survenue après l'ouverture de l'étape
+« agent » mais avant toute réponse figeait donc cette étape comme résultat
+définitif du `run_id` — et le deuxième essai ne disait plus que l'issue était
+inconnue.
+
+Le compteur `resultats_rendus` sépare les deux : seules les trames portant une
+réponse, une erreur ou un `done` comptent. Les étapes restent rejouées à
+l'identique, sans jamais valoir conclusion.
+
 ### Corrigé — 19/09/2026 — « Il oublie ce qu'on s'est dit » : trois causes, trois correctifs
 
 Le propriétaire redit la même phrase depuis des semaines. Elle a **trois**
