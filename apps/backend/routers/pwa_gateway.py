@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
@@ -161,6 +162,138 @@ def erreur(message: str) -> str:
     return trame({"type": "error", "message": message})
 
 
+# --- Ce que l'IA est en train de faire, en direct ------------------------------
+#
+# Demande du proprietaire, 19/09/2026 : « quand mon IA est en train de
+# travailler il fait seulement "Réflexion" ; je veux comme celle de Claude,
+# ce que l'IA fait en temps reel — reflexion, execution, raisonnement,
+# memoire... »
+#
+# **L'interface savait deja les afficher.** `apps/pwa/src/lib/activity/types.ts`
+# definit `ActivityEvent`, `chatStore.ts` le range dans l'arbre d'activite a ses
+# trois points d'appel, `StatusIcon.tsx` a deja une icone et une couleur par
+# genre (memoire = base de donnees fuchsia, analyse = loupe violette, reponse =
+# etincelle). Ce qui manquait etait a l'autre bout : cette passerelle n'envoyait
+# que `token`, `done` et `error`. Aucune etape n'etait jamais annoncee, donc
+# l'interface n'avait qu'un mot generique a montrer.
+#
+# **La regle, et elle n'est pas decorative : on n'annonce que ce qui tourne.**
+# Une etape qui ne s'execute pas n'emet rien — pas une ligne grisee, pas un
+# « en attente ». Une barre de progression inventee est exactement ce que ce
+# depot refuse partout ailleurs : elle raconte un travail au lieu de le
+# montrer. Les durees viennent d'`time.perf_counter()`, jamais d'une estimation.
+
+#: Les libelles des etapes, dans les deux langues de l'interface. Le serveur
+#: envoie le titre deja ecrit — `title` n'est pas une cle de traduction cote
+#: PWA — donc c'est ici que la langue se choisit, sur le `locale` que
+#: `remoteTransport.ts` envoie deja a chaque demande.
+LIBELLES_ETAPES = {
+    "fr": {
+        "lecture": "Lecture de la demande",
+        "memoire": "Mémoire",
+        "agent": "Agent {intention}",
+        "reponse": "Rédaction de la réponse",
+        "relecture": "Relecture",
+        "tours": "{n} tour(s) de conversation relus",
+        "souvenirs": "{n} souvenir(s)",
+        "aucun_souvenir": "aucun souvenir ne se rapporte à cette question",
+        "par_le_sens": "recherche par le sens",
+        "par_les_mots": "recherche par les mots",
+        "rien_a_signaler": "rien à signaler",
+    },
+    "en": {
+        "lecture": "Reading the request",
+        "memoire": "Memory",
+        "agent": "{intention} agent",
+        "reponse": "Writing the answer",
+        "relecture": "Self-review",
+        "tours": "{n} earlier turn(s) re-read",
+        "souvenirs": "{n} memor(y/ies)",
+        "aucun_souvenir": "no memory relates to this question",
+        "par_le_sens": "searched by meaning",
+        "par_les_mots": "searched by words",
+        "rien_a_signaler": "nothing to flag",
+    },
+}
+
+
+def libelles(locale: Optional[str]) -> Dict[str, str]:
+    """Les libelles de la langue demandee. Le francais est le defaut."""
+    return LIBELLES_ETAPES["en" if (locale or "").lower().startswith("en") else "fr"]
+
+
+class Etape:
+    """Une etape **reellement executee**, annoncee a l'interface.
+
+    Ouverte quand le travail commence, fermee quand il finit, avec la duree
+    mesuree entre les deux. Jamais ouverte « au cas ou » : un objet construit
+    et jamais ouvert n'emet rien du tout.
+    """
+
+    def __init__(self, genre: str, titre: str) -> None:
+        self.identifiant = uuid4().hex[:12]
+        self.genre = genre
+        self.titre = titre
+        self._depart = time.perf_counter()
+        self._debut_ms = int(time.time() * 1000)
+
+    def _trame(self, statut: str, phase: str, **extra: Any) -> str:
+        charge: Dict[str, Any] = {
+            "id": self.identifiant,
+            "kind": self.genre,
+            "status": statut,
+            "phase": phase,
+            "title": self.titre,
+            "startedAt": self._debut_ms,
+        }
+        charge.update({cle: valeur for cle, valeur in extra.items() if valeur is not None})
+        return trame({"type": "activity", "event": charge})
+
+    def ouvrir(self, description: Optional[str] = None) -> str:
+        self._depart = time.perf_counter()
+        self._debut_ms = int(time.time() * 1000)
+        return self._trame("running", "started", description=description)
+
+    def fermer(self, description: Optional[str] = None, **extra: Any) -> str:
+        return self._trame("completed", "completed", description=description,
+                           completedAt=int(time.time() * 1000),
+                           durationMs=self._millisecondes(), **extra)
+
+    def rater(self, description: str) -> str:
+        return self._trame("failed", "failed", description=description,
+                           completedAt=int(time.time() * 1000),
+                           durationMs=self._millisecondes())
+
+    def _millisecondes(self) -> int:
+        """La duree reelle, mesuree. Jamais une estimation, jamais zero par
+        defaut : `perf_counter` tourne depuis `ouvrir()`."""
+        return max(0, round((time.perf_counter() - self._depart) * 1000))
+
+
+def description_memoire(rapport: Dict[str, Any], mots: Dict[str, str]) -> str:
+    """Ce que la memoire a reellement rendu, en une ligne.
+
+    Dit **par quoi** un souvenir a ete retrouve : sur l'hebergeur il n'y a pas
+    d'Ollama, donc la recherche compare des mots et non du sens
+    (`core/memory/semantique.py`). C'est une difference qu'il voit dans la
+    qualite des reponses et qu'aucun ecran ne lui disait.
+    """
+    morceaux: List[str] = []
+    tours = rapport.get("tours_relus")
+    if tours:
+        morceaux.append(mots["tours"].format(n=tours))
+    souvenirs = rapport.get("souvenirs")
+    if souvenirs:
+        mode = rapport.get("mode_memoire")
+        comment = (mots["par_le_sens"] if mode == "SEMANTIQUE"
+                   else mots["par_les_mots"] if mode else None)
+        ligne = mots["souvenirs"].format(n=souvenirs)
+        morceaux.append(f"{ligne} · {comment}" if comment else ligne)
+    elif souvenirs == 0:
+        morceaux.append(mots["aucun_souvenir"])
+    return " · ".join(morceaux)
+
+
 class EtatExecution(str, Enum):
     """Ce que le journal sait d'un `run_id` — jamais un troisieme etat
     devine : soit l'execution tourne encore, soit elle a fini (avec les
@@ -278,7 +411,11 @@ def budget_memoire(intention: Optional[str] = None) -> int:
     return budget_de(voie_pour(intention)).memoire_caracteres
 
 
-async def souvenirs_pertinents(question: str, intention: Optional[str] = None) -> str:
+async def souvenirs_pertinents(
+    question: str,
+    intention: Optional[str] = None,
+    rapport: Optional[Dict[str, Any]] = None,
+) -> str:
     """Ce que la memoire d'ARENA sait et qui se rapporte a la question.
 
     Le classement consulte le **sens** en plus des mots : « combien de panneaux »
@@ -290,6 +427,10 @@ async def souvenirs_pertinents(question: str, intention: Optional[str] = None) -
     souvenir vaut mieux que ne pas repondre.
     """
     budget = budget_memoire(intention)
+    #: Ce qu'on a REELLEMENT lu, pour que l'interface puisse le montrer au lieu
+    #: d'un mot generique. Rempli seulement si l'appelant en veut : sans
+    #: `rapport`, cette fonction se comporte exactement comme avant.
+    mesure: Dict[str, Any] = {}
     try:
         recuperation = await recuperer_semantique(
             memoire_personnelle, question, index=index_semantique,
@@ -297,6 +438,7 @@ async def souvenirs_pertinents(question: str, intention: Optional[str] = None) -
         )
         logger.debug("Memoire du chat : %s", recuperation.pourquoi())
         resultats = recuperation.resultats
+        mesure["mode_memoire"] = recuperation.mode
     except Exception as souci:  # noqa: BLE001 - la memoire ne bloque jamais la reponse
         # Le sens est un signal de plus, jamais une condition : s'il tombe, on
         # revient exactement a ce que la passerelle faisait avant lui.
@@ -307,6 +449,11 @@ async def souvenirs_pertinents(question: str, intention: Optional[str] = None) -
         except Exception as autre:  # noqa: BLE001
             logger.error("Memoire illisible, la reponse continue sans elle : %s", autre)
             return ""
+    if rapport is not None:
+        # `0` est ici une mesure, pas un defaut : la recherche a tourne et n'a
+        # rien trouve. L'absence de cle, elle, dirait que rien n'a ete cherche.
+        rapport.update(mesure)
+        rapport["souvenirs"] = len(resultats)
     if not resultats:
         return ""
 
@@ -391,12 +538,17 @@ async def prompt_systeme(
     memoires: Any = None,
     identifiants_pieces: Optional[List[str]] = None,
     intention: Optional[str] = None,
+    rapport: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Le prompt systeme d'ARENA, complete par les preferences du proprietaire.
 
     L'ordre n'est pas indifferent : les regles d'ARENA d'abord, les preferences
     ensuite, annoncees comme des preferences. Un reglage de ton ne doit pas
     pouvoir effacer ce que la plateforme s'interdit.
+
+    `rapport` : un dictionnaire que la recuperation de memoire remplit avec ce
+    qu'elle a REELLEMENT lu, pour que l'interface puisse le montrer. Absent par
+    defaut — le comportement est alors inchange, mesure par mesure.
     """
     # Regles d'ARENA + methode du metier, composees en UN seul endroit
     # (`apps/backend/prompts.prompt_avec_methode`) pour que les trois chemins
@@ -411,7 +563,8 @@ async def prompt_systeme(
     if notes:
         blocs.append(notes)
 
-    souvenirs = await souvenirs_pertinents(question, intention) if question else ""
+    souvenirs = (await souvenirs_pertinents(question, intention, rapport)
+                 if question else "")
     if souvenirs:
         blocs.append(souvenirs)
 
@@ -493,7 +646,11 @@ def _fil_complet(demande: DemandeAgent) -> List[Dict[str, str]]:
     return [*_tours_relus(demande), *demande.history]
 
 
-def _prompt_conversation(demande: DemandeAgent, proprietaire: str) -> str:
+def _prompt_conversation(
+    demande: DemandeAgent,
+    proprietaire: str,
+    rapport: Optional[Dict[str, Any]] = None,
+) -> str:
     """Reconstruit le fil : ce que le navigateur a renvoye, et ce qu'il a coupe.
 
     L'historique du navigateur fait foi pour les tours recents — c'est lui qui
@@ -503,10 +660,15 @@ def _prompt_conversation(demande: DemandeAgent, proprietaire: str) -> str:
 
     Les tours plus anciens sont donc relus dans `short_term_memory`, sous la
     meme session, annonces comme un rappel et bornes par un budget dur.
+
+    `rapport` : rempli avec le nombre de tours reellement relus, pour que
+    l'interface puisse le montrer. Absent par defaut.
     """
     lignes: List[str] = []
 
     anciens = _tours_relus(demande)
+    if rapport is not None:
+        rapport["tours_relus"] = len(anciens)
     if anciens:
         lignes.append(TITRE_TOURS_ANTERIEURS)
         lignes.append(rendre_le_fil(anciens, proprietaire))
@@ -692,6 +854,7 @@ async def flux_agent(demande: DemandeAgent):
         # avait deja ete dit au moment de la coupure.
         tour_du_proprietaire_ecrit = False
         complet = ""
+        mots = libelles(demande.locale)
 
         def consigner(question: str, reponse: str) -> None:
             """Ecrit ce tour dans le fil du serveur et dans la memoire longue.
@@ -744,7 +907,14 @@ async def flux_agent(demande: DemandeAgent):
                                         content=confirme["texte"])
                 return
 
+            # Premiere etape visible : le classement de la demande a lieu pour
+            # de vrai, et il decide tout le reste du tour. L'annoncer coute une
+            # trame et remplace le mot generique que l'interface affichait faute
+            # de mieux.
+            lecture = Etape("analysis", mots["lecture"])
+            yield lecture.ouvrir()
             intention = await orchestrator.analyze_intent(demande.text, espace=demande.espace)
+            yield lecture.fermer(intention)
             voie = voie_pour(intention)
             # Ce que ce tour aura reellement coute. La cible vient de la voie ;
             # la duree, elle, est chronometree ici et nulle part ailleurs.
@@ -784,9 +954,25 @@ async def flux_agent(demande: DemandeAgent):
                 #: dont l'issue est inconnue ». Ce drapeau separe les deux cas
                 #: que `trames vides` confondait.
                 agent_lance = False
+                #: Combien de trames portant un RESULTAT (une reponse, une
+                #: erreur, un `done`) sont parties vers son ecran.
+                #:
+                #: Distinct de `trames_de_ce_tour`, qui compte aussi les etapes
+                #: d'activite. Une etape annonce un travail en cours ; elle ne
+                #: dit ni ce qui a ete fait ni si ca a abouti. Les confondre
+                #: cassait la garantie d'idempotence : une annulation survenue
+                #: apres l'etape « agent ouvert » mais avant toute reponse
+                #: figeait cette etape comme resultat definitif du `run_id`, et
+                #: le deuxieme essai ne disait plus que l'issue etait inconnue.
+                #: Mesure du 19/09/2026, par
+                #: `test_une_interruption_apres_le_lancement_ne_relance_jamais_l_action`.
+                resultats_rendus = 0
 
-                def _rejouable(trame_sse: str) -> str:
+                def _rejouable(trame_sse: str, *, resultat: bool = True) -> str:
+                    nonlocal resultats_rendus
                     trames_de_ce_tour.append(trame_sse)
+                    if resultat:
+                        resultats_rendus += 1
                     return trame_sse
 
                 try:
@@ -838,6 +1024,8 @@ async def flux_agent(demande: DemandeAgent):
 
                     # A partir d'ici, l'action peut avoir un effet reel.
                     agent_lance = True
+                    etape_agent = Etape("tool", mots["agent"].format(intention=intention))
+                    yield _rejouable(etape_agent.ouvrir(), resultat=False)
                     mesure = await chronometrer(f"agent {intention}", voie, _repondre)
                     noter_mesure(mesure)
                     if mesure.etat != ETAT_MESURE:
@@ -854,6 +1042,8 @@ async def flux_agent(demande: DemandeAgent):
                         # ce qui reste diagnosticable au lieu de disparaitre.
                         echec = (f"L'agent {intention} n'a pas pu repondre : "
                                  f"{mesure.detail or 'raison inconnue'}.")
+                        yield _rejouable(etape_agent.rater(
+                            mesure.detail or "raison inconnue"), resultat=False)
                         yield _rejouable(erreur(echec))
                         # Ce qui est consigne est ce qui s'est reellement
                         # passe : sa question, et l'echec qu'il a vu. Sans
@@ -870,9 +1060,11 @@ async def flux_agent(demande: DemandeAgent):
                         # LibreChat depuis le 26/08/2026 ; cette surface-ci, celle
                         # du proprietaire, ne l'avait pas.
                         vide = garantir_un_texte(resultat.get("response"), intention)
+                        yield _rejouable(etape_agent.rater(vide), resultat=False)
                         yield _rejouable(erreur(vide))
                         consigner(demande.text, vide)
                         return
+                    yield _rejouable(etape_agent.fermer(), resultat=False)
                     yield _rejouable(jeton(resultat["response"]))
                     meta_final: Dict[str, Any] = {
                         **moteur_utilise(),
@@ -911,7 +1103,10 @@ async def flux_agent(demande: DemandeAgent):
                     # retenter pour de vrai plutot que de rester bloque a
                     # jamais par une panne du serveur, pas de l'agent.
                     if run_id:
-                        if trames_de_ce_tour:
+                        # `resultats_rendus`, pas `trames_de_ce_tour` : une
+                        # etape d'activite est partie vers son ecran sans rien
+                        # conclure. Voir sa declaration plus haut.
+                        if resultats_rendus:
                             _journal_executions.terminer(run_id, trames_de_ce_tour)
                         elif agent_lance:
                             # Lance, mais rien n'est parti vers son ecran :
@@ -934,15 +1129,28 @@ async def flux_agent(demande: DemandeAgent):
 
             memory.add_chat_message(session_id=session, role="user", content=demande.text)
             tour_du_proprietaire_ecrit = True
-            async for morceau in fast_provider.generate_stream(
-                _prompt_conversation(demande, proprietaire),
-                await prompt_systeme(
-                    demande.persona, demande.text, demande.memories,
-                    demande.attachments, intention,
-                ),
-            ):
+
+            # L'invite se construit AVANT que le flux ne demarre : le fil relu
+            # dans le journal du serveur, puis les souvenirs. C'est du travail
+            # reel, mesurable, et il n'apparaissait nulle part. Les deux appels
+            # sont faits ici plutot qu'en ligne pour que l'etape puisse etre
+            # ouverte avant et fermee apres — sinon sa duree serait inventee.
+            etape_memoire = Etape("database", mots["memoire"])
+            yield etape_memoire.ouvrir()
+            rapport: Dict[str, Any] = {}
+            fil = _prompt_conversation(demande, proprietaire, rapport)
+            systeme = await prompt_systeme(
+                demande.persona, demande.text, demande.memories,
+                demande.attachments, intention, rapport,
+            )
+            yield etape_memoire.fermer(description_memoire(rapport, mots) or None)
+
+            etape_reponse = Etape("response", mots["reponse"])
+            yield etape_reponse.ouvrir()
+            async for morceau in fast_provider.generate_stream(fil, systeme):
                 complet += morceau
                 yield jeton(morceau)
+            yield etape_reponse.fermer()
 
             # Il se relit avant de rendre — sans faire attendre.
             #
@@ -953,7 +1161,15 @@ async def flux_agent(demande: DemandeAgent):
             # `controle_prix` existait depuis le 27/08 et ne tournait QUE dans
             # l'agent devis. La conversation generale cite ses tarifs tout
             # aussi bien et n'etait verifiee par rien.
+            etape_relecture = Etape("analysis", mots["relecture"])
+            yield etape_relecture.ouvrir()
             note = relire(complet.strip(), metier_pour_relecture()).note
+            # Ce que la relecture a trouve, ou qu'elle n'a rien trouve. Les
+            # deux sont des mesures : une relecture muette qui n'annonce rien
+            # se confondrait avec une relecture qui n'a pas tourne.
+            yield etape_relecture.fermer(
+                note.strip().splitlines()[0][:120] if note.strip()
+                else mots["rien_a_signaler"])
             if note:
                 yield jeton(note)
                 complet += note

@@ -9848,3 +9848,51 @@ redémarrage survécu le prouve.
 répond `PAS_ENCORE_OBSERVEE` alors que le volume est peut-être parfaitement
 monté. C'est une absence de preuve présentée comme telle, pas une erreur — mais
 elle peut inquiéter à tort si on la lit comme un verdict.
+
+
+---
+
+## DEC-0110 — On n'annonce que ce qui tourne
+
+**2026-09-19.** Le proprietaire : « quand mon IA est en train de travailler il
+fait seulement *Réflexion* ; je veux comme celle de Claude, ce que l'IA fait en
+temps reel ».
+
+**Decision** : `pwa_gateway` emet une trame d'activite par etape **reellement
+executee**, ouverte quand le travail commence et fermee quand il finit, avec la
+duree mesuree entre les deux. Une etape qui ne tourne pas n'emet rien : ni
+ligne grisee, ni « en attente ». Une etape en cours n'annonce aucune duree.
+
+**Pourquoi** : l'interface savait deja afficher ces etapes ; le serveur n'en
+envoyait aucune. La tentation naturelle etait d'afficher la liste complete des
+etapes possibles et de les cocher — c'est ce que font la plupart des interfaces.
+Ce serait raconter un travail au lieu de le montrer, et ce depot refuse ca
+partout ailleurs.
+
+**Ce que ca coute si c'est faux** : la liste est irreguliere d'un tour a
+l'autre — un tour de chat montre quatre lignes, un tour d'agent en montre deux.
+Un utilisateur qui attend une barre de progression stable trouvera ca
+desordonne. C'est le prix d'un affichage qui ne montre que ce qui a eu lieu.
+
+---
+
+## DEC-0111 — Une trame d'etape ne vaut pas conclusion
+
+**2026-09-19.**
+
+**Decision** : le journal d'idempotence compte les trames portant un
+**resultat** (reponse, erreur, `done`), pas toutes les trames envoyees. Les
+etapes d'activite sont rejouees a l'identique mais ne comptent pas.
+
+**Pourquoi** : c'est une regression introduite le jour meme par DEC-0110, et
+attrapee par un test deja present. Le journal decidait sur « quelque chose
+est-il parti vers son ecran ? ». Une etape part vers son ecran et ne conclut
+rien : une annulation apres l'ouverture de l'etape « agent » figeait cette
+etape comme resultat definitif du `run_id`, et le deuxieme essai ne disait plus
+que l'issue etait inconnue — exactement ce que le journal existe pour empecher.
+
+**Ce que ca coute si c'est faux** : un tour dont toutes les trames seraient des
+etapes serait considere comme n'ayant rien rendu, et son `run_id` figerait le
+message « issue inconnue » au lieu de ses etapes. Ce cas n'existe pas
+aujourd'hui — tout chemin finit par un `done` ou une erreur — mais un futur
+chemin qui ne rendrait que des etapes tomberait dedans.
