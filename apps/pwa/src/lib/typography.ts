@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 
 export type FontFamily = 'sans' | 'serif' | 'mono';
-export type TextSize = 'compact' | 'comfortable' | 'large';
+export type TextSize = 'compact' | 'comfortable' | 'large' | 'xlarge';
 export type TextWeight = 'regular' | 'medium' | 'bold';
 
 interface TypographyState {
@@ -18,17 +18,48 @@ interface TypographyState {
 }
 
 const KEY = 'usman.typography.v1';
+
+/* Defauts releves le 19/09/2026 : « je veux comme celle de Claude, un peu
+   grand, texte gras aussi ». Le corps passe de 400 a 500 ; la taille suit
+   l'echelle relevee dans `index.css` (`comfortable` vaut desormais 17 px, pas
+   13). */
 const DEFAULTS = {
   family: 'sans' as FontFamily,
   size: 'comfortable' as TextSize,
-  weight: 'regular' as TextWeight,
+  weight: 'medium' as TextWeight,
   relaxed: true,
 };
+
+/* Ce que valaient les defauts AVANT ce changement.
+
+   Sa preference est deja enregistree sur son telephone, et elle vaut
+   exactement ces valeurs-la — parce qu'il n'a jamais ouvert le panneau, pas
+   parce qu'il a choisi « regular ». Relever les defauts sans ceci n'aurait
+   donc rien change pour lui : le seul ecran qui compte aurait garde l'ancien
+   reglage.
+
+   On ne remplace QUE cette combinaison exacte. Un reglage choisi — meme un
+   seul cran deplace — n'est pas touche : le sien est une preference, pas un
+   defaut a rattraper. */
+const ANCIENS_DEFAUTS = {
+  family: 'sans',
+  size: 'comfortable',
+  weight: 'regular',
+  relaxed: true,
+};
+
+function jamaisChoisi(value: typeof DEFAULTS): boolean {
+  return (Object.keys(ANCIENS_DEFAUTS) as Array<keyof typeof ANCIENS_DEFAUTS>)
+    .every((cle) => value[cle] === ANCIENS_DEFAUTS[cle]);
+}
 
 function load(): typeof DEFAULTS {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...DEFAULTS, ...JSON.parse(raw) };
+    if (raw) {
+      const enregistre = { ...DEFAULTS, ...JSON.parse(raw) } as typeof DEFAULTS;
+      return jamaisChoisi(enregistre) ? DEFAULTS : enregistre;
+    }
   } catch { /* ignore invalid preferences */ }
   return DEFAULTS;
 }

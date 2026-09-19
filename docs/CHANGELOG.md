@@ -63,6 +63,46 @@ Le compteur `resultats_rendus` sépare les deux : seules les trames portant une
 réponse, une erreur ou un `done` comptent. Les étapes restent rejouées à
 l'identique, sans jamais valoir conclusion.
 
+### Corrigé — 19/09/2026 — Le texte des réponses était plus petit que ce qu'aucun réglage ne pouvait atteindre
+
+**Mesuré sur une capture d'écran de son téléphone**, Claude et ARENA côte à côte :
+le corps de texte d'ARENA était à **13 px**, et le plus **grand** réglage
+disponible valait **15 px** — sous les ~16-17 px que Claude affiche sur le même
+écran.
+
+Ce n'était donc pas une préférence mal réglée : **aucun réglage ne pouvait lui
+donner ce qu'il demandait.** L'échelle entière était trop basse.
+
+| Cran | Avant | Après |
+|---|---|---|
+| S (`compact`) | 12 px | 15 px |
+| M (`comfortable`, défaut) | 13 px | **17 px** |
+| L (`large`) | 15 px | 19 px |
+| XL (`xlarge`) | — | **21 px** (nouveau) |
+
+La graisse par défaut passe de `regular` (400) à `medium` (500) — l'autre moitié
+de sa demande, « texte gras aussi ».
+
+**Sa préférence est déjà enregistrée sur son téléphone**, et elle vaut
+exactement les anciens défauts — parce qu'il n'a jamais ouvert le panneau de
+typographie, pas parce qu'il a choisi `regular`. Relever les défauts sans
+rattrapage n'aurait donc **rien changé sur le seul écran qui compte**. La
+lecture remplace cette combinaison exacte, et **uniquement** elle : un réglage
+réellement choisi — même d'un seul cran — n'est pas touché.
+
+**`h2` et `h4` n'avaient aucune règle CSS.** Depuis que tous les niveaux de
+titre sont rendus (15/09/2026), un `#` ou un `####` sortait à la taille et à la
+graisse du corps de texte : un titre qui ne se voyait pas. Les trois niveaux
+sont désormais stylés, et leurs tailles sont en `em` — un titre grossit avec le
+texte au lieu de rester figé. Les blocs de code aussi (`0.8rem` → `0.85em`).
+
+*Ce que le test garde, et pourquoi il lit du CSS :* `jsdom` n'applique pas la
+feuille de style, donc aucun test exécutable de la PWA ne peut mesurer une
+taille rendue. Sans `tests/test_echelle_de_lecture.py`, un retour silencieux à
+13 px ne ferait tomber aucun test. Le premier sabotage écrit pour ce fichier
+**ne mordait pas** — la regex attrapait `.user-rich .md h2` au lieu de la règle
+principale ; elle est ancrée en début de ligne depuis.
+
 ### Corrigé — 19/09/2026 — « Il oublie ce qu'on s'est dit » : trois causes, trois correctifs
 
 Le propriétaire redit la même phrase depuis des semaines. Elle a **trois**

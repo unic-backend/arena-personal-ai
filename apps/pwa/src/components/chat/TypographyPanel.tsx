@@ -88,6 +88,7 @@ export function TypographyPanel() {
                     <Choice<TextSize> value="compact" active={size === 'compact'} label="S" onPick={setSize} />
                     <Choice<TextSize> value="comfortable" active={size === 'comfortable'} label="M" onPick={setSize} />
                     <Choice<TextSize> value="large" active={size === 'large'} label="L" onPick={setSize} />
+                    <Choice<TextSize> value="xlarge" active={size === 'xlarge'} label="XL" onPick={setSize} />
                   </div>
                 </div>
                 <div>
