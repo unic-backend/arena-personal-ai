@@ -1,11 +1,11 @@
 """Regressions: ARENA doit comprendre les renvois au fil et relire les demandes complexes."""
-from core.memory.conversation import tours_anterieurs
 from apps.backend.services.orchestrator import (
     ToolTrace,
     _besoin_du_fil,
     _besoin_relecture,
     _budget_historique,
 )
+from core.memory.conversation import tours_anterieurs
 
 
 class Journal:
