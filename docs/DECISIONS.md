@@ -9896,3 +9896,66 @@ etapes serait considere comme n'ayant rien rendu, et son `run_id` figerait le
 message « issue inconnue » au lieu de ses etapes. Ce cas n'existe pas
 aujourd'hui — tout chemin finit par un `done` ou une erreur — mais un futur
 chemin qui ne rendrait que des etapes tomberait dedans.
+
+---
+
+## DEC-0112 — Claude Sonnet 5 passe devant Groq, et parle HTTP sans le SDK
+
+**2026-09-19.**
+
+**Decision** : ARENA gagne un quatrieme fournisseur, `anthropic`
+(`core/models/anthropic_provider.py`, modele par defaut `claude-sonnet-5`),
+place **en tete** de `ORDRE_CLOUD` — donc devant Groq. Il n'utilise pas le SDK
+`anthropic` : il appelle `https://api.anthropic.com/v1` avec `httpx`, deja une
+dependance directe. Sans `ANTHROPIC_API_KEY` il est ABSENT et n'envoie rien.
+
+**Pourquoi** : le proprietaire a demande pourquoi son IA ne raisonne pas comme
+Claude. La reponse mesuree est qu'elle ne parle pas a Claude — Groq ne sert
+aucun modele Anthropic, et aucune quantite de prompt ne remplace le modele.
+L'ordre du repli encodait jusqu'ici une seule preference, le temps jusqu'au
+premier mot ; il encode maintenant la qualite de la reponse d'abord, la vitesse
+ensuite.
+
+**Pourquoi sans le SDK, alors que c'est la voie normale.** `browser-use==0.13.10`
+epingle `anthropic==0.76.0` **exactement** ; demander une autre version rend
+`pip install -r requirements.txt` insoluble (`ResolutionImpossible`, mesure du
+19/09/2026). Et 0.76.0 ne connait ni la reflexion adaptative, ni
+`output_config`, ni `stop_details` — verifie en ouvrant la roue, pas suppose.
+Le choix reel etait donc : perdre la navigation web pour gagner un fournisseur,
+ou ecrire les quatre appels HTTP qui manquent. Sacrifier une capacite qui
+marche pour en poser une nouvelle n'est pas un arbitrage acceptable : chaque
+integration doit etre additive.
+
+Trois autres choses ont ete ecartees en chemin :
+
+- **Heriter de `FournisseurOpenAICompatible`.** Chez Anthropic `system` est un
+  parametre et non un message, `max_tokens` est obligatoire, la reponse est une
+  liste de blocs typés, et l'authentification est `x-api-key`. Forcer ce
+  protocole dans la classe existante aurait produit une troisieme configuration
+  qui ment sur ce qu'elle fait.
+- **`temperature`, `top_p`, `top_k`, `budget_tokens`.** Sonnet 5 les refuse par
+  un 400. Les omettre n'est pas une simplification : c'est la seule forme
+  valide, et un test le fige pour que personne ne les « retablisse ».
+- **Remplir `TARIFS` avec le tarif public d'Anthropic.** Ca rendrait
+  `AI_DAILY_BUDGET` operant, mais `etat_controle_par_requete()` est global :
+  une seule entree ferait passer TOUS les fournisseurs de `NON_VERIFIABLE` a
+  `MESURE_APRES_COUP`, y compris Groq dont aucun tarif n'est saisi. Un controle
+  annonce comme mesure alors qu'il ne l'est pas est exactement ce que ce module
+  existe pour eviter. Le chiffrage par fournisseur est un travail a part.
+
+**Ce que ca coute si c'est faux** : deux choses, et elles sont distinctes.
+
+1. **Le protocole est a notre charge.** Un SDK absorbe une evolution de l'API ;
+   ici, un champ qui change se verra en production et pas a l'installation. La
+   surface est petite — deux points d'entree, un flux SSE — et entierement
+   figee par des tests, mais elle ne se met pas a jour toute seule. Le jour ou
+   `browser-use` relache son epinglage, revenir au SDK est un travail d'une
+   heure, et ce fichier devrait alors disparaitre.
+2. **Le cout.** Une fois la cle posee, chaque phrase autorisee a sortir de la
+   machine part chez Anthropic et coute environ trente fois un appel Groq. Le
+   seul plafond qui tient reellement aujourd'hui est
+   `AI_MAX_CLOUD_REQUESTS_PER_DAY` (200) ; `AI_DAILY_BUDGET` ne freinera rien
+   tant qu'aucun tarif n'est saisi, et `/health` l'affiche `NON_VERIFIABLE`
+   plutot que de pretendre le contraire. Si ce compromis se revele mauvais,
+   `AI_DEFAULT_PROVIDER=GROQ` rend la main a Groq sans toucher au code, et
+   retirer la cle ramene exactement le comportement d'avant.

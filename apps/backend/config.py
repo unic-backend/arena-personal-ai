@@ -222,7 +222,7 @@ def _mode_ia() -> str:
 MODE_IA = _mode_ia()
 
 # Le fournisseur demande par le proprietaire. AUTO laisse l'aiguilleur decider.
-FOURNISSEURS = ("AUTO", "LOCAL", "GROQ", "DEEPINFRA")
+FOURNISSEURS = ("AUTO", "LOCAL", "ANTHROPIC", "GROQ", "DEEPINFRA")
 FOURNISSEUR_DEMANDE = os.getenv("AI_DEFAULT_PROVIDER", "AUTO").strip().upper()
 if FOURNISSEUR_DEMANDE not in FOURNISSEURS:
     logging.getLogger("usman.config").warning(
@@ -232,6 +232,20 @@ if FOURNISSEUR_DEMANDE not in FOURNISSEURS:
 # `OLLAMA_MODEL` est accepte comme nom principal ; les noms deja en place
 # continuent de fonctionner. Un .env rempli ne doit pas cesser de marcher.
 MODELE_LOCAL = os.getenv("OLLAMA_MODEL") or MODELE_PROFOND
+
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+# Claude Sonnet 5 : le raisonnement, quand il vaut son prix. Le nom du modele
+# reste une variable — le catalogue d'Anthropic bouge, et une valeur en dur
+# obligerait a redeployer pour en changer.
+ANTHROPIC_MODELE = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
+ANTHROPIC_URL = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1")
+# `max_tokens` est OBLIGATOIRE chez Anthropic : il n'y a pas de defaut cote
+# service. 16000 laisse passer une longue reponse sans ouvrir la porte a une
+# facture surprise ; c'est un plafond, pas une cible.
+ANTHROPIC_MAX_TOKENS = int(os.getenv("ANTHROPIC_MAX_TOKENS", "16000"))
+# L'effort de reflexion : low, medium, high, xhigh, max. Plus il monte, plus la
+# reponse est chere et lente. `high` est le compromis par defaut.
+ANTHROPIC_EFFORT = os.getenv("ANTHROPIC_EFFORT", "high").strip().lower()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 # Voir la note de `.env.example` : le modele par defaut suit le catalogue

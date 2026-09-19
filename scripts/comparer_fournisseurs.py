@@ -1,4 +1,6 @@
-"""Comparer Ollama, Groq et DeepInfra sur les memes phrases. Mesure, pas promesse.
+"""Comparer Ollama, Anthropic, Groq et DeepInfra sur les memes phrases.
+
+Mesure, pas promesse.
 
     python scripts/comparer_fournisseurs.py
 
@@ -66,12 +68,16 @@ async def mesurer_un(fournisseur: Any, prompt: str) -> Dict[str, Any]:
 async def comparer(repetitions: int = 1) -> Dict[str, Any]:
     """Fait tourner les trois scenes sur chaque fournisseur configure."""
     from apps.backend.config import MODELE_PROFOND, OLLAMA_URL
+    from core.models.anthropic_provider import AnthropicProvider
     from core.models.deepinfra_provider import DeepInfraProvider
     from core.models.groq_provider import GroqProvider
     from core.models.ollama_provider import OllamaProvider
 
     fournisseurs = {
         "ollama": OllamaProvider(base_url=OLLAMA_URL, model_name=MODELE_PROFOND),
+        # Sans ANTHROPIC_API_KEY il se rapporte ABSENT, comme les autres :
+        # une colonne vide est une information, pas un trou dans la mesure.
+        "anthropic": AnthropicProvider(),
         "groq": GroqProvider(),
         "deepinfra": DeepInfraProvider(),
     }

@@ -710,6 +710,7 @@ def verifier_inference() -> Verification:
     try:
         sys.path.insert(0, str(RACINE))
         from apps.backend.config import (
+            ANTHROPIC_API_KEY,
             DEEPINFRA_API_KEY,
             FOURNISSEUR_DEMANDE,
             GROQ_API_KEY,
@@ -720,7 +721,10 @@ def verifier_inference() -> Verification:
                             "indeterminable : les dependances ne s'importent pas",
                             "pip install -r requirements.txt")
 
-    distants = [nom for nom, cle in (("Groq", GROQ_API_KEY),
+    # L'ordre est celui de `ORDRE_CLOUD` : ce diagnostic doit nommer les
+    # services dans l'ordre ou ARENA les essaie, sinon il decrit autre chose.
+    distants = [nom for nom, cle in (("Anthropic", ANTHROPIC_API_KEY),
+                                     ("Groq", GROQ_API_KEY),
                                      ("DeepInfra", DEEPINFRA_API_KEY)) if cle]
     if not distants:
         return Verification(

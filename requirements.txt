@@ -111,6 +111,13 @@ cryptography==41.0.7      # core/memory/chiffrement.py — chiffrement au repos 
                           # pour la meme raison que mcp ci-dessus.
 
 # Non liste ici, et volontairement :
+# - anthropic (le SDK) : `core/models/anthropic_provider.py` parle HTTP directement,
+#   avec le httpx ci-dessus. Mesure du 19/09/2026 : browser-use==0.13.10 epingle
+#   anthropic==0.76.0 EXACTEMENT, et `pip install -r requirements.txt` refuse de se
+#   resoudre des qu'on demande autre chose. Or 0.76.0 ne connait ni la reflexion
+#   adaptative, ni `output_config`, ni `stop_details` (verifie dans la roue) : elle
+#   ne peut pas servir claude-sonnet-5. Le choix etait entre perdre la navigation web
+#   et ecrire quatre appels HTTP. Voir DEC-0112.
 # - ffmpeg : binaire systeme, pas un paquet pip (voir Dockerfile)
 # - libreoffice (soffice) : binaire systeme, pas un paquet pip — DOCX/PPTX/XLSX <-> PDF
 #   (DEC-0074, core/production/conversion/moteurs.py). Absent, `sonder()` le rapporte.
