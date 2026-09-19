@@ -194,17 +194,43 @@ class TestCoutDuDechiffrement:
         with pytest.raises(EchecDechiffrement):
             autre.dechiffrer(enveloppe)
 
-    def test_le_cache_de_cles_est_borne(self):
+    def test_le_cache_de_cles_est_borne(self, monkeypatch):
+        """Ce qui est mesure ici est l'EVICTION, pas le cout d'une derivation.
+
+        **73 secondes avant le 19/09/2026** — le test le plus lent de toute la
+        suite, a lui seul. Il derivait 276 cles pour de vrai, et une derivation
+        c'est 600 000 iterations PBKDF2 par construction : environ 265 ms
+        chacune. Le prix etait donc celui du KDF, pas celui de la garantie.
+
+        Baisser la borne le temps du test exerce exactement la meme boucle
+        d'eviction — `_deriver_cle` lit `CLES_GARDEES` au moment de l'appel,
+        pas a l'import. C'est deja la facon de faire du fichier : le test du
+        sel juste en dessous abaisse `MESSAGES_PAR_SEL` de 65 536 a 3 pour la
+        meme raison.
+
+        Le test en dessous garde la vraie valeur : l'abaisser ici ne peut pas
+        cacher un changement de la borne reelle."""
         import os
 
-        from core.memory.chiffrement import CLES_GARDEES
+        import core.memory.chiffrement as module
+
+        monkeypatch.setattr(module, "CLES_GARDEES", 8)
 
         coffre = Coffre("phrase-de-test")
-        for _ in range(CLES_GARDEES + 20):
+        for _ in range(module.CLES_GARDEES + 20):
             coffre._deriver_cle(os.urandom(16))
 
-        assert len(coffre._cles) == CLES_GARDEES, (
+        assert len(coffre._cles) == module.CLES_GARDEES, (
             "un cache non borne ferait grossir la memoire du processus sans fin")
+
+    def test_la_borne_reelle_du_cache_n_a_pas_bouge(self):
+        """La valeur que le test ci-dessus abaisse pour ne pas payer le KDF.
+
+        Sans cette ligne, ramener `CLES_GARDEES` a 1 en production ne ferait
+        tomber aucun test : le precedent aurait toujours sa propre valeur."""
+        from core.memory.chiffrement import CLES_GARDEES
+
+        assert CLES_GARDEES == 256
 
     def test_le_sel_se_renouvelle_par_lot(self, monkeypatch):
         """Une cle ne doit pas servir indefiniment : la marge de collision de

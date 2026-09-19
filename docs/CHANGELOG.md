@@ -2,6 +2,59 @@
 
 ## [Non publié]
 
+### Corrigé — 19/09/2026 — La suite de tests payait deux fois un prix qui n'était pas celui de la garantie
+
+« Tes tâches prennent trop de temps, vérifie. » Mesuré, pas supposé.
+
+| | Avant | Après |
+|---|---|---|
+| `test_connecteurs_dormants.py` (4 tests) | **86 s** | **1,5 s** |
+| `test_le_cache_de_cles_est_borne` | **73 s** | **7,5 s** |
+| **La suite complète** | **14 min 06** | **11 min 15** |
+
+**Les connecteurs dormants relisaient le dépôt entier une fois par
+connecteur.** `_fichiers_de_production(nom)` prenait le nom en argument : pour
+chacun des ~40 connecteurs enregistrés, tous les `.py` d'`agents`, `core`,
+`apps`, `tools` et `social` étaient relus et passés à `ast.parse`. Quarante
+parcours complets par test, et **deux tests le faisaient chacun de leur côté**.
+
+Une seule passe suffit : on relève toutes les chaînes littérales citées en
+position d'appel, puis on interroge ce relevé par connecteur. **La règle est
+mot pour mot celle d'avant** — le nom exact en argument d'un appel, ou une
+constante de module — seul le nombre de lectures change. Le sabotage historique
+mord toujours : remplacer le seul appel réel de `gitingest` par un commentaire
+qui le nomme fait tomber le test.
+
+**Le test du cache de clés mesurait le coût de PBKDF2, pas l'éviction.** Il
+dérivait 276 clés pour de vrai, et une dérivation c'est 600 000 itérations par
+construction — environ 265 ms chacune. Ce qu'il garde est la **boucle
+d'éviction**, pas le prix du KDF. Abaisser `CLES_GARDEES` le temps du test
+exerce exactement la même boucle : `_deriver_cle` lit la constante au moment de
+l'appel. C'était déjà la façon de faire du fichier — le test du sel juste en
+dessous abaisse `MESSAGES_PAR_SEL` de 65 536 à 3 pour la même raison.
+
+Un raccourci qui peut cacher quelque chose doit être refermé : un test de plus
+vérifie que la **vraie** borne vaut toujours 256. Sans lui, ramener
+`CLES_GARDEES` à 1 en production n'aurait fait tomber aucun test.
+
+### Mesuré — 19/09/2026 — Ce qui reste lent, et ce qui n'est pas encore expliqué
+
+**Un contournement sur deux n'a pas été trouvé, et il est plus gros que les
+deux ci-dessus réunis.** Les tests de `test_pwa_gateway.py` prennent **0,19 s
+chacun** quand le fichier tourne seul, et **6 à 12 s chacun** dans la suite
+complète — 30 à 60 fois plus lents, pour le même code. Ce n'est donc pas leur
+nombre qui coûte, c'est ce qu'un autre test laisse derrière lui.
+
+Deux pistes déjà écartées par la mesure : `tests/core` d'abord, puis
+`tests/agents` + `tests/test_mesures_branchees.py` — dans les deux cas les
+tests de la passerelle restent à 0,2 s. Le coupable est dans les fichiers
+`tests/test_*.py` qui trient avant `test_pwa_gateway.py`, et il reste à nommer.
+
+Ce qui est lent **pour de vraies raisons**, et qu'on ne touche pas :
+`test_connecteur_file_conversion.py` (~62 s) convertit réellement des PDF, des
+DOCX et des PPTX par LibreOffice. Le test mesure la matrice réelle des formats
+que cette machine sait convertir ; le simuler rendrait la mesure fausse.
+
 ### Ajouté — 19/09/2026 — Ce que l'IA fait pendant qu'elle travaille, en direct
 
 « Quand mon IA est en train de travailler il fait seulement *Réflexion* ; je
