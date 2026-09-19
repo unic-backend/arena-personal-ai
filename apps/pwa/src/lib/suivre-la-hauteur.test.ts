@@ -4,7 +4,7 @@
  * descend en bas du téléphone, les écritures continuent en bas sans que je le
  * voie, je dois scroller pour suivre ».
  */
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { suivreLaHauteur } from './suivre-la-hauteur';
 
 /** Un ResizeObserver de test : on déclenche la croissance à la main. */
