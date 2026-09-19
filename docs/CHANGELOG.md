@@ -2,6 +2,40 @@
 
 ## [Non publié]
 
+### Ajouté — 19/09/2026 — Un projet de production reprend après un redémarrage
+
+**Le manque, mesuré** : un projet vidéo tournait entièrement en mémoire.
+`EtatProjetVideo` ne portait ni identifiant, ni statut par étape, ni
+horodatage, et rien ne l'écrivait nulle part. Un serveur redémarré au milieu
+d'une production laissait **zéro trace** — la seule issue était de tout
+relancer, y compris les étapes qui avaient déjà produit leur fichier.
+
+`core/production/journal_projet.py` est l'état qui manquait : `job_id`,
+`project_id`, et par étape `status`, `created_at`, `updated_at`, `input`,
+`output`, `artifact`, `proof`, `error`, `retry_count`. Écriture atomique après
+**chaque** changement.
+
+Il est alimenté par le hook `observateur` que `Coordination` exposait déjà :
+**aucun second orchestrateur**, aucune ligne de décision déplacée.
+
+Quatre routes : `GET /api/video/projet/{job_id}` (l'état, étape par étape),
+`GET /api/video/projets` (ce qui attend), `POST .../reprendre`,
+`POST .../annuler`. Le `job_id` remonte dans la réponse de l'agent — donc
+depuis le chat aussi.
+
+**Une étape n'est sautée que sur trois preuves réunies** : `SUCCEEDED`, entrée
+identique, **et artefact encore présent sur le disque**. Une étape tuée en
+cours n'est ni réussie ni échouée : elle est nommée, pour être vérifiée avant
+d'être relancée.
+
+Trois défauts trouvés par les tests pendant l'écriture, et corrigés : une étape
+`PENDING` noyait l'avertissement réel ; un job `FAILED` n'était pas reprenable
+alors que c'est le cas le plus utile ; « aucun artefact » et « artefact annoncé
+introuvable » étaient confondus. Voir DEC-0113.
+
+`docs/CURRENT_STATE.md` (nouveau) dit ce qui marche vraiment, et ce qui n'a
+jamais tourné sur la machine cible.
+
 ### Ajouté — 19/09/2026 — Claude Sonnet 5 est branché (et inerte sans clé)
 
 Quatrième fournisseur : `core/models/anthropic_provider.py`. Il implémente

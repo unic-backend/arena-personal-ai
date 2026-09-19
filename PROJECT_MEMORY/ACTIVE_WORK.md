@@ -1,44 +1,47 @@
 # TRAVAIL EN COURS
 
-*Mise à jour : 2026-09-19, après six PR fusionnées (#232 à #237) et le
-fournisseur Anthropic.*
+*Mise à jour : 2026-09-19, audit d'intégration et état durable des projets.*
 
 ## En cours
 
-**Une pull request ouverte sur `claude/fournisseur-anthropic`.** Demande
-directe : « construis le fournisseur Anthropic avec Sonnet 5 », après la
-question « pourquoi mon IA n'a pas le même raisonnement que Claude ».
+**Une pull request ouverte sur `claude/chemin-execution-bout-en-bout`.**
+Demande : auditer, stabiliser et rendre le chemin d'exécution réellement
+opérationnel de bout en bout.
 
-La réponse mesurée : elle ne parle pas à Claude. Groq ne sert aucun modèle
-Anthropic, et aucune quantité de prompt n'y change rien.
+**Ce que l'audit a mesuré, et deux hypothèses de la demande étaient fausses :**
+17 routers sur 17 montés, 25 classes d'agents sur 25 instanciées, **0 module
+orphelin réel** (63 orphelins, tous des `__init__.py` ou des serveurs
+autonomes), et `/api/video/projet` **était déjà** atteignable depuis le chat
+par l'intention `VIDEO_PROJET`. Les audits précédents avaient fait ce travail.
 
-`core/models/anthropic_provider.py` parle à `api.anthropic.com` **en HTTP, pas
-par le SDK** : `browser-use==0.13.10` épingle `anthropic==0.76.0` exactement,
-version incapable de servir Sonnet 5 (ni réflexion adaptative, ni
-`output_config`, ni `stop_details` — vérifié dans la roue). Monter le SDK rend
-`requirements.txt` insoluble. Le choix réel était de perdre la navigation web
-ou d'écrire quatre appels HTTP. Voir **DEC-0112**.
+**Le vrai manque était la persistance**, et il était total : un projet vidéo
+tournait entièrement en mémoire. Un redémarrage au milieu d'une production
+laissait zéro trace. `core/production/journal_projet.py` le comble — six états
+écrits, écriture atomique, reprise qui ne rejoue jamais une étape dont
+l'artefact tient encore. Branché par le hook `observateur` que `Coordination`
+exposait déjà : **aucun second orchestrateur**. Voir DEC-0113.
 
-`anthropic` est **premier** dans `ORDRE_CLOUD`, devant Groq. Tant que
-`ANTHROPIC_API_KEY` est vide, il n'entre pas dans `self.distants` et **rien ne
-change**.
+`docs/CURRENT_STATE.md` (nouveau) est désormais la source de vérité
+opérationnelle : ce qui marche, ce qui n'est que testé, ce qui n'a jamais
+tourné sur sa machine.
 
 **Ce qui reste à lui**, et personne d'autre ne peut le faire :
 
-1. **Poser `ANTHROPIC_API_KEY` dans Railway** s'il veut que Claude réponde.
-   Rien ne se déclenche sans ça. `AI_DEFAULT_PROVIDER=GROQ` rend la main à Groq
-   en gardant la clé en place.
-2. Savoir ce que ça coûte : ~2 $ par million de jetons envoyés, ~10 $ par
-   million rendus. Le plafond qui tient est `AI_MAX_CLOUD_REQUESTS_PER_DAY`
-   (200/jour) ; **`AI_DAILY_BUDGET` ne freine rien** tant qu'aucun tarif n'est
-   saisi dans `TARIFS` — `/health` l'affiche `NON_VERIFIABLE`.
-3. Toujours en attente depuis le 19/09 : lancer `GET /agent/memoire` depuis son
-   téléphone après le prochain redéploiement Railway. Si `base.persistance` dit
-   `CONFIRMEE`, le volume tient ; si elle dit `PAS_ENCORE_OBSERVEE` alors que le
-   fil était plein avant, le disque est effacé à chaque déploiement — réglage
-   Railway, pas code.
+1. **`USMAN_API_KEY`** — la rotation est déclarée, jamais mesurée. Si elle n'a
+   pas réellement changé, elle est lisible dans l'historique public. C'est le
+   seul point de sécurité encore ouvert.
+2. **`ANTHROPIC_API_KEY`** dans Railway s'il veut que Claude réponde (PR #238,
+   fusionnée). Rien ne se déclenche sans ça.
+3. `GET /agent/memoire` depuis son téléphone après le prochain redéploiement,
+   pour savoir si le disque Railway survit aux déploiements.
 4. Un écran de la ligne « Lecture de la demande » la prochaine fois que l'IA
-   part de travers : ça tranche entre un mauvais aiguillage et le modèle.
+   part de travers.
+
+## Prochain jalon technique
+
+**Porter le même état durable sur `core/execution/travaux.py`** — la file de
+travaux de fond est le dernier endroit où un travail long disparaît à un
+redémarrage. Le modèle est écrit, testé et en service ; il reste à le brancher.
 
 ## Terminé le 19/09
 

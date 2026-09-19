@@ -90,6 +90,17 @@ SURFACE_ATTENDUE = {
     # VideoProductionAgent, construit et teste depuis le 01/09/2026 sans
     # jamais avoir ete joignable avant cette route.
     "/api/video/projet": (["POST"], ["verify_api_key", "limiter_debit"]),
+    # L'etat durable d'un projet (19/09/2026). Avant ces quatre routes, une
+    # production tournait entierement en memoire : un serveur redemarre au
+    # milieu laissait ZERO trace, et la seule issue etait de tout relancer.
+    # Aucune n'execute une production : elles lisent, reprennent ou annulent
+    # ce que le MEME agent et le MEME coordinateur ont ecrit.
+    "/api/video/projet/{job_id}": (["GET"], ["verify_api_key", "limiter_debit"]),
+    "/api/video/projet/{job_id}/reprendre": (
+        ["POST"], ["verify_api_key", "limiter_debit"]),
+    "/api/video/projet/{job_id}/annuler": (
+        ["POST"], ["verify_api_key", "limiter_debit"]),
+    "/api/video/projets": (["GET"], ["verify_api_key", "limiter_debit"]),
     # Hermes Agent Self-Evolution (DEC-0055) : cible toujours un depot
     # EXTERNE, jamais ARENA (garde dans le connecteur, pas ici) — outil de
     # developpement, pas une capacite metier, pas d'aiguillage chat.

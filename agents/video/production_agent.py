@@ -35,11 +35,12 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from apps.backend.config import RENDERED_DIR
 from core.agent.base_agent import BaseAgent
 from core.characters.registry import Personnage, charger_personnage, enregistrer_generation
-from core.execution.coordination import Coordination, Etape
+from core.execution.coordination import Coordination, Etape, EtatEtape, Trace
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from core.production import image_backend_router, personnage_video, plan_drift
 from core.production.etat_projet import EtapeProjet, EtatProjetVideo
+from core.production.journal_projet import EtatJob, Job, JournalProjets
 from core.production.plan_video import (
     CAPACITES_VIDEO,
     PlanRefuse,
@@ -151,6 +152,20 @@ def _chemin_plausible(valeur: Any, profondeur: int = 0) -> Optional[str]:
     return None
 
 
+#: Comment l'etat d'une etape de `Coordination` se lit dans le vocabulaire du
+#: journal. La correspondance est ECRITE, pas devinee : `SKIPPED` (une etape
+#: facultative qui a echoue) devient `FAILED` et non `CANCELLED`, parce qu'elle
+#: a bien echoue — c'est le JOB qui continue, pas l'etape qui a reussi.
+_ETAT_JOB_POUR = {
+    EtatEtape.EN_ATTENTE: EtatJob.EN_ATTENTE,
+    EtatEtape.EN_COURS: EtatJob.EN_COURS,
+    EtatEtape.REUSSIE: EtatJob.REUSSI,
+    EtatEtape.ECHOUEE: EtatJob.ECHOUE,
+    EtatEtape.ABANDONNEE: EtatJob.ECHOUE,
+    EtatEtape.NON_ATTEINTE: EtatJob.EN_ATTENTE,
+}
+
+
 class VideoProductionAgent(BaseAgent):
     """Compose vision, generation, voix et montage sur un projet Video.
 
@@ -172,6 +187,7 @@ class VideoProductionAgent(BaseAgent):
         audio_agent: Any = None,
         montage_agent: Any = None,
         registre: Any = None,
+        journal: Optional[JournalProjets] = None,
     ) -> None:
         super().__init__(
             name="VideoProductionAgent",
@@ -190,6 +206,11 @@ class VideoProductionAgent(BaseAgent):
         # C'est ce qui lui fait respecter `video_generation.generate =
         # CONFIRMATION` comme WanGP et MoneyPrinterTurbo.
         self.registre = registre
+        # L'etat durable du projet. Injecte comme le reste : un agent construit
+        # dans un test n'ecrit alors rien sur le disque du proprietaire, et
+        # l'absence de journal ne change AUCUN comportement d'execution — elle
+        # retire seulement la reprise (`_executer` le gere explicitement).
+        self.journal = journal
 
     async def run(self, objectif: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         contexte = context or {}
@@ -375,20 +396,35 @@ class VideoProductionAgent(BaseAgent):
 
     async def _executer(
         self, objectif: str, contexte: Dict[str, Any], references: List[str],
-        graphe: List[EtapeProjet], refus: List[str],
+        graphe: List[EtapeProjet], refus: List[str], job: Optional[Job] = None,
+        inconnues: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Construit les etapes reelles et les fait tourner — la seule preuve
         qui vaille. Un graphe « valide » qui ne s'execute pas n'est pas un
         projet.
+
+        `job` n'est passe que par `reprendre()` : un projet neuf ouvre le sien.
+        Dans les deux cas **`Coordination` reste le seul executeur** ; le
+        journal ne fait qu'ecrire ce qu'elle observe, par son hook
+        `observateur` qui existait deja.
         """
         etat = EtatProjetVideo(
             objectif=objectif, contraintes=dict(contexte.get("contraintes") or {}),
             references=references, graphe=graphe,
         )
+        job = job if job is not None else self._ouvrir_job(objectif, contexte,
+                                                           references, graphe)
+        # Ce qui tient encore : etape reussie, entree identique, artefact
+        # present sur le disque. Vide pour un projet neuf, et vide aussi quand
+        # aucun journal n'est branche — l'execution est alors exactement celle
+        # d'avant ce module.
+        deja = job.deja_fait() if job is not None else {}
+        reutilisees: set = set()
 
         etapes_coordination = [
             Etape(
-                nom=etape.id, appel=self._adaptateur(etape, references),
+                nom=etape.id,
+                appel=self._appel_ou_reutilise(etape, references, deja, reutilisees),
                 depend_de=etape.depend_de, facultative=etape.facultative,
                 ressource=(RESSOURCE_GPU_LOCAL if etape.capacite in CAPACITES_GPU_LOCAL
                           else None),
@@ -396,15 +432,190 @@ class VideoProductionAgent(BaseAgent):
             for etape in graphe
         ]
 
-        coordination = Coordination(f"video::{objectif[:60]}", etapes_coordination)
-        resultat = await coordination.executer_parallele(
-            parallelisme=int(contexte.get("parallelisme") or 4),
-            limites_ressources={RESSOURCE_GPU_LOCAL: 1},
-        )
+        coordination = Coordination(
+            f"video::{objectif[:60]}", etapes_coordination,
+            observateur=self._noter_au_journal(job, reutilisees))
+        try:
+            resultat = await coordination.executer_parallele(
+                parallelisme=int(contexte.get("parallelisme") or 4),
+                limites_ressources={RESSOURCE_GPU_LOCAL: 1},
+            )
+        except BaseException as erreur:  # noqa: BLE001 — y compris une annulation
+            # Le job ne reste pas `RUNNING` sur un disque ou plus rien ne
+            # tourne : il devient reprenable, avec sa raison. Sans ce
+            # `finally`-la, seul un redemarrage l'aurait rattrape.
+            self._suspendre_job(job, f"{type(erreur).__name__}: {erreur}")
+            raise
+
         etat.resultat = resultat
         etat.artefact_final = self._artefact_final(resultat, graphe)
+        self._conclure_job(job, resultat, etat.artefact_final)
 
-        return self._reponse(etat, refus)
+        return self._reponse(etat, refus, job, inconnues)
+
+    async def reprendre(self, job_id: str) -> Dict[str, Any]:
+        """Reprend un projet interrompu la ou il s'est arrete.
+
+        **Reprendre n'est pas replanifier.** Le graphe rejoue est celui qui est
+        ECRIT dans le journal, jamais un nouveau plan demande au modele : deux
+        plans successifs ne portent pas les memes identifiants d'etape, et les
+        etapes deja abouties ne correspondraient plus — le travail serait refait
+        sous d'autres noms.
+
+        Une etape deja reussie dont l'artefact existe encore n'est pas rejouee.
+        Une etape dont on ne sait pas ce qu'elle a donne (processus tue entre
+        sa decision et son resultat) n'est ni supposee reussie ni rejouee en
+        aveugle : elle est NOMMEE dans la reponse pour que le proprietaire
+        verifie son effet reel avant de relancer.
+        """
+        if self.journal is None:
+            return self._erreur("Aucun journal de projets : rien n'est reprenable.")
+        job = self.journal.lire(job_id)
+        if job is None:
+            return self._erreur(f"Projet inconnu : {job_id}.")
+        if job.etat is EtatJob.ANNULE:
+            return self._erreur(f"Projet {job_id} annule : il ne se reprend pas.")
+        if not job.reprenable:
+            return {
+                "status": "warning", "agent": self.name,
+                "response": (f"Projet {job_id} : rien a reprendre "
+                             f"(etat {job.etat.value})."),
+                "job_id": job.job_id, "projet": job.to_dict(),
+            }
+
+        graphe = [EtapeProjet(
+            id=str(e.get("id")), capacite=str(e.get("capacite")),
+            parametres=dict(e.get("parametres") or {}),
+            depend_de=tuple(e.get("depend_de") or ()),
+            facultative=bool(e.get("facultative", False)),
+        ) for e in job.graphe]
+        if not graphe:
+            return self._erreur(
+                f"Projet {job_id} : aucun graphe ecrit, il ne peut pas etre repris.")
+
+        # Releve AVANT d'executer : apres la reprise ces etapes auront ete
+        # rejouees et seront confirmees, donc l'avertissement disparaitrait —
+        # alors que c'est exactement le moment ou il compte.
+        inconnues = job.a_verifier()
+        job.etat = EtatJob.EN_COURS
+        return await self._executer(
+            job.objectif, {"contraintes": job.contraintes}, list(job.references),
+            graphe, [], job=job, inconnues=inconnues)
+
+    # --- Le journal durable ------------------------------------------------------
+
+    def _ouvrir_job(self, objectif: str, contexte: Dict[str, Any],
+                    references: List[str], graphe: List[EtapeProjet]
+                    ) -> Optional[Job]:
+        """Inscrit le projet AVANT sa premiere etape. Sans journal : `None`,
+        et tout le reste se comporte exactement comme avant."""
+        if self.journal is None:
+            return None
+        job = self.journal.ouvrir(
+            objectif, graphe=[e.to_dict() for e in graphe], references=references,
+            contraintes=dict(contexte.get("contraintes") or {}))
+        self.journal.declarer_etapes(job.job_id, [
+            {"step_id": e.id, "capacite": e.capacite, "entree": e.parametres}
+            for e in graphe
+        ])
+        return job
+
+    def _appel_ou_reutilise(
+        self, etape: EtapeProjet, references: List[str],
+        deja: Dict[str, Any], reutilisees: set,
+    ) -> Callable[[Dict[str, Any]], Any]:
+        """L'appel reel — ou, si le resultat de cette etape tient encore, sa
+        sortie deja obtenue, **sans rien reexecuter**.
+
+        C'est ici que vit la regle d'idempotence : meme job, meme etape, meme
+        entree, artefact toujours present, alors aucun effet irreversible ne
+        doit se reproduire. Le seul endroit ou une etape est sautee.
+        """
+        if etape.id not in deja:
+            return self._adaptateur(etape, references)
+
+        sortie = deja[etape.id]
+
+        def _reutiliser(acquis: Dict[str, Any]) -> Any:
+            reutilisees.add(etape.id)
+            return sortie
+
+        return _reutiliser
+
+    def _noter_au_journal(self, job: Optional[Job], reutilisees: set
+                          ) -> Optional[Callable[[Trace], None]]:
+        """L'observateur qui ecrit chaque changement d'etat sur le disque.
+
+        Il n'arbitre rien : `Coordination` decide, lui note. Une etape qui
+        demarre est ecrite AVANT de tourner — c'est cette fenetre-la qu'un
+        crash doit laisser visible.
+        """
+        if job is None or self.journal is None:
+            return None
+        journal, job_id = self.journal, job.job_id
+
+        def _noter(trace: Trace) -> None:
+            if trace.etat is EtatEtape.EN_COURS:
+                journal.demarrer_etape(job_id, trace.nom)
+                return
+            if trace.etat in (EtatEtape.EN_ATTENTE, EtatEtape.NON_ATTEINTE):
+                return
+            preuve: Dict[str, Any] = {
+                "secondes": trace.secondes, "tentatives": trace.tentatives,
+                "verifiee": trace.verifiee,
+                "facultative_abandonnee": trace.etat is EtatEtape.ABANDONNEE,
+            }
+            if trace.nom in reutilisees:
+                # Rien n'a tourne ce tour-ci. Sans cette marque, une reprise se
+                # lirait comme une execution complete.
+                preuve["reutilise"] = True
+            journal.conclure_etape(
+                job_id, trace.nom, _ETAT_JOB_POUR[trace.etat],
+                sortie=trace.resultat,
+                artefact=self._artefact_de_sortie(trace.resultat),
+                preuve=preuve, erreur=trace.raison, essais=trace.tentatives)
+
+        return _noter
+
+    def _conclure_job(self, job: Optional[Job], resultat: Any,
+                      artefact_final: Optional[str]) -> None:
+        if job is None or self.journal is None:
+            return
+        self.journal.conclure(
+            job.job_id,
+            EtatJob.REUSSI if resultat.aboutie else EtatJob.ECHOUE,
+            artefact_final=artefact_final,
+            erreur="" if resultat.aboutie else f"arretee a : {resultat.arretee_a}")
+
+    def _suspendre_job(self, job: Optional[Job], raison: str) -> None:
+        if job is None or self.journal is None:
+            return
+        self.journal.suspendre(job.job_id, raison)
+
+    @staticmethod
+    def _artefact_de_sortie(sortie: Any) -> Optional[str]:
+        """Le fichier qu'une etape DIT avoir produit, ou `None`.
+
+        **Ce qui est rendu ici est une ANNONCE, pas une constatation**, et
+        c'est deliberé : c'est le journal qui verifie l'existence, en un seul
+        endroit (`JournalProjets.conclure_etape`). Filtrer ici aussi ferait
+        disparaitre la difference entre « cette etape ne produit aucun
+        fichier » (une analyse) et « cette etape a nomme un fichier qu'elle n'a
+        pas ecrit » — et la seconde se rejouerait alors comme la premiere se
+        saute.
+
+        Toutes les `preuve` ne sont pas des chemins : celle de Drift est un
+        compte d'operations (`core/connectors/drift.py::_preuve`). Un suffixe
+        de fichier est ce qui les distingue, et `_chemin_plausible` prend le
+        relais pour les reponses dont la cle n'est pas figee — lui ne rend que
+        ce qui existe REELLEMENT, c'est sa raison d'etre.
+        """
+        if not isinstance(sortie, dict):
+            return None
+        chemin = sortie.get("preuve")
+        if isinstance(chemin, str) and Path(chemin).suffix:
+            return chemin
+        return _chemin_plausible(sortie.get("donnees"))
 
     # --- Le graphe -> des appels reels -----------------------------------------
 
@@ -797,7 +1008,9 @@ class VideoProductionAgent(BaseAgent):
                     return chemin_drift
         return None
 
-    def _reponse(self, etat: EtatProjetVideo, refus: List[str]) -> Dict[str, Any]:
+    def _reponse(self, etat: EtatProjetVideo, refus: List[str],
+                 job: Optional[Job] = None,
+                 inconnues: Optional[List[str]] = None) -> Dict[str, Any]:
         resultat = etat.resultat
         lignes = [resultat.rendre()] if resultat is not None else []
         if refus:
@@ -805,12 +1018,32 @@ class VideoProductionAgent(BaseAgent):
         if etat.artefact_final:
             lignes.append(f"Fichier final : {etat.artefact_final}")
 
-        return {
+        reponse: Dict[str, Any] = {
             "status": "success" if (resultat is not None and resultat.aboutie) else "warning",
             "agent": self.name,
             "response": "\n\n".join(lignes) or "Rien n'a ete execute.",
             "projet": etat.to_dict(),
         }
+        if job is None:
+            return reponse
+
+        # Le `job_id` REMONTE dans la reponse : c'est par lui que le chat,
+        # l'API et l'interface peuvent relire l'etat ou demander une reprise.
+        # Un etat durable que personne ne peut nommer ne sert a rien.
+        reponse["job_id"] = job.job_id
+        reponse["projet"]["job"] = job.to_dict()
+        # `inconnues` vient de la reprise : ce qui etait inconnu AVANT de
+        # relancer. `job.a_verifier()` couvre le cas d'une execution neuve.
+        a_verifier = list(inconnues) if inconnues else job.a_verifier()
+        if a_verifier:
+            # Mission ARENA x TRANS4MERS §15. Ces etapes ont ete DECIDEES sans
+            # qu'on sache ce qu'elles ont donne : le dire, plutot que de les
+            # compter reussies ou de les rejouer en aveugle.
+            reponse["a_verifier"] = a_verifier
+            reponse["response"] += (
+                "\n\nEtat inconnu, a verifier avant de relancer : "
+                + ", ".join(a_verifier))
+        return reponse
 
     def _erreur(self, message: str) -> Dict[str, Any]:
         return {"status": "error", "agent": self.name, "response": message}
