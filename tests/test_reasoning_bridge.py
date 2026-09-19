@@ -94,8 +94,10 @@ class _FauxMoteur:
         self.resultat = resultat
         self.appels: list = []
 
-    async def solve_complex_task(self, prompt: str, profondeur: str = "standard"):
-        self.appels.append({"prompt": prompt, "profondeur": profondeur})
+    async def solve_complex_task(self, prompt: str, profondeur: str = "standard",
+                                 contexte: str = ""):
+        self.appels.append({"prompt": prompt, "profondeur": profondeur,
+                            "contexte": contexte})
         resultat = dict(self.resultat)
         resultat["profondeur"] = profondeur
         return resultat
@@ -172,3 +174,54 @@ async def test_resoudre_profondement_preserve_les_cles_historiques():
 
     assert res["status"] == "error"
     assert res["calcul"] == ""
+
+
+# --- Le fil de conversation atteint le moteur (19/09/2026) --------------------
+#
+# Jusqu'ici le moteur ne recevait que la derniere phrase : « verifie ton
+# calcul » arrivait sans le calcul, et il repondait a cote sans pouvoir faire
+# autrement.
+
+def _moteur_muet():
+    return _FauxMoteur({
+        "status": "success", "plan": "", "calculation_result": "",
+        "final_response": "Reponse.", "critique": None,
+    })
+
+
+async def test_le_contexte_est_transmis_au_moteur():
+    moteur = _moteur_muet()
+
+    await resoudre_profondement("verifie ton calcul", moteur=moteur,
+                                contexte="Ousmane: 12 % de 340 ?\nUsman: 40,8")
+
+    assert "40,8" in moteur.appels[0]["contexte"]
+
+
+async def test_sans_contexte_le_moteur_en_recoit_un_vide():
+    """Le comportement d'avant ce parametre, a l'identique."""
+    moteur = _moteur_muet()
+
+    await resoudre_profondement("resous cette equation", moteur=moteur)
+
+    assert moteur.appels[0]["contexte"] == ""
+
+
+async def test_le_contexte_ne_devient_jamais_la_question():
+    moteur = _moteur_muet()
+
+    await resoudre_profondement("verifie", moteur=moteur, contexte="x" * 500)
+
+    assert moteur.appels[0]["prompt"] == "verifie"
+
+
+async def test_un_fil_long_ne_fait_pas_basculer_en_mode_approfondie():
+    """Le mode approfondie coute deux appels de modele de plus. Le declencher
+    parce que la CONVERSATION depasse 200 caracteres le rendrait systematique
+    au neuvieme message, sans que la question ait gagne en difficulte."""
+    moteur = _moteur_muet()
+
+    await resoudre_profondement("combien font 12 % de 340 ?", moteur=moteur,
+                                contexte="bla " * 500)
+
+    assert moteur.appels[0]["profondeur"] == "standard"

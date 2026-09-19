@@ -158,3 +158,85 @@ async def test_le_mode_approfondie_critique_et_revise_si_besoin(ollama_en_ligne)
     assert res["final_response"].strip() != ""
     if res["critique"] is not None:
         assert res["critique"]["ok"] in (True, False)
+
+
+# --- Le fil de conversation, en contexte et jamais en question (19/09/2026) ---
+#
+# Jusqu'ici `solve_complex_task` ne recevait que la derniere phrase :
+# « verifie ton calcul » arrivait sans le calcul, et le moteur repondait a cote
+# sans pouvoir faire autrement.
+
+FIL = "Ousmane: combien font 12 % de 340 ?\nUsman: 40,8"
+
+
+async def test_sans_contexte_les_invites_sont_inchangees(provider_factory):
+    """Un moteur dont les invites changent en silence n'est plus comparable a
+    lui-meme. Sans contexte, elles doivent etre identiques au caractere pres."""
+    provider = provider_factory("Plan en prose.", "Solution.")
+    moteur = ReasoningEngine(provider=provider)
+
+    await moteur.solve_complex_task("Resous x + 1 = 2")
+
+    for appel in provider.appels:
+        assert "fin du contexte" not in appel["prompt"]
+        assert "Contexte" not in appel["prompt"]
+
+
+async def test_le_contexte_entre_dans_le_plan_et_la_synthese(provider_factory):
+    provider = provider_factory("Plan en prose.", "Solution.")
+    moteur = ReasoningEngine(provider=provider)
+
+    await moteur.solve_complex_task("verifie ton calcul", contexte=FIL)
+
+    plan, synthese = provider.appels[0]["prompt"], provider.appels[1]["prompt"]
+    assert "40,8" in plan and "40,8" in synthese
+
+
+async def test_le_contexte_est_borne_par_deux_marqueurs(provider_factory):
+    """Sans ces bornes, le modele lit le fil comme faisant partie de la
+    question et repond au mauvais tour — pire que de ne rien lui donner."""
+    provider = provider_factory("Plan en prose.", "Solution.")
+    moteur = ReasoningEngine(provider=provider)
+
+    await moteur.solve_complex_task("verifie ton calcul", contexte=FIL)
+
+    plan = provider.appels[0]["prompt"]
+    assert "ce n'est pas la question" in plan
+    assert "--- fin du contexte ---" in plan
+    assert plan.index("--- fin du contexte ---") < plan.index("verifie ton calcul")
+
+
+async def test_la_critique_recoit_aussi_le_contexte(provider_factory):
+    provider = provider_factory("Plan en prose.", "Solution.", VERDICT_OK)
+    moteur = ReasoningEngine(provider=provider)
+
+    await moteur.solve_complex_task("verifie ton calcul",
+                                    profondeur="approfondie", contexte=FIL)
+
+    assert "40,8" in provider.appels[2]["prompt"], (
+        "la critique juge « est-ce que ca repond a la question » sans savoir "
+        "de quoi on parlait")
+
+
+async def test_un_contexte_trop_long_garde_la_fin_et_le_dit(provider_factory):
+    """Ce qui vient d'etre dit explique la question du jour mieux que ce qui a
+    ete dit en premier. La coupe est dite, jamais muette."""
+    provider = provider_factory("Plan en prose.", "Solution.")
+    moteur = ReasoningEngine(provider=provider)
+    fil = "DEBUT-DU-FIL\n" + ("bavardage " * 2000) + "\nFIN-DU-FIL"
+
+    await moteur.solve_complex_task("verifie", contexte=fil)
+
+    plan = provider.appels[0]["prompt"]
+    assert "FIN-DU-FIL" in plan
+    assert "DEBUT-DU-FIL" not in plan
+    assert "debut du contexte coupe" in plan
+
+
+async def test_un_contexte_vide_ou_blanc_n_ajoute_rien(provider_factory):
+    provider = provider_factory("Plan en prose.", "Solution.")
+    moteur = ReasoningEngine(provider=provider)
+
+    await moteur.solve_complex_task("Resous x + 1 = 2", contexte="   \n  ")
+
+    assert "Contexte" not in provider.appels[0]["prompt"]

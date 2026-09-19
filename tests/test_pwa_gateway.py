@@ -1534,3 +1534,273 @@ class TestLeDocumentEcritRemonteAuTelephone:
         charges = trames(demander(client, entetes, text="bonjour").text)
 
         assert charges[-1]["meta"]["documents"] == []
+
+
+class TestLeFilCoupeParLeTelephone:
+    """`chatStore.ts` coupe l'historique a huit messages (`.slice(-8)`, trois
+    points d'appel). Jusqu'au 19/09/2026 la passerelle ne lisait que ce
+    `history`-la : au-dela, ARENA ne voyait plus rien — alors que le serveur
+    ecrit chaque tour dans `short_term_memory` sous la meme session."""
+
+    def test_un_tour_hors_fenetre_revient_dans_l_invite(
+        self, client, entetes, fournisseur, chat_direct,
+    ):
+        conv = f"conv-fil-{uuid4()}"
+        faux = fournisseur(morceaux=["ok"])
+        demander(client, entetes, text="Le chantier de Medina fait 340 m2",
+                 conversation_id=conv, run_id=f"run-{uuid4()}")
+
+        # Le telephone a coupe : il ne renvoie plus le premier tour.
+        demander(client, entetes, text="Combien de plaques alors ?",
+                 conversation_id=conv, run_id=f"run-{uuid4()}", history=[])
+
+        assert "Le chantier de Medina fait 340 m2" in faux.prompts[-1], (
+            "le tour hors fenetre n'est pas relu dans le journal du serveur : "
+            "c'est l'oubli que ce correctif ferme")
+        assert pwa_gateway.TITRE_TOURS_ANTERIEURS in faux.prompts[-1], (
+            "les tours relus ne sont pas annonces comme un rappel")
+
+    def test_la_question_du_jour_n_apparait_pas_deux_fois(
+        self, client, entetes, fournisseur, chat_direct,
+    ):
+        conv = f"conv-fil-{uuid4()}"
+        faux = fournisseur(morceaux=["ok"])
+        demander(client, entetes, text="Question unique de ce tour",
+                 conversation_id=conv, run_id=f"run-{uuid4()}")
+
+        assert faux.prompts[-1].count("Question unique de ce tour") == 1, (
+            "la question du tour en cours est lue deux fois : le journal "
+            "l'avait deja ecrite avant la construction de l'invite")
+
+    def test_un_tour_deja_renvoye_par_le_telephone_n_est_pas_double(
+        self, client, entetes, fournisseur, chat_direct,
+    ):
+        conv = f"conv-fil-{uuid4()}"
+        faux = fournisseur(morceaux=["ok"])
+        demander(client, entetes, text="Premier tour de ce fil",
+                 conversation_id=conv, run_id=f"run-{uuid4()}")
+        demander(client, entetes, text="Deuxieme tour", conversation_id=conv,
+                 run_id=f"run-{uuid4()}", history=[{"role": "user",
+                                        "content": "Premier tour de ce fil"}])
+
+        assert faux.prompts[-1].count("Premier tour de ce fil") == 1, (
+            "le tour renvoye par le telephone est aussi relu dans le journal : "
+            "ARENA le lit deux fois et se repete")
+
+    def test_deux_conversations_ne_melangent_pas_leur_fil(
+        self, client, entetes, fournisseur, chat_direct,
+    ):
+        faux = fournisseur(morceaux=["ok"])
+        marque = f"secret-{uuid4()}"
+        demander(client, entetes, text=marque,
+                 conversation_id=f"conv-fil-A-{uuid4()}",
+                 run_id=f"run-{uuid4()}")
+        demander(client, entetes, text="Question sans rapport",
+                 conversation_id=f"conv-fil-B-{uuid4()}",
+                 run_id=f"run-{uuid4()}")
+
+        assert marque not in faux.prompts[-1], (
+            "le fil d'une autre conversation entre dans l'invite : "
+            "isolation cassee")
+
+    def test_sans_conversation_id_le_comportement_d_avant_est_garde(
+        self, client, entetes, fournisseur, chat_direct,
+    ):
+        """Un ancien client qui n'envoie ni `conversation_id` ni `run_id`
+        tombe sur la session de repli « pwa ». Le fil doit rester utilisable,
+        et surtout la reponse doit sortir."""
+        faux = fournisseur(morceaux=["ok"])
+        reponse = demander(client, entetes, text="Message d'un ancien client")
+
+        assert reponse.status_code == 200
+        assert "Message d'un ancien client" in faux.prompts[-1]
+
+    def test_sans_conversation_id_le_seau_commun_n_est_pas_relu(
+        self, client, entetes, fournisseur, chat_direct,
+    ):
+        """Sans `conversation_id`, tout ce qui passe par cette route s'ecrit
+        dans un seul seau nomme « pwa ». Le relire ferait entrer dans l'invite
+        les tours de conversations etrangeres — pire que l'oubli qu'on
+        repare."""
+        faux = fournisseur(morceaux=["ok"])
+        marque = f"phrase-sans-conv-{uuid4()}"
+        demander(client, entetes, text=marque)
+        demander(client, entetes, text="Une autre question, sans conv non plus")
+
+        assert marque not in faux.prompts[-1], (
+            "le seau commun « pwa » a ete relu : deux conversations sans "
+            "identifiant se melangent")
+
+    def test_le_raisonnement_profond_recoit_le_fil(
+        self, client, entetes, fournisseur, monkeypatch,
+    ):
+        """« verifie ton calcul » arrivait au moteur sans le calcul."""
+        fournisseur()
+        conv = f"conv-fil-{uuid4()}"
+
+        async def _profond(_demande, espace=None):
+            return "DEEP_REASONING"
+        monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _profond)
+
+        recu: dict = {}
+
+        async def _resultat(requete, intent=None):
+            recu["prompt"] = requete.prompt
+            recu["history"] = requete.history
+            return {"response": "40,8", "sources": []}
+        monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+        demander(client, entetes, text="Combien font 12 % de 340 ?",
+                 conversation_id=conv, run_id=f"run-{uuid4()}")
+        demander(client, entetes, text="Verifie ton calcul",
+                 conversation_id=conv, run_id=f"run-{uuid4()}", history=[])
+
+        contenus = [t["content"] for t in recu["history"]]
+        assert "Combien font 12 % de 340 ?" in contenus, (
+            "le moteur de raisonnement recoit « verifie ton calcul » sans le "
+            "calcul : il ne peut que repondre a cote")
+        assert recu["prompt"] == "Verifie ton calcul", (
+            "le fil a ete fondu dans la question : le moteur ne sait plus a "
+            "quoi il doit repondre")
+
+    def test_un_autre_agent_specialise_ne_recoit_toujours_pas_le_fil(
+        self, client, entetes, fournisseur, monkeypatch,
+    ):
+        """Portee volontairement limitee : rien ne dit que EMAIL ou VISION ont
+        le meme besoin, et l'elargir sans le mesurer serait la meme erreur en
+        sens inverse."""
+        fournisseur()
+        conv = f"conv-fil-{uuid4()}"
+
+        async def _email(_demande, espace=None):
+            return "EMAIL"
+        monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _email)
+
+        recu: dict = {}
+
+        async def _resultat(requete, intent=None):
+            recu["history"] = requete.history
+            return {"response": "Envoye.", "sources": []}
+        monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+        demander(client, entetes, text="Ecris a Seck", conversation_id=conv,
+                 run_id=f"run-{uuid4()}")
+
+        assert recu["history"] == []
+
+    def test_un_journal_illisible_ne_fait_pas_tomber_la_reponse(
+        self, client, entetes, fournisseur, chat_direct, monkeypatch,
+    ):
+        fournisseur(morceaux=["ok"])
+
+        def _casse(*_args, **_kwargs):
+            raise RuntimeError("base verrouillee")
+        monkeypatch.setattr(pwa_gateway.memory, "get_recent_history", _casse)
+
+        reponse = demander(client, entetes, text="Ca doit repondre quand meme",
+                           conversation_id=f"conv-fil-{uuid4()}",
+                           run_id=f"run-{uuid4()}")
+
+        charges = trames(reponse.text)
+        assert charges[-1]["type"] == "done", (
+            "un journal illisible a emporte la reponse : la memoire ne doit "
+            "jamais bloquer le flux")
+
+
+class TestEtatDeLaMemoire:
+    """« Il oublie ce qu'on s'est dit » a trois causes possibles, et aucune
+    n'etait observable depuis le telephone. Cette route les separe."""
+
+    def test_la_route_rend_les_quatre_sections(self, client, entetes):
+        reponse = client.get("/agent/memoire", headers=entetes)
+
+        assert reponse.status_code == 200
+        assert set(reponse.json()) == {"base", "fil", "souvenirs", "recherche"}
+
+    def test_la_route_reste_derriere_la_cle(self, client):
+        """Le rapport nomme le chemin de la base et le volume des
+        conversations : il ne se lit pas sans la cle."""
+        assert client.get("/agent/memoire").status_code in (401, 403)
+
+    def test_le_mode_de_recherche_porte_sa_raison(self, client, entetes):
+        recherche = client.get("/agent/memoire", headers=entetes).json()["recherche"]
+
+        assert recherche["mode"] in ("SEMANTIQUE", "LEXICAL", "INCONNUE")
+        assert recherche["detail"], (
+            "le mode est annonce sans la mesure qui l'a etabli")
+
+
+class TestUnAgentSpecialiseLaisseUneTrace:
+    """Mesure du 19/09/2026 : la branche des agents specialises n'ecrivait
+    rien — ni `short_term_memory`, ni la memoire longue. Tout ce qui passait
+    par PLAQUISTE, DEEP_REASONING, EMAIL ou FRESH_INFO, c'est-a-dire le travail
+    reel du proprietaire, disparaissait des que le telephone sortait le tour de
+    sa fenetre de huit messages. Seule la conversation ordinaire etait
+    retenue."""
+
+    @pytest.fixture
+    def agent(self, monkeypatch, fournisseur):
+        fournisseur()
+
+        async def _email(_demande, espace=None):
+            return "EMAIL"
+        monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _email)
+        return monkeypatch
+
+    def _repondre(self, monkeypatch, reponse):
+        async def _resultat(_requete, intent=None):
+            return {"response": reponse, "sources": []}
+        monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+    def test_la_question_et_la_reponse_entrent_dans_le_fil(
+        self, client, entetes, agent,
+    ):
+        self._repondre(agent, "Message envoye a Seck.")
+        conv = f"conv-trace-{uuid4()}"
+
+        demander(client, entetes, text="Ecris a Seck pour le chantier",
+                 conversation_id=conv, run_id=f"run-{uuid4()}")
+
+        fil = pwa_gateway.memory.get_recent_history(session_id=conv, limit=10)
+        assert [t["content"] for t in fil] == [
+            "Ecris a Seck pour le chantier", "Message envoye a Seck."], (
+            "le tour passe par un agent specialise ne laisse aucune trace : "
+            "il est perdu des que le telephone le sort de sa fenetre")
+
+    def test_un_echec_d_agent_est_consigne_tel_quel(
+        self, client, entetes, agent,
+    ):
+        """Ce qui est consigne est ce qui s'est reellement passe. Sans cela le
+        fil garderait deux tours du proprietaire d'affilee, et le tour suivant
+        ne saurait pas que celui-ci a rate."""
+        async def _casse(_requete, intent=None):
+            raise ConnectionError("Gmail injoignable")
+        agent.setattr(pwa_gateway, "dispatch_request", _casse)
+        conv = f"conv-trace-{uuid4()}"
+
+        demander(client, entetes, text="Ecris a Seck", conversation_id=conv,
+                 run_id=f"run-{uuid4()}")
+
+        fil = pwa_gateway.memory.get_recent_history(session_id=conv, limit=10)
+        assert len(fil) == 2 and fil[0]["role"] == "user"
+        assert fil[1]["role"] == "assistant"
+        assert "n'a pas pu repondre" in fil[1]["content"]
+
+    def test_le_tour_suivant_retrouve_le_precedent(
+        self, client, entetes, agent, monkeypatch,
+    ):
+        """Le test qui compte : c'est la continuite reelle, bout en bout."""
+        self._repondre(agent, "Message envoye a Seck.")
+        conv = f"conv-trace-{uuid4()}"
+        demander(client, entetes, text="Ecris a Seck pour le chantier",
+                 conversation_id=conv, run_id=f"run-{uuid4()}")
+
+        async def _chat(_demande, espace=None):
+            return "CHAT"
+        monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _chat)
+        faux = pwa_gateway.fast_provider
+
+        demander(client, entetes, text="Tu lui as dit quoi ?",
+                 conversation_id=conv, run_id=f"run-{uuid4()}", history=[])
+
+        assert "Ecris a Seck pour le chantier" in faux.prompts[-1]

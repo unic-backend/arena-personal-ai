@@ -44,6 +44,10 @@ SURFACE_ATTENDUE = {
     # vers la machine d'un autre, lire revelerait ou est la sienne.
     "/machine/adresse": (["GET", "POST"], ["verify_api_key"]),
     "/agent/capabilities": (["GET"], ["verify_api_key"]),
+    # Ce que la memoire contient vraiment, mesure (19/09/2026). Derriere la
+    # cle : le rapport nomme le chemin de la base et le volume des
+    # conversations.
+    "/agent/memoire": (["GET"], ["verify_api_key"]),
     "/agent/stream": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/files": (["POST"], ["verify_api_key"]),
     "/v1/models": (["GET"], ["verify_api_key"]),

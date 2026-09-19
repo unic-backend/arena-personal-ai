@@ -9755,3 +9755,96 @@ c'est ce qui a permis au `INCONNU` d'`omnivoice-gguf` de vieillir sans que rien
 ne le signale.
 
 Un test l'exige désormais. Il ne change aucun verdict.
+
+---
+
+## DEC-0106 — Le fil du serveur est relu, et seulement sous un identifiant de conversation
+
+**2026-09-19.** Travail de nuit autorisé par le propriétaire : « la mémoire, le
+raisonnement, enlever les oublis, améliorer son penser ».
+
+**Décision** : le chemin PWA relit `short_term_memory` pour retrouver les tours
+que le téléphone a coupés — **et uniquement sous `conversation_id`**, jamais
+sous les deux replis de `_session_de` (`run_id`, puis `"pwa"`).
+
+**Pourquoi** : le serveur écrit chaque tour depuis toujours et ne le relisait
+pas sur cette surface ; `chatStore.ts` coupe à huit messages. Mais sans
+`conversation_id`, tout ce qui passe par `/agent/stream` s'écrit dans un seau
+commun nommé `"pwa"`, où cohabitent des conversations sans rapport. Ce n'est
+pas une hypothèse : un test existant du dépôt a échoué sur exactement ça, avec
+trente-cinq tours étrangers entrés dans l'invite.
+
+**Ce que ça coûte si c'est faux** : un client qui n'enverrait pas de
+`conversation_id` garde l'oubli d'avant — il lit huit messages et rien de plus.
+Aucune surface actuelle n'est dans ce cas (la PWA envoie l'identifiant depuis le
+12/09/2026), mais un futur client mal branché oublierait en silence, sans que
+rien ne le signale. **Ce qui rouvrirait la décision** : une surface légitime qui
+ne peut pas produire d'identifiant stable ; il faudrait alors lui en fabriquer
+un, jamais relire le seau commun.
+
+---
+
+## DEC-0107 — Un agent spécialisé laisse une trace, y compris quand il échoue
+
+**2026-09-19.**
+
+**Décision** : la branche des agents spécialisés consigne la question et la
+réponse dans le fil du serveur et dans la mémoire longue, comme la conversation
+ordinaire le faisait déjà. Un échec d'agent est consigné **tel qu'il a été
+affiché**, jamais effacé ni reformulé.
+
+**Pourquoi** : cette branche n'écrivait rien. PLAQUISTE, DEEP_REASONING, EMAIL,
+FRESH_INFO — le travail réel du propriétaire — disparaissaient dès que le
+téléphone sortait le tour de sa fenêtre. Et un fil qui saute les tours ratés
+montre deux questions du propriétaire d'affilée : le tour suivant ne peut pas
+savoir que celui d'avant a échoué, et ARENA repart comme si de rien n'était.
+
+**Ce que ça coûte si c'est faux** : la mémoire longue grossit plus vite, avec
+des échanges d'agents qui ne resserviront pas tous. C'est le prix accepté le
+02/09/2026 par le propriétaire — « tout garder » — et l'importance pondérée
+(`core/memory/conversation.classer`) garde un tarif devant un bavardage.
+
+---
+
+## DEC-0108 — Le fil entre dans le raisonnement comme contexte, jamais comme question
+
+**2026-09-19.**
+
+**Décision** : `solve_complex_task` accepte un `contexte` séparé, borné par deux
+marqueurs, présent dans les invites de plan, synthèse, critique et révision.
+Vide par défaut — les invites sont alors identiques au caractère près à ce
+qu'elles étaient. Le choix de la profondeur (`profondeur_pour`) continue de ne
+lire que la question.
+
+**Pourquoi** : « vérifie ton calcul » arrivait au moteur sans le calcul. Mais
+aplatir le fil dans la question aurait deux effets pervers : le modèle répond au
+mauvais tour, et le mode approfondie — deux appels de modèle de plus — se
+déclencherait au neuvième message par la seule règle des 200 caractères.
+
+**Ce que ça coûte si c'est faux** : une question dont la difficulté réelle n'est
+visible que dans le fil (« et si on doublait ? » après un énoncé complexe)
+restera en mode standard, donc sans critique. Le propriétaire peut toujours
+écrire « vérifie » pour forcer la profondeur. **Ce qui rouvrirait la décision** :
+mesurer que des questions elliptiques difficiles passent effectivement en
+standard alors qu'elles méritaient une critique.
+
+---
+
+## DEC-0109 — La persistance de la mémoire s'observe, elle ne se configure pas
+
+**2026-09-19.**
+
+**Décision** : `GET /agent/memoire` rapporte `CONFIRMEE` seulement quand une
+ligne en base précède le démarrage du processus. Sinon `PAS_ENCORE_OBSERVEE` —
+**jamais « non »**. Une base absente rend `INCONNUE`. Un comptage impossible
+rend `None` avec sa raison, jamais `0`.
+
+**Pourquoi** : « il oublie ce qu'on s'est dit » a trois causes possibles, dont
+un disque effacé à chaque redéploiement, et aucune n'était observable depuis le
+téléphone. Une variable d'environnement bien remplie ne prouve rien : seul un
+redémarrage survécu le prouve.
+
+**Ce que ça coûte si c'est faux** : juste après un redéploiement, la route
+répond `PAS_ENCORE_OBSERVEE` alors que le volume est peut-être parfaitement
+monté. C'est une absence de preuve présentée comme telle, pas une erreur — mais
+elle peut inquiéter à tort si on la lit comme un verdict.

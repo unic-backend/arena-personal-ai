@@ -70,7 +70,12 @@ from core.connectors.base import EtatSante
 from core.execution.mesures import ETAT_INDISPONIBLE, ETAT_MESURE, Mesure, chronometrer
 from core.execution.voies import budget_de, voie_pour
 from core.memory.consolidation import grouper
-from core.memory.conversation import retenir_l_echange
+from core.memory.conversation import (
+    rendre_le_fil,
+    retenir_l_echange,
+    tours_anterieurs,
+)
+from core.memory.etat import etat_memoire
 from core.memory.recuperation import recuperer
 from core.memory.semantique import recuperer_semantique
 from core.production.disponibilite import disponibilite_video
@@ -419,16 +424,97 @@ async def prompt_systeme(
     return "\n\n".join(blocs)
 
 
-def _prompt_conversation(demande: DemandeAgent, proprietaire: str) -> str:
-    """Reconstruit le fil a partir de l'historique envoye par l'interface.
+#: Ce qui annonce les tours ressortis du journal du serveur. Sans cette ligne,
+#: le modele lit un fil continu et prend pour « a l'instant » ce qui a pu etre
+#: dit il y a une semaine.
+TITRE_TOURS_ANTERIEURS = (
+    "(Plus tot dans cette meme conversation, relu dans la memoire du serveur :)"
+)
 
-    L'historique vient du navigateur : c'est lui qui fait foi pour cette
-    conversation-la. La memoire d'ARENA garde sa propre trace en parallele.
+#: Et ce qui dit ou le rappel s'arrete. Une borne de fin, pas une decoration :
+#: sans elle, la premiere phrase du fil en cours se lit comme la suite du
+#: rappel.
+FIN_TOURS_ANTERIEURS = "(Fin du rappel. La suite est le fil en cours :)"
+
+
+def _session_de(demande: DemandeAgent) -> str:
+    """L'identite de memoire de ce fil.
+
+    `conversation_id` (stable, un par fil) prime sur `run_id` (une nouvelle
+    valeur par message) : sans ca, chaque tour ouvrait une session differente.
+    Ecrit ici une seule fois — deux endroits calculaient la meme expression, et
+    une session lue autrement que celle ou l'on ecrit ne retrouve rien.
     """
-    lignes = [
-        f"{proprietaire if tour.get('role') == 'user' else 'Usman'}: {tour.get('content', '')}"
-        for tour in demande.history
-    ]
+    return demande.conversation_id or demande.run_id or "pwa"
+
+
+#: Les agents specialises qui recoivent le fil, et pourquoi chacun.
+#:
+#: - `PLAQUISTE` : un devis se negocie sur plusieurs tours (« c'est fann hock »
+#:   repond a « quel est le nom du client ? » d'un tour plus tot). Sans le fil,
+#:   l'agent redemande les memes informations en boucle.
+#: - `DEEP_REASONING` : « verifie ton calcul » arrivait ici sans le calcul.
+#:   Le fil y entre comme **contexte**, jamais comme question — le moteur le
+#:   borne et l'annonce (`core/reasoning/reasoning_engine.py`), et le choix de
+#:   la profondeur continue de ne lire que la question.
+#:
+#: Les autres n'y sont pas : rien ne dit qu'ils ont le meme besoin, et
+#: l'elargir sans le mesurer serait la meme erreur en sens inverse.
+INTENTIONS_AVEC_FIL = ("PLAQUISTE", "DEEP_REASONING")
+
+
+def _tours_relus(demande: DemandeAgent) -> List[Dict[str, str]]:
+    """Les tours de ce fil que le navigateur n'a pas renvoyes.
+
+    **On ne relit que sous `conversation_id`**, jamais sous les deux replis de
+    `_session_de`. Mesure du 19/09/2026 : sans conversation_id, tout ce qui
+    passe par cette route s'ecrit dans un seau commun nomme « pwa » — relire
+    ce seau aurait fait entrer dans l'invite les tours de conversations
+    etrangeres, ce qui est pire que l'oubli qu'on repare. `run_id`, lui, change
+    a chaque message : son seau ne contient que le tour en cours.
+
+    Un ancien client qui n'envoie pas `conversation_id` garde donc exactement
+    le comportement d'avant ce correctif.
+    """
+    if not demande.conversation_id:
+        return []
+    return tours_anterieurs(
+        memory, demande.conversation_id, demande.history, demande.text,
+    )
+
+
+def _fil_complet(demande: DemandeAgent) -> List[Dict[str, str]]:
+    """Le fil entier de cette conversation, structure, tour par tour.
+
+    Ce que le navigateur a renvoye, precede de ce qu'il avait coupe. Sert aux
+    agents qui recoivent l'historique separement du texte — la passerelle leur
+    donnait jusqu'ici les huit messages du telephone, et rien au-dela.
+    """
+    return [*_tours_relus(demande), *demande.history]
+
+
+def _prompt_conversation(demande: DemandeAgent, proprietaire: str) -> str:
+    """Reconstruit le fil : ce que le navigateur a renvoye, et ce qu'il a coupe.
+
+    L'historique du navigateur fait foi pour les tours recents — c'est lui qui
+    porte les corrections et les regenerations. Mais il s'arrete aux huit
+    derniers messages (`chatStore.ts`, `.slice(-8)`), et au-dela le fil n'etait
+    plus lu par personne alors que le serveur l'ecrit a chaque tour.
+
+    Les tours plus anciens sont donc relus dans `short_term_memory`, sous la
+    meme session, annonces comme un rappel et bornes par un budget dur.
+    """
+    lignes: List[str] = []
+
+    anciens = _tours_relus(demande)
+    if anciens:
+        lignes.append(TITRE_TOURS_ANTERIEURS)
+        lignes.append(rendre_le_fil(anciens, proprietaire))
+        lignes.append(FIN_TOURS_ANTERIEURS)
+
+    fil = rendre_le_fil(demande.history, proprietaire)
+    if fil:
+        lignes.append(fil)
     lignes.append(f"{proprietaire}: {demande.text}")
     lignes.append("Usman:")
     return "\n".join(lignes)
@@ -597,11 +683,7 @@ async def flux_agent(demande: DemandeAgent):
     relance la requete jusqu'a trois fois, et une reponse devient trois.
     """
     _signaler_non_applique(demande)
-    # `conversation_id` (stable, un par fil) prime sur `run_id` (une nouvelle
-    # valeur par message) : sans ca, chaque tour ouvrait une session de
-    # memoire differente et un agent specialise ne voyait jamais le tour
-    # precedent (mission ARENA x AUDIT, corrige le 12/09/2026).
-    session = demande.conversation_id or demande.run_id or "pwa"
+    session = _session_de(demande)
     proprietaire = memory.get_fact("owner") or "Ousmane"
 
     async def flux():
@@ -610,6 +692,31 @@ async def flux_agent(demande: DemandeAgent):
         # avait deja ete dit au moment de la coupure.
         tour_du_proprietaire_ecrit = False
         complet = ""
+
+        def consigner(question: str, reponse: str) -> None:
+            """Ecrit ce tour dans le fil du serveur et dans la memoire longue.
+
+            **Mesure du 19/09/2026 : la branche des agents specialises
+            n'ecrivait rien.** Ni `short_term_memory`, ni la memoire longue.
+            Tout ce qui passait par PLAQUISTE, DEEP_REASONING, EMAIL ou
+            FRESH_INFO — c'est-a-dire le travail reel du proprietaire —
+            disparaissait des que le telephone sortait le tour de sa fenetre
+            de huit messages. Seule la conversation ordinaire etait retenue.
+
+            Ne leve jamais : une memoire qui casse ne doit pas emporter la
+            reponse deja affichee.
+            """
+            try:
+                memory.add_chat_message(session_id=session, role="user",
+                                        content=question)
+                memory.add_chat_message(session_id=session, role="assistant",
+                                        content=reponse)
+            except Exception as souci:  # noqa: BLE001 — la reponse est deja partie
+                logger.warning("Tour non consigne dans le fil : %s", souci)
+            retenir_l_echange(
+                memoire_personnelle, question, reponse,
+                source=f"conversation du {date.today().strftime('%d/%m/%Y')}")
+
         try:
             # Pas de sonde a part : `fast_provider` est l'aiguilleur hybride
             # (cloud puis Ollama), et une sonde ici partagerait son propre
@@ -721,7 +828,9 @@ async def flux_agent(demande: DemandeAgent):
                                 # destinataire (agents/plaquiste/plaquiste_agent.py)
                                 # sache exactement quelle reponse va avec quelle
                                 # question, sans avoir a redecouper le fil aplati.
-                                history=demande.history if intention == "PLAQUISTE" else [],
+                                history=(_fil_complet(demande)
+                                         if intention in INTENTIONS_AVEC_FIL
+                                         else []),
                                 message_actuel=demande.text if intention == "PLAQUISTE" else None,
                             ),
                             intent=intention,
@@ -743,9 +852,15 @@ async def flux_agent(demande: DemandeAgent):
                         # l'exception, deja capture par `chronometrer` et deja
                         # plafonne a 120 caracteres pour ne rien divulguer, est
                         # ce qui reste diagnosticable au lieu de disparaitre.
-                        yield _rejouable(erreur(
-                            f"L'agent {intention} n'a pas pu repondre : "
-                            f"{mesure.detail or 'raison inconnue'}."))
+                        echec = (f"L'agent {intention} n'a pas pu repondre : "
+                                 f"{mesure.detail or 'raison inconnue'}.")
+                        yield _rejouable(erreur(echec))
+                        # Ce qui est consigne est ce qui s'est reellement
+                        # passe : sa question, et l'echec qu'il a vu. Sans
+                        # cela le fil garderait deux tours du proprietaire
+                        # d'affilee, et le tour suivant ne saurait pas que
+                        # celui-ci a rate.
+                        consigner(demande.text, echec)
                         return
                     resultat = rendu["resultat"]
                     if not a_produit_un_texte(resultat.get("response")):
@@ -754,8 +869,9 @@ async def flux_agent(demande: DemandeAgent):
                         # « ARENA n'avait rien a dire ». Le garde existait pour
                         # LibreChat depuis le 26/08/2026 ; cette surface-ci, celle
                         # du proprietaire, ne l'avait pas.
-                        yield _rejouable(erreur(garantir_un_texte(
-                            resultat.get("response"), intention)))
+                        vide = garantir_un_texte(resultat.get("response"), intention)
+                        yield _rejouable(erreur(vide))
+                        consigner(demande.text, vide)
                         return
                     yield _rejouable(jeton(resultat["response"]))
                     meta_final: Dict[str, Any] = {
@@ -782,6 +898,7 @@ async def flux_agent(demande: DemandeAgent):
                     if "critique" in resultat:
                         meta_final["critique"] = resultat["critique"]
                     yield _rejouable(fin(meta_final))
+                    consigner(demande.text, str(resultat["response"]))
                     return
                 finally:
                     # Si un `return` ci-dessus a ete atteint, `trames_de_ce_tour`
@@ -984,6 +1101,26 @@ async def capacites_disponibles() -> Dict[str, Any]:
         # DEC-0076 : pdf, mesuree pour de vrai — jamais devinee.
         "pdf": await disponibilite_pdf(registre.obtenir("pdf")),
     }
+
+
+@router.get("/agent/memoire", dependencies=[Depends(verify_api_key)])
+async def etat_de_la_memoire() -> Dict[str, Any]:
+    """Ce que la memoire de CETTE machine contient vraiment, mesure maintenant.
+
+    « Il oublie ce qu'on s'est dit » a trois causes possibles, et aucune n'etait
+    observable depuis le telephone : le fil non relu (corrige le 19/09/2026),
+    la recherche tombee en mode lexical faute d'Ollama, ou un disque efface a
+    chaque redeploiement. Cette route les separe.
+
+    Elle ne repare rien et ne configure rien. Chaque chiffre vient d'un
+    `SELECT`, l'etat de la recherche d'un vecteur reellement demande, et la
+    persistance d'un fait observe — une ligne plus ancienne que le demarrage de
+    ce processus — jamais d'une variable d'environnement bien remplie.
+
+    `verify_api_key` n'est pas decoratif : le rapport nomme le chemin de la
+    base et le volume des conversations.
+    """
+    return await etat_memoire(DB_PATH)
 
 
 #: Ou l'annonce est gardee. A cote de la base : sur Railway c'est le volume
