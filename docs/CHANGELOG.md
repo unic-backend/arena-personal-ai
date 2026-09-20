@@ -2,6 +2,38 @@
 
 ## [Non publié]
 
+### Ajouté — 20/09/2026 — « Fais-moi un PDF de ça » écrit enfin un fichier
+
+Tous les moteurs étaient là, et aucun ne pouvait être appelé. Mesuré ce
+jour-là : `md -> pdf` par WeasyPrint et `docx -> pdf` par LibreOffice
+répondaient `disponible=True`, la route `/media/rendered/{nom:path}` servait
+les fichiers avec la clé, le connecteur `pdf` savait fusionner et scinder.
+**Mais les deux portes du connecteur de conversion partaient d'un fichier déjà
+fourni par le propriétaire.** Aucune capacité ne savait écrire un TEXTE sur le
+disque — « fais-moi un PDF de ça » n'avait donc rien à appeler, et ARENA
+répondait à l'écran sans pouvoir dire pourquoi le fichier n'existait pas.
+
+`file_conversion.rediger` écrit la réponse et rend son lien. Cinq formats
+mesurés : **PDF** et **DOCX** (fichiers réels, relus — le DOCX contient bien
+les titres, le gras et les tableaux du markdown), **MD**, **TXT** et **HTML**
+écrits tels quels. `html -> docx` a été branché pour ça : LibreOffice refuse
+`--convert-to docx` sur un HTML (« no export filter ») et demande les deux
+filtres nommés — mesuré avant d'être déclaré.
+
+Le lien arrive sur le téléphone par le canal qui existait déjà
+(`_documents_produits` -> `meta.documents`), **sans la clé** : l'interface
+l'ajoute au clic, une clé écrite dans le texte d'une réponse serait recopiée
+dans la mémoire de conversation.
+
+Ce qui est refusé l'est en toutes lettres : un texte vide ne produit pas un PDF
+blanc, un `.xlsx` demandé répond « aucun moteur n'écrit ce format » au lieu de
+se taire, et un brouillon ne survit jamais à sa conversion.
+
+**Fabriquer n'est pas lire.** « Résume-moi ce PDF » ne fabrique rien : il faut
+un verbe qui produit ET un format nommé, et « ce fichier » annule les deux.
+Les dix sabotages mordent, dont les deux qui ont révélé que ces gardes
+n'étaient couverts par aucun test.
+
 ### Ajouté — 20/09/2026 — Un travail de fond ne disparaît plus à un redémarrage
 
 C'était le dernier endroit du dépôt où un travail long s'évaporait :

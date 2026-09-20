@@ -93,6 +93,20 @@ _enregistrer(
             "texte est réel et complet, sa mise en page ne se retouche pas "
             "facilement dans Word/LibreOffice après coup.")))
 
+# --- LibreOffice : HTML -> DOCX (20/09/2026) ---------------------------------------
+# Mesuré sur cette machine avant d'être déclaré : 5274 octets de DOCX réel,
+# relu par la validation. Ce couple existe pour que « écris-moi ça en Word »
+# ait un chemin : `rediger` rend le markdown en HTML, LibreOffice finit le
+# travail. Il sert aussi une page HTML fournie par le propriétaire.
+_enregistrer(
+    ["html"], ["docx"],
+    EntreeMoteur(
+        "libreoffice", _office_convertir, m.soffice_disponible,
+        limites_qualite=(
+            "Le CSS avancé (grid/flex, polices web) ne survit pas à l'import "
+            "Writer : le texte, les titres et les tableaux passent, la mise "
+            "en page fine non.")))
+
 # --- Pillow : images ---------------------------------------------------------------
 _FORMATS_IMAGE = ["png", "jpg", "jpeg", "webp", "bmp", "tiff", "gif"]
 _enregistrer(_FORMATS_IMAGE, _FORMATS_IMAGE,

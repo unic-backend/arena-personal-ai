@@ -431,6 +431,160 @@ async def _donnees_senegal(question: str) -> Optional[Dict[str, Any]]:
             "status": "success", "detail": corps.get("detail")}
 
 
+
+# --- « Fais-moi un PDF de ca » (20/09/2026) --------------------------------
+
+#: Ce qui, dans une phrase, demande un FICHIER — pas une reponse a l'ecran.
+#: Chaque entree pointe le format a produire. Le dictionnaire est lu dans
+#: l'ordre : `docx` avant `document`, sinon « en document word » repondrait
+#: « md ».
+FORMATS_DEMANDES: Dict[str, str] = {
+    "en pdf": "pdf", "un pdf": "pdf", "au format pdf": "pdf",
+    "fichier pdf": "pdf", "document pdf": "pdf", ".pdf": "pdf",
+    "en word": "docx", "en docx": "docx", "fichier word": "docx",
+    "en markdown": "md", "un fichier md": "md", ".md": "md",
+    "en texte": "txt", "fichier texte": "txt", "en html": "html",
+    # Deux formats qu'ARENA ne sait PAS ecrire aujourd'hui, et qui sont ici
+    # exprès : reconnus, la demande recoit « .xlsx non produit : aucun moteur
+    # ARENA n'ecrit ce format » ; ignores, elle recevait une reponse normale
+    # sans un mot sur le fichier attendu. Un refus nomme vaut mieux qu'un
+    # silence — mesure le 20/09/2026, c'est ce silence qui a ete constate.
+    "en excel": "xlsx", "en xlsx": "xlsx", "fichier excel": "xlsx",
+    "en powerpoint": "pptx", "en pptx": "pptx",
+}
+
+#: Les memes mots employes pour LIRE un document deja fourni. « resume-moi ce
+#: PDF » demande une lecture, pas une fabrication — et cette lecture a deja
+#: son chemin (l'intention `documents`). Sans cette liste, chaque question
+#: posee sur un PDF recu en fabriquerait un nouveau.
+LECTURE_PAS_FABRICATION = (
+    "ce pdf", "le pdf", "du pdf", "ce document", "le document", "du document",
+    "ce fichier", "le fichier", "d'apres", "d'après", "dans mes", "mes documents",
+    "resume le", "résume le", "resume ce", "résume ce", "lis ", "lit ", "ouvre ",
+    "analyse ce", "analyse le", "traduis ce", "traduis le",
+)
+
+#: Le verbe qui demande une PRODUCTION. Sans lui, « le tableau en pdf que tu
+#: m'as envoye hier » declencherait une fabrication.
+VERBES_DE_PRODUCTION = (
+    "fais", "fait", "genere", "génère", "generer", "générer", "cree", "crée",
+    "creer", "créer", "ecris", "écris", "ecrire", "écrire", "redige", "rédige",
+    "rediger", "rédiger", "prepare", "prépare", "mets", "met ", "convertis",
+    "exporte", "export", "telecharg", "télécharg", "donne-moi", "donne moi",
+    "envoie-moi", "envoie moi", "sors", "produis",
+)
+
+
+def format_de_document_demande(phrase: str) -> Optional[str]:
+    """Le format de fichier demande par cette phrase, ou `None`.
+
+    **Deux conditions, et les deux sont necessaires** : un format nomme ET un
+    verbe qui produit. « Fais-moi un PDF » fabrique ; « resume-moi ce PDF »
+    lit ; « le PDF que tu m'as envoye » ne fait ni l'un ni l'autre. Le doute
+    profite a la lecture : fabriquer un fichier que personne n'a demande
+    encombre `media/rendered/` et fait mentir la reponse.
+    """
+    minuscules = (phrase or "").lower()
+    if not minuscules.strip():
+        return None
+    if any(marqueur in minuscules for marqueur in LECTURE_PAS_FABRICATION):
+        return None
+    if not any(verbe in minuscules for verbe in VERBES_DE_PRODUCTION):
+        return None
+    for marqueur, format_cible in FORMATS_DEMANDES.items():
+        if marqueur in minuscules:
+            return format_cible
+    return None
+
+
+def _titre_du_document(texte: str, demande: str) -> str:
+    """Le nom que portera le fichier telecharge.
+
+    Le premier titre markdown de la reponse d'abord — c'est ce que le
+    proprietaire reconnaitra dans sa liste de telechargements. A defaut, sa
+    demande, qui dit toujours de quoi il s'agit.
+    """
+    for ligne in (texte or "").splitlines():
+        nue = ligne.strip()
+        if nue.startswith("#"):
+            titre = nue.lstrip("#").strip()
+            if titre:
+                return titre[:60]
+    return (demande or "document").strip()[:60]
+
+
+async def _joindre_document(
+    demande: str, reponse: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Ecrit la reponse dans un fichier telechargeable quand elle a ete
+    demandee sous cette forme, et attache son lien.
+
+    **Le chainon qui manquait, mesure le 20/09/2026.** Les moteurs PDF etaient
+    tous disponibles, la route `/media/rendered/{nom:path}` savait servir le
+    fichier — mais aucune capacite ne savait ecrire un TEXTE sur le disque, et
+    les deux portes du connecteur de conversion partaient d'un fichier deja
+    fourni. « Fais-moi un PDF de ca » n'avait donc rien a appeler : ARENA
+    repondait a l'ecran, et le fichier n'existait nulle part.
+
+    Trois regles :
+
+    1. **La reponse passe toujours**, document ou pas. Un echec d'ecriture
+       n'efface pas ce qui a ete repondu — il s'ajoute a la reponse, en toutes
+       lettres.
+    2. **Un echec se dit.** Le format non pris en charge, la dependance
+       manquante : la phrase le nomme. Le silence laisserait croire que le
+       proprietaire a mal lu sa propre demande.
+    3. **L'URL rendue ne porte pas la cle.** L'interface l'ajoute au moment du
+       clic (`adresseOuvrable`, apps/pwa) : une cle ecrite dans le texte d'une
+       reponse serait recopiee dans la memoire de conversation.
+    """
+    format_cible = format_de_document_demande(demande)
+    if format_cible is None:
+        return reponse
+
+    texte = str(reponse.get("response") or "").strip()
+    if not texte:
+        # Rien a ecrire : un fichier vide ne repare pas une reponse vide.
+        return reponse
+
+    resultat = await asyncio.to_thread(
+        registre.executer, "file_conversion", "rediger",
+        texte=texte, format_cible=format_cible,
+        titre=_titre_du_document(texte, demande))
+    corps = resultat.to_dict() if hasattr(resultat, "to_dict") else dict(resultat or {})
+    detail = corps.get("detail") or {}
+
+    # `ResultatAction.to_dict()` nomme ses champs `status` et `response` —
+    # pas `statut`/`message`. Lire le mauvais nom rendait « raison inconnue »
+    # a la place du refus exact du connecteur (mesure avant correction) :
+    # l'echec etait dit, mais vide, ce qui est presque aussi inutile que le
+    # silence qu'il devait remplacer.
+    raison = corps.get("response") or corps.get("message")
+    if corps.get("status", corps.get("statut")) not in ("SUCCESS", "PARTIAL"):
+        reponse["response"] = (
+            f"{texte}\n\n---\n*Document .{format_cible} non produit : "
+            f"{raison or 'raison inconnue'}*")
+        reponse["document_echec"] = raison
+        return reponse
+
+    chemin = Path(str(corps.get("preuve") or ""))
+    # La forme EXACTE que `_documents_produits` (apps/backend/routers/
+    # pwa_gateway.py) sait lire : `statut` et `url`, sinon il n'offre rien.
+    # C'est le canal par lequel le devis PDF arrive deja sur le telephone
+    # depuis le 04/09/2026 — en ouvrir un deuxieme demanderait a l'interface
+    # d'apprendre deux fois la meme chose.
+    reponse["document"] = {
+        "statut": corps.get("status", corps.get("statut")),
+        "url": detail.get("url"),
+        "message": f"Document « {chemin.name} » ({format_cible.upper()})",
+        "nom": chemin.name,
+        "format": format_cible,
+        "octets": detail.get("taille_apres_octets"),
+    }
+    reponse["response"] = f"{texte}\n\n---\n*Document « {chemin.name} » prêt à télécharger.*"
+    return reponse
+
+
 async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -> Dict[str, Any]:
     """Aiguille la demande vers l'agent choisi, en declarant son type de tache.
 
@@ -451,7 +605,12 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
     if intent is None:
         intent = await orchestrator.analyze_intent(request.prompt)
     with tache(intent):
-        return await _aiguiller(request, intent)
+        reponse = await _aiguiller(request, intent)
+    # Apres l'aiguillage, jamais avant : le document contient LA REPONSE, il
+    # ne peut donc pas s'ecrire tant qu'elle n'existe pas. Ici parce que les
+    # cinq appelants passent tous par cette fonction (voir la docstring) —
+    # l'accrocher plus bas le manquerait pour l'un d'eux.
+    return await _joindre_document(request.prompt, reponse)
 
 
 #: Combien de tours on relit quand l'appelant n'a pas envoye d'historique.
