@@ -26,6 +26,15 @@ class AutonomousSettings(BaseModel):
     history_messages: int = Field(default=20, ge=2, le=100)
     worker_interval: float = Field(default=5, gt=0, le=60)
 
+    # Conversation intelligence: precision is intentionally favoured over recall.
+    memory_rerank_top_k: int = Field(default=6, ge=0, le=20)
+    memory_lexical_weight: float = Field(default=0.35, ge=0, le=1)
+    memory_entity_weight: float = Field(default=0.30, ge=0, le=1)
+    memory_topic_weight: float = Field(default=0.25, ge=0, le=1)
+    memory_recency_weight: float = Field(default=0.10, ge=0, le=1)
+    memory_relevance_threshold: float = Field(default=0.22, ge=0, le=1)
+    memory_debug: bool = False
+
     @classmethod
     def from_env(cls) -> "AutonomousSettings":
         return cls(
@@ -36,4 +45,12 @@ class AutonomousSettings(BaseModel):
             tavily_key=os.getenv("TAVILY_API_KEY", ""),
             timeout=float(os.getenv("USMAN_AUTONOMOUS_TIMEOUT", "30")),
             context_chars=int(os.getenv("USMAN_AUTONOMOUS_CONTEXT_CHARS", "24000")),
+            history_messages=int(os.getenv("USMAN_HISTORY_MESSAGES", "20")),
+            memory_rerank_top_k=int(os.getenv("USMAN_MEMORY_RERANK_TOP_K", "6")),
+            memory_lexical_weight=float(os.getenv("USMAN_MEMORY_LEXICAL_WEIGHT", "0.35")),
+            memory_entity_weight=float(os.getenv("USMAN_MEMORY_ENTITY_WEIGHT", "0.30")),
+            memory_topic_weight=float(os.getenv("USMAN_MEMORY_TOPIC_WEIGHT", "0.25")),
+            memory_recency_weight=float(os.getenv("USMAN_MEMORY_RECENCY_WEIGHT", "0.10")),
+            memory_relevance_threshold=float(os.getenv("USMAN_MEMORY_RELEVANCE_THRESHOLD", "0.22")),
+            memory_debug=os.getenv("USMAN_MEMORY_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"},
         )
