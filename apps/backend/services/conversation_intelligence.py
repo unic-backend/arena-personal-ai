@@ -19,6 +19,9 @@ STOPWORDS = {
     "encore", "est", "ils", "mais", "mes", "mon", "nous", "pour", "que", "quel", "quelle",
     "qui", "quoi", "son", "sur", "tes", "ton", "tous", "tout", "une", "vous", "the", "and",
     "this", "that", "what", "why", "from", "pas", "plus", "moi", "toi", "lui",
+    "et", "le", "la", "les", "de", "du", "au", "aux", "un", "ce", "ces", "cet",
+    "déjà", "deja", "était", "etait", "être", "etre", "problème", "probleme",
+    "encore", "avait", "avais", "avons", "avez",
 }
 ENTITY_STOPWORDS = {
     "Alors", "Avec", "Cette", "Comme", "Dans", "Donc", "Elle", "Elles", "Encore", "Il", "Ils",
@@ -34,6 +37,39 @@ RETURN = re.compile(
     r"\b(?:revenons?|retournons?|reprenons?|reviens?|retourne|je parle de|celui de|celle de|"
     r"pas l'autre|not the other|back to|earlier)\b", re.IGNORECASE,
 )
+QUESTION = re.compile(
+    r"^\s*(?:est-ce|es-tu|sais-tu|peux-tu|pourquoi|comment|combien|quel(?:le|s)?|"
+    r"qui|quoi|où|ou\b|quand|does|do|did|is|are|why|how|what|which|who|when)\b",
+    re.IGNORECASE,
+)
+SPECULATION = re.compile(
+    r"\b(?:peut[- ]?être|peut etre|maybe|perhaps|probablement|possiblement|"
+    r"j'envisage|je pourrais|je pense peut-être|si jamais|supposons?|imaginons?|par exemple)\b",
+    re.IGNORECASE,
+)
+CORRECTION = re.compile(
+    r"\b(?:correction|en fait|actually|je me suis tromp[ée]|j'avais tort|i was wrong|"
+    r"je voulais dire|i meant|le précédent .* faux|previous .* wrong)\b",
+    re.IGNORECASE,
+)
+
+
+def classify_user_evidence(text: str) -> dict[str, Any]:
+    """Classifie sans LLM si un message peut nourrir la mémoire longue.
+
+    Le texte original est toujours conservé dans l'historique de conversation.
+    Cette décision ne contrôle que son éligibilité comme preuve réutilisable.
+    """
+    value = (text or "").strip()
+    if not value:
+        return {"eligible": False, "source_type": "empty", "confidence": 0.0}
+    if "?" in value or QUESTION.search(value):
+        return {"eligible": False, "source_type": "user_question", "confidence": 0.0}
+    if SPECULATION.search(value):
+        return {"eligible": False, "source_type": "user_speculation", "confidence": 0.25}
+    if CORRECTION.search(value):
+        return {"eligible": True, "source_type": "user_correction", "confidence": 1.0}
+    return {"eligible": True, "source_type": "user_assertion", "confidence": 0.95}
 
 
 def tokens(text: str) -> set[str]:
@@ -102,26 +138,57 @@ def _reference_entities(recent: list[str]) -> list[str]:
     return (preferred + secondary)[:8]
 
 
-def understand(message: str, history: list[dict[str, str]]) -> ConversationState:
+def understand(
+    message: str,
+    history: list[dict[str, str]],
+    *,
+    recent_window: int = 8,
+) -> ConversationState:
     user_history = [str(item.get("content", "")) for item in history if item.get("role") == "user"]
-    recent = user_history[-6:]
+    recent_window = max(2, min(int(recent_window), 30))
+    recent = user_history[-recent_window:]
     current_tokens = tokens(message)
-    scored = [(overlap(current_tokens, tokens(text)), text) for text in recent]
-    best_score, best_text = max(scored, default=(0.0, ""), key=lambda pair: pair[0])
-    previous_topics = [" ".join(list(tokens(text))[:8]) for text in recent if tokens(text)]
 
+    scored_all = [
+        (overlap(current_tokens, tokens(text)), index, text)
+        for index, text in enumerate(user_history)
+    ]
+    best_score, best_index, best_text = max(
+        scored_all,
+        default=(0.0, -1, ""),
+        key=lambda item: item[0],
+    )
+    recent_start = max(0, len(user_history) - recent_window)
+    best_is_older = best_index >= 0 and best_index < recent_start
+    recent_scores = [
+        (score, index, text) for score, index, text in scored_all if index >= recent_start
+    ]
+    recent_best_score, _, _ = max(
+        recent_scores,
+        default=(0.0, -1, ""),
+        key=lambda item: item[0],
+    )
+
+    previous_topics = [" ".join(sorted(tokens(text))[:8]) for text in user_history if tokens(text)]
     has_reference = bool(REFERENCE.search(message or ""))
     explicit_return = bool(RETURN.search(message or ""))
-    if explicit_return and best_text:
+
+    # A retour explicite doit pointer vers un ancien message qui partage
+    # réellement le sujet demandé. Sinon on garde le message courant comme
+    # sujet au lieu de choisir arbitrairement un distracteur récent.
+    if explicit_return and best_score >= 0.10:
         transition: TopicTransition = "TOPIC_RETURN"
-        confidence = max(0.7, best_score)
-    elif has_reference and recent:
+        confidence = min(1.0, 0.72 + best_score)
+    elif best_is_older and best_score >= 0.12:
+        transition = "TOPIC_RETURN"
+        confidence = min(1.0, 0.62 + best_score)
+    elif has_reference and user_history:
         transition = "CONTINUATION"
-        confidence = 0.75
-    elif best_score >= 0.18:
+        confidence = max(0.70, min(1.0, 0.55 + best_score))
+    elif recent_best_score >= 0.18:
         transition = "CONTINUATION"
-        confidence = min(1.0, 0.55 + best_score)
-    elif current_tokens and recent:
+        confidence = min(1.0, 0.55 + recent_best_score)
+    elif current_tokens and user_history:
         transition = "TOPIC_SHIFT"
         confidence = 0.62
     else:
@@ -129,18 +196,38 @@ def understand(message: str, history: list[dict[str, str]]) -> ConversationState
         confidence = 0.35
 
     entities = _entities(message)
+    reference_candidates: list[str] = []
     if has_reference:
-        for entity in _reference_entities(recent):
+        # Le meilleur ancrage lexical gagne sur un sujet récent sans rapport.
+        if best_text and best_score >= 0.10:
+            reference_candidates.extend(_entities(best_text))
+            if best_index > 0:
+                reference_candidates.extend(_entities(user_history[best_index - 1]))
+        reference_candidates.extend(_reference_entities(recent))
+        if not reference_candidates:
+            reference_candidates.extend(_reference_entities(user_history))
+        reference_candidates = list(dict.fromkeys(reference_candidates))
+        for entity in reference_candidates:
             if entity not in entities:
                 entities.append(entity)
-    topic_source = best_text if transition == "TOPIC_RETURN" and best_text else message
+
+    topic_source = (
+        best_text
+        if transition == "TOPIC_RETURN" and best_text and best_score >= 0.10
+        else message
+    )
     topic = " ".join(sorted(tokens(topic_source))[:8])
     references = {}
-    if has_reference:
-        candidates = _reference_entities(recent)
-        if candidates:
-            references["recent_reference"] = candidates[0]
-    return ConversationState(topic, previous_topics[-6:], entities[-8:], transition, references, confidence)
+    if has_reference and reference_candidates:
+        references["recent_reference"] = reference_candidates[0]
+    return ConversationState(
+        topic,
+        previous_topics[-12:],
+        entities[-12:],
+        transition,
+        references,
+        confidence,
+    )
 
 
 def score_memory(query: str, candidate: dict[str, Any], state: ConversationState,
