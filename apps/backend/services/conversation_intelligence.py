@@ -241,7 +241,9 @@ def score_memory(query: str, candidate: dict[str, Any], state: ConversationState
     lexical = overlap(tokens(query), tokens(content))
     candidate_entities = {x.casefold() for x in _entities(content)}
     active_entities = {x.casefold() for x in state.active_entities}
-    entity = (len(candidate_entities & active_entities) / max(1, len(active_entities))) if active_entities else 0.0
+    shared_entities = candidate_entities & active_entities
+    entity = (len(shared_entities) / max(1, len(active_entities))) if active_entities else 0.0
+    entity_conflict = bool(active_entities and candidate_entities and not shared_entities)
     topic = overlap(tokens(state.active_topic), tokens(content)) if state.active_topic else lexical
     recent = recency_score(candidate.get("created"))
     semantic = max(0.0, min(1.0, float(semantic_score or 0.0)))
@@ -250,10 +252,19 @@ def score_memory(query: str, candidate: dict[str, Any], state: ConversationState
         entity * weights["entity"] + topic * weights["topic"] +
         recent * weights["recency"] + (1.0 if same_conversation else 0.0) * weights["conversation"]
     )
+    confidence = max(0.0, min(1.0, float(candidate.get("confidence", 1.0))))
     return {
-        "score": score, "semantic": semantic, "lexical": lexical, "entity": entity,
-        "topic": topic, "recency": recent, "same_conversation": same_conversation,
+        "score": score,
+        "semantic": semantic,
+        "lexical": lexical,
+        "entity": entity,
+        "entity_conflict": entity_conflict,
+        "topic": topic,
+        "recency": recent,
+        "same_conversation": same_conversation,
         "memory_kind": str(candidate.get("kind") or ""),
+        "source_type": str(candidate.get("source_type") or "legacy"),
+        "confidence": confidence,
     }
 
 
@@ -267,6 +278,10 @@ def accept_memory(features: dict[str, Any], threshold: float) -> bool:
     lexical = float(features["lexical"])
     topic = float(features["topic"])
     entity = float(features["entity"])
+    if features.get("entity_conflict"):
+        return False
+    if float(features.get("confidence", 1.0)) < 0.5:
+        return False
     contextual_support = (
         lexical >= 0.20
         or topic >= 0.18
