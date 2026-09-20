@@ -347,3 +347,194 @@ async def test_sensitive_exchange_cannot_search_or_persist_decrypted_content(set
     assert not result.memory_saved
     assert result.tools[0].error == "sensitive_context_tool_blocked"
     assert "sensitive_exchange_not_persisted" in result.warnings
+
+
+class PieceDouble:
+    def __init__(self, identifiant="piece1", nom="devis.pdf", texte="Montant réel 42000 FCFA",
+                 image=False, lisible=True, raison=None):
+        self.identifiant = identifiant
+        self.nom = nom
+        self.texte = texte
+        self.image_base64 = "aW1hZ2U=" if image else ""
+        self.tronque = False
+        self.lisible = lisible
+        self.raison = raison
+        self.statut = "LU" if lisible else "ECHEC"
+
+    @property
+    def est_image(self):
+        return bool(self.image_base64)
+
+
+class DepotDouble:
+    def __init__(self, *pieces):
+        self.pieces = {piece.identifiant: piece for piece in pieces}
+
+    def lire(self, identifiant):
+        return self.pieces.get(identifiant)
+
+
+class VisionDouble:
+    def __init__(self, status="success"):
+        self.status = status
+        self.calls = []
+
+    async def run(self, texte, context=None):
+        self.calls.append((texte, context))
+        return {"status": self.status, "response": "Je vois une cloison BA13."}
+
+
+class VideoDouble:
+    def __init__(self):
+        self.calls = []
+
+    async def run(self, texte, context=None):
+        self.calls.append((texte, context))
+        return {
+            "status": "success",
+            "transcription": "bonjour chantier",
+            "duration": 2.5,
+            "segments": [{"start": 0, "end": 2.5, "text": "bonjour chantier"}],
+            "ai_analysis": "Résumé de la parole.",
+        }
+
+
+class RegistreDocumentDouble:
+    def __init__(self, preuve, url):
+        self.preuve, self.url = preuve, url
+        self.calls = []
+
+    def executer(self, connecteur, capacite, **kwargs):
+        self.calls.append((connecteur, capacite, kwargs))
+        return SimpleNamespace(
+            statut=SimpleNamespace(value="SUCCESS"),
+            detail={"url": self.url},
+            preuve=str(self.preuve),
+            message="document créé",
+        )
+
+
+async def test_multimodal_registry_rejects_attachment_outside_current_request(tmp_path):
+    piece = PieceDouble()
+    async with httpx.AsyncClient() as http:
+        registry = builtin_registry(http, pieces_jointes=DepotDouble(piece))
+        refused = await registry.execute(
+            "read_attachment", '{"attachment_id":"piece1"}',
+            context={"attachments": [], "media_paths": [], "message": "lis"},
+        )
+        allowed = await registry.execute(
+            "read_attachment", '{"attachment_id":"piece1"}',
+            context={"attachments": ["piece1"], "media_paths": [], "message": "lis"},
+        )
+    assert not refused.ok and refused.error == "attachment_not_allowed"
+    assert allowed.ok and "42000 FCFA" in allowed.data["text"]
+
+
+async def test_autonomous_api_can_read_validated_pdf_attachment(settings, monkeypatch):
+    monkeypatch.setattr(security, "USMAN_API_KEY", "test-owner-only")
+    piece = PieceDouble()
+    ai = ScriptedAI([
+        tool_call("read_attachment", '{"attachment_id":"piece1"}', "doc1"),
+        {"content": "Le montant du document est 42000 FCFA."},
+    ])
+    http = httpx.AsyncClient()
+    memory = MemoryEngine(settings, ai)
+    tools = builtin_registry(http, pieces_jointes=DepotDouble(piece))
+    runtime = SimpleNamespace(memory=memory, orchestrator=Orchestrator(settings, ai, memory, tools))
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_runtime] = lambda: runtime
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "Quel est le montant ?", "attachments": ["piece1"]},
+            headers={"Authorization": "Bearer test-owner-only"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["response"] == "Le montant du document est 42000 FCFA."
+    assert payload["tools"] == [{"name": "read_attachment", "ok": True, "error": None}]
+    tool_payload = json.loads(ai.calls[1][0][-1]["content"])
+    assert tool_payload["data"]["name"] == "devis.pdf"
+    assert "42000 FCFA" in tool_payload["data"]["text"]
+    await http.aclose()
+
+
+async def test_image_tool_uses_existing_vision_agent_and_current_attachment():
+    image = PieceDouble(identifiant="img1", nom="chantier.png", texte="", image=True)
+    vision = VisionDouble()
+    async with httpx.AsyncClient() as http:
+        registry = builtin_registry(
+            http, pieces_jointes=DepotDouble(image), vision_agent=vision,
+        )
+        result = await registry.execute(
+            "analyze_image", '{"attachment_id":"img1"}',
+            context={"attachments": ["img1"], "media_paths": [], "message": "regarde ça"},
+        )
+    assert result.ok and "cloison" in result.data["analysis"]
+    assert vision.calls[0][1] == {"attachments": ["img1"]}
+
+
+async def test_video_tool_reports_audio_analysis_not_visual(tmp_path, monkeypatch):
+    media = tmp_path / "chantier.mp4"
+    media.write_bytes(b"video")
+    monkeypatch.setattr(
+        "apps.backend.services.tools.builtin.validate_media_path", lambda value: media
+    )
+    video = VideoDouble()
+    async with httpx.AsyncClient() as http:
+        registry = builtin_registry(http, video_agent=video)
+        result = await registry.execute(
+            "analyze_video_audio", json.dumps({"media_path": str(media)}),
+            context={"attachments": [], "media_paths": [str(media)], "message": "analyse"},
+        )
+    assert result.ok
+    assert result.data["visual_frame_analysis"] is False
+    assert result.data["analysis_kind"] == "audio_transcription_and_text_analysis"
+    assert result.data["transcription"] == "bonjour chantier"
+
+
+async def test_generated_artifact_is_returned_only_when_real_and_downloadable(
+        settings, tmp_path, monkeypatch):
+    import apps.backend.services.tools.builtin as builtin
+
+    monkeypatch.setattr(builtin, "RENDERED_DIR", tmp_path)
+    artifact = tmp_path / "rapport.pdf"
+    artifact.write_bytes(b"%PDF-1.4\nreal-test")
+    registre = RegistreDocumentDouble(artifact, "/media/rendered/rapport.pdf")
+    ai = ScriptedAI([
+        tool_call(
+            "create_document",
+            '{"text":"Rapport réel","format":"pdf","title":"rapport"}',
+            "file1",
+        ),
+        {"content": "Le PDF est prêt."},
+    ])
+    async with httpx.AsyncClient() as http:
+        tools = builtin_registry(http, registre=registre)
+        memory = MemoryEngine(settings, ai)
+        result = await Orchestrator(settings, ai, memory, tools).run(
+            CurrentUser(id="owner"), ChatInput(message="Crée le rapport en PDF")
+        )
+
+    assert result.artifacts
+    assert result.artifacts[0].url == "/media/rendered/rapport.pdf"
+    assert result.artifacts[0].size_bytes == artifact.stat().st_size
+
+
+async def test_generated_artifact_missing_is_never_advertised(tmp_path, monkeypatch):
+    import apps.backend.services.tools.builtin as builtin
+
+    monkeypatch.setattr(builtin, "RENDERED_DIR", tmp_path)
+    missing = tmp_path / "absent.pdf"
+    registre = RegistreDocumentDouble(missing, "/media/rendered/absent.pdf")
+    async with httpx.AsyncClient() as http:
+        registry = builtin_registry(http, registre=registre)
+        result = await registry.execute(
+            "create_document",
+            '{"text":"x","format":"pdf","title":"absent"}',
+            context={"attachments": [], "media_paths": [], "message": "crée"},
+        )
+    assert not result.ok and result.error == "artifact_missing"
