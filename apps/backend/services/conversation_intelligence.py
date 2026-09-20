@@ -89,7 +89,7 @@ def classify_question_scope(message: str, *, has_reference: bool = False) -> Que
         return "CURRENT_CONVERSATION"
     if PERSONAL_MARKER.search(value):
         return "PERSONAL_CONTEXT"
-    return "GENERAL_KNOWLEDGE"
+    return "UNKNOWN"
 
 
 def classify_user_evidence(text: str) -> dict[str, Any]:
