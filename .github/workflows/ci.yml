@@ -110,7 +110,8 @@ jobs:
         # et vérifie les SORTIES réelles : texte OCR, contenu converti,
         # PDF généré, puis refus sans clé et téléchargement authentifié.
         run: |
-          docker run --rm -e USMAN_API_KEY=document-smoke-key \
+          SMOKE_KEY="$(python -c 'import secrets; print(secrets.token_hex(24))')"
+          docker run --rm -e USMAN_API_KEY="$SMOKE_KEY" \
             --entrypoint apps/backend/entrypoint.sh arena:ci \
             python scripts/document_runtime_smoke.py
 
