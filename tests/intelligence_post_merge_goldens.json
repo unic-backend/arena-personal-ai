@@ -1,0 +1,793 @@
+{
+  "version": 2,
+  "purpose": "Permanent post-merge conversational intelligence golden set.",
+  "source_main": "c6cd7f562b6c5aff9dfbb1cb621f840bb9aa52d6",
+  "goldens": [
+    {
+      "id": "explicit_return_1",
+      "category": "topic_return",
+      "kind": "transition",
+      "history": [
+        "Le reranker mémoire rejette les souvenirs hors sujet.",
+        "Mon ordinateur chauffe.",
+        "Je dois appeler le client.",
+        "Le chantier commence lundi.",
+        "Docker est à jour.",
+        "Ma voiture est au garage.",
+        "Je prépare un devis.",
+        "Le PDF est signé."
+      ],
+      "query": "Revenons à reranker.",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "reranker"
+    },
+    {
+      "id": "implicit_return_1",
+      "category": "implicit_topic_return",
+      "kind": "transition",
+      "history": [
+        "Le reranker mémoire rejette les souvenirs hors sujet.",
+        "Le serveur redémarre.",
+        "Je parle de peinture.",
+        "GitHub a envoyé une notification.",
+        "Le téléphone charge.",
+        "La banque a répondu.",
+        "Je dois acheter des rails.",
+        "Le client veut une cloison."
+      ],
+      "query": "Et le reranker, c'était quoi le problème déjà ?",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "reranker"
+    },
+    {
+      "id": "explicit_return_2",
+      "category": "topic_return",
+      "kind": "transition",
+      "history": [
+        "Les embeddings locaux utilisent bge-m3.",
+        "Le serveur redémarre.",
+        "Je parle de peinture.",
+        "GitHub a envoyé une notification.",
+        "Le téléphone charge.",
+        "La banque a répondu.",
+        "Je dois acheter des rails.",
+        "Le client veut une cloison."
+      ],
+      "query": "Revenons à embeddings.",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "embeddings"
+    },
+    {
+      "id": "implicit_return_2",
+      "category": "implicit_topic_return",
+      "kind": "transition",
+      "history": [
+        "Les embeddings locaux utilisent bge-m3.",
+        "Mon ordinateur chauffe.",
+        "Je dois appeler le client.",
+        "Le chantier commence lundi.",
+        "Docker est à jour.",
+        "Ma voiture est au garage.",
+        "Je prépare un devis.",
+        "Le PDF est signé."
+      ],
+      "query": "Et le embeddings, c'était quoi le problème déjà ?",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "embeddings"
+    },
+    {
+      "id": "explicit_return_3",
+      "category": "topic_return",
+      "kind": "transition",
+      "history": [
+        "Usman utilise Qwen pour le chat.",
+        "Mon ordinateur chauffe.",
+        "Je dois appeler le client.",
+        "Le chantier commence lundi.",
+        "Docker est à jour.",
+        "Ma voiture est au garage.",
+        "Je prépare un devis.",
+        "Le PDF est signé."
+      ],
+      "query": "Revenons à Qwen.",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "qwen"
+    },
+    {
+      "id": "implicit_return_3",
+      "category": "implicit_topic_return",
+      "kind": "transition",
+      "history": [
+        "Usman utilise Qwen pour le chat.",
+        "Le serveur redémarre.",
+        "Je parle de peinture.",
+        "GitHub a envoyé une notification.",
+        "Le téléphone charge.",
+        "La banque a répondu.",
+        "Je dois acheter des rails.",
+        "Le client veut une cloison."
+      ],
+      "query": "Et le Qwen, c'était quoi le problème déjà ?",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "qwen"
+    },
+    {
+      "id": "explicit_return_4",
+      "category": "topic_return",
+      "kind": "transition",
+      "history": [
+        "Le projet isolation utilise de la laine de roche.",
+        "Le serveur redémarre.",
+        "Je parle de peinture.",
+        "GitHub a envoyé une notification.",
+        "Le téléphone charge.",
+        "La banque a répondu.",
+        "Je dois acheter des rails.",
+        "Le client veut une cloison."
+      ],
+      "query": "Revenons à isolation.",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "isolation"
+    },
+    {
+      "id": "implicit_return_4",
+      "category": "implicit_topic_return",
+      "kind": "transition",
+      "history": [
+        "Le projet isolation utilise de la laine de roche.",
+        "Mon ordinateur chauffe.",
+        "Je dois appeler le client.",
+        "Le chantier commence lundi.",
+        "Docker est à jour.",
+        "Ma voiture est au garage.",
+        "Je prépare un devis.",
+        "Le PDF est signé."
+      ],
+      "query": "Et le isolation, c'était quoi le problème déjà ?",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "isolation"
+    },
+    {
+      "id": "explicit_return_5",
+      "category": "topic_return",
+      "kind": "transition",
+      "history": [
+        "Le devis Fast Group prévoit un acompte.",
+        "Mon ordinateur chauffe.",
+        "Je dois appeler le client.",
+        "Le chantier commence lundi.",
+        "Docker est à jour.",
+        "Ma voiture est au garage.",
+        "Je prépare un devis.",
+        "Le PDF est signé."
+      ],
+      "query": "Revenons à devis.",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "devis"
+    },
+    {
+      "id": "implicit_return_5",
+      "category": "implicit_topic_return",
+      "kind": "transition",
+      "history": [
+        "Le devis Fast Group prévoit un acompte.",
+        "Le serveur redémarre.",
+        "Je parle de peinture.",
+        "GitHub a envoyé une notification.",
+        "Le téléphone charge.",
+        "La banque a répondu.",
+        "Je dois acheter des rails.",
+        "Le client veut une cloison."
+      ],
+      "query": "Et le devis, c'était quoi le problème déjà ?",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "devis"
+    },
+    {
+      "id": "explicit_return_6",
+      "category": "topic_return",
+      "kind": "transition",
+      "history": [
+        "Le runtime Docker exécute le backend non-root.",
+        "Le serveur redémarre.",
+        "Je parle de peinture.",
+        "GitHub a envoyé une notification.",
+        "Le téléphone charge.",
+        "La banque a répondu.",
+        "Je dois acheter des rails.",
+        "Le client veut une cloison."
+      ],
+      "query": "Revenons à Docker.",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "docker"
+    },
+    {
+      "id": "implicit_return_6",
+      "category": "implicit_topic_return",
+      "kind": "transition",
+      "history": [
+        "Le runtime Docker exécute le backend non-root.",
+        "Mon ordinateur chauffe.",
+        "Je dois appeler le client.",
+        "Le chantier commence lundi.",
+        "Docker est à jour.",
+        "Ma voiture est au garage.",
+        "Je prépare un devis.",
+        "Le PDF est signé."
+      ],
+      "query": "Et le Docker, c'était quoi le problème déjà ?",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "docker"
+    },
+    {
+      "id": "explicit_return_7",
+      "category": "topic_return",
+      "kind": "transition",
+      "history": [
+        "Le lecteur PDF utilise OCR si nécessaire.",
+        "Mon ordinateur chauffe.",
+        "Je dois appeler le client.",
+        "Le chantier commence lundi.",
+        "Docker est à jour.",
+        "Ma voiture est au garage.",
+        "Je prépare un devis.",
+        "Le PDF est signé."
+      ],
+      "query": "Revenons à PDF.",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "pdf"
+    },
+    {
+      "id": "implicit_return_7",
+      "category": "implicit_topic_return",
+      "kind": "transition",
+      "history": [
+        "Le lecteur PDF utilise OCR si nécessaire.",
+        "Le serveur redémarre.",
+        "Je parle de peinture.",
+        "GitHub a envoyé une notification.",
+        "Le téléphone charge.",
+        "La banque a répondu.",
+        "Je dois acheter des rails.",
+        "Le client veut une cloison."
+      ],
+      "query": "Et le PDF, c'était quoi le problème déjà ?",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "pdf"
+    },
+    {
+      "id": "explicit_return_8",
+      "category": "topic_return",
+      "kind": "transition",
+      "history": [
+        "La mémoire doit privilégier la précision.",
+        "Le serveur redémarre.",
+        "Je parle de peinture.",
+        "GitHub a envoyé une notification.",
+        "Le téléphone charge.",
+        "La banque a répondu.",
+        "Je dois acheter des rails.",
+        "Le client veut une cloison."
+      ],
+      "query": "Revenons à mémoire.",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "mémoire"
+    },
+    {
+      "id": "implicit_return_8",
+      "category": "implicit_topic_return",
+      "kind": "transition",
+      "history": [
+        "La mémoire doit privilégier la précision.",
+        "Mon ordinateur chauffe.",
+        "Je dois appeler le client.",
+        "Le chantier commence lundi.",
+        "Docker est à jour.",
+        "Ma voiture est au garage.",
+        "Je prépare un devis.",
+        "Le PDF est signé."
+      ],
+      "query": "Et le mémoire, c'était quoi le problème déjà ?",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "mémoire"
+    },
+    {
+      "id": "explicit_return_9",
+      "category": "topic_return",
+      "kind": "transition",
+      "history": [
+        "Le projet vidéo utilise Wan.",
+        "Mon ordinateur chauffe.",
+        "Je dois appeler le client.",
+        "Le chantier commence lundi.",
+        "Docker est à jour.",
+        "Ma voiture est au garage.",
+        "Je prépare un devis.",
+        "Le PDF est signé."
+      ],
+      "query": "Revenons à vidéo.",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "vidéo"
+    },
+    {
+      "id": "implicit_return_9",
+      "category": "implicit_topic_return",
+      "kind": "transition",
+      "history": [
+        "Le projet vidéo utilise Wan.",
+        "Le serveur redémarre.",
+        "Je parle de peinture.",
+        "GitHub a envoyé une notification.",
+        "Le téléphone charge.",
+        "La banque a répondu.",
+        "Je dois acheter des rails.",
+        "Le client veut une cloison."
+      ],
+      "query": "Et le vidéo, c'était quoi le problème déjà ?",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "vidéo"
+    },
+    {
+      "id": "explicit_return_10",
+      "category": "topic_return",
+      "kind": "transition",
+      "history": [
+        "La RTX A2000 est la carte locale.",
+        "Le serveur redémarre.",
+        "Je parle de peinture.",
+        "GitHub a envoyé une notification.",
+        "Le téléphone charge.",
+        "La banque a répondu.",
+        "Je dois acheter des rails.",
+        "Le client veut une cloison."
+      ],
+      "query": "Revenons à RTX.",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "rtx"
+    },
+    {
+      "id": "implicit_return_10",
+      "category": "implicit_topic_return",
+      "kind": "transition",
+      "history": [
+        "La RTX A2000 est la carte locale.",
+        "Mon ordinateur chauffe.",
+        "Je dois appeler le client.",
+        "Le chantier commence lundi.",
+        "Docker est à jour.",
+        "Ma voiture est au garage.",
+        "Je prépare un devis.",
+        "Le PDF est signé."
+      ],
+      "query": "Et le RTX, c'était quoi le problème déjà ?",
+      "expected_transition": "TOPIC_RETURN",
+      "expected_topic_token": "rtx"
+    },
+    {
+      "id": "coref_recent_1",
+      "category": "coreference",
+      "kind": "reference",
+      "history": [
+        "Mamadou vient demain.",
+        "Il travaille chez Orange.",
+        "Mon ordinateur chauffe."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Mamadou"
+    },
+    {
+      "id": "coref_recent_2",
+      "category": "coreference",
+      "kind": "reference",
+      "history": [
+        "Ibrahim vient demain.",
+        "Il travaille chez Sonatel.",
+        "Mon ordinateur chauffe."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Ibrahim"
+    },
+    {
+      "id": "coref_recent_3",
+      "category": "coreference",
+      "kind": "reference",
+      "history": [
+        "Fatou vient demain.",
+        "Il travaille chez UCAD.",
+        "Mon ordinateur chauffe."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Fatou"
+    },
+    {
+      "id": "coref_recent_4",
+      "category": "coreference",
+      "kind": "reference",
+      "history": [
+        "Awa vient demain.",
+        "Il travaille chez Senelec.",
+        "Mon ordinateur chauffe."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Awa"
+    },
+    {
+      "id": "coref_recent_5",
+      "category": "coreference",
+      "kind": "reference",
+      "history": [
+        "Moussa vient demain.",
+        "Il travaille chez Free.",
+        "Mon ordinateur chauffe."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Moussa"
+    },
+    {
+      "id": "coref_recent_6",
+      "category": "coreference",
+      "kind": "reference",
+      "history": [
+        "Mariama vient demain.",
+        "Il travaille chez Dakar.",
+        "Mon ordinateur chauffe."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Mariama"
+    },
+    {
+      "id": "coref_recent_7",
+      "category": "coreference",
+      "kind": "reference",
+      "history": [
+        "Cheikh vient demain.",
+        "Il travaille chez Wave.",
+        "Mon ordinateur chauffe."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Cheikh"
+    },
+    {
+      "id": "coref_recent_8",
+      "category": "coreference",
+      "kind": "reference",
+      "history": [
+        "Ndeye vient demain.",
+        "Il travaille chez Ecobank.",
+        "Mon ordinateur chauffe."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Ndeye"
+    },
+    {
+      "id": "coref_recent_9",
+      "category": "coreference",
+      "kind": "reference",
+      "history": [
+        "Omar vient demain.",
+        "Il travaille chez Thiès.",
+        "Mon ordinateur chauffe."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Omar"
+    },
+    {
+      "id": "coref_recent_10",
+      "category": "coreference",
+      "kind": "reference",
+      "history": [
+        "Aminata vient demain.",
+        "Il travaille chez Kaolack.",
+        "Mon ordinateur chauffe."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Aminata"
+    },
+    {
+      "id": "coref_delayed_1",
+      "category": "long_conversation_coreference",
+      "kind": "reference",
+      "history": [
+        "Mamadou vient demain.",
+        "Il travaille chez Orange.",
+        "Mon ordinateur chauffe.",
+        "Je dois appeler le client.",
+        "Le chantier commence lundi.",
+        "Docker est à jour.",
+        "Ma voiture est au garage.",
+        "Je prépare un devis.",
+        "Le PDF est signé."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Mamadou"
+    },
+    {
+      "id": "coref_delayed_2",
+      "category": "long_conversation_coreference",
+      "kind": "reference",
+      "history": [
+        "Ibrahim vient demain.",
+        "Il travaille chez Sonatel.",
+        "Le serveur redémarre.",
+        "Je parle de peinture.",
+        "GitHub a envoyé une notification.",
+        "Le téléphone charge.",
+        "La banque a répondu.",
+        "Je dois acheter des rails.",
+        "Le client veut une cloison."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Ibrahim"
+    },
+    {
+      "id": "coref_delayed_3",
+      "category": "long_conversation_coreference",
+      "kind": "reference",
+      "history": [
+        "Fatou vient demain.",
+        "Il travaille chez UCAD.",
+        "Mon ordinateur chauffe.",
+        "Je dois appeler le client.",
+        "Le chantier commence lundi.",
+        "Docker est à jour.",
+        "Ma voiture est au garage.",
+        "Je prépare un devis.",
+        "Le PDF est signé."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Fatou"
+    },
+    {
+      "id": "coref_delayed_4",
+      "category": "long_conversation_coreference",
+      "kind": "reference",
+      "history": [
+        "Awa vient demain.",
+        "Il travaille chez Senelec.",
+        "Le serveur redémarre.",
+        "Je parle de peinture.",
+        "GitHub a envoyé une notification.",
+        "Le téléphone charge.",
+        "La banque a répondu.",
+        "Je dois acheter des rails.",
+        "Le client veut une cloison."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Awa"
+    },
+    {
+      "id": "coref_delayed_5",
+      "category": "long_conversation_coreference",
+      "kind": "reference",
+      "history": [
+        "Moussa vient demain.",
+        "Il travaille chez Free.",
+        "Mon ordinateur chauffe.",
+        "Je dois appeler le client.",
+        "Le chantier commence lundi.",
+        "Docker est à jour.",
+        "Ma voiture est au garage.",
+        "Je prépare un devis.",
+        "Le PDF est signé."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Moussa"
+    },
+    {
+      "id": "coref_delayed_6",
+      "category": "long_conversation_coreference",
+      "kind": "reference",
+      "history": [
+        "Mariama vient demain.",
+        "Il travaille chez Dakar.",
+        "Le serveur redémarre.",
+        "Je parle de peinture.",
+        "GitHub a envoyé une notification.",
+        "Le téléphone charge.",
+        "La banque a répondu.",
+        "Je dois acheter des rails.",
+        "Le client veut une cloison."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Mariama"
+    },
+    {
+      "id": "coref_delayed_7",
+      "category": "long_conversation_coreference",
+      "kind": "reference",
+      "history": [
+        "Cheikh vient demain.",
+        "Il travaille chez Wave.",
+        "Mon ordinateur chauffe.",
+        "Je dois appeler le client.",
+        "Le chantier commence lundi.",
+        "Docker est à jour.",
+        "Ma voiture est au garage.",
+        "Je prépare un devis.",
+        "Le PDF est signé."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Cheikh"
+    },
+    {
+      "id": "coref_delayed_8",
+      "category": "long_conversation_coreference",
+      "kind": "reference",
+      "history": [
+        "Ndeye vient demain.",
+        "Il travaille chez Ecobank.",
+        "Le serveur redémarre.",
+        "Je parle de peinture.",
+        "GitHub a envoyé une notification.",
+        "Le téléphone charge.",
+        "La banque a répondu.",
+        "Je dois acheter des rails.",
+        "Le client veut une cloison."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Ndeye"
+    },
+    {
+      "id": "coref_delayed_9",
+      "category": "long_conversation_coreference",
+      "kind": "reference",
+      "history": [
+        "Omar vient demain.",
+        "Il travaille chez Thiès.",
+        "Mon ordinateur chauffe.",
+        "Je dois appeler le client.",
+        "Le chantier commence lundi.",
+        "Docker est à jour.",
+        "Ma voiture est au garage.",
+        "Je prépare un devis.",
+        "Le PDF est signé."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Omar"
+    },
+    {
+      "id": "coref_delayed_10",
+      "category": "long_conversation_coreference",
+      "kind": "reference",
+      "history": [
+        "Aminata vient demain.",
+        "Il travaille chez Kaolack.",
+        "Le serveur redémarre.",
+        "Je parle de peinture.",
+        "GitHub a envoyé une notification.",
+        "Le téléphone charge.",
+        "La banque a répondu.",
+        "Je dois acheter des rails.",
+        "Le client veut une cloison."
+      ],
+      "query": "Pourquoi il vient demain ?",
+      "expected_reference": "Aminata"
+    },
+    {
+      "id": "precision_1",
+      "category": "false_memory_rejection",
+      "kind": "memory_gate",
+      "history": [
+        "Usman utilise Qwen."
+      ],
+      "query": "Quel modèle utilise Usman ?",
+      "wrong_candidate": "Le projet vidéo utilise Wan.",
+      "semantic_score": 0.97,
+      "expected_accept": false
+    },
+    {
+      "id": "precision_2",
+      "category": "false_memory_rejection",
+      "kind": "memory_gate",
+      "history": [
+        "Le projet vidéo utilise Wan."
+      ],
+      "query": "Quel modèle utilise le projet vidéo ?",
+      "wrong_candidate": "Usman utilise Qwen.",
+      "semantic_score": 0.97,
+      "expected_accept": false
+    },
+    {
+      "id": "precision_3",
+      "category": "false_memory_rejection",
+      "kind": "memory_gate",
+      "history": [
+        "Ma BMW est noire."
+      ],
+      "query": "Quelle couleur a ma BMW ?",
+      "wrong_candidate": "Mon téléphone est noir.",
+      "semantic_score": 0.97,
+      "expected_accept": false
+    },
+    {
+      "id": "precision_4",
+      "category": "false_memory_rejection",
+      "kind": "memory_gate",
+      "history": [
+        "Mon tarif BA13 est 12000 FCFA."
+      ],
+      "query": "Quel est mon tarif BA13 ?",
+      "wrong_candidate": "Le devis porte coûte 120000 FCFA.",
+      "semantic_score": 0.97,
+      "expected_accept": false
+    },
+    {
+      "id": "precision_5",
+      "category": "false_memory_rejection",
+      "kind": "memory_gate",
+      "history": [
+        "Mon serveur a 64 GB de RAM."
+      ],
+      "query": "Quelle RAM a mon serveur ?",
+      "wrong_candidate": "Ma RTX a 12 GB de VRAM.",
+      "semantic_score": 0.97,
+      "expected_accept": false
+    },
+    {
+      "id": "precision_6",
+      "category": "false_memory_rejection",
+      "kind": "memory_gate",
+      "history": [
+        "Usman utilise bge-m3 pour les embeddings."
+      ],
+      "query": "Quel modèle d'embedding utilise Usman ?",
+      "wrong_candidate": "Le chat utilise Qwen.",
+      "semantic_score": 0.97,
+      "expected_accept": false
+    },
+    {
+      "id": "precision_7",
+      "category": "false_memory_rejection",
+      "kind": "memory_gate",
+      "history": [
+        "Le projet isolation utilise laine de roche."
+      ],
+      "query": "Quel matériau utilise le projet isolation ?",
+      "wrong_candidate": "Le plafond utilise BA13.",
+      "semantic_score": 0.97,
+      "expected_accept": false
+    },
+    {
+      "id": "precision_8",
+      "category": "false_memory_rejection",
+      "kind": "memory_gate",
+      "history": [
+        "Le compte entreprise est chez Sunu Bank."
+      ],
+      "query": "Quelle banque gère le compte entreprise ?",
+      "wrong_candidate": "Le client paie par Wave.",
+      "semantic_score": 0.97,
+      "expected_accept": false
+    },
+    {
+      "id": "precision_9",
+      "category": "false_memory_rejection",
+      "kind": "memory_gate",
+      "history": [
+        "Les PDF scannés passent par OCR."
+      ],
+      "query": "Quel outil lit les PDF scannés ?",
+      "wrong_candidate": "La vidéo passe par ffmpeg.",
+      "semantic_score": 0.97,
+      "expected_accept": false
+    },
+    {
+      "id": "precision_10",
+      "category": "false_memory_rejection",
+      "kind": "memory_gate",
+      "history": [
+        "Mon PC utilise RTX A2000."
+      ],
+      "query": "Quel GPU utilise mon PC ?",
+      "wrong_candidate": "Le projet vidéo utilise Wan.",
+      "semantic_score": 0.97,
+      "expected_accept": false
+    }
+  ],
+  "matrix": {
+    "variants_per_golden": 4,
+    "total": 200,
+    "note": "Each golden is evaluated with four deterministic distractor perturbations."
+  },
+  "wolof_note": "No semantic Wolof fixture is included until validated examples are available."
+}
