@@ -10143,3 +10143,58 @@ le fil se revelait trop grossier — plusieurs phrases partageant le meme
 identifiant parce qu'un client reutilise son `X-Request-ID` — la route
 melangerait deux histoires. `identifiant_acceptable` valide la forme, pas
 l'unicite : c'est un choix, et le remede serait cote client.
+
+## DEC-0117 — Une reponse devient un fichier, et ce fichier part du telephone
+
+**2026-09-20.**
+
+**Decision** : `file_conversion` gagne une deuxieme porte d'entree, `rediger` :
+un TEXTE devient un document telechargeable (`pdf`, `docx`, `md`, `txt`,
+`html`). Le chat l'appelle apres coup, dans `dispatch_request`, quand la phrase
+demandait un fichier. `html -> docx` est ajoute a la matrice des moteurs pour
+que « en Word » ait un chemin reel.
+
+**Pourquoi** : tous les moteurs etaient deja la — `md -> pdf` (WeasyPrint),
+`docx -> pdf` (LibreOffice), la route `/media/rendered/{nom:path}` avec sa cle,
+le connecteur `pdf` pour fusionner et scinder. **Et les deux portes du
+connecteur partaient d'un fichier deja fourni par le proprietaire.** Rien ne
+savait ecrire un texte sur le disque. « Fais-moi un PDF de ca » n'avait donc
+aucune fonction a appeler : ARENA repondait a l'ecran, et le proprietaire
+constatait, depuis des semaines, que son IA ne produisait pas de PDF.
+
+Quatre choses ont ete ecartees :
+
+- **Un deuxieme connecteur « documents ».** Il aurait duplique le dossier de
+  sortie, la construction de l'URL, l'enregistrement dans le registre et la
+  permission. `rediger` ecrit un brouillon puis appelle
+  `_convertir_un_fichier` — la MEME fonction que la conversion a l'unite, donc
+  la meme garde de securite, la meme validation qui rouvre le fichier, le meme
+  repli d'un moteur sur l'autre.
+- **Un deuxieme rendu markdown -> HTML.** Le chemin DOCX en avait besoin ;
+  `texte_vers_html` a ete extrait de `convertir_document_vers_pdf` plutot que
+  recopie. Deux rendus du meme markdown donneraient deux documents differents
+  selon le format demande, et l'ecart ne se verrait pas.
+- **Un deuxieme canal vers l'interface.** Le lien passe par
+  `_documents_produits` -> `meta.documents`, par ou le devis PDF arrive deja
+  sur le telephone depuis le 04/09/2026. Aucune ligne de PWA n'a change.
+- **La cle dans l'URL rendue.** L'interface l'ajoute au clic
+  (`adresseOuvrable`). Une cle ecrite dans le texte d'une reponse serait
+  recopiee dans la memoire de conversation, puis dans chaque export.
+
+**Deux gardes que seuls les sabotages ont valides.** Fabriquer exige un verbe
+de production ET un format nomme, et « ce fichier » annule les deux. Les deux
+premiers passages de la batterie ont montre que mes propres tests ne
+couvraient AUCUN cas ou ces gardes decidaient quelque chose : ils etaient
+morts a l'epreuve, vivants en vrai (« fais-moi un resume de ce fichier pdf »
+fabriquait un PDF que personne n'avait demande). Trois tests ajoutes, 10/10
+sabotages mordent. Troisieme fois en deux jours que la batterie trouve ce que
+la relecture n'avait pas vu — apres DEC-0114 et DEC-0116.
+
+**Ce que ca coute si c'est faux** : la detection est lexicale, pas un appel de
+modele — donc gratuite et previsible, mais bornee au vocabulaire de
+`FORMATS_DEMANDES`. Une tournure hors liste (« imprime-moi ca ») ne declenche
+rien, et le proprietaire recoit une reponse a l'ecran sans explication : c'est
+le meme silence qu'avant, sur un cas plus rare. Le remede, si ca arrive, est
+d'ajouter la tournure — pas de confier la decision au modele, qui fabriquerait
+des fichiers sur un doute. Cote disque, chaque demande ecrit un fichier de
+plus dans `media/rendered/conversions/`, que rien ne purge aujourd'hui.

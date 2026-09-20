@@ -50,13 +50,17 @@ def _fichier_image(tmp_path, nom="source.png", taille=(30, 20), couleur=(200, 50
 
 
 class TestCapacites:
-    def test_quatre_capacites_qui_ecrivent_deux_qui_lisent(self):
+    def test_cinq_capacites_qui_ecrivent_deux_qui_lisent(self):
+        """`rediger` est la cinquieme (20/09/2026) : elle ECRIT un fichier
+        sur le disque a partir d'un texte, donc `ecriture=True` comme les
+        quatre autres. Ce garde a correctement echoue quand elle a ete
+        ajoutee — c'est exactement ce qu'on lui demande."""
         capacites = ConnecteurFileConversion().capacites()
         assert set(capacites) == {
-            "convertir", "convertir_lot", "compresser", "extraire",
+            "convertir", "rediger", "convertir_lot", "compresser", "extraire",
             "etat_lot", "formats_disponibles",
         }
-        for nom in ("convertir", "convertir_lot", "compresser", "extraire"):
+        for nom in ("convertir", "rediger", "convertir_lot", "compresser", "extraire"):
             assert capacites[nom].ecriture is True
             assert capacites[nom].action == "document"
         for nom in ("etat_lot", "formats_disponibles"):

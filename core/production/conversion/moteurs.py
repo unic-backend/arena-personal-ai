@@ -40,6 +40,20 @@ class MoteurEchec(Exception):
 #: filter for ... docx found` et n'écrit rien, alors que le process rend 0.
 FILTRE_IMPORT_PDF = "writer_pdf_import"
 
+#: Même piège, côté HTML. Mesuré le 20/09/2026 sur cette machine :
+#: `soffice --convert-to docx page.html` répond « Error: no export filter for
+#: ... docx found, aborting » et n'écrit rien. Il faut **les deux** filtres
+#: nommés — l'import, sinon le HTML entre dans Writer/Web qui n'exporte pas
+#: DOCX, et l'export, que `--convert-to docx` seul ne suffit pas à désigner
+#: depuis ce module d'import-là. Avec les deux : 5274 octets de DOCX réel.
+FILTRE_IMPORT_HTML = "HTML (StarWriter)"
+
+#: Le filtre d'export à nommer explicitement, par format cible, **et
+#: seulement pour une source HTML** : les couples déjà en service
+#: (`docx -> pdf`, `pdf -> docx`…) marchent avec `--convert-to <ext>` depuis
+#: le 08/09/2026, et rien ne justifie de changer ce qui est mesuré bon.
+FILTRES_EXPORT_DEPUIS_HTML = {"docx": "docx:MS Word 2007 XML"}
+
 #: Format cible -> extension attendue de soffice. `docx`/`xlsx`/`pptx` sont
 #: acceptés tels quels par `--convert-to` (filtre Office Open XML par défaut).
 _EXTENSIONS_OFFICE_SOURCE = frozenset({
@@ -77,12 +91,16 @@ def convertir_office(entree: Path, sortie: Path, format_source: str) -> None:
             info, "--headless", "--norestore",
             f"-env:UserInstallation=file://{profil}",
         ]
+        cible_arg = format_cible
         if format_source == "pdf":
             # Un seul jeton `--infilter=X` : mesuré le 08/09/2026, soffice
             # refuse la forme en deux arguments (`--infilter X`) avec
             # `Error in option: --infilter`, contrairement a `--convert-to`.
             commande += [f"--infilter={FILTRE_IMPORT_PDF}"]
-        commande += ["--convert-to", format_cible, "--outdir", str(sortie_dir), str(entree)]
+        elif format_source == "html":
+            commande += [f"--infilter={FILTRE_IMPORT_HTML}"]
+            cible_arg = FILTRES_EXPORT_DEPUIS_HTML.get(format_cible, format_cible)
+        commande += ["--convert-to", cible_arg, "--outdir", str(sortie_dir), str(entree)]
 
         try:
             resultat = subprocess.run(
@@ -181,24 +199,37 @@ def weasyprint_disponible() -> Tuple[bool, str]:
     return True, "WeasyPrint installé"
 
 
+def texte_vers_html(texte: str, format_source: str) -> str:
+    """Markdown, texte brut ou HTML -> une page HTML complète.
+
+    Extrait de `convertir_document_vers_pdf` le 20/09/2026, parce que le
+    chemin « rédiger en DOCX » a besoin exactement du même rendu avant de
+    passer la main à LibreOffice. Deux implémentations du même markdown
+    donneraient deux documents différents pour le même texte, selon le
+    format demandé — l'écart serait invisible jusqu'au jour où il compte.
+
+    Raises:
+        MoteurEchec: si `format_source` n'est pas `html`, `md` ou `txt`.
+    """
+    if format_source == "html":
+        return texte
+    if format_source == "md":
+        import markdown as md_lib
+        corps = md_lib.markdown(texte, extensions=["tables", "fenced_code"])
+        return f"<html><meta charset='utf-8'><body>{corps}</body></html>"
+    if format_source == "txt":
+        echappe = (texte.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+        return (f"<html><meta charset='utf-8'><body>"
+                f"<pre style='white-space:pre-wrap;font-family:monospace'>{echappe}</pre>"
+                f"</body></html>")
+    raise MoteurEchec(f"format source non pris en charge « {format_source} »")
+
+
 def convertir_document_vers_pdf(entree: Path, sortie: Path, format_source: str) -> None:
     import weasyprint
 
     texte = entree.read_text(encoding="utf-8", errors="replace")
-
-    if format_source == "html":
-        html = texte
-    elif format_source == "md":
-        import markdown as md_lib
-        corps = md_lib.markdown(texte, extensions=["tables", "fenced_code"])
-        html = f"<html><meta charset='utf-8'><body>{corps}</body></html>"
-    elif format_source == "txt":
-        echappe = (texte.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
-        html = (f"<html><meta charset='utf-8'><body>"
-                f"<pre style='white-space:pre-wrap;font-family:monospace'>{echappe}</pre>"
-                f"</body></html>")
-    else:
-        raise MoteurEchec(f"WeasyPrint : format source non pris en charge « {format_source} »")
+    html = texte_vers_html(texte, format_source)
 
     try:
         weasyprint.HTML(string=html, base_url=str(entree.parent)).write_pdf(str(sortie))
