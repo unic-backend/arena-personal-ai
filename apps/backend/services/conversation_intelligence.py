@@ -20,6 +20,11 @@ STOPWORDS = {
     "qui", "quoi", "son", "sur", "tes", "ton", "tous", "tout", "une", "vous", "the", "and",
     "this", "that", "what", "why", "from", "pas", "plus", "moi", "toi", "lui",
 }
+ENTITY_STOPWORDS = {
+    "Alors", "Avec", "Cette", "Comme", "Dans", "Donc", "Elle", "Elles", "Encore", "Il", "Ils",
+    "Je", "Le", "La", "Les", "Ma", "Mes", "Mon", "Nous", "On", "Pourquoi", "Quel", "Quelle",
+    "Quels", "Quelles", "Son", "Ta", "Tes", "Ton", "Tu", "Une", "Un", "Vous",
+}
 REFERENCE = re.compile(
     r"\b(?:il|elle|ils|elles|ça|ca|ceci|cela|celui|celle|ceux|celles|this|that|it|he|she|they|"
     r"premier|première|deuxième|second|seconde|autre|précédent|precedent|avant|earlier)\b",
@@ -75,7 +80,26 @@ class ConversationState:
 def _entities(text: str) -> list[str]:
     # Entités explicites seulement : noms propres/acronymes/modèles visibles.
     found = re.findall(r"\b(?:[A-ZÀ-ÖØ-Þ][\wÀ-ÿ-]{2,}|[A-Z]{2,}[\w.-]*|[A-Za-z]+\d[\w.-]*)\b", text or "")
-    return list(dict.fromkeys(found))[:12]
+    return [item for item in dict.fromkeys(found) if item not in ENTITY_STOPWORDS][:12]
+
+
+def _reference_entities(recent: list[str]) -> list[str]:
+    """Priorise les entités susceptibles d'être l'antécédent d'un pronom.
+
+    Une entité introduite comme complément après « chez » (ex. Orange dans
+    « Il travaille chez Orange ») reste suivie, mais passe après un nom propre
+    de personne explicite rencontré dans le contexte récent.
+    """
+    preferred: list[str] = []
+    secondary: list[str] = []
+    for text in reversed(recent):
+        for entity in _entities(text):
+            target = secondary if re.search(rf"\bchez\s+{re.escape(entity)}\b", text, re.IGNORECASE) else preferred
+            if entity not in preferred and entity not in secondary:
+                target.append(entity)
+        if len(preferred) >= 3:
+            break
+    return (preferred + secondary)[:8]
 
 
 def understand(message: str, history: list[dict[str, str]]) -> ConversationState:
@@ -106,17 +130,16 @@ def understand(message: str, history: list[dict[str, str]]) -> ConversationState
 
     entities = _entities(message)
     if has_reference:
-        for text in reversed(recent):
-            for entity in reversed(_entities(text)):
-                if entity not in entities:
-                    entities.append(entity)
-            if entities:
-                break
+        for entity in _reference_entities(recent):
+            if entity not in entities:
+                entities.append(entity)
     topic_source = best_text if transition == "TOPIC_RETURN" and best_text else message
     topic = " ".join(sorted(tokens(topic_source))[:8])
     references = {}
-    if has_reference and entities:
-        references["recent_reference"] = entities[-1]
+    if has_reference:
+        candidates = _reference_entities(recent)
+        if candidates:
+            references["recent_reference"] = candidates[0]
     return ConversationState(topic, previous_topics[-6:], entities[-8:], transition, references, confidence)
 
 
@@ -143,12 +166,27 @@ def score_memory(query: str, candidate: dict[str, Any], state: ConversationState
     return {
         "score": score, "semantic": semantic, "lexical": lexical, "entity": entity,
         "topic": topic, "recency": recent, "same_conversation": same_conversation,
+        "memory_kind": str(candidate.get("kind") or ""),
     }
 
 
 def accept_memory(features: dict[str, Any], threshold: float) -> bool:
-    # Similarité vectorielle seule n'est jamais une preuve suffisante.
-    if features["entity"] == 0 and features["topic"] < 0.08 and features["lexical"] < 0.08:
+    """Precision-first gate: un score vectoriel seul ne peut jamais suffire."""
+    contextual_support = (
+        bool(features["same_conversation"])
+        or features["entity"] >= 0.10
+        or features["topic"] >= 0.18
+        or features["lexical"] >= 0.20
+    )
+    # Un souvenir utilisateur très récent peut corroborer un match sémantique
+    # fort même sans recouvrement lexical (paraphrase), mais il faut alors
+    # plusieurs signaux : sémantique + récence + provenance utilisateur.
+    recent_user_support = (
+        features["semantic"] >= 0.93
+        and features["recency"] >= 0.85
+        and features.get("memory_kind") in {"user_fact", "user_message"}
+    )
+    if not contextual_support and not recent_user_support:
         return False
     return float(features["score"]) >= threshold
 
