@@ -180,6 +180,28 @@ class VideoAnalyzerAgent(BaseAgent):
         logger.info("Transcription obtenue par le connecteur audio (repli).")
         return resultat.detail.get("texte") or ""
 
+    @staticmethod
+    def _normaliser_transcription(resultat: Any, source: str) -> Dict[str, Any]:
+        """Ramene tous les transcripteurs a une forme unique et verifiable.
+
+        La duree et les segments restent None quand le moteur de secours ne
+        les fournit pas : aucun horodatage n'est reconstruit a partir du texte.
+        """
+        if isinstance(resultat, dict):
+            texte = str(resultat.get("full_text") or resultat.get("texte") or "").strip()
+            duree = resultat.get("duration")
+            segments = resultat.get("segments")
+        else:
+            texte = str(resultat or "").strip()
+            duree = None
+            segments = None
+        return {
+            "full_text": texte,
+            "duration": duree if isinstance(duree, (int, float)) else None,
+            "segments": segments if isinstance(segments, list) else None,
+            "source": source,
+        }
+
     # --- Suivi d'une generation -------------------------------------------------
 
     def derniere_generation(self) -> Tuple[str, str]:
@@ -448,17 +470,13 @@ class VideoAnalyzerAgent(BaseAgent):
         # reponse, au lieu de dire ce qu'il faut installer.
         logger.info("Transcription audio via Whisper...")
         try:
-            transcription_res = self.transcriber.transcribe(str(audio_output))
-            full_text = transcription_res.get("full_text", "")
+            brut = self.transcriber.transcribe(str(audio_output))
+            transcription_res = self._normaliser_transcription(brut, "whisper_local")
         except ModeleAbsent as erreur:
             # Le modele local manque. AVANT de renoncer, on demande au
             # connecteur audio : VoiceStudio, s'il tourne, sait transcrire
-            # (DEC-0027). Mesure du 01/09/2026 : sur une machine sans
-            # `faster_whisper`, l'analyse video echouait pendant qu'un
-            # transcripteur en etat de marche attendait sur la boucle locale.
-            #
-            # Le repli est ANNONCE dans la reponse, jamais silencieux : le
-            # moteur qui a transcrit change ce que vaut le texte.
+            # (DEC-0027). Le secours reste annonce et ne fabrique aucune
+            # metadonnee absente.
             secours = self._transcrire_par_le_connecteur(audio_output)
             if secours is None:
                 return {
@@ -467,8 +485,18 @@ class VideoAnalyzerAgent(BaseAgent):
                     "response": (f"❌ Transcription impossible : {erreur} "
                                  "VoiceStudio non plus ne repond pas."),
                 }
-            full_text = secours
+            transcription_res = self._normaliser_transcription(secours, "voicestudio")
 
+        full_text = transcription_res["full_text"]
+        if not full_text:
+            return {
+                "status": "error",
+                "agent": self.name,
+                "transcription_source": transcription_res["source"],
+                "duration": transcription_res["duration"],
+                "segments": transcription_res["segments"],
+                "response": "❌ La transcription ne contient aucun texte exploitable.",
+            }
         # 3. Analyse du contenu par Qwen 3.5
         prompt = f"""Tu es un expert en analyse vidéo. Analyse la transcription suivante et propose :
 1. Un résumé concis du contenu.
@@ -484,9 +512,16 @@ Analyse:"""
             "status": "success",
             "agent": self.name,
             "video_name": video_file.name,
-            "duration": transcription_res.get("duration"),
+            "duration": transcription_res["duration"],
             "transcription": full_text,
-            "segments": transcription_res.get("segments"),
+            "segments": transcription_res["segments"],
+            "transcription_source": transcription_res["source"],
+            "metadata_unavailable": [
+                nom for nom, valeur in (
+                    ("duration", transcription_res["duration"]),
+                    ("segments", transcription_res["segments"]),
+                ) if valeur is None
+            ],
             "ai_analysis": ai_analysis.strip(),
             # Aucune generation suivie sur ce chemin : `None`, jamais un etat
             # invente pour remplir le champ.
