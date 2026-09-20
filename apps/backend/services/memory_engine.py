@@ -79,7 +79,7 @@ class MemoryEngine:
 
     def _initialize(self) -> None:
         MemoryManager(str(self.settings.db_path))
-        with closing(self._connect()) as db:
+        with closing(self._connect()) as db, db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS autonomous_documents (
                     id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
@@ -102,6 +102,13 @@ class MemoryEngine:
             colonnes = {row["name"] for row in db.execute("PRAGMA table_info(autonomous_documents)")}
             if "index_space" not in colonnes:
                 db.execute("ALTER TABLE autonomous_documents ADD COLUMN index_space TEXT NOT NULL DEFAULT ''")
+            # Un changement de modèle/espace doit être reindexé immédiatement.
+            # Le backoff d'une tentative précédente ne doit pas bloquer une migration.
+            db.execute(
+                "UPDATE autonomous_documents SET index_after=0 "
+                "WHERE indexed=1 AND index_space<>?",
+                (self._index_space,),
+            )
 
     async def initialize(self) -> None:
         async with self._init_lock:
