@@ -448,7 +448,7 @@ async def test_local_semantic_restart_preserves_owner_isolation(settings):
 
 
 class PieceDouble:
-    def __init__(self, identifiant="piece1", nom="devis.pdf", texte="Montant réel 42000 FCFA",
+    def __init__(self, identifiant="piece0001", nom="devis.pdf", texte="Montant réel 42000 FCFA",
                  image=False, lisible=True, raison=None):
         self.identifiant = identifiant
         self.nom = nom
@@ -517,12 +517,12 @@ async def test_multimodal_registry_rejects_attachment_outside_current_request(tm
     async with httpx.AsyncClient() as http:
         registry = builtin_registry(http, pieces_jointes=DepotDouble(piece))
         refused = await registry.execute(
-            "read_attachment", '{"attachment_id":"piece1"}',
+            "read_attachment", '{"attachment_id":"piece0001"}',
             context={"attachments": [], "media_paths": [], "message": "lis"},
         )
         allowed = await registry.execute(
-            "read_attachment", '{"attachment_id":"piece1"}',
-            context={"attachments": ["piece1"], "media_paths": [], "message": "lis"},
+            "read_attachment", '{"attachment_id":"piece0001"}',
+            context={"attachments": ["piece0001"], "media_paths": [], "message": "lis"},
         )
     assert not refused.ok and refused.error == "attachment_not_allowed"
     assert allowed.ok and "42000 FCFA" in allowed.data["text"]
@@ -532,7 +532,7 @@ async def test_autonomous_api_can_read_validated_pdf_attachment(settings, monkey
     monkeypatch.setattr(security, "USMAN_API_KEY", "test-owner-only")
     piece = PieceDouble()
     ai = ScriptedAI([
-        tool_call("read_attachment", '{"attachment_id":"piece1"}', "doc1"),
+        tool_call("read_attachment", '{"attachment_id":"piece0001"}', "doc1"),
         {"content": "Le montant du document est 42000 FCFA."},
     ])
     http = httpx.AsyncClient()
@@ -546,7 +546,7 @@ async def test_autonomous_api_can_read_validated_pdf_attachment(settings, monkey
     with TestClient(app) as client:
         response = client.post(
             "/api/v1/chat",
-            json={"message": "Quel est le montant ?", "attachments": ["piece1"]},
+            json={"message": "Quel est le montant ?", "attachments": ["piece0001"]},
             headers={"Authorization": "Bearer test-owner-only"},
         )
 
@@ -561,18 +561,18 @@ async def test_autonomous_api_can_read_validated_pdf_attachment(settings, monkey
 
 
 async def test_image_tool_uses_existing_vision_agent_and_current_attachment():
-    image = PieceDouble(identifiant="img1", nom="chantier.png", texte="", image=True)
+    image = PieceDouble(identifiant="image0001", nom="chantier.png", texte="", image=True)
     vision = VisionDouble()
     async with httpx.AsyncClient() as http:
         registry = builtin_registry(
             http, pieces_jointes=DepotDouble(image), vision_agent=vision,
         )
         result = await registry.execute(
-            "analyze_image", '{"attachment_id":"img1"}',
-            context={"attachments": ["img1"], "media_paths": [], "message": "regarde ça"},
+            "analyze_image", '{"attachment_id":"image0001"}',
+            context={"attachments": ["image0001"], "media_paths": [], "message": "regarde ça"},
         )
     assert result.ok and "cloison" in result.data["analysis"]
-    assert vision.calls[0][1] == {"attachments": ["img1"]}
+    assert vision.calls[0][1] == {"attachments": ["image0001"]}
 
 
 async def test_video_tool_reports_audio_analysis_not_visual(tmp_path, monkeypatch):
