@@ -330,3 +330,62 @@ async def test_debug_exposes_latency_breakdown_without_private_reasoning(intelli
     assert "conversation_understanding" in latency
     assert "chain_of_thought" not in result.debug
 
+@pytest.mark.asyncio
+async def test_explicit_correction_supersedes_previous_fact_without_deleting_history(
+    intelligence_settings,
+):
+    ai = BenchmarkAI(facts=["Ma voiture est noire."])
+    memory = MemoryEngine(intelligence_settings, ai)
+    await memory.remember("owner", "old", "Ma voiture est noire.", "Compris.")
+    await memory.drain()
+
+    ai.facts = ["Correction, ma voiture est rouge."]
+    await memory.remember(
+        "owner",
+        "new",
+        "Correction, ma voiture est rouge.",
+        "Compris.",
+    )
+    await memory.drain()
+
+    with sqlite3.connect(intelligence_settings.db_path) as db:
+        rows = db.execute(
+            "SELECT content,status,retrievable,superseded_by FROM autonomous_documents "
+            "WHERE kind='user_fact' ORDER BY created"
+        ).fetchall()
+
+    assert len(rows) == 2
+    assert rows[0][0] == "Ma voiture est noire."
+    assert rows[0][1] == "superseded"
+    assert rows[0][2] == 0
+    assert rows[0][3]
+    assert rows[1][0] == "Correction, ma voiture est rouge."
+    assert rows[1][1] == "active"
+    assert rows[1][2] == 1
+
+    context = await memory.context("owner", "later", "Quelle couleur a ma voiture ?")
+    assert all("noire" not in item["content"] for item in context.memories)
+    assert any("rouge" in item["content"] for item in context.memories)
+
+
+@pytest.mark.asyncio
+async def test_plan_is_not_accepted_as_confirmed_decision(intelligence_settings):
+    plan = "Je vais tester Wan pour Usman."
+    ai = BenchmarkAI(facts=[plan])
+    memory = MemoryEngine(intelligence_settings, ai)
+    await memory.remember("owner", "plan", plan, "Compris.")
+    await memory.drain()
+
+    context = await memory.context(
+        "owner",
+        "later",
+        "Quel modèle ai-je choisi pour Usman ?",
+    )
+    assert all(
+        not (
+            item.get("source_type") == "user_plan"
+            and "Wan" in item["content"]
+        )
+        for item in context.memories
+    )
+
