@@ -18,7 +18,7 @@ code HTTP porte le sort de la requete, le corps porte le sort de l'action.
 import logging
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from apps.backend.runtime import (
     acces,
@@ -307,3 +307,57 @@ async def annuler_un_travail(identifiant: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Travail inconnu : {identifiant}")
     travaux.annuler(identifiant)
     return travaux.lire(identifiant).to_dict()
+
+
+@router.get("/api/observability/fil/{request_id}",
+            dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
+async def lire_le_fil_d_une_demande(
+    request_id: str = Path(..., max_length=LONGUEUR_MAX_FIL),
+) -> Dict[str, Any]:
+    """Tout ce qu'une demande a causé, en un seul endroit.
+
+    **Le trou que cette route ferme, mesuré le 20/09/2026** : `/api/actions`
+    savait déjà répondre « quels OUTILS ont tourné pour cette phrase ? », parce
+    que le journal des actions portait le fil. Mais « quel MODÈLE y a répondu,
+    par quel FOURNISSEUR, et en combien de temps ? » n'avait aucune réponse :
+    les statistiques de routage n'écrivaient pas le fil, donc les deux moitiés
+    de l'histoire vivaient dans deux magasins que rien ne reliait.
+
+    Les questions auxquelles le résultat répond, dans l'ordre où un ingénieur
+    les pose :
+
+    | Question | Où lire |
+    |---|---|
+    | Quel modèle ? Quel fournisseur ? | `modeles[].modele` / `.fournisseur` |
+    | Pourquoi un repli a-t-il eu lieu ? | `modeles[].repli`, `.succes` |
+    | Quel outil a tourné, sur quoi ? | `actions[].action` / `.cible` |
+    | Pourquoi ça a échoué ? | `actions[].statut` / `.message` |
+    | Combien de temps ? | `modeles[].secondes`, `resume.secondes_modeles` |
+    | Quel artefact ? | `actions[].preuve` |
+
+    **Une demande inconnue n'est pas une erreur** : elle rend des listes vides
+    et `connu: false`. Un 404 laisserait croire à une panne là où la vérité est
+    « rien n'a été enregistré sous ce fil » — ce qui arrive légitimement pour
+    une demande d'avant le 13/09/2026, ou pour une phrase qui n'a causé aucune
+    action ni aucun appel de modèle.
+    """
+    actions = journal.dernieres(limite=LIMITE_MAX, requete_id=request_id)
+    modeles = statistiques_routage.passages(limite=LIMITE_MAX, fil=request_id)
+    secondes = [p.secondes for p in modeles if p.secondes is not None]
+    return {
+        "request_id": request_id,
+        # `False` quand rien n'a ete trouve : c'est une reponse, pas une panne.
+        "connu": bool(actions or modeles),
+        # Meme rendu que `/api/actions`, pour que les deux se lisent pareil.
+        "actions": to_dict(actions)["actions"],
+        "modeles": [p.to_dict() for p in modeles],
+        "resume": {
+            "actions": len(actions),
+            "appels_modele": len(modeles),
+            "replis": sum(1 for p in modeles if p.repli),
+            "echecs_modele": sum(1 for p in modeles if not p.succes),
+            # `None` quand aucun appel n'a rendu de duree : un `0.0` se lirait
+            # « instantane ».
+            "secondes_modeles": round(sum(secondes), 3) if secondes else None,
+        },
+    }

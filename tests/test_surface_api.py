@@ -75,6 +75,11 @@ SURFACE_ATTENDUE = {
     "/api/travaux": (["GET"], ["verify_api_key", "limiter_debit"]),
     "/api/travaux/{identifiant}/annuler": (
         ["POST"], ["verify_api_key", "limiter_debit"]),
+    # Le fil d'une demande, des outils AUX modeles (20/09/2026). Avant elle,
+    # « quels outils ont tourne pour cette phrase ? » avait une reponse et
+    # « quel modele y a repondu ? » n'en avait aucune.
+    "/api/observability/fil/{request_id}": (
+        ["GET"], ["verify_api_key", "limiter_debit"]),
     # Le gardien (DEC-0014) : lecture de la file de maintenance, et
     # declenchement d'un cycle de diagnostic reel.
     "/api/gardien/rapport": (["GET"], ["verify_api_key", "limiter_debit"]),

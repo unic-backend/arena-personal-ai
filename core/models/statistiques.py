@@ -49,6 +49,8 @@ from pathlib import Path
 from statistics import median
 from typing import Any, Dict, List, Optional
 
+from core.observabilite.fil import fil_courant
+
 logger = logging.getLogger("usman.models.statistiques")
 
 #: Ce qui remplace un score de qualite, dans chaque rapport. Ecrit ici plutot
@@ -99,6 +101,17 @@ class Passage:
         secondes: la duree mesuree, ou `None` si le fournisseur n'en rend pas.
             **Jamais `0.0`** : un zero se lirait « instantane ».
         classement: le niveau de confidentialite qui a gouverne le choix.
+        requete: le fil de la demande qui a cause cet appel, ou `None` hors
+            demande (tache de fond, ligne de commande, test).
+
+            **C'etait le trou de l'observabilite, mesure le 20/09/2026.**
+            `core/actions/journal.py` portait deja ce fil, donc « quels OUTILS
+            ont tourne pour cette phrase ? » avait une reponse. « Quel MODELE y
+            a repondu, et par quel fournisseur ? » n'en avait aucune : ces deux
+            reponses vivaient dans deux magasins que rien ne reliait.
+
+            Meme mecanisme que le journal des actions — `fil_courant` en
+            valeur par defaut — donc **aucun appelant n'a a changer**.
     """
 
     type_tache: str
@@ -109,13 +122,14 @@ class Passage:
     secondes: Optional[float] = None
     classement: str = ""
     horodatage: str = field(default_factory=_maintenant)
+    requete: Optional[str] = field(default_factory=fil_courant)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "type_tache": self.type_tache, "fournisseur": self.fournisseur,
             "modele": self.modele, "succes": self.succes, "repli": self.repli,
             "secondes": self.secondes, "classement": self.classement,
-            "horodatage": self.horodatage,
+            "horodatage": self.horodatage, "requete": self.requete,
         }
 
 
@@ -145,12 +159,26 @@ class StatistiquesRoutage:
                     succes      INTEGER NOT NULL,
                     repli       INTEGER NOT NULL,
                     secondes    REAL,
-                    classement  TEXT NOT NULL
+                    classement  TEXT NOT NULL,
+                    requete     TEXT
                 )
             """)
+            # Une base ecrite avant le 20/09/2026 n'a pas la colonne `requete`.
+            # `ADD COLUMN` sur une table existante est la seule migration dont
+            # ce module a besoin : les anciennes lignes gardent `NULL`, ce qui
+            # se lit « fil inconnu » — la verite, et pas un identifiant invente.
+            colonnes = {ligne["name"] for ligne in
+                        connexion.execute(f"PRAGMA table_info({self.TABLE})")}
+            if "requete" not in colonnes:
+                connexion.execute(f"ALTER TABLE {self.TABLE} ADD COLUMN requete TEXT")
             connexion.execute(
                 f"CREATE INDEX IF NOT EXISTS idx_{self.TABLE}_type "
                 f"ON {self.TABLE} (type_tache)"
+            )
+            # L'index qui rend « tout ce qui a servi CETTE demande » immediat.
+            connexion.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_{self.TABLE}_requete "
+                f"ON {self.TABLE} (requete)"
             )
             connexion.commit()
 
@@ -165,11 +193,11 @@ class StatistiquesRoutage:
             with closing(self._connexion()) as connexion:
                 connexion.execute(
                     f"INSERT INTO {self.TABLE} (horodatage, type_tache, fournisseur, "
-                    f"modele, succes, repli, secondes, classement) "
-                    f"VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    f"modele, succes, repli, secondes, classement, requete) "
+                    f"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (passage.horodatage, passage.type_tache, passage.fournisseur,
                      passage.modele, int(passage.succes), int(passage.repli),
-                     passage.secondes, passage.classement),
+                     passage.secondes, passage.classement, passage.requete),
                 )
                 connexion.commit()
             return True
@@ -178,13 +206,26 @@ class StatistiquesRoutage:
             return False
 
     def passages(self, type_tache: Optional[str] = None,
-                 limite: int = LIMITE_PAR_DEFAUT) -> List[Passage]:
-        """Les passages les plus recents d'abord, filtres par type si demande."""
+                 limite: int = LIMITE_PAR_DEFAUT,
+                 fil: Optional[str] = None) -> List[Passage]:
+        """Les passages les plus recents d'abord, filtres si demande.
+
+        Args:
+            fil: ne garder que les appels causes par CETTE demande. C'est ce
+                qui permet de repondre « quel modele a repondu a cette phrase
+                du proprietaire ? ».
+        """
         requete = f"SELECT * FROM {self.TABLE}"
+        conditions: List[str] = []
         arguments: List[Any] = []
         if type_tache:
-            requete += " WHERE type_tache = ?"
+            conditions.append("type_tache = ?")
             arguments.append(type_tache)
+        if fil:
+            conditions.append("requete = ?")
+            arguments.append(fil)
+        if conditions:
+            requete += " WHERE " + " AND ".join(conditions)
         requete += " ORDER BY horodatage DESC, rowid DESC LIMIT ?"
         arguments.append(limite)
         with closing(self._connexion()) as connexion:
@@ -195,6 +236,13 @@ class StatistiquesRoutage:
                 modele=ligne["modele"], succes=bool(ligne["succes"]),
                 repli=bool(ligne["repli"]), secondes=ligne["secondes"],
                 classement=ligne["classement"], horodatage=ligne["horodatage"],
+                # La colonne existe TOUJOURS ici : `_creer_table` la pose,
+                # et sur une base d'avant le 20/09/2026 l'`ADD COLUMN` l'a
+                # ajoutee au demarrage. Une ligne ecrite avant vaut donc
+                # `NULL`, qui se lit « fil inconnu » — jamais un identifiant
+                # fabrique. (Un `if "requete" in ligne.keys()` a ete essaye
+                # ici : un sabotage a montre qu'il ne pouvait pas mordre.)
+                requete=ligne["requete"],
             )
             for ligne in lignes
         ]

@@ -10101,3 +10101,45 @@ sera declare absent et mis au frais deux minutes alors qu'il aurait fini par
 repondre. ARENA repondra quand meme, par le fournisseur suivant ; le cout est
 une reponse servie par un moteur moins bon, pas une absence de reponse. C'est
 le sens d'erreur choisi, et il est l'inverse de celui d'avant.
+## DEC-0116 — Le fil d'une demande relie les outils ET les modeles
+
+**2026-09-20.**
+
+**Decision** : `Passage` (`core/models/statistiques.py`) porte desormais
+`requete`, le fil de la demande, par le MEME mecanisme que le journal des
+actions — `fil_courant` en valeur par defaut, donc aucun appelant a changer.
+La colonne est ajoutee aux bases existantes par un `ALTER TABLE` au demarrage,
+et `GET /api/observability/fil/{request_id}` rend en un seul endroit tout ce
+qu'une demande a cause.
+
+**Pourquoi** : DEC-0093 avait pose le fil et l'avait fait porter par
+`core/actions/journal.py`. « Quels OUTILS ont tourne pour cette phrase ? »
+avait donc une reponse. **« Quel MODELE y a repondu, par quel FOURNISSEUR, en
+combien de temps ? » n'en avait aucune** : les statistiques de routage
+n'ecrivaient pas ce fil, et les deux moities de la meme histoire vivaient dans
+deux magasins que rien ne reliait. Un proprietaire qui dit « ce truc de ce
+matin a repondu n'importe quoi » pouvait voir les outils, jamais le moteur.
+
+Trois choses ont ete ecartees :
+
+- **Faire descendre le fil par les signatures.** Les quatre fournisseurs, le
+  routeur et tous leurs appelants pour une information qui ne change aucun
+  comportement — c'est la reecriture que la mission interdit. `contextvars`
+  existait deja ici pour exactement ca.
+- **Un 404 sur une demande inconnue.** Il laisserait croire a une panne la ou
+  la verite est « rien n'a ete enregistre sous ce fil » — ce qui arrive
+  legitimement pour une demande d'avant DEC-0093, ou pour une phrase qui n'a
+  cause ni action ni appel de modele. La route rend `connu: false`.
+- **Un garde `if "requete" in ligne.keys()` a la lecture.** Un sabotage a
+  montre qu'il ne pouvait pas mordre : `_creer_table` pose la colonne au
+  demarrage, y compris sur une base ancienne. Une branche morte n'est pas une
+  precaution. (Deuxieme fois cette nuit, apres DEC-0114 : les sabotages
+  trouvent ces branches-la mieux que la relecture.)
+
+**Ce que ca coute si c'est faux** : une ligne de plus par appel de modele dans
+SQLite, et un index de plus. Negligeable au volume d'un assistant personnel ;
+il faudrait un ordre de grandeur de plus d'appels pour que l'index pese. Et si
+le fil se revelait trop grossier — plusieurs phrases partageant le meme
+identifiant parce qu'un client reutilise son `X-Request-ID` — la route
+melangerait deux histoires. `identifiant_acceptable` valide la forme, pas
+l'unicite : c'est un choix, et le remede serait cote client.

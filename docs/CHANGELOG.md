@@ -61,6 +61,23 @@ Un débit n'est **jamais déduit** des morceaux de flux : un morceau n'est pas u
 jeton. Sans jetons annoncés par le service, il reste `None`. Un fournisseur
 absent garde sa ligne — l'écarter ferait disparaître l'information la plus
 utile. Voir DEC-0115.
+### Ajouté — 20/09/2026 — « Quel modèle a répondu à cette phrase ? » a enfin une réponse
+
+Le fil d'une demande existait depuis le 13/09 et le journal des actions le
+portait : « quels **outils** ont tourné pour cette phrase ? » était déjà
+répondable. **« Quel modèle y a répondu, par quel fournisseur, en combien de
+temps ? » ne l'était pas** — les statistiques de routage n'écrivaient pas ce
+fil, et les deux moitiés de la même histoire vivaient dans deux magasins que
+rien ne reliait.
+
+`GET /api/observability/fil/{request_id}` réunit les deux. Une demande inconnue
+rend `connu: false` et des listes vides — jamais un 404, qui laisserait croire
+à une panne.
+
+Aucun appelant n'a eu à changer : même mécanisme que le journal des actions,
+`fil_courant` en valeur par défaut. Les bases existantes reçoivent la colonne
+par un `ALTER TABLE` au démarrage, et leurs anciennes lignes gardent `NULL` —
+ce qui est vrai : elles n'ont jamais eu de fil. Voir DEC-0116.
 
 ### Ajouté — 19/09/2026 — Un projet de production reprend après un redémarrage
 
