@@ -42,10 +42,7 @@ module en reprend **les deux idées**, écrites pour ARENA :
 """
 from __future__ import annotations
 
-import json
 import logging
-import os
-import tempfile
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -53,6 +50,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from core.execution.journal_disque import ecrire_json_atomique, lire_json
 
 logger = logging.getLogger("usman.execution.reprise")
 
@@ -182,14 +181,7 @@ class JournalDeReprise:
 
     def _charger(self) -> None:
         """Relit le journal. Un fichier illisible n'empêche pas de travailler."""
-        if not self.fichier.is_file():
-            return
-        try:
-            brut = json.loads(self.fichier.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as erreur:
-            logger.warning("Journal de reprise illisible (%s) : on repart a vide.",
-                           erreur)
-            return
+        brut = lire_json(self.fichier, quoi="Journal de reprise")
         for donnees in brut.get("taches", []):
             try:
                 tache = Tache(
@@ -214,18 +206,10 @@ class JournalDeReprise:
         c'est-à-dire un journal de reprise qu'on ne peut pas relire, dans le
         seul moment où il sert.
         """
-        try:
-            self.fichier.parent.mkdir(parents=True, exist_ok=True)
-            charge = {"taches": [self._serialiser(t) for t in self._taches.values()]}
-            with tempfile.NamedTemporaryFile(
-                    "w", encoding="utf-8", dir=str(self.fichier.parent),
-                    prefix=".reprises-", suffix=".tmp", delete=False) as flux:
-                json.dump(charge, flux, ensure_ascii=False, indent=1)
-                provisoire = Path(flux.name)
-            os.replace(provisoire, self.fichier)
-        except OSError as erreur:
-            logger.warning("Journal de reprise non ecrit (%s) : le travail continue.",
-                           erreur)
+        ecrire_json_atomique(
+            self.fichier,
+            {"taches": [self._serialiser(t) for t in self._taches.values()]},
+            prefixe=".reprises-", quoi="Journal de reprise")
 
     @staticmethod
     def _serialiser(tache: Tache) -> Dict[str, Any]:

@@ -41,6 +41,7 @@ from apps.backend.runtime import (
     deep_provider,
     fast_provider,
     ollama_vision,
+    reprendre_les_travaux_interrompus,
 )
 from apps.backend.security import cle_presentee_valide, validate_media_path, verify_media_access
 from apps.backend.verification_modeles import verifier_modeles
@@ -65,6 +66,10 @@ async def au_demarrage(_: FastAPI):
         [fast_provider.model_name, deep_provider.model_name, ollama_vision.model_name],
         OLLAMA_URL,
     )
+    # Ce que l'arret precedent a laisse en plan. Rien n'est suppose : seuls les
+    # travaux qui savent se decrire sont re-soumis ; les autres restent
+    # INTERROMPUS et visibles sur `/api/travaux`.
+    reprendre_les_travaux_interrompus()
     autonomous_runtime = autonomous_chat.get_runtime()
     autonomous_runtime.start()
     try:

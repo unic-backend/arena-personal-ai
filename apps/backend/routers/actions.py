@@ -27,11 +27,13 @@ from apps.backend.runtime import (
     journal_des_plans,
     mesures_execution,
     statistiques_routage,
+    travaux,
 )
 from apps.backend.security import limiter_debit, verify_api_key
 from core.actions.resultat import Statut
 from core.actions.timeline import to_dict
 from core.execution.mesures import Rapport, non_lancee, resume_chiffre
+from core.execution.travaux import EtatTravail
 from core.execution.voies import ORDRE, budget_de
 from core.models.statistiques import LIMITE_PAR_DEFAUT as LIMITE_PASSAGES
 from core.observabilite.fil import LONGUEUR_MAX as LONGUEUR_MAX_FIL
@@ -257,3 +259,51 @@ async def lire_mesures() -> Dict[str, Any]:
         },
         "cibles": {voie.value: budget_de(voie).objectif_secondes for voie in ORDRE},
     }
+
+
+@router.get("/api/travaux", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
+async def lire_les_travaux(etat: Optional[str] = None) -> Dict[str, Any]:
+    """Les travaux de fond, et ce que le dernier arret a laisse en plan.
+
+    Repond aux questions qu'un ingenieur doit pouvoir poser sans lire les
+    journaux : qu'est-ce qui tourne, qu'est-ce qui a abouti, qu'est-ce qui a
+    ete coupe par un redemarrage, et lesquels de ceux-la savent se reprendre.
+
+    `interrompus` n'est pas un sous-ensemble decoratif : c'est la liste que
+    personne ne pouvait voir avant le 20/09/2026, parce que la file etait
+    purement en memoire et qu'un redemarrage effacait tout.
+    """
+    if etat is not None:
+        try:
+            filtre = EtatTravail(etat.upper())
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=(f"Etat inconnu : {etat}. Valeurs acceptees : "
+                        + ", ".join(e.value for e in EtatTravail))) from None
+        inventaire = travaux.inventaire(filtre)
+    else:
+        inventaire = travaux.inventaire()
+
+    interrompus = travaux.interrompus()
+    return {
+        "travaux": [t.to_dict() for t in inventaire],
+        "en_cours": travaux.en_cours,
+        "interrompus": [t.to_dict() for t in interrompus],
+        # Un travail interrompu qui ne sait pas se decrire ne se reprend pas
+        # tout seul. Le compter parmi les reprenables promettrait une reprise
+        # que rien ne peut tenir.
+        "reprenables": [t.identifiant for t in interrompus if t.reprenable],
+        "persistance": str(travaux.fichier) if travaux.fichier else None,
+    }
+
+
+@router.post("/api/travaux/{identifiant}/annuler",
+             dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
+async def annuler_un_travail(identifiant: str) -> Dict[str, Any]:
+    """Annule un travail de fond. Idempotent : deux appels n'annulent qu'une fois."""
+    travail = travaux.lire(identifiant)
+    if travail is None:
+        raise HTTPException(status_code=404, detail=f"Travail inconnu : {identifiant}")
+    travaux.annuler(identifiant)
+    return travaux.lire(identifiant).to_dict()

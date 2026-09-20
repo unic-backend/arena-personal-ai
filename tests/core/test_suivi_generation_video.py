@@ -5,7 +5,14 @@ le suivi tourne en fond, le tour de chat se termine avant lui.
 """
 import asyncio
 
-from core.connectors.suivi_video import Suivi, suivre_en_fond, suivre_generation
+import pytest
+
+from core.connectors.suivi_video import (
+    Suivi,
+    fabrique_de_reprise,
+    suivre_en_fond,
+    suivre_generation,
+)
 from core.execution.travaux import EtatTravail, FileDeTravaux, Travail
 
 
@@ -124,3 +131,70 @@ async def test_sans_identifiant_il_n_y_a_rien_a_suivre():
 
     assert suivi == Suivi(job_id="", termine=True,
                           raison="aucun identifiant de tache a suivre")
+
+
+class TestRepriseApresRedemarrage:
+    """Le suivi d'une génération est le SEUL travail de fond qui se reprend
+    vraiment après un redémarrage — et pour une raison précise : son état ne
+    vit pas dans ARENA, il vit chez WanGP. Reprendre, c'est redemander « où en
+    est la tâche job_id ? ». Aucune écriture n'est rejouée.
+    """
+
+    async def test_un_suivi_declare_ce_qu_il_est(self, tmp_path):
+        """Le descripteur porte des DONNÉES, jamais du code.
+
+        Sans lui, un suivi coupé par un redémarrage resterait interrompu à
+        jamais : personne ne saurait quelle tâche WanGP il regardait.
+        """
+        file = FileDeTravaux(fichier=tmp_path / "file.json")
+        travail = suivre_en_fond(FauxConnecteur([EN_COURS]), file, "job-7",
+                                 intervalle=0)
+
+        assert travail.descripteur["type"] == "suivi_generation_video"
+        assert travail.descripteur["parametres"]["job_id"] == "job-7"
+        assert travail.reprenable is False, "il tourne : il n'y a rien a reprendre"
+        file.annuler(travail.identifiant)
+
+    async def test_deux_suivis_de_la_meme_generation_sont_un_seul_travail(self, tmp_path):
+        """Redemander « où en est ma vidéo ? » ne lance pas un second suivi."""
+        file = FileDeTravaux(fichier=tmp_path / "file.json")
+        connecteur = FauxConnecteur([EN_COURS])
+        un = suivre_en_fond(connecteur, file, "job-7", intervalle=0)
+        deux = suivre_en_fond(connecteur, file, "job-7", intervalle=0)
+
+        # Tant que le premier TOURNE, la cle ne s'applique pas (elle ne vaut
+        # que pour un travail DEJA TERMINE) : ce sont donc deux travaux, et
+        # c'est voulu — un suivi en cours n'est pas un resultat acquis.
+        assert un.identifiant != deux.identifiant
+        assert un.cle == deux.cle == "suivi_generation_video:job-7"
+        file.annuler(un.identifiant)
+        file.annuler(deux.identifiant)
+
+    async def test_un_suivi_coupe_par_un_redemarrage_est_repris(self, tmp_path):
+        """Le parcours complet : coupé, relu, reconstruit, relancé."""
+        chemin = tmp_path / "file.json"
+        file = FileDeTravaux(fichier=chemin)
+        travail = suivre_en_fond(FauxConnecteur([EN_COURS]), file, "job-7",
+                                 intervalle=0)
+        await asyncio.sleep(0)  # il demarre, donc il s'ecrit EN_COURS
+
+        # Le serveur redemarre : nouvelle file, nouveau connecteur.
+        relue = FileDeTravaux(fichier=chemin)
+        assert relue.lire(travail.identifiant).etat is EtatTravail.INTERROMPU
+
+        connecteur = FauxConnecteur([FINI])
+        repris = relue.reprendre_les_interrompus(
+            {"suivi_generation_video": fabrique_de_reprise(connecteur)})
+
+        assert len(repris) == 1
+        suivi = (await relue.attendre(repris[0].identifiant, delai=2.0)).resultat
+        assert suivi.job_id == "job-7"
+        assert suivi.reussi is True
+        assert connecteur.appels >= 1, "WanGP doit avoir ete reinterroge"
+
+    def test_un_suivi_sans_job_id_ne_se_reprend_pas(self):
+        """Mieux vaut refuser que reconstruire un suivi qui ne regarde rien."""
+        fabriquer = fabrique_de_reprise(FauxConnecteur([EN_COURS]))
+
+        with pytest.raises(ValueError):
+            fabriquer({})
