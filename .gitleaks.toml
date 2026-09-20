@@ -59,6 +59,9 @@ tags = ["usman", "secret"]
     # n'apparait que dans le commit qui l'a inventee (1098f3c), jamais dans
     # un .env ni une configuration. Visee par valeur exacte.
     '''4409dde42d4099b9296b5cca987b7c00''',
+    # Faux secret historique d'un smoke test Docker retiré immédiatement :
+    # valeur factice exacte, jamais une exception par chemin/fichier.
+    '''document-smoke-key''',
   ]
 
 [allowlist]
