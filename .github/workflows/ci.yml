@@ -31,7 +31,7 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
             libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 \
-            libreoffice ffmpeg
+            libreoffice ffmpeg tesseract-ocr tesseract-ocr-fra fonts-dejavu-core
 
       - name: Install test dependencies
         # Only what the offline suite imports, pinned by requirements.txt used as
@@ -103,6 +103,17 @@ jobs:
           docker run --rm -v /tmp/donnees-test:/app/data \
             --entrypoint apps/backend/entrypoint.sh arena:ci \
             sh -c "touch /app/data/preuve-ecriture && whoami"
+
+      - name: Verify document capabilities inside the final image
+        # Le build seul ne prouve ni OCR, ni conversion, ni téléchargement.
+        # Le script tourne via l'entrypoint, donc sous l'utilisateur arena,
+        # et vérifie les SORTIES réelles : texte OCR, contenu converti,
+        # PDF généré, puis refus sans clé et téléchargement authentifié.
+        run: |
+          SMOKE_KEY="$(python -c 'import secrets; print(secrets.token_hex(24))')"
+          docker run --rm -e USMAN_API_KEY="$SMOKE_KEY" \
+            --entrypoint apps/backend/entrypoint.sh arena:ci \
+            python -m scripts.document_runtime_smoke
 
       - name: Verify the container starts with no volume at all
         # Panne reelle du premier deploiement (Railway, chapitre 5) : `data/`
