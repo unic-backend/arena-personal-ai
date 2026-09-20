@@ -24,11 +24,21 @@ FROM python:3.11-slim
 WORKDIR /app
 ENV USMAN_CHROMA_PATH=/app/data/chroma_db
 
-# ffmpeg : audio/video (tools/audio, tools/video). curl : sonde de sante
-# ci-dessous. gosu : passer la main a l'utilisateur non-root sans jamais
-# pouvoir revenir root ensuite (voir entrypoint.sh) — contrairement a `sudo`,
-# qui le pourrait.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl gosu \
+# Outils natifs réellement requis par les capacités livrées :
+# - ffmpeg : audio/video ;
+# - tesseract + données françaises : OCR des PDF scannés ;
+# - LibreOffice Writer/Calc/Impress : conversions DOCX/XLSX/PPTX ;
+# - cairo/pango/gdk-pixbuf : rendu WeasyPrint/CairoSVG ;
+# - DejaVu : police déterministe des rendus/smoke tests ;
+# - curl : sonde de santé ; gosu : abandon définitif des privilèges root.
+# Les paquets LibreOffice sont ciblés plutôt que le méta-paquet complet et
+# --no-install-recommends évite d'embarquer les composants sans usage.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg curl gosu \
+    tesseract-ocr tesseract-ocr-fra \
+    libreoffice-writer libreoffice-calc libreoffice-impress \
+    libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
