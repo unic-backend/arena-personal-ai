@@ -156,7 +156,7 @@ class MemoryEngine:
         )
         ids = (response.get("ids") or [[]])[0]
         distances = (response.get("distances") or [[]])[0]
-        distance_by_id = {doc_id: float(distance) for doc_id, distance in zip(ids, distances)}
+        distance_by_id = {doc_id: float(distance) for doc_id, distance in zip(ids, distances, strict=False)}
         with closing(self._connect()) as db:
             result = []
             for document_id in ids:
