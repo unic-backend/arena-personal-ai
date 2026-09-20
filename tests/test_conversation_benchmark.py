@@ -12,7 +12,6 @@ from apps.backend.services.conversation_intelligence import (
     understand,
 )
 
-
 DATA = json.loads((Path(__file__).with_name("conversation_benchmark.json")).read_text(encoding="utf-8"))
 DISTRACTORS = [
     "serveur", "voiture", "vidéo", "chantier", "ordinateur", "PDF", "facture", "mémoire", "Qwen", "Wan",
