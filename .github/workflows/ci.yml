@@ -113,7 +113,7 @@ jobs:
           SMOKE_KEY="$(python -c 'import secrets; print(secrets.token_hex(24))')"
           docker run --rm -e USMAN_API_KEY="$SMOKE_KEY" \
             --entrypoint apps/backend/entrypoint.sh arena:ci \
-            python scripts/document_runtime_smoke.py
+            python -m scripts.document_runtime_smoke
 
       - name: Verify the container starts with no volume at all
         # Panne reelle du premier deploiement (Railway, chapitre 5) : `data/`
