@@ -35,8 +35,9 @@ REFERENCE = re.compile(
     re.IGNORECASE,
 )
 RETURN = re.compile(
-    r"\b(?:revenons?|retournons?|reprenons?|reviens?|retourne|je parle de|celui de|celle de|"
-    r"pas l'autre|not the other|back to|earlier)\b", re.IGNORECASE,
+    r"(?:\b(?:revenons?|retournons?|reprenons?|reviens?|retourne|je parle de|celui de|celle de|"
+    r"pas l'autre|not the other|back to|earlier)\b|c['’]?était quoi.*\bdéjà\b|"
+    r"c['’]?etait quoi.*\bdeja\b)", re.IGNORECASE,
 )
 QUESTION = re.compile(
     r"^\s*(?:est-ce|es-tu|sais-tu|peux-tu|pourquoi|comment|combien|quel(?:le|s)?|"
@@ -173,18 +174,11 @@ class ConversationState:
 
 
 def _entities(text: str) -> list[str]:
-    # Entités explicites seulement : noms propres/acronymes/modèles visibles.
     found = re.findall(r"\b(?:[A-ZÀ-ÖØ-Þ][\wÀ-ÿ-]{2,}|[A-Z]{2,}[\w.-]*|[A-Za-z]+\d[\w.-]*)\b", text or "")
     return [item for item in dict.fromkeys(found) if item not in ENTITY_STOPWORDS][:12]
 
 
 def _reference_entities(recent: list[str]) -> list[str]:
-    """Priorise les entités susceptibles d'être l'antécédent d'un pronom.
-
-    Une entité introduite comme complément après « chez » (ex. Orange dans
-    « Il travaille chez Orange ») reste suivie, mais passe après un nom propre
-    de personne explicite rencontré dans le contexte récent.
-    """
     preferred: list[str] = []
     secondary: list[str] = []
     for text in reversed(recent):
@@ -197,45 +191,22 @@ def _reference_entities(recent: list[str]) -> list[str]:
     return (preferred + secondary)[:8]
 
 
-def understand(
-    message: str,
-    history: list[dict[str, str]],
-    *,
-    recent_window: int = 8,
-) -> ConversationState:
+def understand(message: str, history: list[dict[str, str]], *, recent_window: int = 8) -> ConversationState:
     user_history = [str(item.get("content", "")) for item in history if item.get("role") == "user"]
     recent_window = max(2, min(int(recent_window), 30))
     recent = user_history[-recent_window:]
     current_tokens = tokens(message)
-
-    scored_all = [
-        (overlap(current_tokens, tokens(text)), index, text)
-        for index, text in enumerate(user_history)
-    ]
-    best_score, best_index, best_text = max(
-        scored_all,
-        default=(0.0, -1, ""),
-        key=lambda item: item[0],
-    )
+    scored_all = [(overlap(current_tokens, tokens(text)), index, text) for index, text in enumerate(user_history)]
+    best_score, best_index, best_text = max(scored_all, default=(0.0, -1, ""), key=lambda item: item[0])
     recent_start = max(0, len(user_history) - recent_window)
     best_is_older = best_index >= 0 and best_index < recent_start
-    recent_scores = [
-        (score, index, text) for score, index, text in scored_all if index >= recent_start
-    ]
-    recent_best_score, _, _ = max(
-        recent_scores,
-        default=(0.0, -1, ""),
-        key=lambda item: item[0],
-    )
-
+    recent_scores = [(score, index, text) for score, index, text in scored_all if index >= recent_start]
+    recent_best_score, _, _ = max(recent_scores, default=(0.0, -1, ""), key=lambda item: item[0])
     previous_topics = [" ".join(sorted(tokens(text))[:8]) for text in user_history if tokens(text)]
     has_reference = bool(REFERENCE.search(message or ""))
     explicit_return = bool(RETURN.search(message or ""))
     question_scope = classify_question_scope(message, has_reference=has_reference)
 
-    # A retour explicite doit pointer vers un ancien message qui partage
-    # réellement le sujet demandé. Sinon on garde le message courant comme
-    # sujet au lieu de choisir arbitrairement un distracteur récent.
     if explicit_return and best_score >= 0.10:
         transition: TopicTransition = "TOPIC_RETURN"
         confidence = min(1.0, 0.72 + best_score)
@@ -258,7 +229,6 @@ def understand(
     entities = _entities(message)
     reference_candidates: list[str] = []
     if has_reference:
-        # Le meilleur ancrage lexical gagne sur un sujet récent sans rapport.
         if best_text and best_score >= 0.10:
             reference_candidates.extend(_entities(best_text))
             if best_index > 0:
@@ -271,24 +241,12 @@ def understand(
             if entity not in entities:
                 entities.append(entity)
 
-    topic_source = (
-        best_text
-        if transition == "TOPIC_RETURN" and best_text and best_score >= 0.10
-        else message
-    )
+    topic_source = best_text if transition == "TOPIC_RETURN" and best_text and best_score >= 0.10 else message
     topic = " ".join(sorted(tokens(topic_source))[:8])
     references = {}
     if has_reference and reference_candidates:
         references["recent_reference"] = reference_candidates[0]
-    return ConversationState(
-        topic,
-        previous_topics[-12:],
-        entities[-12:],
-        transition,
-        references,
-        confidence,
-        question_scope,
-    )
+    return ConversationState(topic, previous_topics[-12:], entities[-12:], transition, references, confidence, question_scope)
 
 
 def score_memory(query: str, candidate: dict[str, Any], state: ConversationState,
@@ -315,28 +273,15 @@ def score_memory(query: str, candidate: dict[str, Any], state: ConversationState
     )
     confidence = max(0.0, min(1.0, float(candidate.get("confidence", 1.0))))
     return {
-        "score": score,
-        "semantic": semantic,
-        "lexical": lexical,
-        "entity": entity,
-        "entity_conflict": entity_conflict,
-        "topic": topic,
-        "recency": recent,
-        "same_conversation": same_conversation,
-        "memory_kind": str(candidate.get("kind") or ""),
-        "source_type": str(candidate.get("source_type") or "legacy"),
-        "confidence": confidence,
+        "score": score, "semantic": semantic, "lexical": lexical, "entity": entity,
+        "entity_conflict": entity_conflict, "topic": topic, "recency": recent,
+        "same_conversation": same_conversation, "memory_kind": str(candidate.get("kind") or ""),
+        "source_type": str(candidate.get("source_type") or "legacy"), "confidence": confidence,
         "query_requires_decision": bool(DECISION_QUERY.search(query or "")),
     }
 
 
 def accept_memory(features: dict[str, Any], threshold: float) -> bool:
-    """Precision-first gate: aucun signal faible isolé ne suffit.
-
-    Un candidat de la même conversation ou qui partage seulement une entité
-    peut encore appartenir à un autre sujet. Il faut donc un ancrage lexical
-    ou thématique, sauf paraphrase utilisateur très récente et très proche.
-    """
     lexical = float(features["lexical"])
     topic = float(features["topic"])
     entity = float(features["entity"])
@@ -344,19 +289,11 @@ def accept_memory(features: dict[str, Any], threshold: float) -> bool:
         return False
     if float(features.get("confidence", 1.0)) < 0.5:
         return False
-    if (
-        features.get("query_requires_decision")
-        and features.get("source_type") in {"user_plan", "user_speculation"}
-    ):
+    if features.get("query_requires_decision") and features.get("source_type") in {"user_plan", "user_speculation"}:
         return False
-    contextual_support = (
-        lexical >= 0.20
-        or topic >= 0.18
-        or (entity >= 0.10 and (lexical >= 0.10 or topic >= 0.18))
-    )
+    contextual_support = lexical >= 0.20 or topic >= 0.18 or (entity >= 0.10 and (lexical >= 0.10 or topic >= 0.18))
     recent_user_support = (
-        features["semantic"] >= 0.93
-        and features["recency"] >= 0.85
+        features["semantic"] >= 0.93 and features["recency"] >= 0.85
         and features.get("memory_kind") in {"user_fact", "user_message"}
     )
     if not contextual_support and not recent_user_support:
@@ -365,13 +302,11 @@ def accept_memory(features: dict[str, Any], threshold: float) -> bool:
 
 
 def needs_long_term(message: str, history: list[dict[str, str]], state: ConversationState) -> bool:
-    """Route la mémoire longue seulement quand elle peut apporter une preuve utile."""
     if state.question_scope == "GENERAL_KNOWLEDGE" and state.transition != "TOPIC_RETURN":
         return False
     if not history:
         return state.question_scope in {"PERSONAL_CONTEXT", "CURRENT_CONVERSATION", "UNKNOWN"}
     if REFERENCE.search(message or ""):
-        # Les références se résolvent d'abord dans le fil courant.
         recent_text = " ".join(str(x.get("content", "")) for x in history[-8:])
         if state.active_entities and any(e.casefold() in recent_text.casefold() for e in state.active_entities):
             return False
