@@ -2,6 +2,34 @@
 
 ## [Non publié]
 
+### Corrigé — 20/09/2026 — ARENA n'écrit plus le devis dans la conversation
+
+Le propriétaire reçoit un devis complet sur son téléphone : en-tête, tableau,
+sous-total, TOTAL TTC, conditions générales, signature du gérant, référence
+`UC-2026-0920-KHADI`. Il constate qu'il **ne ressemble pas au sien** — ni
+logo, ni charte, ni mise en page.
+
+La référence est la preuve : le code rend `UC-2026-0920-KD` pour Khady Diop, et
+la chaîne « KHADI » n'existe nulle part dans le dépôt. **Le modèle avait écrit
+le document lui-même**, en texte, pendant que le vrai générateur refusait :
+« Aucune dimension lue dans la demande : je ne chiffre rien. »
+
+Un document sort du générateur, ou il n'existe pas. Une réponse qui en imite un
+pendant qu'aucun fichier n'a été écrit est un faux — même quand chaque prix
+qu'elle affiche est juste.
+
+Deux verrous, pas un :
+
+- **L'instruction** interdit au modèle d'écrire l'en-tête, le numéro, les
+  totaux, les conditions générales et la signature. Ce qu'il écrit, lui : ce
+  qu'il a compris, ce qui manque, le chiffrage expliqué en phrases.
+- **Un garde déterministe** relit la réponse. Numéro `UC-…`, « TOTAL TTC » ou
+  « sous-total » alors qu'aucun fichier n'a été écrit → la réponse est
+  remplacée par ce qui manque vraiment, dimensions comprises.
+
+Le garde ne se déclenche jamais quand le générateur a produit le document : le
+fichier existe, il porte son vrai numéro, son lien suit juste en dessous.
+
 ### Corrigé — 20/09/2026 — Le correctif ne reste pas au devis : il vaut pour tous les agents
 
 Premier correctif du jour : une réponse à une question du DEVIS ne partait plus
