@@ -60,6 +60,17 @@ class MemoryEngine:
         self._drain_lock = asyncio.Lock()
         self._collection: Any = None
         self._chroma_lock = threading.Lock()
+        self._index_space = self._embedding_space()
+
+    def _embedding_space(self) -> str:
+        """Identifie fournisseur + modèle + configuration vectorielle."""
+        identite = getattr(self.ai, "embedding_space", None)
+        if callable(identite):
+            return str(identite())
+        return (
+            f"ollama|{self.settings.local_embedding_model}|"
+            f"{self.settings.local_url.rstrip('/')}"
+        )
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.settings.db_path, timeout=5)
@@ -75,7 +86,8 @@ class MemoryEngine:
                     conversation_id TEXT NOT NULL, kind TEXT NOT NULL,
                     content TEXT NOT NULL, source TEXT NOT NULL,
                     created REAL NOT NULL, indexed INTEGER NOT NULL DEFAULT 0,
-                    index_after REAL NOT NULL DEFAULT 0
+                    index_after REAL NOT NULL DEFAULT 0,
+                    index_space TEXT NOT NULL DEFAULT ''
                 );
                 CREATE INDEX IF NOT EXISTS autonomous_documents_owner
                     ON autonomous_documents(user_id, kind, created);
@@ -87,6 +99,9 @@ class MemoryEngine:
                     status TEXT NOT NULL DEFAULT 'pending'
                 );
             """)
+            colonnes = {row["name"] for row in db.execute("PRAGMA table_info(autonomous_documents)")}
+            if "index_space" not in colonnes:
+                db.execute("ALTER TABLE autonomous_documents ADD COLUMN index_space TEXT NOT NULL DEFAULT ''")
 
     async def initialize(self) -> None:
         async with self._init_lock:
@@ -102,14 +117,15 @@ class MemoryEngine:
 
                 client = chromadb.PersistentClient(
                     path=str(self.settings.chroma_path), settings=Settings(anonymized_telemetry=False))
-                model_key = hashlib.sha256(self.settings.embedding_model.encode()).hexdigest()[:12]
+                model_key = hashlib.sha256(self._index_space.encode()).hexdigest()[:12]
                 self._collection = client.get_or_create_collection(
                     name=f"arena_{model_key}", embedding_function=None,
-                    metadata={"hnsw:space": "cosine"})
+                    metadata={"hnsw:space": "cosine", "embedding_space": self._index_space})
                 if self._collection.count() == 0:
                     # A restored SQLite file or an empty replacement index must be rebuildable.
                     with closing(self._connect()) as db, db:
-                        db.execute("UPDATE autonomous_documents SET indexed=0, index_after=0")
+                        db.execute("UPDATE autonomous_documents SET indexed=0, index_after=0 "
+                                   "WHERE index_space=?", (self._index_space,))
         return self._collection
 
     def _local_context(self, user_id: str, conversation_id: str, query: str) -> MemoryContext:
@@ -259,9 +275,12 @@ class MemoryEngine:
     def _unindexed(self) -> list[dict[str, Any]]:
         with closing(self._connect()) as db, db:
             rows = [dict(row) for row in db.execute(
-                "SELECT * FROM autonomous_documents WHERE indexed=0 AND index_after<=? "
-                "ORDER BY index_after, created LIMIT 32", (time.time(),))]
-            # A permanently local-only document must not starve later indexable documents.
+                "SELECT * FROM autonomous_documents "
+                "WHERE (indexed=0 OR index_space<>?) AND index_after<=? "
+                "ORDER BY index_after, created LIMIT 32",
+                (self._index_space, time.time()),
+            )]
+            # Une panne d'embeddings ne perd rien : le lot réessaie plus tard.
             db.executemany("UPDATE autonomous_documents SET index_after=? WHERE id=?",
                            [(time.time() + 60, row["id"]) for row in rows])
             return rows
@@ -269,13 +288,26 @@ class MemoryEngine:
     def _index(self, rows: list[dict[str, Any]], vectors: list[list[float]]) -> None:
         if len(rows) != len(vectors):
             raise ValueError("Nombre de vecteurs incomplet")
-        self._chroma().upsert(ids=[row["id"] for row in rows], embeddings=vectors,
-                              documents=[row["content"] for row in rows],
-                              metadatas=[{"user_id": row["user_id"], "type": row["kind"],
-                                          "source": row["source"], "conversation_id": row["conversation_id"]}
-                                         for row in rows])
+        dimensions = {len(vector) for vector in vectors}
+        if not vectors or len(dimensions) != 1 or next(iter(dimensions)) < 2:
+            raise ValueError("Vecteurs incompatibles")
+        self._chroma().upsert(
+            ids=[row["id"] for row in rows],
+            embeddings=vectors,
+            documents=[row["content"] for row in rows],
+            metadatas=[{
+                "user_id": row["user_id"],
+                "type": row["kind"],
+                "source": row["source"],
+                "conversation_id": row["conversation_id"],
+                "embedding_space": self._index_space,
+            } for row in rows],
+        )
         with closing(self._connect()) as db, db:
-            db.executemany("UPDATE autonomous_documents SET indexed=1 WHERE id=?", [(row["id"],) for row in rows])
+            db.executemany(
+                "UPDATE autonomous_documents SET indexed=1,index_space=? WHERE id=?",
+                [(self._index_space, row["id"]) for row in rows],
+            )
 
     async def drain(self) -> None:
         """Un lot borne ; les echecs restent durables pour le prochain passage."""
@@ -290,10 +322,11 @@ class MemoryEngine:
                         break
                     await self._extract(job)
                 rows = await asyncio.to_thread(self._unindexed)
-                allowed = [row for row in rows if self.ai.cloud_allowed(row["content"])]
-                if allowed:
-                    vectors = await self.ai.embed([row["content"] for row in allowed])
-                    await asyncio.to_thread(self._index, allowed, vectors)
+                if rows:
+                    # Tous les documents utilisent le MEME espace local. Aucun
+                    # filtrage cloud ici : LOCAL_ONLY doit indexer normalement.
+                    vectors = await self.ai.embed([row["content"] for row in rows])
+                    await asyncio.to_thread(self._index, rows, vectors)
             except Exception:
                 logger.warning("Consolidation memoire incomplete; donnees SQLite conservees.")
 
