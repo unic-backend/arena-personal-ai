@@ -137,6 +137,30 @@ class MemoryEngine:
         memory = MemoryManager(str(self.settings.db_path))
         return memory.get_recent_history(session_key(user_id, conversation_id), self.settings.history_messages)
 
+    @staticmethod
+    def _working_candidates(history: list[dict[str, str]], query: str) -> list[dict[str, Any]]:
+        """Recent user evidence, without querying global/long-term memory."""
+        query_folded = (query or "").casefold()
+        query_words = {word for word in query_folded.split() if len(word) >= 3}
+        result: list[dict[str, Any]] = []
+        for item in reversed(history[-8:]):
+            if item.get("role") != "user":
+                continue
+            content = str(item.get("content") or "")
+            folded = content.casefold()
+            lexical_hit = any(word in folded for word in query_words)
+            direct_hit = bool(query_folded and query_folded in folded)
+            if lexical_hit or direct_hit:
+                result.append({
+                    "kind": "working_user_message",
+                    "content": content,
+                    "source": "working_context",
+                    "created": time.time(),
+                    "conversation_id": "current",
+                    "relevance": 1.0,
+                })
+        return result[:5]
+
     def _lexical_candidates(self, user_id: str, query: str) -> list[dict[str, Any]]:
         words = list(dict.fromkeys(query.casefold().split()))[:12]
         conditions = " OR ".join("instr(lower(content), ?) > 0" for _ in words) or "0"
@@ -213,8 +237,13 @@ class MemoryEngine:
             profile=str(memory.get_fact("owner") or "") if user_id == "owner" else "",
         )
         if not needs_long_term(query, history, state):
+            result.memories = self._working_candidates(history, query)
             if self.settings.memory_debug:
-                result.retrieval_debug.append({"status": "SKIPPED", "reason": "recent_context_sufficient"})
+                result.retrieval_debug.append({
+                    "status": "SKIPPED",
+                    "reason": "recent_context_sufficient",
+                    "working_evidence": len(result.memories),
+                })
             return result
 
         result.long_term_used = True
