@@ -45,9 +45,9 @@ def test_retrouve_le_chantier_de_reference(quantites):
         "Laine de verre (paquet)": 18,
         "Paquet vis (25 mm ou 35 mm)": 18,
         "Sac enduit": 18,
-        "Bande a joints": 18,
-        "Bande armee": 18,
-        "Paquet chevilles a frapper": 18,
+        "Bande à joints": 18,
+        "Bande armée": 18,
+        "Paquet chevilles à frapper": 18,
     }
 
 

@@ -129,7 +129,10 @@ class Devis:
     validite_jours: int = 15
     main_oeuvre_m2: Optional[float] = None
     exclusions: List[str] = field(default_factory=list)
-    suffixe_client: str = "XXX"
+    #: Vide = deduit du nom du client (« Fast Group » -> FG). Une valeur
+    #: explicite gagne toujours : elle sert les variantes qu'il utilise deja
+    #: — FGP pour ses devis de portes, FGM pour sa main-d'oeuvre.
+    suffixe_client: str = ''
     # Un devis signe d'avance est un devis qu'on peut envoyer tel quel. Il
     # reste faux par defaut : signer automatiquement un document qu'on n'a
     # pas relu est une mauvaise habitude a prendre.
@@ -141,11 +144,19 @@ class Devis:
             date_du_jour,
             date_en_toutes_lettres,
             numero_du_jour,
+            suffixe_du_client,
         )
 
         jour: _date = date_du_jour()
         if not self.date:
             self.date = date_en_toutes_lettres(jour)
+        # Le suffixe se deduit du client, sauf s'il a ete donne. C'est ICI, et
+        # pas chez les appelants : les cinq types de document passent tous par
+        # cette classe, donc la regle s'applique au devis comme au bon de
+        # livraison, au reliquat ou a la decharge — sans qu'aucun appelant
+        # ait a y penser, et donc sans qu'aucun puisse l'oublier.
+        if not self.suffixe_client:
+            self.suffixe_client = suffixe_du_client(self.client)
         if not self.numero:
             self.numero = numero_du_jour(jour, self.suffixe_client)
 
@@ -259,6 +270,16 @@ def construire(devis: Devis, metier: Dict[str, Any], sortie: Path,
                                textColor=colors.black, leading=12.5, alignment=TA_JUSTIFY),
         "clienttitre": ParagraphStyle("ct", fontName="Helvetica-Bold", fontSize=10,
                                       textColor=c["bleu"], leading=13),
+        # Une cellule de tableau. Un texte pose en chaine brute NE SE COUPE
+        # PAS : il deborde sur les colonnes voisines et les recouvre. Mesure
+        # le 20/09/2026 sur le libelle de main-d'oeuvre (« Forfait pose
+        # complete : ossature, isolation, pose BA13, joints, enduit, poncage
+        # et peinture »), qui ecrasait le prix au metre carre ET la surface.
+        # Un Paragraphe, lui, revient a la ligne dans sa colonne.
+        "cell": ParagraphStyle("cell", fontName="Helvetica-Bold", fontSize=8.5,
+                               textColor=colors.black, leading=11),
+        "cellblanc": ParagraphStyle("cellblanc", fontName="Helvetica-Bold", fontSize=8.5,
+                                    textColor=c["blanc"], leading=11),
     }
 
     def barre(titre: str) -> Table:
@@ -272,7 +293,7 @@ def construire(devis: Devis, metier: Dict[str, Any], sortie: Path,
         return t
 
     infos = (
-        f"{e.get('specialite', '')}<br/>{e.get('gerant', '')} - Gerant<br/>"
+        f"{e.get('specialite', '')}<br/>{e.get('gerant', '')} - Gérant<br/>"
         f"Tel : {e.get('telephone', '')}<br/>{e.get('adresse', '')}<br/>"
         f"{e.get('site', '')}<br/>NINEA : {e.get('ninea', '')} | RCCM : {e.get('rccm', '')}"
     )
@@ -308,7 +329,7 @@ def construire(devis: Devis, metier: Dict[str, Any], sortie: Path,
               Paragraph(f"Lieu du chantier : {devis.lieu}", st["txt"])]
     droite = [Paragraph(f"Date : {devis.date}", st["txt"]),
               Paragraph(f"N° {devis.type_document.title()} : {devis.numero}", st["txt"]),
-              Paragraph(f"Validite : {devis.validite_jours} jours", st["txt"])]
+              Paragraph(f"Validité : {devis.validite_jours} jours", st["txt"])]
     bloc_client = Table([[gauche, droite]], colWidths=[90 * mm, 90 * mm])
     bloc_client.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
                                      ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
@@ -317,18 +338,42 @@ def construire(devis: Devis, metier: Dict[str, Any], sortie: Path,
     story += [barre(f"Objet du {devis.type_document.lower()}"), Spacer(1, 3),
               Paragraph(devis.objet, st["just"]), Spacer(1, 8)]
 
+    # « Important - Prix unitaires : les prix indiques dans la colonne Prix
+    # Unitaire sont des prix a l'unite, et non des montants totaux. »
+    #
+    # Cette phrase est sur son devis Fast Group du 04/08/2026, et elle etait
+    # deja dans `config/metier.yaml` sous `conventions.mention_prix_unitaire`
+    # — **sans qu'aucune ligne ne la rende**. Mesure du 20/09/2026. Elle
+    # existe pour eviter qu'un client lise 4 500 FCFA comme le prix des 234
+    # plaques : c'est exactement le genre de malentendu qui se regle apres la
+    # signature, donc mal.
+    mention = (metier.get("conventions") or {}).get("mention_prix_unitaire")
+    if mention:
+        story += [
+            Paragraph("Important — Prix unitaires :", ParagraphStyle(
+                "mention_titre", fontName="Helvetica-Bold", fontSize=9,
+                textColor=c["jaune"], leading=12)),
+            Paragraph(str(mention).strip(), st["txt"]),
+            Spacer(1, 8),
+        ]
+
     devise = e.get("devise", "FCFA")
-    rows = [["Designation", "Prix Unitaire", "Quantite", "Prix Total"]]
+    rows = [["Désignation", "Prix Unitaire", "Quantité", "Prix Total"]]
     for detail in calcul["lignes"]:
         quantite = detail["quantite"]
+        # La devise dans la colonne « Prix Unitaire », comme sur ses documents
+        # (devis Fast Group du 04/08/2026 : « 4 500 FCFA », pas « 4 500 »).
+        # `A_CONFIRMER` ne la prend pas : « a confirmer FCFA » n'est pas une
+        # phrase.
+        prix_unitaire = _format_montant(detail["prix_unitaire"])
         rows.append([
-            detail["designation"],
-            _format_montant(detail["prix_unitaire"]),
+            Paragraph(str(detail["designation"]), st["cell"]),
+            prix_unitaire if prix_unitaire == A_CONFIRMER else f"{prix_unitaire} {devise}",
             f"{quantite:g}",
             f"{_format_montant(detail['total'])} {devise}"
             if detail["total"] is not None else A_CONFIRMER,
         ])
-    rows.append(["Total Materiaux", "", "",
+    rows.append([Paragraph("Total Matériaux", st["cellblanc"]), "", "",
                  f"{_format_montant(calcul['total_materiaux'])} {devise}"])
 
     tableau = Table(rows, colWidths=[78 * mm, 34 * mm, 28 * mm, 40 * mm])
@@ -345,20 +390,20 @@ def construire(devis: Devis, metier: Dict[str, Any], sortie: Path,
         if r % 2 == 0:
             style.append(("BACKGROUND", (0, r), (-1, r), c["gris_zebre"]))
     tableau.setStyle(TableStyle(style))
-    story += [barre("Tableau 1 - Materiaux"), Spacer(1, 3), tableau, Spacer(1, 10)]
+    story += [barre("Tableau 1 - Matériaux"), Spacer(1, 3), tableau, Spacer(1, 10)]
 
     if calcul["total_main_oeuvre"]:
         mo = metier.get("main_oeuvre", {})
         rows_mo = [
-            ["Designation", "Prix Unitaire", "Quantite", "Prix Total"],
-            [mo.get("libelle", "Main-d'oeuvre"),
-             f"{_format_montant(mo.get('tarif_m2'))} {devise}/m2",
-             f"{devis.main_oeuvre_m2:g} m2",
+            ["Désignation", "Prix Unitaire", "Quantité", "Prix Total"],
+            [Paragraph(str(mo.get("libelle", "Main-d'œuvre")), st["cell"]),
+             f"{_format_montant(mo.get('tarif_m2'))} {devise}/m²",
+             f"{devis.main_oeuvre_m2:g} m²",
              f"{_format_montant(calcul['total_main_oeuvre'])} {devise}"],
         ]
         t_mo = Table(rows_mo, colWidths=[78 * mm, 34 * mm, 28 * mm, 40 * mm])
         t_mo.setStyle(TableStyle(style[:9]))
-        story += [barre("Tableau 2 - Main-d'oeuvre"), Spacer(1, 3), t_mo, Spacer(1, 10)]
+        story += [barre("Tableau 2 - Main-d'œuvre"), Spacer(1, 3), t_mo, Spacer(1, 10)]
 
     ttc = Table([[
         Paragraph("MONTANT TOTAL TTC", ParagraphStyle(
@@ -383,7 +428,7 @@ def construire(devis: Devis, metier: Dict[str, Any], sortie: Path,
     if calcul["articles_sans_prix"]:
         story += [
             Paragraph(
-                "Articles sans prix de reference, a confirmer avant envoi : "
+                "Articles sans prix de référence, à confirmer avant envoi : "
                 + ", ".join(calcul["articles_sans_prix"]),
                 st["txt"],
             ),
@@ -403,7 +448,7 @@ def construire(devis: Devis, metier: Dict[str, Any], sortie: Path,
                    st["txt"])],
         [signature_gerant,
          Paragraph("Signature : ______________________", st["txt"])],
-        [Paragraph(f"{e.get('gerant', '')} — Gerant" if devis.signe else "Date : ____________",
+        [Paragraph(f"{e.get('gerant', '')} — Gérant" if devis.signe else "Date : ____________",
                    st["txt"]),
          Paragraph("Date : ____________", st["txt"])],
     ], colWidths=[90 * mm, 90 * mm])

@@ -377,7 +377,66 @@ def date_en_toutes_lettres(jour: date) -> str:
     return f"{jour.day} {MOIS[jour.month - 1]} {jour.year}"
 
 
-def numero_du_jour(jour: date, suffixe: str = "XXX") -> str:
+#: Le suffixe rendu quand aucun nom de client n'est exploitable. Il n'est PAS
+#: un identifiant : c'est un trou visible, qui se remarque sur un document
+#: avant qu'il ne parte chez quelqu'un.
+SUFFIXE_INCONNU = "XXX"
+
+#: Combien d'initiales au maximum. Trois suffit a distinguer un client dans
+#: une liste de fichiers, et garde le numero lisible sur un telephone.
+INITIALES_MAX = 3
+
+#: Un nom d'un seul mot n'a qu'une initiale — « S » pour Sonatel n'identifie
+#: rien. On prend alors ses trois premieres lettres.
+LETTRES_MOT_UNIQUE = 3
+
+#: Ce qui separe deux parties d'un nom. Le trait d'union compte : « Jean-Pierre
+#: Ndiaye » donne JPN, pas JN.
+_SEPARATEURS = re.compile(r"[\s\-_'’.]+")
+
+#: Les mots qui relient sans nommer. « Entreprise Generale de Batiment du
+#: Senegal » donne EGB, pas EGD : personne ne reconnait une entreprise a la
+#: preposition de son nom. Ils ne sont ecartes que s'il reste au moins deux
+#: mots porteurs — « Le Bon » garderait sinon une seule initiale.
+MOTS_DE_LIAISON = frozenset({
+    "de", "du", "des", "la", "le", "les", "et", "d", "l", "au", "aux", "a",
+})
+
+#: Meme table que le reste du depot : un accent dans un numero de document se
+#: transforme en mojibake selon le logiciel qui l'ouvre.
+_ACCENTS_NOM = str.maketrans(
+    "àâäáãåçéèêëíìîïñóòôöõúùûüýÿ", "aaaaaaceeeeiiiinooooouuuuyy")
+
+
+def suffixe_du_client(nom: str) -> str:
+    """Les initiales du client, pour la fin du numero de document.
+
+    **La regle du proprietaire, dite le 20/09/2026** : « UC-2026-0714-FG, le
+    FG est le nom de Fast Group ; tout autre client doit avoir celle de son
+    nom et prenom a la fin du numero pour qu'il soit facile a identifier ».
+    Elle vaut pour TOUS ses documents — devis, bon de commande, bon de
+    livraison, reliquat, decharge.
+
+    Avant cette fonction, `Devis.suffixe_client` valait `XXX` et **rien ne le
+    calculait** : aucun appelant ne le passait, donc chaque document sortait
+    en `UC-2026-MMJJ-XXX`. Mesure du 20/09/2026 sur un devis reel.
+
+    Exemples : « Fast Group » -> FG, « Ousmane Diop » -> OD,
+    « Jean-Pierre Ndiaye » -> JPN, « Sonatel » -> SON.
+    """
+    propre = str(nom or "").strip().lower().translate(_ACCENTS_NOM)
+    mots = [m for m in _SEPARATEURS.split(propre) if m.isalnum()]
+    if not mots:
+        return SUFFIXE_INCONNU
+    porteurs = [m for m in mots if m not in MOTS_DE_LIAISON]
+    if len(porteurs) >= 2:
+        mots = porteurs
+    if len(mots) == 1:
+        return mots[0][:LETTRES_MOT_UNIQUE].upper()
+    return "".join(m[0] for m in mots[:INITIALES_MAX]).upper()
+
+
+def numero_du_jour(jour: date, suffixe: str = SUFFIXE_INCONNU) -> str:
     """Numerotation maison : UC-AAAA-MMJJ-CLI."""
     return f"UC-{jour.year}-{jour.month:02d}{jour.day:02d}-{suffixe}"
 
