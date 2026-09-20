@@ -52,6 +52,20 @@ CORRECTION = re.compile(
     r"je voulais dire|i meant|le précédent .* faux|previous .* wrong)\b",
     re.IGNORECASE,
 )
+PLAN = re.compile(
+    r"\b(?:je vais|je compte|je prévois|je prevois|j'envisage de|i plan to|i'm going to|"
+    r"je veux tester|nous allons tester|on va tester)\b",
+    re.IGNORECASE,
+)
+PREFERENCE = re.compile(
+    r"\b(?:je préfère|je prefere|ma préférence|ma preference|i prefer)\b",
+    re.IGNORECASE,
+)
+DECISION_QUERY = re.compile(
+    r"\b(?:choisi|choisie|choisir|décidé|decide|décision|decision|retenu|validé|valide|"
+    r"selected|chosen|decided)\b",
+    re.IGNORECASE,
+)
 
 
 def classify_user_evidence(text: str) -> dict[str, Any]:
@@ -69,6 +83,10 @@ def classify_user_evidence(text: str) -> dict[str, Any]:
         return {"eligible": False, "source_type": "user_speculation", "confidence": 0.25}
     if CORRECTION.search(value):
         return {"eligible": True, "source_type": "user_correction", "confidence": 1.0}
+    if PREFERENCE.search(value):
+        return {"eligible": True, "source_type": "user_preference", "confidence": 0.9}
+    if PLAN.search(value):
+        return {"eligible": True, "source_type": "user_plan", "confidence": 0.65}
     return {"eligible": True, "source_type": "user_assertion", "confidence": 0.95}
 
 
@@ -265,6 +283,7 @@ def score_memory(query: str, candidate: dict[str, Any], state: ConversationState
         "memory_kind": str(candidate.get("kind") or ""),
         "source_type": str(candidate.get("source_type") or "legacy"),
         "confidence": confidence,
+        "query_requires_decision": bool(DECISION_QUERY.search(query or "")),
     }
 
 
@@ -281,6 +300,11 @@ def accept_memory(features: dict[str, Any], threshold: float) -> bool:
     if features.get("entity_conflict"):
         return False
     if float(features.get("confidence", 1.0)) < 0.5:
+        return False
+    if (
+        features.get("query_requires_decision")
+        and features.get("source_type") in {"user_plan", "user_speculation"}
+    ):
         return False
     contextual_support = (
         lexical >= 0.20
