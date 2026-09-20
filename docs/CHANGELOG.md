@@ -35,6 +35,32 @@ coupé, ce qui sait se reprendre) et `POST /api/travaux/{id}/annuler`.
 Trois journaux durables du dépôt (reprise de tâches, projets, travaux)
 partagent maintenant `core/execution/journal_disque.py` au lieu de trois
 copies de la même écriture atomique. Voir DEC-0114.
+### Corrigé — 20/09/2026 — Un service à moitié mort bloquait toute réponse
+
+**Mesuré** : un fournisseur qui accepte la connexion puis se tait faisait
+attendre le chat **sans limite propre à l'aiguilleur** — celui-ci dépendait du
+délai du client HTTP du fournisseur, 60 s par défaut. Pire : pendant cette
+attente, **Ollama n'était même pas essayé**, parce que la sonde du mort-vivant
+passe avant lui dans l'ordre de repli. Un service à moitié mort emportait avec
+lui le seul qui répondait.
+
+Avant : « AUCUNE RÉPONSE après 8,01 s ». Après : « réponse en 5,01 s ».
+
+Toute sonde est maintenant bornée à `SONDE_DELAI_SECONDES` (5 s) — au-dessus de
+toute sonde légitime du dépôt, et un test fige ce rapport. Seule la **sonde**
+est bornée : une génération locale longue reste légitime.
+
+### Ajouté — 20/09/2026 — Le banc d'essai rend ce qu'on peut comparer
+
+`scripts/comparer_fournisseurs.py` porte désormais les champs réclamés :
+prompt, temps jusqu'au premier jeton, latence totale, **jetons par seconde**,
+succès/échec, erreur. `--json` écrit les mesures brutes, une ligne par
+(fournisseur, scène), pour que deux exécutions soient comparables.
+
+Un débit n'est **jamais déduit** des morceaux de flux : un morceau n'est pas un
+jeton. Sans jetons annoncés par le service, il reste `None`. Un fournisseur
+absent garde sa ligne — l'écarter ferait disparaître l'information la plus
+utile. Voir DEC-0115.
 ### Ajouté — 20/09/2026 — « Quel modèle a répondu à cette phrase ? » a enfin une réponse
 
 Le fil d'une demande existait depuis le 13/09 et le journal des actions le
