@@ -10407,3 +10407,44 @@ que `GALSEN_STORAGE_BACKEND` designe deja pour le reste. Et une question
 retenue capte la phrase suivante meme si elle n'y repond pas vraiment : les
 quatre controles deterministes de l'orchestrateur sont le seul garde-fou, et
 ils ne couvrent pas tout.
+
+## DEC-0123 — Un document sort du generateur, ou il n'existe pas
+
+**2026-09-20.**
+
+**Decision** : l'instruction systeme interdit au modele d'ecrire le document
+lui-meme (en-tete, numero `UC-...`, totaux, conditions generales, signature),
+et un garde deterministe (`ressemble_a_un_document`) remplace toute reponse qui
+en imite un alors qu'aucun fichier n'a ete ecrit.
+
+**Pourquoi** : le proprietaire recoit un devis complet sur son telephone et
+constate qu'il ne ressemble pas au sien. Sa reference, `UC-2026-0920-KHADI`,
+est la preuve de ce qui s'est passe : le code rend `UC-2026-0920-KD` pour Khady
+Diop (DEC-0118), et la chaine « KHADI » n'existe nulle part dans le depot. Le
+modele avait tout ecrit — pendant que le vrai generateur refusait, faute de
+dimensions.
+
+Le plus trompeur n'etait pas le faux en lui-meme : c'est qu'il etait
+**vraisemblable**. Mise en page propre, prix corrects (le proprietaire les
+avait dictes pour un test), un numero a la bonne forme. Rien dans la reponse ne
+disait « ceci n'est pas un document » — et le message honnete du systeme
+(« Aucune dimension lue : je ne chiffre rien ») arrivait apres, sous le faux
+devis, ou il se lisait comme une note de bas de page.
+
+Trois choses ont ete ecartees :
+
+- **L'instruction seule.** Une consigne de prompt derive : un modele change, ou
+  une reformulation, et le faux revient sans que rien ne le signale. Le garde
+  est le filet ; l'instruction evite d'avoir a s'en servir.
+- **Le garde seul.** Sans l'instruction, le modele produirait le faux a chaque
+  tour et le proprietaire verrait un refus la ou il attend un devis. Les deux,
+  pas l'un ou l'autre.
+- **Annoter au lieu de remplacer.** Un avertissement au-dessus d'un devis
+  complet et bien mis en page ne pese rien : ce qui se lit, c'est le tableau.
+
+**Ce que ca coute si c'est faux** : le garde reconnait trois marques — un
+numero a la forme maison, « total ttc/general », « sous-total ». Un faux
+document qui n'en porterait aucune passerait. C'est assume : elargir la
+detection reviendrait a censurer des reponses legitimes qui expliquent un
+chiffrage, ce qui est precisement le travail de l'agent. Le seuil est place la
+ou un CLIENT reconnaitrait le document, pas la ou un chiffre apparait.

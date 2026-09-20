@@ -234,6 +234,69 @@ _TETE_DE_REPONSE = re.compile(r"^(c'?est|c est)\s+", re.IGNORECASE)
 _PONCTUATION_DE_FIN = " \t,;.:-—–"
 
 
+#: Ce qui, dans une reponse ecrite, se fait passer pour un document officiel :
+#: un numero a la forme maison, ou une ligne de total. Ce sont les deux
+#: marques qu'un client reconnait comme « ceci est le devis ».
+_MARQUES_DE_DOCUMENT = (
+    re.compile(r"\bUC-\d{4}-\d{4}-\w+", re.IGNORECASE),
+    re.compile(r"\btotal\s+(ttc|general|g[ée]n[ée]ral)\b", re.IGNORECASE),
+    re.compile(r"\bsous[- ]total\b", re.IGNORECASE),
+)
+
+
+#: Ce qui remplace une reponse qui imitait un document sans qu'aucun fichier
+#: n'ait ete ecrit. Dit ce qui s'est passe, et ce qui manque pour de vrai.
+REFUS_DE_FAUX_DOCUMENT = (
+    "Je n'ecris pas le devis dans la conversation : un devis sort du "
+    "generateur, a ta charte, avec ton logo et son numero — ou il n'existe "
+    "pas.\n\n"
+    "Ce qu'il me faut pour le produire : le nom du client, le lieu du "
+    "chantier, l'objet des travaux, et **les dimensions** (une surface en m2, "
+    "ou des parois avec leurs cotes). Sans dimensions, rien n'est chiffre.\n\n"
+    "Tu peux tout donner en une ligne :\n"
+    "« client : ..., lieu : ..., objet : ..., 18 parois de 5,40 x 2,50 m »"
+)
+
+
+def _sans_faux_document(reponse: str, document: Optional[Dict[str, Any]]) -> str:
+    """La reponse du modele, sauf quand elle imite un document inexistant.
+
+    Le garde ne se declenche QUE si aucun fichier n'a ete ecrit. Quand le
+    generateur a produit le devis, la reponse peut en parler librement : le
+    document existe, il porte son vrai numero, et le message du systeme donne
+    son lien juste en dessous.
+    """
+    if document and document.get("statut") in ("SUCCESS", "PARTIAL"):
+        return reponse
+    if not ressemble_a_un_document(reponse):
+        return reponse
+    logger.warning(
+        "Reponse imitant un document alors qu'aucun fichier n'a ete ecrit : remplacee.")
+    return REFUS_DE_FAUX_DOCUMENT
+
+
+def ressemble_a_un_document(texte: str) -> bool:
+    """Vrai quand une reponse ECRITE se fait passer pour le document lui-meme.
+
+    **Mesure du 20/09/2026, capture d'ecran du proprietaire.** Le vrai
+    generateur avait refuse (« Aucune dimension lue dans la demande : je ne
+    chiffre rien »), et la reponse affichait quand meme un devis complet :
+    en-tete, tableau, conditions generales, signature du gerant, et un numero
+    « UC-2026-0920-KHADI ».
+
+    Ce numero est la preuve que rien n'est sorti du generateur : le code rend
+    « UC-2026-0920-KD » pour Khady Diop, et la chaine « KHADI » n'existe
+    nulle part dans le depot. Le modele avait tout ecrit — sans le logo, sans
+    la charte, sans la mise en page. Le proprietaire a vu un devis qui ne
+    ressemblait pas au sien, sans pouvoir savoir pourquoi.
+
+    **Un document sort du generateur, ou il n'existe pas.** Une reponse qui en
+    imite un pendant qu'aucun fichier n'a ete ecrit est un faux, meme quand
+    chaque prix qu'elle affiche est juste.
+    """
+    return any(marque.search(texte or "") for marque in _MARQUES_DE_DOCUMENT)
+
+
 def _nettoyer_reponse_captee(texte: str) -> str:
     """Une reponse brute, debarrassee de sa tete de phrase et de la
     ponctuation qui la rattachait au champ suivant."""
@@ -828,6 +891,17 @@ def composer_instruction(metier: Dict[str, Any], demande: str = "") -> str:
         "juridiquement fragile.",
         "",
         *(BLOC_DEMONSTRATION if demande_de_demonstration(demande) else BLOC_VRAI_CLIENT),
+        "",
+        "TU N'ECRIS JAMAIS LE DOCUMENT LUI-MEME DANS LA CONVERSATION.",
+        "Pas d'en-tete « UniC Plaquiste - Devis », pas de numero « UC-... », pas de "
+        "ligne « TOTAL TTC », pas de conditions generales, pas de signature du "
+        "gerant. Tout cela est produit par le generateur, a la charte, avec le "
+        "logo — et un devis ecrit en texte a cote est un FAUX : il porte un "
+        "numero que rien n'a enregistre et une mise en page qui n'est pas la "
+        "sienne. Mesure du 20/09/2026 : le proprietaire a recu un devis complet "
+        "numerote « UC-2026-0920-KHADI » alors qu'aucun fichier n'existait.",
+        "Ce que tu ecris, toi : ce que tu as compris, ce qui manque, et le "
+        "chiffrage explique en phrases. Le document, lui, suit tout seul.",
         "",
         "LE PDF N'EST PAS TON TRAVAIL — NE DIS JAMAIS QUE TU NE PEUX PAS EN CREER.",
         "Produire le fichier PDF est fait par un systeme separe, automatiquement, "
@@ -1899,7 +1973,8 @@ class PlaquisteAgent(BaseAgent):
             # demande. `None` quand la demande ne parlait pas de dates.
             "agenda": agenda,
             "rendez_vous": rendez_vous,
-            "response": (reponse + avertissement(anomalies)
+            "response": (_sans_faux_document(reponse, document)
+                         + avertissement(anomalies)
                          + (f"\n\n{document['message']}" if document else "")
                          + (f"\n\n{rendez_vous['message']}" if rendez_vous else "")
                          + (f"\n\n{plan['export']['message']}"
