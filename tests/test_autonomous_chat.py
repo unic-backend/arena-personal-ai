@@ -242,25 +242,37 @@ def test_authenticated_endpoint_and_strict_body(settings, monkeypatch):
     asyncio.run(http.aclose())
 
 
-@pytest.mark.parametrize("force_local", [False, True])
-async def test_sdk_local_only_never_uses_cloud(settings, force_local):
-    ai = AIClient(settings.model_copy(update={"openai_key": "fake-test-key",
-        "mode": "CLOUD_PREFERRED" if force_local else "LOCAL_ONLY"}))
+async def test_sdk_local_only_uses_local_embeddings_without_cloud(settings, monkeypatch):
+    ai = AIClient(settings.model_copy(update={"openai_key": "cloud-key", "mode": "LOCAL_ONLY"}))
     used = []
-    def respond(request):
-        used.append(str(request.url))
-        return httpx.Response(200, json={"id": "test", "object": "chat.completion", "created": 0,
-            "model": "local", "choices": [{"index": 0, "finish_reason": "stop",
-                                            "message": {"role": "assistant", "content": "Local"}}]})
+
+    async def local_embeddings(texts, base_url, modele, timeout):
+        used.append(("embed", base_url, modele, list(texts)))
+        return [[1.0, 0.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr("apps.backend.services.ai_client.embeddings_ollama", local_embeddings)
     from openai import AsyncOpenAI
-    ai._clients["local"] = AsyncOpenAI(api_key="ollama", base_url="http://localhost:11434/v1",
-                                      http_client=httpx.AsyncClient(transport=httpx.MockTransport(respond)))
-    result = await ai.complete([{"role": "user", "content": "Bonjour"}], force_local=force_local)
-    if not force_local:
-        with pytest.raises(AIUnavailable):
-            await ai.embed(["Bonjour"])
+
+    def respond(request):
+        used.append(("chat", request.url.host))
+        return httpx.Response(200, json={
+            "id": "test", "object": "chat.completion", "created": 0, "model": "local",
+            "choices": [{"index": 0, "finish_reason": "stop",
+                         "message": {"role": "assistant", "content": "Local"}}],
+        })
+
+    ai._clients["local"] = AsyncOpenAI(
+        api_key="ollama", base_url="http://localhost:11434/v1",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(respond)),
+    )
+    result = await ai.complete([{"role": "user", "content": "Bonjour"}], force_local=True)
+    vectors = await ai.embed(["Bonjour"])
     await ai.close()
-    assert result["content"] == "Local" and len(used) == 1 and "localhost" in used[0]
+
+    assert result["content"] == "Local"
+    assert vectors == [[1.0, 0.0, 0.0]]
+    assert ("embed", settings.local_url, settings.local_embedding_model, ["Bonjour"]) in used
+    assert all("api.openai.com" not in str(item) for item in used)
 
 
 async def test_existing_owner_memory_is_retrieved_but_never_shared(settings):
@@ -347,3 +359,89 @@ async def test_sensitive_exchange_cannot_search_or_persist_decrypted_content(set
     assert not result.memory_saved
     assert result.tools[0].error == "sensitive_context_tool_blocked"
     assert "sensitive_exchange_not_persisted" in result.warnings
+
+
+async def test_local_embedding_failure_keeps_lexical_memory(settings):
+    ai = ScriptedAI(embeddings=False)
+    memory = MemoryEngine(settings, ai)
+    await memory.remember("owner", "one", "Le chantier Medina commence jeudi.", "Compris")
+    await memory.drain()
+    context = await memory.context("owner", "new", "chantier Medina")
+    assert any("Medina" in item["content"] for item in context.memories)
+    assert "semantic_memory_unavailable_using_sqlite" in context.warnings
+
+
+async def test_embedding_model_change_reindexes_without_deleting_sqlite(settings):
+    first_settings = settings.model_copy(update={"local_embedding_model": "modele-a"})
+    first = MemoryEngine(first_settings, ScriptedAI(embeddings=True))
+    await first.remember("owner", "one", "Isolation acoustique en laine de roche.", "Compris")
+    await first.drain()
+
+    with sqlite3.connect(first_settings.db_path) as db:
+        before = db.execute(
+            "SELECT count(*), min(index_space) FROM autonomous_documents"
+        ).fetchone()
+    assert before[0] > 0 and "modele-a" in before[1]
+
+    second_settings = settings.model_copy(update={"local_embedding_model": "modele-b"})
+    second = MemoryEngine(second_settings, ScriptedAI(embeddings=True))
+    # Le nouvel espace doit reprendre les mêmes sources, sans effacer SQLite.
+    await second.drain()
+
+    with sqlite3.connect(second_settings.db_path) as db:
+        rows = db.execute(
+            "SELECT content,indexed,index_space FROM autonomous_documents"
+        ).fetchall()
+    assert rows
+    assert all(row[1] == 1 and "modele-b" in row[2] for row in rows)
+    assert any("laine de roche" in row[0] for row in rows)
+
+
+async def test_interrupted_local_indexing_is_recoverable(settings):
+    class FlakyEmbeddingAI(ScriptedAI):
+        def __init__(self):
+            super().__init__(embeddings=True)
+            self.fail_once = True
+
+        async def embed(self, texts):
+            if self.fail_once:
+                self.fail_once = False
+                raise AIUnavailable("local embeddings temporarily unavailable")
+            return await super().embed(texts)
+
+    ai = FlakyEmbeddingAI()
+    memory = MemoryEngine(settings, ai)
+    await memory.remember("owner", "one", "Montant durable 76543 FCFA.", "Compris")
+    await memory.drain()
+
+    with sqlite3.connect(settings.db_path) as db:
+        source_count = db.execute("SELECT count(*) FROM autonomous_documents").fetchone()[0]
+        indexed = db.execute("SELECT sum(indexed) FROM autonomous_documents").fetchone()[0]
+        db.execute("UPDATE autonomous_documents SET index_after=0")
+
+    assert source_count > 0
+    assert not indexed
+
+    await memory.drain()
+    with sqlite3.connect(settings.db_path) as db:
+        rows = db.execute(
+            "SELECT indexed,index_space,content FROM autonomous_documents"
+        ).fetchall()
+    assert all(row[0] == 1 and row[1] for row in rows)
+    assert any("76543" in row[2] for row in rows)
+
+
+async def test_local_semantic_restart_preserves_owner_isolation(settings):
+    ai = ScriptedAI(embeddings=True)
+    first = MemoryEngine(settings, ai)
+    await first.remember("alice", "one", "Panneaux phoniques livraison vendredi.", "Reçu")
+    await first.remember("bob", "one", "Secret bob 999.", "Reçu")
+    await first.drain()
+
+    restarted = MemoryEngine(settings, ai)
+    alice = await restarted.context("alice", "new", "livraison panneaux")
+    bob = await restarted.context("bob", "new", "livraison panneaux")
+
+    assert any("Panneaux" in item["content"] for item in alice.memories)
+    assert all("Secret bob" not in item["content"] for item in alice.memories)
+    assert all("Panneaux" not in item["content"] for item in bob.memories)
