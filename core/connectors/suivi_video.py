@@ -33,6 +33,13 @@ from core.execution.travaux import FileDeTravaux, Travail
 
 logger = logging.getLogger("usman.connecteurs.suivi_video")
 
+#: Le type de ce travail dans le journal durable de la file
+#: (`core/execution/travaux.py`). Une constante, parce que la fabrique de
+#: reprise et le descripteur doivent employer EXACTEMENT le meme mot : deux
+#: chaines ecrites a deux endroits finiraient par diverger, et la reprise
+#: echouerait en silence sur un type « inconnu ».
+TYPE_REPRISE = "suivi_generation_video"
+
 #: Entre deux interrogations. Une generation dure des minutes : sonder plus vite
 #: ne la rend pas plus rapide, ca ajoute seulement du bruit.
 INTERVALLE_SECONDES = 5.0
@@ -168,4 +175,34 @@ def suivre_en_fond(
         nom,
         lambda travail: suivre_generation(connecteur, job_id, travail, intervalle),
         passer_le_travail=True,
+        # La cle, c'est la tache WanGP : deux suivis de la MEME generation ne
+        # sont pas deux travaux, c'est le meme demande deux fois.
+        cle=f"{TYPE_REPRISE}:{job_id}",
+        # Ce travail est le seul du depot qui se reprend REELLEMENT apres un
+        # redemarrage : son etat ne vit pas ici, il vit chez WanGP. Reprendre,
+        # c'est simplement redemander « ou en est la tache job_id ? ».
+        descripteur={
+            "type": TYPE_REPRISE,
+            "parametres": {"job_id": job_id, "nom": nom, "intervalle": intervalle},
+            "passer_le_travail": True,
+        },
     )
+
+
+def fabrique_de_reprise(connecteur: Any):
+    """Reconstruit un suivi a partir de son descripteur, pour le demarrage.
+
+    Rendue a `FileDeTravaux.reprendre_les_interrompus` : le journal ne porte
+    que `job_id` et l'intervalle ; le connecteur, lui, vient d'ici. C'est ce
+    qui permet de reprendre sans avoir jamais serialise une closure.
+    """
+
+    def fabriquer(parametres: Dict[str, Any]):
+        job_id = str(parametres.get("job_id", ""))
+        intervalle = float(parametres.get("intervalle", INTERVALLE_SECONDES))
+        if not job_id:
+            raise ValueError("un suivi sans job_id ne se reprend pas")
+        return lambda travail: suivre_generation(
+            connecteur, job_id, travail, intervalle)
+
+    return fabriquer

@@ -49,14 +49,14 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
-import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
+
+from core.execution.journal_disque import ecrire_json_atomique, lire_json
 
 logger = logging.getLogger("usman.production.journal")
 
@@ -256,14 +256,7 @@ class JournalProjets:
         deviennent non confirmees. C'est ce qui rend la reprise possible sans
         rien supposer.
         """
-        if not self.fichier.is_file():
-            return
-        try:
-            brut = json.loads(self.fichier.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as erreur:
-            logger.warning("Journal de projets illisible (%s) : on repart a vide.",
-                           erreur)
-            return
+        brut = lire_json(self.fichier, quoi="Journal de projets")
         for donnees in brut.get("jobs", []):
             job = self._relire_job(donnees)
             if job is not None:
@@ -327,18 +320,9 @@ class JournalProjets:
         c'est-a-dire un journal de reprise illisible, dans le seul moment ou il
         sert.
         """
-        try:
-            self.fichier.parent.mkdir(parents=True, exist_ok=True)
-            charge = {"jobs": [job.to_dict() for job in self._jobs.values()]}
-            with tempfile.NamedTemporaryFile(
-                    "w", encoding="utf-8", dir=str(self.fichier.parent),
-                    prefix=".journal-", suffix=".tmp", delete=False) as flux:
-                json.dump(charge, flux, ensure_ascii=False, indent=1, default=repr)
-                provisoire = Path(flux.name)
-            os.replace(provisoire, self.fichier)
-        except OSError as erreur:
-            logger.warning("Journal de projets non ecrit (%s) : la production continue.",
-                           erreur)
+        ecrire_json_atomique(
+            self.fichier, {"jobs": [job.to_dict() for job in self._jobs.values()]},
+            prefixe=".journal-", quoi="Journal de projets")
 
     def _touche(self, job: Job) -> None:
         job.maj_le = _maintenant()

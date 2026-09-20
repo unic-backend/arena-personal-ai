@@ -40,6 +40,7 @@ from apps.backend.config import (
     DB_PATH,
     FOURNISSEUR_DEMANDE,
     JOURNAL_PROJETS_PATH,
+    JOURNAL_TRAVAUX_PATH,
     MODE_IA,
     MODELE_CODEUR,
     MODELE_PROFOND,
@@ -51,6 +52,7 @@ from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
 from core.agent.capacites import RegistreCapacites, adaptateur_synchrone
+from core.connectors import suivi_video
 from core.connectors.architecture_3d import ConnecteurArchitecture3D
 from core.connectors.audio_voix import ConnecteurAudioVoix
 from core.connectors.browser import ConnecteurBrowser
@@ -523,7 +525,10 @@ graphrag_tool = GraphRAGTool()
 # dix travaux simultanes. Elle porte aujourd'hui le suivi des generations video,
 # et c'est ce qui permet a « ou en est ma video ? » de repondre sans que le chat
 # attende la carte.
-travaux = FileDeTravaux()
+# Elle ecrit desormais son etat sur le disque : un redemarrage ne fait plus
+# disparaitre un lot a moitie converti ni un suivi de generation en cours. Ce
+# qu'elle portait reste visible, a l'etat INTERROMPU.
+travaux = FileDeTravaux(fichier=JOURNAL_TRAVAUX_PATH)
 
 # Conversion de fichiers (mission « File_Converter_Pro », DEC-0074) :
 # LibreOffice/Pillow/CairoSVG/WeasyPrint/pypdfium2/ffmpeg, choisis par le
@@ -771,6 +776,42 @@ video_production_agent = VideoProductionAgent(
 # Generation d'interface (DEC-0050) : produire du code d'interface est une
 # redaction structuree (comme le montage/le devis), donc le modele profond.
 ui_agent = UiGenerationAgent(provider=deep_provider, memory=memory, registre=registre)
+
+#: Comment reconstruire un travail de fond interrompu, par type.
+#:
+#: **Un seul type y figure, et c'est une mesure, pas un oubli.** Le suivi d'une
+#: generation video est le seul travail de ce depot dont l'etat ne vit PAS dans
+#: ARENA : il vit chez WanGP. Reprendre, c'est redemander « ou en est la tache
+#: job_id ? » — aucune ecriture n'est rejouee.
+#:
+#: Une conversion en lot, elle, a deja ecrit des fichiers sur le disque quand
+#: elle est interrompue. La relancer toute seule au demarrage rejouerait des
+#: ecritures dont personne n'a verifie l'effet : elle reste INTERROMPUE et
+#: visible, et c'est au proprietaire de la redemander.
+FABRIQUES_DE_REPRISE = {
+    suivi_video.TYPE_REPRISE: suivi_video.fabrique_de_reprise(
+        registre.obtenir("video_generation")),
+}
+
+
+def reprendre_les_travaux_interrompus():
+    """Re-soumet ce qui peut l'etre, et rend ce qui a ete repris.
+
+    Appelee au demarrage de l'application (`apps/backend/main.py`). Une panne
+    ici ne doit jamais empecher ARENA de demarrer : un serveur qui refuse de
+    se lever parce qu'une reprise echoue est moins utile qu'un serveur qui se
+    leve en disant ce qu'il n'a pas pu reprendre.
+    """
+    try:
+        repris = travaux.reprendre_les_interrompus(FABRIQUES_DE_REPRISE)
+    except Exception as erreur:  # noqa: BLE001 — le demarrage passe avant la reprise
+        logger.warning("Reprise des travaux de fond impossible : %s", erreur)
+        return []
+    if repris:
+        logger.info("Travaux de fond repris apres redemarrage : %s",
+                    ", ".join(t.nom for t in repris))
+    return repris
+
 
 memory.set_fact("user_profile", "owner", "Ousmane", {"role": "Propriétaire et créateur d'Usman"})
 

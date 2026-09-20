@@ -11,6 +11,7 @@ autre requête pourrait sinon en pâtir pendant tout le lot.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from typing import Any, Callable, Dict, List
 
@@ -71,4 +72,24 @@ def convertir_lot_en_fond(
         f"conversion en lot vers .{format_cible} ({len(chemins)} fichier(s))",
         lambda travail: _executer_lot(convertir_un, travail, chemins, format_cible),
         total=len(chemins), passer_le_travail=True,
+        # La cle : le meme lot, vers le meme format, est la meme demande. Deux
+        # soumissions identiques ne doivent pas reconvertir des fichiers deja
+        # produits.
+        cle=cle_du_lot(chemins, format_cible),
+        # **Aucun descripteur, et c'est delibere.** Un lot interrompu n'est PAS
+        # repris automatiquement : `convertir_un` est une fonction injectee par
+        # l'appelant, et une partie du lot a deja ecrit des fichiers sur le
+        # disque. Le relancer tout seul au demarrage rejouerait des ecritures
+        # dont personne n'a verifie l'effet. Il reste INTERROMPU, visible, et
+        # c'est au proprietaire de le redemander.
     )
+
+
+def cle_du_lot(chemins: List[str], format_cible: str) -> str:
+    """L'empreinte d'un lot : les memes fichiers, le meme format, la meme cle.
+
+    L'ordre des chemins ne change pas la demande — convertir A puis B est le
+    meme travail que convertir B puis A — donc ils sont tries avant l'empreinte.
+    """
+    graine = "|".join(sorted(chemins)) + f"->{format_cible}"
+    return "conversion_lot:" + hashlib.sha256(graine.encode("utf-8")).hexdigest()[:32]
