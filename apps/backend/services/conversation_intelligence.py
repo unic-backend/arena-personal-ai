@@ -77,6 +77,17 @@ GENERAL_MARKER = re.compile(
     r"spécifications|specifications|specs|normally|typically|in general)\b",
     re.IGNORECASE,
 )
+REQUEST = re.compile(
+    r"^\s*(?:fais|fait|crée|cree|corrige|vérifie|verifie|analyse|montre|donne|envoie|"
+    r"cherche|trouve|ouvre|lis|résume|resume|explique|calcule|publie|génère|genere|"
+    r"ajoute|supprime|continue|reprends?)\b",
+    re.IGNORECASE,
+)
+FILLER = re.compile(
+    r"^\s*(?:bonjour|salut|hello|hi|merci|thanks|ok|okay|d'accord|dac)\s*[.!]*\s*$",
+    re.IGNORECASE,
+)
+HYPOTHETICAL = re.compile(r"^\s*(?:si|if)\b", re.IGNORECASE)
 
 
 def classify_question_scope(message: str, *, has_reference: bool = False) -> QuestionScope:
@@ -101,9 +112,13 @@ def classify_user_evidence(text: str) -> dict[str, Any]:
     value = (text or "").strip()
     if not value:
         return {"eligible": False, "source_type": "empty", "confidence": 0.0}
+    if FILLER.search(value):
+        return {"eligible": False, "source_type": "conversation_filler", "confidence": 0.0}
     if "?" in value or QUESTION.search(value):
         return {"eligible": False, "source_type": "user_question", "confidence": 0.0}
-    if SPECULATION.search(value):
+    if REQUEST.search(value):
+        return {"eligible": False, "source_type": "user_request", "confidence": 0.2}
+    if HYPOTHETICAL.search(value) or SPECULATION.search(value):
         return {"eligible": False, "source_type": "user_speculation", "confidence": 0.25}
     if CORRECTION.search(value):
         return {"eligible": True, "source_type": "user_correction", "confidence": 1.0}
