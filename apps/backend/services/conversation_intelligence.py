@@ -22,7 +22,7 @@ STOPWORDS = {
     "this", "that", "what", "why", "from", "pas", "plus", "moi", "toi", "lui",
     "et", "le", "la", "les", "de", "du", "au", "aux", "un", "ce", "ces", "cet",
     "déjà", "deja", "était", "etait", "être", "etre", "problème", "probleme",
-    "encore", "avait", "avais", "avons", "avez",
+    "avait", "avais", "avons", "avez",
 }
 ENTITY_STOPWORDS = {
     "Alors", "Avec", "Cette", "Comme", "Dans", "Donc", "Elle", "Elles", "Encore", "Il", "Ils",
