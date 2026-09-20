@@ -5,6 +5,7 @@ per golden yield 200 scored scenarios. These tests intentionally exercise the
 merged #258 implementation before any hardening changes.
 """
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,9 @@ import pytest
 from apps.backend.services.ai_client import AIUnavailable
 from apps.backend.services.conversation_intelligence import accept_memory, score_memory, understand
 from apps.backend.services.memory_engine import MemoryEngine
+from apps.backend.services.orchestrator import ChatInput, CurrentUser, Orchestrator
 from apps.backend.services.settings import AutonomousSettings
+from apps.backend.services.tools.registry import ToolRegistry
 
 DATA = json.loads(
     (Path(__file__).with_name("intelligence_post_merge_goldens.json")).read_text(encoding="utf-8")
@@ -175,3 +178,155 @@ async def test_memory_debug_identifies_candidates_without_exposing_content(intel
     assert accepted
     assert all(item.get("memory_id") for item in accepted)
     assert all("content" not in item for item in accepted)
+
+class RecordingAI(BenchmarkAI):
+    def __init__(self, replies, *, embeddings=True, facts=()):
+        super().__init__(embeddings=embeddings, facts=facts)
+        self.replies = list(replies)
+        self.calls = []
+
+    async def complete(self, messages, tools=None, json_mode=False, force_local=False):
+        if json_mode:
+            return await super().complete(
+                messages,
+                tools=tools,
+                json_mode=json_mode,
+                force_local=force_local,
+            )
+        self.calls.append(json.loads(json.dumps(messages)))
+        return self.replies.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_migration_preserves_rows_and_marks_untrusted_sources_nonretrievable(
+    intelligence_settings,
+):
+    with sqlite3.connect(intelligence_settings.db_path) as db:
+        db.execute(
+            """
+            CREATE TABLE autonomous_documents (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                content TEXT NOT NULL,
+                source TEXT NOT NULL,
+                created REAL NOT NULL,
+                indexed INTEGER NOT NULL DEFAULT 0,
+                index_after REAL NOT NULL DEFAULT 0,
+                index_space TEXT NOT NULL DEFAULT ''
+            )
+            """
+        )
+        db.execute(
+            "INSERT INTO autonomous_documents VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (
+                "assistant-old",
+                "owner",
+                "one",
+                "assistant_message",
+                "Ton serveur a 64 GB.",
+                "old",
+                1.0,
+                0,
+                0.0,
+                "",
+            ),
+        )
+        db.execute(
+            "INSERT INTO autonomous_documents VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (
+                "question-old",
+                "owner",
+                "one",
+                "user_message",
+                "Est-ce que mon serveur a 64 GB ?",
+                "old",
+                2.0,
+                0,
+                0.0,
+                "",
+            ),
+        )
+        db.execute(
+            "INSERT INTO autonomous_documents VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (
+                "fact-old",
+                "owner",
+                "one",
+                "user_message",
+                "Mon serveur a 32 GB.",
+                "old",
+                3.0,
+                0,
+                0.0,
+                "",
+            ),
+        )
+
+    memory = MemoryEngine(intelligence_settings, BenchmarkAI())
+    await memory.initialize()
+
+    with sqlite3.connect(intelligence_settings.db_path) as db:
+        columns = {
+            row[1] for row in db.execute("PRAGMA table_info(autonomous_documents)").fetchall()
+        }
+        rows = dict(
+            db.execute(
+                "SELECT id,retrievable FROM autonomous_documents ORDER BY id"
+            ).fetchall()
+        )
+    assert {"retrievable", "source_type", "confidence", "memory_type", "status"} <= columns
+    assert rows["assistant-old"] == 0
+    assert rows["question-old"] == 0
+    assert rows["fact-old"] == 1
+
+
+@pytest.mark.asyncio
+async def test_retrieved_memory_is_untrusted_data_not_system_instruction(intelligence_settings):
+    fact = "Ma BMW est noire."
+    ai = RecordingAI([{"content": "Noire."}], facts=[fact])
+    memory = MemoryEngine(intelligence_settings, ai)
+    await memory.remember("owner", "source", fact, "Compris.")
+    await memory.drain()
+
+    result = await Orchestrator(
+        intelligence_settings,
+        ai,
+        memory,
+        ToolRegistry(),
+    ).run(
+        CurrentUser(id="owner"),
+        ChatInput(message="Quelle couleur a ma BMW ?"),
+    )
+
+    assert result.response == "Noire."
+    sent = ai.calls[-1]
+    assert sent[0]["role"] == "system"
+    assert "Ma BMW est noire." not in sent[0]["content"]
+    context_messages = [
+        item for item in sent
+        if item["role"] == "user" and "<CONTEXT_DATA" in str(item.get("content"))
+    ]
+    assert context_messages
+    assert "Ma BMW est noire." in context_messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_debug_exposes_latency_breakdown_without_private_reasoning(intelligence_settings):
+    ai = RecordingAI([{"content": "Réponse."}])
+    memory = MemoryEngine(intelligence_settings, ai)
+    result = await Orchestrator(
+        intelligence_settings,
+        ai,
+        memory,
+        ToolRegistry(),
+    ).run(CurrentUser(id="owner"), ChatInput(message="Bonjour"))
+
+    assert result.debug is not None
+    latency = result.debug["latency_ms"]
+    assert latency["total"] >= 0
+    assert latency["llm_generation"] >= 0
+    assert "conversation_understanding" in latency
+    assert "chain_of_thought" not in result.debug
+
