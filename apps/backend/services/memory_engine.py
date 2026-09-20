@@ -53,6 +53,7 @@ class MemoryContext(BaseModel):
     local_only: bool = False
     conversation_state: dict[str, Any] = Field(default_factory=dict)
     retrieval_debug: list[dict[str, Any]] = Field(default_factory=list)
+    timings_ms: dict[str, float] = Field(default_factory=dict)
     long_term_used: bool = False
 
 
@@ -284,38 +285,66 @@ class MemoryEngine:
         return accepted[:self.settings.rerank_top_k], debug
 
     async def context(self, user_id: str, conversation_id: str, query: str) -> MemoryContext:
+        total_started = time.perf_counter()
+        timings: dict[str, float] = {}
         try:
+            history_started = time.perf_counter()
             await self.initialize()
             history = await asyncio.to_thread(self._history, user_id, conversation_id)
+            timings["history_load"] = (time.perf_counter() - history_started) * 1000
         except Exception:
             logger.warning("Memoire SQLite indisponible; contexte non charge.")
-            return MemoryContext(warnings=["memory_unavailable"])
+            return MemoryContext(
+                warnings=["memory_unavailable"],
+                timings_ms={"total_memory": (time.perf_counter() - total_started) * 1000},
+            )
 
-        state = understand(query, history, recent_window=self.settings.recent_context_window)
+        understanding_started = time.perf_counter()
+        state = understand(
+            query,
+            history,
+            recent_window=self.settings.recent_context_window,
+        )
+        timings["conversation_understanding"] = (time.perf_counter() - understanding_started) * 1000
+
         memory = MemoryManager(str(self.settings.db_path))
         result = MemoryContext(
-            history=history, conversation_state=state.as_debug(),
+            history=history,
+            conversation_state=state.as_debug(),
             profile=str(memory.get_fact("owner") or "") if user_id == "owner" else "",
+            timings_ms=timings,
         )
         if not self._semantic_available:
             result.warnings.append("semantic_memory_unavailable_using_sqlite")
+
         if not needs_long_term(query, history, state):
+            working_started = time.perf_counter()
             result.memories = self._working_candidates(history, query)
+            timings["working_memory"] = (time.perf_counter() - working_started) * 1000
             if self.settings.memory_debug:
                 result.retrieval_debug.append({
                     "status": "SKIPPED",
                     "reason": "recent_context_sufficient",
                     "working_evidence": len(result.memories),
                 })
+            timings["total_memory"] = (time.perf_counter() - total_started) * 1000
             return result
 
         result.long_term_used = True
+        lexical_started = time.perf_counter()
         candidates = await asyncio.to_thread(self._lexical_candidates, user_id, query)
+        timings["lexical_retrieval"] = (time.perf_counter() - lexical_started) * 1000
         by_id = {row["id"]: row for row in candidates}
+
         try:
+            embedding_started = time.perf_counter()
             async with asyncio.timeout(min(5, self.settings.timeout)):
                 vectors = await self.ai.embed([query])
-                semantic = await asyncio.to_thread(self._query_vectors, user_id, vectors[0])
+            timings["embedding"] = (time.perf_counter() - embedding_started) * 1000
+
+            vector_started = time.perf_counter()
+            semantic = await asyncio.to_thread(self._query_vectors, user_id, vectors[0])
+            timings["vector_retrieval"] = (time.perf_counter() - vector_started) * 1000
             self._semantic_available = True
             for row in semantic:
                 previous = by_id.get(row["id"])
@@ -328,7 +357,9 @@ class MemoryEngine:
             if "semantic_memory_unavailable_using_sqlite" not in result.warnings:
                 result.warnings.append("semantic_memory_unavailable_using_sqlite")
 
+        rerank_started = time.perf_counter()
         memories, debug = self._rerank(query, conversation_id, state, list(by_id.values()))
+        timings["rerank"] = (time.perf_counter() - rerank_started) * 1000
         result.memories = memories
         if self.settings.memory_debug:
             result.retrieval_debug = debug
@@ -337,19 +368,30 @@ class MemoryEngine:
         # mais ne contourne jamais la priorité du contexte de conversation.
         if user_id == "owner" and self.legacy_memory is not None and len(result.memories) < self.settings.rerank_top_k:
             try:
+                legacy_started = time.perf_counter()
                 legacy_hits = recuperer(self.legacy_memory, query, budget_caracteres=1200)
                 result.local_only = any(item.souvenir.sensible for item in legacy_hits)
                 for item in legacy_hits:
-                    candidate = {"kind": item.souvenir.nature.value, "content": item.souvenir.contenu,
-                                 "source": item.souvenir.source, "created": 0.0, "conversation_id": "legacy"}
+                    candidate = {
+                        "kind": item.souvenir.nature.value,
+                        "content": item.souvenir.contenu,
+                        "source": item.souvenir.source,
+                        "source_type": "legacy_memory",
+                        "memory_type": "semantic",
+                        "confidence": 0.8,
+                        "created": 0.0,
+                        "conversation_id": "legacy",
+                    }
                     accepted, legacy_debug = self._rerank(query, conversation_id, state, [candidate])
                     if accepted:
                         result.memories.extend(accepted)
                     if self.settings.memory_debug:
                         result.retrieval_debug.extend(legacy_debug)
+                timings["legacy_retrieval"] = (time.perf_counter() - legacy_started) * 1000
             except Exception:
                 result.warnings.append("legacy_memory_unavailable")
         result.memories = result.memories[:self.settings.rerank_top_k]
+        timings["total_memory"] = (time.perf_counter() - total_started) * 1000
         return result
 
     @staticmethod
