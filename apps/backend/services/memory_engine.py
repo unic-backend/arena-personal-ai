@@ -21,8 +21,10 @@ from apps.backend.services.ai_client import AIClient
 from apps.backend.services.conversation_intelligence import (
     ConversationState,
     accept_memory,
+    classify_user_evidence,
     needs_long_term,
     score_memory,
+    tokens,
     understand,
 )
 from apps.backend.services.settings import AutonomousSettings
@@ -93,7 +95,12 @@ class MemoryEngine:
                     content TEXT NOT NULL, source TEXT NOT NULL,
                     created REAL NOT NULL, indexed INTEGER NOT NULL DEFAULT 0,
                     index_after REAL NOT NULL DEFAULT 0,
-                    index_space TEXT NOT NULL DEFAULT ''
+                    index_space TEXT NOT NULL DEFAULT '',
+                    retrievable INTEGER NOT NULL DEFAULT 1,
+                    source_type TEXT NOT NULL DEFAULT 'legacy',
+                    confidence REAL NOT NULL DEFAULT 1.0,
+                    memory_type TEXT NOT NULL DEFAULT 'episodic',
+                    status TEXT NOT NULL DEFAULT 'active'
                 );
                 CREATE INDEX IF NOT EXISTS autonomous_documents_owner
                     ON autonomous_documents(user_id, kind, created);
@@ -106,8 +113,47 @@ class MemoryEngine:
                 );
             """)
             colonnes = {row["name"] for row in db.execute("PRAGMA table_info(autonomous_documents)")}
-            if "index_space" not in colonnes:
-                db.execute("ALTER TABLE autonomous_documents ADD COLUMN index_space TEXT NOT NULL DEFAULT ''")
+            migrations = {
+                "index_space": "TEXT NOT NULL DEFAULT ''",
+                "retrievable": "INTEGER NOT NULL DEFAULT 1",
+                "source_type": "TEXT NOT NULL DEFAULT 'legacy'",
+                "confidence": "REAL NOT NULL DEFAULT 1.0",
+                "memory_type": "TEXT NOT NULL DEFAULT 'episodic'",
+                "status": "TEXT NOT NULL DEFAULT 'active'",
+            }
+            for colonne, definition in migrations.items():
+                if colonne not in colonnes:
+                    db.execute(f"ALTER TABLE autonomous_documents ADD COLUMN {colonne} {definition}")
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS autonomous_documents_retrieval "
+                "ON autonomous_documents(user_id,retrievable,status,kind,created)"
+            )
+            # Migration non destructive : les messages restent stockes, mais
+            # seules les preuves admissibles restent candidates a la memoire longue.
+            legacy_rows = db.execute(
+                "SELECT id,kind,content FROM autonomous_documents WHERE source_type='legacy'"
+            ).fetchall()
+            for row in legacy_rows:
+                kind = row["kind"]
+                if kind == "assistant_message":
+                    policy = {"eligible": False, "source_type": "assistant_output", "confidence": 0.0}
+                    memory_type = "assistant_output"
+                elif kind in {"user_message", "user_fact"}:
+                    policy = classify_user_evidence(row["content"])
+                    memory_type = "semantic" if kind == "user_fact" else "episodic"
+                else:
+                    continue
+                db.execute(
+                    "UPDATE autonomous_documents SET retrievable=?,source_type=?,confidence=?,memory_type=? "
+                    "WHERE id=?",
+                    (
+                        1 if policy["eligible"] else 0,
+                        policy["source_type"],
+                        float(policy["confidence"]),
+                        memory_type,
+                        row["id"],
+                    ),
+                )
             db.execute("UPDATE autonomous_documents SET index_after=0 WHERE indexed=1 AND index_space<>?",
                        (self._index_space,))
 
@@ -163,13 +209,15 @@ class MemoryEngine:
         return result[:5]
 
     def _lexical_candidates(self, user_id: str, query: str) -> list[dict[str, Any]]:
-        words = list(dict.fromkeys(query.casefold().split()))[:12]
-        conditions = " OR ".join("instr(lower(content), ?) > 0" for _ in words) or "0"
+        words = sorted(tokens(query))[:12]
+        if not words:
+            return []
+        conditions = " OR ".join("instr(lower(content), ?) > 0" for _ in words)
         with closing(self._connect()) as db:
             rows = db.execute(
-                "SELECT id,conversation_id,kind,content,source,created FROM autonomous_documents "
-                "WHERE user_id=? AND (kind='user_fact' OR (" + conditions + ")) "
-                "ORDER BY created DESC LIMIT ?",
+                "SELECT id,conversation_id,kind,content,source,created,source_type,confidence,memory_type,status "
+                "FROM autonomous_documents WHERE user_id=? AND retrievable=1 AND status='active' AND ("
+                + conditions + ") ORDER BY created DESC LIMIT ?",
                 [user_id, *words, self.settings.retrieval_top_k],
             ).fetchall()
         return [dict(row) for row in rows]
@@ -186,8 +234,9 @@ class MemoryEngine:
             result = []
             for document_id in ids:
                 row = db.execute(
-                    "SELECT id,conversation_id,kind,content,source,created FROM autonomous_documents "
-                    "WHERE id=? AND user_id=?", (document_id, user_id)).fetchone()
+                    "SELECT id,conversation_id,kind,content,source,created,source_type,confidence,memory_type,status "
+                    "FROM autonomous_documents WHERE id=? AND user_id=? AND retrievable=1 AND status='active'",
+                    (document_id, user_id)).fetchone()
                 if row:
                     item = dict(row)
                     item["semantic_score"] = max(0.0, 1.0 - distance_by_id.get(document_id, 1.0))
@@ -213,10 +262,21 @@ class MemoryEngine:
             )
             ok = accept_memory(features, self.settings.relevance_threshold)
             debug.append({
-                "kind": candidate.get("kind"), "score": round(features["score"], 3),
-                "semantic": round(features["semantic"], 3), "lexical": round(features["lexical"], 3),
-                "entity": round(features["entity"], 3), "topic": round(features["topic"], 3),
-                "same_conversation": features["same_conversation"], "status": "ACCEPTED" if ok else "REJECTED",
+                "memory_id": candidate.get("id"),
+                "kind": candidate.get("kind"),
+                "source_type": candidate.get("source_type"),
+                "memory_type": candidate.get("memory_type"),
+                "confidence": round(float(candidate.get("confidence", 1.0)), 3),
+                "source": candidate.get("source"),
+                "conversation_id": candidate.get("conversation_id"),
+                "created": candidate.get("created"),
+                "score": round(features["score"], 3),
+                "semantic": round(features["semantic"], 3),
+                "lexical": round(features["lexical"], 3),
+                "entity": round(features["entity"], 3),
+                "topic": round(features["topic"], 3),
+                "same_conversation": features["same_conversation"],
+                "status": "ACCEPTED" if ok else "REJECTED",
             })
             if ok:
                 accepted.append({**candidate, "relevance": features["score"]})
@@ -231,7 +291,7 @@ class MemoryEngine:
             logger.warning("Memoire SQLite indisponible; contexte non charge.")
             return MemoryContext(warnings=["memory_unavailable"])
 
-        state = understand(query, history)
+        state = understand(query, history, recent_window=self.settings.recent_context_window)
         memory = MemoryManager(str(self.settings.db_path))
         result = MemoryContext(
             history=history, conversation_state=state.as_debug(),
@@ -293,28 +353,86 @@ class MemoryEngine:
         return result
 
     @staticmethod
-    def _document(db: sqlite3.Connection, user_id: str, conversation_id: str,
-                  kind: str, content: str, source: str) -> None:
+    def _document(
+        db: sqlite3.Connection,
+        user_id: str,
+        conversation_id: str,
+        kind: str,
+        content: str,
+        source: str,
+        *,
+        retrievable: bool = True,
+        source_type: str = "legacy",
+        confidence: float = 1.0,
+        memory_type: str = "episodic",
+        status: str = "active",
+    ) -> None:
         for offset in range(0, len(content), 1500):
             chunk = content[offset:offset + 1500]
             identity = [user_id, kind, chunk.strip().casefold()]
             if kind != "user_fact":
                 identity.extend([source, offset])
             key = hashlib.sha256(json.dumps(identity).encode()).hexdigest()
-            db.execute("INSERT OR IGNORE INTO autonomous_documents "
-                       "(id,user_id,conversation_id,kind,content,source,created) VALUES (?,?,?,?,?,?,?)",
-                       (key, user_id, conversation_id, kind, chunk, source, time.time()))
+            db.execute(
+                "INSERT OR IGNORE INTO autonomous_documents "
+                "(id,user_id,conversation_id,kind,content,source,created,retrievable,"
+                "source_type,confidence,memory_type,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    key,
+                    user_id,
+                    conversation_id,
+                    kind,
+                    chunk,
+                    source,
+                    time.time(),
+                    1 if retrievable else 0,
+                    source_type,
+                    float(confidence),
+                    memory_type,
+                    status,
+                ),
+            )
 
     def _save(self, user_id: str, conversation_id: str, question: str, answer: str) -> None:
         job = uuid4().hex
+        policy = classify_user_evidence(question)
         with closing(self._connect()) as db, db:
             for role, content in (("user", question), ("assistant", answer)):
-                db.execute("INSERT INTO short_term_memory(session_id,role,content) VALUES (?,?,?)",
-                           (session_key(user_id, conversation_id), role, content))
-                self._document(db, user_id, conversation_id, role + "_message", content, job)
-            db.execute("INSERT INTO autonomous_memory_jobs "
-                       "(id,user_id,conversation_id,question,answer,due) VALUES (?,?,?,?,?,?)",
-                       (job, user_id, conversation_id, question, answer, time.time()))
+                db.execute(
+                    "INSERT INTO short_term_memory(session_id,role,content) VALUES (?,?,?)",
+                    (session_key(user_id, conversation_id), role, content),
+                )
+                if role == "user":
+                    self._document(
+                        db,
+                        user_id,
+                        conversation_id,
+                        "user_message",
+                        content,
+                        job,
+                        retrievable=bool(policy["eligible"]),
+                        source_type=str(policy["source_type"]),
+                        confidence=float(policy["confidence"]),
+                        memory_type="episodic",
+                    )
+                else:
+                    self._document(
+                        db,
+                        user_id,
+                        conversation_id,
+                        "assistant_message",
+                        content,
+                        job,
+                        retrievable=False,
+                        source_type="assistant_output",
+                        confidence=0.0,
+                        memory_type="assistant_output",
+                    )
+            db.execute(
+                "INSERT INTO autonomous_memory_jobs "
+                "(id,user_id,conversation_id,question,answer,due) VALUES (?,?,?,?,?,?)",
+                (job, user_id, conversation_id, question, answer, time.time()),
+            )
 
     async def remember(self, user_id: str, conversation_id: str, question: str, answer: str) -> bool:
         try:
@@ -345,8 +463,20 @@ class MemoryEngine:
                 return
             if facts is not None:
                 for fact in facts:
-                    if fact.evidence in job["question"]:
-                        self._document(db, job["user_id"], job["conversation_id"], "user_fact", fact.evidence, job["id"])
+                    policy = classify_user_evidence(fact.evidence)
+                    if fact.evidence in job["question"] and policy["eligible"]:
+                        self._document(
+                            db,
+                            job["user_id"],
+                            job["conversation_id"],
+                            "user_fact",
+                            fact.evidence,
+                            job["id"],
+                            retrievable=True,
+                            source_type=str(policy["source_type"]),
+                            confidence=float(policy["confidence"]),
+                            memory_type="semantic",
+                        )
                 db.execute("DELETE FROM autonomous_memory_jobs WHERE id=?", (job["id"],))
             else:
                 attempts = job["attempts"] + 1
@@ -371,7 +501,8 @@ class MemoryEngine:
     def _unindexed(self) -> list[dict[str, Any]]:
         with closing(self._connect()) as db, db:
             rows = [dict(row) for row in db.execute(
-                "SELECT * FROM autonomous_documents WHERE (indexed=0 OR index_space<>?) AND index_after<=? "
+                "SELECT * FROM autonomous_documents WHERE retrievable=1 AND status='active' "
+                "AND (indexed=0 OR index_space<>?) AND index_after<=? "
                 "ORDER BY index_after,created LIMIT 32", (self._index_space, time.time()))]
             db.executemany("UPDATE autonomous_documents SET index_after=? WHERE id=?",
                            [(time.time() + 60, row["id"]) for row in rows])
@@ -386,9 +517,15 @@ class MemoryEngine:
         self._chroma().upsert(
             ids=[row["id"] for row in rows], embeddings=vectors,
             documents=[row["content"] for row in rows],
-            metadatas=[{"user_id": row["user_id"], "type": row["kind"], "source": row["source"],
-                       "conversation_id": row["conversation_id"], "embedding_space": self._index_space}
-                      for row in rows],
+            metadatas=[{
+                "user_id": row["user_id"],
+                "type": row["kind"],
+                "source": row["source"],
+                "source_type": row.get("source_type", "legacy"),
+                "memory_type": row.get("memory_type", "episodic"),
+                "conversation_id": row["conversation_id"],
+                "embedding_space": self._index_space,
+            } for row in rows],
         )
         with closing(self._connect()) as db, db:
             db.executemany("UPDATE autonomous_documents SET indexed=1,index_space=? WHERE id=?",
