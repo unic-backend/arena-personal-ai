@@ -78,3 +78,101 @@ class TestLeCheminNormalNeChangePas:
     def test_le_modele_absent_est_bien_ce_qui_declenche_le_repli(self):
         """`ModeleAbsent` est l'exception que le repli attrape, pas une autre."""
         assert issubclass(ModeleAbsent, RuntimeError)
+
+
+class ProviderAnalyse:
+    def __init__(self):
+        self.prompts = []
+
+    async def is_available(self):
+        return True
+
+    async def generate(self, prompt, **kwargs):
+        self.prompts.append(prompt)
+        return "analyse verifiee"
+
+
+def agent_analyse(registre=None):
+    return VideoAnalyzerAgent(provider=ProviderAnalyse(), registre=registre)
+
+
+def preparer_video(agent_video, tmp_path, monkeypatch):
+    video = tmp_path / "chantier.mp4"
+    video.write_bytes(b"video-test")
+    monkeypatch.setattr(agent_video.ffmpeg, "extract_audio", lambda source, cible: True)
+    return video
+
+
+@pytest.mark.asyncio
+async def test_run_local_preserve_duree_et_segments(tmp_path, monkeypatch):
+    a = agent_analyse()
+    video = preparer_video(a, tmp_path, monkeypatch)
+    segments = [{"start": 0.0, "end": 1.5, "text": "bonjour"}]
+    monkeypatch.setattr(a.transcriber, "transcribe", lambda chemin: {
+        "full_text": "bonjour chantier", "duration": 1.5, "segments": segments,
+    })
+
+    resultat = await a.run("analyse", {"video_path": str(video)})
+
+    assert resultat["status"] == "success"
+    assert resultat["transcription_source"] == "whisper_local"
+    assert resultat["duration"] == 1.5
+    assert resultat["segments"] == segments
+    assert resultat["metadata_unavailable"] == []
+
+
+@pytest.mark.asyncio
+async def test_run_fallback_success_est_utilisable_sans_metadonnees_inventees(tmp_path, monkeypatch):
+    registre = RegistreDouble(succes(action="transcrire", cible="audio",
+                                     message="ok", preuve="p", texte="texte secours"))
+    a = agent_analyse(registre)
+    video = preparer_video(a, tmp_path, monkeypatch)
+
+    def absent(chemin):
+        raise ModeleAbsent("whisper absent")
+
+    monkeypatch.setattr(a.transcriber, "transcribe", absent)
+    resultat = await a.run("analyse", {"video_path": str(video)})
+
+    assert resultat["status"] == "success"
+    assert resultat["transcription"] == "texte secours"
+    assert resultat["transcription_source"] == "voicestudio"
+    assert resultat["duration"] is None
+    assert resultat["segments"] is None
+    assert resultat["metadata_unavailable"] == ["duration", "segments"]
+    assert resultat["ai_analysis"] == "analyse verifiee"
+
+
+@pytest.mark.asyncio
+async def test_run_fallback_failure_rend_erreur_sans_analyse(tmp_path, monkeypatch):
+    registre = RegistreDouble(non_configure(action="transcrire", cible="audio",
+                                            ce_qui_manque="VoiceStudio absent"))
+    a = agent_analyse(registre)
+    video = preparer_video(a, tmp_path, monkeypatch)
+
+    def absent(chemin):
+        raise ModeleAbsent("whisper absent")
+
+    monkeypatch.setattr(a.transcriber, "transcribe", absent)
+    resultat = await a.run("analyse", {"video_path": str(video)})
+
+    assert resultat["status"] == "error"
+    assert "Transcription impossible" in resultat["response"]
+    assert a.provider.prompts == []
+
+
+@pytest.mark.asyncio
+async def test_run_transcription_vide_est_refusee_honnetement(tmp_path, monkeypatch):
+    a = agent_analyse()
+    video = preparer_video(a, tmp_path, monkeypatch)
+    monkeypatch.setattr(a.transcriber, "transcribe", lambda chemin: {
+        "full_text": "   ", "duration": None, "segments": None,
+    })
+
+    resultat = await a.run("analyse", {"video_path": str(video)})
+
+    assert resultat["status"] == "error"
+    assert "aucun texte exploitable" in resultat["response"]
+    assert resultat["duration"] is None
+    assert resultat["segments"] is None
+    assert a.provider.prompts == []
