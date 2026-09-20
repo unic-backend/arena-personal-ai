@@ -207,15 +207,15 @@ QUESTION_OBJET_DEVIS = re.compile(
 #: ses phrases s'enchainent souvent sans ponctuation ("...cest Augustin
 #: lieux de chantier cest almadie").
 ANNONCE_NOM_CLIENT = re.compile(
-    r"(?:nom du client|le client)\s*(?:c'?est|c est|:|s'appelle)\s+"
+    r"(?:nom du client|le client|client)\s*(?:c'?est|c est|:|s'appelle)\s+"
     r"((?:(?!lieu|chantier|objet|prestation).)+)",
     re.IGNORECASE)
 ANNONCE_LIEU_CHANTIER = re.compile(
-    r"(?:lieux? du chantier|lieux? de chantier|l'adresse du chantier|adresse du chantier)"
+    r"(?:lieux? du chantier|lieux? de chantier|l'adresse du chantier|adresse du chantier|lieux?)"
     r"\s*(?:c'?est|c est|:)\s+((?:(?!nom du client|le client|objet|prestation).)+)",
     re.IGNORECASE)
 ANNONCE_OBJET_DEVIS = re.compile(
-    r"(?:l'objet(?: du devis)?|objet du devis|les? prestations?(?: souhaitees?)?)"
+    r"(?:l'objet(?: du devis)?|objet(?: du devis)?|les? prestations?(?: souhaitees?)?)"
     r"\s*(?:c'?est|c est|:)\s+((?:(?!nom du client|le client|lieu|chantier).)+)",
     re.IGNORECASE)
 
@@ -227,9 +227,60 @@ ANNONCE_OBJET_DEVIS = re.compile(
 _TETE_DE_REPONSE = re.compile(r"^(c'?est|c est)\s+", re.IGNORECASE)
 
 
+#: La ponctuation qui separe deux champs annonces sur la meme ligne, et qui
+#: reste collee a la valeur captee. Mesure le 20/09/2026 sur « le client c'est
+#: Khady Diop, lieu du chantier : Medina » : le client s'appelait
+#: « Khady Diop, » — virgule comprise, jusque sur le PDF.
+_PONCTUATION_DE_FIN = " \t,;.:-—–"
+
+
 def _nettoyer_reponse_captee(texte: str) -> str:
-    """Une reponse brute, debarrassee de sa tete de phrase la plus courante."""
-    return _TETE_DE_REPONSE.sub("", (texte or "").strip()).strip()
+    """Une reponse brute, debarrassee de sa tete de phrase et de la
+    ponctuation qui la rattachait au champ suivant."""
+    nue = _TETE_DE_REPONSE.sub("", (texte or "").strip()).strip()
+    return nue.strip(_PONCTUATION_DE_FIN)
+
+
+#: Ce qui separe deux valeurs dans une reponse groupee : une virgule SUIVIE
+#: D'UNE ESPACE. La nuance n'est pas cosmetique — « 18 parois de 5,40 x 2,50 m »
+#: ecrit ses decimales a la virgule, sans espace. Un decoupage sur la virgule
+#: seule rendait « 18 parois de 5 », « 40 x 2 », « 50 m ».
+_SEPARATEUR_DE_VALEURS = re.compile(r",\s+")
+
+
+def _repartir(reponse: str, demandes: List[str]) -> Dict[str, str]:
+    """Une reponse, les champs qui l'attendaient : qui recoit quoi.
+
+    Trois cas, et le troisieme est celui qui manquait :
+
+    - **Un seul champ demande** : il prend toute la reponse.
+    - **Plusieurs champs, autant de valeurs separees par des virgules** :
+      chacun prend la sienne, dans l'ordre ou la question les a posees.
+      « Quel est le lieu du chantier et les prestations souhaitees ? » ->
+      « Fann Hock, 18 parois de 5,40 x 2,50 m » donne lieu et objet.
+    - **Plusieurs champs, une seule valeur** : RIEN n'est capte.
+
+    **Mesure du 20/09/2026.** ARENA demandait les trois champs dans le meme
+    message ; « Medina » les remplissait tous les trois. Le devis serait parti
+    au nom de « Medina », chantier « Medina », objet « Medina » — un document
+    plausible et faux, exactement ce qu'un statut INCOMPLET existe pour
+    eviter.
+
+    **Ce que ca coute si c'est faux** : deux champs demandes et une reponse a
+    deux morceaux sont apparies DANS L'ORDRE DE LA QUESTION. « Dakar,
+    Medina » pour un lieu et un objet donnerait objet = « Medina ». Le
+    document est relu avant d'etre envoye, et la forme etiquetee
+    (« lieu : ..., objet : ... ») tranche sans ambiguite quand il le veut.
+    """
+    if not reponse or not demandes:
+        return {}
+    if len(demandes) == 1:
+        return {demandes[0]: reponse}
+    morceaux = [m.strip() for m in _SEPARATEUR_DE_VALEURS.split(reponse)]
+    morceaux = [m for m in morceaux if m]
+    if len(morceaux) != len(demandes):
+        return {}
+    return dict(zip(demandes, morceaux, strict=True))
 
 
 def destinataire_depuis_l_historique(
@@ -250,12 +301,15 @@ def destinataire_depuis_l_historique(
        les a donnes des ce tour-la — un controle qui ne regarderait que le
        dernier message aurait rate cette annonce des qu'un tour la suit.
 
-    `message_actuel` est ajoute comme le dernier tour utilisateur. Une
-    question qui demande plusieurs champs a la fois (« le lieu du chantier
-    et les prestations souhaitees ? ») recoit la meme reponse pour chacun —
-    imparfait, mais `produire` n'ecrit qu'un fichier local que le
-    proprietaire relit avant de l'envoyer : ce n'est jamais un envoi
-    automatique a un client.
+    `message_actuel` est ajoute comme le dernier tour utilisateur.
+
+    **Une question, une reponse.** Quand le tour precedent demandait
+    plusieurs champs a la fois, rien n'est capte : un mot seul ne dit pas
+    auquel des trois il repond. C'etait l'inverse jusqu'au 20/09/2026 — la
+    meme reponse remplissait les trois — et un devis serait parti au nom de
+    « Medina », chantier « Medina », objet « Medina ». `produire` n'ecrit
+    qu'un fichier local qu'il relit avant de l'envoyer, mais un document
+    plausible et faux est precisement ce qu'un INCOMPLET doit empecher.
     """
     tours = list(historique) + [{"role": "user", "content": message_actuel}]
     valeurs: Dict[str, str] = {}
@@ -267,15 +321,65 @@ def destinataire_depuis_l_historique(
         if precedent.get("role") == "assistant":
             question = precedent.get("content") or ""
             reponse = _nettoyer_reponse_captee(texte)
-            if reponse:
-                if QUESTION_NOM_CLIENT.search(question):
-                    valeurs["client"] = reponse
-                if QUESTION_LIEU_CHANTIER.search(question):
-                    valeurs["lieu"] = reponse
-                if QUESTION_OBJET_DEVIS.search(question):
-                    valeurs["objet"] = reponse
+            demandes = [champ for champ, motif in QUESTIONS_DU_DESTINATAIRE
+                        if motif.search(question)]
+            # UNE question, UNE reponse. Quand le tour precedent en posait
+            # plusieurs, un mot seul ne dit pas auquel il repond.
+            #
+            # **Mesure du 20/09/2026.** ARENA demandait les trois champs dans
+            # le meme message ; « Medina » remplissait client, lieu ET objet.
+            # Le devis serait parti au nom de « Medina », chantier « Medina »,
+            # objet « Medina » — un document plausible et faux, exactement ce
+            # qu'un statut INCOMPLET existe pour eviter. L'ancien code le
+            # savait et l'assumait en commentaire ; ce n'etait pas visible
+            # tant que ce chemin n'etait jamais atteint (le classeur envoyait
+            # la reponse en recherche web bien avant).
+            for champ, valeur in _repartir(reponse, demandes).items():
+                valeurs[champ] = valeur
         valeurs.update(destinataire_annonce(texte))
     return valeurs
+
+
+#: Les trois questions qu'ARENA pose pour completer un devis, et le champ
+#: que chacune reclame. Meme table que la capture ci-dessus : deux listes
+#: separees divergeraient, et la question resterait sans reponse le jour ou
+#: l'une bouge sans l'autre.
+QUESTIONS_DU_DESTINATAIRE = (
+    ("client", QUESTION_NOM_CLIENT),
+    ("lieu", QUESTION_LIEU_CHANTIER),
+    ("objet", QUESTION_OBJET_DEVIS),
+)
+
+
+def champs_demandes_au_tour_precedent(historique: List[Dict[str, str]]) -> List[str]:
+    """Les champs qu'ARENA vient de reclamer, et qui attendent une reponse.
+
+    **Le defaut que ca ferme, mesure le 20/09/2026.** Le proprietaire demande
+    un devis, ARENA repond « Quel est le lieu du chantier ? », il repond
+    « Medina » — et recoit trois paragraphes sur la ville sainte d'Arabie
+    saoudite, sources Wikipedia a l'appui.
+
+    La capture du destinataire marchait deja
+    (`destinataire_depuis_l_historique`). Elle n'a jamais ete appelee : le
+    classeur d'intention ne lit QUE le message courant, donc « Medina » seul
+    n'a aucune raison de ressembler a une demande de devis. La reponse partait
+    en recherche web avant que le moindre code metier ne la voie.
+
+    Rend une liste vide quand le dernier tour n'est pas une question d'ARENA
+    ou n'en demande aucun : le silence ne force rien.
+    """
+    for tour in reversed(list(historique or [])):
+        role = tour.get("role")
+        if role == "user":
+            # Un tour utilisateur plus recent que la question : elle a deja
+            # recu sa reponse, ou il est passe a autre chose.
+            return []
+        if role != "assistant":
+            continue
+        question = tour.get("content") or ""
+        return [champ for champ, motif in QUESTIONS_DU_DESTINATAIRE
+                if motif.search(question)]
+    return []
 
 
 def destinataire_annonce(message_actuel: str) -> Dict[str, str]:
@@ -1017,10 +1121,22 @@ class PlaquisteAgent(BaseAgent):
                 destinataire[champ] = DESTINATAIRE_DEMONSTRATION[champ]
             manquants = []
         if manquants:
+            # Le message dit AUSSI comment repondre, sous une forme que la
+            # capture deterministe reconnait a coup sur.
+            #
+            # **Pourquoi ca compte, mesure le 20/09/2026.** La capture qui
+            # relit la question du tour precedent depend de la formulation
+            # du MODELE : s'il pose les trois questions dans le meme
+            # message, un mot seul ne dit plus auquel il repond, et plus
+            # rien n'est capte (a raison). La forme etiquetee, elle, se lit
+            # sur la phrase du PROPRIETAIRE — elle marche quelle que soit
+            # la facon dont le modele a tourne sa question.
+            exemple = ", ".join(f"{champ} : ..." for champ in manquants)
             return {"statut": "INCOMPLET", "manquants": manquants,
                     "message": ("Le PDF n'est pas lance : il manque "
                                 + ", ".join(manquants)
-                                + ". Je ne devine pas le destinataire d'un devis.")}
+                                + ". Je ne devine pas le destinataire d'un devis. "
+                                + f"Reponds en une ligne : « {exemple} »")}
 
         parametres_lignes: Dict[str, Any] = {}
         if metre is not None:

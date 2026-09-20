@@ -309,15 +309,35 @@ class TestDestinataireDepuisLHistorique:
 
         assert valeurs == {}
 
-    def test_une_question_combinee_repond_aux_deux_champs(self):
+    def test_une_question_combinee_repartit_la_reponse(self):
+        """Deux champs demandes, deux valeurs donnees : chacun prend la sienne.
+
+        Ce test attendait auparavant la reponse ENTIERE dans les DEUX champs
+        — l'objet du devis valait « Fann Hock, cloison 100m2 sans isolation »,
+        le lieu aussi. Corrige le 20/09/2026 : cette regle-la remplissait
+        aussi les trois champs avec le mot « Medina », et un devis serait
+        parti au nom de « Medina », chantier « Medina », objet « Medina ».
+        """
         historique = [{"role": "assistant",
                       "content": "Quel est le lieu du chantier et les prestations souhaitées ?"}]
 
         valeurs = destinataire_depuis_l_historique(
             historique, "Fann Hock, cloison 100m2 sans isolation")
 
-        assert valeurs == {"lieu": "Fann Hock, cloison 100m2 sans isolation",
-                           "objet": "Fann Hock, cloison 100m2 sans isolation"}
+        assert valeurs == {"lieu": "Fann Hock",
+                           "objet": "cloison 100m2 sans isolation"}
+
+    def test_une_question_combinee_sans_autant_de_valeurs_ne_capte_rien(self):
+        """Deux champs demandes, UN seul mot : on ne sait pas lequel il vise.
+
+        C'est le cas exact de la capture d'ecran du 20/09/2026 (« Medina »).
+        Ne rien capter laisse le statut INCOMPLET faire son travail ; tout
+        capter aurait produit un document plausible et faux.
+        """
+        historique = [{"role": "assistant",
+                      "content": "Quel est le lieu du chantier et les prestations souhaitées ?"}]
+
+        assert destinataire_depuis_l_historique(historique, "Medina") == {}
 
     def test_plusieurs_tours_accumulent_les_champs(self):
         historique = [

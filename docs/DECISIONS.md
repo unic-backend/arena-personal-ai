@@ -10279,3 +10279,131 @@ une normalisation a la comparaison, pas un accent de plus dans la liste. Et le
 detail des surfaces qui figure sur son devis Fast Group (« 18 parois, une face,
 surface developpee ») n'est toujours pas rendu : il demande le metre, pas le
 format. Ce n'est pas fait, et c'est dit plutot que sous-entendu.
+
+## DEC-0120 — Une question posee garde la main sur le classeur d'intention
+
+**2026-09-20.**
+
+**Decision** : avant `analyze_intent()`, un controle deterministe regarde si le
+tour precedent etait une question d'ARENA reclamant un champ de devis. Si oui,
+l'intention est `PLAQUISTE`, sans modele. Un changement de sujet manifeste
+(salutation, courrier, finance — les controles sans modele que l'orchestrateur
+possede deja) passe devant.
+
+**Pourquoi** : « Fais-moi un devis du nom de Khady Diop » -> « Quel est le lieu
+du chantier ? » -> « Medina » -> **trois paragraphes sur al-Madinah
+al-Munawwarah, 1 477 023 habitants, sources Wikipedia**.
+
+Le reflexe serait d'accuser le modele d'halluciner. Il n'a rien hallucine : on
+lui a pose une question de culture generale, et il y a repondu correctement.
+`analyze_intent()` ne lit QUE le message courant, donc « Medina » seul ne peut
+pas lui rappeler qu'un devis attend son lieu de chantier. La capture du
+destinataire (DEC du 31/08/2026) etait deja ecrite, deja testee, et n'etait
+jamais appelee : la recherche web partait avant elle.
+
+Trois choses ont ete ecartees :
+
+- **Donner l'historique au classeur.** Un appel de modele de plus par tour,
+  pour une decision qu'une comparaison de chaines tranche. Le classeur reste
+  ce qu'il est ; ce qui change, c'est qu'il n'est plus consulte quand la
+  question posee a deja repondu.
+- **Forcer PLAQUISTE quoi qu'il arrive.** Le proprietaire a le droit de laisser
+  une question en plan. Les quatre controles deterministes de l'orchestrateur
+  sont reutilises plutot que redefinis ici — une deuxieme definition de « ca
+  parle d'autre chose » divergerait.
+- **Un etat de conversation cote serveur.** L'historique arrive deja dans la
+  requete (`ChatRequest.history`, pose le 31/08/2026 pour cette meme capture).
+  Un magasin de plus pour la meme information serait un magasin de plus a
+  tenir a jour.
+
+**Ce que ca coute si c'est faux** : le controle repose sur la formulation de la
+question, donc sur celle du MODELE. S'il demande le lieu du chantier avec des
+mots qu'aucun des trois motifs ne reconnait, la reponse repart au classeur et
+le defaut revient — silencieusement. C'est pourquoi la sortie de secours
+(DEC-0121) ne depend PAS de sa formulation.
+
+## DEC-0121 — Une question, une reponse : rien n'est reparti au hasard
+
+**2026-09-20.**
+
+**Decision** : une reponse est attribuee aux champs qui l'attendaient selon
+trois cas — un champ demande prend toute la reponse ; plusieurs champs et
+autant de valeurs separees par « virgule + espace » sont apparies dans l'ordre
+de la question ; plusieurs champs et une seule valeur ne captent **rien**. En
+complement, le message `INCOMPLET` dicte une forme etiquetee
+(`client : ..., lieu : ..., objet : ...`) que la capture lit sur la phrase du
+proprietaire.
+
+**Pourquoi** : une fois DEC-0120 en place, le chemin metier etait enfin
+atteint — et le defaut suivant est apparu. ARENA posait les trois questions
+dans le meme message ; « Medina » remplissait client, lieu ET objet. Le devis
+serait parti au nom de « Medina », chantier « Medina », objet « Medina ». Un
+document plausible et faux, c'est-a-dire exactement ce qu'un statut INCOMPLET
+existe pour empecher. L'ancien code le savait : sa docstring assumait
+l'imprecision en commentaire. Elle n'avait jamais ete visible parce que ce
+chemin n'etait jamais atteint.
+
+Deux choses ont ete ecartees :
+
+- **Ne rien capter des que plusieurs champs sont demandes.** C'etait la
+  premiere version, et elle a casse un scenario que le proprietaire avait
+  lui-meme rapporte le 31/08/2026 : deux champs demandes, une reponse qui
+  contenait les deux (« Fann Hock, 18 parois de 5,40 x 2,50 m »). La suite
+  complete l'a dit avant la fusion, pas apres.
+- **Decouper sur la virgule seule.** « 18 parois de 5,40 x 2,50 m » serait
+  devenu quatre morceaux, et le devis aurait porte des dimensions amputees.
+  Le separateur est une virgule SUIVIE D'UNE ESPACE ; un test fige les
+  decimales.
+
+**Ce que ca coute si c'est faux** : deux champs demandes et une reponse a deux
+morceaux sont apparies DANS L'ORDRE DE LA QUESTION. « Dakar, Medina » pour un
+lieu et un objet donnerait objet = « Medina ». Le document est relu avant
+d'etre envoye, et la forme etiquetee tranche sans ambiguite quand il le veut.
+C'est un pari sur l'ordre, assume, et c'est le seul endroit de cette chaine ou
+il en reste un.
+
+## DEC-0122 — La question posee est retenue par session, pour TOUS les agents
+
+**2026-09-20.**
+
+**Decision** : `core/executive/question_en_attente.py` retient, par session,
+l'intention qui vient de reclamer une information. `dispatch_request` la note
+apres chaque tour et la relit avant de classer le suivant. Le controle propre
+au devis (DEC-0120) reste, en repli.
+
+**Pourquoi** : DEC-0120 ne regardait que les trois questions du destinataire
+d'un devis. Le proprietaire a refuse ce perimetre le jour meme :
+
+    « si tu le regles seulement ici, sur d'autres sujets il peut repeter cette
+    hallucination — tu dois regler le fond du probleme, pas ce probleme que tu
+    as vu seulement »
+
+Mesure faite apres sa remarque : quatre chemins au moins rendent un statut qui
+reclame une information — `agents/plaquiste` (devis, planning),
+`agents/email` (destinataire, sujet), `agents/video_analyzer` (sujet,
+description), `core/production/personnage_video`. Chacun aurait garde le meme
+defaut. Le correctif precedent etait un pansement sur le seul cas qu'il avait
+vu passer.
+
+Trois choses ont ete ecartees :
+
+- **Un motif par agent.** C'etait DEC-0120 generalise a la main : autant de
+  listes de questions que d'agents, a tenir a jour, et un defaut silencieux
+  chaque fois qu'un agent reformule. Le statut rendu, lui, est deja dans le
+  code et ne depend d'aucune formulation.
+- **Passer l'historique au classeur.** Un appel de modele de plus par tour
+  pour une decision qu'une lecture de dictionnaire tranche.
+- **Un magasin durable.** La question vit une demi-heure ; un redemarrage la
+  perd, et c'est le repli lexical qui rattrape ce cas precis. Persister un
+  etat de trente minutes couterait un schema, une migration et une purge pour
+  une information qui se recalcule.
+
+**Ce que ca coute si c'est faux** : la memoire est en processus. Deux
+instances derriere un repartiteur ne la partagent pas — une reponse routee sur
+l'autre instance retombe sur le repli lexical, donc sur le seul devis. ARENA
+tourne aujourd'hui en instance unique ; le jour ou ce ne sera plus vrai, il
+faudra soit une session collante, soit deplacer ces entrees dans le magasin
+que `GALSEN_STORAGE_BACKEND` designe deja pour le reste. Et une question
+retenue capte la phrase suivante meme si elle n'y repond pas vraiment : les
+quatre controles deterministes de l'orchestrateur sont le seul garde-fou, et
+ils ne couvrent pas tout.

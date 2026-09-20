@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from agents.plaquiste.plaquiste_agent import champs_demandes_au_tour_precedent
 from agents.video_analyzer.video_analyzer_agent import demande_de_suivi
 from apps.backend.config import AGENTS_SPECIALISES, MEDIA_DIR
 from apps.backend.prompts import prompt_avec_methode
@@ -55,6 +56,7 @@ from apps.backend.security import limiter_debit, validate_media_path, verify_api
 from apps.backend.studio import lancer_studio
 from core.architecture.plan import executer as executer_architecture
 from core.context.recherche_unifiee import MOTS_MEMOIRE
+from core.executive import question_en_attente
 from core.memory.conversation import rendre_le_fil
 from core.observabilite.fil import tache
 from tools.documents.indexer import (
@@ -585,6 +587,97 @@ async def _joindre_document(
     return reponse
 
 
+
+#: Les controles deterministes de l'orchestrateur qui l'emportent MEME sur
+#: une question restee en attente. « Bonjour », « combien de mails ? »,
+#: « analyse le bitcoin » : le proprietaire a manifestement change de sujet,
+#: et forcer le devis lui repondrait a cote.
+#:
+#: Ils sont nommes, pas devines : chacun est deja un controle sans modele de
+#: `analyze_intent`, et les reutiliser evite d'ecrire ici une deuxieme
+#: definition de « ca parle d'autre chose ».
+CONTROLES_QUI_PRIMENT = (
+    "question_personnelle", "salutation_pure",
+    "demande_de_courrier", "demande_financiere",
+)
+
+
+def _a_change_de_sujet(message: str) -> bool:
+    """Vrai quand la phrase est manifestement autre chose qu'une reponse."""
+    for nom in CONTROLES_QUI_PRIMENT:
+        controle = getattr(orchestrator, nom, None)
+        if controle is None:
+            continue
+        try:
+            if controle(message):
+                return True
+        except Exception as erreur:  # noqa: BLE001 — un controle casse ne doit rien bloquer
+            logger.warning("Controle « %s » illisible : %s", nom, erreur)
+    return False
+
+
+def intention_dune_reponse_attendue(
+    historique: List[Dict[str, str]], message: str,
+    session_id: str = "",
+) -> Optional[str]:
+    """`PLAQUISTE` quand ce message repond a une question qu'ARENA a posee.
+
+    **Le defaut que ca ferme, mesure le 20/09/2026.** « Fais-moi un devis du
+    nom de Khady Diop » -> ARENA demande le lieu du chantier -> « Medina » ->
+    **trois paragraphes sur la ville sainte d'Arabie saoudite**, sources
+    Wikipedia comprises.
+
+    La cause n'etait pas la comprehension du modele. `analyze_intent()` ne lit
+    QUE le message courant : « Medina » seul ne ressemble a rien d'autre qu'a
+    une question de culture generale, et la recherche web partait avant que le
+    moindre code metier ne voie la phrase. La capture du destinataire d'un
+    devis existait pourtant et fonctionnait — elle n'etait jamais atteinte.
+
+    Deux regles :
+
+    1. **Une question en attente l'emporte sur le classeur.** C'est ARENA qui
+       a pose la question ; la reponse lui appartient, elle ne se reclasse pas.
+    2. **Sauf changement de sujet manifeste.** Une salutation, une demande de
+       courrier ou de finance passe devant : le proprietaire a le droit de
+       laisser une question en plan.
+
+    Rend `None` quand rien n'attend, et le classeur reprend la main.
+    """
+    if not str(message or "").strip():
+        return None
+
+    # 1. Le mecanisme GENERAL : quel que soit l'agent qui a pose la question,
+    #    c'est lui qui recoit la reponse. Il couvre le devis, le courrier,
+    #    l'analyse video, la fiche personnage — tout ce qui rend un statut
+    #    reclamant une information.
+    attente = question_en_attente.en_attente(session_id)
+    if attente is not None:
+        if _a_change_de_sujet(message):
+            logger.info("Question en attente (%s) abandonnee : la phrase parle d'autre chose.",
+                        attente.intention)
+            question_en_attente.oublier(session_id)
+            return None
+        logger.info("Reponse a une question de %s%s -> meme agent, sans classeur.",
+                    attente.intention,
+                    f" ({', '.join(attente.champs)})" if attente.champs else "")
+        return attente.intention
+
+    # 2. Le repli, qui ne depend d'aucun etat serveur : relire la question du
+    #    tour precedent. Il rattrape ce que (1) ne peut pas savoir — un
+    #    redemarrage entre les deux tours, une session non transmise, un
+    #    appel d'API qui porte son historique sans jamais avoir ecrit ici.
+    champs = champs_demandes_au_tour_precedent(historique)
+    if not champs:
+        return None
+    if _a_change_de_sujet(message):
+        logger.info("Question en attente (%s) abandonnee : la phrase parle d'autre chose.",
+                    ", ".join(champs))
+        return None
+    logger.info("Reponse a une question en attente (%s) -> PLAQUISTE, sans classeur.",
+                ", ".join(champs))
+    return "PLAQUISTE"
+
+
 async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -> Dict[str, Any]:
     """Aiguille la demande vers l'agent choisi, en declarant son type de tache.
 
@@ -603,9 +696,22 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
     cherche a mesurer.
     """
     if intent is None:
+        # AVANT le classeur, et sans modele : une reponse a une question
+        # qu'ARENA vient de poser n'est pas une nouvelle demande. Le classeur
+        # ne lit que le message courant — « Medina » seul ne peut pas lui
+        # rappeler qu'un devis attend son lieu de chantier.
+        intent = intention_dune_reponse_attendue(
+            request.history, request.message_actuel or request.prompt,
+            request.session_id or "default")
+    if intent is None:
         intent = await orchestrator.analyze_intent(request.prompt)
     with tache(intent):
         reponse = await _aiguiller(request, intent)
+    # Ce tour a-t-il laisse une question sans reponse ? Si oui, le prochain
+    # message lui revient — quel que soit l'agent. Si non, ce qui attendait
+    # est efface : une question deja repondue ne doit plus aspirer ses
+    # phrases.
+    question_en_attente.noter(request.session_id or "default", intent, reponse)
     # Apres l'aiguillage, jamais avant : le document contient LA REPONSE, il
     # ne peut donc pas s'ecrire tant qu'elle n'existe pas. Ici parce que les
     # cinq appelants passent tous par cette fonction (voir la docstring) —
