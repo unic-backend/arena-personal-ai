@@ -22,11 +22,13 @@ vitesse, et ce depot n'en ecrit aucun.
 """
 import argparse
 import asyncio
+import json
 import statistics
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 RACINE = Path(__file__).resolve().parent.parent
 if str(RACINE) not in sys.path:
@@ -39,12 +41,25 @@ SCENES = (
     ("longue", "Redige un paragraphe de dix lignes sur l'isolation thermique."),
 )
 
+#: Le prompt de chaque scene, adressable par son nom. La mission demande que
+#: le prompt figure dans la mesure : sans lui, deux mesures ne sont pas
+#: comparables, et personne ne peut rejouer le banc a l'identique.
+PROMPTS = dict(SCENES)
+
 ABSENT = "ABSENT"
 ECHEC = "ECHEC"
 
 
 async def mesurer_un(fournisseur: Any, prompt: str) -> Dict[str, Any]:
-    """Chronometre une generation en flux. Rend l'etat, jamais une estimation."""
+    """Chronometre une generation en flux. Rend l'etat, jamais une estimation.
+
+    Les champs sont ceux que la mission reclame nommement : temps jusqu'au
+    premier jeton, latence totale, jetons par seconde, succes/echec, erreur.
+    Chacun vient d'une mesure ou vaut `None` — **jamais une valeur de
+    remplissage**. `jetons_par_seconde` reste `None` quand le service n'a pas
+    annonce ses jetons : diviser un nombre de morceaux de flux par une duree
+    donnerait un chiffre qui ressemble a un debit sans en etre un.
+    """
     debut = time.perf_counter()
     premier: Optional[float] = None
     morceaux = 0
@@ -54,15 +69,34 @@ async def mesurer_un(fournisseur: Any, prompt: str) -> Dict[str, Any]:
                 premier = time.perf_counter()
             morceaux += 1
     except Exception as erreur:  # noqa: BLE001 — un echec est un resultat
-        return {"etat": ECHEC, "detail": type(erreur).__name__}
+        return {
+            "etat": ECHEC,
+            "detail": type(erreur).__name__,
+            # L'erreur est NETTOYEE par le fournisseur lui-meme
+            # (`nettoyer_erreur`) : aucune cle ne passe par ici.
+            "erreur": getattr(getattr(fournisseur, "derniere_mesure", None),
+                              "erreur", "") or type(erreur).__name__,
+            "premier_mot_s": None, "total_s": None, "jetons_par_seconde": None,
+        }
     fin = time.perf_counter()
+    mesure = getattr(fournisseur, "derniere_mesure", None)
     return {
         "etat": "MESURE",
         # `None` quand aucun mot n'est arrive : ce n'est pas « instantane ».
         "premier_mot_s": None if premier is None else round(premier - debut, 3),
         "total_s": round(fin - debut, 3),
         "morceaux": morceaux,
+        "jetons_entree": getattr(mesure, "jetons_entree", None),
+        "jetons_sortie": getattr(mesure, "jetons_sortie", None),
+        # Mesure, jamais annoncee sans les deux chiffres qui la composent.
+        "jetons_par_seconde": _arrondi(getattr(mesure, "jetons_par_seconde", None)),
+        "erreur": "",
     }
+
+
+def _arrondi(valeur: Optional[float]) -> Optional[float]:
+    """Arrondit, et garde `None` tel quel. `round(None)` leverait."""
+    return None if valeur is None else round(valeur, 2)
 
 
 async def comparer(repetitions: int = 1) -> Dict[str, Any]:
@@ -141,10 +175,45 @@ def rendre(resultats: Dict[str, Any]) -> str:
     return "\n".join(lignes)
 
 
+def lignes_plates(resultats: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Une ligne par (fournisseur, scene) — la forme exacte que la mission demande.
+
+    Un fournisseur ABSENT produit **une** ligne qui le dit, avec ses champs de
+    mesure a `None`. L'ecarter du tableau ferait disparaitre l'information la
+    plus utile : ce qui n'a pas pu etre mesure, et pourquoi.
+    """
+    plates: List[Dict[str, Any]] = []
+    for nom, resultat in resultats.items():
+        modele = resultat.get("modele", "?")
+        if resultat["etat"] != "MESURE":
+            plates.append({
+                "fournisseur": nom, "modele": modele, "scene": None, "prompt": None,
+                "succes": False, "etat": resultat["etat"],
+                "premier_mot_s": None, "total_s": None, "jetons_par_seconde": None,
+                "erreur": resultat.get("detail", ""),
+            })
+            continue
+        for scene, mesure in resultat["scenes"].items():
+            reussi = mesure["etat"] == "MESURE"
+            plates.append({
+                "fournisseur": nom, "modele": modele, "scene": scene,
+                "prompt": PROMPTS[scene],
+                "succes": reussi, "etat": mesure["etat"],
+                "premier_mot_s": mesure.get("premier_mot_s"),
+                "total_s": mesure.get("total_s"),
+                "jetons_par_seconde": mesure.get("jetons_par_seconde"),
+                "erreur": mesure.get("erreur") or mesure.get("detail", ""),
+            })
+    return plates
+
+
 def main() -> int:
     analyseur = argparse.ArgumentParser(description=__doc__)
     analyseur.add_argument("--repetitions", type=int, default=1,
                            help="passages par scene ; la mediane est retenue")
+    analyseur.add_argument("--json", metavar="FICHIER",
+                           help="ecrit les mesures brutes, une ligne par "
+                                "(fournisseur, scene) — reproductible et comparable")
     options = analyseur.parse_args()
 
     print("=" * 78)
@@ -153,6 +222,17 @@ def main() -> int:
     resultats = asyncio.run(comparer(max(1, options.repetitions)))
     print(rendre(resultats))
     print("=" * 78)
+
+    if options.json:
+        charge = {
+            "mesure_le": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "repetitions": max(1, options.repetitions),
+            "lignes": lignes_plates(resultats),
+        }
+        Path(options.json).parent.mkdir(parents=True, exist_ok=True)
+        Path(options.json).write_text(
+            json.dumps(charge, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"Mesures brutes ecrites dans {options.json}")
     return 0
 
 

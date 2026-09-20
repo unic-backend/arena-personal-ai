@@ -11,8 +11,12 @@ lui ferait lire deux débuts de réponse.
 
 Aucun test n'appelle un service : tous les fournisseurs sont des doubles.
 """
+import asyncio
+import time
+
 import pytest
 
+from core.models import routeur as routeur_modeles
 from core.models.confidentialite import Confidentialite
 from core.models.routeur import LOCAL, RouteurModeles
 from core.models.usage import Appel, CompteurUsage
@@ -749,3 +753,63 @@ async def test_anthropic_impose_mais_absent_retombe_sur_la_machine():
 
     assert "local" in reponse
     assert "n'est pas configure" in r.dernier_choix.raison
+
+
+class TestUneSondeQuiNeRevientJamais:
+    """Un service qui accepte la connexion puis se tait.
+
+    **Mesuré le 20/09/2026** : l'aiguilleur n'avait aucun délai à lui et
+    attendait celui du client HTTP du fournisseur — 60 s par défaut. Pendant ce
+    temps Ollama, qui répond, n'était même pas essayé : la sonde du mort-vivant
+    passe avant lui dans l'ordre de repli.
+
+    Le script de mesure rendait « AUCUNE RÉPONSE après 8,01 s » ; après le
+    plafond, « réponse en 5,01 s : reponse (local) ».
+    """
+
+    @staticmethod
+    def _muet(nom="groq", secondes=30.0):
+        class SondeMuette(FauxFournisseur):
+            async def is_available(self):
+                await asyncio.sleep(secondes)
+                return True
+
+        return SondeMuette(nom)
+
+    async def test_une_sonde_muette_ne_bloque_pas_la_reponse(self, monkeypatch):
+        monkeypatch.setattr(routeur_modeles, "SONDE_DELAI_SECONDES", 0.05)
+        muet = self._muet()
+        r = routeur(groq=muet, deepinfra=FauxFournisseur("deepinfra", disponible=False))
+
+        reponse = await asyncio.wait_for(r.generate("bonjour"), timeout=2.0)
+
+        assert "local" in reponse
+        assert muet.appels == [], "un service qui ne repond pas ne doit rien recevoir"
+
+    async def test_un_service_muet_est_mis_au_frais_comme_un_service_en_panne(
+            self, monkeypatch):
+        """Pour celui qui attend sa phrase, un silence et une panne sont la
+        même chose. Le traiter autrement ferait resonder à chaque phrase."""
+        monkeypatch.setattr(routeur_modeles, "SONDE_DELAI_SECONDES", 0.05)
+        r = routeur(groq=self._muet())
+
+        await asyncio.wait_for(r.generate("bonjour"), timeout=2.0)
+
+        etat = r.etats["groq"]
+        assert etat.disponible is False
+        assert etat.au_repos(time.monotonic()) is True
+
+    async def test_le_plafond_est_au_dessus_de_toute_sonde_legitime(self):
+        """La sonde d'Ollama est un `/api/tags` à 3 s ; celles des services
+        distants n'ouvrent qu'une connexion (3 s). Descendre le plafond sous
+        ces valeurs déclarerait absent un service qui répond."""
+        assert routeur_modeles.SONDE_DELAI_SECONDES > 3.0
+
+    async def test_une_sonde_rapide_n_est_pas_penalisee(self, monkeypatch):
+        monkeypatch.setattr(routeur_modeles, "SONDE_DELAI_SECONDES", 0.05)
+        groq = FauxFournisseur("groq")
+        r = routeur(groq=groq)
+
+        reponse = await r.generate("bonjour")
+
+        assert "groq" in reponse

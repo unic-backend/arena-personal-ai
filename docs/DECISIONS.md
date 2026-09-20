@@ -10003,3 +10003,47 @@ reel si ce modele etait un jour reutilise pour des etapes de l'ordre de la
 milliseconde. Et si la regle des trois preuves se revelait trop stricte, une
 etape dont l'artefact a legitimement ete deplace serait refaite : du temps
 perdu, jamais un mauvais resultat. Le sens de l'erreur a ete choisi.
+
+---
+
+## DEC-0115 — Une sonde qui ne revient pas est une absence, pas une attente
+
+**2026-09-20.**
+
+**Decision** : `core/models/routeur.py` borne toute sonde de sante a
+`SONDE_DELAI_SECONDES` (5 s), quel que soit le fournisseur. Une sonde qui
+depasse ce plafond rend le fournisseur absent et le met au frais, exactement
+comme une sonde qui leve. Et `scripts/comparer_fournisseurs.py` rend desormais
+les champs que la mission reclame nommement — prompt, temps jusqu'au premier
+jeton, latence totale, jetons par seconde, succes/echec, erreur — avec une
+sortie JSON (`--json`) pour que deux mesures soient comparables.
+
+**Pourquoi** : mesure du 20/09/2026, avec un fournisseur qui accepte la
+connexion puis se tait. L'aiguilleur n'avait **aucun delai a lui** : il
+attendait celui du client HTTP du fournisseur, 60 s par defaut. Le script de
+mesure rend « AUCUNE REPONSE apres 8,01 s » avant le correctif, et « reponse en
+5,01 s : reponse (local) » apres. Le detail qui rend ce defaut couteux : pendant
+cette attente, **Ollama n'etait meme pas essaye** — la sonde du mort-vivant
+passe avant lui dans l'ordre de repli, donc un service a moitie mort emportait
+avec lui le seul qui repondait.
+
+Trois choses ont ete ecartees :
+
+- **Borner la GENERATION de la meme facon.** Une generation locale longue est
+  legitime, et le client HTTP compte son delai par lecture : un flux qui rend
+  un jeton toutes les 5 s ne doit pas etre coupe. Seule la SONDE est bornee —
+  elle demande « es-tu la ? », pas « fais le travail ».
+- **Un plafond plus serre.** 5 s est au-dessus de toute sonde legitime du
+  depot : celle d'Ollama est un `/api/tags` a 3 s, celles des services distants
+  n'ouvrent qu'une connexion (3 s). Un test fige ce rapport, pour qu'un
+  reglage plus bas ne declare pas absent un service qui repond.
+- **Deduire un debit des morceaux de flux.** `morceaux / duree` ressemble a des
+  jetons par seconde sans en etre : un morceau de flux n'est pas un jeton. Le
+  debit reste `None` quand le service n'annonce pas ses jetons.
+
+**Ce que ca coute si c'est faux** : un fournisseur reellement lent a repondre a
+une sonde — un service distant en pleine saturation, un Ollama qui demarre —
+sera declare absent et mis au frais deux minutes alors qu'il aurait fini par
+repondre. ARENA repondra quand meme, par le fournisseur suivant ; le cout est
+une reponse servie par un moteur moins bon, pas une absence de reponse. C'est
+le sens d'erreur choisi, et il est l'inverse de celui d'avant.
