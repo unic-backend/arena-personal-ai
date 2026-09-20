@@ -242,25 +242,37 @@ def test_authenticated_endpoint_and_strict_body(settings, monkeypatch):
     asyncio.run(http.aclose())
 
 
-@pytest.mark.parametrize("force_local", [False, True])
-async def test_sdk_local_only_never_uses_cloud(settings, force_local):
-    ai = AIClient(settings.model_copy(update={"openai_key": "fake-test-key",
-        "mode": "CLOUD_PREFERRED" if force_local else "LOCAL_ONLY"}))
+async def test_sdk_local_only_uses_local_embeddings_without_cloud(settings, monkeypatch):
+    ai = AIClient(settings.model_copy(update={"openai_key": "cloud-key", "mode": "LOCAL_ONLY"}))
     used = []
-    def respond(request):
-        used.append(str(request.url))
-        return httpx.Response(200, json={"id": "test", "object": "chat.completion", "created": 0,
-            "model": "local", "choices": [{"index": 0, "finish_reason": "stop",
-                                            "message": {"role": "assistant", "content": "Local"}}]})
+
+    async def local_embeddings(texts, base_url, modele, timeout):
+        used.append(("embed", base_url, modele, list(texts)))
+        return [[1.0, 0.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr("apps.backend.services.ai_client.embeddings_ollama", local_embeddings)
     from openai import AsyncOpenAI
-    ai._clients["local"] = AsyncOpenAI(api_key="ollama", base_url="http://localhost:11434/v1",
-                                      http_client=httpx.AsyncClient(transport=httpx.MockTransport(respond)))
-    result = await ai.complete([{"role": "user", "content": "Bonjour"}], force_local=force_local)
-    if not force_local:
-        with pytest.raises(AIUnavailable):
-            await ai.embed(["Bonjour"])
+
+    def respond(request):
+        used.append(("chat", request.url.host))
+        return httpx.Response(200, json={
+            "id": "test", "object": "chat.completion", "created": 0, "model": "local",
+            "choices": [{"index": 0, "finish_reason": "stop",
+                         "message": {"role": "assistant", "content": "Local"}}],
+        })
+
+    ai._clients["local"] = AsyncOpenAI(
+        api_key="ollama", base_url="http://localhost:11434/v1",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(respond)),
+    )
+    result = await ai.complete([{"role": "user", "content": "Bonjour"}], force_local=True)
+    vectors = await ai.embed(["Bonjour"])
     await ai.close()
-    assert result["content"] == "Local" and len(used) == 1 and "localhost" in used[0]
+
+    assert result["content"] == "Local"
+    assert vectors == [[1.0, 0.0, 0.0]]
+    assert ("embed", settings.local_url, settings.local_embedding_model, ["Bonjour"]) in used
+    assert all("api.openai.com" not in str(item) for item in used)
 
 
 async def test_existing_owner_memory_is_retrieved_but_never_shared(settings):
@@ -347,3 +359,280 @@ async def test_sensitive_exchange_cannot_search_or_persist_decrypted_content(set
     assert not result.memory_saved
     assert result.tools[0].error == "sensitive_context_tool_blocked"
     assert "sensitive_exchange_not_persisted" in result.warnings
+
+
+async def test_local_embedding_failure_keeps_lexical_memory(settings):
+    ai = ScriptedAI(embeddings=False)
+    memory = MemoryEngine(settings, ai)
+    await memory.remember("owner", "one", "Le chantier Medina commence jeudi.", "Compris")
+    await memory.drain()
+    context = await memory.context("owner", "new", "chantier Medina")
+    assert any("Medina" in item["content"] for item in context.memories)
+    assert "semantic_memory_unavailable_using_sqlite" in context.warnings
+
+
+async def test_embedding_model_change_reindexes_without_deleting_sqlite(settings):
+    first_settings = settings.model_copy(update={"local_embedding_model": "modele-a"})
+    first = MemoryEngine(first_settings, ScriptedAI(embeddings=True))
+    await first.remember("owner", "one", "Isolation acoustique en laine de roche.", "Compris")
+    await first.drain()
+
+    with sqlite3.connect(first_settings.db_path) as db:
+        before = db.execute(
+            "SELECT count(*), min(index_space) FROM autonomous_documents"
+        ).fetchone()
+    assert before[0] > 0 and "modele-a" in before[1]
+
+    second_settings = settings.model_copy(update={"local_embedding_model": "modele-b"})
+    second = MemoryEngine(second_settings, ScriptedAI(embeddings=True))
+    # Le nouvel espace doit reprendre les mêmes sources, sans effacer SQLite.
+    await second.drain()
+
+    with sqlite3.connect(second_settings.db_path) as db:
+        rows = db.execute(
+            "SELECT content,indexed,index_space FROM autonomous_documents"
+        ).fetchall()
+    assert rows
+    assert all(row[1] == 1 and "modele-b" in row[2] for row in rows)
+    assert any("laine de roche" in row[0] for row in rows)
+
+
+async def test_interrupted_local_indexing_is_recoverable(settings):
+    class FlakyEmbeddingAI(ScriptedAI):
+        def __init__(self):
+            super().__init__(embeddings=True)
+            self.fail_once = True
+
+        async def embed(self, texts):
+            if self.fail_once:
+                self.fail_once = False
+                raise AIUnavailable("local embeddings temporarily unavailable")
+            return await super().embed(texts)
+
+    ai = FlakyEmbeddingAI()
+    memory = MemoryEngine(settings, ai)
+    await memory.remember("owner", "one", "Montant durable 76543 FCFA.", "Compris")
+    await memory.drain()
+
+    with sqlite3.connect(settings.db_path) as db:
+        source_count = db.execute("SELECT count(*) FROM autonomous_documents").fetchone()[0]
+        indexed = db.execute("SELECT sum(indexed) FROM autonomous_documents").fetchone()[0]
+        db.execute("UPDATE autonomous_documents SET index_after=0")
+
+    assert source_count > 0
+    assert not indexed
+
+    await memory.drain()
+    with sqlite3.connect(settings.db_path) as db:
+        rows = db.execute(
+            "SELECT indexed,index_space,content FROM autonomous_documents"
+        ).fetchall()
+    assert all(row[0] == 1 and row[1] for row in rows)
+    assert any("76543" in row[2] for row in rows)
+
+
+async def test_local_semantic_restart_preserves_owner_isolation(settings):
+    ai = ScriptedAI(embeddings=True)
+    first = MemoryEngine(settings, ai)
+    await first.remember("alice", "one", "Panneaux phoniques livraison vendredi.", "Reçu")
+    await first.remember("bob", "one", "Secret bob 999.", "Reçu")
+    await first.drain()
+
+    restarted = MemoryEngine(settings, ai)
+    alice = await restarted.context("alice", "new", "livraison panneaux")
+    bob = await restarted.context("bob", "new", "livraison panneaux")
+
+    assert any("Panneaux" in item["content"] for item in alice.memories)
+    assert all("Secret bob" not in item["content"] for item in alice.memories)
+    assert all("Panneaux" not in item["content"] for item in bob.memories)
+
+
+class PieceDouble:
+    def __init__(self, identifiant="piece1", nom="devis.pdf", texte="Montant réel 42000 FCFA",
+                 image=False, lisible=True, raison=None):
+        self.identifiant = identifiant
+        self.nom = nom
+        self.texte = texte
+        self.image_base64 = "aW1hZ2U=" if image else ""
+        self.tronque = False
+        self.lisible = lisible
+        self.raison = raison
+        self.statut = "LU" if lisible else "ECHEC"
+
+    @property
+    def est_image(self):
+        return bool(self.image_base64)
+
+
+class DepotDouble:
+    def __init__(self, *pieces):
+        self.pieces = {piece.identifiant: piece for piece in pieces}
+
+    def lire(self, identifiant):
+        return self.pieces.get(identifiant)
+
+
+class VisionDouble:
+    def __init__(self, status="success"):
+        self.status = status
+        self.calls = []
+
+    async def run(self, texte, context=None):
+        self.calls.append((texte, context))
+        return {"status": self.status, "response": "Je vois une cloison BA13."}
+
+
+class VideoDouble:
+    def __init__(self):
+        self.calls = []
+
+    async def run(self, texte, context=None):
+        self.calls.append((texte, context))
+        return {
+            "status": "success",
+            "transcription": "bonjour chantier",
+            "duration": 2.5,
+            "segments": [{"start": 0, "end": 2.5, "text": "bonjour chantier"}],
+            "ai_analysis": "Résumé de la parole.",
+        }
+
+
+class RegistreDocumentDouble:
+    def __init__(self, preuve, url):
+        self.preuve, self.url = preuve, url
+        self.calls = []
+
+    def executer(self, connecteur, capacite, **kwargs):
+        self.calls.append((connecteur, capacite, kwargs))
+        return SimpleNamespace(
+            statut=SimpleNamespace(value="SUCCESS"),
+            detail={"url": self.url},
+            preuve=str(self.preuve),
+            message="document créé",
+        )
+
+
+async def test_multimodal_registry_rejects_attachment_outside_current_request(tmp_path):
+    piece = PieceDouble()
+    async with httpx.AsyncClient() as http:
+        registry = builtin_registry(http, pieces_jointes=DepotDouble(piece))
+        refused = await registry.execute(
+            "read_attachment", '{"attachment_id":"piece1"}',
+            context={"attachments": [], "media_paths": [], "message": "lis"},
+        )
+        allowed = await registry.execute(
+            "read_attachment", '{"attachment_id":"piece1"}',
+            context={"attachments": ["piece1"], "media_paths": [], "message": "lis"},
+        )
+    assert not refused.ok and refused.error == "attachment_not_allowed"
+    assert allowed.ok and "42000 FCFA" in allowed.data["text"]
+
+
+async def test_autonomous_api_can_read_validated_pdf_attachment(settings, monkeypatch):
+    monkeypatch.setattr(security, "USMAN_API_KEY", "test-owner-only")
+    piece = PieceDouble()
+    ai = ScriptedAI([
+        tool_call("read_attachment", '{"attachment_id":"piece1"}', "doc1"),
+        {"content": "Le montant du document est 42000 FCFA."},
+    ])
+    http = httpx.AsyncClient()
+    memory = MemoryEngine(settings, ai)
+    tools = builtin_registry(http, pieces_jointes=DepotDouble(piece))
+    runtime = SimpleNamespace(memory=memory, orchestrator=Orchestrator(settings, ai, memory, tools))
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_runtime] = lambda: runtime
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "Quel est le montant ?", "attachments": ["piece1"]},
+            headers={"Authorization": "Bearer test-owner-only"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["response"] == "Le montant du document est 42000 FCFA."
+    assert payload["tools"] == [{"name": "read_attachment", "ok": True, "error": None}]
+    tool_payload = json.loads(ai.calls[1][0][-1]["content"])
+    assert tool_payload["data"]["name"] == "devis.pdf"
+    assert "42000 FCFA" in tool_payload["data"]["text"]
+    await http.aclose()
+
+
+async def test_image_tool_uses_existing_vision_agent_and_current_attachment():
+    image = PieceDouble(identifiant="img1", nom="chantier.png", texte="", image=True)
+    vision = VisionDouble()
+    async with httpx.AsyncClient() as http:
+        registry = builtin_registry(
+            http, pieces_jointes=DepotDouble(image), vision_agent=vision,
+        )
+        result = await registry.execute(
+            "analyze_image", '{"attachment_id":"img1"}',
+            context={"attachments": ["img1"], "media_paths": [], "message": "regarde ça"},
+        )
+    assert result.ok and "cloison" in result.data["analysis"]
+    assert vision.calls[0][1] == {"attachments": ["img1"]}
+
+
+async def test_video_tool_reports_audio_analysis_not_visual(tmp_path, monkeypatch):
+    media = tmp_path / "chantier.mp4"
+    media.write_bytes(b"video")
+    monkeypatch.setattr(
+        "apps.backend.services.tools.builtin.validate_media_path", lambda value: media
+    )
+    video = VideoDouble()
+    async with httpx.AsyncClient() as http:
+        registry = builtin_registry(http, video_agent=video)
+        result = await registry.execute(
+            "analyze_video_audio", json.dumps({"media_path": str(media)}),
+            context={"attachments": [], "media_paths": [str(media)], "message": "analyse"},
+        )
+    assert result.ok
+    assert result.data["visual_frame_analysis"] is False
+    assert result.data["analysis_kind"] == "audio_transcription_and_text_analysis"
+    assert result.data["transcription"] == "bonjour chantier"
+
+
+async def test_generated_artifact_is_returned_only_when_real_and_downloadable(
+        settings, tmp_path, monkeypatch):
+    import apps.backend.services.tools.builtin as builtin
+
+    monkeypatch.setattr(builtin, "RENDERED_DIR", tmp_path)
+    artifact = tmp_path / "rapport.pdf"
+    artifact.write_bytes(b"%PDF-1.4\nreal-test")
+    registre = RegistreDocumentDouble(artifact, "/media/rendered/rapport.pdf")
+    ai = ScriptedAI([
+        tool_call(
+            "create_document",
+            '{"text":"Rapport réel","format":"pdf","title":"rapport"}',
+            "file1",
+        ),
+        {"content": "Le PDF est prêt."},
+    ])
+    async with httpx.AsyncClient() as http:
+        tools = builtin_registry(http, registre=registre)
+        memory = MemoryEngine(settings, ai)
+        result = await Orchestrator(settings, ai, memory, tools).run(
+            CurrentUser(id="owner"), ChatInput(message="Crée le rapport en PDF")
+        )
+
+    assert result.artifacts
+    assert result.artifacts[0].url == "/media/rendered/rapport.pdf"
+    assert result.artifacts[0].size_bytes == artifact.stat().st_size
+
+
+async def test_generated_artifact_missing_is_never_advertised(tmp_path, monkeypatch):
+    import apps.backend.services.tools.builtin as builtin
+
+    monkeypatch.setattr(builtin, "RENDERED_DIR", tmp_path)
+    missing = tmp_path / "absent.pdf"
+    registre = RegistreDocumentDouble(missing, "/media/rendered/absent.pdf")
+    async with httpx.AsyncClient() as http:
+        registry = builtin_registry(http, registre=registre)
+        result = await registry.execute(
+            "create_document",
+            '{"text":"x","format":"pdf","title":"absent"}',
+            context={"attachments": [], "media_paths": [], "message": "crée"},
+        )
+    assert not result.ok and result.error == "artifact_missing"
