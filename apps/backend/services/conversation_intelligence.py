@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable, Literal
 
 TopicTransition = Literal["CONTINUATION", "TOPIC_SHIFT", "TOPIC_RETURN", "AMBIGUOUS"]
+QuestionScope = Literal["CURRENT_CONVERSATION", "PERSONAL_CONTEXT", "GENERAL_KNOWLEDGE", "UNKNOWN"]
 
 STOPWORDS = {
     "alors", "avec", "avoir", "cette", "comme", "dans", "des", "donc", "elle", "elles",
@@ -66,6 +67,29 @@ DECISION_QUERY = re.compile(
     r"selected|chosen|decided)\b",
     re.IGNORECASE,
 )
+PERSONAL_MARKER = re.compile(
+    r"\b(?:mon|ma|mes|notre|nos|moi|je|j['’]ai|j['’]avais|me|my|mine|i paid|i bought|"
+    r"ai-je|avais-je|est-ce que j['’])\b",
+    re.IGNORECASE,
+)
+GENERAL_MARKER = re.compile(
+    r"\b(?:normalement|en général|en general|typiquement|caractéristiques|caracteristiques|"
+    r"spécifications|specifications|specs|normally|typically|in general)\b",
+    re.IGNORECASE,
+)
+
+
+def classify_question_scope(message: str, *, has_reference: bool = False) -> QuestionScope:
+    value = (message or "").strip()
+    if not value:
+        return "UNKNOWN"
+    if GENERAL_MARKER.search(value):
+        return "GENERAL_KNOWLEDGE"
+    if has_reference or RETURN.search(value):
+        return "CURRENT_CONVERSATION"
+    if PERSONAL_MARKER.search(value):
+        return "PERSONAL_CONTEXT"
+    return "GENERAL_KNOWLEDGE"
 
 
 def classify_user_evidence(text: str) -> dict[str, Any]:
@@ -119,6 +143,7 @@ class ConversationState:
     transition: TopicTransition = "AMBIGUOUS"
     references: dict[str, str] = field(default_factory=dict)
     confidence: float = 0.0
+    question_scope: QuestionScope = "UNKNOWN"
 
     def as_debug(self) -> dict[str, Any]:
         return {
@@ -128,6 +153,7 @@ class ConversationState:
             "transition": self.transition,
             "references": self.references,
             "confidence": round(self.confidence, 3),
+            "question_scope": self.question_scope,
         }
 
 
@@ -190,6 +216,7 @@ def understand(
     previous_topics = [" ".join(sorted(tokens(text))[:8]) for text in user_history if tokens(text)]
     has_reference = bool(REFERENCE.search(message or ""))
     explicit_return = bool(RETURN.search(message or ""))
+    question_scope = classify_question_scope(message, has_reference=has_reference)
 
     # A retour explicite doit pointer vers un ancien message qui partage
     # réellement le sujet demandé. Sinon on garde le message courant comme
@@ -245,6 +272,7 @@ def understand(
         transition,
         references,
         confidence,
+        question_scope,
     )
 
 
@@ -322,12 +350,18 @@ def accept_memory(features: dict[str, Any], threshold: float) -> bool:
 
 
 def needs_long_term(message: str, history: list[dict[str, str]], state: ConversationState) -> bool:
-    """Évite une recherche globale quand le fil récent suffit vraisemblablement."""
+    """Route la mémoire longue seulement quand elle peut apporter une preuve utile."""
+    if state.question_scope == "GENERAL_KNOWLEDGE" and state.transition != "TOPIC_RETURN":
+        return False
     if not history:
-        return True
+        return state.question_scope in {"PERSONAL_CONTEXT", "CURRENT_CONVERSATION", "UNKNOWN"}
     if REFERENCE.search(message or ""):
-        # Les références se résolvent d'abord dans les derniers tours.
-        recent_text = " ".join(str(x.get("content", "")) for x in history[-6:])
+        # Les références se résolvent d'abord dans le fil courant.
+        recent_text = " ".join(str(x.get("content", "")) for x in history[-8:])
         if state.active_entities and any(e.casefold() in recent_text.casefold() for e in state.active_entities):
             return False
-    return state.transition in {"TOPIC_RETURN", "AMBIGUOUS"} or len(tokens(message)) >= 4
+    return (
+        state.transition in {"TOPIC_RETURN", "AMBIGUOUS"}
+        or state.question_scope == "PERSONAL_CONTEXT"
+        or len(tokens(message)) >= 4
+    )
