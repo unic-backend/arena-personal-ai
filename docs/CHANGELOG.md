@@ -2,6 +2,39 @@
 
 ## [Non publié]
 
+### Ajouté — 20/09/2026 — Un travail de fond ne disparaît plus à un redémarrage
+
+C'était le dernier endroit du dépôt où un travail long s'évaporait :
+`core/execution/travaux.py` était deux dictionnaires en mémoire. Un lot de
+conversion à moitié fait, un suivi de génération en cours, disparaissaient sans
+trace au redémarrage d'ARENA.
+
+La file écrit désormais son état (`data/travaux/file.json`, écriture atomique
+après chaque changement). Un sixième état, `INTERROMPU`, est posé au
+**rechargement** sur tout travail laissé en attente ou en cours : jamais
+`TERMINE`, jamais effacé, et jamais purgé.
+
+**Une clé d'exécution** empêche de refaire deux fois le même travail : un lot
+déjà converti n'est pas reconverti, un suivi déjà abouti n'est pas relancé. Une
+clé qui a échoué, elle, ne bloque rien — figer une panne passagère en refus
+permanent serait pire.
+
+**Ce qui ne peut pas reprendre le dit.** Le corps d'un travail est une closure
+Python : elle ne se sérialise pas. Un travail peut déclarer un *descripteur* —
+des données, jamais du code — et `reprendre_les_interrompus()` reconstruit
+l'appel au démarrage. Un seul type le fait réellement : le suivi d'une
+génération vidéo, parce que son état vit chez WanGP et non dans ARENA.
+
+Une conversion en lot ne déclare **volontairement** aucun descripteur : elle a
+déjà écrit des fichiers, et la relancer toute seule rejouerait des écritures
+dont personne n'a vérifié l'effet. Elle reste visible sur `/api/travaux`.
+
+Deux routes : `GET /api/travaux` (ce qui tourne, ce qui a abouti, ce qui a été
+coupé, ce qui sait se reprendre) et `POST /api/travaux/{id}/annuler`.
+
+Trois journaux durables du dépôt (reprise de tâches, projets, travaux)
+partagent maintenant `core/execution/journal_disque.py` au lieu de trois
+copies de la même écriture atomique. Voir DEC-0114.
 ### Corrigé — 20/09/2026 — Un service à moitié mort bloquait toute réponse
 
 **Mesuré** : un fournisseur qui accepte la connexion puis se tait faisait
