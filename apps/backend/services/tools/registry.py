@@ -19,8 +19,9 @@ class Tool:
     name: str
     description: str
     arguments: type[BaseModel]
-    execute: Callable[[Any], Awaitable[ToolResult]]
+    execute: Callable[..., Awaitable[ToolResult]]
     timeout: float = 10
+    contextual: bool = False
 
 
 class ToolRegistry:
@@ -38,7 +39,7 @@ class ToolRegistry:
             "strict": True, "parameters": tool.arguments.model_json_schema(),
         }} for tool in self._tools.values()]
 
-    async def execute(self, name: str, arguments: str) -> ToolResult:
+    async def execute(self, name: str, arguments: str, context: dict[str, Any] | None = None) -> ToolResult:
         tool = self._tools.get(name)
         if tool is None:
             return ToolResult(ok=False, error="unknown_tool")
@@ -50,7 +51,9 @@ class ToolRegistry:
             return ToolResult(ok=False, error="invalid_arguments")
         try:
             async with asyncio.timeout(tool.timeout):
-                return ToolResult.model_validate(await tool.execute(validated))
+                resultat = (await tool.execute(validated, context or {})
+                            if tool.contextual else await tool.execute(validated))
+                return ToolResult.model_validate(resultat)
         except TimeoutError:
             return ToolResult(ok=False, error="tool_timeout")
         except Exception:

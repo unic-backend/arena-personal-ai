@@ -15,6 +15,7 @@ class AutonomousSettings(BaseModel):
     openai_key: str = Field(default="", repr=False)
     model: str = "gpt-4.1-mini"
     embedding_model: str = "text-embedding-3-small"
+    local_embedding_model: str = "bge-m3"
     local_url: str = OLLAMA_URL
     local_model: str = MODELE_CONVERSATION
     mode: str = MODE_IA
@@ -31,6 +32,7 @@ class AutonomousSettings(BaseModel):
             chroma_path=Path(os.getenv("USMAN_CHROMA_PATH", str(BASE_DIR / "chroma_db"))),
             openai_key=os.getenv("OPENAI_API_KEY", ""),
             model=os.getenv("USMAN_AUTONOMOUS_MODEL", "gpt-4.1-mini"),
+            local_embedding_model=os.getenv("EMBEDDINGS_LOCAL_MODEL", "bge-m3"),
             tavily_key=os.getenv("TAVILY_API_KEY", ""),
             timeout=float(os.getenv("USMAN_AUTONOMOUS_TIMEOUT", "30")),
             context_chars=int(os.getenv("USMAN_AUTONOMOUS_CONTEXT_CHARS", "24000")),
