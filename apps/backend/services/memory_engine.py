@@ -70,6 +70,7 @@ class MemoryEngine:
         self._collection: Any = None
         self._chroma_lock = threading.Lock()
         self._index_space = self._embedding_space()
+        self._semantic_available = True
 
     def _embedding_space(self) -> str:
         identite = getattr(self.ai, "embedding_space", None)
@@ -236,6 +237,8 @@ class MemoryEngine:
             history=history, conversation_state=state.as_debug(),
             profile=str(memory.get_fact("owner") or "") if user_id == "owner" else "",
         )
+        if not self._semantic_available:
+            result.warnings.append("semantic_memory_unavailable_using_sqlite")
         if not needs_long_term(query, history, state):
             result.memories = self._working_candidates(history, query)
             if self.settings.memory_debug:
@@ -253,6 +256,7 @@ class MemoryEngine:
             async with asyncio.timeout(min(5, self.settings.timeout)):
                 vectors = await self.ai.embed([query])
                 semantic = await asyncio.to_thread(self._query_vectors, user_id, vectors[0])
+            self._semantic_available = True
             for row in semantic:
                 previous = by_id.get(row["id"])
                 if previous:
@@ -260,7 +264,9 @@ class MemoryEngine:
                 else:
                     by_id[row["id"]] = row
         except Exception:
-            result.warnings.append("semantic_memory_unavailable_using_sqlite")
+            self._semantic_available = False
+            if "semantic_memory_unavailable_using_sqlite" not in result.warnings:
+                result.warnings.append("semantic_memory_unavailable_using_sqlite")
 
         memories, debug = self._rerank(query, conversation_id, state, list(by_id.values()))
         result.memories = memories
@@ -404,7 +410,9 @@ class MemoryEngine:
                     try:
                         vectors = await self.ai.embed([row["content"] for row in rows])
                         await asyncio.to_thread(self._index, rows, vectors)
+                        self._semantic_available = True
                     except Exception:
+                        self._semantic_available = False
                         logger.warning("Indexation semantique differee; SQLite reste autoritaire.")
             except Exception:
                 logger.warning("Worker memoire indisponible; reprise au prochain passage.")
