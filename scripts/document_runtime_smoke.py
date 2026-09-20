@@ -9,9 +9,9 @@ import pwd
 import tempfile
 from pathlib import Path
 
+from docx import Document as DocxDocument
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw, ImageFont
-from docx import Document as DocxDocument
 from pypdf import PdfReader
 
 from apps.backend.config import RENDERED_DIR
