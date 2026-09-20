@@ -87,7 +87,12 @@ def _besoin_du_fil(message: str) -> bool:
     return bool(REFERENCE_AU_FIL.search(texte)) or len(texte.split()) <= 4
 
 
-def _besoin_relecture(message: str, traces: list[ToolTrace], memories: list[dict[str, Any]]) -> bool:
+def _besoin_relecture(
+    message: str,
+    traces: list[ToolTrace],
+    memories: list[dict[str, Any]] | None = None,
+) -> bool:
+    memories = memories or []
     return bool(DEMANDE_COMPLEXE.search(message or "")) or any(not t.ok for t in traces) or len(memories) >= 3
 
 
@@ -127,6 +132,8 @@ class Orchestrator:
         memory_chars = 0
         memory_limit = min(5000, max(2000, self.settings.context_chars // 6))
         for item in context.memories:
+            if item.get("source") == "working_context":
+                continue  # déjà présent dans le fil récent, ne pas le dupliquer
             public_item = {k: v for k, v in item.items() if k not in {"id"}}
             cost = len(json.dumps(public_item, ensure_ascii=False))
             if memory_chars + cost > memory_limit:
