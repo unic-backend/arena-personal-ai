@@ -68,6 +68,13 @@ SURFACE_ATTENDUE = {
     "/api/plans": (["GET"], ["verify_api_key", "limiter_debit"]),
     "/api/models/statistics": (["GET"], ["verify_api_key", "limiter_debit"]),
     "/api/observability": (["GET"], ["verify_api_key", "limiter_debit"]),
+    # Les travaux de fond, et ce que le dernier arret a laisse en plan
+    # (20/09/2026). Avant cette route, la file etait purement en memoire :
+    # un redemarrage effacait tout, et personne ne pouvait voir ce qui
+    # manquait.
+    "/api/travaux": (["GET"], ["verify_api_key", "limiter_debit"]),
+    "/api/travaux/{identifiant}/annuler": (
+        ["POST"], ["verify_api_key", "limiter_debit"]),
     # Le fil d'une demande, des outils AUX modeles (20/09/2026). Avant elle,
     # « quels outils ont tourne pour cette phrase ? » avait une reponse et
     # « quel modele y a repondu ? » n'en avait aucune.

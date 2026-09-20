@@ -1,7 +1,7 @@
 # ARENA — état opérationnel
 
-*Mesuré le 19/09/2026 sur `main` à `a7af403`, plus la branche
-`claude/chemin-execution-bout-en-bout`. Chaque chiffre de ce fichier vient
+*Mesuré le 20/09/2026 sur `main` à `f73e38f`, plus la branche
+`claude/travaux-de-fond-durables`. Chaque chiffre de ce fichier vient
 d'une commande, jamais d'une lecture de code.*
 
 **Ce fichier n'est pas un journal de décisions** — celui-là est
@@ -29,7 +29,7 @@ persistance → réponse` fonctionne et est couvert par des tests bout-en-bout.
 | Élément | Mesure |
 |---|---|
 | Routers montés | **17 sur 17** (`apps/backend/main.py`) |
-| Routes exposées | **64** (schéma OpenAPI, pas une liste écrite à la main) |
+| Routes exposées | **66** (schéma OpenAPI, pas une liste écrite à la main) |
 | Classes d'agents | **25 définies, 25 instanciées** dans `runtime.py` |
 | Intentions aiguillées vers un agent | **26** (`dispatch_request`) |
 | Connecteurs | **45**, tous derrière le registre (donc derrière les permissions) |
@@ -39,7 +39,29 @@ persistance → réponse` fonctionne et est couvert par des tests bout-en-bout.
 `VIDEO_PROJET` du chat appellent le **même** `VideoProductionAgent`, qui
 délègue au **même** `core/execution/coordination.py`.
 
-### État durable et reprise (nouveau, 19/09/2026)
+### Travaux de fond durables (nouveau, 20/09/2026)
+
+`core/execution/travaux.py` écrit son état (`data/travaux/file.json`, écriture
+atomique après chaque changement). Un sixième état, `INTERROMPU`, est posé au
+**rechargement** sur tout travail laissé en attente ou en cours : jamais
+`TERMINE`, jamais effacé, jamais purgé.
+
+| Mécanisme | Ce qu'il garantit |
+|---|---|
+| Clé d'exécution | un lot déjà converti n'est pas reconverti ; une clé échouée ne bloque rien |
+| Descripteur (données, jamais du code) | permet de reconstruire l'appel au démarrage |
+| `GET /api/travaux` | ce qui tourne, a abouti, a été coupé, sait se reprendre |
+
+**Un seul type se reprend réellement** : le suivi d'une génération vidéo, dont
+l'état vit chez WanGP et non dans ARENA. Une conversion en lot ne déclare
+**volontairement** aucun descripteur — interrompue, elle a déjà écrit des
+fichiers, et la relancer seule rejouerait des écritures non vérifiées.
+
+**Le résultat d'un travail n'est jamais écrit sur le disque** : il porte
+souvent le contenu du propriétaire. Le journal dit ce qui a tourné, pas ce que
+ça a produit.
+
+### État durable et reprise des projets (19/09/2026)
 
 `core/production/journal_projet.py`. Un projet de production porte désormais
 `job_id`, `project_id`, et par étape : `status`, `created_at`, `updated_at`,
@@ -111,18 +133,13 @@ dans l'historique public. Aucun test ne peut le vérifier depuis le dépôt.
 
 ## Dette technique critique
 
-1. **`core/execution/travaux.py` est en mémoire pure.** La file de travaux de
-   fond (indexation, suivi de génération) perd tout à un redémarrage. Le
-   journal livré aujourd'hui couvre les projets de production, **pas** cette
-   file. C'est le même manque, au même endroit, pour une autre famille de
-   travaux.
-2. **`AI_DAILY_BUDGET` est `NON_VERIFIABLE`.** Aucun tarif n'est saisi dans
+1. **`AI_DAILY_BUDGET` est `NON_VERIFIABLE`.** Aucun tarif n'est saisi dans
    `TARIFS` (`core/models/usage.py`), et en saisir un seul ferait passer TOUS
    les fournisseurs pour « mesurés ». Le plafond qui tient est
    `AI_MAX_CLOUD_REQUESTS_PER_DAY`. Le chiffrage par fournisseur reste à faire.
-3. **La sonde `faceplugin` coûte ~3 s par réponse.** Un cache court la
+2. **La sonde `faceplugin` coûte ~3 s par réponse.** Un cache court la
    supprimerait, au prix d'afficher un état qui n'est plus « maintenant ».
-4. **Le tag `v0.1.0` n'a jamais été poussé** : son test est rouge en CI et sur
+3. **Le tag `v0.1.0` n'a jamais été poussé** : son test est rouge en CI et sur
    `main` à l'identique. Ce n'est pas une régression, et ce n'est pas à
    « réparer » sans décision.
 
@@ -135,6 +152,7 @@ pendant ce travail ont été corrigés et sont figés par un test :
 
 | Défaut | Correction |
 |---|---|
+| Un garde `if not reprenable` dans la boucle de reprise ne pouvait pas mordre : un sabotage l'a montré | branche morte retirée ; le seul garde réel est la table de fabriques |
 | Une étape `PENDING` au redémarrage était annoncée « à vérifier » — ce qui noyait l'avertissement réel | seules les étapes `RUNNING` le sont |
 | Un job `FAILED` n'était pas reprenable — or c'est le cas le plus utile (il répare la cause et continue) | `FAILED` rejoint `PAUSED` comme reprenable |
 | « Aucun artefact » et « artefact annoncé introuvable » étaient confondus : une étape qui n'avait rien livré se sautait à la reprise | champ `artefact_attendu`, les deux cas sont séparés |
@@ -143,7 +161,8 @@ pendant ce travail ont été corrigés et sont figés par un test :
 
 ## Prochain jalon opérationnel
 
-**Porter le même état durable sur `core/execution/travaux.py`.** C'est le
-dernier endroit où un travail long disparaît à un redémarrage. Le modèle est
-écrit, testé et en service ; il reste à le brancher sur la file de fond, comme
-il vient de l'être sur la production vidéo.
+**Mesurer les fournisseurs pour de vrai** (P4 du cahier des charges). Aucun n'a
+jamais été mesuré depuis un environnement où ils répondent :
+`scripts/comparer_fournisseurs.py` existe et rapporte `ABSENT` pour chacun.
+Tant qu'il n'a pas tourné avec des clés, aucun chiffre de vitesse ou de coût ne
+peut être annoncé — et ce document n'en annoncera aucun.

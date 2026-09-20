@@ -10006,6 +10006,60 @@ perdu, jamais un mauvais resultat. Le sens de l'erreur a ete choisi.
 
 ---
 
+## DEC-0114 — Un travail de fond ne disparait plus, et ce qui ne peut pas reprendre le dit
+
+**2026-09-20.**
+
+**Decision** : `core/execution/travaux.py` persiste son etat
+(`data/travaux/file.json`, ecriture atomique apres chaque changement). Un
+sixieme etat, `INTERROMPU` (`PAUSED`), est pose au RECHARGEMENT sur tout
+travail laisse `EN_ATTENTE` ou `EN_COURS`. `soumettre()` accepte une **cle
+d'execution** (un travail deja `TERMINE` sous la meme cle n'est pas relance) et
+un **descripteur** — des donnees, jamais du code — qui permet a
+`reprendre_les_interrompus(fabriques)` de reconstruire l'appel au demarrage.
+Trois journaux durables du depot convergent sur
+`core/execution/journal_disque.py`.
+
+**Pourquoi** : cette file etait deux dictionnaires en memoire. Un lot de
+conversion a moitie fait, un suivi de generation en cours, disparaissaient sans
+laisser de trace au redemarrage d'ARENA. C'etait le dernier endroit du depot ou
+un travail long s'evaporait — DEC-0113 avait couvert les projets de production,
+pas cette file.
+
+**Ce qui a ete refuse, et c'est le coeur de cette decision.** Il aurait ete
+facile de rendre tous les travaux « reprenables » et de l'annoncer. **Le corps
+d'un travail est une closure Python : il ne se serialise pas.** Un seul type se
+reprend donc reellement ici — le suivi d'une generation video — parce que son
+etat ne vit pas dans ARENA mais chez WanGP : reprendre, c'est redemander « ou en
+est la tache job_id ? », et aucune ecriture n'est rejouee.
+
+Une conversion en lot, elle, **ne declare aucun descripteur**, deliberement :
+interrompue, elle a deja ecrit des fichiers sur le disque. La relancer toute
+seule au demarrage rejouerait des ecritures dont personne n'a verifie l'effet.
+Elle reste `INTERROMPUE`, visible sur `/api/travaux`, et c'est au proprietaire
+de la redemander.
+
+Deux autres choses ont ete ecartees :
+
+- **Ecrire le resultat d'un travail dans le journal.** Il porte souvent le
+  contenu du proprietaire — chemins de ses fichiers, extraits de ses documents.
+  Ce journal sert a savoir CE QUI a tourne, pas a archiver ce que ca a produit.
+  Apres un redemarrage, `resultat` vaut `None`, et l'etat reste exact.
+- **Un garde `if not reprenable` dans la boucle de reprise.** Un sabotage a
+  montre qu'il ne pouvait pas mordre : un travail sans descripteur porte un
+  type vide, et la table de fabriques n'a pas d'entree pour lui — il est donc
+  deja ecarte par le meme chemin qu'un type inconnu. Une deuxieme garde sur la
+  meme porte est une branche morte, pas une garantie.
+
+**Ce que ca coute si c'est faux** : la file ecrit un petit fichier JSON complet
+a chaque changement d'etat. Avec les deux ou trois travaux simultanes que porte
+une seule carte graphique, c'est negligeable ; une file qui porterait des
+centaines de travaux courts paierait cette ecriture a chaque fois, et il
+faudrait alors n'ecrire que le delta. Et si la cle d'execution se revelait trop
+large — deux demandes reellement differentes qui la partagent — la seconde
+recevrait le resultat de la premiere au lieu de tourner. Les deux cles du depot
+sont construites sur ce qui identifie vraiment la demande (la tache WanGP ;
+les fichiers tries plus le format cible), et un test fige chacune.
 ## DEC-0116 — Le fil d'une demande relie les outils ET les modeles
 
 **2026-09-20.**

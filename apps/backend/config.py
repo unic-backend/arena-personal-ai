@@ -63,6 +63,10 @@ DB_PATH = Path(os.getenv("USMAN_DB_PATH") or BASE_DIR / "data" / "database" / "m
 # journal qui survit au redemarrage mais pas au redeploiement ne sert a rien.
 JOURNAL_PROJETS_PATH = Path(
     os.getenv("USMAN_JOURNAL_PROJETS") or BASE_DIR / "data" / "projets" / "journal.json")
+# L'etat durable de la file de travaux de fond (core/execution/travaux.py).
+# Meme dossier `data/` que le reste : un volume monte la porte tout.
+JOURNAL_TRAVAUX_PATH = Path(
+    os.getenv("USMAN_JOURNAL_TRAVAUX") or BASE_DIR / "data" / "travaux" / "file.json")
 
 # --- Environnement -------------------------------------------------------------
 # `APP_ENV` existait deja dans `.env.example`, sans qu'aucun code ne le lise.
