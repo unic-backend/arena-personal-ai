@@ -2,6 +2,71 @@
 
 ## [Non publié]
 
+### Corrigé — 20/09/2026 — Le correctif ne reste pas au devis : il vaut pour tous les agents
+
+Premier correctif du jour : une réponse à une question du DEVIS ne partait plus
+en recherche web. Le propriétaire a refusé ce périmètre, et il avait raison :
+
+> « si tu le règles seulement ici, sur d'autres sujets il peut répéter cette
+> hallucination — tu dois régler le fond du problème, pas ce problème que tu as
+> vu seulement »
+
+Mesuré : **au moins quatre chemins** réclament une information et repartaient
+ensuite au classeur d'intention.
+
+| Chemin | Ce qu'il réclame |
+|---|---|
+| `agents/plaquiste` | client, lieu, objet d'un devis ; étapes d'un planning |
+| `agents/email` | destinataire, sujet d'un message |
+| `agents/video_analyzer` | sujet, description d'une vidéo |
+| `core/production/personnage_video` | ce qui manque à un personnage |
+
+`core/executive/question_en_attente.py` retient, par session, **l'intention qui
+a posé la question**. Le tour suivant y retourne, sans modèle et sans un jeton
+dépensé — quel que soit l'agent. Vérifié sur le courrier : le même mot
+« Medina », après une question du courrier, revient au courrier.
+
+Une question retenue expire au bout de 30 minutes, se libère dès qu'il change
+manifestement de sujet, et s'efface dès qu'un tour n'en pose plus. La mémoire
+est bornée à 500 sessions. Le contrôle propre au devis reste, en repli : il ne
+dépend d'aucun état serveur et rattrape un redémarrage entre deux tours.
+
+### Corrigé — 20/09/2026 — Répondre à une question d'ARENA n'est plus une nouvelle demande
+
+Le propriétaire demande un devis, ARENA demande le lieu du chantier, il répond
+« Medina » — et reçoit **trois paragraphes sur la ville sainte d'Arabie
+saoudite**, sources Wikipedia comprises.
+
+La cause n'était pas la compréhension du modèle. `analyze_intent()` ne lit
+**que le message courant** : « Medina » seul ne ressemble à rien d'autre qu'à
+une question de culture générale, et la recherche web partait avant que le
+moindre code métier ne voie la phrase. La capture du destinataire d'un devis
+existait depuis le 31/08/2026 et fonctionnait — elle n'était jamais atteinte.
+
+Une question posée par ARENA garde désormais la main sur le classeur, sans
+modèle et sans un jeton dépensé. Un changement de sujet manifeste passe devant :
+une salutation, une demande de courrier ou de finance ne se fait pas avaler par
+un devis en cours.
+
+**Le second défaut, caché derrière le premier.** Une fois le chemin atteint, la
+même réponse remplissait **les trois champs** : le devis serait parti au nom de
+« Medina », chantier « Medina », objet « Medina ». Désormais :
+
+| Demandé | Répondu | Capté |
+|---|---|---|
+| un champ | « Medina » | lieu = Medina |
+| deux champs | « Fann Hock, 18 parois de 5,40 x 2,50 m » | lieu et objet, chacun le sien |
+| trois champs | « Medina » | **rien** — on ne sait pas lequel il vise |
+
+Le découpage se fait sur une virgule **suivie d'une espace** : « 5,40 m » reste
+une seule valeur.
+
+Et quand plusieurs champs manquent, ARENA dit maintenant comment répondre en
+une ligne — `client : ..., lieu : ..., objet : ...` — une forme qui se lit sur
+la phrase du propriétaire, donc qui marche quelle que soit la façon dont le
+modèle a tourné sa question. Les étiquettes nues (`client :`, `lieu :`,
+`objet :`) sont reconnues, et la virgule ne reste plus collée au nom capté.
+
 ### Corrigé — 20/09/2026 — Le numéro d'un document porte enfin le nom du client
 
 Mesuré sur un devis réel : `UC-2026-0920-XXX`, sur un document qui nommait
