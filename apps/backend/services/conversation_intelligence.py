@@ -18,7 +18,7 @@ STOPWORDS = {
     "alors", "avec", "avoir", "cette", "comme", "dans", "des", "donc", "elle", "elles",
     "encore", "est", "ils", "mais", "mes", "mon", "nous", "pour", "que", "quel", "quelle",
     "qui", "quoi", "son", "sur", "tes", "ton", "tous", "tout", "une", "vous", "the", "and",
-    "this", "that", "what", "why", "from", "avec", "pas", "plus", "moi", "toi", "lui",
+    "this", "that", "what", "why", "from", "pas", "plus", "moi", "toi", "lui",
 }
 REFERENCE = re.compile(
     r"\b(?:il|elle|ils|elles|ça|ca|ceci|cela|celui|celle|ceux|celles|this|that|it|he|she|they|"
