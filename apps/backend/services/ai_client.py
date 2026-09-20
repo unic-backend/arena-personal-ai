@@ -2,9 +2,11 @@
 import asyncio
 import json
 import logging
+import math
 from typing import Any
 
 from apps.backend.services.settings import AutonomousSettings
+from core.memory.semantique import embeddings_ollama
 from core.models.confidentialite import classer, cloud_autorise
 from core.models.usage import Appel, CompteurUsage
 
@@ -108,19 +110,49 @@ class AIClient:
                     await asyncio.to_thread(self._record, self.settings.model, succeeded, response)
         raise AIUnavailable("Aucun modele disponible pour terminer cette demande.")
 
+    def embedding_space(self) -> str:
+        """Identité stable de l espace vectoriel utilisé par la mémoire.
+
+        La mémoire autonome utilise volontairement le fournisseur local existant
+        (Ollama + bge-m3 par défaut), même lorsque le chat peut utiliser le
+        cloud. Ainsi un même index ne mélange jamais des vecteurs OpenAI et
+        Ollama, et LOCAL_ONLY n effectue aucun appel cloud.
+        """
+        return (
+            f"ollama|{self.settings.local_embedding_model}|"
+            f"{self.settings.local_url.rstrip('/')}"
+        )
+
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        if not texts or not all(self.cloud_allowed(text) for text in texts):
-            raise AIUnavailable("Embeddings cloud indisponibles ou interdits par la politique locale.")
-        if not await self._reserve():
-            raise AIUnavailable("Quota cloud atteint.")
-        response = None
+        """Embeddings locaux, ou échec explicite pour le repli lexical.
+
+        core.memory.semantique.embeddings_ollama est déjà le fournisseur
+        canonique de la mémoire ARENA. Aucun fallback cloud n est fait ici :
+        changer de fournisseur en silence mélangerait des espaces vectoriels.
+        """
+        if not texts or not all(isinstance(text, str) and text.strip() for text in texts):
+            raise AIUnavailable("Aucun texte valide à vectoriser.")
         try:
-            async with asyncio.timeout(self.settings.timeout):
-                response = await self._client("cloud").embeddings.create(
-                    model=self.settings.embedding_model, input=texts)
-            return [item.embedding for item in sorted(response.data, key=lambda item: item.index)]
-        finally:
-            await asyncio.to_thread(self._record, self.settings.embedding_model, response is not None, response)
+            vectors = await embeddings_ollama(
+                texts,
+                base_url=self.settings.local_url,
+                modele=self.settings.local_embedding_model,
+                timeout=self.settings.timeout,
+            )
+        except Exception as erreur:
+            raise AIUnavailable("Embeddings locaux indisponibles.") from erreur
+        if len(vectors) != len(texts) or not vectors:
+            raise AIUnavailable("Embeddings locaux indisponibles ou incomplets.")
+        dimension = len(vectors[0])
+        if dimension < 2:
+            raise AIUnavailable("Vecteurs locaux invalides.")
+        if any(
+            len(vector) != dimension
+            or any(not math.isfinite(float(value)) for value in vector)
+            for vector in vectors
+        ):
+            raise AIUnavailable("Vecteurs locaux incompatibles ou invalides.")
+        return [[float(value) for value in vector] for vector in vectors]
 
     async def close(self) -> None:
         for client in self._clients.values():
