@@ -14,8 +14,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from apps.backend.services.ai_client import AIClient
 from apps.backend.services.conversation_intelligence import (
-    ConversationState, accept_memory, classify_user_evidence, needs_long_term,
-    overlap, score_memory, tokens, understand,
+    ConversationState,
+    accept_memory,
+    classify_user_evidence,
+    needs_long_term,
+    overlap,
+    score_memory,
+    tokens,
+    understand,
 )
 from apps.backend.services.settings import AutonomousSettings
 from core.memory.memory_manager import MemoryManager
