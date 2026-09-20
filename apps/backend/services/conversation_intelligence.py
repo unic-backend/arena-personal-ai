@@ -38,8 +38,8 @@ RETURN = re.compile(
 
 def tokens(text: str) -> set[str]:
     return {
-        word for word in re.findall(r"[\wÀ-ÿ-]{3,}", (text or "").casefold())
-        if word not in STOPWORDS and not word.isdigit()
+        word for word in re.findall(r"[\wÀ-ÿ-]{2,}", (text or "").casefold())
+        if word not in STOPWORDS and (not word.isdigit() or len(word) >= 2)
     }
 
 
@@ -171,16 +171,20 @@ def score_memory(query: str, candidate: dict[str, Any], state: ConversationState
 
 
 def accept_memory(features: dict[str, Any], threshold: float) -> bool:
-    """Precision-first gate: un score vectoriel seul ne peut jamais suffire."""
+    """Precision-first gate: aucun signal faible isolé ne suffit.
+
+    Un candidat de la même conversation ou qui partage seulement une entité
+    peut encore appartenir à un autre sujet. Il faut donc un ancrage lexical
+    ou thématique, sauf paraphrase utilisateur très récente et très proche.
+    """
+    lexical = float(features["lexical"])
+    topic = float(features["topic"])
+    entity = float(features["entity"])
     contextual_support = (
-        bool(features["same_conversation"])
-        or features["entity"] >= 0.10
-        or features["topic"] >= 0.18
-        or features["lexical"] >= 0.20
+        lexical >= 0.20
+        or topic >= 0.18
+        or (entity >= 0.10 and (lexical >= 0.10 or topic >= 0.18))
     )
-    # Un souvenir utilisateur très récent peut corroborer un match sémantique
-    # fort même sans recouvrement lexical (paraphrase), mais il faut alors
-    # plusieurs signaux : sémantique + récence + provenance utilisateur.
     recent_user_support = (
         features["semantic"] >= 0.93
         and features["recency"] >= 0.85
