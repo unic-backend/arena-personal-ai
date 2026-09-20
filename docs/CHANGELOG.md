@@ -2,6 +2,50 @@
 
 ## [Non publié]
 
+### Corrigé — 20/09/2026 — Le numéro d'un document porte enfin le nom du client
+
+Mesuré sur un devis réel : `UC-2026-0920-XXX`, sur un document qui nommait
+Fast Group deux lignes plus bas. `Devis.suffixe_client` valait `XXX` et **rien
+ne le calculait** — aucun appelant ne le passait, donc chaque document sortait
+avec le même trou.
+
+La règle du propriétaire : « UC-2026-0714-FG, le FG est le nom de Fast Group ;
+tout autre client doit avoir celle de son nom et prénom à la fin du numéro
+pour qu'il soit facile à identifier. » Les initiales se déduisent maintenant du
+nom, dans `Devis.__post_init__` — donc pour **les six types de document** à la
+fois : devis, facture, bon de commande, bon de livraison, reliquat, décharge.
+
+`Fast Group` → **FG**, `Ousmane Diop` → **OD**, `Jean-Pierre Ndiaye` → **JPN**,
+`Sonatel` → **SON**, `Entreprise Générale de Bâtiment du Sénégal` → **EGB**
+(les mots de liaison ne nomment personne). Sans nom exploitable, `XXX` reste :
+un trou qui se remarque vaut mieux qu'un faux identifiant que personne ne
+corrigera.
+
+`config/metier.yaml` lisait `FG`/`FGP`/`FGM` comme des **codes de type de
+document**. C'était une lecture fausse des mêmes trois exemples : elle aurait
+mis le nom de Fast Group sur les devis de tous les autres clients. Le bloc
+devient `lettre_par_type` — la lettre qui s'ajoute *après* les initiales.
+
+### Corrigé — 20/09/2026 — Quatre défauts de format sur les documents envoyés aux clients
+
+Trouvés en rendant un devis et en le comparant au sien, page contre page :
+
+| Défaut | Avant | Maintenant |
+|---|---|---|
+| Accents absents | « Specialiste », « Validite », « Designation » | « Spécialiste », « Validité », « Désignation » |
+| Libellé qui déborde | la main-d'œuvre recouvrait le prix au m² **et** la surface | chaque cellule revient à la ligne dans sa colonne |
+| Devise manquante | `4 500` | `4 500 FCFA` |
+| Mention des prix unitaires | dans `config/metier.yaml`, rendue nulle part | sur le document, comme sur son devis Fast Group |
+
+Les noms d'articles ont été accentués dans `config/metier.yaml` — ils servent
+**aussi** de références croisées dans `ratios_materiaux`, donc les renommer
+d'un seul côté aurait cassé le calcul en silence. Total du chantier de
+référence avant et après : **3 298 000 FCFA, 12 articles, 0 sans prix.**
+Identique.
+
+Deux tests figeaient l'orthographe fautive. Ils suivent la correction — et
+« electricite » sans accent doit désormais échouer.
+
 ### Ajouté — 20/09/2026 — « Fais-moi un PDF de ça » écrit enfin un fichier
 
 Tous les moteurs étaient là, et aucun ne pouvait être appelé. Mesuré ce

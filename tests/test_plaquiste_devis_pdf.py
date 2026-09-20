@@ -122,7 +122,13 @@ class TestRendu:
     def test_les_exclusions_habituelles_figurent(self, tmp_path):
         sortie = tmp_path / "devis.pdf"
         construire(_devis(), METIER, sortie)
-        assert "electricite" in PdfReader(str(sortie)).pages[0].extract_text()
+        # Accentue le 20/09/2026 : un devis qui part chez un client ecrit
+        # « electricite » avec ses accents. Le garde suit la correction,
+        # il ne l'affaiblit pas — « electricite » sans accent doit
+        # desormais ECHOUER.
+        rendu = PdfReader(str(sortie)).pages[0].extract_text()
+        assert "électricité" in rendu
+        assert "electricite" not in rendu
 
     def test_une_facture_porte_le_bon_titre(self, tmp_path):
         sortie = tmp_path / "facture.pdf"

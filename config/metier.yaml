@@ -15,11 +15,11 @@
 
 entreprise:
   nom: "UniC Plaquiste"
-  accroche: "Renovation & Decoration"
-  specialite: "Specialiste faux plafonds BA13, cloisons seches & decoration"
+  accroche: "Rénovation & Décoration"
+  specialite: "Spécialiste faux plafonds BA13, cloisons sèches & décoration"
   gerant: "Uthman"
   telephone: "+221 77 708 50 92"
-  adresse: "Dakar, Senegal — Disponible aussi a l'international"
+  adresse: "Dakar, Sénégal — Disponible aussi à l'international"
   site: "www.unicplaquiste.com"
   # Deux applications, confirmees toutes les deux par le proprietaire
   # (02/09/2026) : "app" cote client, "expert" cote pro. Une liste, pas un
@@ -48,11 +48,25 @@ charte:
 
 # Conventions observees dans ses documents, pas inventees.
 conventions:
-  numerotation: "UC-AAAA-MMJJ-CLI"      # ex. UC-2026-0714-FGM
-  suffixes:
-    materiaux: "FG"                      # devis fournitures
-    portes: "FGP"                        # devis portes sur mesure
-    main_oeuvre: "FGM"                   # facture main-d'oeuvre
+  # CLI = les INITIALES DU CLIENT, pas un code de document. Regle donnee par
+  # le proprietaire le 20/09/2026 : « le FG est le nom de Fast Group ; tout
+  # autre client doit avoir celle de son nom et prenom a la fin du numero
+  # pour qu'il soit facile a identifier ». Vaut pour tous ses documents :
+  # devis, bon de commande, bon de livraison, reliquat, decharge.
+  numerotation: "UC-AAAA-MMJJ-CLI"      # ex. UC-2026-0714-FG (Fast Group)
+  # Lettre ajoutee APRES les initiales, quand le document en a une. Elle
+  # distingue deux documents du meme client le meme jour : FGP = portes de
+  # Fast Group, FGM = sa main-d'oeuvre. Rien pour un devis de fournitures,
+  # qui reste FG — c'est ce que montrent ses trois documents.
+  #
+  # Ce bloc lisait auparavant FG/FGP/FGM comme des codes de TYPE. C'etait
+  # une lecture fausse des memes trois exemples : elle aurait donne « FG »
+  # au devis de n'importe quel client, donc le nom de Fast Group sur les
+  # documents des autres.
+  lettre_par_type:
+    materiaux: ""                        # devis fournitures  -> FG
+    portes: "P"                          # devis portes       -> FGP
+    main_oeuvre: "M"                     # facture main-d'oeuvre -> FGM
   validite_devis_jours: [15, 30]
   regle_surface: >-
     Une cloison fermee sur ses deux faces se facture en surface developpee :
@@ -70,19 +84,19 @@ prix_materiaux:
   "Montant 48 mm": 1600
   "Rails 7 cm (70 mm)": 2600
   "Montant 7 cm (70 mm)": 2700
-  "Cornieres": 700
+  "Cornières": 700
   "Paquet de fourrures": 1200
-  "Paquet chevilles a frapper": 5000
-  "Chevilles a Leton": 6000
+  "Paquet chevilles à frapper": 5000
+  "Chevilles à Leton": 6000
   "Pivot": 6500
   "Paquet vis (25 mm ou 35 mm)": 5000
   "Vis 9 mm": 5000
-  "Tiges (a l'unite)": 300
+  "Tiges (à l'unité)": 300
   "Sac enduit": 12000
-  "Bande a joints": 3000
-  "Bande armee": 6500
+  "Bande à joints": 3000
+  "Bande armée": 6500
   "Toile": 500
-  "Papier poncage": 6000
+  "Papier ponçage": 6000
   "Scotch isolant": 1000
   "Peinture en eau Gylatex (coloris)": 11500
   "Enduit coloris": 10000
@@ -91,12 +105,12 @@ prix_materiaux:
   "Seau enduit": 11000
   "Seau Katex": 25000
   "Paquet papier enduit": 10000
-  "Ciment platre (5 kg)": 250
-  "Bache / Basse (5 m)": 1500
+  "Ciment plâtre (5 kg)": 250
+  "Bâche / Basse (5 m)": 1500
 
 # Portes fabriquees sur mesure. Source : devis UC-2026-0714-FGP.
 prix_portes:
-  "Feuille de contreplaque (CTP) 9 mm": 17500
+  "Feuille de contreplaqué (CTP) 9 mm": 17500
   "Planche en bois (4m50 x 35 cm)": 22050
   "Quincaillerie (serrure + paumelle + verrou)": 14000
 
@@ -142,15 +156,15 @@ ratios_materiaux:
     "Laine de verre (paquet)": 1
     "Paquet vis (25 mm ou 35 mm)": 1
     "Sac enduit": 1
-    "Bande a joints": 1
-    "Bande armee": 1
-    "Paquet chevilles a frapper": 1
+    "Bande à joints": 1
+    "Bande armée": 1
+    "Paquet chevilles à frapper": 1
 
 main_oeuvre:
   tarif_m2: 5000
   libelle: >-
-    Forfait pose complete : ossature, isolation, pose BA13, joints, enduits,
-    poncage et peinture.
+    Forfait pose complète : ossature, isolation, pose BA13, joints, enduits,
+    ponçage et peinture.
 
 # Ce qui n'est jamais compris, sauf mention contraire explicite du proprietaire.
 # Metiers qui ne sont pas les siens. Ils ne sont jamais chiffres : l assistant
@@ -168,9 +182,9 @@ metiers_hors_perimetre:
   - "climatiseur"
 
 exclusions_habituelles:
-  - "Travaux d'electricite, de plomberie et de climatisation."
+  - "Travaux d'électricité, de plomberie et de climatisation."
   - "Luminaires et bandeaux LED."
-  - "Tout accessoire ou finition non liste dans les tableaux."
+  - "Tout accessoire ou finition non listé dans les tableaux."
 
 # Formulations qui reviennent dans ses documents. Ton de la maison.
 engagements:

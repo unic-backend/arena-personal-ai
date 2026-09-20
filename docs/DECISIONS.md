@@ -10198,3 +10198,84 @@ le meme silence qu'avant, sur un cas plus rare. Le remede, si ca arrive, est
 d'ajouter la tournure — pas de confier la decision au modele, qui fabriquerait
 des fichiers sur un doute. Cote disque, chaque demande ecrit un fichier de
 plus dans `media/rendered/conversions/`, que rien ne purge aujourd'hui.
+
+## DEC-0118 — Le numero d'un document porte les initiales de son client
+
+**2026-09-20.**
+
+**Decision** : `suffixe_du_client()` deduit les initiales du nom
+(« Fast Group » -> FG, « Ousmane Diop » -> OD, « Sonatel » -> SON), et
+`Devis.__post_init__` les pose quand `suffixe_client` est vide. Un suffixe
+donne explicitement gagne toujours. `config/metier.yaml` cesse de lire
+FG/FGP/FGM comme des codes de type de document.
+
+**Pourquoi** : le format `UC-AAAA-MMJJ-CLI` existait depuis le 27/08/2026, et
+**rien ne remplissait CLI**. Mesure du 20/09/2026 sur un devis rendu :
+`UC-2026-0920-XXX`, sur un document qui nommait Fast Group deux lignes plus
+bas. Le proprietaire a donne la regle en toutes lettres : « le FG est le nom de
+Fast Group ; tout autre client aussi doit avoir celle de son nom et prenom a la
+fin du numero pour qu'il soit facile a identifier », et elle vaut « sur toutes
+les fichiers : devis, bon, reliquat, etc. ».
+
+La deduction vit dans `Devis.__post_init__`, pas chez les appelants : les six
+types de document passent tous par cette classe. Un appelant qui l'oublierait
+produirait un document a `XXX` sans que rien ne le signale.
+
+Quatre choses ont ete ecartees :
+
+- **Demander les initiales a l'appelant.** C'est exactement ce que faisait le
+  code d'avant — un champ que personne ne remplit est un champ qui vaut sa
+  valeur par defaut pour toujours.
+- **Inventer des initiales quand le nom manque.** `XXX` reste. Un faux
+  identifiant sur un document qui part chez quelqu'un est pire qu'un trou :
+  le trou se voit, le faux se recopie.
+- **Garder les mots de liaison.** « Entreprise Generale de Batiment du
+  Senegal » donnait EGD. Personne ne reconnait une entreprise a la preposition
+  de son nom. Ils ne sont ecartes que s'il reste deux mots porteurs.
+- **Renommer les articles d'un seul cote.** Les noms accentues dans
+  `prix_materiaux` servent AUSSI de references croisees dans
+  `ratios_materiaux` : le renommage est fait partout, et le total du chantier
+  de reference est verifie identique avant/apres (3 298 000 FCFA, 12 articles).
+
+**Ce que ca coute si c'est faux** : deux clients peuvent partager des
+initiales — « Fast Group » et « Fatou Gueye » donnent tous deux FG. La date
+les separe dans le numero complet, mais deux documents du meme jour pour ces
+deux clients porteraient le meme identifiant. C'est un choix : sa regle dit
+« facile a identifier », pas « unique ». Le remede, s'il se heurte au cas, est
+de passer `suffixe_client` explicitement — le chemin existe deja, c'est celui
+de ses variantes FGP et FGM.
+
+## DEC-0119 — Un document qui part chez un client s'ecrit avec ses accents
+
+**2026-09-20.**
+
+**Decision** : les libelles rendus sur les documents sont accentues, a la fois
+dans `agents/plaquiste/devis_pdf.py` et dans `config/metier.yaml`. Les cellules
+de tableau deviennent des `Paragraph`. La colonne « Prix Unitaire » porte la
+devise. `conventions.mention_prix_unitaire` est enfin rendue.
+
+**Pourquoi** : quatre defauts trouves en rendant un devis et en le comparant au
+sien, page contre page — pas en relisant le code.
+
+- « Specialiste faux plafonds », « Dakar, Senegal », « Validite : 15 jours »,
+  « Designation », « Quantite », « Materiaux » : un devis qui part chez un
+  client ne s'ecrit pas sans accents.
+- Le libelle de main-d'oeuvre **recouvrait** le prix au metre carre et la
+  surface. Une chaine brute dans une cellule ReportLab ne se coupe pas ; un
+  `Paragraph` revient a la ligne. Le defaut etait invisible a l'extraction de
+  texte : c'est pourquoi le test mesure les POSITIONS des caracteres, pas leur
+  presence. Un premier sabotage remettant la chaine brute n'avait fait echouer
+  aucun test.
+- « 4 500 » au lieu de « 4 500 FCFA », alors que son devis Fast Group porte la
+  devise sur chaque ligne.
+- La mention des prix unitaires etait dans le fichier metier depuis le debut,
+  **rendue nulle part**. Elle existe pour qu'un client ne lise pas 4 500 FCFA
+  comme le prix des 234 plaques.
+
+**Ce que ca coute si c'est faux** : les mots-cles de `metiers_hors_perimetre`
+sont volontairement restes SANS accents — ils sont compares a ce que le
+proprietaire ecrit, jamais imprimes. Si un jour ils devaient l'etre, il faudra
+une normalisation a la comparaison, pas un accent de plus dans la liste. Et le
+detail des surfaces qui figure sur son devis Fast Group (« 18 parois, une face,
+surface developpee ») n'est toujours pas rendu : il demande le metre, pas le
+format. Ce n'est pas fait, et c'est dit plutot que sous-entendu.
