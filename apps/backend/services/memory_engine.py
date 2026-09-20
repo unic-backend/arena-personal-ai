@@ -23,6 +23,7 @@ from apps.backend.services.conversation_intelligence import (
     accept_memory,
     classify_user_evidence,
     needs_long_term,
+    overlap,
     score_memory,
     tokens,
     understand,
@@ -101,7 +102,8 @@ class MemoryEngine:
                     source_type TEXT NOT NULL DEFAULT 'legacy',
                     confidence REAL NOT NULL DEFAULT 1.0,
                     memory_type TEXT NOT NULL DEFAULT 'episodic',
-                    status TEXT NOT NULL DEFAULT 'active'
+                    status TEXT NOT NULL DEFAULT 'active',
+                    superseded_by TEXT
                 );
                 CREATE INDEX IF NOT EXISTS autonomous_documents_owner
                     ON autonomous_documents(user_id, kind, created);
@@ -121,6 +123,7 @@ class MemoryEngine:
                 "confidence": "REAL NOT NULL DEFAULT 1.0",
                 "memory_type": "TEXT NOT NULL DEFAULT 'episodic'",
                 "status": "TEXT NOT NULL DEFAULT 'active'",
+                "superseded_by": "TEXT",
             }
             for colonne, definition in migrations.items():
                 if colonne not in colonnes:
@@ -507,6 +510,27 @@ class MemoryEngine:
                 for fact in facts:
                     policy = classify_user_evidence(fact.evidence)
                     if fact.evidence in job["question"] and policy["eligible"]:
+                        new_id = hashlib.sha256(json.dumps([
+                            job["user_id"],
+                            "user_fact",
+                            fact.evidence.strip().casefold(),
+                        ]).encode()).hexdigest()
+                        if policy["source_type"] == "user_correction":
+                            new_tokens = tokens(fact.evidence)
+                            old_rows = db.execute(
+                                "SELECT id,content FROM autonomous_documents "
+                                "WHERE user_id=? AND kind='user_fact' AND status='active'",
+                                (job["user_id"],),
+                            ).fetchall()
+                            for old in old_rows:
+                                if old["id"] == new_id:
+                                    continue
+                                if overlap(new_tokens, tokens(old["content"])) >= 0.35:
+                                    db.execute(
+                                        "UPDATE autonomous_documents SET status='superseded',"
+                                        "retrievable=0,superseded_by=? WHERE id=?",
+                                        (new_id, old["id"]),
+                                    )
                         self._document(
                             db,
                             job["user_id"],
