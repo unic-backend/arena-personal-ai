@@ -26,6 +26,19 @@ class AutonomousSettings(BaseModel):
     history_messages: int = Field(default=20, ge=2, le=100)
     worker_interval: float = Field(default=5, gt=0, le=60)
 
+    # Conversation intelligence: precision avant rappel.
+    recent_context_window: int = Field(default=8, ge=2, le=30)
+    retrieval_top_k: int = Field(default=20, ge=4, le=50)
+    rerank_top_k: int = Field(default=5, ge=1, le=12)
+    relevance_threshold: float = Field(default=0.18, ge=0.0, le=1.0)
+    semantic_weight: float = Field(default=0.34, ge=0.0, le=1.0)
+    lexical_weight: float = Field(default=0.20, ge=0.0, le=1.0)
+    entity_weight: float = Field(default=0.20, ge=0.0, le=1.0)
+    topic_weight: float = Field(default=0.16, ge=0.0, le=1.0)
+    recency_weight: float = Field(default=0.06, ge=0.0, le=1.0)
+    conversation_weight: float = Field(default=0.04, ge=0.0, le=1.0)
+    memory_debug: bool = False
+
     @classmethod
     def from_env(cls) -> "AutonomousSettings":
         return cls(
@@ -36,4 +49,9 @@ class AutonomousSettings(BaseModel):
             tavily_key=os.getenv("TAVILY_API_KEY", ""),
             timeout=float(os.getenv("USMAN_AUTONOMOUS_TIMEOUT", "30")),
             context_chars=int(os.getenv("USMAN_AUTONOMOUS_CONTEXT_CHARS", "24000")),
+            recent_context_window=int(os.getenv("USMAN_RECENT_CONTEXT_WINDOW", "8")),
+            retrieval_top_k=int(os.getenv("USMAN_RETRIEVAL_TOP_K", "20")),
+            rerank_top_k=int(os.getenv("USMAN_RERANK_TOP_K", "5")),
+            relevance_threshold=float(os.getenv("USMAN_MEMORY_RELEVANCE_THRESHOLD", "0.18")),
+            memory_debug=os.getenv("USMAN_MEMORY_DEBUG", "").strip().lower() in {"1", "true", "yes"},
         )

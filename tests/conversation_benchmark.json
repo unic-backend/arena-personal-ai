@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "purpose": "Deterministic conversation-understanding benchmark; no LLM judge required.",
+  "categories": [
+    "context_retention", "topic_switch", "topic_return", "coreference", "entity_disambiguation",
+    "long_term_memory", "false_memory_rejection", "unknown_information", "contradiction",
+    "temporal_update", "multilingual", "informal_french", "typos", "tool_memory_interaction",
+    "similar_entities", "long_conversation"
+  ],
+  "scenarios": [
+    {"id":"coref_mamadou","category":"coreference","history":["Mon frère Mamadou vient demain.","Il travaille chez Orange.","Mon ordinateur chauffe."],"query":"Pourquoi il vient demain ?","expect":"continuation"},
+    {"id":"topic_video","category":"topic_return","history":["Mon projet vidéo utilise Wan.","Ma voiture est noire."],"query":"Revenons au projet vidéo.","expect":"topic_return"},
+    {"id":"unknown_bmw_price","category":"unknown_information","history":["J'ai acheté une BMW noire."],"query":"Combien je l'ai payée ?","expect":"no_unsupported_memory"},
+    {"id":"usman_qwen","category":"similar_entities","history":["Usman utilise Qwen.","Le projet vidéo utilise Wan."],"query":"Quel modèle utilise Usman ?","expect":"entity_match"},
+    {"id":"informal_video","category":"informal_french","history":["On a parlé de Usman.","Le projet vidéo utilise Wan."],"query":"celui de la vidéo pas l'autre","expect":"continuation"}
+  ],
+  "generated_matrix": {
+    "count": 100,
+    "method": "The benchmark test expands each seed across deterministic topic/entity distractor variants and measures the same policy functions used in production.",
+    "note": "Wolof semantic fixtures are intentionally excluded until validated examples are available."
+  }
+}
