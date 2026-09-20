@@ -14,6 +14,9 @@ se rattrape pas :
    redescendre.
 4. **Le service repond-il ?** Sante gardee en memoire quelques secondes : la
    mesurer avant chaque phrase couterait plus cher que ce qu'elle economise.
+   Et cette question a un **plafond de temps** (`SONDE_DELAI_SECONDES`) : un
+   service qui accepte la connexion puis se tait est declare absent au lieu de
+   faire attendre le chat derriere lui.
 
 Puis le repli, dans cet ordre : **Anthropic → Groq → DeepInfra → Ollama**.
 Anthropic passe en premier parce qu'il est le meilleur raisonneur, pas le plus
@@ -26,6 +29,7 @@ d'etre redemande a chaque phrase.
 **Sans reseau, sans cle, budget atteint, ou texte sensible : Ollama.** Dans les
 quatre cas ARENA repond. C'est la seule promesse que ce module doit tenir.
 """
+import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
@@ -42,6 +46,22 @@ logger = logging.getLogger("usman.modeles.routeur")
 #: Combien de temps une mesure de sante reste valable. La refaire avant chaque
 #: phrase couterait plus cher que ce qu'elle economise.
 SANTE_VALIDE_SECONDES = 30.0
+
+#: Le temps MAXIMUM qu'une sonde a le droit de prendre, quel que soit le
+#: fournisseur.
+#:
+#: Mesure du 20/09/2026 : un fournisseur qui accepte la connexion puis se tait
+#: bloquait le chat **sans limite propre a ce module** — l'aiguilleur n'avait
+#: aucun delai a lui et attendait celui du client HTTP du fournisseur (60 s par
+#: defaut). Pendant ce temps Ollama, qui repond, n'etait meme pas essaye : la
+#: sonde du mort-vivant passe avant lui dans l'ordre de repli.
+#:
+#: 5 secondes est au-dessus de TOUTE sonde legitime du depot — celle d'Ollama
+#: est un `/api/tags` a 3 s, celles des services distants n'ouvrent qu'une
+#: connexion (`CLOUD_DELAI_CONNEXION`, 3 s). Une sonde qui depasse ce plafond
+#: ne dit pas « je suis lent », elle dit « je ne reponds pas » : c'est la meme
+#: chose pour celui qui attend sa phrase.
+SONDE_DELAI_SECONDES = 5.0
 
 #: Combien de temps un fournisseur reste au frais apres un echec. Assez pour ne
 #: pas le redemander a chaque phrase, assez peu pour qu'il revienne tout seul.
@@ -203,7 +223,16 @@ class RouteurModeles(ModelProvider):
         if fournisseur is None:
             return False
         try:
-            etat.disponible = bool(await fournisseur.is_available())
+            etat.disponible = bool(await asyncio.wait_for(
+                fournisseur.is_available(), timeout=SONDE_DELAI_SECONDES))
+        except asyncio.TimeoutError:
+            # Une sonde qui ne revient pas est une indisponibilite, exactement
+            # comme une sonde qui leve. La difference n'existe que pour le
+            # serveur ; pour le proprietaire qui attend sa phrase, c'est le
+            # meme silence.
+            logger.info("%s : sonde sans reponse apres %.1fs, considere absent.",
+                        nom, SONDE_DELAI_SECONDES)
+            etat.disponible = False
         except Exception:  # noqa: BLE001 — une sonde qui leve est une indisponibilite
             etat.disponible = False
         etat.mesure_le = maintenant
