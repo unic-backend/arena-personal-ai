@@ -27,12 +27,21 @@ def current_user(authenticated: bool = Depends(verify_api_key)) -> CurrentUser:
 
 class AutonomousRuntime:
     def __init__(self, settings: AutonomousSettings, usage: CompteurUsage | None = None,
-                 legacy_memory: MemoirePersonnelle | None = None):
+                 legacy_memory: MemoirePersonnelle | None = None,
+                 pieces_jointes=None, vision_agent=None, video_agent=None, registre=None):
         self.ai = AIClient(settings, usage=usage)
         self.http = httpx.AsyncClient(timeout=httpx.Timeout(4, connect=2), follow_redirects=False)
         self.memory = MemoryEngine(settings, self.ai, legacy_memory=legacy_memory)
-        self.orchestrator = Orchestrator(settings, self.ai, self.memory,
-                                         builtin_registry(self.http, settings.tavily_key))
+        self.orchestrator = Orchestrator(
+            settings, self.ai, self.memory,
+            builtin_registry(
+                self.http, settings.tavily_key,
+                pieces_jointes=pieces_jointes,
+                vision_agent=vision_agent,
+                video_agent=video_agent,
+                registre=registre,
+            ),
+        )
         self.worker: asyncio.Task[None] | None = None
 
     def start(self) -> None:
@@ -51,10 +60,24 @@ class AutonomousRuntime:
 
 @lru_cache(maxsize=1)
 def get_runtime() -> AutonomousRuntime:
-    from apps.backend.runtime import compteur_usage, memoire_personnelle
+    from apps.backend.runtime import (
+        compteur_usage,
+        memoire_personnelle,
+        pieces_jointes,
+        registre,
+        video_agent,
+        vision_agent,
+    )
 
-    return AutonomousRuntime(AutonomousSettings.from_env(), usage=compteur_usage,
-                             legacy_memory=memoire_personnelle)
+    return AutonomousRuntime(
+        AutonomousSettings.from_env(),
+        usage=compteur_usage,
+        legacy_memory=memoire_personnelle,
+        pieces_jointes=pieces_jointes,
+        vision_agent=vision_agent,
+        video_agent=video_agent,
+        registre=registre,
+    )
 
 
 @router.post("/api/v1/chat", response_model=ChatOutput,
