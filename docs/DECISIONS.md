@@ -10629,3 +10629,43 @@ place. Aucun agent mesure aujourd'hui ne fait ca : chaque producteur qui pose
 `statut: "SUCCESS"` verifie deja le fichier sur le disque avant de le dire
 (regle 4 de `core/connectors/devis.py`, meme discipline dans
 `file_conversion.py`).
+
+## DEC-0128 — La garde du document porte sur la presence, pas sur le succes
+
+**2026-09-21.**
+
+**Decision** : `_joindre_document` (`apps/backend/routers/chat.py`) refuse
+d'ecrire des l'entree des que `reponse["document"]` n'est pas `None` — quel
+que soit son `statut`. La condition de DEC-0127
+(`statut in ("SUCCESS", "PARTIAL")`) est remplacee : elle protegeait un devis
+reussi, mais laissait passer un devis `INCOMPLET`, `FAILED` ou
+`NOT_CONFIGURED`.
+
+**Pourquoi** : mesure la meme nuit que DEC-0127, en poursuivant l'audit sur
+la meme fonction plutot qu'en s'arretant au premier correctif — « tu dois
+trouver tout le probleme d'ou vient la source ». Rejoue en execution directe
+sur une phrase incomplete (« Fais-moi le devis en pdf. surface de 40 m2 »,
+sans client/lieu/objet) : PLAQUISTE pose `document = {"statut": "INCOMPLET",
+"message": "Le PDF n'est pas lance : il manque client, lieu, objet..."}` —
+une VRAIE QUESTION, pas un contenu a distribuer. Avec la garde de DEC-0127
+seule, ce texte n'etait pas `SUCCESS`/`PARTIAL`, donc `_joindre_document`
+continuait : il convertissait la question elle-meme en PDF telechargeable et
+ecrivait « Document « ... » pret a telecharger » — une reponse qui annonce un
+document alors que rien n'a ete produit sinon une clarification. Meme defaut
+pour `FAILED` (« il manque client » au moment d'ecrire) et `NOT_CONFIGURED`
+(« aucun connecteur n'est branche ») : leur message explique pourquoi rien
+n'existe, jamais un contenu a transformer en fichier.
+
+**Le principe qui en ressort** : des qu'un agent specialise a pose un
+`document` dans sa reponse, c'est LUI qui a tranche le sort du document pour
+cette demande — reussi, incomplet, ou en echec. Cette fonction generique ne
+reprend la main que lorsque `document` est absent ou `None` : l'agent n'a
+rien dit sur un document, donc rien n'a ete tranche, et le texte de la
+reponse est un candidat legitime a la conversion.
+
+**Ce que ca coute si c'est faux** : un agent qui poserait un `document` avec
+un `statut` inconnu de ce depot (ni `SUCCESS`, ni `PARTIAL`, ni `INCOMPLET`,
+ni `FAILED`, ni `NOT_CONFIGURED`) bloquerait desormais toute conversion,
+meme si son intention etait de laisser la main a la conversion generique.
+Aucun agent mesure aujourd'hui ne pose un `document` dans cette intention :
+poser la cle signifie deja, partout dans le depot, « je me suis prononce ».

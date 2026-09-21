@@ -2,6 +2,23 @@
 
 ## [Non publié]
 
+### Corrigé — 21/09/2026 — Une question de clarification ne devient plus un PDF téléchargeable
+
+Suite de l'audit qui a produit le correctif précédent (DEC-0127) : sur une
+phrase de devis incomplète (sans client/lieu/objet), PLAQUISTE répond par une
+vraie question de clarification — mais cette réponse portait déjà un
+`document` avec un `statut` `INCOMPLET`. La garde posée quelques minutes plus
+tôt ne protégeait que `SUCCESS`/`PARTIAL` : un `INCOMPLET`, un `FAILED` ou un
+`NOT_CONFIGURED` passait encore par la conversion générique, qui transformait
+la question elle-même en PDF téléchargeable et annonçait « Document «...»
+prêt à télécharger » — alors que rien n'avait été produit sinon une demande
+de précision.
+
+`_joindre_document` refuse maintenant d'écrire dès que `reponse["document"]`
+n'est pas `None`, quel que soit son `statut` : dès qu'un agent spécialisé
+s'est prononcé sur un document, la conversion générique n'a plus rien à y
+faire. Détail → `docs/DECISIONS.md`, DEC-0128.
+
 ### Corrigé — 21/09/2026 — Le devis PLAQUISTE brandé n'est plus écrasé par une conversion générique
 
 Le propriétaire a envoyé exactement la phrase de test proposée pour vérifier
