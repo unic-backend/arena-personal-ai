@@ -275,7 +275,7 @@ def test_le_titre_vient_de_la_reponse_avant_la_demande(
     assert _titre_du_document(texte, demande) == attendu
 
 
-# --- Un document deja produit n'est jamais reecrit ---------------------------
+# --- Un agent specialise qui s'est deja prononce n'est jamais rejoue --------
 #
 # Mesure le 21/09/2026 : un devis PLAQUISTE demande "en pdf" ecrivait deja son
 # propre fichier, a la charte UniC (logo, couleurs, numero UC-AAAA-MMJJ-CLI) —
@@ -283,17 +283,25 @@ def test_le_titre_vient_de_la_reponse_avant_la_demande(
 # donc `_joindre_document` convertissait ENSUITE le texte court de la reponse
 # en un second PDF sans marque, et l'ecrasait a la place du premier. Le
 # proprietaire recevait une "note" blanche au lieu de son devis.
+#
+# Un cran plus loin, mesure le meme soir : la garde ne porte pas sur le
+# SUCCES, elle porte sur la PRESENCE. Un devis INCOMPLET pose deja un
+# `document` — une vraie question ("il manque client, lieu, objet"), pas un
+# fichier a produire. Sans cette distinction, la conversion generique
+# convertissait la question elle-meme en PDF telechargeable, et la reponse
+# annonçait "Document pret a telecharger" pour un fichier qui ne contenait
+# qu'une clarification.
 
-@pytest.mark.parametrize("statut", ["SUCCESS", "PARTIAL"])
-def test_un_document_deja_reussi_n_est_jamais_ecrase(statut: str) -> None:
-    document_original = {
-        "statut": statut,
-        "message": "Devis UC-2026-0921-KD ecrit pour Khady Diop (336800 FCFA).",
-        "preuve": "/tmp/UC-2026-0921-KD.pdf",
-        "url": "/media/rendered/UC-2026-0921-KD.pdf",
-    }
+@pytest.mark.parametrize("statut", ["SUCCESS", "PARTIAL", "INCOMPLET", "FAILED", "NOT_CONFIGURED"])
+def test_un_agent_qui_s_est_deja_prononce_sur_un_document_n_est_jamais_rejoue(
+    statut: str,
+) -> None:
+    """Quel que soit le verdict de l'agent specialise — reussi, incomplet ou
+    en echec — c'est LUI qui a tranche, et la conversion generique n'a plus
+    rien a y faire."""
+    document_original = {"statut": statut, "message": "Le verdict de l'agent, peu importe lequel."}
     origine = {
-        "response": "Devis UC-2026-0921-KD ecrit pour Khady Diop (336800 FCFA).",
+        "response": "Le verdict de l'agent, peu importe lequel.",
         "document": dict(document_original),
     }
 
@@ -304,19 +312,37 @@ def test_un_document_deja_reussi_n_est_jamais_ecrase(statut: str) -> None:
     assert reponse["response"] == origine["response"]
 
 
-@pytest.mark.parametrize("statut", ["INCOMPLET", "FAILED", "NOT_CONFIGURED"])
-def test_un_document_pas_encore_reussi_reste_ecrasable(statut: str) -> None:
-    """La garde ne protege que ce qui a reellement reussi : un devis
-    INCOMPLET ou en echec n'est pas un fichier a preserver."""
-    origine = {
-        "response": TEXTE,
-        "document": {"statut": statut, "message": "peu importe"},
-    }
+def test_une_question_de_clarification_ne_devient_jamais_un_pdf_telechargeable(
+    tmp_path: Path,
+) -> None:
+    """Le defaut exact du 21/09/2026, un cran plus loin que le premier : une
+    phrase incomplete rejouee bout en bout sur le vrai branchement PLAQUISTE.
+    Avant correction, la question de clarification elle-meme se transformait
+    en PDF, et la reponse mentait en annonçant un document pret."""
+    from agents.plaquiste.plaquiste_agent import PlaquisteAgent, charger_metier
+    from core.connectors.devis import DevisConnector
+    from core.connectors.registre import RegistreConnecteurs
 
-    reponse = asyncio.run(_joindre_document("fais-moi ça en pdf", dict(origine)))
+    class ModeleFixe:
+        async def generate(self, prompt: str, system_prompt: str | None = None, **kw):
+            return "Compte-rendu."
 
-    assert reponse["document"]["statut"] == "SUCCESS"
-    assert reponse["document"]["message"] != "peu importe"
+    metier = charger_metier()
+    registre = RegistreConnecteurs()
+    registre.declarer("devis", lambda: DevisConnector(metier=metier, dossier=tmp_path))
+    agent = PlaquisteAgent(provider=ModeleFixe(), metier=metier, registre=registre)
+
+    # Aucun destinataire (client/lieu/objet) : PLAQUISTE ne peut que demander.
+    phrase = "Fais-moi le devis en pdf. surface de 40 m2"
+
+    reponse = asyncio.run(agent.run(phrase, context={}))
+    assert reponse["document"]["statut"] == "INCOMPLET"
+
+    reponse_finale = asyncio.run(_joindre_document(phrase, reponse))
+
+    assert reponse_finale["document"]["statut"] == "INCOMPLET"
+    assert "pret a telecharger" not in reponse_finale["response"].lower()
+    assert "prêt à télécharger" not in reponse_finale["response"]
 
 
 def test_un_devis_plaquiste_reel_traverse_le_branchement_sans_etre_ecrase(

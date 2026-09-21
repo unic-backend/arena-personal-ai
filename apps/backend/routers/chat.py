@@ -539,21 +539,35 @@ async def _joindre_document(
     3. **L'URL rendue ne porte pas la cle.** L'interface l'ajoute au moment du
        clic (`adresseOuvrable`, apps/pwa) : une cle ecrite dans le texte d'une
        reponse serait recopiee dans la memoire de conversation.
-    4. **Un document deja produit par un agent specialise n'est jamais
-       reecrit.** Mesure le 21/09/2026 : un devis PLAQUISTE demande "en pdf"
-       ecrivait deja son propre fichier, a la charte UniC (logo, couleurs,
-       numero UC-AAAA-MMJJ-CLI) — mais la phrase contenait aussi un format
-       nomme et un verbe de production, donc CETTE fonction convertissait
-       ENSUITE le texte court de la reponse ("Devis UC-... ecrit pour ...")
-       en un second PDF, sans marque, et l'ecrasait a la place du premier.
-       Le proprietaire recevait une "note" blanche au lieu de son devis.
-       Le defaut n'est pas specifique a PLAQUISTE : tout agent qui pose deja
-       un `document` reussi dans `reponse` avant d'arriver ici en aurait subi
-       le meme sort — c'est pourquoi la garde porte sur la forme du champ,
-       pas sur l'intention qui a produit la reponse.
+    4. **Un agent specialise qui s'est deja prononce sur un document n'est
+       jamais rejoue.** Mesure le 21/09/2026 : un devis PLAQUISTE demande "en
+       pdf" ecrivait deja son propre fichier, a la charte UniC (logo,
+       couleurs, numero UC-AAAA-MMJJ-CLI) — mais la phrase contenait aussi un
+       format nomme et un verbe de production, donc CETTE fonction
+       convertissait ENSUITE le texte court de la reponse ("Devis UC-...
+       ecrit pour ...") en un second PDF, sans marque, et l'ecrasait a la
+       place du premier. Le proprietaire recevait une "note" blanche au lieu
+       de son devis.
+
+       **La garde ne porte pas sur le succes, elle porte sur la presence.**
+       Mesure le meme soir, un cran plus loin : sur une phrase incomplete
+       ("fais-moi le devis en pdf" sans client/lieu/objet), PLAQUISTE pose
+       `document = {"statut": "INCOMPLET", "message": "Le PDF n'est pas
+       lance : il manque client, lieu, objet..."}` — une VRAIE question, pas
+       un document. Une garde limitee a `SUCCESS`/`PARTIAL` laissait passer
+       CE texte dans la conversion generique, qui en ecrivait un PDF
+       telechargeable et annoncait "Document « ... » pret a telecharger" —
+       pour un fichier qui ne contient qu'une question de clarification.
+       Meme chose pour `FAILED`/`NOT_CONFIGURED` : le message explique
+       pourquoi rien n'a ete ecrit, jamais un contenu a distribuer.
+
+       Des qu'un agent specialise a pose un `document` — quel que soit son
+       `statut` — c'est LUI qui a tranche le sort du document pour cette
+       demande, et cette fonction n'a plus rien a y faire. Elle ne reprend la
+       main que lorsque `document` est absent ou `None` : l'agent n'a rien
+       dit sur un document, donc rien n'a ete tranche.
     """
-    deja_produit = reponse.get("document") or {}
-    if deja_produit.get("statut") in ("SUCCESS", "PARTIAL"):
+    if reponse.get("document") is not None:
         return reponse
 
     format_cible = format_de_document_demande(demande)
