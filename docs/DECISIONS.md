@@ -10578,3 +10578,54 @@ sans changement ce soir) — une phrase qui mentionne le mot sans vouloir un
 fichier ecrira quand meme un PDF de demonstration. Le cout reste faible : le
 fichier est explicitement etiquete fictif partout ou il s'affiche, et
 n'engage jamais un vrai client.
+
+## DEC-0127 — Un document deja produit n'est jamais reecrit par la conversion generique
+
+**2026-09-21.**
+
+**Decision** : `_joindre_document` (`apps/backend/routers/chat.py`) refuse
+d'ecrire des l'entree quand `reponse["document"]` porte deja un `statut` a
+`"SUCCESS"` ou `"PARTIAL"`. La garde ne regarde que la FORME du champ, jamais
+l'agent qui l'a pose : elle protege n'importe quel producteur specialise, pas
+seulement PLAQUISTE.
+
+**Pourquoi** : mesure sur la phrase exacte donnee au proprietaire pour
+verifier le format (« Fais-moi le devis en pdf. client : Khady Diop, lieu :
+Medina Dakar, objet : faux plafond BA13 sans design, surface de 40 m2 »).
+PLAQUISTE ecrivait deja son devis a la charte UniC — logo, couleurs, numero
+`UC-2026-0921-KD` correct, chiffrage reel (`devis_pdf.py::construire`). Mais
+la meme phrase contient aussi un format nomme (« pdf ») et un verbe de
+production (« fais »), donc `_joindre_document` s'executait ENSUITE sur le
+`response` du meme tour — un texte court du type « Devis UC-2026-0921-KD
+ecrit pour Khady Diop (336800 FCFA). » — et convertissait CE texte en un
+second PDF via WeasyPrint, sans marque, sous un nom de fichier different
+(slug de la phrase entiere). Il ecrasait alors `reponse["document"]` avec ce
+second fichier. Le proprietaire recevait un fichier reel, telechargeable
+(DEC-0124 fonctionnait), mais une simple page de texte au lieu du devis
+brande. Rejoue en execution directe (`agent.run()` puis `_joindre_document()`
+sur le meme dict) avant correction : `document["url"]` passait de l'absence
+d'URL (fixture locale) au fichier `conversions/fais-moi-le-devis-en-pdf-...
+.pdf` — la preuve du chevauchement, pas une supposition.
+
+Deux choses a retenir :
+
+- **Le defaut n'est pas specifique a PLAQUISTE.** `_aiguiller` route une
+  vingtaine d'intentions vers autant d'agents ; n'importe lequel qui pose un
+  `document` reussi dans sa reponse, sur une phrase qui nomme aussi un format
+  et un verbe de production, aurait subi le meme ecrasement. La garde est
+  ecrite sur la forme du champ (`statut`), pas sur une liste d'agents a
+  proteger — ajouter un nouveau producteur de document ne demandera aucune
+  modification ici.
+- **La garde ne protege que ce qui a reellement reussi.** Un `document` a
+  `"INCOMPLET"`, `"FAILED"` ou `"NOT_CONFIGURED"` reste ecrasable : rien n'a
+  ete produit a cet endroit, donc rien n'est perdu a laisser la conversion
+  generique tenter sa propre ecriture depuis le texte de la reponse.
+
+**Ce que ca coute si c'est faux** : un agent qui poserait un `document` avec
+`statut: "SUCCESS"` mais un contenu en realite inutilisable (par exemple un
+`preuve` pointant vers un fichier jamais ecrit) bloquerait desormais la seule
+conversion generique qui aurait pu produire quelque chose de lisible a la
+place. Aucun agent mesure aujourd'hui ne fait ca : chaque producteur qui pose
+`statut: "SUCCESS"` verifie deja le fichier sur le disque avant de le dire
+(regle 4 de `core/connectors/devis.py`, meme discipline dans
+`file_conversion.py`).
