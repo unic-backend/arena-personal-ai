@@ -2,6 +2,34 @@
 
 ## [Non publié]
 
+### Corrigé — 21/09/2026 — Le devis PLAQUISTE brandé n'est plus écrasé par une conversion générique
+
+Le propriétaire a envoyé exactement la phrase de test proposée pour vérifier
+le format (« Fais-moi le devis en pdf. client : Khady Diop, lieu : Medina
+Dakar, objet : faux plafond BA13 sans design, surface de 40 m2 ») : un
+fichier se téléchargeait bien (le correctif du 21/09 sur `Content-
+Disposition` fonctionne), mais le PDF reçu était une page nue, sans logo ni
+charte, « comme une note ».
+
+Cause racine, mesurée en exécution directe (`PlaquisteAgent.run()` puis
+`_joindre_document()` sur le même dictionnaire) : PLAQUISTE écrivait déjà son
+propre devis à la charte UniC (`devis_pdf.py`, numéro `UC-2026-0921-KD`
+correct, chiffrage réel). Mais `_joindre_document` — le mécanisme générique
+« texte de la réponse → fichier », branché universellement sur `dispatch_
+request` — voit la même phrase, y reconnaît aussi un format nommé (« pdf »)
+et un verbe de production (« fais »), et convertit ALORS le texte court de la
+réponse (« Devis UC-2026-0921-KD écrit pour Khady Diop... ») en un second
+PDF sans marque, qui écrase `reponse["document"]` à la place du premier.
+
+Le défaut n'est pas spécifique à PLAQUISTE : tout agent posant déjà un
+`document` réussi dans sa réponse, sur une phrase qui nomme aussi un format
+et un verbe de production, aurait subi le même écrasement.
+
+`_joindre_document` refuse maintenant d'écrire dès l'entrée quand `reponse
+["document"]` porte déjà un `statut` `"SUCCESS"` ou `"PARTIAL"` — la garde
+porte sur la forme du champ, pas sur une liste d'agents à protéger.
+Détail → `docs/DECISIONS.md`, DEC-0127.
+
 ### Ajouté — 21/09/2026 — Bon de commande, bon de livraison, reliquat, décharge : le format sans le chiffrage
 
 Message du propriétaire : « le vrai format n'a pas besoin de surface ou

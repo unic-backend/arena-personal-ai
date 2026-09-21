@@ -273,3 +273,85 @@ def test_le_titre_vient_de_la_reponse_avant_la_demande(
     texte: str, demande: str, attendu: str,
 ) -> None:
     assert _titre_du_document(texte, demande) == attendu
+
+
+# --- Un document deja produit n'est jamais reecrit ---------------------------
+#
+# Mesure le 21/09/2026 : un devis PLAQUISTE demande "en pdf" ecrivait deja son
+# propre fichier, a la charte UniC (logo, couleurs, numero UC-AAAA-MMJJ-CLI) —
+# mais la phrase contenait aussi un format nomme et un verbe de production,
+# donc `_joindre_document` convertissait ENSUITE le texte court de la reponse
+# en un second PDF sans marque, et l'ecrasait a la place du premier. Le
+# proprietaire recevait une "note" blanche au lieu de son devis.
+
+@pytest.mark.parametrize("statut", ["SUCCESS", "PARTIAL"])
+def test_un_document_deja_reussi_n_est_jamais_ecrase(statut: str) -> None:
+    document_original = {
+        "statut": statut,
+        "message": "Devis UC-2026-0921-KD ecrit pour Khady Diop (336800 FCFA).",
+        "preuve": "/tmp/UC-2026-0921-KD.pdf",
+        "url": "/media/rendered/UC-2026-0921-KD.pdf",
+    }
+    origine = {
+        "response": "Devis UC-2026-0921-KD ecrit pour Khady Diop (336800 FCFA).",
+        "document": dict(document_original),
+    }
+
+    reponse = asyncio.run(_joindre_document(
+        "Fais-moi le devis en pdf. client : Khady Diop", dict(origine)))
+
+    assert reponse["document"] == document_original
+    assert reponse["response"] == origine["response"]
+
+
+@pytest.mark.parametrize("statut", ["INCOMPLET", "FAILED", "NOT_CONFIGURED"])
+def test_un_document_pas_encore_reussi_reste_ecrasable(statut: str) -> None:
+    """La garde ne protege que ce qui a reellement reussi : un devis
+    INCOMPLET ou en echec n'est pas un fichier a preserver."""
+    origine = {
+        "response": TEXTE,
+        "document": {"statut": statut, "message": "peu importe"},
+    }
+
+    reponse = asyncio.run(_joindre_document("fais-moi ça en pdf", dict(origine)))
+
+    assert reponse["document"]["statut"] == "SUCCESS"
+    assert reponse["document"]["message"] != "peu importe"
+
+
+def test_un_devis_plaquiste_reel_traverse_le_branchement_sans_etre_ecrase(
+    tmp_path: Path,
+) -> None:
+    """Le defaut exact du 21/09/2026, rejoue bout en bout sur le vrai
+    branchement (`PlaquisteAgent.run()` puis `_joindre_document`), pas
+    seulement sur un dictionnaire fabrique a la main — c'est ce branchement-la
+    qui s'est fait ecraser en production, avec la meme phrase que celle donnee
+    au proprietaire pour verifier le format."""
+    from agents.plaquiste.plaquiste_agent import PlaquisteAgent, charger_metier
+    from core.connectors.devis import DevisConnector
+    from core.connectors.registre import RegistreConnecteurs
+
+    class ModeleFixe:
+        async def generate(self, prompt: str, system_prompt: str | None = None, **kw):
+            return "Compte-rendu."
+
+    metier = charger_metier()
+    registre = RegistreConnecteurs()
+    registre.declarer("devis", lambda: DevisConnector(metier=metier, dossier=tmp_path))
+    agent = PlaquisteAgent(provider=ModeleFixe(), metier=metier, registre=registre)
+
+    phrase = ("Fais-moi le devis en pdf. client : Khady Diop, lieu : Medina "
+              "Dakar, objet : faux plafond BA13 sans design, surface de 40 m2")
+
+    reponse = asyncio.run(agent.run(phrase, context={}))
+    document_du_plaquiste = dict(reponse["document"])
+    assert document_du_plaquiste["statut"] == "SUCCESS"
+    assert "UC-2026" in document_du_plaquiste["message"]
+
+    reponse_finale = asyncio.run(_joindre_document(phrase, reponse))
+
+    # Le fichier reste celui de devis_pdf.py — a la charte UniC, avec le
+    # vrai numero et le vrai chiffrage — jamais une conversion generique du
+    # texte court de la reponse.
+    assert reponse_finale["document"] == document_du_plaquiste
+    assert Path(document_du_plaquiste["preuve"]).is_file()

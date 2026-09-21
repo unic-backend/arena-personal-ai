@@ -528,7 +528,7 @@ async def _joindre_document(
     fourni. « Fais-moi un PDF de ca » n'avait donc rien a appeler : ARENA
     repondait a l'ecran, et le fichier n'existait nulle part.
 
-    Trois regles :
+    Quatre regles :
 
     1. **La reponse passe toujours**, document ou pas. Un echec d'ecriture
        n'efface pas ce qui a ete repondu — il s'ajoute a la reponse, en toutes
@@ -539,7 +539,23 @@ async def _joindre_document(
     3. **L'URL rendue ne porte pas la cle.** L'interface l'ajoute au moment du
        clic (`adresseOuvrable`, apps/pwa) : une cle ecrite dans le texte d'une
        reponse serait recopiee dans la memoire de conversation.
+    4. **Un document deja produit par un agent specialise n'est jamais
+       reecrit.** Mesure le 21/09/2026 : un devis PLAQUISTE demande "en pdf"
+       ecrivait deja son propre fichier, a la charte UniC (logo, couleurs,
+       numero UC-AAAA-MMJJ-CLI) — mais la phrase contenait aussi un format
+       nomme et un verbe de production, donc CETTE fonction convertissait
+       ENSUITE le texte court de la reponse ("Devis UC-... ecrit pour ...")
+       en un second PDF, sans marque, et l'ecrasait a la place du premier.
+       Le proprietaire recevait une "note" blanche au lieu de son devis.
+       Le defaut n'est pas specifique a PLAQUISTE : tout agent qui pose deja
+       un `document` reussi dans `reponse` avant d'arriver ici en aurait subi
+       le meme sort — c'est pourquoi la garde porte sur la forme du champ,
+       pas sur l'intention qui a produit la reponse.
     """
+    deja_produit = reponse.get("document") or {}
+    if deja_produit.get("statut") in ("SUCCESS", "PARTIAL"):
+        return reponse
+
     format_cible = format_de_document_demande(demande)
     if format_cible is None:
         return reponse
