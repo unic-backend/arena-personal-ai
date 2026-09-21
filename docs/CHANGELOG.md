@@ -2,6 +2,65 @@
 
 ## [Non publié]
 
+### Ajouté — 21/09/2026 — Bon de commande, bon de livraison, reliquat, décharge : le format sans le chiffrage
+
+Message du propriétaire : « le vrai format n'a pas besoin de surface ou
+d'autres choses pour être créé, même s'il n'a aucune info ni prix — c'est
+avec ce format qu'il doit créer les bons de commande, bons de livraison,
+reliquats, décharges etc. […] il doit créer des démos pour qu'on puisse
+l'amélioration. »
+
+Deux défauts réels, mesurés avant d'être corrigés :
+
+1. **`RELIQUAT` et `DECHARGE` n'existaient dans aucune table de
+   reconnaissance.** Le renderer (`devis_pdf.py`) les acceptait déjà — seule
+   l'orchestration manquait, comme pour `BON DE COMMANDE`/`BON DE LIVRAISON`
+   avant eux. Toute demande de ces deux types retombait sur `DEVIS` par
+   défaut.
+2. **Une demande de démonstration ne produisait jamais de fichier.**
+   « exemple de bon de commande », « devis de démonstration » ne contiennent
+   ni « pdf » ni « document » ni « génère le X » — le seul déclencheur
+   d'écriture. Mesuré directement : ces phrases ne lançaient rien, la
+   démonstration restait une phrase en l'air.
+
+Le connecteur exige toujours une dimension pour **DEVIS** et **FACTURE** — un
+prix ne s'improvise jamais. Il ne l'exige plus pour **BON DE COMMANDE**,
+**BON DE LIVRAISON**, **RELIQUAT**, **DECHARGE** : ces quatre types n'engagent
+aucun prix, et le format complet (logo, charte, numéro) se rend très bien avec
+zéro ligne — vérifié en le rendant et en le relisant.
+
+Une démonstration sans dimension donnée montre maintenant le format avec un
+tableau d'exemple — deux articles réels de la grille, jamais inventés —
+plutôt qu'un total à 0 FCFA. Le texte du destinataire fictif ne nomme plus le
+« DEVIS » spécifiquement : il aurait contredit l'en-tête d'un bon de commande
+ou d'une décharge.
+
+### Corrigé — 21/09/2026 — Un document se télécharge, un média se lit sur place
+
+Un devis PDF ouvert depuis le téléphone du propriétaire s'ouvrait dans la
+visionneuse du navigateur — jamais proposé au téléchargement, jamais présent
+dans les fichiers du téléphone.
+
+`FileResponse` (Starlette) ne pose **aucun** en-tête `Content-Disposition`
+quand `filename` n'est pas fourni. C'est alors le navigateur qui décide, et
+Chrome mobile choisit d'afficher un PDF plutôt que de le sauvegarder — mesuré
+avec un vrai `TestClient` : `Content-Disposition: None` sur le PDF.
+
+`GET /media/rendered/{nom:path}` classe maintenant chaque fichier avant de le
+servir (`apps/backend/security.py::type_de_presentation`) : un `<video
+src>`/`<img src>`/`<audio src>` garde exactement le comportement d'avant —
+aucun en-tête, la lecture en ligne ne doit jamais se casser pour réparer un
+téléchargement. Tout le reste — pdf, docx, xlsx, md, html, zip et tout format
+inconnu — reçoit `Content-Disposition: attachment; filename="…"` et se
+télécharge vraiment.
+
+Vérifié directement sur les en-têtes HTTP rendus, pas sur une supposition :
+
+```
+verif.pdf -> Content-Disposition: attachment; filename="verif.pdf"
+verif.mp4 -> Content-Disposition: None
+```
+
 ### Corrigé — 20/09/2026 — ARENA n'écrit plus le devis dans la conversation
 
 Le propriétaire reçoit un devis complet sur son téléphone : en-tête, tableau,

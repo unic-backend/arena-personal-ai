@@ -34,7 +34,7 @@ from typing import Any, Dict, List, Optional
 from agents.plaquiste.calcul_materiaux import quantites_pour
 from agents.plaquiste.devis_pdf import Devis, Ligne, chiffrer, construire
 from agents.plaquiste.metre import lire_demande
-from agents.plaquiste.plaquiste_agent import MetierSuivi
+from agents.plaquiste.plaquiste_agent import TYPES_SANS_CHIFFRAGE_OBLIGATOIRE, MetierSuivi
 from apps.backend.config import RENDERED_DIR
 from core.actions.resultat import ResultatAction, echec, succes
 from core.connectors.base import Capacite, Connecteur, EtatSante, Sante
@@ -147,10 +147,17 @@ class DevisConnector(Connecteur):
 
     def _executer(self, capacite: Capacite, **parametres: Any) -> ResultatAction:
         texte = str(parametres.get("demande") or "")
+        type_document = str(parametres.get("type_document") or "DEVIS").upper()
         lignes_brutes = parametres.get("lignes")
         lignes = (lignes_depuis_parametres(lignes_brutes) if lignes_brutes
                   else lignes_depuis(texte, self.metier))
-        if not lignes:
+        # DEVIS et FACTURE engagent un prix : sans dimension lue, rien n'est
+        # chiffre (regle 2). Un BON DE COMMANDE, un BON DE LIVRAISON, un
+        # RELIQUAT ou une DECHARGE n'engagent aucun prix — leur format existe
+        # deja avec zero ligne (mesure le 21/09/2026, rendu et relu). Exiger
+        # une surface pour ces quatre-la refusait un document qui n'en avait
+        # simplement pas besoin.
+        if not lignes and type_document not in TYPES_SANS_CHIFFRAGE_OBLIGATOIRE:
             return echec(
                 action=capacite.nom, cible=self.nom,
                 message=("Aucune dimension lue dans la demande : je ne chiffre rien. "

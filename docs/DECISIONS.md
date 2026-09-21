@@ -10448,3 +10448,133 @@ document qui n'en porterait aucune passerait. C'est assume : elargir la
 detection reviendrait a censurer des reponses legitimes qui expliquent un
 chiffrage, ce qui est precisement le travail de l'agent. Le seuil est place la
 ou un CLIENT reconnaitrait le document, pas la ou un chiffre apparait.
+
+## DEC-0124 — Un document se telecharge ; un media se lit sur place
+
+**2026-09-21.**
+
+**Decision** : `GET /media/rendered/{nom:path}` classe chaque fichier avant de
+le servir. `type_de_presentation()` (`apps/backend/security.py`) rend
+`"inline"` pour une liste fermee d'extensions video/audio/image, `"attachment"`
+pour tout le reste — pdf, docx, xlsx, md, html, zip, et tout format inconnu.
+Seuls les fichiers `"attachment"` recoivent `filename=` ; les autres gardent
+exactement le comportement d'avant.
+
+**Pourquoi** : un devis PDF ouvert depuis le telephone du proprietaire
+s'ouvrait dans la visionneuse du navigateur, jamais telechargeable. Mesure sur
+un vrai `TestClient` : `FileResponse` sans `filename` ne pose AUCUN
+`Content-Disposition`, donc c'est le navigateur qui decide — et Chrome mobile
+choisit d'afficher un PDF plutot que de le sauvegarder.
+
+Trois choses ont ete ecartees :
+
+- **Forcer `attachment` partout.** Certains navigateurs traitent la ressource
+  d'un `<video src>`/`<img src>` sous `Content-Disposition: attachment` comme
+  un fichier a telecharger plutot qu'a jouer — reparer le telechargement d'un
+  document aurait casse la lecture en ligne, deja mesuree et sous garde de
+  tests.
+- **Une liste blanche de documents plutot qu'une liste noire de medias.**
+  Un nouveau format de document (une future extension `.gantt`, par exemple)
+  serait alors servi en ligne tant que personne n'aurait pense a l'ajouter.
+  Le biais est deliberement du cote du telechargement : un fichier qu'on ne
+  sait pas classer est plus surement un document qu'un media a lire sur
+  place.
+- **Corriger cote PWA (`target="_blank"` -> attribut `download`).** L'attribut
+  `download` d'un `<a>` est ignore par plusieurs navigateurs des que la
+  ressource est d'une autre origine que la page — ce qui est le cas ici, le
+  backend Railway et la PWA n'etant pas necessairement sur le meme domaine.
+  L'en-tete HTTP, lui, fait foi quelle que soit l'origine.
+
+**Ce que ca coute si c'est faux** : un format de document qu'un navigateur
+sait aussi rendre nativement (un `.txt`, un `.html`) se telecharge maintenant
+au lieu de s'afficher dans l'onglet. C'est le choix assume par la mission
+« un devis se telecharge » — et rien n'empechait deja de l'ouvrir depuis les
+telechargements du telephone une fois recupere.
+
+## DEC-0125 — Le format n'engage aucun prix ; DEVIS et FACTURE restent les seuls a l'exiger
+
+**2026-09-21.**
+
+**Decision** : `TYPES_SANS_CHIFFRAGE_OBLIGATOIRE` (`BON DE COMMANDE`,
+`BON DE LIVRAISON`, `RELIQUAT`, `DECHARGE`) dispense le connecteur d'exiger
+une dimension lue avant de produire. `DEVIS` et `FACTURE` restent strictement
+soumis a la regle existante : sans dimension, rien n'est chiffre.
+
+**Pourquoi** : releve direct du proprietaire, « le vrai format n'a pas besoin
+de surface ou d'autres choses pour etre cree, meme s'il n'a aucune info ni
+prix — c'est avec ce format qu'il doit creer les bons de commande, bons de
+livraison, reliquats, decharges etc. » Mesure avant correction : un bon de
+commande avec un vrai client, un vrai lieu, un vrai objet, et AUCUNE dimension
+refusait exactement comme un devis — « Aucune dimension lue dans la demande :
+je ne chiffre rien » — alors qu'un bon de commande ne chiffre rien par
+nature : il liste ce qui est commande, il n'engage aucun prix a lui seul.
+
+Un bon de commande a zero ligne a ete rendu et relu avant d'ecrire cette
+decision : le format complet (logo, charte, numero, bandeau TTC a 0 FCFA)
+tient tres bien sans aucune ligne.
+
+Deux choses ont ete ecartees :
+
+- **Assouplir la regle pour DEVIS/FACTURE aussi.** C'est exactement l'inverse
+  de ce qui a ete demande : ces deux types engagent un prix reel, et la regle
+  2 du connecteur (« aucun prix ne vient de l'appelant ») reste intacte pour
+  eux. Le proprietaire distingue lui-meme le devis (chiffre) des quatre
+  autres (formats).
+- **Devine le type a partir du contexte plutot que d'une liste explicite.**
+  Une liste nommee se relit et se corrige en une ligne ; une heuristique
+  devinee grossirait sans qu'on sache pourquoi un cinquieme type y entre ou
+  non.
+
+**Ce que ca coute si c'est faux** : un futur type de document qui DEVRAIT
+chiffrer (une facture d'acompte, par exemple) et qu'on ajouterait par erreur a
+`TYPES_SANS_CHIFFRAGE_OBLIGATOIRE` produirait un document a 0 FCFA sans le
+signaler autrement que par ce total. Le remede est le meme test qui protege
+DEVIS/FACTURE aujourd'hui : verifier explicitement, avant d'ajouter un type a
+cette liste, qu'il n'engage vraiment aucun prix.
+
+## DEC-0126 — Une demonstration nommee produit reellement un fichier
+
+**2026-09-21.**
+
+**Decision** : `demande_de_demonstration(texte)` compte desormais elle-meme
+comme une demande de document — `_proposer_le_document` n'attend plus
+uniquement `DEMANDE_DE_DOCUMENT`. Le type de document se reconnait aussi
+quand il est nomme A COTE d'un mot de demonstration (« exemple de reliquat »,
+« demo du bon de commande »), jamais au mot nu. Sans dimension donnee, une
+demonstration recoit deux lignes d'exemple prises dans la vraie grille
+(`lignes_demonstration`), plutot qu'un tableau vide.
+
+**Pourquoi** : « il doit creer des demos pour qu'on puisse l'amelioration ».
+Mesure avant correction : « exemple de bon de commande », « devis de
+demonstration », « demo du reliquat » ne contenaient ni « pdf » ni
+« document » ni « genere le X » — le seul declencheur d'ecriture jusqu'ici.
+Aucune de ces phrases, pourtant explicitement une demande de demonstration,
+ne produisait quoi que ce soit. La demonstration existait comme MECANISME
+(texte fictif, destinataire fictif) depuis le 02/09/2026, mais restait
+inatteignable des qu'aucun autre mot ne declenchait une ecriture.
+
+Trois choses ont ete ecartees :
+
+- **Le mot nu comme declencheur du TYPE.** Reouvrirait la regression deja
+  corrigee une fois : « genere le devis, comme la facture de la semaine
+  derniere » produirait une FACTURE. `_motif_type()` n'accepte que
+  l'imperatif ou une demonstration qui NOMME le type, jamais une mention en
+  passant.
+- **Un tableau de demonstration vide.** Un devis a 0 FCFA ne montre rien du
+  format qu'on cherche a juger — deux vrais articles de la grille, quantites
+  arbitraires, rendent un tableau qu'on peut vraiment lire.
+- **Un troisieme article invente si la grille n'en connait qu'un.** Ce qui
+  manque a la grille manque a l'exemple : `lignes_demonstration` rend une
+  ligne pour ce qu'elle trouve, jamais plus.
+
+Un effet de bord corrige au passage : `DESTINATAIRE_DEMONSTRATION["objet"]`
+nommait « DEVIS DE DEMONSTRATION » sur TOUT type de document — contradictoire
+sur un bon de commande ou une decharge. Il dit maintenant « DOCUMENT DE
+DEMONSTRATION », vrai pour les six types.
+
+**Ce que ca coute si c'est faux** : `demande_de_demonstration` reste un motif
+large (« demo »/« demonstration » nus declenchent deja depuis le 02/09/2026,
+sans changement ce soir) — une phrase qui mentionne le mot sans vouloir un
+fichier ecrira quand meme un PDF de demonstration. Le cout reste faible : le
+fichier est explicitement etiquete fictif partout ou il s'affiche, et
+n'engage jamais un vrai client.
