@@ -80,25 +80,66 @@ DEMANDE_DE_DOCUMENT = re.compile(
     r"|genere le bon de livraison|génère le bon de livraison)\b",
     re.IGNORECASE)
 
+def _motif_type(nom_document: str) -> re.Pattern:
+    """Un type de document n'est retenu que sous deux formes — jamais le mot
+    nu : « genere le devis, comme la facture de la semaine derniere » a deja
+    produit une FACTURE alors que le devis etait ce qui avait ete demande
+    (regression corrigee, voir plus bas).
+
+    1. **L'imperatif** : « genere le/la/un/une X ».
+    2. **Une demonstration qui NOMME le type** : « X de demonstration »,
+       « exemple de X », « demo du X ». Necessaire depuis que
+       `demande_de_demonstration()` declenche elle-meme l'ecriture d'un
+       fichier (20/09/2026, « il doit creer des demos ») : sans cette forme,
+       « exemple de bon de commande » produisait un exemple... de DEVIS, le
+       type ne se laissant reconnaitre que par l'imperatif.
+
+    Le mot nu reste hors de portee dans les deux cas : la phrase doit soit
+    ordonner la production, soit nommer le type A COTE d'un mot de
+    demonstration — jamais une simple mention en passant.
+    """
+    return re.compile(
+        rf"(?:genere|g[ée]n[èe]re)\s+(?:le|la|un|une)\s+{nom_document}"
+        rf"|{nom_document}\s+(?:de\s+)?(?:d[ée]monstration|d[ée]mo|test|exemple|fictif|type|mod[èe]le)"
+        rf"|(?:d[ée]monstration|d[ée]mo|exemple|mod[èe]le|test)\s+(?:de\s+|du\s+|d'un\s+|d'une\s+)?{nom_document}",
+        re.IGNORECASE)
+
+
 #: Le type de document a produire, une fois qu'un FICHIER est deja demande
-#: (DEMANDE_DE_DOCUMENT ci-dessus, qui seule declenche une ecriture). Le
+#: (DEMANDE_DE_DOCUMENT plus bas, qui seule declenche une ecriture). Le
 #: renderer (`devis_pdf.py`) accepte deja `type_document` librement ; seule
 #: l'orchestration manquait. « Bon de commande »/« bon de livraison » avant
 #: « facture » : une phrase qui cite plusieurs mots doit garder le plus
 #: specifique.
 #:
-#: La meme phrase exacte que DEMANDE_DE_DOCUMENT pour chaque type, jamais le
-#: mot nu : un mot nu laissait « genere le devis, comme la facture de la
-#: semaine derniere » produire une FACTURE alors que le devis etait ce qui
-#: avait ete demande — l'anti-motif que DEMANDE_DE_DOCUMENT s'interdit deja,
-#: reintroduit ici par megarde une premiere fois puis corrige pour chaque type.
+#: RELIQUAT et DECHARGE ajoutes le 21/09/2026 : cites par le proprietaire
+#: des le premier message sur ce chapitre metier (« devis bon de commande
+#: bon de livraison reliquat, decharge etc »), jamais orchestres avant ce
+#: soir. Le renderer les acceptait deja (`type_document` est un texte libre)
+#: — c'est la reconnaissance qui manquait, pas le format.
 TYPES_DE_DOCUMENT = (
-    (re.compile(r"genere le bon de commande|génère le bon de commande", re.IGNORECASE),
-     "BON DE COMMANDE"),
-    (re.compile(r"genere le bon de livraison|génère le bon de livraison", re.IGNORECASE),
-     "BON DE LIVRAISON"),
-    (re.compile(r"genere la facture|génère la facture", re.IGNORECASE), "FACTURE"),
+    (_motif_type(r"bon de commande"), "BON DE COMMANDE"),
+    (_motif_type(r"bon de livraison"), "BON DE LIVRAISON"),
+    (_motif_type(r"reliquat"), "RELIQUAT"),
+    (_motif_type(r"d[ée]charge"), "DECHARGE"),
+    (_motif_type(r"facture"), "FACTURE"),
 )
+
+#: Ces quatre types n'ENGAGENT aucun prix : un bon de commande liste ce qu'on
+#: commande, un bon de livraison ce qui a ete livre, un reliquat un solde
+#: restant du, une decharge une remise reçue. Aucun des quatre n'a besoin
+#: d'une surface mesuree pour exister — le format (logo, charte, numero) est
+#: ce qui compte, pas un calcul.
+#:
+#: **Mesure du 21/09/2026**, releve direct du proprietaire : « le vrai format
+#: n'a pas besoin de surface ou d'autre chose pour etre cree, meme s'il n'a
+#: aucune info ni prix — c'est avec ce format qu'il doit creer les bons de
+#: commande, bons de livraison, decharges etc. » DEVIS et FACTURE restent
+#: stricts : un chiffre qui engage financierement ne s'improvise jamais
+#: (`core/connectors/devis.py`, regle 2).
+TYPES_SANS_CHIFFRAGE_OBLIGATOIRE = frozenset({
+    "BON DE COMMANDE", "BON DE LIVRAISON", "RELIQUAT", "DECHARGE",
+})
 
 
 def type_document_demande(texte: str) -> str:
@@ -152,9 +193,15 @@ DESTINATAIRE = ("client", "lieu", "objet")
 #: donne-moi un exemple de finition »). Il faut qu'il accompagne le document.
 DEMANDE_DE_DEMONSTRATION = re.compile(
     r"\b(d[ée]monstration|d[ée]mo\b"
-    r"|(devis|facture|document|bon de commande|bon de livraison)\s+"
+    r"|(devis|facture|document|bon de commande|bon de livraison"
+    r"|reliquat|d[ée]charge)\s+"
     r"(de\s+)?(test|exemple|fictif|type|mod[èe]le)"
-    r"|(exemple|mod[èe]le|test)\s+(de\s+)?(devis|facture)"
+    # Les memes six types, dans l'autre ordre (« exemple de reliquat » plutot
+    # que « reliquat d'exemple ») — ajoutes le 21/09/2026, symetriques avec la
+    # liste ci-dessus : sans eux, seuls devis/facture pouvaient se nommer
+    # dans cette forme, et « exemple de bon de commande » ne declenchait rien.
+    r"|(exemple|mod[èe]le|test)\s+(de\s+)?(devis|facture|bon de commande"
+    r"|bon de livraison|reliquat|d[ée]charge)"
     r"|pour\s+voir\s+(a\s+quoi|à\s+quoi|ce\s+que)"
     r")",
     re.IGNORECASE)
@@ -163,10 +210,15 @@ DEMANDE_DE_DEMONSTRATION = re.compile(
 #: un nom plausible : chacun DIT qu'il est fictif, et ces valeurs sont
 #: imprimees telles quelles sur le PDF, a l'emplacement du client et du
 #: chantier (`devis_pdf.py`). Un lecteur ne peut pas se tromper.
+#:
+#: `objet` ne nomme plus le DEVIS specifiquement (corrige le 21/09/2026) :
+#: la demonstration sert desormais tout autant un bon de commande, un
+#: reliquat ou une decharge — le mot « devis » ecrit sur ces documents-la
+#: aurait contredit leur propre en-tete.
 DESTINATAIRE_DEMONSTRATION = {
     "client": "DEMONSTRATION — client fictif",
     "lieu": "DEMONSTRATION — chantier fictif",
-    "objet": ("DEVIS DE DEMONSTRATION — document non contractuel, "
+    "objet": ("DOCUMENT DE DEMONSTRATION — non contractuel, "
               "aucun client reel, ne pas envoyer."),
 }
 
@@ -688,6 +740,33 @@ def _grille(metier: Dict[str, Any]) -> Dict[str, int]:
     return grille
 
 
+#: Deux articles reels de la grille, toujours les memes — un exemple stable,
+#: comparable d'une iteration du format a l'autre. Les quantites sont
+#: arbitraires, jamais mesurees : elles ne pretendent chiffrer aucun vrai
+#: chantier, seulement montrer un tableau qui ressemble a un tableau.
+ARTICLES_DEMONSTRATION = ("Plaque standard BA13", "Sac enduit")
+
+
+def lignes_demonstration(metier: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Deux postes d'exemple, pour qu'une demonstration sans dimension
+    rende un tableau plutot qu'une ligne « Total : 0 FCFA ».
+
+    **Mesure du 21/09/2026** : « le vrai format n'a pas besoin de surface...
+    il doit creer des demos pour qu'on puisse l'amelioration ». Un tableau
+    vide ne montre rien a ameliorer — deux postes REELS de la grille (les
+    prix ne sont jamais inventes, regle 2 de `core/connectors/devis.py`)
+    donnent un rendu qu'on peut vraiment juger.
+
+    Rend une ligne pour chaque article que la grille connait vraiment — un
+    seul si l'autre manque, `[]` si aucun des deux n'y figure. Jamais un
+    troisieme article invente pour completer : ce qui manque a la grille
+    manque a l'exemple.
+    """
+    grille = _grille(metier)
+    return [{"designation": nom, "quantite": 2}
+            for nom in ARTICLES_DEMONSTRATION if nom in grille]
+
+
 def metiers_evoques(demande: str, metier: Dict[str, Any]) -> List[str]:
     """Rend les metiers cites qui ne sont pas les siens.
 
@@ -1174,11 +1253,18 @@ class PlaquisteAgent(BaseAgent):
         « aucune dimension lue » — le calcul affiche dans la reponse ne
         rejoignait jamais le PDF reellement ecrit.
 
+        **Une demonstration demande elle-meme un fichier**, depuis le
+        21/09/2026 : « exemple de bon de commande » ou « devis de
+        demonstration » ne contenaient ni « pdf » ni « document » ni
+        « genere le X », donc `DEMANDE_DE_DOCUMENT` seule ne les voyait
+        jamais — la demonstration restait une phrase en l'air, jamais un
+        fichier. Mesure directe : aucune des deux ne declenchait rien.
+
         Returns:
             Le compte-rendu de la soumission, ou `None` quand aucun document
             n'a ete demande.
         """
-        if not DEMANDE_DE_DOCUMENT.search(texte or ""):
+        if not (DEMANDE_DE_DOCUMENT.search(texte or "") or demande_de_demonstration(texte)):
             return None
         if self.registre is None:
             return {"statut": "NOT_CONFIGURED",
@@ -1217,6 +1303,15 @@ class PlaquisteAgent(BaseAgent):
             parametres_lignes["lignes"] = [
                 {"designation": besoin.article, "quantite": besoin.quantite}
                 for besoin in metre.besoins]
+        elif demande_de_demonstration(texte):
+            # Une demonstration sans dimension donnee montre quand meme le
+            # FORMAT : deux postes d'exemple plutot qu'un tableau a « 0 FCFA ».
+            # Le destinataire dit deja que c'est fictif (DESTINATAIRE_
+            # DEMONSTRATION juste au-dessus) ; ces lignes ne pretendent pas
+            # davantage chiffrer un vrai chantier.
+            demo = lignes_demonstration(self.metier)
+            if demo:
+                parametres_lignes["lignes"] = demo
 
         resultat = self.registre.executer(
             "devis", "produire", demande=texte,

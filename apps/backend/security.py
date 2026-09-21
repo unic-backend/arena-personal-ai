@@ -173,3 +173,39 @@ def validate_media_path(raw_path: str) -> Path:
             detail="Acces refuse : le fichier doit se trouver dans le dossier media/."
         ) from None
     return p
+
+
+#: Extensions qu'un lecteur charge EN LIGNE — un `<video src>`, un `<img src>`
+#: ou un `<audio src>` les affiche directement, jamais en telechargement.
+#:
+#: **Mesure du 21/09/2026** : un devis PDF ouvert depuis le telephone du
+#: proprietaire s'ouvrait dans la visionneuse du navigateur, sans jamais
+#: proposer de le sauvegarder — « n'est pas telechargeable, les pdf s'ouvrent
+#: sur web seulement ». `FileResponse` (Starlette) ne pose AUCUN en-tete
+#: `Content-Disposition` quand `filename` n'est pas fourni : c'est alors le
+#: navigateur qui decide, et Chrome mobile rend un PDF dans sa visionneuse
+#: integree plutot que de le telecharger.
+#:
+#: Cette liste est volontairement la seule exception : tout ce qui n'y figure
+#: pas (pdf, docx, xlsx, md, txt, html, zip, un format inconnu…) devient un
+#: telechargement. Le biais est deliberement du cote du document — un fichier
+#: qu'on ne sait pas classer est plus surement un document qu'un media a lire
+#: sur place.
+EXTENSIONS_EN_LIGNE = frozenset({
+    ".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v",
+    ".mp3", ".wav", ".aac", ".m4a", ".ogg", ".flac",
+    ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".svg",
+})
+
+
+def type_de_presentation(nom_fichier: str) -> str:
+    """`"inline"` pour ce qu'un lecteur affiche sur place, `"attachment"` pour
+    ce qui doit se telecharger.
+
+    Ne JAMAIS forcer `"attachment"` sur un media de `EXTENSIONS_EN_LIGNE` :
+    certains navigateurs traitent alors la ressource d'un `<video>`/`<img>`
+    comme un fichier a telecharger plutot qu'a jouer, et casseraient la
+    lecture en ligne pour reparer le telechargement d'un document.
+    """
+    suffixe = Path(nom_fichier).suffix.lower()
+    return "inline" if suffixe in EXTENSIONS_EN_LIGNE else "attachment"

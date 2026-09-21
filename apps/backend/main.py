@@ -43,7 +43,12 @@ from apps.backend.runtime import (
     ollama_vision,
     reprendre_les_travaux_interrompus,
 )
-from apps.backend.security import cle_presentee_valide, validate_media_path, verify_media_access
+from apps.backend.security import (
+    cle_presentee_valide,
+    type_de_presentation,
+    validate_media_path,
+    verify_media_access,
+)
 from apps.backend.verification_modeles import verifier_modeles
 from core.observabilite.fil import ENTETE as ENTETE_FIL
 from core.observabilite.fil import nouveau_fil
@@ -158,11 +163,25 @@ async def servir_media_rendu(nom: str):
     `validate_media_path` verifie apres — une resolution reelle du
     filesystem, contre laquelle un `..` echoue de la meme facon, imbrique
     ou non, symlink ou non.
+
+    **Un document se telecharge, un media se lit sur place.** Mesure le
+    21/09/2026 : un devis PDF ouvert depuis le telephone du proprietaire
+    s'ouvrait dans la visionneuse du navigateur — jamais telechargeable.
+    `FileResponse` (Starlette) ne pose AUCUN `Content-Disposition` quand
+    `filename` n'est pas fourni ; c'est alors le navigateur qui decide, et
+    Chrome mobile choisit d'afficher un PDF plutot que de le sauvegarder.
+    `type_de_presentation` (apps/backend/security.py) tranche par
+    extension : un `<video src>`/`<img src>`/`<audio src>` garde le
+    comportement d'avant (aucun en-tete, la lecture en ligne ne doit jamais
+    se casser) ; tout le reste — pdf, docx, xlsx, md… et tout format inconnu
+    — recoit `filename` et se telecharge.
     """
     chemin = validate_media_path(str(RENDERED_DIR / nom))
     if not chemin.is_file():
         raise HTTPException(status_code=404, detail="Fichier introuvable.")
-    return FileResponse(str(chemin))
+    if type_de_presentation(chemin.name) == "inline":
+        return FileResponse(str(chemin))
+    return FileResponse(str(chemin), filename=chemin.name, content_disposition_type="attachment")
 
 
 # Fichiers tiers embarques (Tailwind) : l'interface doit s'afficher sans Internet.
