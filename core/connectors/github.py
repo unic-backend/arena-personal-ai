@@ -123,6 +123,13 @@ class ConnecteurGitHub(Connecteur):
                     "Un fichier existant exige son SHA lu auparavant."
                 ),
                 ecriture=True),
+            "remplacer_dans_fichier": Capacite(
+                nom="remplacer_dans_fichier", action="write",
+                description=(
+                    "Remplace un passage exact et unique dans un fichier GitHub "
+                    "sans reecrire le reste depuis le modele."
+                ),
+                ecriture=True),
             "creer_pull_request": Capacite(
                 nom="creer_pull_request", action="create_pr",
                 description="Ouvre une Pull Request, en brouillon.",
@@ -442,6 +449,147 @@ class ConnecteurGitHub(Connecteur):
         return succes(
             "ecrire_fichier", depot,
             f"{chemin} {verbe} sur {branche}.",
+            preuve=commit_sha or fichier_sha,
+            chemin=chemin,
+            branche=branche,
+            commit_sha=commit_sha,
+            sha=fichier_sha,
+            url=(resultat.get("content") or {}).get("html_url", ""),
+        )
+
+    # -- remplacer_dans_fichier ---------------------------------------------------
+
+    def _faire_remplacer_dans_fichier(
+        self,
+        depot: str = "",
+        chemin: str = "",
+        branche: str = "",
+        sha_attendu: str = "",
+        ancien: str = "",
+        nouveau: str = "",
+        message: str = "",
+        **_: Any,
+    ) -> ResultatAction:
+        """Edition chirurgicale et optimiste d'un fichier texte distant.
+
+        Le modele fournit uniquement le passage exact observe lors de sa lecture,
+        pas le fichier entier. Le connecteur relit le fichier juste avant le PUT,
+        verifie le SHA, exige UNE occurrence exacte, puis construit lui-meme le
+        contenu complet. Une lecture perimee ou un passage ambigu bloque l'action
+        au lieu de deviner.
+        """
+        if not depot or not chemin or not branche:
+            return echec(
+                "remplacer_dans_fichier", self.nom,
+                "depot, chemin et branche sont requis."
+            )
+        if not sha_attendu:
+            return echec(
+                "remplacer_dans_fichier", depot,
+                "sha_attendu est requis : lis le fichier avant de le modifier."
+            )
+        if ancien == "":
+            return echec(
+                "remplacer_dans_fichier", depot,
+                "ancien ne peut pas etre vide : cite le passage exact a remplacer."
+            )
+
+        try:
+            actuel = self._requete(
+                "GET", f"/repos/{depot}/contents/{chemin}",
+                params={"ref": branche},
+            )
+        except httpx.HTTPError as erreur:
+            return echec(
+                "remplacer_dans_fichier", depot,
+                f"Requete GitHub en echec : {erreur}"
+            )
+
+        if actuel.status_code == 404:
+            return echec(
+                "remplacer_dans_fichier", depot,
+                f"{chemin} n'existe plus sur {branche}. Relis avant de modifier."
+            )
+        if actuel.status_code != 200:
+            return echec(
+                "remplacer_dans_fichier", depot,
+                f"Impossible de relire {chemin} : GitHub repond {actuel.status_code}."
+            )
+
+        corps_actuel = actuel.json()
+        if isinstance(corps_actuel, list):
+            return echec(
+                "remplacer_dans_fichier", depot,
+                f"{chemin} est un dossier, pas un fichier."
+            )
+
+        sha_actuel = str(corps_actuel.get("sha", ""))
+        if sha_actuel != sha_attendu:
+            return echec(
+                "remplacer_dans_fichier", depot,
+                f"{chemin} a change depuis sa lecture : SHA attendu "
+                f"{sha_attendu}, SHA actuel {sha_actuel}. Relis le fichier."
+            )
+
+        try:
+            brut = base64.b64decode(corps_actuel.get("content", ""))
+            contenu = brut.decode("utf-8")
+        except (ValueError, UnicodeDecodeError) as erreur:
+            return echec(
+                "remplacer_dans_fichier", depot,
+                f"{chemin} n'est pas un fichier texte UTF-8 editable ici : "
+                f"{type(erreur).__name__}."
+            )
+
+        occurrences = contenu.count(ancien)
+        if occurrences == 0:
+            return echec(
+                "remplacer_dans_fichier", depot,
+                "Le passage ANCIEN n'existe plus exactement dans le fichier. "
+                "Relis le fichier avant de modifier."
+            )
+        if occurrences > 1:
+            return echec(
+                "remplacer_dans_fichier", depot,
+                f"Le passage ANCIEN apparait {occurrences} fois : remplacement "
+                "ambigu refuse. Choisis un passage plus precis."
+            )
+
+        contenu_nouveau = contenu.replace(ancien, nouveau, 1)
+        corps_put = {
+            "message": message.strip() or f"fix: update {chemin}",
+            "content": base64.b64encode(
+                contenu_nouveau.encode("utf-8")
+            ).decode("ascii"),
+            "branch": branche,
+            "sha": sha_actuel,
+        }
+        try:
+            reponse = self._requete(
+                "PUT", f"/repos/{depot}/contents/{chemin}", json=corps_put
+            )
+        except httpx.HTTPError as erreur:
+            return echec(
+                "remplacer_dans_fichier", depot,
+                f"Requete GitHub en echec : {erreur}"
+            )
+
+        if reponse.status_code != 200:
+            try:
+                detail = reponse.json().get("message", "")
+            except ValueError:
+                detail = reponse.text
+            return echec(
+                "remplacer_dans_fichier", depot,
+                f"GitHub refuse le remplacement ({reponse.status_code}) : {detail}"
+            )
+
+        resultat = reponse.json()
+        commit_sha = str((resultat.get("commit") or {}).get("sha", ""))
+        fichier_sha = str((resultat.get("content") or {}).get("sha", ""))
+        return succes(
+            "remplacer_dans_fichier", depot,
+            f"{chemin} modifie chirurgicalement sur {branche}.",
             preuve=commit_sha or fichier_sha,
             chemin=chemin,
             branche=branche,
