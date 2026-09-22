@@ -882,44 +882,53 @@ class DioumtoukayAgent(BaseAgent):
 
     @staticmethod
     def _detail_lisible(detail: Dict[str, Any]) -> str:
-        """Transforme un detail structure en texte stable, sans repr Python.
-
-        Les connecteurs rendent des dictionnaires utiles au moteur. Les afficher
-        tels quels donnait des blocs `{'sha': ..., 'taille': ...}` illisibles
-        sur mobile. Ici chaque structure devient des lignes/bullets ; les octets
-        ne sont jamais recopies.
-        """
+        """Transforme une structure imbriquee en texte stable, jamais en repr Python."""
         lignes: List[str] = []
-        for cle, valeur in (detail or {}).items():
+
+        def ajouter(nom: str, valeur: Any, niveau: int = 0, puce: bool = False) -> None:
+            indentation = "  " * niveau
+            prefixe = "- " if puce else ""
+            etiquette = f"{nom}: " if nom else ""
+
             if isinstance(valeur, (bytes, bytearray)):
-                lignes.append(f"{cle}: {len(valeur)} octet(s)")
-                continue
-            if isinstance(valeur, list):
-                if not valeur:
-                    lignes.append(f"{cle}: aucun")
-                    continue
-                lignes.append(f"{cle}:")
-                for item in valeur:
-                    if isinstance(item, dict):
-                        morceaux = [
-                            f"{k}={v}" for k, v in item.items()
-                            if not isinstance(v, (dict, list, bytes, bytearray))
-                            and v not in ("", None)
-                        ]
-                        lignes.append("- " + ", ".join(morceaux))
-                    else:
-                        lignes.append(f"- {item}")
-                continue
+                lignes.append(
+                    f"{indentation}{prefixe}{etiquette}{len(valeur)} octet(s)"
+                )
+                return
+
             if isinstance(valeur, dict):
-                lignes.append(f"{cle}:")
-                for sous_cle, sous_valeur in valeur.items():
-                    if isinstance(sous_valeur, (bytes, bytearray)):
-                        lignes.append(f"- {sous_cle}: {len(sous_valeur)} octet(s)")
+                if nom:
+                    lignes.append(f"{indentation}{prefixe}{nom}:")
+                elif puce:
+                    lignes.append(f"{indentation}-")
+                for cle, sous_valeur in valeur.items():
+                    ajouter(str(cle), sous_valeur, niveau + 1)
+                return
+
+            if isinstance(valeur, (list, tuple)):
+                if nom:
+                    lignes.append(f"{indentation}{prefixe}{nom}:")
+                elif puce:
+                    lignes.append(f"{indentation}-")
+                if not valeur:
+                    lignes.append(f"{indentation}  aucun")
+                    return
+                for item in valeur:
+                    if isinstance(item, (dict, list, tuple)):
+                        ajouter("", item, niveau + 1, puce=True)
+                    elif isinstance(item, (bytes, bytearray)):
+                        lignes.append(
+                            f"{'  ' * (niveau + 1)}- {len(item)} octet(s)"
+                        )
                     else:
-                        lignes.append(f"- {sous_cle}: {sous_valeur}")
-                continue
+                        lignes.append(f"{'  ' * (niveau + 1)}- {item}")
+                return
+
             if valeur not in ("", None):
-                lignes.append(f"{cle}: {valeur}")
+                lignes.append(f"{indentation}{prefixe}{etiquette}{valeur}")
+
+        for cle, valeur in (detail or {}).items():
+            ajouter(str(cle), valeur)
         return "\n".join(lignes)
 
     @classmethod
@@ -1911,7 +1920,8 @@ class DioumtoukayAgent(BaseAgent):
         if rendu:
             succes = sum(1 for acte in rendu if acte.get("ok"))
             statut = (
-                f"{succes}/{len(rendu)} action(s) exécutée(s) avec succès"
+                f"{succes}/{len(rendu)} action(s) exécutée(s) avec succès, "
+                f"{len(echecs)} en echec"
                 if echecs else f"{len(rendu)} action(s) exécutée(s), aucune en échec"
             )
             parties.append(f"*Vérification : {statut}.*")
