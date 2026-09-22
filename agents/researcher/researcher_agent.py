@@ -3,7 +3,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
-from core.knowledge import KnowledgeVault
+from core.knowledge.vault import KnowledgeVault
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from core.security.trust import TrustLevel, wrap
