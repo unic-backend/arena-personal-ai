@@ -195,8 +195,8 @@ def test_agentic_vault_liste_trouve_et_lit_sans_sortir_du_dossier(tmp_path: Path
     trouves = vault.find_text("double montant", context=0)
     assert trouves == [{
         "path": "concepts/ba13.md",
-        "line": 6,
-        "excerpt": "6: Le double montant est pose aux joints de plaques.",
+        "line": 7,
+        "excerpt": "7: Le double montant est pose aux joints de plaques.",
     }]
 
     page = vault.read_page("concepts/ba13.md", offset=5, limit=2)
