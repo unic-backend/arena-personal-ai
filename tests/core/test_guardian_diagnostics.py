@@ -1,11 +1,9 @@
-"""`core/guardian/diagnostics.py` : trois constats réels, une sortie injectée
-pour rester rapide et hors ligne — le vrai `ruff`/`pytest` a tourné à la
-main pendant l'écriture de ce module (voir docs/DECISIONS.md, DEC-0014).
-"""
+"""`core/guardian/diagnostics.py` : diagnostics injectés pour rester rapides et hors ligne."""
 import json
 
 from core.guardian.diagnostics import (
     CATEGORIE_BUG,
+    CATEGORIE_DIAGNOSTIC,
     CATEGORIE_QUALITE,
     Constat,
     SortieCommande,
@@ -16,8 +14,10 @@ from core.guardian.diagnostics import (
 
 def _fixe(sortie: SortieCommande):
     """Un exécuteur de test qui rend toujours la même sortie, sans vrai processus."""
+
     def _executer(commande):
         return sortie
+
     return _executer
 
 
@@ -35,8 +35,7 @@ class TestConstat:
         assert a.empreinte != b.empreinte
 
     def test_l_empreinte_ignore_la_preuve(self):
-        """La preuve peut varier legerement d'un cycle a l'autre (un numero de
-        ligne qui bouge) sans que ca cree une nouvelle tache a chaque fois."""
+        """La preuve peut varier sans créer une nouvelle tâche à chaque cycle."""
         a = Constat(categorie="BUG", gravite="P2", description="x", fichier="f.py", preuve="v1")
         b = Constat(categorie="BUG", gravite="P2", description="x", fichier="f.py", preuve="v2")
 
@@ -100,8 +99,14 @@ class TestDiagnostiquerQualite:
         assert diagnostiquer_qualite(executer) == []
 
     def test_une_violation_devient_un_constat(self):
-        violations = [{"code": "F401", "message": "unused import",
-                      "filename": "/x/module.py", "location": {"row": 3}}]
+        violations = [
+            {
+                "code": "F401",
+                "message": "unused import",
+                "filename": "/x/module.py",
+                "location": {"row": 3},
+            }
+        ]
         executer = _fixe(SortieCommande(1, json.dumps(violations), ""))
 
         constats = diagnostiquer_qualite(executer)
@@ -110,7 +115,12 @@ class TestDiagnostiquerQualite:
         assert constats[0].categorie == CATEGORIE_QUALITE
         assert "F401" in constats[0].description
 
-    def test_une_sortie_illisible_ne_leve_pas(self):
+    def test_une_sortie_illisible_signale_un_diagnostic_incomplet(self):
         executer = _fixe(SortieCommande(1, "pas du json", "erreur ruff"))
 
-        assert diagnostiquer_qualite(executer) == []
+        constats = diagnostiquer_qualite(executer)
+
+        assert len(constats) == 1
+        assert constats[0].categorie == CATEGORIE_DIAGNOSTIC
+        assert constats[0].fichier == CATEGORIE_QUALITE
+        assert "sortie JSON de ruff illisible" in constats[0].preuve
