@@ -70,8 +70,8 @@ export function EventLogDrawer() {
           <div className="flex items-center gap-2 border-b border-white/6 px-4 py-3">
             <span className="inline-block h-1.5 w-1.5 animate-pulse-dot rounded-full bg-accent-500" />
             <div className="flex-1">
-              <div className="text-[12.5px] font-medium text-zinc-200">{t('log.title')}</div>
-              <div className="font-mono text-[9px] text-zinc-600">{t('log.transport', { n: rows.length })}</div>
+              <div className="text-ui-body-sm font-medium text-zinc-200">{t('log.title')}</div>
+              <div className="font-mono text-ui-meta text-zinc-600">{t('log.transport', { n: rows.length })}</div>
             </div>
             <button
               onClick={() => setPaused((p) => !p)}
@@ -92,7 +92,7 @@ export function EventLogDrawer() {
             ref={scrollRef}
             role="log"
             aria-live="polite"
-            className="flex-1 overflow-y-auto px-4 py-3 font-mono text-[10px] leading-relaxed scroll-slim"
+            className="flex-1 overflow-y-auto px-4 py-3 font-mono text-ui-meta leading-relaxed scroll-slim"
           >
             {rows.length === 0 && (
               <p className="text-zinc-600">{t('log.empty')}</p>

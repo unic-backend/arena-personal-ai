@@ -74,7 +74,7 @@ export function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
           transition={{ duration: 0.35 }}
           className="mt-6 w-full max-w-xl"
         >
-          <div className="mb-2 flex items-center justify-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-zinc-600">
+          <div className="mb-2 flex items-center justify-center gap-1.5 font-mono text-ui-meta uppercase tracking-[0.18em] text-zinc-600">
             <capacite.icone size={11} className="text-accent-400" />
             {locale === 'fr' ? capacite.nomFr : capacite.nomEn}
           </div>
@@ -84,7 +84,7 @@ export function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
                 key={ex}
                 type="button"
                 onClick={() => onPick(ex)}
-                className="w-full rounded-xl border border-white/8 bg-white/[0.02] px-3.5 py-2.5 text-left text-[12.5px] text-zinc-400 transition hover:border-accent-500/35 hover:bg-accent-500/[0.04] hover:text-zinc-200 active:scale-[0.99]"
+                className="w-full rounded-xl border border-white/8 bg-white/[0.02] px-3.5 py-2.5 text-left text-ui-body-sm text-zinc-400 transition hover:border-accent-500/35 hover:bg-accent-500/[0.04] hover:text-zinc-200 active:scale-[0.99]"
               >
                 {ex}
               </button>
@@ -95,7 +95,7 @@ export function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
             <button
               type="button"
               onClick={() => setVideoProjectOpen(true)}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-accent-500/25 bg-accent-500/[0.06] px-3.5 py-2.5 text-[12.5px] font-medium text-accent-300 transition hover:bg-accent-500/[0.1] active:scale-[0.99]"
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-accent-500/25 bg-accent-500/[0.06] px-3.5 py-2.5 text-ui-body-sm font-medium text-accent-300 transition hover:bg-accent-500/[0.1] active:scale-[0.99]"
             >
               <Clapperboard size={14} />
               {t('vidproj.title')}

@@ -119,10 +119,10 @@ export function MemoryModal() {
                 <Brain size={14} />
               </span>
               <div className="flex-1 min-w-0">
-                <h2 id="memory-modal-title" className="text-[13.5px] font-medium text-zinc-100 truncate">
+                <h2 id="memory-modal-title" className="text-ui-body-sm font-medium text-zinc-100 truncate">
                   {t('memory.title')}
                 </h2>
-                <div className="font-mono text-[9px] text-zinc-400 truncate">
+                <div className="font-mono text-ui-meta text-zinc-400 truncate">
                   {t('memory.activeCount', { n: activeCount })}
                 </div>
               </div>
@@ -148,13 +148,13 @@ export function MemoryModal() {
                     onChange={(e) => setNewContent(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
                     placeholder={t('memory.addPh')}
-                    className="w-full min-w-0 rounded-lg border border-white/10 bg-ink-950 px-2.5 py-1.5 text-[11.5px] text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-accent-500/50"
+                    className="w-full min-w-0 rounded-lg border border-white/10 bg-ink-950 px-2.5 py-1.5 text-ui-meta text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-accent-500/50"
                   />
                   <button
                     type="button"
                     onClick={handleAdd}
                     disabled={!newContent.trim()}
-                    className="inline-flex items-center gap-1 shrink-0 rounded-lg bg-accent-500 px-3 py-1.5 text-[11px] font-medium text-ink-950 transition hover:bg-accent-400 disabled:opacity-40"
+                    className="inline-flex items-center gap-1 shrink-0 rounded-lg bg-accent-500 px-3 py-1.5 text-ui-meta font-medium text-ink-950 transition hover:bg-accent-400 disabled:opacity-40"
                   >
                     <Plus size={12} strokeWidth={2.5} />
                     <span>{t('memory.addBtn')}</span>
@@ -171,7 +171,7 @@ export function MemoryModal() {
                       type="button"
                       onClick={() => setNewCategory(c.id)}
                       className={cn(
-                        'rounded-md border px-2 py-0.5 font-mono text-[9px] transition active:scale-95',
+                        'rounded-md border px-2 py-0.5 font-mono text-ui-meta transition active:scale-95',
                         newCategory === c.id
                           ? 'border-accent-500/40 bg-accent-500/15 text-accent-300'
                           : 'border-white/6 bg-white/[0.02] text-zinc-500 hover:text-zinc-300',
@@ -192,7 +192,7 @@ export function MemoryModal() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={fr ? 'Filtrer les faits…' : 'Filter memories…'}
-                    className="w-full rounded-lg border border-white/8 bg-ink-950/60 py-1 pl-6 pr-2 text-[10.5px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-accent-500/40"
+                    className="w-full rounded-lg border border-white/8 bg-ink-950/60 py-1 pl-6 pr-2 text-ui-meta text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-accent-500/40"
                   />
                 </div>
 
@@ -201,7 +201,7 @@ export function MemoryModal() {
                     type="button"
                     onClick={() => setSelectedCategory('all')}
                     className={cn(
-                      'rounded-lg px-2 py-1 font-mono text-[9.5px] transition',
+                      'rounded-lg px-2 py-1 font-mono text-ui-meta transition',
                       selectedCategory === 'all'
                         ? 'bg-white/10 text-zinc-100'
                         : 'text-zinc-500 hover:text-zinc-300',
@@ -215,7 +215,7 @@ export function MemoryModal() {
                       type="button"
                       onClick={() => setSelectedCategory(c.id)}
                       className={cn(
-                        'rounded-lg px-2 py-1 font-mono text-[9.5px] transition',
+                        'rounded-lg px-2 py-1 font-mono text-ui-meta transition',
                         selectedCategory === c.id
                           ? 'bg-accent-500/15 text-accent-300'
                           : 'text-zinc-500 hover:text-zinc-300',
@@ -232,7 +232,7 @@ export function MemoryModal() {
                 {filteredMemories.length === 0 ? (
                   <div className="rounded-xl border border-white/6 bg-white/[0.01] p-6 text-center">
                     <Database size={20} className="mx-auto mb-2 text-zinc-600" />
-                    <p className="text-[11px] text-zinc-500">{t('memory.empty')}</p>
+                    <p className="text-ui-meta text-zinc-500">{t('memory.empty')}</p>
                   </div>
                 ) : (
                   filteredMemories.map((item) => {
@@ -253,7 +253,7 @@ export function MemoryModal() {
                               if (e.key === 'Enter') handleSaveEdit(item.id);
                               if (e.key === 'Escape') setEditingId(null);
                             }}
-                            className="w-full rounded bg-ink-950 px-2 py-1 text-[11.5px] text-zinc-100 outline-none ring-1 ring-accent-500/50"
+                            className="w-full rounded bg-ink-950 px-2 py-1 text-ui-meta text-zinc-100 outline-none ring-1 ring-accent-500/50"
                           />
                           <div className="flex items-center justify-between">
                             <div className="flex gap-1">
@@ -277,14 +277,14 @@ export function MemoryModal() {
                               <button
                                 type="button"
                                 onClick={() => setEditingId(null)}
-                                className="rounded px-2 py-0.5 text-[10px] text-zinc-400 hover:text-zinc-200"
+                                className="rounded px-2 py-0.5 text-ui-meta text-zinc-400 hover:text-zinc-200"
                               >
                                 {t('msg.cancel')}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleSaveEdit(item.id)}
-                                className="rounded bg-accent-500 px-2 py-0.5 text-[10px] font-medium text-ink-950 hover:bg-accent-400"
+                                className="rounded bg-accent-500 px-2 py-0.5 text-ui-meta font-medium text-ink-950 hover:bg-accent-400"
                               >
                                 <Check size={11} className="inline mr-0.5" />
                                 {fr ? 'Valider' : 'Save'}
@@ -343,7 +343,7 @@ export function MemoryModal() {
                               )}
                             </span>
                           </div>
-                          <p className="text-[11.5px] leading-relaxed text-zinc-200 break-words">
+                          <p className="text-ui-meta leading-relaxed text-zinc-200 break-words">
                             {item.content}
                           </p>
                         </div>
@@ -378,21 +378,21 @@ export function MemoryModal() {
             <div className="flex items-center justify-between border-t border-white/7 px-4 py-2.5 bg-ink-950/40">
               {confirmClear ? (
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-red-300">{t('memory.clearConfirm')}</span>
+                  <span className="text-ui-meta text-red-300">{t('memory.clearConfirm')}</span>
                   <button
                     type="button"
                     onClick={() => {
                       clearAllMemories();
                       setConfirmClear(false);
                     }}
-                    className="rounded bg-red-400/20 px-2 py-0.5 text-[9.5px] font-medium text-red-300 hover:bg-red-400/30"
+                    className="rounded bg-red-400/20 px-2 py-0.5 text-ui-meta font-medium text-red-300 hover:bg-red-400/30"
                   >
                     {t('sidebar.delete')}
                   </button>
                   <button
                     type="button"
                     onClick={() => setConfirmClear(false)}
-                    className="text-[9.5px] text-zinc-400 hover:text-zinc-200"
+                    className="text-ui-meta text-zinc-400 hover:text-zinc-200"
                   >
                     {t('msg.cancel')}
                   </button>
@@ -402,7 +402,7 @@ export function MemoryModal() {
                   <button
                     type="button"
                     onClick={resetToDefaults}
-                    className="inline-flex items-center gap-1 text-[10px] text-zinc-500 transition hover:text-zinc-300"
+                    className="inline-flex items-center gap-1 text-ui-meta text-zinc-500 transition hover:text-zinc-300"
                   >
                     <RotateCcw size={10} />
                     {t('memory.resetDefaults')}
@@ -411,7 +411,7 @@ export function MemoryModal() {
                     <button
                       type="button"
                       onClick={() => setConfirmClear(true)}
-                      className="inline-flex items-center gap-1 text-[10px] text-zinc-600 transition hover:text-red-400"
+                      className="inline-flex items-center gap-1 text-ui-meta text-zinc-600 transition hover:text-red-400"
                     >
                       <Trash2 size={10} />
                       {t('memory.clearAll')}
@@ -423,7 +423,7 @@ export function MemoryModal() {
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="rounded-lg bg-white/5 px-3 py-1 text-[11px] font-medium text-zinc-300 transition hover:bg-white/10"
+                className="rounded-lg bg-white/5 px-3 py-1 text-ui-meta font-medium text-zinc-300 transition hover:bg-white/10"
               >
                 {fr ? 'Fermer' : 'Done'}
               </button>

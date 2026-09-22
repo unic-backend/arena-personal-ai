@@ -125,10 +125,10 @@ export function ExportModal({ isOpen: controlledOpen, onClose: controlledClose }
                 <Share2 size={13} />
               </span>
               <div className="flex-1 min-w-0">
-                <h2 id="export-modal-title" className="text-[13.5px] font-medium text-zinc-100 truncate">
+                <h2 id="export-modal-title" className="text-ui-body-sm font-medium text-zinc-100 truncate">
                   {t('export.title')}
                 </h2>
-                <div className="font-mono text-[9px] text-zinc-400 truncate">
+                <div className="font-mono text-ui-meta text-zinc-400 truncate">
                   {t('export.subtitle')}
                 </div>
               </div>
@@ -150,7 +150,7 @@ export function ExportModal({ isOpen: controlledOpen, onClose: controlledClose }
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   className={cn(
-                    'border-b px-4 py-2 text-[11px] font-medium flex items-center gap-2',
+                    'border-b px-4 py-2 text-ui-meta font-medium flex items-center gap-2',
                     feedback.type === 'success'
                       ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
                       : 'border-red-500/20 bg-red-500/10 text-red-300',
@@ -167,11 +167,11 @@ export function ExportModal({ isOpen: controlledOpen, onClose: controlledClose }
               {/* Section 1: Active Conversation */}
               <section className="space-y-1.5">
                 <div className="flex items-center justify-between px-1">
-                  <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-zinc-500">
+                  <span className="font-mono text-ui-meta uppercase tracking-[0.18em] text-zinc-500">
                     {t('export.currentSection')}
                   </span>
                   {hasCurrent && (
-                    <span className="truncate max-w-[200px] font-mono text-[9px] text-accent-400">
+                    <span className="truncate max-w-[200px] font-mono text-ui-meta text-accent-400">
                       {currentConv?.title}
                     </span>
                   )}
@@ -189,8 +189,8 @@ export function ExportModal({ isOpen: controlledOpen, onClose: controlledClose }
                         <Share2 size={14} />
                       </span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-[12px] font-medium text-zinc-100">{t('export.shareBtn')}</div>
-                        <div className="truncate text-[10px] text-zinc-400">{t('export.shareDesc')}</div>
+                        <div className="text-ui-body-sm font-medium text-zinc-100">{t('export.shareBtn')}</div>
+                        <div className="truncate text-ui-meta text-zinc-400">{t('export.shareDesc')}</div>
                       </div>
                     </button>
 
@@ -204,8 +204,8 @@ export function ExportModal({ isOpen: controlledOpen, onClose: controlledClose }
                         <FileText size={14} />
                       </span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-[12px] font-medium text-zinc-200">{t('export.markdown')}</div>
-                        <div className="truncate text-[10px] text-zinc-500">{t('export.markdownDesc')}</div>
+                        <div className="text-ui-body-sm font-medium text-zinc-200">{t('export.markdown')}</div>
+                        <div className="truncate text-ui-meta text-zinc-500">{t('export.markdownDesc')}</div>
                       </div>
                       <Download size={13} className="shrink-0 text-zinc-500" />
                     </button>
@@ -220,8 +220,8 @@ export function ExportModal({ isOpen: controlledOpen, onClose: controlledClose }
                         <FileDown size={14} />
                       </span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-[12px] font-medium text-zinc-200">{t('export.plainText')}</div>
-                        <div className="truncate text-[10px] text-zinc-500">{t('export.plainTextDesc')}</div>
+                        <div className="text-ui-body-sm font-medium text-zinc-200">{t('export.plainText')}</div>
+                        <div className="truncate text-ui-meta text-zinc-500">{t('export.plainTextDesc')}</div>
                       </div>
                       <Download size={13} className="shrink-0 text-zinc-500" />
                     </button>
@@ -236,14 +236,14 @@ export function ExportModal({ isOpen: controlledOpen, onClose: controlledClose }
                         <FileCode2 size={14} />
                       </span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-[12px] font-medium text-zinc-200">{t('export.singleJson')}</div>
-                        <div className="truncate text-[10px] text-zinc-500">{t('export.singleJsonDesc')}</div>
+                        <div className="text-ui-body-sm font-medium text-zinc-200">{t('export.singleJson')}</div>
+                        <div className="truncate text-ui-meta text-zinc-500">{t('export.singleJsonDesc')}</div>
                       </div>
                       <Download size={13} className="shrink-0 text-zinc-500" />
                     </button>
                   </div>
                 ) : (
-                  <p className="rounded-xl border border-white/6 bg-white/[0.01] p-3 text-[11px] text-zinc-500">
+                  <p className="rounded-xl border border-white/6 bg-white/[0.01] p-3 text-ui-meta text-zinc-500">
                     {t('sidebar.empty')}
                   </p>
                 )}
@@ -251,7 +251,7 @@ export function ExportModal({ isOpen: controlledOpen, onClose: controlledClose }
 
               {/* Section 2: Full Workspace Backup & Restore */}
               <section className="space-y-1.5 pt-2 border-t border-white/6">
-                <div className="px-1 font-mono text-[9px] uppercase tracking-[0.18em] text-zinc-500">
+                <div className="px-1 font-mono text-ui-meta uppercase tracking-[0.18em] text-zinc-500">
                   {t('export.backupSection')}
                 </div>
 
@@ -267,8 +267,8 @@ export function ExportModal({ isOpen: controlledOpen, onClose: controlledClose }
                       <FolderArchive size={14} />
                     </span>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[12px] font-medium text-zinc-200">{t('export.downloadAll')}</div>
-                      <div className="truncate text-[10px] text-zinc-500">
+                      <div className="text-ui-body-sm font-medium text-zinc-200">{t('export.downloadAll')}</div>
+                      <div className="truncate text-ui-meta text-zinc-500">
                         {t('export.downloadAllDesc', { n: conversations.length })}
                       </div>
                     </div>
@@ -293,8 +293,8 @@ export function ExportModal({ isOpen: controlledOpen, onClose: controlledClose }
                       {isImporting ? <Loader2 size={14} className="animate-spin" /> : <FileUp size={14} />}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[12px] font-medium text-zinc-200">{t('export.importBtn')}</div>
-                      <div className="truncate text-[10px] text-zinc-500">{t('export.importDesc')}</div>
+                      <div className="text-ui-body-sm font-medium text-zinc-200">{t('export.importBtn')}</div>
+                      <div className="truncate text-ui-meta text-zinc-500">{t('export.importDesc')}</div>
                     </div>
                     <Upload size={13} className="shrink-0 text-zinc-500" />
                   </button>

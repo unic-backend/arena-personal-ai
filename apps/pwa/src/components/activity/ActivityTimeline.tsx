@@ -122,7 +122,7 @@ export function AIActivity({
       >
         <div className="flex items-center gap-2">
           <Logo size={15} className="thinking-logo shrink-0" />
-          <span className="truncate text-[12.5px] font-medium text-shimmer">{headerText}</span>
+          <span className="truncate text-ui-body-sm font-medium text-shimmer">{headerText}</span>
         </div>
         {terminees.length > 0 && (
           <div className="mt-1 space-y-0.5 pl-[22px]">
@@ -138,16 +138,16 @@ export function AIActivity({
                   ? <X size={10} className="shrink-0 text-red-400" />
                   : <Check size={10} className="shrink-0 text-emerald-400/70" />}
                 <span className={cn(
-                  'truncate text-[11.5px]',
+                  'truncate text-ui-meta',
                   n.status === 'failed' ? 'text-red-300/80' : 'text-zinc-500',
                 )}>
                   {n.title}
                 </span>
                 {n.description && (
-                  <span className="truncate text-[10.5px] text-zinc-600">{n.description}</span>
+                  <span className="truncate text-ui-meta text-zinc-600">{n.description}</span>
                 )}
                 {n.durationMs !== undefined && (
-                  <span className="shrink-0 font-mono text-[9.5px] tabular-nums text-zinc-700">
+                  <span className="shrink-0 font-mono text-ui-meta tabular-nums text-zinc-700">
                     {formatDuration(n.durationMs)}
                   </span>
                 )}
@@ -203,7 +203,7 @@ export function AIActivity({
 
         <span
           className={cn(
-            'flex-1 truncate text-[12px] tracking-wide',
+            'flex-1 truncate text-ui-body-sm tracking-wide',
             live ? 'text-shimmer font-medium'
               : unresolved ? 'text-red-300/90 font-medium'
                 : 'text-zinc-600',
@@ -213,12 +213,12 @@ export function AIActivity({
         </span>
 
         {live && (
-          <span className="shrink-0 font-mono text-[10px] tabular-nums text-zinc-500">
+          <span className="shrink-0 font-mono text-ui-meta tabular-nums text-zinc-500">
             {(elapsed / 1000).toFixed(0)}s
           </span>
         )}
         {!live && (
-          <span className="shrink-0 font-mono text-[10px] text-zinc-600">
+          <span className="shrink-0 font-mono text-ui-meta text-zinc-600">
             {t('act.steps', { done: summary.done, total: summary.total })}
           </span>
         )}
@@ -246,7 +246,7 @@ export function AIActivity({
           >
             <div className="space-y-1 border-t border-white/5 px-3.5 py-2.5">
               {summary.tail.map((n) => (
-                <div key={n.id} className="flex items-center gap-2 text-[11px]">
+                <div key={n.id} className="flex items-center gap-2 text-ui-meta">
                   {n.status === 'completed' && <Check size={10} className="shrink-0 text-emerald-400/90" strokeWidth={3} />}
                   {n.status === 'failed' && <X size={10} className="shrink-0 text-red-400" strokeWidth={3} />}
                   {n.status === 'cancelled' && <Minus size={10} className="shrink-0 text-zinc-600" strokeWidth={3} />}

@@ -395,7 +395,7 @@ export function CommandPalette() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t('cmd.placeholder')}
-                className="w-full min-w-0 bg-transparent px-3 text-[13.5px] text-zinc-100 outline-none placeholder:text-zinc-500"
+                className="w-full min-w-0 bg-transparent px-3 text-ui-body-sm text-zinc-100 outline-none placeholder:text-zinc-500"
               />
               <button
                 type="button"
@@ -412,7 +412,7 @@ export function CommandPalette() {
               {filteredItems.length === 0 ? (
                 <div className="py-8 text-center">
                   <Command size={22} className="mx-auto mb-2 text-zinc-600" />
-                  <p className="text-[12px] text-zinc-500">{t('cmd.noResults')}</p>
+                  <p className="text-ui-body-sm text-zinc-500">{t('cmd.noResults')}</p>
                 </div>
               ) : (
                 filteredItems.map((item, idx) => {
@@ -441,7 +441,7 @@ export function CommandPalette() {
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
-                          <span className="truncate text-[12.5px] font-medium leading-snug">{item.title}</span>
+                          <span className="truncate text-ui-body-sm font-medium leading-snug">{item.title}</span>
                           {item.badge && (
                             <span className="rounded bg-accent-500/15 px-1.5 py-0.2 font-mono text-[8.5px] font-semibold text-accent-300">
                               {item.badge}
@@ -449,12 +449,12 @@ export function CommandPalette() {
                           )}
                         </div>
                         {item.subtitle && (
-                          <div className="truncate font-mono text-[9.5px] text-zinc-500">{item.subtitle}</div>
+                          <div className="truncate font-mono text-ui-meta text-zinc-500">{item.subtitle}</div>
                         )}
                       </div>
 
                       {item.shortcut && (
-                        <kbd className="hidden rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[9.5px] text-zinc-400 sm:inline-block">
+                        <kbd className="hidden rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-ui-meta text-zinc-400 sm:inline-block">
                           {item.shortcut}
                         </kbd>
                       )}
@@ -465,19 +465,19 @@ export function CommandPalette() {
             </div>
 
             {/* Footer keyboard navigation helper */}
-            <div className="flex items-center justify-between border-t border-white/8 bg-ink-950/60 px-4 py-2 text-[10px] text-zinc-500">
+            <div className="flex items-center justify-between border-t border-white/8 bg-ink-950/60 px-4 py-2 text-ui-meta text-zinc-500">
               <div className="flex items-center gap-3">
                 <span>
-                  <kbd className="rounded border border-white/10 bg-white/5 px-1 font-mono text-[9px]">↑</kbd>{' '}
-                  <kbd className="rounded border border-white/10 bg-white/5 px-1 font-mono text-[9px]">↓</kbd> Naviguer
+                  <kbd className="rounded border border-white/10 bg-white/5 px-1 font-mono text-ui-meta">↑</kbd>{' '}
+                  <kbd className="rounded border border-white/10 bg-white/5 px-1 font-mono text-ui-meta">↓</kbd> Naviguer
                 </span>
                 <span>
-                  <kbd className="rounded border border-white/10 bg-white/5 px-1 font-mono text-[9px]">↵</kbd>{' '}
+                  <kbd className="rounded border border-white/10 bg-white/5 px-1 font-mono text-ui-meta">↵</kbd>{' '}
                   {t('cmd.enter')}
                 </span>
               </div>
               <div>
-                <kbd className="rounded border border-white/10 bg-white/5 px-1 font-mono text-[9px]">Esc</kbd>{' '}
+                <kbd className="rounded border border-white/10 bg-white/5 px-1 font-mono text-ui-meta">Esc</kbd>{' '}
                 {t('cmd.esc')}
               </div>
             </div>

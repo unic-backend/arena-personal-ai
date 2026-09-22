@@ -48,7 +48,7 @@ export function NetworkStatus() {
             ) : (
               <Wifi size={12} />
             )}
-            <span className="text-[10.5px] font-medium">
+            <span className="text-ui-meta font-medium">
               {!online
                 ? t('network.offline')
                 : reconnecting
@@ -56,7 +56,7 @@ export function NetworkStatus() {
                   : t('network.online')}
             </span>
             {!online && (
-              <span className="hidden text-[9.5px] text-amber-200/60 sm:inline">· {t('network.offlineHint')}</span>
+              <span className="hidden text-ui-meta text-amber-200/60 sm:inline">· {t('network.offlineHint')}</span>
             )}
           </div>
         </motion.div>

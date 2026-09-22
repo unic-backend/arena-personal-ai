@@ -11,7 +11,7 @@ export function Chip({ children, tone = 'zinc' }: { children: React.ReactNode; t
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[10px] leading-none',
+        'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-ui-meta leading-none',
         tone === 'zinc' && 'border-white/8 bg-white/4 text-zinc-400',
         tone === 'green' && 'border-emerald-400/20 bg-emerald-400/8 text-emerald-300',
         tone === 'red' && 'border-red-400/20 bg-red-400/8 text-red-300',
@@ -69,7 +69,7 @@ export function ProgressActivity({ node }: { node: ActivityNode }) {
           transition={{ type: 'spring', stiffness: 160, damping: 26 }}
         />
       </div>
-      <div className="mt-1 flex justify-between font-mono text-[10px] text-zinc-500">
+      <div className="mt-1 flex justify-between font-mono text-ui-meta text-zinc-500">
         <span>{p.done} / {p.total} {p.unit}</span>
         <span>{pct}%</span>
       </div>
@@ -98,11 +98,11 @@ export function TerminalActivity({ node }: { node: ActivityNode }) {
     <div className="mt-2 overflow-hidden rounded-lg border border-white/8 bg-[#0c0c0e]">
       {cmd && (
         <div className="flex items-center gap-2 border-b border-white/6 px-3 py-1.5">
-          <span className="font-mono text-[10px] text-zinc-600">$</span>
-          <span className="font-mono text-[11px] text-zinc-200">{cmd}</span>
+          <span className="font-mono text-ui-meta text-zinc-600">$</span>
+          <span className="font-mono text-ui-meta text-zinc-200">{cmd}</span>
         </div>
       )}
-      <div className="max-h-44 overflow-y-auto px-3 py-2 font-mono text-[10.5px] leading-relaxed scroll-slim">
+      <div className="max-h-44 overflow-y-auto px-3 py-2 font-mono text-ui-meta leading-relaxed scroll-slim">
         {out?.stdout?.map((l, i) => (
           <div key={i} className={cn('whitespace-pre-wrap break-all', l.startsWith('✗') ? 'text-red-300/90' : l.startsWith('✓') ? 'text-emerald-300/80' : 'text-zinc-400')}>{l || ' '}</div>
         ))}
@@ -113,7 +113,7 @@ export function TerminalActivity({ node }: { node: ActivityNode }) {
       </div>
       {(out?.exitCode !== undefined || node.status === 'running') && (
         <div className="flex items-center justify-between border-t border-white/6 px-3 py-1.5">
-          <span className="font-mono text-[9.5px] uppercase tracking-wider text-zinc-600">
+          <span className="font-mono text-ui-meta uppercase tracking-wider text-zinc-600">
             {failed ? t('term.failed') : node.status === 'running' ? t('term.running') : t('term.exited')}
           </span>
           {out?.exitCode !== undefined && <Chip tone={out.exitCode === 0 ? 'green' : 'red'}>exit {out.exitCode}</Chip>}
@@ -136,19 +136,19 @@ export function CodeExecutionActivity({ node }: { node: ActivityNode }) {
     <div className="mt-2 space-y-1.5">
       <div className="overflow-hidden rounded-lg border border-white/8 bg-[#0c0c0e]">
         <div className="flex items-center justify-between border-b border-white/6 px-3 py-1.5">
-          <span className="font-mono text-[9.5px] uppercase tracking-wider text-accent-300/80">{input.language ?? 'code'}</span>
+          <span className="font-mono text-ui-meta uppercase tracking-wider text-accent-300/80">{input.language ?? 'code'}</span>
           {out?.durationMs !== undefined && (
-            <span className="font-mono text-[9.5px] text-zinc-600">{out.durationMs.toFixed(1)}ms</span>
+            <span className="font-mono text-ui-meta text-zinc-600">{out.durationMs.toFixed(1)}ms</span>
           )}
         </div>
-        <pre className="max-h-40 overflow-y-auto px-3 py-2 font-mono text-[10.5px] leading-relaxed text-zinc-300 scroll-slim">
+        <pre className="max-h-40 overflow-y-auto px-3 py-2 font-mono text-ui-meta leading-relaxed text-zinc-300 scroll-slim">
           {input.code}
         </pre>
       </div>
       {(out?.stdout || out?.error) && (
         <div className="overflow-hidden rounded-lg border border-white/8 bg-[#0c0c0e]">
-          <div className="border-b border-white/6 px-3 py-1 font-mono text-[9.5px] uppercase tracking-wider text-zinc-600">{t('code.output')}</div>
-          <div className="max-h-32 overflow-y-auto px-3 py-2 font-mono text-[10.5px] leading-relaxed scroll-slim">
+          <div className="border-b border-white/6 px-3 py-1 font-mono text-ui-meta uppercase tracking-wider text-zinc-600">{t('code.output')}</div>
+          <div className="max-h-32 overflow-y-auto px-3 py-2 font-mono text-ui-meta leading-relaxed scroll-slim">
             {out?.stdout?.map((l, i) => (
               <div key={i} className={cn(l.level === 'error' ? 'text-red-300/90' : l.level === 'warn' ? 'text-amber-300/90' : 'text-zinc-300')}>{l.text}</div>
             ))}
@@ -172,7 +172,7 @@ export function SearchActivity({ node }: { node: ActivityNode }) {
   return (
     <div className="mt-2 space-y-2">
       {query && (
-        <div className="font-mono text-[11px] text-zinc-400">
+        <div className="font-mono text-ui-meta text-zinc-400">
           <span className="text-zinc-600">{t('search.query')}&nbsp;</span>
           <span className="rounded-md border border-white/8 bg-white/4 px-2 py-0.5 text-zinc-200">“{query}”</span>
         </div>
@@ -189,8 +189,8 @@ export function SearchActivity({ node }: { node: ActivityNode }) {
             >
               <DomainMark domain={r.domain} />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[11px] text-zinc-300">{r.title}</div>
-                <div className="truncate font-mono text-[9.5px] text-zinc-600">{r.domain}{r.date ? ` · ${r.date}` : ''}</div>
+                <div className="truncate text-ui-meta text-zinc-300">{r.title}</div>
+                <div className="truncate font-mono text-ui-meta text-zinc-600">{r.domain}{r.date ? ` · ${r.date}` : ''}</div>
               </div>
             </div>
           ))}
@@ -207,7 +207,7 @@ export function FileActivity({ node }: { node: ActivityNode }) {
   if (!meta?.path) return null;
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-      <span className="rounded-md border border-white/8 bg-white/4 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300">
+      <span className="rounded-md border border-white/8 bg-white/4 px-1.5 py-0.5 font-mono text-ui-meta text-zinc-300">
         {meta.op} · {meta.path}
       </span>
       {(meta.added !== undefined || meta.removed !== undefined) && (
@@ -233,13 +233,13 @@ export function SourceRow({ node }: { node: ActivityNode }) {
     <div className="mt-1.5 flex items-start gap-2.5 rounded-lg border border-white/6 bg-white/[0.025] px-2.5 py-2">
       <DomainMark domain={source?.domain ?? node.title} />
       <div className="min-w-0">
-        <div className="truncate text-[11px] leading-tight text-zinc-200">{source?.title ?? node.description}</div>
-        <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[9.5px] text-zinc-600">
+        <div className="truncate text-ui-meta leading-tight text-zinc-200">{source?.title ?? node.description}</div>
+        <div className="mt-0.5 flex items-center gap-1.5 font-mono text-ui-meta text-zinc-600">
           <span>{source?.domain ?? node.title}</span>
           {source?.date && <><span>·</span><span>{source.date}</span></>}
         </div>
         {source?.excerpt && (
-          <div className="mt-1 line-clamp-2 text-[10.5px] leading-snug text-zinc-500">{source.excerpt}</div>
+          <div className="mt-1 line-clamp-2 text-ui-meta leading-snug text-zinc-500">{source.excerpt}</div>
         )}
       </div>
     </div>
@@ -256,7 +256,7 @@ export function DiagnosticsActivity({ node }: { node: ActivityNode }) {
       {out.diagnostics.map((d, i) => (
         <div key={i} className="flex items-start gap-2 rounded-lg border border-red-400/12 bg-red-400/[0.04] px-2.5 py-1.5">
           <AlertTriangle size={11} className="mt-0.5 shrink-0 text-red-400" />
-          <div className="min-w-0 font-mono text-[10px] leading-relaxed">
+          <div className="min-w-0 font-mono text-ui-meta leading-relaxed">
             <span className="text-zinc-300">{d.file}:{d.line}</span>
             <span className="text-zinc-600"> {d.code} </span>
             <span className="text-zinc-500">{d.message}</span>
@@ -318,14 +318,14 @@ export function VideoActivity({ node }: { node: ActivityNode }) {
           animate={{ opacity: 1, y: 0 }}
           href={out.download.url}
           download={out.download.name}
-          className="inline-flex items-center gap-2 rounded-lg border border-accent-500/35 bg-accent-500/12 px-3 py-1.5 text-[11px] font-medium text-accent-300 transition hover:bg-accent-500/22 active:scale-[0.98]"
+          className="inline-flex items-center gap-2 rounded-lg border border-accent-500/35 bg-accent-500/12 px-3 py-1.5 text-ui-meta font-medium text-accent-300 transition hover:bg-accent-500/22 active:scale-[0.98]"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           {out.download.name} · {out.download.sizeLabel}
         </motion.a>
       )}
       {out.startLabel && (
-        <div className="font-mono text-[10px] text-zinc-500">
+        <div className="font-mono text-ui-meta text-zinc-500">
           {out.startLabel} → {out.endLabel}
         </div>
       )}
@@ -341,7 +341,7 @@ export function PlanActivity({ node }: { node: ActivityNode }) {
   return (
     <ol className="mt-1.5 space-y-0.5">
       {steps.map((s, i) => (
-        <li key={i} className="flex items-center gap-2 font-mono text-[10.5px] text-zinc-500">
+        <li key={i} className="flex items-center gap-2 font-mono text-ui-meta text-zinc-500">
           <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded border border-white/8 bg-white/4 text-[8.5px] text-zinc-400">{i + 1}</span>
           {s}
         </li>
@@ -362,13 +362,13 @@ export function ActivityError({ node, onRetry }: { node: ActivityNode; onRetry?:
       className="mt-2 flex items-center gap-2.5 rounded-lg border border-red-400/15 bg-red-400/[0.05] px-3 py-2"
     >
       <AlertTriangle size={12} className="shrink-0 text-red-400" />
-      <span className="min-w-0 flex-1 truncate text-[11px] text-red-200/90">
+      <span className="min-w-0 flex-1 truncate text-ui-meta text-red-200/90">
         {node.description ?? 'The operation failed'}
       </span>
       {retryable && (
         <button
           onClick={onRetry}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-medium text-zinc-200 transition hover:border-white/20 hover:bg-white/10 active:scale-95"
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-ui-meta font-medium text-zinc-200 transition hover:border-white/20 hover:bg-white/10 active:scale-95"
         >
           <RotateCcw size={10} />
           {t('retry')}

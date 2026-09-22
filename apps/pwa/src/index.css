@@ -24,6 +24,29 @@
 
 :root {
   --glow: rgba(224, 120, 86, 0.35);
+
+  /* Global semantic typography scale. Keep product typography intentional:
+     interface chrome is confident and compact, reading surfaces stay relaxed. */
+  --type-caption: 0.75rem;      /* 12px */
+  --type-meta: 0.8125rem;       /* 13px */
+  --type-body-sm: 0.875rem;     /* 14px */
+  --type-body: 1rem;            /* 16px */
+  --type-body-lg: 1.0625rem;    /* 17px */
+  --type-nav: 1rem;             /* 16px */
+  --type-history: 0.9375rem;    /* 15px */
+  --type-title-sm: 1.125rem;    /* 18px */
+  --type-title: 1.25rem;        /* 20px */
+  --type-heading: 1.5rem;       /* 24px */
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --leading-compact: 1.3;
+  --leading-ui: 1.45;
+  --leading-body: 1.58;
+  --tracking-label: 0.035em;
 }
 
 @keyframes pulse-dot {
@@ -177,6 +200,97 @@ body {
 }
 
 .writing-text { font-family: var(--reading-font); }
+
+/* Semantic UI typography utilities — use these instead of one-off pixel sizes. */
+.text-ui-caption {
+  font-size: var(--type-caption);
+  line-height: var(--leading-ui);
+  font-weight: var(--weight-medium);
+}
+.text-ui-meta {
+  font-size: var(--type-meta);
+  line-height: var(--leading-ui);
+  font-weight: var(--weight-regular);
+}
+.text-ui-body-sm {
+  font-size: var(--type-body-sm);
+  line-height: var(--leading-ui);
+  font-weight: var(--weight-regular);
+}
+.text-ui-body {
+  font-size: var(--type-body);
+  line-height: var(--leading-ui);
+  font-weight: var(--weight-regular);
+}
+.text-ui-body-lg {
+  font-size: var(--type-body-lg);
+  line-height: var(--leading-body);
+  font-weight: var(--weight-regular);
+}
+.text-ui-nav {
+  font-size: var(--type-nav);
+  line-height: var(--leading-ui);
+  font-weight: var(--weight-semibold);
+}
+.text-ui-history {
+  font-size: var(--type-history);
+  line-height: var(--leading-ui);
+  font-weight: var(--weight-medium);
+}
+.text-ui-section {
+  font-size: var(--type-caption);
+  line-height: var(--leading-ui);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
+}
+.text-ui-title-sm {
+  font-size: var(--type-title-sm);
+  line-height: 1.25;
+  font-weight: var(--weight-semibold);
+}
+.text-ui-title {
+  font-size: var(--type-title);
+  line-height: 1.25;
+  font-weight: var(--weight-bold);
+}
+.text-ui-heading {
+  font-size: var(--type-heading);
+  line-height: 1.2;
+  font-weight: var(--weight-bold);
+}
+.text-ui-button {
+  font-size: var(--type-body-sm);
+  line-height: var(--leading-ui);
+  font-weight: var(--weight-semibold);
+}
+.text-ui-input {
+  font-size: var(--type-body);
+  line-height: var(--leading-ui);
+  font-weight: var(--weight-regular);
+}
+.text-ui-muted {
+  color: #a1a1aa;
+}
+:root[data-theme="light"] .text-ui-muted,
+.light-mode .text-ui-muted {
+  color: #52525b;
+}
+
+/* Never let phone form fields fall below 16px: improves readability and avoids
+   browser zoom-on-focus behavior on mobile Safari-like engines. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
+}
+
+@media (min-width: 1280px) {
+  :root {
+    --type-heading: 1.625rem;
+  }
+}
 
 button, textarea { touch-action: manipulation; }
 

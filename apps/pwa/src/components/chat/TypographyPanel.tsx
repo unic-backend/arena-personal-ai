@@ -25,7 +25,7 @@ function Choice<T extends string>({
       type="button"
       onClick={() => onPick(value)}
       className={cn(
-        'min-w-0 flex-1 rounded-md border px-1.5 py-1.5 text-[10px] transition active:scale-95',
+        'min-w-0 flex-1 rounded-md border px-1.5 py-1.5 text-ui-meta transition active:scale-95',
         active
           ? 'border-accent-500/35 bg-accent-500/12 text-accent-300'
           : 'border-white/7 bg-white/[0.02] text-zinc-500 hover:text-zinc-300',
@@ -56,10 +56,10 @@ export function TypographyPanel() {
           <ChevronRight size={11} className="text-zinc-600" />
         </motion.span>
         <Type size={11} className="text-accent-300" />
-        <span className="flex-1 font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-500">
+        <span className="flex-1 font-mono text-ui-meta uppercase tracking-[0.14em] text-zinc-500">
           {t('type.title')}
         </span>
-        <span className="font-serif text-[12px] text-zinc-500">Aa</span>
+        <span className="font-serif text-ui-body-sm text-zinc-500">Aa</span>
       </button>
 
       <AnimatePresence initial={false}>
@@ -76,8 +76,8 @@ export function TypographyPanel() {
                 <div className="mb-1 font-mono text-[8.5px] uppercase tracking-wider text-zinc-600">{t('type.font')}</div>
                 <div className="flex gap-1">
                   <Choice<FontFamily> value="sans" active={family === 'sans'} label={t('type.sans')} onPick={setFamily} className="font-sans" />
-                  <Choice<FontFamily> value="serif" active={family === 'serif'} label={t('type.serif')} onPick={setFamily} className="font-serif text-[12px]" />
-                  <Choice<FontFamily> value="mono" active={family === 'mono'} label={t('type.mono')} onPick={setFamily} className="font-mono text-[9px]" />
+                  <Choice<FontFamily> value="serif" active={family === 'serif'} label={t('type.serif')} onPick={setFamily} className="font-serif text-ui-body-sm" />
+                  <Choice<FontFamily> value="mono" active={family === 'mono'} label={t('type.mono')} onPick={setFamily} className="font-mono text-ui-meta" />
                 </div>
               </div>
 
@@ -106,7 +106,7 @@ export function TypographyPanel() {
                   type="button"
                   onClick={() => setRelaxed(!relaxed)}
                   className={cn(
-                    'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-[9.5px] transition',
+                    'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-ui-meta transition',
                     relaxed ? 'border-accent-500/30 bg-accent-500/10 text-accent-300' : 'border-white/7 text-zinc-500',
                   )}
                 >
