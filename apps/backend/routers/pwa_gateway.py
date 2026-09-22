@@ -604,6 +604,23 @@ async def comparaison_txtai_pertinente(
         ]
         lignes.append(f"{nom}: " + (", ".join(chemins) if chemins else "aucun resultat"))
 
+    # Le classement txtai doit apporter de vraies preuves au modele, pas
+    # seulement des noms de fichiers. Elles gardent la meme frontiere de
+    # confiance que tout contenu documentaire recupere.
+    for index, item in enumerate((comparaison.get("txtai") or [])[:3], start=1):
+        chemin = str(item.get("path") or "").strip()
+        extrait = str(item.get("snippet") or "").strip()[:500]
+        if not chemin or not extrait:
+            continue
+        provenance = ", ".join(item.get("sources") or []) or chemin
+        lignes.append(
+            wrap(
+                f"[txtai rang {index}] source={provenance}\n{extrait}",
+                TrustLevel.RETRIEVED,
+                f"txtai_compare:{chemin}",
+            ).text
+        )
+
     lignes.append(
         f"recouvrement@5={comparaison.get('overlap_at_k', 0)} ; "
         f"meme_top1={bool(comparaison.get('same_top1'))}"
