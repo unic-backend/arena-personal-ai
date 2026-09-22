@@ -217,7 +217,7 @@ JOURNAL_MODELE_RESUME_MAX_CARACTERES = 8_000
 #: fichier écrit, liste des documents (manifeste), ou texte lui-même sont
 #: ce que le propriétaire lit pour vérifier, pas un simple « fait ».
 ACTIONS_QUI_ANALYSENT = frozenset({
-    "analyser", "diagnostiquer", "etat_ci", "github_lister", "github_chercher", "convertir",
+    "analyser", "diagnostiquer", "etat_ci", "convertir",
     "organiser_inspecter", "organiser_planifier",
     "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
     "isoler",
@@ -226,6 +226,15 @@ ACTIONS_QUI_ANALYSENT = frozenset({
     "ordinateur_naviguer", "ordinateur_capture_ecran",
     "git_statut", "git_diff", "git_checkpoint", "git_restaurer",
     "git_branches_lister", "git_conflit_lire",
+})
+
+#: Lectures dont la sortie sert de filet de securite seulement si le modele
+#: n'a pas pu conclure. Sur un tour normal, la conclusion humaine a deja
+#: extrait ce qui compte (par exemple trois fichiers sur onze) : recopier le
+#: listing complet juste dessous est du bruit. En cas de 429/coupure apres
+#: l'outil, cette preuve reste visible au lieu d'etre perdue.
+ACTIONS_PREUVES_DE_REPLI = frozenset({
+    "github_lister", "github_chercher", "lister", "chercher",
 })
 
 _ETIQUETTE = re.compile(r"^\s*ACTION\s*:\s*(\w+)", re.IGNORECASE | re.MULTILINE)
@@ -1686,9 +1695,11 @@ class DioumtoukayAgent(BaseAgent):
         return {
             "status": "success" if arrete_par_lui_meme else "partial",
             "agent": self.name,
+            "moteur": self._moteur_utilise(),
             "actions": rendu,
             "fichiers_modifies": self.fichiers_touches(rendu),
-            "response": self._rapport(conclusion, rendu),
+            "response": self._rapport(
+                conclusion, rendu, termine=arrete_par_lui_meme),
             "tache": tache.journal(),
             "reprise": reprise,
         }
@@ -1878,7 +1889,9 @@ class DioumtoukayAgent(BaseAgent):
                 + sortie[-moitie:])
 
     @classmethod
-    def _rapport(cls, conclusion: str, rendu: List[Dict[str, Any]]) -> str:
+    def _rapport(
+        cls, conclusion: str, rendu: List[Dict[str, Any]], *, termine: bool = True
+    ) -> str:
         """Compte-rendu humain : resultat d'abord, preuves ensuite.
 
         La trace complete reste dans `actions` et le journal durable. La bulle
@@ -1914,10 +1927,25 @@ class DioumtoukayAgent(BaseAgent):
             sortie = cls._sortie_pour_rapport(acte)
             if sortie:
                 preuves.append(f"**{acte['action']}**\n{sortie}")
+        # Une lecture/listing est deja digeree dans la conclusion par le
+        # modele. On ne la recopie que si le modele n'a PAS pu conclure (429,
+        # coupure, limite de tours) afin de ne pas perdre la preuve obtenue.
+        if not termine:
+            for acte in rendu:
+                if (not acte.get("ok")
+                        or acte.get("action") not in ACTIONS_PREUVES_DE_REPLI):
+                    continue
+                sortie = cls._sortie_pour_rapport(acte)
+                if sortie:
+                    preuves.append(f"**Résultat disponible**\n{sortie}")
+
         if preuves:
             parties.append("**Résultats vérifiés**\n\n" + "\n\n".join(preuves))
 
-        if rendu:
+        # Une lecture simple reussie n'a pas besoin d'une ligne administrative
+        # « 1 action, aucune en echec ». Le statut redevient utile quand il y a
+        # eu plusieurs etapes, une mutation ou un echec.
+        if rendu and (len(rendu) > 1 or touches or echecs):
             succes = sum(1 for acte in rendu if acte.get("ok"))
             statut = (
                 f"{succes}/{len(rendu)} action(s) exécutée(s) avec succès, "
@@ -1927,6 +1955,28 @@ class DioumtoukayAgent(BaseAgent):
             parties.append(f"*Vérification : {statut}.*")
 
         return "\n\n".join(parties).strip()
+
+    def _moteur_utilise(self) -> Dict[str, Any]:
+        """Le fournisseur qui a reellement servi CE Dioumtoukay.
+
+        La passerelle PWA utilisait historiquement le fournisseur du chat
+        rapide pour toutes les reponses specialisees. Dioumtoukay utilise le
+        routeur codeur : annoncer le fast provider donnait « local/qwen » alors
+        que les logs montraient Groq. On remonte donc la mesure du provider qui
+        a effectivement produit les actions de cette tache.
+        """
+        fournisseur = getattr(self.provider, "fournisseur_en_service", None)
+        modele = getattr(self.provider, "model_name", None)
+        choix = getattr(self.provider, "dernier_choix", None)
+        meta: Dict[str, Any] = {}
+        if fournisseur:
+            meta["provider"] = fournisseur
+        if modele:
+            meta["model"] = modele
+        raison = getattr(choix, "raison", "") if choix is not None else ""
+        if raison:
+            meta["raison"] = raison
+        return meta
 
     def _retenir(self, demande: str, conclusion: str, rendu: List[Dict[str, Any]]) -> None:
         """Garde une trace de ce travail dans la mémoire longue.
