@@ -22,6 +22,7 @@ from typing import List
 import pytest
 
 from apps.backend.routers import pwa_gateway
+from core.connectors.base import EtatSante, Sante
 
 
 @dataclass
@@ -40,6 +41,13 @@ class FileFactice:
 
     def en_attente(self, limite: int = 50):
         return self._actions[:limite]
+
+
+@pytest.fixture(autouse=True)
+def cache_etat_propre():
+    pwa_gateway._cache_etat_moteur.clear()
+    yield
+    pwa_gateway._cache_etat_moteur.clear()
 
 
 @pytest.fixture
@@ -114,3 +122,85 @@ def test_une_file_illisible_ne_fait_pas_tomber_la_reponse(monkeypatch, sondes):
 
     assert pwa_gateway._actions_en_attente() == []
     assert sondes == [], "on a sonde alors que la file etait illisible"
+
+
+
+class ConnecteurSondeFactice:
+    def __init__(self, reponses):
+        self.reponses = list(reponses)
+        self.appels = 0
+
+    def sonder(self):
+        self.appels += 1
+        reponse = self.reponses[min(self.appels - 1, len(self.reponses) - 1)]
+        if isinstance(reponse, Exception):
+            raise reponse
+        return reponse
+
+
+class RegistreFactice:
+    def __init__(self, connecteur):
+        self.connecteur = connecteur
+
+    def obtenir(self, nom):
+        assert nom == "faceplugin"
+        return self.connecteur
+
+
+def test_etat_moteur_reutilise_une_mesure_fraiche(monkeypatch):
+    connecteur = ConnecteurSondeFactice([
+        Sante(etat=EtatSante.OPERATIONNEL, message="ok"),
+    ])
+    monkeypatch.setattr(pwa_gateway, "registre", RegistreFactice(connecteur))
+
+    instants = iter([100.0, 101.0])
+    monkeypatch.setattr(pwa_gateway.time, "monotonic", lambda: next(instants))
+
+    premier = pwa_gateway._etat_du_moteur("faceplugin")
+    second = pwa_gateway._etat_du_moteur("faceplugin")
+
+    assert premier == {"disponible": True, "indisponible_raison": ""}
+    assert second == premier
+    assert connecteur.appels == 1, (
+        "deux messages rapproches relancent encore le SDK lourd au lieu "
+        "de reutiliser la mesure pendant la fenetre courte"
+    )
+
+
+def test_etat_moteur_re_sonde_apres_expiration(monkeypatch):
+    connecteur = ConnecteurSondeFactice([
+        Sante(etat=EtatSante.OPERATIONNEL, message="ok"),
+        Sante(etat=EtatSante.EN_PANNE, message="arrete"),
+    ])
+    monkeypatch.setattr(pwa_gateway, "registre", RegistreFactice(connecteur))
+
+    instants = iter([100.0, 106.0])
+    monkeypatch.setattr(pwa_gateway.time, "monotonic", lambda: next(instants))
+
+    premier = pwa_gateway._etat_du_moteur("faceplugin")
+    second = pwa_gateway._etat_du_moteur("faceplugin")
+
+    assert premier["disponible"] is True
+    assert second == {"disponible": False, "indisponible_raison": "arrete"}
+    assert connecteur.appels == 2
+
+
+def test_une_sonde_en_erreur_n_est_jamais_mise_en_cache(monkeypatch):
+    connecteur = ConnecteurSondeFactice([
+        RuntimeError("demarrage"),
+        Sante(etat=EtatSante.OPERATIONNEL, message="ok"),
+    ])
+    monkeypatch.setattr(pwa_gateway, "registre", RegistreFactice(connecteur))
+
+    instants = iter([100.0, 101.0])
+    monkeypatch.setattr(pwa_gateway.time, "monotonic", lambda: next(instants))
+
+    premier = pwa_gateway._etat_du_moteur("faceplugin")
+    second = pwa_gateway._etat_du_moteur("faceplugin")
+
+    assert premier["disponible"] is True
+    assert second["disponible"] is True
+    assert connecteur.appels == 2, (
+        "une incertitude a ete figee dans le cache au lieu de retenter au "
+        "tour suivant"
+    )
