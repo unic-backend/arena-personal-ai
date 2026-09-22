@@ -378,8 +378,10 @@ class TestQualiteExecution:
         (bac / "autre.txt").write_text("ancien", encoding="utf-8")
         a = agent(bac, [
             "ACTION: ecrire\nCHEMIN: note.txt\nCONTENU:\nversion 2\nFIN",
-            "ACTION: terminer\nCONTENU:\nc est bon\nFIN",
             "ACTION: lire\nCHEMIN: autre.txt",
+            # Cette conclusion doit etre refusee : la lecture ne concernait
+            # pas le fichier modifie. Il reste alors une chance au modele de
+            # produire la vraie preuve avant le second refus fatal.
             "ACTION: terminer\nCONTENU:\nmaintenant c est bon\nFIN",
             "ACTION: lire\nCHEMIN: note.txt",
             "ACTION: terminer\nCONTENU:\nnote.txt relu et verifie.\nFIN",
