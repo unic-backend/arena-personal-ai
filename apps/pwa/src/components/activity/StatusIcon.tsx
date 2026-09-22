@@ -134,7 +134,7 @@ export function DomainMark({ domain, className }: { domain?: string; className?:
   const letter = nom.replace(/^(www\.)?/, '')[0]?.toUpperCase() ?? '?';
   return (
     <span
-      className={cn('grid shrink-0 place-items-center rounded-md text-[9px] font-semibold text-white/90', className)}
+      className={cn('grid shrink-0 place-items-center rounded-md text-ui-meta font-semibold text-white/90', className)}
       style={{
         width: 18, height: 18,
         background: `linear-gradient(135deg, hsl(${h} 45% 32%), hsl(${(h + 40) % 360} 45% 22%))`,
