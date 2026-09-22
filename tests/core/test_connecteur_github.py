@@ -554,6 +554,99 @@ def test_etat_ci(monkeypatch, courses, attendu):
     assert resultat.detail["resume"] == attendu
 
 
+# --- diagnostiquer_ci : une CI rouge devient une cause exploitable -----------------
+
+def test_diagnostic_ci_rend_resume_et_annotations(monkeypatch):
+    monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+    appels = []
+
+    def _repondre(r):
+        url = str(r.url)
+        if "check-runs" in url:
+            return json_reponse(200, {
+                "check_runs": [{
+                    "name": "Lint and offline test suite",
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "details_url": "https://github.com/o/r/actions/runs/1",
+                    "output": {
+                        "title": "Ruff a echoue",
+                        "summary": "F401 unused import",
+                        "text": "tests/test_x.py:1:1 F401",
+                        "annotations_url": "https://api.github.com/repos/o/r/check-runs/9/annotations",
+                    },
+                }],
+            })
+        if "/annotations" in url:
+            return json_reponse(200, [{
+                "annotation_level": "failure",
+                "path": "tests/test_x.py",
+                "start_line": 1,
+                "end_line": 1,
+                "title": "F401",
+                "message": "unused import Path",
+                "raw_details": "remove the import",
+            }])
+        raise AssertionError(f"URL inattendue: {url}")
+
+    c = connecteur_pret(_repondre, journal_appels=appels)
+    resultat = c.executer("diagnostiquer_ci", depot="o/r", ref="fix-a")
+
+    assert resultat.statut is Statut.SUCCES
+    assert resultat.detail["etat"] == "echec"
+    diagnostic = resultat.detail["diagnostics"][0]
+    assert diagnostic["nom"] == "Lint and offline test suite"
+    assert diagnostic["resume"] == "F401 unused import"
+    assert diagnostic["annotations"][0]["chemin"] == "tests/test_x.py"
+    assert diagnostic["annotations"][0]["ligne_debut"] == 1
+    assert diagnostic["annotations"][0]["message"] == "unused import Path"
+    assert any("/annotations" in str(requete.url) for requete in appels)
+
+
+def test_diagnostic_ci_sans_echec_ne_fabrique_pas_de_cause(monkeypatch):
+    monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+    c = connecteur_pret(lambda r: json_reponse(200, {
+        "check_runs": [{
+            "name": "tests",
+            "status": "completed",
+            "conclusion": "success",
+            "output": {},
+        }],
+    }))
+
+    resultat = c.executer("diagnostiquer_ci", depot="o/r", ref="main")
+
+    assert resultat.statut is Statut.SUCCES
+    assert resultat.detail["etat"] == "aucun_echec"
+    assert resultat.detail["diagnostics"] == []
+
+
+def test_diagnostic_ci_garde_le_check_meme_si_annotations_indisponibles(monkeypatch):
+    monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+
+    def _repondre(r):
+        if "check-runs" in str(r.url):
+            return json_reponse(200, {
+                "check_runs": [{
+                    "name": "pytest",
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "output": {
+                        "summary": "1 failed",
+                        "annotations_url": "https://api.github.com/repos/o/r/check-runs/4/annotations",
+                    },
+                }],
+            })
+        return json_reponse(403, {"message": "Forbidden"})
+
+    c = connecteur_pret(_repondre)
+    resultat = c.executer("diagnostiquer_ci", depot="o/r", ref="fix-a")
+
+    assert resultat.statut is Statut.SUCCES
+    assert resultat.detail["diagnostics"][0]["resume"] == "1 failed"
+    assert resultat.detail["avertissements"]
+
+
 # --- commentaires_pr : deux appels reels, sur le meme client injecte --------------
 
 def test_commentaires_pr_fusionne_revue_et_discussion(monkeypatch):
@@ -575,12 +668,13 @@ def test_commentaires_pr_fusionne_revue_et_discussion(monkeypatch):
 
 # --- Capacités déclarées -------------------------------------------------------------
 
-def test_les_dix_capacites_sont_declarees():
+def test_les_onze_capacites_sont_declarees():
     c = ConnecteurGitHub()
     noms = set(c.capacites())
     assert noms == {"lire_fichier", "chercher_code", "lister", "comparer",
                     "creer_branche", "ecrire_fichier", "remplacer_dans_fichier",
-                    "creer_pull_request", "etat_ci", "commentaires_pr"}
+                    "creer_pull_request", "etat_ci", "diagnostiquer_ci",
+                    "commentaires_pr"}
 
 
 def test_une_capacite_non_declaree_natteint_jamais_le_reseau(monkeypatch):
