@@ -138,6 +138,13 @@ class ConnecteurGitHub(Connecteur):
                 nom="etat_ci", action="read",
                 description="L'etat combine des verifications sur un commit (CI).",
                 ecriture=False),
+            "diagnostiquer_ci": Capacite(
+                nom="diagnostiquer_ci", action="read",
+                description=(
+                    "Explique les verifications CI en echec avec leurs resumes "
+                    "et annotations de fichiers, sans telecharger de logs arbitraires."
+                ),
+                ecriture=False),
             "commentaires_pr": Capacite(
                 nom="commentaires_pr", action="read",
                 description="Les commentaires de revue et de discussion d'une Pull Request.",
@@ -720,6 +727,121 @@ class ConnecteurGitHub(Connecteur):
                   "conclusion": c.get("conclusion")} for c in courses]
         return succes("etat_ci", depot, f"CI sur {ref} : {resume} ({len(courses)} verification(s)).",
                       preuve=resume, resume=resume, verifications=detail)
+
+    # -- diagnostiquer_ci ----------------------------------------------------------
+
+    def _faire_diagnostiquer_ci(
+        self, depot: str = "", ref: str = "", **_: Any
+    ) -> ResultatAction:
+        """Rend la cause exploitable des checks en echec.
+
+        `etat_ci` dit VERT/ROUGE et suffit au garde de preuve. Pour reparer
+        une CI rouge, l'agent a besoin du diagnostic produit par GitHub :
+        titre/resume du check et annotations liees aux fichiers/lignes.
+
+        On reste volontairement sur l'API Checks deja utilisee par `etat_ci`.
+        Pas de telechargement d'archive de logs ni d'execution de texte distant.
+        Les textes sont bornes avant d'entrer dans le contexte du modele.
+        """
+        if not depot or not ref:
+            return echec(
+                "diagnostiquer_ci", self.nom,
+                "depot et ref (SHA ou branche) sont requis."
+            )
+        try:
+            reponse = self._requete(
+                "GET", f"/repos/{depot}/commits/{ref}/check-runs"
+            )
+        except httpx.HTTPError as erreur:
+            return echec(
+                "diagnostiquer_ci", depot,
+                f"Requete GitHub en echec : {erreur}"
+            )
+
+        if reponse.status_code != 200:
+            return echec(
+                "diagnostiquer_ci", depot,
+                f"GitHub repond {reponse.status_code}."
+            )
+
+        courses = reponse.json().get("check_runs", []) or []
+        en_echec = [
+            course for course in courses
+            if course.get("conclusion") in {
+                "failure", "timed_out", "cancelled", "action_required",
+            }
+        ]
+        diagnostics: List[Dict[str, Any]] = []
+        erreurs_annotations: List[str] = []
+
+        for course in en_echec:
+            sortie = course.get("output") or {}
+            diagnostic: Dict[str, Any] = {
+                "nom": str(course.get("name") or ""),
+                "conclusion": str(course.get("conclusion") or ""),
+                "titre": str(sortie.get("title") or "")[:1_000],
+                "resume": str(sortie.get("summary") or "")[:6_000],
+                "texte": str(sortie.get("text") or "")[:6_000],
+                "details_url": str(course.get("details_url") or ""),
+                "annotations": [],
+            }
+
+            annotations_url = str(sortie.get("annotations_url") or "")
+            if annotations_url:
+                try:
+                    annotations = self._requete(
+                        "GET", annotations_url, params={"per_page": 50}
+                    )
+                    if annotations.status_code == 200:
+                        for item in annotations.json()[:50]:
+                            diagnostic["annotations"].append({
+                                "niveau": item.get("annotation_level"),
+                                "chemin": item.get("path"),
+                                "ligne_debut": item.get("start_line"),
+                                "ligne_fin": item.get("end_line"),
+                                "titre": str(item.get("title") or "")[:500],
+                                "message": str(item.get("message") or "")[:2_000],
+                                "detail": str(item.get("raw_details") or "")[:2_000],
+                            })
+                    else:
+                        erreurs_annotations.append(
+                            f"{diagnostic['nom']}: annotations HTTP "
+                            f"{annotations.status_code}"
+                        )
+                except httpx.HTTPError as erreur:
+                    erreurs_annotations.append(
+                        f"{diagnostic['nom']}: annotations indisponibles "
+                        f"({type(erreur).__name__})"
+                    )
+
+            diagnostics.append(diagnostic)
+
+        if not courses:
+            etat = "en_attente"
+            message = f"Aucun check publie pour {ref}."
+        elif not en_echec:
+            etat = "aucun_echec"
+            message = (
+                f"Aucun check en echec sur {ref} "
+                f"({len(courses)} verification(s) observee(s))."
+            )
+        else:
+            etat = "echec"
+            message = (
+                f"{len(en_echec)} check(s) en echec sur {ref} : "
+                + ", ".join(
+                    str(course.get("name") or "?") for course in en_echec
+                )
+                + "."
+            )
+
+        return succes(
+            "diagnostiquer_ci", depot, message,
+            preuve=etat,
+            etat=etat,
+            diagnostics=diagnostics,
+            avertissements=erreurs_annotations,
+        )
 
     # -- commentaires_pr --
 
