@@ -100,6 +100,10 @@ class ConnecteurGitHub(Connecteur):
                 nom="chercher_code", action="read",
                 description="Cherche un terme dans le code du depot.",
                 ecriture=False),
+            "lister": Capacite(
+                nom="lister", action="read",
+                description="Liste un dossier du depot a une reference donnee.",
+                ecriture=False),
             "creer_branche": Capacite(
                 nom="creer_branche", action="write",
                 description="Cree une branche a partir d'une reference existante.",
@@ -200,6 +204,54 @@ class ConnecteurGitHub(Connecteur):
         return succes("lire_fichier", depot, f"{chemin} lu ({len(contenu)} caracteres).",
                       preuve=corps.get("sha", ""), contenu=contenu,
                       sha=corps.get("sha", ""), ref=ref)
+
+    # -- lister ---------------------------------------------------------------------
+
+    def _faire_lister(self, depot: str = "", chemin: str = "",
+                      ref: str = "", **_: Any) -> ResultatAction:
+        if not depot:
+            return echec("lister", self.nom, "depot (owner/repo) est requis.")
+        propre = chemin.strip("/")
+        suffixe = f"/{propre}" if propre else ""
+        params = {"ref": ref} if ref else {}
+        try:
+            reponse = self._requete(
+                "GET", f"/repos/{depot}/contents{suffixe}", params=params
+            )
+        except httpx.HTTPError as erreur:
+            return echec("lister", depot, f"Requete GitHub en echec : {erreur}")
+
+        if reponse.status_code == 404:
+            cible = propre or "/"
+            return echec("lister", depot, f"Dossier introuvable : {cible}")
+        if reponse.status_code != 200:
+            return echec("lister", depot, f"GitHub repond {reponse.status_code}.")
+
+        corps = reponse.json()
+        if not isinstance(corps, list):
+            return echec(
+                "lister", depot,
+                f"{propre or '/'} est un fichier, pas un dossier."
+            )
+
+        entrees = [
+            {
+                "nom": item.get("name", ""),
+                "chemin": item.get("path", ""),
+                "type": item.get("type", ""),
+                "sha": item.get("sha", ""),
+                "taille": item.get("size", 0),
+            }
+            for item in corps
+        ]
+        return succes(
+            "lister", depot,
+            f"{len(entrees)} entree(s) dans {propre or '/'}.",
+            preuve=str(len(entrees)),
+            entrees=entrees,
+            chemin=propre,
+            ref=ref,
+        )
 
     # -- ecrire_fichier -------------------------------------------------------------
 
