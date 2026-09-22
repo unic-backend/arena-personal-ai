@@ -95,7 +95,8 @@ class TestIlAgitVraiment:
         rendu = await agent(
             bac,
             "ACTION: ecrire\nCHEMIN: note.txt\nCONTENU:\nbonjour\nFIN",
-            "ACTION: terminer\nCONTENU:\nfichier ecrit\nFIN",
+            "ACTION: lire\nCHEMIN: note.txt",
+            "ACTION: terminer\nCONTENU:\nfichier ecrit et relu\nFIN",
         ).run("ecris-moi une note")
 
         assert (bac / "note.txt").read_text() == "bonjour"
@@ -456,7 +457,8 @@ class TestIlCorrigeSansToutReecrire:
             bac,
             "ACTION: remplacer\nCHEMIN: code.py\nANCIEN:\n    return FAUX\nFIN\n"
             "NOUVEAU:\n    return 1\nFIN",
-            "ACTION: terminer\nCONTENU:\ncorrige\nFIN",
+            "ACTION: lire\nCHEMIN: code.py",
+            "ACTION: terminer\nCONTENU:\ncorrige et relu\nFIN",
         ).run("corrige le bug")
 
         assert (bac / "code.py").read_text() == (
@@ -608,7 +610,8 @@ class TestLeRapportNommeCeQuiAChange:
         rendu = await agent(
             bac,
             "ACTION: ecrire\nCHEMIN: note.txt\nCONTENU:\nx\nFIN",
-            "ACTION: terminer\nCONTENU:\nfait\nFIN",
+            "ACTION: lire\nCHEMIN: note.txt",
+            "ACTION: terminer\nCONTENU:\nfait et relu\nFIN",
         ).run("ecris")
 
         assert rendu["fichiers_modifies"] == ["note.txt"]
@@ -635,7 +638,8 @@ class TestIlSeSouvientDeSonTravail:
         memoire = MemoirePersonnelle(db_path=str(bac / "m.db"))
         await DioumtoukayAgent(
             provider=ModeleScripte("ACTION: ecrire\nCHEMIN: a.py\nCONTENU:\nx\nFIN",
-                                   "ACTION: terminer\nCONTENU:\nfait\nFIN"),
+                                   "ACTION: lire\nCHEMIN: a.py",
+                                   "ACTION: terminer\nCONTENU:\nfait et relu\nFIN"),
             atelier=Atelier(racine=bac), memoire_longue=memoire,
         ).run("ecris a.py")
 
@@ -662,7 +666,8 @@ class TestIlSeSouvientDeSonTravail:
 
         rendu = await DioumtoukayAgent(
             provider=ModeleScripte("ACTION: ecrire\nCHEMIN: a.py\nCONTENU:\nx\nFIN",
-                                   "ACTION: terminer\nCONTENU:\nfait\nFIN"),
+                                   "ACTION: lire\nCHEMIN: a.py",
+                                   "ACTION: terminer\nCONTENU:\nfait et relu\nFIN"),
             atelier=Atelier(racine=bac), memoire_longue=MemoireCassee(),
         ).run("ecris")
 
