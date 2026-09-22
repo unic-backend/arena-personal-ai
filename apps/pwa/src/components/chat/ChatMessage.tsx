@@ -60,7 +60,7 @@ function DocumentsProduits({ msg }: { msg: Msg }) {
             target="_blank"
             rel="noreferrer"
             onClick={() => triggerHaptic('success')}
-            className="inline-flex items-center gap-1.5 rounded-md border border-accent-500/25 bg-accent-500/[0.06] px-3 py-1.5 text-[11.5px] text-accent-200 transition hover:bg-accent-500/[0.12]"
+            className="inline-flex items-center gap-1.5 rounded-md border border-accent-500/25 bg-accent-500/[0.06] px-3 py-1.5 text-ui-meta text-accent-200 transition hover:bg-accent-500/[0.12]"
           >
             <FileText size={12} />
             {t('action.openDocument')}
@@ -99,17 +99,17 @@ function ActionsEnAttente({ msg }: { msg: Msg }) {
           <div className="flex items-start gap-2">
             <ShieldCheck size={13} className="mt-0.5 shrink-0 text-accent-300" />
             <div className="min-w-0 flex-1">
-              <div className="text-[12px] text-zinc-200">{a.action}</div>
-              <div className="truncate text-[11px] text-zinc-500">{a.cible}</div>
+              <div className="text-ui-body-sm text-zinc-200">{a.action}</div>
+              <div className="truncate text-ui-meta text-zinc-500">{a.cible}</div>
             </div>
-            <span className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-zinc-500">
+            <span className="shrink-0 rounded px-1.5 py-0.5 font-mono text-ui-meta uppercase tracking-wider text-zinc-500">
               {a.risque}
             </span>
           </div>
 
           {etat[a.id] ? (
             <div className="space-y-2 pt-2">
-              <div className="text-[11.5px] text-zinc-300">{etat[a.id]}</div>
+              <div className="text-ui-meta text-zinc-300">{etat[a.id]}</div>
               {/* Le document produit s'ouvre depuis le telephone. Sans ce lien
                   le PDF existe sur le disque du serveur et nulle part
                   ailleurs — c'est exactement ce qui manquait avant le
@@ -119,7 +119,7 @@ function ActionsEnAttente({ msg }: { msg: Msg }) {
                   href={documents[a.id]}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-md bg-white/[0.06] px-3 py-1.5 text-[11.5px] text-zinc-200 transition hover:bg-white/10"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-white/[0.06] px-3 py-1.5 text-ui-meta text-zinc-200 transition hover:bg-white/10"
                 >
                   <FileText size={12} />
                   {t('action.openDocument')}
@@ -135,14 +135,14 @@ function ActionsEnAttente({ msg }: { msg: Msg }) {
                ce qu'elle ne fait pas, en plus couteux : il demande un geste
                avant de dire non. « Annuler » reste, pour vider la file. */
             <div className="space-y-2 pt-2">
-              <div className="text-[11px] leading-relaxed text-amber-200/70">
+              <div className="text-ui-meta leading-relaxed text-amber-200/70">
                 {a.indisponible_raison || t('action.engineOffline')}
               </div>
               <button
                 type="button"
                 onClick={() => agir(a.id, 'annuler')}
                 disabled={enCours === a.id}
-                className="rounded-md border border-white/10 px-3 py-1.5 text-[11.5px] text-zinc-300 transition hover:bg-white/5 disabled:opacity-50"
+                className="rounded-md border border-white/10 px-3 py-1.5 text-ui-meta text-zinc-300 transition hover:bg-white/5 disabled:opacity-50"
               >
                 {t('action.cancel')}
               </button>
@@ -153,7 +153,7 @@ function ActionsEnAttente({ msg }: { msg: Msg }) {
                 type="button"
                 onClick={() => agir(a.id, 'confirmer')}
                 disabled={enCours === a.id}
-                className="rounded-md bg-accent-500/90 px-3 py-1.5 text-[11.5px] font-medium text-ink-950 transition hover:bg-accent-400 disabled:opacity-50"
+                className="rounded-md bg-accent-500/90 px-3 py-1.5 text-ui-meta font-medium text-ink-950 transition hover:bg-accent-400 disabled:opacity-50"
               >
                 {t('action.confirm')}
               </button>
@@ -161,7 +161,7 @@ function ActionsEnAttente({ msg }: { msg: Msg }) {
                 type="button"
                 onClick={() => agir(a.id, 'annuler')}
                 disabled={enCours === a.id}
-                className="rounded-md border border-white/10 px-3 py-1.5 text-[11.5px] text-zinc-400 transition hover:bg-white/5 hover:text-zinc-200 disabled:opacity-50"
+                className="rounded-md border border-white/10 px-3 py-1.5 text-ui-meta text-zinc-400 transition hover:bg-white/5 hover:text-zinc-200 disabled:opacity-50"
               >
                 {t('action.cancel')}
               </button>
@@ -203,7 +203,7 @@ function VerdictCritique({ msg }: { msg: Msg }) {
 
   if (verdict.ok) {
     return (
-      <div className="flex items-center gap-1 pt-1 font-mono text-[9.5px] uppercase tracking-widest text-emerald-600/80">
+      <div className="flex items-center gap-1 pt-1 font-mono text-ui-meta uppercase tracking-widest text-emerald-600/80">
         <span>{"\u2713"}</span>
         <span>{"v\u00e9rifi\u00e9e"}{confiance}</span>
       </div>
@@ -211,7 +211,7 @@ function VerdictCritique({ msg }: { msg: Msg }) {
   }
 
   return (
-    <div className="flex flex-col gap-0.5 pt-1 font-mono text-[9.5px] uppercase tracking-widest text-amber-600/80">
+    <div className="flex flex-col gap-0.5 pt-1 font-mono text-ui-meta uppercase tracking-widest text-amber-600/80">
       <div className="flex items-center gap-1">
         <span>{"\u26A0"}</span>
         <span>{"non v\u00e9rifi\u00e9e"}{confiance}</span>
@@ -251,12 +251,12 @@ function SourcesStrip({ msg }: { msg: Msg }) {
   if (!sources?.length) return null;
   return (
     <div className="mt-3 flex flex-wrap items-center gap-1.5">
-      <span className="mr-1 font-mono text-[9.5px] uppercase tracking-widest text-zinc-600">{t('msg.sources')}</span>
+      <span className="mr-1 font-mono text-ui-meta uppercase tracking-widest text-zinc-600">{t('msg.sources')}</span>
       {sources.map((s, i) => (
         <span
           key={i}
           title={`${s.title}${s.date ? ` · ${s.date}` : ''}`}
-          className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-white/[0.03] py-1 pl-1.5 pr-2.5 text-[10.5px] text-zinc-400 transition hover:border-white/15 hover:text-zinc-200"
+          className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-white/[0.03] py-1 pl-1.5 pr-2.5 text-ui-meta text-zinc-400 transition hover:border-white/15 hover:text-zinc-200"
         >
           <DomainMark domain={s.domain} className="!h-[14px] !w-[14px] text-[8px]" />
           {s.domain}
@@ -294,7 +294,7 @@ function UserAttachments({ msg }: { msg: Msg }) {
             </span>
           )}
           <span className="min-w-0">
-            <span className="block max-w-[180px] truncate font-mono text-[9.5px] text-zinc-300">{item.name}</span>
+            <span className="block max-w-[180px] truncate font-mono text-ui-meta text-zinc-300">{item.name}</span>
             <span className="block font-mono text-[8px] text-zinc-600">
               {fmtBytes(item.size)}
               {item.metadata?.duration ? ` · ${fmtTime(Number(item.metadata.duration))}` : ''}
@@ -321,7 +321,7 @@ function VariantNavigator({
   if (total <= 1) return null;
   return (
     <div
-      className="inline-flex items-center gap-1 rounded-md border border-white/8 bg-white/[0.03] px-1.5 py-0.5 font-mono text-[9.5px] text-zinc-400"
+      className="inline-flex items-center gap-1 rounded-md border border-white/8 bg-white/[0.03] px-1.5 py-0.5 font-mono text-ui-meta text-zinc-400"
       title={t('msg.variants', { cur: currentIndex + 1, total })}
     >
       <button
@@ -442,13 +442,13 @@ export const ChatMessage = memo(function ChatMessage({
                 }
               }}
               rows={2}
-              className="writing-text w-full resize-none bg-transparent text-[13.5px] leading-relaxed text-zinc-100 outline-none placeholder:text-zinc-600 scroll-slim"
+              className="writing-text w-full resize-none bg-transparent text-ui-body-sm leading-relaxed text-zinc-100 outline-none placeholder:text-zinc-600 scroll-slim"
             />
             <div className="mt-2.5 flex items-center justify-end gap-2 border-t border-white/6 pt-2">
               <button
                 type="button"
                 onClick={handleCancelEdit}
-                className="inline-flex items-center gap-1 rounded-lg border border-white/8 px-2.5 py-1 text-[11px] font-medium text-zinc-400 transition hover:bg-white/5 hover:text-zinc-200"
+                className="inline-flex items-center gap-1 rounded-lg border border-white/8 px-2.5 py-1 text-ui-meta font-medium text-zinc-400 transition hover:bg-white/5 hover:text-zinc-200"
               >
                 <X size={12} />
                 {t('msg.cancel')}
@@ -457,7 +457,7 @@ export const ChatMessage = memo(function ChatMessage({
                 type="button"
                 onClick={handleSaveEdit}
                 disabled={!editText.trim() || isRunning}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-accent-500 px-3 py-1 text-[11px] font-medium text-ink-950 transition hover:bg-accent-400 disabled:opacity-40"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-accent-500 px-3 py-1 text-ui-meta font-medium text-ink-950 transition hover:bg-accent-400 disabled:opacity-40"
               >
                 <Check size={12} strokeWidth={2.5} />
                 {t('msg.saveSubmit')}
@@ -559,9 +559,9 @@ export const ChatMessage = memo(function ChatMessage({
             </circle>
           </svg>
         </span>
-        <span className="text-[11px] font-medium tracking-wide text-zinc-500">Usman</span>
+        <span className="text-ui-meta font-medium tracking-wide text-zinc-500">Usman</span>
         {msg.meta?.durationMs !== undefined && msg.status === 'done' && (
-          <span className="font-mono text-[9.5px] text-zinc-700">{formatDuration(msg.meta.durationMs)}</span>
+          <span className="font-mono text-ui-meta text-zinc-700">{formatDuration(msg.meta.durationMs)}</span>
         )}
 
         {/* QUEL moteur a repondu, et avec quel modele.
@@ -572,7 +572,7 @@ export const ChatMessage = memo(function ChatMessage({
             que la reponse peut venir de sa machine ou du reseau. */}
         {msg.status === 'done' && msg.meta?.model && (
           <span
-            className="font-mono text-[9.5px] text-zinc-700"
+            className="font-mono text-ui-meta text-zinc-700"
             title={msg.meta.provider ? `${msg.meta.provider} · ${msg.meta.model}` : msg.meta.model}
           >
             {msg.meta.provider ? `${msg.meta.provider} · ` : ''}{msg.meta.model}
@@ -581,7 +581,7 @@ export const ChatMessage = memo(function ChatMessage({
 
         {/* Live speech indicator on message header */}
         {isSpeakingThis && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-accent-500/15 px-2 py-0.5 font-mono text-[9px] text-accent-300">
+          <span className="inline-flex items-center gap-1 rounded-full bg-accent-500/15 px-2 py-0.5 font-mono text-ui-meta text-accent-300">
             <span className="flex items-center gap-0.5">
               {[40, 90, 60].map((h, i) => (
                 <span
@@ -633,7 +633,7 @@ export const ChatMessage = memo(function ChatMessage({
         )}
 
         {msg.status === 'error' && (
-          <div className="rounded-lg border border-red-400/20 bg-red-400/[0.06] px-3 py-2 text-[12px] text-red-200">
+          <div className="rounded-lg border border-red-400/20 bg-red-400/[0.06] px-3 py-2 text-ui-body-sm text-red-200">
             {/* Serveur injoignable : la phrase se suffit. La prefixer de « le
                 moteur a renvoye une erreur » designerait un moteur qui n a
                 justement pas repondu — et c est ce malentendu qui laissait
@@ -653,7 +653,7 @@ export const ChatMessage = memo(function ChatMessage({
             {/* Copy button */}
             <button
               onClick={copy}
-              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10.5px] text-zinc-500 transition hover:bg-white/5 hover:text-zinc-300"
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-ui-meta text-zinc-500 transition hover:bg-white/5 hover:text-zinc-300"
               title={copied ? t('msg.copied') : t('msg.copy')}
             >
               {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
@@ -664,7 +664,7 @@ export const ChatMessage = memo(function ChatMessage({
             <button
               onClick={handleRegenerate}
               disabled={isRunning}
-              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10.5px] text-zinc-500 transition hover:bg-white/5 hover:text-zinc-300 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-ui-meta text-zinc-500 transition hover:bg-white/5 hover:text-zinc-300 disabled:opacity-40"
               title={t('msg.regenerate')}
             >
               <RotateCw size={11} />
@@ -677,7 +677,7 @@ export const ChatMessage = memo(function ChatMessage({
                 <button
                   onClick={handleToggleSpeak}
                   className={cn(
-                    'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10.5px] transition',
+                    'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-ui-meta transition',
                     isSpeakingThis
                       ? 'bg-accent-500/15 text-accent-300 hover:bg-accent-500/25'
                       : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-300',
@@ -697,14 +697,14 @@ export const ChatMessage = memo(function ChatMessage({
                   <>
                     <button
                       onClick={stopSpeech}
-                      className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10.5px] text-zinc-500 transition hover:bg-red-400/10 hover:text-red-300"
+                      className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-ui-meta text-zinc-500 transition hover:bg-red-400/10 hover:text-red-300"
                       title={t('msg.stopAudio')}
                     >
                       <Square size={10} fill="currentColor" />
                     </button>
                     <button
                       onClick={cycleRate}
-                      className="inline-flex items-center rounded-md px-1.5 py-1 font-mono text-[9px] text-zinc-400 transition hover:bg-white/5 hover:text-zinc-200"
+                      className="inline-flex items-center rounded-md px-1.5 py-1 font-mono text-ui-meta text-zinc-400 transition hover:bg-white/5 hover:text-zinc-200"
                       title={t('msg.speedAudio', { x: `${rate}x` })}
                     >
                       {rate === 1.05 ? '1.0x' : `${rate}x`}
