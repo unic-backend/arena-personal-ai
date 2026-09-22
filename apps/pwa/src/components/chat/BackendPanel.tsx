@@ -42,7 +42,7 @@ export function BackendPanel() {
           <ChevronRight size={11} className="text-zinc-600" />
         </motion.span>
         {enabled ? <Cloud size={11} className="shrink-0 text-accent-300" /> : <HardDrive size={11} className="shrink-0 text-zinc-500" />}
-        <span className="flex-1 truncate font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-500">
+        <span className="flex-1 truncate font-mono text-ui-meta uppercase tracking-[0.14em] text-zinc-500">
           {t('backend.title')} · <span className={cn(enabled && status === 'online' ? 'text-emerald-300/90' : 'text-zinc-600')}>{label}</span>
         </span>
         <span className={cn('inline-block h-1.5 w-1.5 shrink-0 rounded-full', dot)} />
@@ -63,7 +63,7 @@ export function BackendPanel() {
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder={t('backend.urlPh')}
                 spellCheck={false}
-                className="w-full rounded-md border border-white/8 bg-ink-950/70 px-2 py-1.5 font-mono text-[10.5px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-accent-500/40"
+                className="w-full rounded-md border border-white/8 bg-ink-950/70 px-2 py-1.5 font-mono text-ui-meta text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-accent-500/40"
               />
               <input
                 value={apiKey}
@@ -71,14 +71,14 @@ export function BackendPanel() {
                 placeholder={t('backend.keyPh')}
                 type="password"
                 spellCheck={false}
-                className="w-full rounded-md border border-white/8 bg-ink-950/70 px-2 py-1.5 font-mono text-[10.5px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-accent-500/40"
+                className="w-full rounded-md border border-white/8 bg-ink-950/70 px-2 py-1.5 font-mono text-ui-meta text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-accent-500/40"
               />
               {/* La seconde adresse, essayee quand la premiere ne repond pas.
                   Le proprietaire n'en retenait qu'une : brancher son PC
                   effacait Railway, et PC eteint plus rien ne repondait
                   jusqu'a ce qu'il recolle l'adresse a la main
                   (mesure du 03/09/2026). */}
-              <p className="pt-1 font-mono text-[9px] uppercase tracking-wide text-zinc-600">
+              <p className="pt-1 font-mono text-ui-meta uppercase tracking-wide text-zinc-600">
                 {t('backend.secours')}
               </p>
               <input
@@ -86,7 +86,7 @@ export function BackendPanel() {
                 onChange={(e) => setUrlSecours(e.target.value)}
                 placeholder={t('backend.secoursPh')}
                 spellCheck={false}
-                className="w-full rounded-md border border-white/8 bg-ink-950/70 px-2 py-1.5 font-mono text-[10.5px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-accent-500/40"
+                className="w-full rounded-md border border-white/8 bg-ink-950/70 px-2 py-1.5 font-mono text-ui-meta text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-accent-500/40"
               />
               <input
                 value={apiKeySecours}
@@ -94,13 +94,13 @@ export function BackendPanel() {
                 placeholder={t('backend.keyPh')}
                 type="password"
                 spellCheck={false}
-                className="w-full rounded-md border border-white/8 bg-ink-950/70 px-2 py-1.5 font-mono text-[10.5px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-accent-500/40"
+                className="w-full rounded-md border border-white/8 bg-ink-950/70 px-2 py-1.5 font-mono text-ui-meta text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-accent-500/40"
               />
-              <p className="text-[9.5px] leading-relaxed text-zinc-600">
+              <p className="text-ui-meta leading-relaxed text-zinc-600">
                 {t('backend.secoursAide')}
               </p>
               {remoteModel && enabled && (
-                <p className="truncate font-mono text-[9px] text-zinc-600">
+                <p className="truncate font-mono text-ui-meta text-zinc-600">
                   {/* **Laquelle des deux repond.** Sans ca, l'ecran dit « en
                       ligne » sans dire ou part le texte : son PC ou le cloud. */}
                   {serveurActif === 'secours' ? `${t('backend.viaSecours')} · ` : ''}
@@ -108,13 +108,13 @@ export function BackendPanel() {
                 </p>
               )}
               {error && (
-                <p className="truncate font-mono text-[9px] text-red-300/80">{error}</p>
+                <p className="truncate font-mono text-ui-meta text-red-300/80">{error}</p>
               )}
               <div className="flex gap-1.5">
                 <button
                   onClick={() => test()}
                   disabled={status === 'checking'}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-accent-500/30 bg-accent-500/10 px-2 py-1.5 text-[10px] font-medium text-accent-300 transition hover:bg-accent-500/20 active:scale-[0.98] disabled:opacity-50"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-accent-500/30 bg-accent-500/10 px-2 py-1.5 text-ui-meta font-medium text-accent-300 transition hover:bg-accent-500/20 active:scale-[0.98] disabled:opacity-50"
                 >
                   {status === 'checking' ? <Loader2 size={10} className="animate-spin" /> : <PlugZap size={10} />}
                   {enabled && status === 'online' ? t('backend.retest') : t('backend.connect')}
@@ -122,14 +122,14 @@ export function BackendPanel() {
                 {enabled && (
                   <button
                     onClick={disconnect}
-                    className="flex items-center justify-center gap-1.5 rounded-md border border-white/10 px-2 py-1.5 text-[10px] text-zinc-400 transition hover:border-white/20 hover:text-zinc-200 active:scale-[0.98]"
+                    className="flex items-center justify-center gap-1.5 rounded-md border border-white/10 px-2 py-1.5 text-ui-meta text-zinc-400 transition hover:border-white/20 hover:text-zinc-200 active:scale-[0.98]"
                     title={t('backend.disconnect')}
                   >
                     <Unplug size={10} />
                   </button>
                 )}
               </div>
-              <p className="text-[9px] leading-relaxed text-zinc-600">{t('backend.hint')}</p>
+              <p className="text-ui-meta leading-relaxed text-zinc-600">{t('backend.hint')}</p>
             </div>
           </motion.div>
         )}
