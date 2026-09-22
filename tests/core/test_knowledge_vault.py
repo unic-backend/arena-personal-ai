@@ -130,4 +130,18 @@ async def test_autonomous_tool_reutilise_le_meme_vault(tmp_path: Path):
     assert resultat.ok is True
     assert resultat.data["source"] == "knowledge_vault"
     assert resultat.data["results"][0]["sources"]
-    assert "double montant" in resultat.data["results"][0]["snippet"].lower()
+    contenu = resultat.data["results"][0]["content"].lower()
+    assert "double montant" in contenu
+    assert "knowledge_vault:" in contenu
+
+
+def test_search_ignore_les_mots_vides_pour_eviter_la_contamination(tmp_path: Path):
+    source = tmp_path / "reference.md"
+    source.write_text(
+        "# Cloison acoustique\n\nCette fiche explique comment faire une cloison avec isolant.",
+        encoding="utf-8",
+    )
+    vault = KnowledgeVault(tmp_path / "vault")
+    vault.ingest(source)
+
+    assert vault.search("comment faire avec cette chose") == []
