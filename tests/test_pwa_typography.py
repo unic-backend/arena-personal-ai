@@ -3,7 +3,6 @@
 These tests intentionally inspect the PWA source instead of a single screen:
 the original defect was repeated one-off pixel sizes spread across shared UI.
 """
-from pathlib import Path
 import re
 
 from apps.backend.config import BASE_DIR
