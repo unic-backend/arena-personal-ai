@@ -77,14 +77,20 @@ ILLISIBLES_CONSECUTIVES_MAX = 3
 
 #: Au-delà, la MÊME action valide, avec les MÊMES champs, demandée d'affilée
 #: n'est plus une action à rejouer : c'est un modèle bloqué qui répète un geste
-#: sans effet nouveau (relire le même fichier, relancer la même commande qui ne
-#: changera pas). Distinct d'`ILLISIBLES_CONSECUTIVES_MAX` : une action répétée
-#: est parfaitement lisible, elle est juste inutile. Concept vérifié dans le
-#: code source de Cline (Apache-2.0, `cline/cline`, commit `fee4fb9`,
-#: `sdk/packages/core/src/runtime/safety/loop-detection.ts` —
-#: `checkRepeatedToolCall`/`toolCallSignature`) : rien copié, réimplémenté ici
-#: en Python sur la structure déjà en place pour `illisibles_consecutives`.
+#: sans effet nouveau. EXCEPTION : les actions de suivi d'un état externe
+#: peuvent légitimement être identiques pendant que leur RESULTAT évolue.
+#: Celles-ci sont arrêtées seulement si la même action rend aussi la même
+#: observation plusieurs fois de suite.
+#: Concept vérifié dans le code source de Cline (Apache-2.0, `cline/cline`,
+#: commit `fee4fb9`, `sdk/packages/core/src/runtime/safety/loop-detection.ts`) :
+#: rien copié, réimplémenté sur la boucle existante.
 ACTIONS_IDENTIQUES_CONSECUTIVES_MAX = 3
+
+#: Polling légitime : l'appel est identique, mais le monde observé peut changer
+#: entre deux tours. Ne jamais assimiler "queued -> in_progress -> success" à
+#: une boucle. Si l'observation elle-même ne change plus, la même borne protège
+#: toujours contre le polling infini.
+ACTIONS_DE_SUIVI_EVOLUTIF = frozenset({"etat_ci", "ordinateur_etat"})
 
 #: Au-delà, un ÉCHEC D'EXÉCUTION (commande en erreur, remplacement introuvable,
 #: fichier absent...) répété d'affilée n'est plus une erreur à corriger au tour
@@ -1692,6 +1698,8 @@ class DioumtoukayAgent(BaseAgent):
         illisibles_consecutives = 0
         derniere_signature: Optional[tuple] = None
         repetitions_consecutives = 0
+        derniere_observation_suivi: Optional[tuple] = None
+        repetitions_suivi_inchange = 0
         echecs_consecutifs = 0
         terminaisons_sans_verification = 0
 
@@ -1761,21 +1769,29 @@ class DioumtoukayAgent(BaseAgent):
                 arrete_par_lui_meme = True
                 break
 
-            # Garde anti-repetition : la MEME action, pas seulement un tour de
-            # plus. Arrete AVANT de la rejouer une fois de trop — un geste
-            # sans effet nouveau ne merite pas une execution supplementaire.
+            # Garde anti-repetition. Pour une action ordinaire, la MEME action
+            # est bloquee avant d'etre rejouee une fois de trop. Pour une
+            # action de suivi (CI / ordinateur distant), l'appel identique est
+            # legitime tant que le RESULTAT evolue ; son garde est applique
+            # apres l'execution, sur l'observation reelle.
             signature = action.signature()
-            if signature == derniere_signature:
-                repetitions_consecutives += 1
+            if action.nom in ACTIONS_DE_SUIVI_EVOLUTIF:
+                derniere_signature = None
+                repetitions_consecutives = 0
             else:
-                repetitions_consecutives = 1
-                derniere_signature = signature
-            if repetitions_consecutives >= ACTIONS_IDENTIQUES_CONSECUTIVES_MAX:
-                conclusion = (
-                    f"Arrete apres {repetitions_consecutives} '{action.nom}' identiques "
-                    "d'affilee : ca ne changera rien de la rejouer. Ce qui a ete fait "
-                    "est ci-dessous ; la suite reste a faire.")
-                break
+                derniere_observation_suivi = None
+                repetitions_suivi_inchange = 0
+                if signature == derniere_signature:
+                    repetitions_consecutives += 1
+                else:
+                    repetitions_consecutives = 1
+                    derniere_signature = signature
+                if repetitions_consecutives >= ACTIONS_IDENTIQUES_CONSECUTIVES_MAX:
+                    conclusion = (
+                        f"Arrete apres {repetitions_consecutives} '{action.nom}' identiques "
+                        "d'affilee : ca ne changera rien de la rejouer. Ce qui a ete fait "
+                        "est ci-dessous ; la suite reste a faire.")
+                    break
 
             # Amorcee AVANT que l'action ne tourne, pas apres : une tache tuee
             # PENDANT l'ecriture d'un fichier ou une commande longue doit
@@ -1798,6 +1814,30 @@ class DioumtoukayAgent(BaseAgent):
             self.reprises.confirmer(
                 tache, etape, ok=resultat.ok,
                 resume=self._compte_rendu(action, resultat), duree_ms=duree_ms)
+
+            # Les actions de suivi sont comparees APRES execution : deux appels
+            # identiques dont la sortie change sont du progres, pas une boucle.
+            # On ne coupe que si l'action ET l'observation restent inchangees.
+            if action.nom in ACTIONS_DE_SUIVI_EVOLUTIF:
+                observation = (
+                    signature,
+                    resultat.ok,
+                    resultat.message,
+                    resultat.sortie,
+                    resultat.erreur,
+                    resultat.code,
+                )
+                if observation == derniere_observation_suivi:
+                    repetitions_suivi_inchange += 1
+                else:
+                    derniere_observation_suivi = observation
+                    repetitions_suivi_inchange = 1
+                if repetitions_suivi_inchange >= ACTIONS_IDENTIQUES_CONSECUTIVES_MAX:
+                    conclusion = (
+                        f"Arrete apres {repetitions_suivi_inchange} observations "
+                        f"identiques de '{action.nom}' : l'etat externe n'evolue plus. "
+                        "Ce qui a ete fait est ci-dessous ; la suite reste a faire.")
+                    break
 
             # Garde anti-echecs : la meme garantie que ci-dessus, mais pour une
             # action qui CHANGE a chaque tour tout en echouant a chaque fois.
