@@ -209,7 +209,8 @@ class TestUneTacheInterrompueReprendVraiment:
         # Second passage : la MEME demande. Il doit reprendre.
         second = _agent(depot, fichier, [
             REMPLACER,
-            "ACTION: terminer\nCONTENU: repris et corrige",
+            "ACTION: lire\nCHEMIN: calcul.py",
+            "ACTION: terminer\nCONTENU: repris, corrige et relu",
         ])
         suite = await second.run(DEMANDE)
 
