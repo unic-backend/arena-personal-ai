@@ -149,9 +149,9 @@ ECHECS_CONSECUTIFS_MAX = 3
 #: non-fast-forward n'est jamais retente avec la force automatiquement.
 ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "executer", "analyser", "diagnostiquer",
-           "github_lister", "github_lire", "github_chercher",
+           "github_lister", "github_lire", "github_chercher", "github_diff",
            "github_branche_creer", "github_ecrire",
-           "ouvrir_pr", "etat_ci",
+           "ouvrir_pr", "etat_ci", "commentaires_pr",
            "convertir", "organiser_inspecter", "organiser_planifier",
            "organiser_appliquer", "organiser_annuler",
            "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
@@ -190,10 +190,12 @@ ACTIONS_A_VERIFIER = frozenset({
 #: document, CI pour GitHub) ; ce garde empeche seulement « j'ai ecrit, donc
 #: c'est fini ».
 ACTIONS_DE_VERIFICATION = frozenset({
-    "lire", "chercher", "lister", "executer", "analyser", "diagnostiquer",
-    "github_lire", "github_lister", "github_chercher", "etat_ci",
+    # Une preuve, pas une nouvelle opinion du modele : analyser/diagnostiquer
+    # ne peuvent donc jamais valider une mutation.
+    "lire", "lister", "executer",
+    "github_lire", "github_diff", "etat_ci",
     "ordinateur_etat", "ordinateur_executer", "ordinateur_lire_fichier",
-    "git_statut", "git_diff", "git_branches_lister", "git_conflit_lire",
+    "git_statut", "git_diff", "git_conflit_lire",
 })
 
 #: Le journal complet reste dans le stockage durable. Pour le MODELE, on borne
@@ -217,7 +219,7 @@ JOURNAL_MODELE_RESUME_MAX_CARACTERES = 8_000
 #: fichier écrit, liste des documents (manifeste), ou texte lui-même sont
 #: ce que le propriétaire lit pour vérifier, pas un simple « fait ».
 ACTIONS_QUI_ANALYSENT = frozenset({
-    "analyser", "diagnostiquer", "etat_ci", "convertir",
+    "analyser", "diagnostiquer", "etat_ci", "github_diff", "commentaires_pr", "convertir",
     "organiser_inspecter", "organiser_planifier",
     "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
     "isoler",
@@ -240,7 +242,7 @@ ACTIONS_PREUVES_DE_REPLI = frozenset({
 _ETIQUETTE = re.compile(r"^\s*ACTION\s*:\s*(\w+)", re.IGNORECASE | re.MULTILINE)
 _CHAMP = re.compile(
     r"^\s*(CHEMIN|SOURCE|DESTINATION|COMMANDE|DOSSIER|TEXTE|DEPOT|TITRE|TETE|BASE|REF|FORMAT"
-    r"|SHA|PLAN_ID|CONFIRMER_SUPPRESSION|OPERATION|PAGES|DEGRES|FORMAT_PDFX|NOM|COMPUTER_ID|URL"
+    r"|SHA|PLAN_ID|CONFIRMER_SUPPRESSION|OPERATION|PAGES|DEGRES|FORMAT_PDFX|NOM|NUMERO|COMPUTER_ID|URL"
     r"|CIBLE|IDENTIFIANT|IDENTIFIANT_OPERATION|DISTANT|BRANCHE|AMEND|FORCE_AVEC_BAIL"
     r"|TETE_ATTENDUE|REBASE|SUR|COMMIT|DEPUIS|BASCULER|MESSAGE|INDEX|GARDER"
     r"|INCLURE_NON_SUIVIS)"
@@ -311,6 +313,11 @@ ACTION: github_chercher
 DEPOT: owner/repo
 TEXTE: def calculer_total
 
+ACTION: github_diff
+DEPOT: owner/repo
+BASE: main
+TETE: ta-branche
+
 ACTION: github_branche_creer
 DEPOT: owner/repo
 NOM: fix-mobile
@@ -338,6 +345,10 @@ FIN
 ACTION: etat_ci
 DEPOT: owner/repo
 REF: ta-branche
+
+ACTION: commentaires_pr
+DEPOT: owner/repo
+NUMERO: 123
 
 ACTION: convertir
 CHEMIN: documents/devis.pdf
@@ -641,6 +652,10 @@ ACTION: github_chercher
 TEXTE: def calculer_total
 CHEMIN: apps
 
+ACTION: github_diff
+BASE: main
+TETE: fix-exemple
+
 ACTION: github_branche_creer
 NOM: fix-exemple
 DEPUIS: main
@@ -665,6 +680,9 @@ FIN
 ACTION: etat_ci
 REF: fix-exemple
 
+ACTION: commentaires_pr
+NUMERO: 123
+
 ACTION: terminer
 CONTENU:
 ce que tu as verifie ou modifie, en francais simple
@@ -672,10 +690,17 @@ FIN
 
 REGLES :
 - github_lister/github_lire/github_chercher servent a explorer le depot distant.
+- github_diff compare la branche de travail a main : utilise-le avant une PR
+  ou apres plusieurs ecritures pour verifier l'ensemble du changement.
+- commentaires_pr lit les retours de revue : traite les remarques avant de conclure.
 - Avant de modifier un fichier existant, lis-le sur la branche cible et reutilise
   exactement le SHA rendu. Un SHA absent ou perime est refuse par le connecteur.
 - Cree une branche de travail avant toute ecriture. Jamais d ecriture directe sur main.
-- Apres modification, ouvre une PR et utilise sa CI comme preuve de verification.
+- Apres modification, verifie le fichier ou le diff. Si une CI existe, seul
+  resume: succes est une preuve positive : en_cours, en_attente et echec ne
+  veulent jamais dire que le travail est termine.
+- Ouvre ensuite une PR quand la politique de confirmation le permet et utilise
+  sa CI comme preuve supplementaire.
 - Le resultat reel de chaque action fait foi. N invente jamais une lecture,
   une modification, une CI ou un succes.
 - Si tu es bloque, termine et nomme exactement le blocage.
@@ -983,6 +1008,39 @@ class DioumtoukayAgent(BaseAgent):
                 chemin = occurrence.get("chemin") or ""
                 if chemin:
                     lignes.append(f"- {chemin}")
+            return "\n".join(lignes)
+
+        if capacite == "comparer":
+            lignes = [
+                f"statut: {detail.get('statut', 'inconnu')}",
+                f"avance: {detail.get('ahead_by', 0)}",
+                f"retard: {detail.get('behind_by', 0)}",
+                "fichiers modifies:",
+            ]
+            for fichier in detail.get("fichiers") or []:
+                if not isinstance(fichier, dict):
+                    continue
+                chemin = fichier.get("chemin") or ""
+                statut = fichier.get("statut") or ""
+                ajouts = fichier.get("ajouts", 0)
+                suppressions = fichier.get("suppressions", 0)
+                lignes.append(f"- {chemin} ({statut}, +{ajouts}/-{suppressions})")
+                patch = str(fichier.get("patch") or "").strip()
+                if patch:
+                    lignes.append(patch)
+            return "\n".join(lignes)
+
+        if capacite == "commentaires_pr":
+            lignes = []
+            for commentaire in detail.get("commentaires") or []:
+                if not isinstance(commentaire, dict):
+                    continue
+                auteur = commentaire.get("auteur") or "?"
+                genre = commentaire.get("genre") or "commentaire"
+                chemin = commentaire.get("chemin") or ""
+                corps = str(commentaire.get("corps") or "").strip()
+                suffixe = f" sur {chemin}" if chemin else ""
+                lignes.append(f"- {genre} de {auteur}{suffixe}: {corps}")
             return "\n".join(lignes)
 
         if capacite == "etat_ci":
@@ -1411,6 +1469,12 @@ class DioumtoukayAgent(BaseAgent):
             return self._via_github(
                 "chercher_code", depot=depot, terme=terme,
                 chemin=self._chemin_github(champs.get("CHEMIN", ".")))
+        if action.nom == "github_diff":
+            depot = champs.get("DEPOT") or self.depot_github_defaut
+            base, tete = champs.get("BASE") or "main", champs.get("TETE", "")
+            if not depot or not tete:
+                return Resultat(False, "Il manque DEPOT (owner/repo) ou TETE.")
+            return self._via_github("comparer", depot=depot, base=base, tete=tete)
         if action.nom == "github_branche_creer":
             depot = champs.get("DEPOT") or self.depot_github_defaut
             nom = champs.get("NOM", "")
@@ -1441,6 +1505,13 @@ class DioumtoukayAgent(BaseAgent):
             if not depot or not ref:
                 return Resultat(False, "Il manque DEPOT (owner/repo) ou REF (SHA ou branche).")
             return self._via_github("etat_ci", depot=depot, ref=ref)
+        if action.nom == "commentaires_pr":
+            depot = champs.get("DEPOT") or self.depot_github_defaut
+            numero_brut = champs.get("NUMERO", "").strip()
+            if not depot or not numero_brut.isdigit():
+                return Resultat(False, "Il manque DEPOT (owner/repo) ou NUMERO de PR valide.")
+            return self._via_github(
+                "commentaires_pr", depot=depot, numero=int(numero_brut))
         if action.nom == "convertir":
             chemin, format_cible = champs.get("CHEMIN", ""), champs.get("FORMAT", "")
             if not chemin or not format_cible:
@@ -1774,18 +1845,97 @@ class DioumtoukayAgent(BaseAgent):
         return "\n".join(lignes)
 
     @staticmethod
-    def _mutation_non_verifiee(rendu: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        """La derniere mutation reussie si rien ne l'a verifiee ensuite."""
+    def _preuve_positive(
+        mutation: Dict[str, Any], verification: Dict[str, Any]
+    ) -> bool:
+        """Une verification qui prouve CETTE mutation, pas juste une action verte.
+
+        Avant ce garde, lire n'importe quel autre fichier — ou demander une CI
+        encore rouge — suffisait a deverrouiller `terminer`. C'etait une preuve
+        de quelque chose, mais pas de la modification que l'agent venait de faire.
+        """
+        if not verification.get("ok"):
+            return False
+        action = verification.get("action")
+        if action not in ACTIONS_DE_VERIFICATION:
+            return False
+
+        champs_mutation = mutation.get("champs") or {}
+        champs_verif = verification.get("champs") or {}
+        cible = champs_mutation.get("CHEMIN") or champs_mutation.get("DESTINATION") or ""
+        sortie = str(verification.get("sortie") or "")
+
+        # Une CI lue avec succes n'est positive que si son VERDICT est vert.
+        if action == "etat_ci":
+            if not re.search(r"(?m)^resume:\s*succes\s*$", sortie):
+                return False
+            branche = champs_mutation.get("BRANCHE", "")
+            ref = champs_verif.get("REF", "")
+            return not branche or not ref or branche == ref
+
+        if mutation.get("action") == "github_ecrire":
+            branche = champs_mutation.get("BRANCHE", "")
+            if action == "github_lire":
+                return (
+                    bool(cible)
+                    and champs_verif.get("CHEMIN") == cible
+                    and champs_verif.get("REF") == branche
+                )
+            if action == "github_diff":
+                return (
+                    bool(branche)
+                    and champs_verif.get("TETE") == branche
+                    and (not cible or cible in sortie)
+                )
+            return False
+
+        if mutation.get("action") == "ordinateur_ecrire_fichier":
+            if action == "ordinateur_lire_fichier":
+                return (
+                    champs_verif.get("COMPUTER_ID") == champs_mutation.get("COMPUTER_ID")
+                    and champs_verif.get("CHEMIN") == cible
+                )
+            return action == "ordinateur_executer"
+
+        if mutation.get("action") == "deplacer":
+            destination = champs_mutation.get("DESTINATION", "")
+            if action == "lire":
+                return bool(destination) and champs_verif.get("CHEMIN") == destination
+            if action == "lister":
+                dossier = champs_verif.get("CHEMIN", ".").rstrip("/")
+                return bool(destination) and (
+                    dossier in ("", ".") or destination.startswith(dossier + "/")
+                )
+
+        # Fichier local : relire le meme fichier, regarder son diff/statut ou
+        # executer une vraie commande de test sont des preuves observables.
+        if mutation.get("action") in {"ecrire", "remplacer"}:
+            if action == "lire":
+                return bool(cible) and champs_verif.get("CHEMIN") == cible
+            if action == "git_diff":
+                chemin_diff = champs_verif.get("CHEMIN", "")
+                return not chemin_diff or chemin_diff == cible
+            return action in {"git_statut", "executer"}
+
+        return action in {"executer", "git_diff", "git_statut", "ordinateur_executer"}
+
+    @classmethod
+    def _mutation_non_verifiee(
+        cls, rendu: List[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """La derniere mutation reussie tant qu'aucune preuve pertinente ne suit."""
         index_mutation: Optional[int] = None
         for index, acte in enumerate(rendu):
             if acte.get("ok") and acte.get("action") in ACTIONS_A_VERIFIER:
                 index_mutation = index
         if index_mutation is None:
             return None
+
+        mutation = rendu[index_mutation]
         for acte in rendu[index_mutation + 1:]:
-            if acte.get("ok") and acte.get("action") in ACTIONS_DE_VERIFICATION:
+            if cls._preuve_positive(mutation, acte):
                 return None
-        return rendu[index_mutation]
+        return mutation
 
     @staticmethod
     def _journal_pour_modele(journal_du_travail: List[str]) -> str:

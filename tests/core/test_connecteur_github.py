@@ -289,6 +289,58 @@ class TestEcrireFichier:
         assert [r.method for r in appels] == ["GET", "GET"]
 
 
+# --- comparer : preuve distante de l'ensemble d'une branche -------------------------
+
+def test_comparer_rend_ecart_et_fichiers_modifies(monkeypatch):
+    monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+    appels = []
+
+    c = connecteur_pret(
+        lambda r: json_reponse(200, {
+            "status": "ahead",
+            "ahead_by": 2,
+            "behind_by": 0,
+            "total_commits": 2,
+            "head_commit": {"sha": "head-1234567890"},
+            "commits": [
+                {"sha": "abc123456789", "commit": {"message": "fix: a\n\ndetail"}},
+                {"sha": "def123456789", "commit": {"message": "test: a"}},
+            ],
+            "files": [{
+                "filename": "apps/backend/a.py",
+                "status": "modified",
+                "additions": 4,
+                "deletions": 1,
+                "changes": 5,
+                "patch": "@@ -1 +1 @@\n-old\n+new",
+            }],
+        }),
+        journal_appels=appels,
+    )
+
+    resultat = c.executer(
+        "comparer", depot="o/r", base="main", tete="fix/bug"
+    )
+
+    assert resultat.statut is Statut.SUCCES
+    assert resultat.detail["ahead_by"] == 2
+    assert resultat.detail["behind_by"] == 0
+    assert resultat.detail["fichiers"][0]["chemin"] == "apps/backend/a.py"
+    assert resultat.detail["fichiers"][0]["patch"].endswith("+new")
+    # La branche contenant / doit etre encodee dans le chemin de l'API.
+    assert "fix%2Fbug" in str(appels[-1].url)
+
+
+def test_comparer_refuse_une_reference_absente(monkeypatch):
+    monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+    c = connecteur_pret(lambda r: json_reponse(404, {"message": "Not Found"}))
+
+    resultat = c.executer("comparer", depot="o/r", base="main", tete="inconnue")
+
+    assert resultat.statut is Statut.ECHEC
+    assert "404" in resultat.message
+
+
 # --- creer_branche (ALLOWED — même risque que git push sous DEC-0038) --------------
 
 def test_creer_branche_va_directement_au_reseau_sans_confirmation(monkeypatch):
@@ -411,12 +463,12 @@ def test_commentaires_pr_fusionne_revue_et_discussion(monkeypatch):
 
 # --- Capacités déclarées -------------------------------------------------------------
 
-def test_les_huit_capacites_sont_declarees():
+def test_les_neuf_capacites_sont_declarees():
     c = ConnecteurGitHub()
     noms = set(c.capacites())
-    assert noms == {"lire_fichier", "chercher_code", "lister", "creer_branche",
-                    "ecrire_fichier", "creer_pull_request", "etat_ci",
-                    "commentaires_pr"}
+    assert noms == {"lire_fichier", "chercher_code", "lister", "comparer",
+                    "creer_branche", "ecrire_fichier", "creer_pull_request",
+                    "etat_ci", "commentaires_pr"}
 
 
 def test_une_capacite_non_declaree_natteint_jamais_le_reseau(monkeypatch):
