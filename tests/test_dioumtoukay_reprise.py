@@ -238,6 +238,44 @@ class TestUneTacheInterrompueReprendVraiment:
         premiere_invite = second.provider  # le double garde ce qu'il a vu
         assert premiere_invite.vus >= 1
 
+    async def test_une_mutation_non_verifiee_reste_bloquante_apres_redemarrage(
+            self, tmp_path):
+        """Un crash ne doit pas effacer l'obligation de preuve.
+
+        Premier passage : le fichier est modifie, puis le moteur devient
+        illisible avant toute verification. Deuxieme passage : il tente de
+        conclure immediatement. Cette conclusion doit etre refusee jusqu'a la
+        relecture du fichier modifie.
+        """
+        depot = _depot_avec_un_bug(tmp_path / "depot")
+        fichier = tmp_path / "j.json"
+
+        premier = _agent(depot, fichier, [
+            REMPLACER,
+            "illisible",
+            "illisible",
+            "illisible",
+        ])
+        rendu = await premier.run(DEMANDE)
+
+        assert rendu["status"] == "partial"
+        etat = JournalDeReprise(fichier=fichier).inventaire()[0]
+        assert etat.etat is EtatTache.INTERROMPUE
+        assert etat.etapes[0].outil == "remplacer"
+        assert etat.etapes[0].champs["CHEMIN"] == "calcul.py"
+
+        second = _agent(depot, fichier, [
+            "ACTION: terminer\nCONTENU:\nje suppose que c est fini\nFIN",
+            "ACTION: lire\nCHEMIN: calcul.py",
+            "ACTION: terminer\nCONTENU:\nreprise verifiee sur calcul.py\nFIN",
+        ])
+        suite = await second.run(DEMANDE)
+
+        assert suite["reprise"] is True
+        assert suite["status"] == "success"
+        assert [a["action"] for a in suite["actions"]] == ["lire"]
+        assert "reprise verifiee" in suite["response"]
+
     async def test_une_tache_conclue_ne_reprend_pas_au_tour_suivant(self, tmp_path):
         depot = _depot_avec_un_bug(tmp_path / "depot")
         fichier = tmp_path / "j.json"
@@ -330,6 +368,10 @@ class TestObservabilite:
         assert etape.cible == "calcul.py"
         assert etape.duree_ms >= 0
         assert etape.quand
+        assert etape.champs["CHEMIN"] == "calcul.py"
+        # Le champ existe meme pour une ancienne action de lecture et permet
+        # aux gardes de reprise de reconstruire la cible sans parser du texte.
+        assert isinstance(etape.sortie, str)
 
     async def test_le_rapport_porte_l_identifiant_de_la_tache(self, tmp_path):
         depot = _depot_avec_un_bug(tmp_path / "depot")
