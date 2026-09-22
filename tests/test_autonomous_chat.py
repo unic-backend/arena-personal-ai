@@ -16,7 +16,15 @@ from apps.backend.services.ai_client import AIClient, AIUnavailable
 from apps.backend.services.memory_engine import MemoryEngine
 from apps.backend.services.orchestrator import ChatInput, CurrentUser, Orchestrator
 from apps.backend.services.settings import AutonomousSettings
-from apps.backend.services.tools.builtin import CalculateArgs, SearchArgs, WebSearch, builtin_registry, calculate
+from apps.backend.services.tools.builtin import (
+    CalculateArgs,
+    SearchArgs,
+    TxtaiCompareArgs,
+    TxtaiCompareTool,
+    WebSearch,
+    builtin_registry,
+    calculate,
+)
 from apps.backend.services.tools.registry import Tool, ToolRegistry, ToolResult
 from core.memory.personnelle import MemoirePersonnelle, Nature, TypeSouvenir
 from core.models.usage import CompteurUsage
@@ -104,6 +112,47 @@ async def test_empty_search_is_never_success():
     async with httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}))) as client:
         result = await WebSearch(client)(SearchArgs(query="question"))
     assert not result.ok and result.error == "no_sources"
+
+
+async def test_txtai_tool_refuse_un_declenchement_invente_par_le_modele():
+    class Vault:
+        async def compare_txtai(self, *_args, **_kwargs):
+            pytest.fail("txtai ne devait pas etre appele")
+
+    outil = TxtaiCompareTool(SimpleNamespace(), Vault())
+    resultat = await outil(
+        TxtaiCompareArgs(query="isolation acoustique", limit=3),
+        {"message": "cherche dans mes documents l'isolation acoustique"},
+    )
+
+    assert not resultat.ok
+    assert resultat.error == "txtai_requires_explicit_user_request"
+
+
+async def test_txtai_tool_est_reellement_joignable_sur_demande_explicite():
+    appels = []
+
+    class Vault:
+        async def compare_txtai(self, query, registre, *, limit=5):
+            appels.append((query, registre, limit))
+            return {
+                "status": "SUCCESS",
+                "message": "ok",
+                "txtai": [{"path": "sources/a.md"}],
+                "hybrid": [{"path": "sources/b.md"}],
+                "quality_verdict": None,
+            }
+
+    registre = SimpleNamespace()
+    outil = TxtaiCompareTool(registre, Vault())
+    resultat = await outil(
+        TxtaiCompareArgs(query="isolation acoustique", limit=3),
+        {"message": "compare txtai avec la recherche semantique"},
+    )
+
+    assert resultat.ok
+    assert appels == [("isolation acoustique", registre, 3)]
+    assert resultat.data["status"] == "SUCCESS"
 
 
 async def test_sqlite_preserves_entire_message_and_isolates_users(settings):
