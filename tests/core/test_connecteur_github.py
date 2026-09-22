@@ -131,6 +131,23 @@ def test_chercher_code(monkeypatch):
     assert resultat.statut is Statut.SUCCES
     assert len(resultat.detail["occurrences"]) == 2
 
+def test_chercher_code_respecte_le_dossier_distant(monkeypatch):
+    monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+    appels = []
+
+    c = connecteur_pret(
+        lambda r: json_reponse(200, {"total_count": 0, "items": []}),
+        journal_appels=appels,
+    )
+    resultat = c.executer(
+        "chercher_code", depot="o/r", terme="Composer", chemin="apps/pwa"
+    )
+
+    assert resultat.statut is Statut.SUCCES
+    requete = str(appels[-1].url)
+    assert "repo%3Ao%2Fr" in requete
+    assert "path%3Aapps%2Fpwa" in requete
+
 
 # --- lister : explorer le depot sans checkout local --------------------------------
 

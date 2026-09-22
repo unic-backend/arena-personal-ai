@@ -8,7 +8,7 @@ contourner en l'appelant — il hérite du même `connecteur.executer()` que
 """
 import pytest
 
-from agents.dioumtoukay.dioumtoukay_agent import DioumtoukayAgent
+from agents.dioumtoukay.dioumtoukay_agent import Action, DioumtoukayAgent
 from core.actions.resultat import ResultatAction, a_confirmer, echec, succes
 from tools.atelier import Atelier
 
@@ -16,11 +16,13 @@ from tools.atelier import Atelier
 class ModeleScripte:
     def __init__(self, *reponses: str):
         self.reponses = list(reponses)
+        self.system_prompts = []
 
     async def is_available(self) -> bool:
         return True
 
     async def generate(self, prompt: str, system_prompt: str = None) -> str:
+        self.system_prompts.append(system_prompt or "")
         return self.reponses.pop(0) if self.reponses else "ACTION: terminer\nCONTENU:\nfini\nFIN"
 
 
@@ -69,6 +71,89 @@ class TestEspaceGitHubDistant:
         assert "AUCUN checkout git local" in reperes
         assert "github_branche_creer" in reperes
         assert "unic-backend/arena-personal-ai" in reperes
+
+    @pytest.mark.asyncio
+    async def test_un_lister_local_est_redirige_vers_github_sur_railway(self, bac):
+        connecteur = FauxConnecteurGitHub(succes(
+            "lister", "unic-backend/arena-personal-ai",
+            "2 entree(s) dans apps/pwa.", preuve="2",
+            entrees=[{"chemin": "apps/pwa/src"}, {"chemin": "apps/pwa/index.html"}],
+        ))
+        a = agent(
+            bac,
+            [],
+            connecteur_github=connecteur,
+            depot_github_defaut="unic-backend/arena-personal-ai",
+        )
+        chemin_image = str(bac / "apps" / "pwa")
+
+        resultat = await a._executer_action(
+            Action(nom="lister", champs={"CHEMIN": chemin_image}),
+            github_distant=True,
+        )
+
+        assert resultat.ok is True
+        assert connecteur.appels == [(
+            "lister",
+            {
+                "depot": "unic-backend/arena-personal-ai",
+                "chemin": "apps/pwa",
+                "ref": "",
+            },
+        )]
+
+    @pytest.mark.asyncio
+    async def test_mode_distant_envoie_une_consigne_compacte_au_modele(self, bac):
+        modele = ModeleScripte("ACTION: terminer\nCONTENU:\nfini\nFIN")
+        connecteur = FauxConnecteurGitHub(succes("x", "x", "ok", preuve="x"))
+        a = DioumtoukayAgent(
+            provider=modele,
+            atelier=Atelier(racine=bac),
+            connecteur_github=connecteur,
+            depot_github_defaut="unic-backend/arena-personal-ai",
+        )
+
+        resultat = await a.run("explore le depot")
+
+        assert resultat["status"] == "success"
+        assert modele.system_prompts
+        consigne = modele.system_prompts[0]
+        assert "mode GitHub distant" in consigne
+        assert "ACTION: github_lister" in consigne
+        assert "ACTION: ordinateur_creer" not in consigne
+        assert "ACTION: git_pousser" not in consigne
+
+    @pytest.mark.asyncio
+    async def test_un_resultat_de_listing_reste_visible_si_le_modele_tombe_apres(self, bac):
+        class ModeleQuiTombe(ModeleScripte):
+            async def generate(self, prompt: str, system_prompt: str = None) -> str:
+                self.system_prompts.append(system_prompt or "")
+                if self.reponses:
+                    return self.reponses.pop(0)
+                raise RuntimeError("429 temporaire")
+
+        modele = ModeleQuiTombe("ACTION: github_lister\nCHEMIN: apps/pwa\nREF: main")
+        connecteur = FauxConnecteurGitHub(succes(
+            "lister", "unic-backend/arena-personal-ai",
+            "2 entree(s) dans apps/pwa.", preuve="2",
+            entrees=[
+                {"chemin": "apps/pwa/src"},
+                {"chemin": "apps/pwa/index.html"},
+            ],
+        ))
+        a = DioumtoukayAgent(
+            provider=modele,
+            atelier=Atelier(racine=bac),
+            connecteur_github=connecteur,
+            depot_github_defaut="unic-backend/arena-personal-ai",
+        )
+
+        resultat = await a.run("donne-moi les fichiers dans apps/pwa")
+
+        assert resultat["status"] == "partial"
+        assert "apps/pwa/src" in resultat["response"]
+        assert "apps/pwa/index.html" in resultat["response"]
+        assert "429 temporaire" in resultat["response"]
 
     @pytest.mark.asyncio
     async def test_liste_le_depot_distant_par_defaut(self, bac):

@@ -363,10 +363,13 @@ class ConnecteurGitHub(Connecteur):
     # -- chercher_code --
 
     def _faire_chercher_code(self, depot: str = "", terme: str = "",
-                             **_: Any) -> ResultatAction:
+                             chemin: str = "", **_: Any) -> ResultatAction:
         if not depot or not terme:
             return echec("chercher_code", self.nom, "depot (owner/repo) et terme sont requis.")
         requete = f"{terme} repo:{depot}"
+        propre = chemin.strip("/")
+        if propre:
+            requete += f" path:{propre}"
         try:
             reponse = self._requete("GET", "/search/code", params={"q": requete})
         except httpx.HTTPError as erreur:

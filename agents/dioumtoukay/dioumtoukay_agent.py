@@ -188,7 +188,7 @@ ACTIONS_QUI_MODIFIENT = frozenset({"ecrire", "remplacer", "deplacer", "github_ec
 #: fichier écrit, liste des documents (manifeste), ou texte lui-même sont
 #: ce que le propriétaire lit pour vérifier, pas un simple « fait ».
 ACTIONS_QUI_ANALYSENT = frozenset({
-    "analyser", "diagnostiquer", "etat_ci", "convertir",
+    "analyser", "diagnostiquer", "etat_ci", "github_lister", "github_chercher", "convertir",
     "organiser_inspecter", "organiser_planifier",
     "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
     "isoler",
@@ -583,6 +583,67 @@ REGLES
   moitie fait se dit ; il ne se presente pas comme fini."""
 
 
+CONSIGNE_GITHUB_DISTANT = """Tu es Dioumtoukay en mode GitHub distant.
+Le PC du proprietaire et Ollama peuvent etre eteints. Le depot local visible
+sur ce serveur est une image de deploiement ephemere : tu ne l utilises PAS
+comme espace de travail Git. Tu travailles uniquement avec le depot GitHub
+distant annonce dans les reperes.
+
+Tu reponds par UNE SEULE action et rien d autre. Actions autorisees ici :
+
+ACTION: github_lister
+CHEMIN: apps/pwa
+REF: main
+
+ACTION: github_lire
+CHEMIN: apps/pwa/src/App.tsx
+REF: main
+
+ACTION: github_chercher
+TEXTE: def calculer_total
+CHEMIN: apps
+
+ACTION: github_branche_creer
+NOM: fix-exemple
+DEPUIS: main
+
+ACTION: github_ecrire
+BRANCHE: fix-exemple
+CHEMIN: apps/backend/config.py
+SHA: sha rendu par github_lire si le fichier existe
+MESSAGE: fix: corrige la configuration
+CONTENU:
+le contenu COMPLET du fichier
+FIN
+
+ACTION: ouvrir_pr
+TETE: fix-exemple
+BASE: main
+TITRE: Corrige le probleme
+CONTENU:
+ce que le correctif change
+FIN
+
+ACTION: etat_ci
+REF: fix-exemple
+
+ACTION: terminer
+CONTENU:
+ce que tu as verifie ou modifie, en francais simple
+FIN
+
+REGLES :
+- github_lister/github_lire/github_chercher servent a explorer le depot distant.
+- Avant de modifier un fichier existant, lis-le sur la branche cible et reutilise
+  exactement le SHA rendu. Un SHA absent ou perime est refuse par le connecteur.
+- Cree une branche de travail avant toute ecriture. Jamais d ecriture directe sur main.
+- Apres modification, ouvre une PR et utilise sa CI comme preuve de verification.
+- Le resultat reel de chaque action fait foi. N invente jamais une lecture,
+  une modification, une CI ou un succes.
+- Si tu es bloque, termine et nomme exactement le blocage.
+"""
+
+
 @dataclass
 class Action:
     """Une action demandée par le modèle, telle qu'elle a été lue."""
@@ -717,6 +778,25 @@ class DioumtoukayAgent(BaseAgent):
         # de tout refaire. Les deux ne font pas double emploi : l'une sert a se
         # souvenir, l'autre a continuer.
         self.reprises = reprises if reprises is not None else JournalDeReprise()
+
+    def _workspace_github_distant(self) -> bool:
+        """Vrai quand le serveur n a pas de checkout Git utilisable."""
+        if not self.depot_github_defaut or self.connecteur_github is None:
+            return False
+        etat = self.atelier.executer(["git", "rev-parse", "--is-inside-work-tree"])
+        return not etat.ok
+
+    def _chemin_github(self, chemin: str) -> str:
+        """Transforme un chemin de l image serveur en chemin relatif GitHub."""
+        brut = (chemin or ".").replace("\\", "/").strip()
+        if brut in ("", "."):
+            return ""
+        racine = str(self.atelier.racine).replace("\\", "/").rstrip("/")
+        if racine and brut == racine:
+            return ""
+        if racine and brut.startswith(racine + "/"):
+            brut = brut[len(racine) + 1:]
+        return brut.lstrip("/")
 
     # --- Exécution d'une action ---------------------------------------------------
 
@@ -881,9 +961,36 @@ class DioumtoukayAgent(BaseAgent):
         except ValueError:
             return None
 
-    async def _executer_action(self, action: Action) -> Resultat:
+    async def _executer_action(self, action: Action,
+                               github_distant: Optional[bool] = None) -> Resultat:
         """Fait ce que l'action demande, via l'atelier — ou un specialiste."""
         champs = action.champs
+        if github_distant is None:
+            github_distant = self._workspace_github_distant()
+
+        if github_distant and action.nom == "lister":
+            return self._via_github(
+                "lister", depot=self.depot_github_defaut,
+                chemin=self._chemin_github(champs.get("CHEMIN", ".")), ref="")
+        if github_distant and action.nom == "lire":
+            chemin = self._chemin_github(champs.get("CHEMIN", ""))
+            if not chemin:
+                return Resultat(False, "Il manque CHEMIN pour lire le depot GitHub distant.")
+            return self._via_github(
+                "lire_fichier", depot=self.depot_github_defaut, chemin=chemin, ref="")
+        if github_distant and action.nom == "chercher":
+            terme = champs.get("TEXTE", "")
+            if not terme:
+                return Resultat(False, "Il manque TEXTE pour chercher dans le depot distant.")
+            return self._via_github(
+                "chercher_code", depot=self.depot_github_defaut, terme=terme,
+                chemin=self._chemin_github(champs.get("CHEMIN", ".")))
+        if github_distant and action.nom in {"ecrire", "remplacer", "deplacer"}:
+            return Resultat(
+                False,
+                "Le serveur n a pas de checkout Git durable. Utilise "
+                "github_branche_creer, github_lire puis github_ecrire sur une branche.")
+
         if action.nom == "lire":
             return self.atelier.lire(champs.get("CHEMIN", ""))
         if action.nom == "ecrire":
@@ -1261,10 +1368,10 @@ class DioumtoukayAgent(BaseAgent):
                 ),
             }
 
-        # Les reperes sont pris UNE fois : ils decrivent le point de depart, et
-        # les refaire a chaque tour couterait trois commandes reelles par tour
-        # pour redire ce que le journal du travail raconte deja mieux.
-        reperes = self._reperes(user_input)
+        # Le mode d espace de travail est mesure UNE fois. Sur Railway, les
+        # fichiers de /app sont une image de deploiement, pas un checkout Git.
+        github_distant = self._workspace_github_distant()
+        reperes = self._reperes(user_input, github_distant=github_distant)
 
         # La methode d'un specialiste (`debugging`/`tests`/`architecture`...,
         # `core/specialistes/catalogue.py`) n'atteignait jamais Dioumtoukay :
@@ -1273,7 +1380,8 @@ class DioumtoukayAgent(BaseAgent):
         # fois, comme les reperes : la demande ne change pas en cours de
         # travail.
         methode = bloc_de_methode(choisir(user_input, "ATELIER"))
-        consigne = f"{CONSIGNE}\n\n{methode}" if methode else CONSIGNE
+        base_consigne = CONSIGNE_GITHUB_DISTANT if github_distant else CONSIGNE
+        consigne = f"{base_consigne}\n\n{methode}" if methode else base_consigne
 
         # Une tache interrompue reprend ici, avec ses etapes deja faites en
         # guise de journal de depart : le modele voit ce qui a tourne et
@@ -1351,7 +1459,7 @@ class DioumtoukayAgent(BaseAgent):
             cible = str(action.champs.get("CHEMIN") or action.champs.get("MOTIF") or "")
             etape = self.reprises.amorcer(tache, action.nom, cible=cible)
             debut_action = time.monotonic()
-            resultat = await self._executer_action(action)
+            resultat = await self._executer_action(action, github_distant=github_distant)
             duree_ms = int((time.monotonic() - debut_action) * 1000)
             rendu.append({"action": action.nom, "champs": action.champs,
                           **resultat.to_dict()})
@@ -1409,7 +1517,7 @@ class DioumtoukayAgent(BaseAgent):
 
     # --- Ce qu'il voit, et ce qu'il rend ---------------------------------------------
 
-    def _reperes(self, demande: str) -> str:
+    def _reperes(self, demande: str, github_distant: Optional[bool] = None) -> str:
         """Où il est, et ce qu'il y a autour. Mesuré, jamais supposé.
 
         Sans ça, le premier tour partait à l'aveugle : le modèle dépensait deux
@@ -1427,22 +1535,25 @@ class DioumtoukayAgent(BaseAgent):
                 "sur ce depot sans dependre du disque de cette machine."
             )
 
-        branche = self.atelier.executer(["git", "rev-parse", "--abbrev-ref", "HEAD"])
-        if branche.ok:
-            lignes.append(f"Depot git, sur la branche : {branche.sortie.strip()}")
-            etat = self.atelier.executer(["git", "status", "--short"])
-            if etat.ok:
-                modifies = etat.sortie.strip()
-                lignes.append("Fichiers modifies non commites :\n" + modifies
-                              if modifies else "Aucun fichier modifie.")
-        elif self.depot_github_defaut:
+        if github_distant is None:
+            github_distant = self._workspace_github_distant()
+
+        if github_distant:
             lignes.append(
-                "AUCUN checkout git local dans cette execution. Pour modifier le "
-                "depot distant, utilise exclusivement github_lister, github_lire, "
-                "github_chercher, github_branche_creer et github_ecrire : les fichiers visibles sur "
-                "ce serveur peuvent etre ceux de l image de deploiement et une "
-                "modification locale ne serait pas un changement durable du depot."
+                "AUCUN checkout git local dans cette execution. Mode GitHub distant ACTIF : "
+                "github_lister, github_lire, github_chercher, github_branche_creer et "
+                "github_ecrire travaillent sur le depot durable. Les fichiers de /app "
+                "sont seulement l image de deploiement et ne sont pas le workspace Git."
             )
+        else:
+            branche = self.atelier.executer(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+            if branche.ok:
+                lignes.append(f"Depot git, sur la branche : {branche.sortie.strip()}")
+                etat = self.atelier.executer(["git", "status", "--short"])
+                if etat.ok:
+                    modifies = etat.sortie.strip()
+                    lignes.append("Fichiers modifies non commites :\n" + modifies
+                                  if modifies else "Aucun fichier modifie.")
 
         autour = self.atelier.lister(".")
         if autour.ok:
