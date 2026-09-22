@@ -8,7 +8,12 @@ contourner en l'appelant — il hérite du même `connecteur.executer()` que
 """
 import pytest
 
-from agents.dioumtoukay.dioumtoukay_agent import Action, DioumtoukayAgent
+from agents.dioumtoukay.dioumtoukay_agent import (
+    TOURS_MAX,
+    TOURS_MAX_GITHUB_DISTANT,
+    Action,
+    DioumtoukayAgent,
+)
 from core.actions.resultat import ResultatAction, a_confirmer, echec, succes
 from tools.atelier import Atelier
 
@@ -174,6 +179,39 @@ class TestEspaceGitHubDistant:
         assert "apps/pwa/src" in resultat["response"]
         assert "apps/pwa/index.html" in resultat["response"]
         assert "429 temporaire" in resultat["response"]
+
+    def test_le_budget_distant_reste_borne_mais_plus_profond(self):
+        assert TOURS_MAX == 12
+        assert TOURS_MAX_GITHUB_DISTANT == 24
+        assert TOURS_MAX_GITHUB_DISTANT > TOURS_MAX
+
+    @pytest.mark.asyncio
+    async def test_une_session_distante_peut_depasser_douze_actions_utiles(self, bac):
+        """Le cycle GitHub complet ne doit plus etre coupe au vieux plafond local."""
+        reponses = [
+            f"ACTION: github_lister\nREF: main\nCHEMIN: dossier-{index}"
+            for index in range(13)
+        ]
+        reponses.append(
+            "ACTION: terminer\nCONTENU:\nExploration profonde terminee.\nFIN"
+        )
+        connecteur = FauxConnecteurGitHub(succes(
+            "lister", "unic-backend/arena-personal-ai",
+            "1 entree.", preuve="1",
+            entrees=[{"chemin": "README.md", "type": "file"}],
+        ))
+        a = agent(
+            bac,
+            reponses,
+            connecteur_github=connecteur,
+            depot_github_defaut="unic-backend/arena-personal-ai",
+        )
+
+        resultat = await a.run("explore profondement le depot sans rien modifier")
+
+        assert resultat["status"] == "success"
+        assert len(connecteur.appels) == 13
+        assert "Exploration profonde terminee" in resultat["response"]
 
     @pytest.mark.asyncio
     async def test_liste_le_depot_distant_par_defaut(self, bac):
