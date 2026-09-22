@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from apps.backend.services.tools.builtin import KnowledgeSearch, KnowledgeSearchArgs
 from core.knowledge import KnowledgeVault
 
 
@@ -111,3 +112,22 @@ def test_write_graph_produit_un_json_regenerable(tmp_path: Path):
 
     assert cible == vault.output_dir / "graph.json"
     assert set(charge) == {"nodes", "edges", "broken_links"}
+
+
+async def test_autonomous_tool_reutilise_le_meme_vault(tmp_path: Path):
+    source = tmp_path / "reference.md"
+    source.write_text(
+        "# Reference BA13\n\nLe document source parle de double montant aux joints.",
+        encoding="utf-8",
+    )
+    vault = KnowledgeVault(tmp_path / "vault")
+    vault.ingest(source)
+
+    resultat = await KnowledgeSearch(vault)(
+        KnowledgeSearchArgs(query="double montant joints", limit=3)
+    )
+
+    assert resultat.ok is True
+    assert resultat.data["source"] == "knowledge_vault"
+    assert resultat.data["results"][0]["sources"]
+    assert "double montant" in resultat.data["results"][0]["snippet"].lower()
