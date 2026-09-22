@@ -148,7 +148,9 @@ ECHECS_CONSECUTIFS_MAX = 3
 #: `FORCE_AVEC_BAIL` (`--force-with-lease`) existe, et un rejet
 #: non-fast-forward n'est jamais retente avec la force automatiquement.
 ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
-           "executer", "analyser", "diagnostiquer", "ouvrir_pr", "etat_ci",
+           "executer", "analyser", "diagnostiquer",
+           "github_lire", "github_chercher", "github_branche_creer", "github_ecrire",
+           "ouvrir_pr", "etat_ci",
            "convertir", "organiser_inspecter", "organiser_planifier",
            "organiser_appliquer", "organiser_annuler",
            "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
@@ -199,7 +201,7 @@ ACTIONS_QUI_ANALYSENT = frozenset({
 _ETIQUETTE = re.compile(r"^\s*ACTION\s*:\s*(\w+)", re.IGNORECASE | re.MULTILINE)
 _CHAMP = re.compile(
     r"^\s*(CHEMIN|SOURCE|DESTINATION|COMMANDE|DOSSIER|TEXTE|DEPOT|TITRE|TETE|BASE|REF|FORMAT"
-    r"|PLAN_ID|CONFIRMER_SUPPRESSION|OPERATION|PAGES|DEGRES|FORMAT_PDFX|NOM|COMPUTER_ID|URL"
+    r"|SHA|PLAN_ID|CONFIRMER_SUPPRESSION|OPERATION|PAGES|DEGRES|FORMAT_PDFX|NOM|COMPUTER_ID|URL"
     r"|CIBLE|IDENTIFIANT|IDENTIFIANT_OPERATION|DISTANT|BRANCHE|AMEND|FORCE_AVEC_BAIL"
     r"|TETE_ATTENDUE|REBASE|SUR|COMMIT|DEPUIS|BASCULER|MESSAGE|INDEX|GARDER"
     r"|INCLURE_NON_SUIVIS)"
@@ -255,6 +257,30 @@ TEXTE: comment est organisee la gestion des connecteurs dans ce depot ?
 
 ACTION: diagnostiquer
 TEXTE: la route /machine/adresse rend 500 au lieu de 401 sans cle
+
+ACTION: github_lire
+DEPOT: owner/repo
+REF: ta-branche
+CHEMIN: apps/backend/config.py
+
+ACTION: github_chercher
+DEPOT: owner/repo
+TEXTE: def calculer_total
+
+ACTION: github_branche_creer
+DEPOT: owner/repo
+NOM: fix-mobile
+DEPUIS: main
+
+ACTION: github_ecrire
+DEPOT: owner/repo
+BRANCHE: fix-mobile
+CHEMIN: apps/backend/config.py
+SHA: sha rendu par github_lire si le fichier existe
+MESSAGE: fix: corrige la configuration
+CONTENU:
+le contenu complet du fichier
+FIN
 
 ACTION: ouvrir_pr
 DEPOT: owner/repo
@@ -534,6 +560,13 @@ COMMENT TRAVAILLER
 
 REGLES
 
+- Si le depot vise n'est pas present sur le disque de la machine qui execute
+  ARENA (par exemple le serveur permanent quand le PC est eteint), utilise
+  github_lire/github_chercher/github_branche_creer/github_ecrire. Pour modifier
+  un fichier existant, lis-le d'abord : son SHA est obligatoire a l'ecriture.
+  Ecris toujours sur une branche de travail, jamais directement sur main.
+  Les tests de la PR sont ensuite la preuve d'execution quand aucun terminal
+  persistant n'est disponible.
 - Le resultat reel de chaque action t'est rendu ; travaille sur ce resultat,
   jamais sur ce que tu supposes.
 - Pour du code venu de GitHub : clone, installe, lance. Tout est permis, rien
@@ -613,6 +646,7 @@ class DioumtoukayAgent(BaseAgent):
                  memoire_longue: Optional[MemoirePersonnelle] = None,
                  analyste: Optional[Any] = None, chercheur_de_bug: Optional[Any] = None,
                  connecteur_github: Optional[Any] = None,
+                 depot_github_defaut: Optional[str] = None,
                  connecteur_file_conversion: Optional[Any] = None,
                  connecteur_file_organization: Optional[Any] = None,
                  connecteur_pdf: Optional[Any] = None,
@@ -641,6 +675,10 @@ class DioumtoukayAgent(BaseAgent):
         # y passe par la meme confirmation que toute autre ecriture externe —
         # Dioumtoukay ne contourne rien en l'appelant, il herite de la garde.
         self.connecteur_github = connecteur_github
+        # Depot distant a utiliser quand le serveur permanent n'a pas le depot
+        # du proprietaire sur son propre disque. Il vient de la configuration,
+        # jamais d'un nom code en dur dans l'agent.
+        self.depot_github_defaut = (depot_github_defaut or "").strip()
         # Le connecteur de conversion de fichiers (DEC-0074) : meme discipline
         # que le connecteur GitHub — Dioumtoukay ne sait pas quel moteur
         # tourne derriere, il herite juste de la garde (confirmation, coupe-
@@ -1073,15 +1111,46 @@ class DioumtoukayAgent(BaseAgent):
         if action.nom == "diagnostiquer":
             return await self._consulter(self.chercheur_de_bug, "SWEAgent",
                                          champs.get("TEXTE", ""))
+        if action.nom == "github_lire":
+            depot = champs.get("DEPOT") or self.depot_github_defaut
+            chemin = champs.get("CHEMIN", "")
+            if not depot or not chemin:
+                return Resultat(False, "Il manque DEPOT (owner/repo) ou CHEMIN.")
+            return self._via_github(
+                "lire_fichier", depot=depot, chemin=chemin, ref=champs.get("REF", ""))
+        if action.nom == "github_chercher":
+            depot = champs.get("DEPOT") or self.depot_github_defaut
+            terme = champs.get("TEXTE", "")
+            if not depot or not terme:
+                return Resultat(False, "Il manque DEPOT (owner/repo) ou TEXTE.")
+            return self._via_github("chercher_code", depot=depot, terme=terme)
+        if action.nom == "github_branche_creer":
+            depot = champs.get("DEPOT") or self.depot_github_defaut
+            nom = champs.get("NOM", "")
+            if not depot or not nom:
+                return Resultat(False, "Il manque DEPOT (owner/repo) ou NOM.")
+            return self._via_github(
+                "creer_branche", depot=depot, nom_branche=nom,
+                depuis=champs.get("DEPUIS") or "main")
+        if action.nom == "github_ecrire":
+            depot = champs.get("DEPOT") or self.depot_github_defaut
+            chemin, branche = champs.get("CHEMIN", ""), champs.get("BRANCHE", "")
+            if not depot or not chemin or not branche:
+                return Resultat(
+                    False, "Il manque DEPOT (owner/repo), CHEMIN ou BRANCHE.")
+            return self._via_github(
+                "ecrire_fichier", depot=depot, chemin=chemin, branche=branche,
+                contenu=action.contenu, sha_attendu=champs.get("SHA", ""),
+                message=champs.get("MESSAGE", ""))
         if action.nom == "ouvrir_pr":
-            depot, tete = champs.get("DEPOT", ""), champs.get("TETE", "")
+            depot, tete = champs.get("DEPOT") or self.depot_github_defaut, champs.get("TETE", "")
             if not depot or not tete:
                 return Resultat(False, "Il manque DEPOT (owner/repo) ou TETE (la branche source).")
             return self._via_github(
                 "creer_pull_request", depot=depot, titre=champs.get("TITRE", "Sans titre"),
                 tete=tete, base=champs.get("BASE") or "main", corps=action.contenu)
         if action.nom == "etat_ci":
-            depot, ref = champs.get("DEPOT", ""), champs.get("REF", "")
+            depot, ref = champs.get("DEPOT") or self.depot_github_defaut, champs.get("REF", "")
             if not depot or not ref:
                 return Resultat(False, "Il manque DEPOT (owner/repo) ou REF (SHA ou branche).")
             return self._via_github("etat_ci", depot=depot, ref=ref)
@@ -1338,6 +1407,12 @@ class DioumtoukayAgent(BaseAgent):
         et l'absence se lit comme une absence.
         """
         lignes = [f"Racine du travail : {self.atelier.racine}"]
+        if self.depot_github_defaut:
+            lignes.append(
+                "Depot GitHub distant par defaut : "
+                f"{self.depot_github_defaut}. Les actions github_* travaillent "
+                "sur ce depot sans dependre du disque de cette machine."
+            )
 
         branche = self.atelier.executer(["git", "rev-parse", "--abbrev-ref", "HEAD"])
         if branche.ok:
