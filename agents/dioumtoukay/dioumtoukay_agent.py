@@ -652,12 +652,12 @@ class DioumtoukayAgent(BaseAgent):
                  memoire_longue: Optional[MemoirePersonnelle] = None,
                  analyste: Optional[Any] = None, chercheur_de_bug: Optional[Any] = None,
                  connecteur_github: Optional[Any] = None,
-                 depot_github_defaut: Optional[str] = None,
                  connecteur_file_conversion: Optional[Any] = None,
                  connecteur_file_organization: Optional[Any] = None,
                  connecteur_pdf: Optional[Any] = None,
                  connecteur_case: Optional[Any] = None,
-                 reprises: Optional[JournalDeReprise] = None):
+                 reprises: Optional[JournalDeReprise] = None,
+                 depot_github_defaut: Optional[str] = None):
         super().__init__(
             name="DioumtoukayAgent",
             description="Agent qui travaille reellement sur les fichiers, "
