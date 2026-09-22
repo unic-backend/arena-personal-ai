@@ -366,7 +366,10 @@ class TestQualiteExecution:
             bac,
             [
                 "ACTION: github_lister\nCHEMIN: apps/pwa\nREF: main",
-                "ACTION: terminer\nCONTENU:\nVoici le contenu demande.\nFIN",
+                "ACTION: terminer\nCONTENU:\nVoici trois fichiers :\n"
+                "- apps/pwa/index.html\n"
+                "- apps/pwa/package.json\n"
+                "- apps/pwa/tsconfig.json\nFIN",
             ],
             connecteur_github=connecteur,
             depot_github_defaut="unic-backend/arena-personal-ai",
@@ -375,12 +378,35 @@ class TestQualiteExecution:
         resultat = await a.run("liste apps/pwa")
 
         texte = resultat["response"]
-        assert texte.startswith("Voici le contenu demande.")
+        assert texte.startswith("Voici trois fichiers")
         assert "apps/pwa/index.html" in texte
         assert "apps/pwa/package.json" in texte
+        assert "apps/pwa/tsconfig.json" in texte
+        assert "Résultats vérifiés" not in texte
+        assert "github_lister" not in texte
+        assert "Vérification :" not in texte
         assert "secret-tech-" not in texte
         assert "'sha':" not in texte
         assert "'taille':" not in texte
+
+    def test_listing_reste_visible_si_le_modele_ne_peut_pas_conclure(self):
+        rendu = [{
+            "action": "github_lister",
+            "ok": True,
+            "message": "3 entree(s).",
+            "sortie": "- apps/pwa/index.html (fichier)\n- apps/pwa/src (dossier)",
+            "champs": {"CHEMIN": "apps/pwa"},
+        }]
+
+        texte = DioumtoukayAgent._rapport(
+            "Le moteur n'a pas repondu au tour 2 : quota temporaire.",
+            rendu,
+            termine=False,
+        )
+
+        assert "Le moteur n'a pas repondu" in texte
+        assert "apps/pwa/index.html" in texte
+        assert "Résultats vérifiés" in texte
 
     def test_detail_imbrique_ne_redevient_jamais_un_repr_python(self):
         texte = DioumtoukayAgent._detail_lisible({
