@@ -39,6 +39,20 @@ class FauxConnecteurGitHub:
         return self.resultat
 
 
+class FauxConnecteurGitHubSequence:
+    """Même faux connecteur, mais chaque appel peut observer un état nouveau."""
+
+    def __init__(self, *resultats: ResultatAction):
+        self.resultats = list(resultats)
+        self.appels = []
+
+    def executer(self, capacite, **parametres):
+        self.appels.append((capacite, parametres))
+        if self.resultats:
+            return self.resultats.pop(0)
+        raise AssertionError("Aucun resultat GitHub factice restant")
+
+
 @pytest.fixture
 def bac(tmp_path):
     return tmp_path
@@ -833,6 +847,67 @@ class TestEtatCI:
 
         assert connecteur.appels == [("etat_ci", {"depot": "o/r", "ref": "abc123"})]
         assert "echec" in resultat["response"]
+
+    @pytest.mark.asyncio
+    async def test_polling_ci_identique_reste_autorise_si_l_etat_progresse(self, bac):
+        connecteur = FauxConnecteurGitHubSequence(
+            succes(
+                "etat_ci", "o/r", "CI en attente.", preuve="en_cours",
+                resume="en_cours",
+                verifications=[{
+                    "nom": "tests", "statut": "queued", "conclusion": None,
+                }],
+            ),
+            succes(
+                "etat_ci", "o/r", "CI en cours.", preuve="en_cours",
+                resume="en_cours",
+                verifications=[{
+                    "nom": "tests", "statut": "in_progress", "conclusion": None,
+                }],
+            ),
+            succes(
+                "etat_ci", "o/r", "CI verte.", preuve="succes",
+                resume="succes",
+                verifications=[{
+                    "nom": "tests", "statut": "completed", "conclusion": "success",
+                }],
+            ),
+        )
+        a = agent(bac, [
+            "ACTION: etat_ci\nDEPOT: o/r\nREF: fix-a",
+            "ACTION: etat_ci\nDEPOT: o/r\nREF: fix-a",
+            "ACTION: etat_ci\nDEPOT: o/r\nREF: fix-a",
+            "ACTION: terminer\nCONTENU:\nCI verte apres progression.\nFIN",
+        ], connecteur_github=connecteur)
+
+        resultat = await a.run("attends que la CI de fix-a soit verte")
+
+        assert resultat["status"] == "success"
+        assert len(connecteur.appels) == 3
+        assert "CI verte apres progression" in resultat["response"]
+
+    @pytest.mark.asyncio
+    async def test_polling_ci_inchange_finit_par_s_arreter(self, bac):
+        identique = succes(
+            "etat_ci", "o/r", "CI toujours en attente.", preuve="en_cours",
+            resume="en_cours",
+            verifications=[{
+                "nom": "tests", "statut": "queued", "conclusion": None,
+            }],
+        )
+        connecteur = FauxConnecteurGitHubSequence(identique, identique, identique)
+        a = agent(bac, [
+            "ACTION: etat_ci\nDEPOT: o/r\nREF: fix-a",
+            "ACTION: etat_ci\nDEPOT: o/r\nREF: fix-a",
+            "ACTION: etat_ci\nDEPOT: o/r\nREF: fix-a",
+            "ACTION: terminer\nCONTENU:\nne doit pas etre atteint\nFIN",
+        ], connecteur_github=connecteur)
+
+        resultat = await a.run("surveille la CI de fix-a")
+
+        assert resultat["status"] == "partial"
+        assert len(connecteur.appels) == 3
+        assert "n'evolue plus" in resultat["response"]
 
     @pytest.mark.asyncio
     async def test_sans_depot_ou_ref_rien_natteint_le_connecteur(self, bac):
