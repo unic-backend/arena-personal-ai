@@ -113,6 +113,12 @@ class Etape:
     duree_ms: int = 0
     quand: str = field(default_factory=_maintenant)
     confirmee: bool = True
+    # Sous-ensemble structure de l'action. Les anciens journaux n'en ont pas :
+    # la valeur par defaut garde donc une compatibilite totale au chargement.
+    champs: Dict[str, str] = field(default_factory=dict)
+    # Sortie factuelle bornee, utile pour verifier une mutation APRES redemarrage
+    # (CI verte, diff contenant le fichier, relecture de branche, etc.).
+    sortie: str = ""
 
 
 @dataclass
@@ -160,6 +166,29 @@ class Tache:
             rendu.append(f"{e.outil} {e.cible} -> {'ok' if e.ok else 'echec'} : "
                         f"{e.resume}".strip())
         return rendu
+
+    def actions_confirmees(self) -> List[Dict[str, Any]]:
+        """Actions structurees deja executees, reutilisables par les gardes.
+
+        Le texte de `deja_fait()` aide le modele a reprendre. Cette vue-ci sert
+        au moteur de preuve : elle permet de savoir, meme apres redemarrage,
+        qu'un fichier modifie n'a pas encore ete relu ou qu'une CI verte a deja
+        valide la branche.
+        """
+        actions: List[Dict[str, Any]] = []
+        for etape in self.etapes:
+            if not etape.confirmee:
+                continue
+            actions.append({
+                "action": etape.outil,
+                "ok": etape.ok,
+                "champs": dict(etape.champs or {}),
+                "sortie": etape.sortie or "",
+                "message": etape.resume or "",
+                "erreur": "",
+                "code": None,
+            })
+        return actions
 
     def journal(self) -> Dict[str, Any]:
         """La ligne d'observabilité de la tâche entière."""
@@ -243,21 +272,35 @@ class JournalDeReprise:
         self._ecrire()
         return tache
 
-    def noter(self, tache: Tache, outil: str, cible: str = "", ok: bool = True,
-              resume: str = "", duree_ms: int = 0) -> Etape:
+    def noter(
+        self, tache: Tache, outil: str, cible: str = "", ok: bool = True,
+        resume: str = "", duree_ms: int = 0,
+        champs: Optional[Dict[str, str]] = None, sortie: str = "",
+    ) -> Etape:
         """Ajoute une étape et l'écrit **tout de suite**.
 
         Écrire à la fin perdrait exactement ce qu'on cherche à garder : ce
         qu'une tâche tuée au milieu avait déjà accompli.
         """
-        etape = Etape(numero=len(tache.etapes) + 1, outil=outil, cible=cible,
-                      ok=ok, resume=(resume or "")[:400], duree_ms=duree_ms)
+        etape = Etape(
+            numero=len(tache.etapes) + 1,
+            outil=outil,
+            cible=cible,
+            ok=ok,
+            resume=(resume or "")[:400],
+            duree_ms=duree_ms,
+            champs=dict(champs or {}),
+            sortie=(sortie or "")[:4_000],
+        )
         tache.etapes.append(etape)
         tache.maj_le = _maintenant()
         self._ecrire()
         return etape
 
-    def amorcer(self, tache: Tache, outil: str, cible: str = "") -> Etape:
+    def amorcer(
+        self, tache: Tache, outil: str, cible: str = "",
+        champs: Optional[Dict[str, str]] = None,
+    ) -> Etape:
         """Réserve une étape et l'écrit **avant** que l'action ne tourne.
 
         Mission ARENA x TRANS4MERS §14 (« write-ahead state ») : `noter()`
@@ -274,15 +317,23 @@ class JournalDeReprise:
         étape non confirmée se lirait comme une réussite avant même d'avoir
         tourné — exactement le mensonge que ce module existe pour éviter.
         """
-        etape = Etape(numero=len(tache.etapes) + 1, outil=outil, cible=cible,
-                      ok=False, confirmee=False)
+        etape = Etape(
+            numero=len(tache.etapes) + 1,
+            outil=outil,
+            cible=cible,
+            ok=False,
+            confirmee=False,
+            champs=dict(champs or {}),
+        )
         tache.etapes.append(etape)
         tache.maj_le = _maintenant()
         self._ecrire()
         return etape
 
-    def confirmer(self, tache: Tache, etape: Etape, ok: bool,
-                  resume: str = "", duree_ms: int = 0) -> Etape:
+    def confirmer(
+        self, tache: Tache, etape: Etape, ok: bool,
+        resume: str = "", duree_ms: int = 0, sortie: str = "",
+    ) -> Etape:
         """Complète une étape amorcée avec ce qui s'est vraiment passé.
 
         Retrouve l'étape par son `numero` plutôt que de faire confiance à la
@@ -294,6 +345,7 @@ class JournalDeReprise:
                 existante.ok = ok
                 existante.resume = (resume or "")[:400]
                 existante.duree_ms = duree_ms
+                existante.sortie = (sortie or "")[:4_000]
                 existante.confirmee = True
                 tache.maj_le = _maintenant()
                 self._ecrire()
