@@ -199,7 +199,7 @@ def test_agentic_vault_liste_trouve_et_lit_sans_sortir_du_dossier(tmp_path: Path
         "excerpt": "6: Le double montant est pose aux joints de plaques.",
     }]
 
-    page = vault.read_page("concepts/ba13.md", offset=4, limit=2)
+    page = vault.read_page("concepts/ba13.md", offset=5, limit=2)
     assert page["path"] == "concepts/ba13.md"
     assert "double montant" in page["content"]
     assert page["sources"] == ["raw/ba13.md"]
