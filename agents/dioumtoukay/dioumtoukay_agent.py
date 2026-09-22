@@ -1688,6 +1688,13 @@ class DioumtoukayAgent(BaseAgent):
         tache = self.reprises.ouvrir(user_input)
         journal_du_travail: List[str] = list(tache.deja_fait())
         reprise = bool(journal_du_travail)
+        # Vue structuree des etapes d'un passage precedent. Le journal texte
+        # suffit au modele, mais pas aux gardes de preuve : apres un redemarrage,
+        # ils doivent encore savoir QUEL fichier/branche a ete modifie puis
+        # verifie, au lieu de repartir avec un tableau `rendu` vide.
+        rendu_precedent: List[Dict[str, Any]] = (
+            tache.actions_confirmees() if reprise else []
+        )
         if reprise:
             logger.info("Reprise de la tache %s : %d etapes deja faites.",
                         tache.identifiant, len(journal_du_travail))
@@ -1733,7 +1740,7 @@ class DioumtoukayAgent(BaseAgent):
             illisibles_consecutives = 0
 
             if action.nom == "terminer":
-                mutations = self._mutations_non_verifiees(rendu)
+                mutations = self._mutations_non_verifiees(rendu_precedent + rendu)
                 if mutations:
                     terminaisons_sans_verification += 1
                     cibles = []
@@ -1799,7 +1806,8 @@ class DioumtoukayAgent(BaseAgent):
             # qui laisserait croire qu'elle n'a jamais commence (mission
             # ARENA x TRANS4MERS §14 « write-ahead state » / §47).
             cible = str(action.champs.get("CHEMIN") or action.champs.get("MOTIF") or "")
-            etape = self.reprises.amorcer(tache, action.nom, cible=cible)
+            etape = self.reprises.amorcer(
+                tache, action.nom, cible=cible, champs=action.champs)
             debut_action = time.monotonic()
             resultat = await self._executer_action(action, github_distant=github_distant)
             duree_ms = int((time.monotonic() - debut_action) * 1000)
@@ -1813,7 +1821,9 @@ class DioumtoukayAgent(BaseAgent):
             # reussite qu'elle n'a peut-etre pas eu.
             self.reprises.confirmer(
                 tache, etape, ok=resultat.ok,
-                resume=self._compte_rendu(action, resultat), duree_ms=duree_ms)
+                resume=self._compte_rendu(action, resultat),
+                duree_ms=duree_ms,
+                sortie=resultat.sortie or "")
 
             # Les actions de suivi sont comparees APRES execution : deux appels
             # identiques dont la sortie change sont du progres, pas une boucle.
