@@ -19,6 +19,14 @@ from dataclasses import dataclass
 from typing import Awaitable, Callable, Mapping, Sequence
 
 TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9._/-]*")
+STOP_WORDS = frozenset({
+    "avec", "pour", "dans", "cette", "cela", "ceci", "comme", "faire", "fait",
+    "quel", "quelle", "quels", "quelles", "comment", "pourquoi", "quand",
+    "peut", "peux", "doit", "dois", "veux", "votre", "notre", "mon", "mes",
+    "ton", "tes", "une", "des", "les", "est", "sont", "sur", "plus", "moins",
+    "sans", "mais", "donc", "alors", "voici", "the", "and", "for", "with",
+    "from", "that", "this", "what", "how", "why", "when", "your", "our",
+})
 Embedder = Callable[[Sequence[str]], Awaitable[list[list[float]]]]
 
 
@@ -30,7 +38,7 @@ def normaliser(texte: str) -> str:
 
 def tokens(texte: str) -> list[str]:
     """Tokens simples qui gardent les identifiants techniques et metier."""
-    return TOKEN_RE.findall(normaliser(texte))
+    return [mot for mot in TOKEN_RE.findall(normaliser(texte)) if mot not in STOP_WORDS]
 
 
 @dataclass(frozen=True)
