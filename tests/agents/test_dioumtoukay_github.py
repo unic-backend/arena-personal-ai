@@ -308,11 +308,29 @@ class TestEspaceGitHubDistant:
 
     @pytest.mark.asyncio
     async def test_remplacement_distant_n_envoie_que_le_passage_modifie(self, bac):
-        connecteur = FauxConnecteurGitHub(succes(
-            "remplacer_dans_fichier", "unic-backend/arena-personal-ai",
-            "apps/pwa/src/App.tsx modifie chirurgicalement sur fix-mobile.",
-            preuve="commit-2", sha="blob-2",
-        ))
+        connecteur = FauxConnecteurGitHubSequence(
+            succes(
+                "remplacer_dans_fichier", "unic-backend/arena-personal-ai",
+                "apps/pwa/src/App.tsx modifie chirurgicalement sur fix-mobile.",
+                preuve="commit-2", sha="blob-2",
+            ),
+            succes(
+                "lire_fichier", "unic-backend/arena-personal-ai",
+                "apps/pwa/src/App.tsx lu.", preuve="blob-2",
+                chemin="apps/pwa/src/App.tsx", ref="fix-mobile",
+                sha="blob-2", contenu="nouvelle ligne",
+            ),
+            succes(
+                "comparer", "unic-backend/arena-personal-ai",
+                "Diff relu.", preuve="head-2",
+                statut="ahead", ahead_by=1, behind_by=0,
+                fichiers=[{
+                    "chemin": "apps/pwa/src/App.tsx",
+                    "statut": "modified", "ajouts": 1,
+                    "suppressions": 1, "patch": "@@\n-ancienne ligne\n+nouvelle ligne",
+                }],
+            ),
+        )
         a = agent(
             bac,
             [
@@ -321,7 +339,8 @@ class TestEspaceGitHubDistant:
                 "MESSAGE: fix: mobile\nANCIEN:\nancienne ligne\nFIN\n"
                 "NOUVEAU:\nnouvelle ligne\nFIN",
                 "ACTION: github_lire\nREF: fix-mobile\nCHEMIN: apps/pwa/src/App.tsx",
-                "ACTION: terminer\nCONTENU:\nCorrection verifiee.\nFIN",
+                "ACTION: github_diff\nBASE: main\nTETE: fix-mobile",
+                "ACTION: terminer\nCONTENU:\nCorrection verifiee et diff relu.\nFIN",
             ],
             connecteur_github=connecteur,
             depot_github_defaut="unic-backend/arena-personal-ai",
@@ -342,15 +361,40 @@ class TestEspaceGitHubDistant:
                 "message": "fix: mobile",
             },
         )
+        assert connecteur.appels[-1][0] == "comparer"
         assert "apps/pwa/src/App.tsx" in resultat["fichiers_modifies"]
 
     @pytest.mark.asyncio
     async def test_lit_puis_ecrit_sur_le_depot_par_defaut(self, bac):
-        connecteur = FauxConnecteurGitHub(succes(
-            "ecrire_fichier", "unic-backend/arena-personal-ai",
-            "apps/pwa/src/App.tsx mis a jour sur fix-mobile.",
-            preuve="commit-2", sha="blob-2",
-        ))
+        connecteur = FauxConnecteurGitHubSequence(
+            succes(
+                "lire_fichier", "unic-backend/arena-personal-ai",
+                "apps/pwa/src/App.tsx lu.", preuve="blob-1",
+                chemin="apps/pwa/src/App.tsx", ref="fix-mobile",
+                sha="blob-1", contenu="ancien contenu",
+            ),
+            succes(
+                "ecrire_fichier", "unic-backend/arena-personal-ai",
+                "apps/pwa/src/App.tsx mis a jour sur fix-mobile.",
+                preuve="commit-2", sha="blob-2",
+            ),
+            succes(
+                "lire_fichier", "unic-backend/arena-personal-ai",
+                "apps/pwa/src/App.tsx relu.", preuve="blob-2",
+                chemin="apps/pwa/src/App.tsx", ref="fix-mobile",
+                sha="blob-2", contenu="nouveau contenu",
+            ),
+            succes(
+                "comparer", "unic-backend/arena-personal-ai",
+                "Diff relu.", preuve="head-2",
+                statut="ahead", ahead_by=1, behind_by=0,
+                fichiers=[{
+                    "chemin": "apps/pwa/src/App.tsx",
+                    "statut": "modified", "ajouts": 1,
+                    "suppressions": 1, "patch": "@@\n-ancien contenu\n+nouveau contenu",
+                }],
+            ),
+        )
         a = agent(
             bac,
             [
@@ -359,7 +403,8 @@ class TestEspaceGitHubDistant:
                 "CHEMIN: apps/pwa/src/App.tsx\nSHA: blob-1\n"
                 "MESSAGE: fix: mobile\nCONTENU:\nnouveau contenu\nFIN",
                 "ACTION: github_lire\nREF: fix-mobile\nCHEMIN: apps/pwa/src/App.tsx",
-                "ACTION: terminer\nCONTENU:\nfini\nFIN",
+                "ACTION: github_diff\nBASE: main\nTETE: fix-mobile",
+                "ACTION: terminer\nCONTENU:\nfini, fichier et diff verifies\nFIN",
             ],
             connecteur_github=connecteur,
             depot_github_defaut="unic-backend/arena-personal-ai",
@@ -393,6 +438,14 @@ class TestEspaceGitHubDistant:
                 "depot": "unic-backend/arena-personal-ai",
                 "chemin": "apps/pwa/src/App.tsx",
                 "ref": "fix-mobile",
+            },
+        )
+        assert connecteur.appels[3] == (
+            "comparer",
+            {
+                "depot": "unic-backend/arena-personal-ai",
+                "base": "main",
+                "tete": "fix-mobile",
             },
         )
 
@@ -554,6 +607,83 @@ class TestQualiteExecution:
 
         assert DioumtoukayAgent._preuve_positive(mutation, mauvais) is False
         assert DioumtoukayAgent._preuve_positive(mutation, bon) is True
+
+    def test_relecture_fichier_ne_remplace_pas_revue_diff_globale(self):
+        rendu = [
+            {
+                "action": "github_ecrire",
+                "ok": True,
+                "champs": {"CHEMIN": "a.py", "BRANCHE": "fix-a"},
+            },
+            {
+                "action": "github_lire",
+                "ok": True,
+                "champs": {"CHEMIN": "a.py", "REF": "fix-a"},
+                "sortie": "ref: fix-a\nsha: a2\nCONTENU:\nnouveau",
+            },
+        ]
+
+        # La relecture prouve le contenu du fichier...
+        assert DioumtoukayAgent._mutations_non_verifiees(rendu) == []
+        # ...mais pas la forme globale de la branche proposee au depot.
+        assert DioumtoukayAgent._branches_github_sans_revue_diff(rendu) == ["fix-a"]
+
+        rendu.append({
+            "action": "github_diff",
+            "ok": True,
+            "champs": {"BASE": "main", "TETE": "fix-a"},
+            "sortie": "statut: ahead\nfichiers modifies:\n- a.py (modified, +1/-1)",
+        })
+        assert DioumtoukayAgent._branches_github_sans_revue_diff(rendu) == []
+
+    def test_diff_partiel_ne_valide_pas_une_branche_multi_fichiers(self):
+        rendu = [
+            {
+                "action": "github_ecrire",
+                "ok": True,
+                "champs": {"CHEMIN": "a.py", "BRANCHE": "fix-multi"},
+            },
+            {
+                "action": "github_remplacer",
+                "ok": True,
+                "champs": {"CHEMIN": "b.py", "BRANCHE": "fix-multi"},
+            },
+            {
+                "action": "github_diff",
+                "ok": True,
+                "champs": {"BASE": "main", "TETE": "fix-multi"},
+                "sortie": "statut: ahead\nfichiers modifies:\n- a.py (modified, +1/-0)",
+            },
+        ]
+
+        assert DioumtoukayAgent._branches_github_sans_revue_diff(rendu) == [
+            "fix-multi"
+        ]
+
+        rendu[-1]["sortie"] += "\n- b.py (modified, +2/-1)"
+        assert DioumtoukayAgent._branches_github_sans_revue_diff(rendu) == []
+
+    def test_un_ancien_diff_avant_la_derniere_mutation_ne_compte_pas(self):
+        rendu = [
+            {
+                "action": "github_ecrire",
+                "ok": True,
+                "champs": {"CHEMIN": "a.py", "BRANCHE": "fix-a"},
+            },
+            {
+                "action": "github_diff",
+                "ok": True,
+                "champs": {"BASE": "main", "TETE": "fix-a"},
+                "sortie": "fichiers modifies:\n- a.py (modified, +1/-0)",
+            },
+            {
+                "action": "github_remplacer",
+                "ok": True,
+                "champs": {"CHEMIN": "a.py", "BRANCHE": "fix-a"},
+            },
+        ]
+
+        assert DioumtoukayAgent._branches_github_sans_revue_diff(rendu) == ["fix-a"]
 
     def test_remplacement_github_exige_la_meme_preuve_que_ecriture_complete(self):
         mutation = {
@@ -778,6 +908,59 @@ class TestQualiteExecution:
 # --- ouvrir_pr ------------------------------------------------------------------
 
 class TestOuvrirPR:
+    @pytest.mark.asyncio
+    async def test_pr_est_bloquee_jusqu_a_revue_du_diff_global(self, bac):
+        connecteur = FauxConnecteurGitHubSequence(
+            succes(
+                "ecrire_fichier", "o/r", "Fichier ecrit.", preuve="commit-a",
+                chemin="a.py", branche="fix-a", sha="blob-a2",
+            ),
+            succes(
+                "lire_fichier", "o/r", "a.py lu.", preuve="blob-a2",
+                chemin="a.py", ref="fix-a", sha="blob-a2", contenu="nouveau",
+            ),
+            succes(
+                "comparer", "o/r", "Diff relu.", preuve="head-a",
+                statut="ahead", ahead_by=1, behind_by=0,
+                fichiers=[{
+                    "chemin": "a.py", "statut": "modified",
+                    "ajouts": 1, "suppressions": 1,
+                    "patch": "@@\n-old\n+new",
+                }],
+            ),
+            a_confirmer(
+                "creer_pull_request", "o/r",
+                "Pret : Ouvre une Pull Request. Confirme avec l'identifiant pr-1.",
+            ),
+        )
+        a = agent(
+            bac,
+            [
+                "ACTION: github_ecrire\nDEPOT: o/r\nBRANCHE: fix-a\n"
+                "CHEMIN: a.py\nSHA: blob-a1\nMESSAGE: fix: a\n"
+                "CONTENU:\nnouveau\nFIN",
+                "ACTION: github_lire\nDEPOT: o/r\nREF: fix-a\nCHEMIN: a.py",
+                # Cette tentative ne doit PAS atteindre le connecteur :
+                # la relecture du fichier n'est pas la revue de la branche.
+                "ACTION: ouvrir_pr\nDEPOT: o/r\nTETE: fix-a\nBASE: main\n"
+                "TITRE: Fix A\nCONTENU:\nfix\nFIN",
+                "ACTION: github_diff\nDEPOT: o/r\nBASE: main\nTETE: fix-a",
+                "ACTION: ouvrir_pr\nDEPOT: o/r\nTETE: fix-a\nBASE: main\n"
+                "TITRE: Fix A\nCONTENU:\nfix\nFIN",
+                "ACTION: terminer\nCONTENU:\nDiff relu, PR preparee.\nFIN",
+            ],
+            connecteur_github=connecteur,
+            depot_github_defaut="o/r",
+        )
+
+        resultat = await a.run("corrige a.py et prepare une PR propre")
+
+        assert resultat["status"] == "success"
+        assert [appel[0] for appel in connecteur.appels] == [
+            "ecrire_fichier", "lire_fichier", "comparer", "creer_pull_request",
+        ]
+        assert "Diff relu" in resultat["response"]
+
     @pytest.mark.asyncio
     async def test_en_attente_de_confirmation_est_rapporte_comme_tel(self, bac):
         """La forme normale : le connecteur repond A_CONFIRMER, rien n'est

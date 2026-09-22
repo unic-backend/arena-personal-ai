@@ -1781,9 +1781,49 @@ class DioumtoukayAgent(BaseAgent):
                         )
                         break
                     continue
+
+                branches_sans_diff = self._branches_github_sans_revue_diff(
+                    rendu_precedent + rendu
+                )
+                if branches_sans_diff:
+                    terminaisons_sans_verification += 1
+                    journal_du_travail.append(
+                        "REVUE DE DIFF OBLIGATOIRE : les changements GitHub de "
+                        + ", ".join(branches_sans_diff)
+                        + " n'ont pas encore ete relus comme un diff global apres "
+                        "la derniere modification. Utilise github_diff avant de terminer."
+                    )
+                    if terminaisons_sans_verification >= 2:
+                        conclusion = (
+                            "Arrete : le moteur essaie de conclure sans revue du diff "
+                            "global de la branche modifiee. Les fichiers ont ete ecrits "
+                            "mais l'ensemble du changement reste a relire."
+                        )
+                        break
+                    continue
+
                 conclusion = action.contenu.strip() or reponse.strip()
                 arrete_par_lui_meme = True
                 break
+
+            # Avant d'ouvrir une PR, la branche doit avoir ete relue comme un
+            # ensemble. Cela empeche « fichier relu individuellement -> PR »
+            # sans jamais voir le changement global propose au depot.
+            if action.nom == "ouvrir_pr":
+                tete = action.champs.get("TETE", "")
+                base = action.champs.get("BASE") or "main"
+                sans_diff = self._branches_github_sans_revue_diff(
+                    rendu_precedent + rendu,
+                    branche_cible=tete or None,
+                    base_cible=base,
+                )
+                if sans_diff:
+                    journal_du_travail.append(
+                        "PR BLOQUEE AVANT REVUE : utilise github_diff avec "
+                        f"BASE: {base} et TETE: {tete} avant ouvrir_pr. "
+                        "Le diff doit couvrir tous les fichiers modifies."
+                    )
+                    continue
 
             # Garde anti-repetition. Pour une action ordinaire, la MEME action
             # est bloquee avant d'etre rejouee une fois de trop. Pour une
@@ -2087,6 +2127,61 @@ class DioumtoukayAgent(BaseAgent):
         """Compatibilite interne : la premiere mutation encore sans preuve."""
         non_verifiees = cls._mutations_non_verifiees(rendu)
         return non_verifiees[0] if non_verifiees else None
+
+    @staticmethod
+    def _branches_github_sans_revue_diff(
+        rendu: List[Dict[str, Any]],
+        *,
+        branche_cible: Optional[str] = None,
+        base_cible: Optional[str] = None,
+    ) -> List[str]:
+        """Branches modifiees dont aucun diff global recent ne couvre les fichiers.
+
+        Relire chaque fichier prouve son contenu final, mais ne montre pas la
+        forme ENSEMBLE du changement : fichier oublie, duplication ou effet
+        lateral. Un ingenieur relit le diff avant de proposer une PR. Ce garde
+        le rend deterministe au lieu de laisser cette etape a la memoire du
+        modele.
+
+        Un diff n'est valide que s'il arrive APRES la derniere mutation de la
+        branche et mentionne tous les fichiers touches par cette tache.
+        """
+        mutations: Dict[str, Dict[str, Any]] = {}
+        for index, acte in enumerate(rendu):
+            if not acte.get("ok") or acte.get("action") not in {
+                "github_ecrire", "github_remplacer",
+            }:
+                continue
+            champs = acte.get("champs") or {}
+            branche = str(champs.get("BRANCHE") or "").strip()
+            chemin = str(champs.get("CHEMIN") or "").strip()
+            if not branche or (branche_cible and branche != branche_cible):
+                continue
+            info = mutations.setdefault(
+                branche, {"dernier_index": index, "fichiers": set()}
+            )
+            info["dernier_index"] = max(info["dernier_index"], index)
+            if chemin:
+                info["fichiers"].add(chemin)
+
+        manquantes: List[str] = []
+        for branche, info in mutations.items():
+            revue_ok = False
+            for acte in rendu[info["dernier_index"] + 1:]:
+                if not acte.get("ok") or acte.get("action") != "github_diff":
+                    continue
+                champs = acte.get("champs") or {}
+                if champs.get("TETE") != branche:
+                    continue
+                if base_cible and (champs.get("BASE") or "main") != base_cible:
+                    continue
+                sortie = str(acte.get("sortie") or "")
+                if all(chemin in sortie for chemin in info["fichiers"]):
+                    revue_ok = True
+                    break
+            if not revue_ok:
+                manquantes.append(branche)
+        return manquantes
 
     @staticmethod
     def _journal_pour_modele(journal_du_travail: List[str]) -> str:
