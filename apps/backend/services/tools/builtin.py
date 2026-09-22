@@ -123,15 +123,35 @@ class KnowledgeSearchArgs(BaseModel):
     limit: int = Field(default=5, ge=1, le=10)
 
 
+class KnowledgeListArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    pattern: str = Field(default="**/*.md", min_length=1, max_length=128)
+    limit: int = Field(default=100, ge=1, le=200)
+
+
+class KnowledgeFindArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    query: str = Field(min_length=1, max_length=300)
+    max_results: int = Field(default=30, ge=1, le=50)
+    context: int = Field(default=1, ge=0, le=3)
+
+
+class KnowledgeReadArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    path: str = Field(min_length=1, max_length=512)
+    offset: int = Field(default=0, ge=0, le=1_000_000)
+    limit: int = Field(default=200, ge=1, le=400)
+
+
 class KnowledgeSearch:
-    """Recherche read-only dans le Knowledge Vault local."""
+    """Recherche hybride read-only dans le Knowledge Vault local."""
 
     def __init__(self, vault: KnowledgeVault | None = None):
         self.vault = vault or KnowledgeVault()
 
     async def __call__(self, args: KnowledgeSearchArgs) -> ToolResult:
         try:
-            hits = self.vault.search(args.query, limit=args.limit)
+            hits = await self.vault.hybrid_search(args.query, limit=args.limit)
         except OSError:
             return ToolResult(ok=False, error="knowledge_vault_unavailable")
         return ToolResult(
@@ -143,6 +163,8 @@ class KnowledgeSearch:
                         "path": hit.path,
                         "title": hit.title,
                         "score": hit.score,
+                        "mode": hit.mode,
+                        "signals": hit.signals,
                         "sources": hit.sources,
                         "content": wrap(
                             hit.snippet,
@@ -154,6 +176,85 @@ class KnowledgeSearch:
                 ],
             },
             error=None if hits else "no_knowledge_sources",
+        )
+
+
+class KnowledgeExplorer:
+    """Outils agentiques bornes : lister, trouver, puis lire une preuve."""
+
+    def __init__(self, vault: KnowledgeVault | None = None):
+        self.vault = vault or KnowledgeVault()
+
+    async def list_pages(self, args: KnowledgeListArgs) -> ToolResult:
+        import asyncio
+
+        try:
+            pages = await asyncio.to_thread(
+                self.vault.list_pages, args.pattern, limit=args.limit
+            )
+        except (OSError, ValueError):
+            return ToolResult(ok=False, error="knowledge_vault_unavailable")
+        return ToolResult(
+            ok=bool(pages),
+            data={"source": "knowledge_vault", "pages": pages},
+            error=None if pages else "no_knowledge_pages",
+        )
+
+    async def find_text(self, args: KnowledgeFindArgs) -> ToolResult:
+        import asyncio
+
+        try:
+            hits = await asyncio.to_thread(
+                self.vault.find_text,
+                args.query,
+                max_results=args.max_results,
+                context=args.context,
+            )
+        except (OSError, ValueError):
+            return ToolResult(ok=False, error="knowledge_vault_unavailable")
+        resultats = [
+            {
+                "path": hit["path"],
+                "line": hit["line"],
+                "content": wrap(
+                    hit["excerpt"],
+                    TrustLevel.RETRIEVED,
+                    f"knowledge_vault:{hit['path']}:{hit['line']}",
+                ).text,
+            }
+            for hit in hits
+        ]
+        return ToolResult(
+            ok=bool(resultats),
+            data={"source": "knowledge_vault", "results": resultats},
+            error=None if resultats else "no_knowledge_matches",
+        )
+
+    async def read_page(self, args: KnowledgeReadArgs) -> ToolResult:
+        import asyncio
+
+        try:
+            page = await asyncio.to_thread(
+                self.vault.read_page,
+                args.path,
+                offset=args.offset,
+                limit=args.limit,
+            )
+        except FileNotFoundError:
+            return ToolResult(ok=False, error="knowledge_page_not_found")
+        except (OSError, ValueError):
+            return ToolResult(ok=False, error="knowledge_page_not_allowed")
+        return ToolResult(
+            ok=True,
+            data={
+                **{key: value for key, value in page.items() if key != "content"},
+                "source": "knowledge_vault",
+                "content": wrap(
+                    page["content"],
+                    TrustLevel.RETRIEVED,
+                    f"knowledge_vault:{page['path']}",
+                ).text,
+            },
         )
 
 
@@ -314,6 +415,23 @@ def builtin_registry(client: httpx.AsyncClient, tavily_key: str = "",
         "knowledge_search",
         "Recherche dans la base de connaissance locale sourcee du proprietaire.",
         KnowledgeSearchArgs, KnowledgeSearch(knowledge_vault), timeout=5,
+    ))
+
+    knowledge_explorer = KnowledgeExplorer(knowledge_vault)
+    registry.register(Tool(
+        "knowledge_list",
+        "Liste les pages Markdown du Knowledge Vault avant une exploration ciblee.",
+        KnowledgeListArgs, knowledge_explorer.list_pages, timeout=3,
+    ))
+    registry.register(Tool(
+        "knowledge_find",
+        "Trouve un texte exact dans le Knowledge Vault avec chemins, lignes et contexte borne.",
+        KnowledgeFindArgs, knowledge_explorer.find_text, timeout=3,
+    ))
+    registry.register(Tool(
+        "knowledge_read",
+        "Lit une plage de lignes d'une page precise du Knowledge Vault. Chemins hors vault refuses.",
+        KnowledgeReadArgs, knowledge_explorer.read_page, timeout=3,
     ))
 
     media = AutonomousMediaTools(

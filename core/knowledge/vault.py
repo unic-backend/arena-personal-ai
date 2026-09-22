@@ -18,12 +18,14 @@ import hashlib
 import json
 import re
 import shutil
+import time
 import unicodedata
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from core.knowledge.retrieval import KnowledgeRecord, bm25_ranking, hybrid_ranking, normaliser
 from tools.documents.reader import EXTENSIONS_LISIBLES, lire_document
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -106,13 +108,15 @@ def _sources_frontmatter(texte: str) -> list[str]:
 
 @dataclass(frozen=True)
 class SearchHit:
-    """Une note retenue avec provenance, jamais un texte anonyme."""
+    """Une note retenue avec provenance, mode de retrieval et signaux de rang."""
 
     path: str
     title: str
     score: float
     snippet: str
     sources: list[str]
+    mode: str = "BM25"
+    signals: dict[str, int | None] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -154,6 +158,10 @@ class KnowledgeVault:
         self.schema_path = self.root / "SCHEMA.md"
         self.index_path = self.wiki_dir / "index.md"
         self.log_path = self.wiki_dir / "log.md"
+        # Cache en memoire seulement : reutilise l'infrastructure d'embeddings
+        # existante sans creer une base vectorielle parallele.
+        self._semantic_index: Any = None
+        self._semantic_retry_after = 0.0
 
     def initialize(self) -> dict[str, str]:
         """Cree uniquement l'ossature manquante, sans ecraser un vault existant."""
@@ -371,53 +379,214 @@ class KnowledgeVault:
         ]
         return {"nodes": nodes, "edges": edges, "broken_links": broken}
 
-    def search(self, query: str, *, limit: int = 5) -> list[SearchHit]:
-        """Recherche lexicale bornee, index-first, avec provenance."""
-        termes = _mots(query)
-        if not termes or not self.wiki_dir.exists():
-            return []
+    @staticmethod
+    def _sans_frontmatter(texte: str) -> str:
+        lignes = texte.splitlines()
+        if not lignes or lignes[0].strip() != "---":
+            return texte
+        for index, ligne in enumerate(lignes[1:], start=1):
+            if ligne.strip() == "---":
+                return "\n".join(lignes[index + 1:]).strip()
+        return texte
 
-        index_links: set[str] = set()
-        if self.index_path.exists():
-            index_text = self.index_path.read_text(encoding="utf-8", errors="replace")
-            for cible in WIKILINK_RE.findall(index_text):
-                index_links.add(_normaliser(cible.strip().removesuffix(".md")))
-
-        resultats: list[SearchHit] = []
+    def _knowledge_records(self) -> tuple[list[KnowledgeRecord], dict[str, tuple[str, str, list[str]]]]:
+        records: list[KnowledgeRecord] = []
+        metadata: dict[str, tuple[str, str, list[str]]] = {}
         for page in self._wiki_pages():
             if page.name in {"index.md", "log.md"}:
                 continue
             texte = page.read_text(encoding="utf-8", errors="replace")
             relatif = self._relative_wiki(page)
             titre = _titre_markdown(texte, page.stem)
-            mots_titre = _mots(titre)
-            mots_corps = _mots(texte)
-            titre_matches = len(termes & mots_titre)
-            corps_matches = len(termes & mots_corps)
-            if not titre_matches and not corps_matches:
-                continue
-            score = float(titre_matches * 4 + corps_matches)
-            cle = _normaliser(relatif.removesuffix(".md"))
-            if cle in index_links:
-                score += 1.5
-            normalise = _normaliser(texte)
-            positions = [
-                normalise.find(terme)
-                for terme in termes
-                if normalise.find(terme) >= 0
-            ]
-            debut = max(0, min(positions) - 180) if positions else 0
-            snippet = re.sub(r"\s+", " ", texte[debut:debut + 520]).strip()
-            resultats.append(SearchHit(
-                path=relatif,
+            corps = self._sans_frontmatter(texte)
+            sources = _sources_frontmatter(texte)
+            records.append(KnowledgeRecord(
+                identifiant=relatif,
                 title=titre,
-                score=score,
-                snippet=snippet,
-                sources=_sources_frontmatter(texte),
+                text=corps,
+                sources=tuple(sources),
             ))
+            metadata[relatif] = (titre, corps, sources)
+        return records, metadata
 
-        resultats.sort(key=lambda item: (-item.score, item.path))
-        return resultats[:max(1, min(limit, 20))]
+    @staticmethod
+    def _snippet(texte: str, query: str, longueur: int = 520) -> str:
+        normalise = normaliser(texte)
+        termes = [mot for mot in normaliser(query).split() if len(mot) >= 3]
+        positions = [normalise.find(mot) for mot in termes if normalise.find(mot) >= 0]
+        debut = max(0, min(positions) - 180) if positions else 0
+        return re.sub(r"\s+", " ", texte[debut:debut + longueur]).strip()
+
+    def search(self, query: str, *, limit: int = 5) -> list[SearchHit]:
+        """Recherche BM25 locale. Aucun modele ni reseau n'est necessaire."""
+        records, metadata = self._knowledge_records()
+        classement = bm25_ranking(query, records)
+        resultats: list[SearchHit] = []
+        for identifiant, score in classement[:max(1, min(limit, 20))]:
+            titre, corps, sources = metadata[identifiant]
+            resultats.append(SearchHit(
+                path=identifiant,
+                title=titre,
+                score=float(score),
+                snippet=self._snippet(corps, query),
+                sources=sources,
+                mode="BM25",
+            ))
+        return resultats
+
+    async def hybrid_search(
+        self,
+        query: str,
+        *,
+        limit: int = 5,
+        embedder: Any = None,
+        semantic_page_limit: int = 128,
+    ) -> list[SearchHit]:
+        """BM25 + embeddings locaux + RRF quand le sens est reellement disponible.
+
+        Aucun second index vectoriel : les vecteurs sont calcules en memoire et
+        le chemin retombe sur BM25 si Ollama est absent, trop lent ou si le
+        corpus depasse la borne explicite.
+        """
+        records, metadata = self._knowledge_records()
+        fournisseur = embedder
+        if (
+            fournisseur is None
+            and 0 < len(records) <= semantic_page_limit
+            and time.monotonic() >= self._semantic_retry_after
+        ):
+            try:
+                from core.memory.semantique import IndexSemantique, embeddings_ollama
+
+                if self._semantic_index is None:
+                    async def embeddings_bornes(textes):
+                        return await embeddings_ollama(textes, timeout=3.0)
+
+                    self._semantic_index = IndexSemantique(fournisseur=embeddings_bornes)
+
+                async def fournisseur(textes):
+                    bornes = [texte[:8000] for texte in textes]
+                    connus = await self._semantic_index.vecteurs(bornes)
+                    if len(connus) != len(set(bornes)):
+                        # Une machine sans Ollama ne doit pas repayer un timeout
+                        # a chaque message. Le lexical reste disponible pendant
+                        # le court refroidissement, puis le dense est retente.
+                        self._semantic_retry_after = time.monotonic() + 60.0
+                        return []
+                    return [connus[texte] for texte in bornes]
+            except Exception:
+                self._semantic_retry_after = time.monotonic() + 60.0
+                fournisseur = None
+
+        classement = await hybrid_ranking(
+            query,
+            records,
+            embedder=fournisseur,
+            candidate_k=max(20, min(80, len(records) or 20)),
+        )
+        resultats: list[SearchHit] = []
+        for item in classement[:max(1, min(limit, 20))]:
+            titre, corps, sources = metadata[item.identifiant]
+            resultats.append(SearchHit(
+                path=item.identifiant,
+                title=titre,
+                score=item.score,
+                snippet=self._snippet(corps, query),
+                sources=sources,
+                mode=item.mode,
+                signals={
+                    "lexical_rank": item.lexical_rank,
+                    "semantic_rank": item.semantic_rank,
+                },
+            ))
+        return resultats
+
+    def _safe_page(self, path: str) -> Path:
+        if not path or "\x00" in path:
+            raise ValueError("chemin_invalide")
+        cible = (self.wiki_dir / path).resolve()
+        racine = self.wiki_dir.resolve()
+        if not cible.is_relative_to(racine) or cible.suffix.lower() != ".md":
+            raise ValueError("chemin_hors_vault")
+        if not cible.is_file():
+            raise FileNotFoundError(path)
+        return cible
+
+    def list_pages(self, pattern: str = "*.md", *, limit: int = 100) -> list[str]:
+        """Liste bornee des pages, sans laisser un glob sortir du vault."""
+        if not self.wiki_dir.exists():
+            return []
+        resultats: list[str] = []
+        racine = self.wiki_dir.resolve()
+        for page in sorted(self.wiki_dir.glob(pattern)):
+            try:
+                resolu = page.resolve()
+            except OSError:
+                continue
+            if not resolu.is_relative_to(racine) or not resolu.is_file() or resolu.suffix != ".md":
+                continue
+            resultats.append(resolu.relative_to(racine).as_posix())
+            if len(resultats) >= max(1, min(limit, 200)):
+                break
+        return resultats
+
+    def find_text(
+        self,
+        query: str,
+        *,
+        max_results: int = 30,
+        context: int = 1,
+    ) -> list[dict[str, Any]]:
+        """Recherche litterale bornee avec lignes et contexte.
+
+        Une recherche litterale est volontaire : une regex fournie par un modele
+        pourrait provoquer du backtracking non borne. Le moteur hybride couvre
+        deja la recherche par sens.
+        """
+        aiguille = normaliser(query).strip()
+        if not aiguille:
+            return []
+        resultats: list[dict[str, Any]] = []
+        contexte = max(0, min(context, 3))
+        limite = max(1, min(max_results, 50))
+        for chemin in self.list_pages("**/*.md", limit=200):
+            page = self._safe_page(chemin)
+            lignes = page.read_text(encoding="utf-8", errors="replace").splitlines()
+            for numero, ligne in enumerate(lignes, start=1):
+                if aiguille not in normaliser(ligne):
+                    continue
+                debut = max(0, numero - 1 - contexte)
+                fin = min(len(lignes), numero + contexte)
+                extrait = "\n".join(
+                    f"{i + 1}: {lignes[i]}" for i in range(debut, fin)
+                )[:1600]
+                resultats.append({
+                    "path": chemin,
+                    "line": numero,
+                    "excerpt": extrait,
+                })
+                if len(resultats) >= limite:
+                    return resultats
+        return resultats
+
+    def read_page(self, path: str, *, offset: int = 0, limit: int = 200) -> dict[str, Any]:
+        """Lit une plage de lignes d'une page apres confinement du chemin."""
+        page = self._safe_page(path)
+        texte = page.read_text(encoding="utf-8", errors="replace")
+        lignes = texte.splitlines()
+        debut = max(0, offset)
+        nombre = max(1, min(limit, 400))
+        fin = min(len(lignes), debut + nombre)
+        contenu = "\n".join(lignes[debut:fin])
+        return {
+            "path": self._relative_wiki(page),
+            "start_line": debut + 1 if lignes else 0,
+            "end_line": fin,
+            "total_lines": len(lignes),
+            "truncated": fin < len(lignes),
+            "sources": _sources_frontmatter(texte),
+            "content": contenu[:40_000],
+        }
 
     def lint(self) -> LintReport:
         """Verifie liens, provenance, doublons et sources non compilees."""

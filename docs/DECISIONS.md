@@ -10710,3 +10710,48 @@ A grande echelle, une recherche lexicale sur les fichiers Markdown peut devenir
 moins precise ou plus lente. Le remede n'est pas une nouvelle memoire : ce sera
 d'indexer `wiki/` avec l'infrastructure RAG existante, en gardant Markdown comme
 source de verite et la provenance jusqu'a la reponse.
+
+
+## DEC-0130 — Le Knowledge Vault cherche par mots ET par sens, sans seconde base vectorielle
+
+*Decide le 22/09/2026 a la demande du proprietaire apres etude de
+daveebbelaar/ai-cookbook (MIT).*
+
+### Decision
+
+Le retrieval du Knowledge Vault combine desormais deux signaux quand ils existent :
+BM25 local pour les termes exacts et embeddings Ollama locaux pour les paraphrases.
+Les deux classements sont fusionnes par Reciprocal Rank Fusion (RRF), c'est-a-dire par
+leur rang et jamais par une moyenne de scores de nature differente.
+
+Si Ollama ne rend aucun vecteur exploitable, le resultat annonce et utilise BM25. Aucun
+classement semantique n'est simule. Aucun fournisseur OpenAI ou Cohere n'est ajoute.
+
+Le meme vault expose trois operations read-only a la boucle agentique : lister les
+pages, trouver un passage litteral avec ses lignes, puis lire une plage bornee. Tous les
+chemins sont resolus sous wiki/ et tout chemin qui en sort est refuse.
+
+La qualite peut etre mesuree avec Recall@k et NDCG@k sur un fichier de cas labels.
+Sans verite terrain, aucun chiffre de qualite n'est annonce.
+
+### Pourquoi
+
+La recherche lexicale de DEC-0129 trouve bien un identifiant exact mais peut manquer une
+paraphrase. A l'inverse, un embedding lisse parfois un terme rare. Les deux signaux sont
+complementaires. Le motif Agentic RAG apporte aussi une meilleure discipline de contexte :
+l'agent decouvre, cherche, puis lit seulement la preuve necessaire au lieu de charger tout
+le corpus.
+
+### Ce qui n'entre pas dans ARENA
+
+- aucune base vectorielle supplementaire ;
+- aucune dependance OpenAI, Cohere, Claude Agent SDK ou PydanticAI ;
+- aucun code copie du depot tiers ;
+- aucune permission d'ecriture sur le vault depuis les outils de recherche.
+
+### Ce que ca coute si c'est faux
+
+Sur un tres gros vault, calculer des embeddings en direct deviendrait trop cher. Le chemin
+dense est donc borne et BM25 reste toujours disponible. Si la taille justifie un index
+persistant plus tard, il devra reutiliser l'infrastructure RAG existante au lieu de creer
+une troisieme memoire.

@@ -45,11 +45,20 @@ class DeepResearcherAgent(BaseAgent):
         if not queries:
             queries = [user_input]
 
-        # 2. Exécution des recherches croisées — en parallèle : trois requêtes
-        # indépendantes n'ont aucune raison d'attendre l'une l'autre.
-        lots = await asyncio.gather(*(
+        # 2. Web + vault local partent reellement en parallele. Le vault ne
+        # depend pas des resultats web : le faire attendre ajoutait sa latence a
+        # celle des trois recherches sans gagner aucune information.
+        async def chercher_vault():
+            try:
+                return await self.knowledge_vault.hybrid_search(user_input, limit=5)
+            except Exception as erreur:  # noqa: BLE001 — source locale optionnelle
+                logger.warning("Knowledge Vault indisponible pendant la recherche : %s", erreur)
+                return []
+
+        web_task = asyncio.gather(*(
             asyncio.to_thread(self.search_tool.search, q, max_results=3) for q in queries
         ))
+        lots, knowledge_hits = await asyncio.gather(web_task, chercher_vault())
         all_results = [r for lot in lots for r in lot]
 
         # Elimination des doublons d'URL
@@ -59,13 +68,6 @@ class DeepResearcherAgent(BaseAgent):
             if r["href"] not in seen_urls:
                 seen_urls.add(r["href"])
                 unique_sources.append(r)
-
-        # Le vault local est consulte en parallele conceptuellement avec le web :
-        # ce sont des preuves deja compilees, pas des instructions. Il n'est
-        # jamais obligatoire : un vault vide donne simplement zero source locale.
-        knowledge_hits = await asyncio.to_thread(
-            self.knowledge_vault.search, user_input, limit=5
-        )
 
         # 3. Synthèse d'intelligence de haut niveau
         # Le texte vient de pages que personne ne controle : il entre

@@ -500,7 +500,7 @@ async def connaissances_pertinentes(
     consigne systeme. Une panne du vault ne bloque jamais la conversation.
     """
     try:
-        resultats = await asyncio.to_thread(knowledge_vault.search, question, limit=4)
+        resultats = await knowledge_vault.hybrid_search(question, limit=4)
     except Exception as souci:  # noqa: BLE001 - la connaissance ne bloque jamais la reponse
         logger.error("Knowledge Vault illisible, la reponse continue sans lui : %s", souci)
         if rapport is not None:
