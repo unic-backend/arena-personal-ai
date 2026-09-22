@@ -562,6 +562,18 @@ def test_diagnostic_ci_rend_resume_et_annotations(monkeypatch):
 
     def _repondre(r):
         url = str(r.url)
+        # L'URL d'annotations contient elle aussi "check-runs" :
+        # la route la plus specifique doit gagner dans ce faux transport.
+        if "/annotations" in url:
+            return json_reponse(200, [{
+                "annotation_level": "failure",
+                "path": "tests/test_x.py",
+                "start_line": 1,
+                "end_line": 1,
+                "title": "F401",
+                "message": "unused import Path",
+                "raw_details": "remove the import",
+            }])
         if "check-runs" in url:
             return json_reponse(200, {
                 "check_runs": [{
@@ -577,16 +589,6 @@ def test_diagnostic_ci_rend_resume_et_annotations(monkeypatch):
                     },
                 }],
             })
-        if "/annotations" in url:
-            return json_reponse(200, [{
-                "annotation_level": "failure",
-                "path": "tests/test_x.py",
-                "start_line": 1,
-                "end_line": 1,
-                "title": "F401",
-                "message": "unused import Path",
-                "raw_details": "remove the import",
-            }])
         raise AssertionError(f"URL inattendue: {url}")
 
     c = connecteur_pret(_repondre, journal_appels=appels)
@@ -625,7 +627,10 @@ def test_diagnostic_ci_garde_le_check_meme_si_annotations_indisponibles(monkeypa
     monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
 
     def _repondre(r):
-        if "check-runs" in str(r.url):
+        url = str(r.url)
+        if "/annotations" in url:
+            return json_reponse(403, {"message": "Forbidden"})
+        if "check-runs" in url:
             return json_reponse(200, {
                 "check_runs": [{
                     "name": "pytest",
@@ -637,7 +642,7 @@ def test_diagnostic_ci_garde_le_check_meme_si_annotations_indisponibles(monkeypa
                     },
                 }],
             })
-        return json_reponse(403, {"message": "Forbidden"})
+        raise AssertionError(f"URL inattendue: {url}")
 
     c = connecteur_pret(_repondre)
     resultat = c.executer("diagnostiquer_ci", depot="o/r", ref="fix-a")
