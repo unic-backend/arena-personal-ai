@@ -1,3 +1,13 @@
+## 2026-09-22 — sonde de santé des actions en attente
+
+`faceplugin.sonder()` coûte ~3 s car il lance son SDK en sous-processus.
+La PWA garde maintenant une mesure réussie 5 secondes maximum, par connecteur.
+Les erreurs de sonde ne sont jamais mises en cache ; après expiration, la santé
+est réellement remesurée. Les tests tiennent réutilisation, expiration et
+retentative après erreur.
+
+---
+
 # JOURNAL DES CHANGEMENTS — mémoire de session
 
 *Ce que chaque session a réellement livré, avec sa preuve. Le récit complet vit
