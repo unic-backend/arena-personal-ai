@@ -24,7 +24,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from core.knowledge.retrieval import KnowledgeRecord, bm25_ranking, hybrid_ranking, normaliser\nfrom tools.documents.reader import EXTENSIONS_LISIBLES, lire_document
+from core.knowledge.retrieval import KnowledgeRecord, bm25_ranking, hybrid_ranking, normaliser
+from tools.documents.reader import EXTENSIONS_LISIBLES, lire_document
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_ROOT = BASE_DIR / "data" / "knowledge_vault"
