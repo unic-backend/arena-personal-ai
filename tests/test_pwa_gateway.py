@@ -127,8 +127,19 @@ async def test_comparaison_txtai_transporte_le_resultat_mesure(monkeypatch):
         return {
             "status": "SUCCESS",
             "message": "ok",
-            "txtai": [{"path": "sources/a.md", "score": 0.9, "sources": ["raw/a.md"]}],
-            "hybrid": [{"path": "sources/b.md", "score": 1.2, "mode": "BM25", "sources": ["raw/b.md"]}],
+            "txtai": [{
+                "path": "sources/a.md",
+                "score": 0.9,
+                "sources": ["raw/a.md"],
+                "snippet": "La laine de roche absorbe une partie du bruit.",
+            }],
+            "hybrid": [{
+                "path": "sources/b.md",
+                "score": 1.2,
+                "mode": "BM25",
+                "sources": ["raw/b.md"],
+                "snippet": "Une autre source.",
+            }],
             "overlap_at_k": 0,
             "same_top1": False,
             "quality_verdict": None,
@@ -145,6 +156,8 @@ async def test_comparaison_txtai_transporte_le_resultat_mesure(monkeypatch):
     assert appels and appels[0][2] == 5
     assert rapport["txtai"] == "SUCCESS"
     assert "sources/a.md" in bloc and "sources/b.md" in bloc
+    assert "La laine de roche absorbe une partie du bruit." in bloc
+    assert "txtai_compare:sources/a.md" in bloc
     assert "Aucun gagnant sans labels." in bloc
 
 
