@@ -4,14 +4,16 @@ Suite de `core/production/txtai_recherche.py` — lire son en-tete d'abord :
 pourquoi ce n'est PAS un second RAG, et pourquoi aucun embeddings ne se
 recalcule deux fois (le vecteur vient d'Ollama, comme la memoire de chat).
 
-**Ce connecteur n'est cable dans aucun aiguillage automatique.** Contrairement
-a `workflow_guide`/`ui_generate`, il n'a pas de branche dans
-`apps/backend/routers/chat.py` : la mission elle-meme conditionne son usage a
-un avantage demontre, jamais mesure ici (pas d'Ollama joignable dans ce
-conteneur, `docs/DECISIONS.md` DEC-0051). Il reste une capacite REELLE et
-appelable — pour un banc de comparaison explicite sur la machine du
-proprietaire — sans jamais devenir le moteur silencieux d'une question
-ordinaire.
+**Ce connecteur n'est cable dans aucun aiguillage automatique.** Il est
+desormais joignable depuis le Knowledge Vault, le vrai chat PWA et le chat
+autonome pour un **banc de comparaison explicite**. Une question ordinaire ne
+le declenche jamais : DEC-0051 interdit toujours d'en faire le moteur par
+defaut tant qu'un avantage n'a pas ete mesure sur un jeu de pertinence labelle.
+
+Le 22/09/2026, c'etait le dernier connecteur de `DORMANTS_CONNUS` : code,
+tests et diagnostic existaient, mais aucun appelant de production ne pouvait
+l'executer. DEC-0131 l'a reveille sans changer le moteur documentaire par
+defaut.
 
 **Une seule capacite, une lecture.** `rechercher` ne persiste rien : l'index
 est reconstruit et jete a chaque appel, sur les documents FOURNIS dans le
