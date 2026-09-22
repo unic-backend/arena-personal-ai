@@ -33,10 +33,10 @@ export function PWAInstall() {
             {updateReady ? <RefreshCw size={11} /> : installed ? <Check size={11} /> : <Smartphone size={11} />}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[10.5px] font-medium text-zinc-300">
+            <div className="truncate text-ui-meta font-medium text-zinc-300">
               {updateReady ? t('pwa.updateReady') : installed ? t('pwa.installed') : t('pwa.title')}
             </div>
-            <div className="truncate text-[9px] text-zinc-600">
+            <div className="truncate text-ui-meta text-zinc-600">
               {updateReady ? t('pwa.updateHint') : installed ? t('pwa.installedHint') : showIOSHelp ? t('pwa.iosHint') : t('pwa.installHint')}
             </div>
           </div>
@@ -44,7 +44,7 @@ export function PWAInstall() {
             <button
               type="button"
               onClick={applyUpdate}
-              className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent-500 px-2 py-1 text-[9.5px] font-semibold text-ink-950 transition hover:bg-accent-400 active:scale-95"
+              className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent-500 px-2 py-1 text-ui-meta font-semibold text-ink-950 transition hover:bg-accent-400 active:scale-95"
             >
               <RefreshCw size={9} /> {t('pwa.update')}
             </button>
@@ -53,7 +53,7 @@ export function PWAInstall() {
               type="button"
               disabled={installing}
               onClick={() => void install()}
-              className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent-500 px-2 py-1 text-[9.5px] font-semibold text-ink-950 transition hover:bg-accent-400 active:scale-95 disabled:opacity-50"
+              className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent-500 px-2 py-1 text-ui-meta font-semibold text-ink-950 transition hover:bg-accent-400 active:scale-95 disabled:opacity-50"
             >
               {installing ? <RefreshCw size={9} className="animate-spin" /> : <Download size={9} />}
               {t('pwa.install')}
