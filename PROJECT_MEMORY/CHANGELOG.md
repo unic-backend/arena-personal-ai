@@ -1817,3 +1817,12 @@ lexicale bornee et lint de provenance/liens/orphelins. Le vault vivant reste
 dans `data/knowledge_vault/`, ignore par Git. Le chat standard consulte les
 extraits pertinents avec la frontiere `TrustLevel.RETRIEVED` ; il ne remplace
 ni `core/memory/` ni `PROJECT_MEMORY/`.
+
+
+## 2026-09-22 — Retrieval hybride + exploration agentique — DEC-0130
+
+Etude du depot MIT daveebbelaar/ai-cookbook puis adaptation des motifs utiles
+sans reprendre ses fournisseurs cloud : BM25 local, embeddings Ollama quand
+disponibles, RRF, outils read-only list/find/read et mesure Recall@k/NDCG@k.
+Le chat standard et DeepResearch utilisent le nouveau retrieval ; si le dense
+est indisponible, le mode annonce BM25 au lieu de simuler du semantique.
