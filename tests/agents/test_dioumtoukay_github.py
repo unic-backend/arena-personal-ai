@@ -629,7 +629,7 @@ class TestQualiteExecution:
         resultat = await a.run("modifie note.txt")
 
         assert resultat["status"] == "partial"
-        assert "reste non verifie" in resultat["response"]
+        assert "restent non verifiees" in resultat["response"]
 
     @pytest.mark.asyncio
     async def test_listing_github_est_lisible_sans_sha_ni_repr_python(self, bac):
