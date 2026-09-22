@@ -273,7 +273,13 @@ class TestUneTacheInterrompueReprendVraiment:
 
         assert suite["reprise"] is True
         assert suite["status"] == "success"
+        # Le contrat `actions` reste le delta de CE passage.
         assert [a["action"] for a in suite["actions"]] == ["lire"]
+        # Mais le rapport final couvre toute la tache, y compris la mutation
+        # effectuee avant le redemarrage.
+        assert suite["fichiers_modifies"] == ["calcul.py"]
+        assert "**Fichiers modifiés**" in suite["response"]
+        assert "`calcul.py`" in suite["response"]
         assert "reprise verifiee" in suite["response"]
 
     async def test_une_tache_conclue_ne_reprend_pas_au_tour_suivant(self, tmp_path):
