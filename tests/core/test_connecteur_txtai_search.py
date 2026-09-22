@@ -99,7 +99,7 @@ class TestConnecteur:
 
         assert sante.etat is EtatSante.OPERATIONNEL
         assert appels
-        assert appels[0][1]["timeout"] == 5.0
+        assert appels[0][1]["timeout"] == 3.0
 
     def test_recherche_reelle_via_le_connecteur(self):
         connecteur = ConnecteurTxtaiSearch(fournisseur_async=_faux_fournisseur_ollama)
