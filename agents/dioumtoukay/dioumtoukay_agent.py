@@ -149,7 +149,8 @@ ECHECS_CONSECUTIFS_MAX = 3
 #: non-fast-forward n'est jamais retente avec la force automatiquement.
 ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "executer", "analyser", "diagnostiquer",
-           "github_lire", "github_chercher", "github_branche_creer", "github_ecrire",
+           "github_lister", "github_lire", "github_chercher",
+           "github_branche_creer", "github_ecrire",
            "ouvrir_pr", "etat_ci",
            "convertir", "organiser_inspecter", "organiser_planifier",
            "organiser_appliquer", "organiser_annuler",
@@ -257,6 +258,11 @@ TEXTE: comment est organisee la gestion des connecteurs dans ce depot ?
 
 ACTION: diagnostiquer
 TEXTE: la route /machine/adresse rend 500 au lieu de 401 sans cle
+
+ACTION: github_lister
+DEPOT: owner/repo
+REF: ta-branche
+CHEMIN: apps
 
 ACTION: github_lire
 DEPOT: owner/repo
@@ -562,7 +568,7 @@ REGLES
 
 - Si le depot vise n'est pas present sur le disque de la machine qui execute
   ARENA (par exemple le serveur permanent quand le PC est eteint), utilise
-  github_lire/github_chercher/github_branche_creer/github_ecrire. Pour modifier
+  github_lister/github_lire/github_chercher/github_branche_creer/github_ecrire. Pour modifier
   un fichier existant, lis-le d'abord : son SHA est obligatoire a l'ecriture.
   Ecris toujours sur une branche de travail, jamais directement sur main.
   Les tests de la PR sont ensuite la preuve d'execution quand aucun terminal
@@ -1111,6 +1117,13 @@ class DioumtoukayAgent(BaseAgent):
         if action.nom == "diagnostiquer":
             return await self._consulter(self.chercheur_de_bug, "SWEAgent",
                                          champs.get("TEXTE", ""))
+        if action.nom == "github_lister":
+            depot = champs.get("DEPOT") or self.depot_github_defaut
+            if not depot:
+                return Resultat(False, "Il manque DEPOT (owner/repo).")
+            return self._via_github(
+                "lister", depot=depot, chemin=champs.get("CHEMIN", ""),
+                ref=champs.get("REF", ""))
         if action.nom == "github_lire":
             depot = champs.get("DEPOT") or self.depot_github_defaut
             chemin = champs.get("CHEMIN", "")
@@ -1425,8 +1438,8 @@ class DioumtoukayAgent(BaseAgent):
         elif self.depot_github_defaut:
             lignes.append(
                 "AUCUN checkout git local dans cette execution. Pour modifier le "
-                "depot distant, utilise exclusivement github_lire, github_chercher, "
-                "github_branche_creer et github_ecrire : les fichiers visibles sur "
+                "depot distant, utilise exclusivement github_lister, github_lire, "
+                "github_chercher, github_branche_creer et github_ecrire : les fichiers visibles sur "
                 "ce serveur peuvent etre ceux de l image de deploiement et une "
                 "modification locale ne serait pas un changement durable du depot."
             )
