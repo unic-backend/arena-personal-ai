@@ -228,6 +228,7 @@ class TestEspaceGitHubDistant:
                 "ACTION: github_ecrire\nBRANCHE: fix-mobile\n"
                 "CHEMIN: apps/pwa/src/App.tsx\nSHA: blob-1\n"
                 "MESSAGE: fix: mobile\nCONTENU:\nnouveau contenu\nFIN",
+                "ACTION: github_lire\nREF: fix-mobile\nCHEMIN: apps/pwa/src/App.tsx",
                 "ACTION: terminer\nCONTENU:\nfini\nFIN",
             ],
             connecteur_github=connecteur,
@@ -254,6 +255,14 @@ class TestEspaceGitHubDistant:
                 "contenu": "nouveau contenu",
                 "sha_attendu": "blob-1",
                 "message": "fix: mobile",
+            },
+        )
+        assert connecteur.appels[2] == (
+            "lire_fichier",
+            {
+                "depot": "unic-backend/arena-personal-ai",
+                "chemin": "apps/pwa/src/App.tsx",
+                "ref": "fix-mobile",
             },
         )
 
