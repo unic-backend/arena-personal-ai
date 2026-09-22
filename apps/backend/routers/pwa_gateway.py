@@ -496,7 +496,7 @@ async def connaissances_pertinentes(
     """Extraits du Knowledge Vault qui se rapportent a la demande.
 
     Le vault contient des documents et des syntheses : meme quand le texte a
-    ete compile par un agent, il entre comme DOCUMENT non fiable, jamais comme
+    ete compile par un agent, il entre comme contenu RETRIEVED non fiable, jamais comme
     consigne systeme. Une panne du vault ne bloque jamais la conversation.
     """
     try:
@@ -523,7 +523,7 @@ async def connaissances_pertinentes(
         extrait = resultat.snippet[:restant]
         enveloppe = wrap(
             entete + extrait,
-            TrustLevel.DOCUMENT,
+            TrustLevel.RETRIEVED,
             f"knowledge_vault:{resultat.path}",
         ).text
         if total + len(enveloppe) > budget:
