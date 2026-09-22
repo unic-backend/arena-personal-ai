@@ -34,6 +34,8 @@ d'ouvrir le document entier quand on cherche juste « a-t-on déjà tranché ça
 | **DEC-0110** | **on n'annonce que ce qui tourne** | une étape par travail réellement exécuté, durée mesurée ; une étape absente n'émet rien, une étape en cours n'annonce aucune durée |
 | **DEC-0111** | **une trame d'étape ne vaut pas conclusion** | le journal d'idempotence compte les résultats (réponse, erreur, `done`), pas les étapes — régression du jour même, attrapée par un test existant |
 
+| **DEC-0129** | **Knowledge Vault : compiler les sources en Markdown local sourcé** | `data/knowledge_vault/` sépare raw/wiki/output et reste hors Git ; Obsidian est un lecteur optionnel, pas une dépendance ; la conversation consulte le vault sans créer un second système de mémoire/vectorisation |
+
 ## Décisions de travail (hors ADR, mais qui gouvernent autant)
 
 | Règle | Où elle est écrite |
