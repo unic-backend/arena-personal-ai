@@ -94,12 +94,12 @@ export function GlobalDropZone() {
               {t('drop.title')}
             </h2>
 
-            <p className="text-[12px] sm:text-[13px] text-zinc-400 max-w-sm mb-6 leading-relaxed">
+            <p className="text-ui-body-sm sm:text-ui-body-sm text-zinc-400 max-w-sm mb-6 leading-relaxed">
               {t('drop.subtitle')}
             </p>
 
             {/* Formats Icons Strip */}
-            <div className="flex flex-wrap items-center justify-center gap-2 font-mono text-[10px] text-zinc-400">
+            <div className="flex flex-wrap items-center justify-center gap-2 font-mono text-ui-meta text-zinc-400">
               <span className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-emerald-300">
                 <ImageIcon size={11} /> Images
               </span>
@@ -117,7 +117,7 @@ export function GlobalDropZone() {
               </span>
             </div>
 
-            <div className="mt-5 font-mono text-[10px] text-accent-400">
+            <div className="mt-5 font-mono text-ui-meta text-accent-400">
               {t('drop.hint')}
             </div>
           </motion.div>
