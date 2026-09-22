@@ -31,6 +31,14 @@ DEFAULT_ROOT = BASE_DIR / "data" / "knowledge_vault"
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 MOT_RE = re.compile(r"[a-z0-9]{3,}")
+STOP_WORDS = frozenset({
+    "avec", "pour", "dans", "cette", "cela", "ceci", "comme", "faire", "fait",
+    "quel", "quelle", "quels", "quelles", "comment", "pourquoi", "quand",
+    "peut", "peux", "doit", "dois", "veux", "votre", "notre", "mon", "mes",
+    "ton", "tes", "une", "des", "les", "est", "sont", "sur", "plus", "moins",
+    "sans", "mais", "donc", "alors", "voici", "the", "and", "for", "with",
+    "from", "that", "this", "what", "how", "why", "when", "your", "our",
+})
 
 
 def _maintenant() -> str:
@@ -44,7 +52,7 @@ def _normaliser(texte: str) -> str:
 
 
 def _mots(texte: str) -> set[str]:
-    return set(MOT_RE.findall(_normaliser(texte)))
+    return {mot for mot in MOT_RE.findall(_normaliser(texte)) if mot not in STOP_WORDS}
 
 
 def _slug(texte: str) -> str:
