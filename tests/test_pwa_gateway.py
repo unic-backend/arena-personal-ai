@@ -219,6 +219,35 @@ def test_le_meta_nomme_le_fournisseur_qui_a_reellement_repondu(
     assert "HYBRIDE" in meta["raison"]
 
 
+def test_un_agent_specialise_peut_annoncer_son_vrai_moteur(
+    client, entetes, fournisseur, monkeypatch
+):
+    """Le badge ne doit pas utiliser le fast provider quand l'agent en a un autre."""
+    fournisseur()
+
+    async def _atelier(_demande, espace=None):
+        return "ATELIER"
+    monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _atelier)
+
+    async def _resultat(_requete, intent=None):
+        return {
+            "response": "Travail termine.",
+            "sources": [],
+            "moteur": {
+                "provider": "groq",
+                "model": "modele-codeur-distant",
+                "raison": "cloud disponible",
+            },
+        }
+    monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+    meta = trames(demander(client, entetes, text="travaille").text)[-1]["meta"]
+
+    assert meta["provider"] == "groq"
+    assert meta["model"] == "modele-codeur-distant"
+    assert meta["raison"] == "cloud disponible"
+
+
 # --- L'historique du navigateur fait foi --------------------------------------
 
 def test_l_historique_envoye_est_utilise(client, entetes, fournisseur, chat_direct):
