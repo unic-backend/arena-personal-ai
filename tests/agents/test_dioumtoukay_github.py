@@ -525,6 +525,99 @@ class TestQualiteExecution:
         assert DioumtoukayAgent._preuve_positive(mutation, mauvaise_lecture) is False
         assert DioumtoukayAgent._preuve_positive(mutation, bonne_lecture) is True
 
+    def test_verifier_seulement_le_dernier_fichier_ne_suffit_pas(self):
+        rendu = [
+            {
+                "action": "github_ecrire",
+                "ok": True,
+                "champs": {"CHEMIN": "a.py", "BRANCHE": "fix-multi"},
+            },
+            {
+                "action": "github_ecrire",
+                "ok": True,
+                "champs": {"CHEMIN": "b.py", "BRANCHE": "fix-multi"},
+            },
+            {
+                "action": "github_lire",
+                "ok": True,
+                "champs": {"CHEMIN": "b.py", "REF": "fix-multi"},
+                "sortie": "ref: fix-multi\nsha: b2\nCONTENU:\nnouveau b",
+            },
+        ]
+
+        non_verifiees = DioumtoukayAgent._mutations_non_verifiees(rendu)
+
+        assert len(non_verifiees) == 1
+        assert non_verifiees[0]["champs"]["CHEMIN"] == "a.py"
+
+    def test_un_diff_global_peut_prouver_plusieurs_fichiers_distants(self):
+        rendu = [
+            {
+                "action": "github_remplacer",
+                "ok": True,
+                "champs": {"CHEMIN": "a.py", "BRANCHE": "fix-multi"},
+            },
+            {
+                "action": "github_ecrire",
+                "ok": True,
+                "champs": {"CHEMIN": "b.py", "BRANCHE": "fix-multi"},
+            },
+            {
+                "action": "github_diff",
+                "ok": True,
+                "champs": {"BASE": "main", "TETE": "fix-multi"},
+                "sortie": (
+                    "statut: ahead\n"
+                    "fichiers modifies:\n"
+                    "- a.py (modified, +1/-1)\n"
+                    "- b.py (modified, +4/-0)"
+                ),
+            },
+        ]
+
+        assert DioumtoukayAgent._mutations_non_verifiees(rendu) == []
+
+    def test_une_ci_verte_apres_toutes_les_mutations_prouve_la_branche_entiere(self):
+        rendu = [
+            {
+                "action": "github_remplacer",
+                "ok": True,
+                "champs": {"CHEMIN": "a.py", "BRANCHE": "fix-multi"},
+            },
+            {
+                "action": "github_ecrire",
+                "ok": True,
+                "champs": {"CHEMIN": "b.py", "BRANCHE": "fix-multi"},
+            },
+            {
+                "action": "etat_ci",
+                "ok": True,
+                "champs": {"REF": "fix-multi"},
+                "sortie": "resume: succes\n- tests: success",
+            },
+        ]
+
+        assert DioumtoukayAgent._mutations_non_verifiees(rendu) == []
+
+    @pytest.mark.asyncio
+    async def test_boucle_refuse_de_finir_si_un_des_deux_fichiers_reste_sans_preuve(self, bac):
+        a = agent(bac, [
+            "ACTION: ecrire\nCHEMIN: a.txt\nCONTENU:\nA2\nFIN",
+            "ACTION: ecrire\nCHEMIN: b.txt\nCONTENU:\nB2\nFIN",
+            "ACTION: lire\nCHEMIN: b.txt",
+            "ACTION: terminer\nCONTENU:\ntout est bon\nFIN",
+            "ACTION: lire\nCHEMIN: a.txt",
+            "ACTION: terminer\nCONTENU:\nles deux fichiers sont relus et verifies\nFIN",
+        ])
+
+        resultat = await a.run("modifie a.txt et b.txt puis verifie les deux")
+
+        assert resultat["status"] == "success"
+        assert [acte["action"] for acte in resultat["actions"]] == [
+            "ecrire", "ecrire", "lire", "lire",
+        ]
+        assert "les deux fichiers" in resultat["response"]
+
     @pytest.mark.asyncio
     async def test_deux_conclusions_sans_preuve_restent_partielles(self, bac):
         a = agent(bac, [
@@ -536,7 +629,7 @@ class TestQualiteExecution:
         resultat = await a.run("modifie note.txt")
 
         assert resultat["status"] == "partial"
-        assert "reste non verifie" in resultat["response"]
+        assert "restent non verifiees" in resultat["response"]
 
     @pytest.mark.asyncio
     async def test_listing_github_est_lisible_sans_sha_ni_repr_python(self, bac):
