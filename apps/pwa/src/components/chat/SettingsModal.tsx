@@ -135,8 +135,8 @@ function Row({
     >
       <span className={cn('shrink-0', danger ? 'text-zinc-500' : 'text-accent-400')}>{icon}</span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12.5px] font-medium">{title}</span>
-        {sub && <span className="mt-0.5 block truncate text-[10.5px] text-zinc-600">{sub}</span>}
+        <span className="block truncate text-ui-body-sm font-medium">{title}</span>
+        {sub && <span className="mt-0.5 block truncate text-ui-meta text-zinc-600">{sub}</span>}
       </span>
       {right}
     </button>
@@ -146,7 +146,7 @@ function Row({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <div className="px-1 font-mono text-[9px] uppercase tracking-[0.18em] text-zinc-600">{title}</div>
+      <div className="px-1 font-mono text-ui-meta uppercase tracking-[0.18em] text-zinc-600">{title}</div>
       {children}
     </div>
   );
@@ -188,7 +188,7 @@ export function SettingsModal() {
       type="button"
       onClick={() => setLocale(code)}
       className={cn(
-        'flex-1 rounded-md px-2 py-1 font-mono text-[10px] transition',
+        'flex-1 rounded-md px-2 py-1 font-mono text-ui-meta transition',
         locale === code ? 'bg-accent-500/20 text-accent-300' : 'text-zinc-500 hover:text-zinc-300',
       )}
     >
@@ -202,7 +202,7 @@ export function SettingsModal() {
       onClick={() => setColorMode(mode)}
       title={label}
       className={cn(
-        'flex flex-1 items-center justify-center gap-1 rounded px-1.5 py-1 font-mono text-[9.5px] transition',
+        'flex flex-1 items-center justify-center gap-1 rounded px-1.5 py-1 font-mono text-ui-meta transition',
         colorMode === mode ? 'bg-white/10 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300',
       )}
     >
@@ -253,7 +253,7 @@ export function SettingsModal() {
                   onClick={openAndClose(() => openPersona(true))}
                   right={
                     userName.trim() ? (
-                      <span className="font-mono text-[9.5px] text-accent-300">{userName.trim().slice(0, 14)}</span>
+                      <span className="font-mono text-ui-meta text-accent-300">{userName.trim().slice(0, 14)}</span>
                     ) : undefined
                   }
                 />
@@ -263,7 +263,7 @@ export function SettingsModal() {
                   sub={l.memorySub}
                   onClick={openAndClose(() => openMemoryModal(true))}
                   right={
-                    <span className="rounded-full bg-white/5 px-1.5 py-0.5 font-mono text-[9px] text-zinc-400">
+                    <span className="rounded-full bg-white/5 px-1.5 py-0.5 font-mono text-ui-meta text-zinc-400">
                       {activeMemories}
                     </span>
                   }
@@ -278,7 +278,7 @@ export function SettingsModal() {
                   sub={l.connectorsSub}
                   onClick={openAndClose(() => openConnectors(true))}
                   right={
-                    <span className="rounded-full bg-white/5 px-1.5 py-0.5 font-mono text-[9px] text-zinc-500">
+                    <span className="rounded-full bg-white/5 px-1.5 py-0.5 font-mono text-ui-meta text-zinc-500">
                       {activeConnectors}/{CONNECTOR_CATALOG.length}
                     </span>
                   }
@@ -287,7 +287,7 @@ export function SettingsModal() {
 
               <Section title={l.sectionLook}>
                 <div className="flex items-center justify-between gap-2 rounded-xl border border-white/8 px-3 py-2.5">
-                  <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-zinc-500">{l.theme}</span>
+                  <span className="font-mono text-ui-meta uppercase tracking-[0.14em] text-zinc-500">{l.theme}</span>
                   <div className="flex items-center gap-1.5">
                     {ACCENTS.map((a) => (
                       <button
@@ -308,7 +308,7 @@ export function SettingsModal() {
                 </div>
 
                 <div className="flex items-center justify-between gap-2 rounded-xl border border-white/8 px-3 py-2.5">
-                  <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-zinc-500">{l.mode}</span>
+                  <span className="font-mono text-ui-meta uppercase tracking-[0.14em] text-zinc-500">{l.mode}</span>
                   <div className="flex items-center gap-0.5 rounded-md border border-white/6 bg-white/[0.02] p-0.5">
                     {modeButton('dark', <Moon size={10} />, l.dark)}
                     {modeButton('light', <Sun size={10} />, l.light)}
@@ -320,7 +320,7 @@ export function SettingsModal() {
 
                 <div className="flex items-center gap-2 rounded-xl border border-white/8 px-3 py-2">
                   <Globe size={13} className="shrink-0 text-zinc-500" />
-                  <span className="flex-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-zinc-500">
+                  <span className="flex-1 font-mono text-ui-meta uppercase tracking-[0.14em] text-zinc-500">
                     {l.lang}
                   </span>
                   <div className="flex w-24 gap-0.5">
