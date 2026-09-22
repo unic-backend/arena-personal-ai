@@ -373,6 +373,22 @@ class TestQualiteExecution:
         assert "'sha':" not in texte
         assert "'taille':" not in texte
 
+    def test_detail_imbrique_ne_redevient_jamais_un_repr_python(self):
+        texte = DioumtoukayAgent._detail_lisible({
+            "preuve": {
+                "etapes": [
+                    {"nom": "tests", "etat": "success"},
+                    {"nom": "build", "etat": "success"},
+                ],
+                "brut": b"abc",
+            },
+        })
+
+        assert "{'nom':" not in texte
+        assert "nom: tests" in texte
+        assert "etat: success" in texte
+        assert "3 octet(s)" in texte
+
     def test_journal_modele_compacte_les_anciennes_sorties_sans_perdre_la_derniere(self):
         journal = [
             f"> ACTION lire : ancien-{i}\nSORTIE:\n" + ("x" * 12_000)
