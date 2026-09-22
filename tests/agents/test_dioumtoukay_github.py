@@ -570,6 +570,90 @@ class TestQualiteExecution:
 
         assert DioumtoukayAgent._preuve_positive(mutation, ci) is False
 
+    def test_ci_rouge_exige_diagnostic_avant_nouvelle_ecriture(self):
+        rendu = [
+            {
+                "action": "github_ecrire",
+                "ok": True,
+                "champs": {"CHEMIN": "a.py", "BRANCHE": "fix-a"},
+            },
+            {
+                "action": "etat_ci",
+                "ok": True,
+                "champs": {"REF": "fix-a"},
+                "sortie": "resume: echec\n- tests: failure",
+            },
+        ]
+
+        assert DioumtoukayAgent._ci_rouge_sans_diagnostic(rendu, "fix-a") is True
+
+        rendu.append({
+            "action": "ci_diagnostiquer",
+            "ok": True,
+            "champs": {"REF": "fix-a"},
+            "sortie": "etat: echec\nCHECK tests: failure\n- failure a.py:4: assertion",
+        })
+        assert DioumtoukayAgent._ci_rouge_sans_diagnostic(rendu, "fix-a") is False
+
+    def test_correction_apres_ci_rouge_exige_une_nouvelle_ci_verte(self):
+        rendu = [
+            {
+                "action": "github_ecrire",
+                "ok": True,
+                "champs": {"CHEMIN": "a.py", "BRANCHE": "fix-a"},
+            },
+            {
+                "action": "etat_ci",
+                "ok": True,
+                "champs": {"REF": "fix-a"},
+                "sortie": "resume: echec\n- tests: failure",
+            },
+            {
+                "action": "ci_diagnostiquer",
+                "ok": True,
+                "champs": {"REF": "fix-a"},
+                "sortie": "etat: echec\n- failure a.py:4: assertion",
+            },
+            {
+                "action": "github_remplacer",
+                "ok": True,
+                "champs": {"CHEMIN": "a.py", "BRANCHE": "fix-a"},
+            },
+            {
+                "action": "github_diff",
+                "ok": True,
+                "champs": {"BASE": "main", "TETE": "fix-a"},
+                "sortie": "fichiers modifies:\n- a.py (modified, +1/-1)",
+            },
+        ]
+
+        assert DioumtoukayAgent._branches_ci_non_closes(rendu) == ["fix-a"]
+
+        rendu.append({
+            "action": "etat_ci",
+            "ok": True,
+            "champs": {"REF": "fix-a"},
+            "sortie": "resume: en_cours\n- tests: in_progress",
+        })
+        assert DioumtoukayAgent._branches_ci_non_closes(rendu) == ["fix-a"]
+
+        rendu.append({
+            "action": "etat_ci",
+            "ok": True,
+            "champs": {"REF": "fix-a"},
+            "sortie": "resume: succes\n- tests: success",
+        })
+        assert DioumtoukayAgent._branches_ci_non_closes(rendu) == []
+
+    def test_ci_jamais_consultee_n_est_pas_inventee_comme_obligation(self):
+        rendu = [{
+            "action": "github_ecrire",
+            "ok": True,
+            "champs": {"CHEMIN": "a.py", "BRANCHE": "fix-a"},
+        }]
+
+        assert DioumtoukayAgent._branches_ci_non_closes(rendu) == []
+
     def test_ci_verte_de_la_bonne_branche_valide_ecriture_github(self):
         mutation = {
             "action": "github_ecrire",
@@ -1068,6 +1152,130 @@ class TestEtatCI:
 
         assert connecteur.appels == [("etat_ci", {"depot": "o/r", "ref": "abc123"})]
         assert "echec" in resultat["response"]
+
+    @pytest.mark.asyncio
+    async def test_ci_rouge_peut_etre_diagnostiquee_avant_correction(self, bac):
+        connecteur = FauxConnecteurGitHubSequence(
+            succes(
+                "etat_ci", "o/r", "CI rouge.", preuve="echec",
+                resume="echec",
+                verifications=[{
+                    "nom": "Lint", "statut": "completed", "conclusion": "failure",
+                }],
+            ),
+            succes(
+                "diagnostiquer_ci", "o/r", "1 check en echec.", preuve="echec",
+                etat="echec",
+                diagnostics=[{
+                    "nom": "Lint",
+                    "conclusion": "failure",
+                    "titre": "Ruff",
+                    "resume": "F401 unused import",
+                    "texte": "",
+                    "details_url": "https://github.com/o/r/actions/runs/1",
+                    "annotations": [{
+                        "niveau": "failure",
+                        "chemin": "tests/test_x.py",
+                        "ligne_debut": 1,
+                        "ligne_fin": 1,
+                        "titre": "F401",
+                        "message": "unused import Path",
+                        "detail": "",
+                    }],
+                }],
+                avertissements=[],
+            ),
+        )
+        a = agent(
+            bac,
+            [
+                "ACTION: etat_ci\nDEPOT: o/r\nREF: fix-a",
+                "ACTION: ci_diagnostiquer\nDEPOT: o/r\nREF: fix-a",
+                "ACTION: terminer\nCONTENU:\nLa CI echoue sur F401 dans tests/test_x.py.\nFIN",
+            ],
+            connecteur_github=connecteur,
+        )
+
+        resultat = await a.run("diagnostique la CI rouge de fix-a")
+
+        assert [appel[0] for appel in connecteur.appels] == [
+            "etat_ci", "diagnostiquer_ci",
+        ]
+        assert "F401" in resultat["response"]
+        assert "tests/test_x.py:1" in resultat["response"]
+        assert "unused import Path" in resultat["response"]
+
+    @pytest.mark.asyncio
+    async def test_apres_ci_rouge_une_correction_sans_diagnostic_est_bloquee(self, bac):
+        connecteur = FauxConnecteurGitHubSequence(
+            succes(
+                "etat_ci", "o/r", "CI rouge.", preuve="echec",
+                resume="echec",
+                verifications=[{
+                    "nom": "Lint", "statut": "completed", "conclusion": "failure",
+                }],
+            ),
+            succes(
+                "diagnostiquer_ci", "o/r", "Cause trouvee.", preuve="echec",
+                etat="echec",
+                diagnostics=[{
+                    "nom": "Lint", "conclusion": "failure",
+                    "titre": "F401", "resume": "unused import",
+                    "texte": "", "annotations": [],
+                }],
+                avertissements=[],
+            ),
+            succes(
+                "remplacer_dans_fichier", "o/r", "a.py modifie.", preuve="commit-2",
+                chemin="a.py", branche="fix-a", sha="blob-2",
+            ),
+            succes(
+                "comparer", "o/r", "Diff relu.", preuve="head-2",
+                statut="ahead", ahead_by=1, behind_by=0,
+                fichiers=[{
+                    "chemin": "a.py", "statut": "modified",
+                    "ajouts": 1, "suppressions": 1, "patch": "@@\n-old\n+new",
+                }],
+            ),
+            succes(
+                "etat_ci", "o/r", "CI verte.", preuve="succes",
+                resume="succes",
+                verifications=[{
+                    "nom": "Lint", "statut": "completed", "conclusion": "success",
+                }],
+            ),
+        )
+        a = agent(
+            bac,
+            [
+                "ACTION: etat_ci\nDEPOT: o/r\nREF: fix-a",
+                # Bloquee : le connecteur ne doit pas voir cette ecriture.
+                "ACTION: github_remplacer\nDEPOT: o/r\nBRANCHE: fix-a\n"
+                "CHEMIN: a.py\nSHA: blob-1\nANCIEN:\nold\nFIN\n"
+                "NOUVEAU:\nnew\nFIN",
+                "ACTION: ci_diagnostiquer\nDEPOT: o/r\nREF: fix-a",
+                "ACTION: github_remplacer\nDEPOT: o/r\nBRANCHE: fix-a\n"
+                "CHEMIN: a.py\nSHA: blob-1\nANCIEN:\nold\nFIN\n"
+                "NOUVEAU:\nnew\nFIN",
+                "ACTION: github_diff\nDEPOT: o/r\nBASE: main\nTETE: fix-a",
+                "ACTION: etat_ci\nDEPOT: o/r\nREF: fix-a",
+                "ACTION: terminer\nCONTENU:\nCause lue, correctif applique, diff relu et CI verte.\nFIN",
+            ],
+            connecteur_github=connecteur,
+            depot_github_defaut="o/r",
+        )
+
+        resultat = await a.run("repare la CI rouge de fix-a")
+
+        assert resultat["status"] == "success"
+        assert [appel[0] for appel in connecteur.appels] == [
+            "etat_ci",
+            "diagnostiquer_ci",
+            "remplacer_dans_fichier",
+            "comparer",
+            "etat_ci",
+        ]
+        assert "CI verte" in resultat["response"]
 
     @pytest.mark.asyncio
     async def test_polling_ci_identique_reste_autorise_si_l_etat_progresse(self, bac):

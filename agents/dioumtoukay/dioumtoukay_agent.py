@@ -164,7 +164,7 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "executer", "analyser", "diagnostiquer",
            "github_lister", "github_lire", "github_chercher", "github_diff",
            "github_branche_creer", "github_ecrire", "github_remplacer",
-           "ouvrir_pr", "etat_ci", "commentaires_pr",
+           "ouvrir_pr", "etat_ci", "ci_diagnostiquer", "commentaires_pr",
            "convertir", "organiser_inspecter", "organiser_planifier",
            "organiser_appliquer", "organiser_annuler",
            "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
@@ -234,7 +234,7 @@ JOURNAL_MODELE_RESUME_MAX_CARACTERES = 8_000
 #: fichier écrit, liste des documents (manifeste), ou texte lui-même sont
 #: ce que le propriétaire lit pour vérifier, pas un simple « fait ».
 ACTIONS_QUI_ANALYSENT = frozenset({
-    "analyser", "diagnostiquer", "etat_ci", "github_diff", "commentaires_pr", "convertir",
+    "analyser", "diagnostiquer", "etat_ci", "ci_diagnostiquer", "github_diff", "commentaires_pr", "convertir",
     "organiser_inspecter", "organiser_planifier",
     "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
     "isoler",
@@ -371,6 +371,10 @@ ce que le correctif change, pour qui va relire
 FIN
 
 ACTION: etat_ci
+DEPOT: owner/repo
+REF: ta-branche
+
+ACTION: ci_diagnostiquer
 DEPOT: owner/repo
 REF: ta-branche
 
@@ -723,6 +727,9 @@ FIN
 ACTION: etat_ci
 REF: fix-exemple
 
+ACTION: ci_diagnostiquer
+REF: fix-exemple
+
 ACTION: commentaires_pr
 NUMERO: 123
 
@@ -746,6 +753,8 @@ REGLES :
 - Apres modification, verifie le fichier ou le diff. Si une CI existe, seul
   resume: succes est une preuve positive : en_cours, en_attente et echec ne
   veulent jamais dire que le travail est termine.
+- Si etat_ci rend echec, utilise ci_diagnostiquer avant de modifier a nouveau :
+  lis les checks, fichiers, lignes et messages reels au lieu de deviner la cause.
 - Ouvre ensuite une PR quand la politique de confirmation le permet et utilise
   sa CI comme preuve supplementaire.
 - Le resultat reel de chaque action fait foi. N invente jamais une lecture,
@@ -1088,6 +1097,40 @@ class DioumtoukayAgent(BaseAgent):
                 corps = str(commentaire.get("corps") or "").strip()
                 suffixe = f" sur {chemin}" if chemin else ""
                 lignes.append(f"- {genre} de {auteur}{suffixe}: {corps}")
+            return "\n".join(lignes)
+
+        if capacite == "diagnostiquer_ci":
+            lignes = [f"etat: {detail.get('etat', 'inconnu')}"]
+            for diagnostic in detail.get("diagnostics") or []:
+                if not isinstance(diagnostic, dict):
+                    continue
+                nom = diagnostic.get("nom") or "check"
+                conclusion = diagnostic.get("conclusion") or "inconnue"
+                lignes.append(f"\nCHECK {nom}: {conclusion}")
+                titre = str(diagnostic.get("titre") or "").strip()
+                resume = str(diagnostic.get("resume") or "").strip()
+                texte = str(diagnostic.get("texte") or "").strip()
+                if titre:
+                    lignes.append(f"titre: {titre}")
+                if resume:
+                    lignes.append(f"resume: {resume}")
+                if texte:
+                    lignes.append(f"detail: {texte}")
+                for annotation in diagnostic.get("annotations") or []:
+                    if not isinstance(annotation, dict):
+                        continue
+                    chemin = annotation.get("chemin") or "?"
+                    ligne = annotation.get("ligne_debut")
+                    emplacement = f"{chemin}:{ligne}" if ligne else str(chemin)
+                    niveau = annotation.get("niveau") or "notice"
+                    message = str(annotation.get("message") or "").strip()
+                    titre_annotation = str(annotation.get("titre") or "").strip()
+                    contenu = " — ".join(
+                        morceau for morceau in (titre_annotation, message) if morceau
+                    )
+                    lignes.append(f"- {niveau} {emplacement}: {contenu}")
+            for avertissement in detail.get("avertissements") or []:
+                lignes.append(f"- avertissement: {avertissement}")
             return "\n".join(lignes)
 
         if capacite == "etat_ci":
@@ -1571,6 +1614,11 @@ class DioumtoukayAgent(BaseAgent):
             if not depot or not ref:
                 return Resultat(False, "Il manque DEPOT (owner/repo) ou REF (SHA ou branche).")
             return self._via_github("etat_ci", depot=depot, ref=ref)
+        if action.nom == "ci_diagnostiquer":
+            depot, ref = champs.get("DEPOT") or self.depot_github_defaut, champs.get("REF", "")
+            if not depot or not ref:
+                return Resultat(False, "Il manque DEPOT (owner/repo) ou REF (SHA ou branche).")
+            return self._via_github("diagnostiquer_ci", depot=depot, ref=ref)
         if action.nom == "commentaires_pr":
             depot = champs.get("DEPOT") or self.depot_github_defaut
             numero_brut = champs.get("NUMERO", "").strip()
@@ -1802,6 +1850,28 @@ class DioumtoukayAgent(BaseAgent):
                         break
                     continue
 
+                ci_non_closes = self._branches_ci_non_closes(
+                    rendu_precedent + rendu
+                )
+                if ci_non_closes:
+                    terminaisons_sans_verification += 1
+                    journal_du_travail.append(
+                        "CYCLE CI NON TERMINE : "
+                        + ", ".join(ci_non_closes)
+                        + " a une CI observee qui n'est pas prouvee verte APRES "
+                        "la derniere modification. Relance etat_ci ; si elle est "
+                        "rouge, diagnostique puis corrige, et ne conclus qu'apres "
+                        "resume: succes."
+                    )
+                    if terminaisons_sans_verification >= 2:
+                        conclusion = (
+                            "Arrete : la tache ne peut pas etre declaree terminee "
+                            "tant que la CI observee de la branche modifiee n'est "
+                            "pas revenue au vert."
+                        )
+                        break
+                    continue
+
                 conclusion = action.contenu.strip() or reponse.strip()
                 arrete_par_lui_meme = True
                 break
@@ -1822,6 +1892,22 @@ class DioumtoukayAgent(BaseAgent):
                         "PR BLOQUEE AVANT REVUE : utilise github_diff avec "
                         f"BASE: {base} et TETE: {tete} avant ouvrir_pr. "
                         "Le diff doit couvrir tous les fichiers modifies."
+                    )
+                    continue
+
+            # Une CI rouge deja observee doit etre COMPRISE avant la
+            # prochaine correction distante. Sans cette porte, le modele peut
+            # essayer plusieurs modifications au hasard alors que GitHub donne
+            # deja le fichier/la ligne/la cause.
+            if action.nom in {"github_ecrire", "github_remplacer"}:
+                branche_action = action.champs.get("BRANCHE", "")
+                if self._ci_rouge_sans_diagnostic(
+                    rendu_precedent + rendu, branche_action
+                ):
+                    journal_du_travail.append(
+                        "CORRECTION BLOQUEE APRES CI ROUGE : utilise d'abord "
+                        f"ci_diagnostiquer sur REF: {branche_action}. "
+                        "La cause GitHub doit etre lue avant une nouvelle ecriture."
                     )
                     continue
 
@@ -2182,6 +2268,86 @@ class DioumtoukayAgent(BaseAgent):
             if not revue_ok:
                 manquantes.append(branche)
         return manquantes
+
+    @staticmethod
+    def _ci_rouge_sans_diagnostic(
+        rendu: List[Dict[str, Any]], branche: str
+    ) -> bool:
+        """Une correction ne repart pas au hasard apres une CI rouge.
+
+        Cherche le dernier `etat_ci` de la branche. S'il est rouge, un
+        `ci_diagnostiquer` reussi sur la meme reference doit suivre avant
+        toute nouvelle ecriture distante.
+        """
+        if not branche:
+            return False
+        index_rouge: Optional[int] = None
+        for index, acte in enumerate(rendu):
+            if not acte.get("ok") or acte.get("action") != "etat_ci":
+                continue
+            if (acte.get("champs") or {}).get("REF") != branche:
+                continue
+            sortie = str(acte.get("sortie") or "")
+            if re.search(r"(?m)^resume:\s*echec\s*$", sortie):
+                index_rouge = index
+            elif re.search(r"(?m)^resume:\s*succes\s*$", sortie):
+                index_rouge = None
+        if index_rouge is None:
+            return False
+        return not any(
+            acte.get("ok")
+            and acte.get("action") == "ci_diagnostiquer"
+            and (acte.get("champs") or {}).get("REF") == branche
+            for acte in rendu[index_rouge + 1:]
+        )
+
+    @staticmethod
+    def _branches_ci_non_closes(
+        rendu: List[Dict[str, Any]]
+    ) -> List[str]:
+        """Branches dont un cycle CI observe n'est pas revenu au vert.
+
+        La CI n'est pas rendue obligatoire dans un depot qui n'en a pas. Mais
+        des que Dioumtoukay l'a observee sur une branche qu'il modifie, il ne
+        peut plus ignorer un rouge/en-cours, ni corriger apres un rouge puis
+        conclure sans relancer la CI.
+        """
+        branches: Dict[str, Dict[str, Any]] = {}
+        for index, acte in enumerate(rendu):
+            if not acte.get("ok") or acte.get("action") not in {
+                "github_ecrire", "github_remplacer",
+            }:
+                continue
+            branche = str((acte.get("champs") or {}).get("BRANCHE") or "")
+            if branche:
+                info = branches.setdefault(
+                    branche,
+                    {"derniere_mutation": index, "ci_vu": False, "ci_apres": []},
+                )
+                info["derniere_mutation"] = max(info["derniere_mutation"], index)
+
+        for branche, info in branches.items():
+            for index, acte in enumerate(rendu):
+                if not acte.get("ok") or acte.get("action") != "etat_ci":
+                    continue
+                if (acte.get("champs") or {}).get("REF") != branche:
+                    continue
+                info["ci_vu"] = True
+                if index > info["derniere_mutation"]:
+                    info["ci_apres"].append(acte)
+
+        non_closes: List[str] = []
+        for branche, info in branches.items():
+            if not info["ci_vu"]:
+                continue
+            if not info["ci_apres"]:
+                non_closes.append(branche)
+                continue
+            dernier = info["ci_apres"][-1]
+            sortie = str(dernier.get("sortie") or "")
+            if not re.search(r"(?m)^resume:\s*succes\s*$", sortie):
+                non_closes.append(branche)
+        return non_closes
 
     @staticmethod
     def _journal_pour_modele(journal_du_travail: List[str]) -> str:
