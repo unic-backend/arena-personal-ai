@@ -42,7 +42,7 @@ function ConnectorRow({ def }: { def: ConnectorDef }) {
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate text-[12.5px] font-medium text-zinc-100">{def.name}</span>
+            <span className="truncate text-ui-body-sm font-medium text-zinc-100">{def.name}</span>
             <Lock size={9} className="shrink-0 text-zinc-600" />
             {connected && st.verified && (
               <span title={t('conn.verified')}>
@@ -50,7 +50,7 @@ function ConnectorRow({ def }: { def: ConnectorDef }) {
               </span>
             )}
           </div>
-          <div className="truncate text-[10.5px] text-zinc-500">
+          <div className="truncate text-ui-meta text-zinc-500">
             {connected && st.account ? st.account : fr ? def.descriptionFr : def.description}
           </div>
         </div>
@@ -89,7 +89,7 @@ function ConnectorRow({ def }: { def: ConnectorDef }) {
         ) : (
           <button
             onClick={() => startOAuth(def.id)}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-[10.5px] font-medium text-zinc-200 transition hover:border-accent-500/40 hover:bg-accent-500/10 hover:text-accent-300 active:scale-95"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-ui-meta font-medium text-zinc-200 transition hover:border-accent-500/40 hover:bg-accent-500/10 hover:text-accent-300 active:scale-95"
           >
             <Plug size={10} />
             {t('conn.connect')}
@@ -142,8 +142,8 @@ export function ConnectorsModal() {
                 <Plug size={13} />
               </span>
               <div className="flex-1">
-                <h2 id="connectors-modal-title" className="text-[13.5px] font-medium text-zinc-100">{t('conn.title')}</h2>
-                <div className="font-mono text-[9px] text-zinc-400">
+                <h2 id="connectors-modal-title" className="text-ui-body-sm font-medium text-zinc-100">{t('conn.title')}</h2>
+                <div className="font-mono text-ui-meta text-zinc-400">
                   {connectedN > 0 ? t('conn.count', { n: connectedN }) : t('conn.none')}
                   {' · '}
                   {backend.enabled ? t('conn.routed') : t('conn.localOnly')}
@@ -167,7 +167,7 @@ export function ConnectorsModal() {
                   <section key={cat.id}>
                     <div className="mb-1.5 flex items-center gap-2 px-1">
                       <ChevronRight size={10} className="text-accent-500/70" />
-                      <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-zinc-600">
+                      <span className="font-mono text-ui-meta uppercase tracking-[0.2em] text-zinc-600">
                         {locale === 'fr' ? cat.labelFr : cat.label}
                       </span>
                     </div>
@@ -182,7 +182,7 @@ export function ConnectorsModal() {
             </div>
 
             <div className="border-t border-white/7 px-4 py-2.5">
-              <p className="text-[9.5px] leading-relaxed text-zinc-600">{t('conn.footer')}</p>
+              <p className="text-ui-meta leading-relaxed text-zinc-600">{t('conn.footer')}</p>
             </div>
           </motion.div>
         </>
