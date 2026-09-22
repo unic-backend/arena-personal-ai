@@ -1390,7 +1390,9 @@ class DioumtoukayAgent(BaseAgent):
             terme = champs.get("TEXTE", "")
             if not depot or not terme:
                 return Resultat(False, "Il manque DEPOT (owner/repo) ou TEXTE.")
-            return self._via_github("chercher_code", depot=depot, terme=terme)
+            return self._via_github(
+                "chercher_code", depot=depot, terme=terme,
+                chemin=self._chemin_github(champs.get("CHEMIN", ".")))
         if action.nom == "github_branche_creer":
             depot = champs.get("DEPOT") or self.depot_github_defaut
             nom = champs.get("NOM", "")
@@ -1722,9 +1724,10 @@ class DioumtoukayAgent(BaseAgent):
                     lignes.append("Fichiers modifies non commites :\n" + modifies
                                   if modifies else "Aucun fichier modifie.")
 
-        autour = self.atelier.lister(".")
-        if autour.ok:
-            lignes.append("Ce que contient la racine :\n" + autour.sortie)
+        if not github_distant:
+            autour = self.atelier.lister(".")
+            if autour.ok:
+                lignes.append("Ce que contient la racine :\n" + autour.sortie)
 
         # Mission ARENA x OPENCONTEXT (10/09/2026) : avant, seuls la racine,
         # la branche et le contenu du dossier etaient mesures ici -- jamais
