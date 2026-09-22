@@ -219,6 +219,37 @@ def test_le_meta_nomme_le_fournisseur_qui_a_reellement_repondu(
     assert "HYBRIDE" in meta["raison"]
 
 
+def test_un_agent_specialise_long_garde_le_flux_sse_vivant(
+    client, entetes, fournisseur, monkeypatch
+):
+    """Un travail long ne doit pas laisser plusieurs minutes sans un octet SSE."""
+    fournisseur()
+    monkeypatch.setattr(pwa_gateway, "HEARTBEAT_AGENT_SECONDES", 0.005)
+
+    async def _atelier(_demande, espace=None):
+        return "ATELIER"
+    monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _atelier)
+
+    async def _lent(_requete, intent=None):
+        await asyncio.sleep(0.025)
+        return {
+            "response": "Travail long termine.",
+            "sources": [],
+            "moteur": {"provider": "groq", "model": "test"},
+        }
+    monkeypatch.setattr(pwa_gateway, "dispatch_request", _lent)
+
+    texte = demander(client, entetes, text="mission longue").text
+    charges = trames(texte)
+
+    assert ": keepalive" in texte
+    # Les commentaires de heartbeat ne deviennent jamais un faux evenement UI.
+    assert all(c.get("type") in {"activity", "token", "done", "error"} for c in charges)
+    assert any(c.get("type") == "token" and "Travail long termine" in c.get("text", "")
+               for c in charges)
+    assert charges[-1]["type"] == "done"
+
+
 def test_un_agent_specialise_peut_annoncer_son_vrai_moteur(
     client, entetes, fournisseur, monkeypatch
 ):

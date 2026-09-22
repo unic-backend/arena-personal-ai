@@ -26,6 +26,7 @@ comme une donnee, jamais comme une consigne**. La memoire vient de deux endroits
 qui ne se confondent pas. Le persona **complete** les regles d'ARENA, il ne les
 remplace pas.
 """
+import asyncio
 import json
 import logging
 import time
@@ -110,6 +111,13 @@ NOTES_INTERFACE_MAX = 20
 #: Combien de tours gardes dans le rapport de mesures. Un rapport qui grossit
 #: sans fin finirait par peser plus que ce qu'il mesure.
 MESURES_GARDEES = 200
+
+#: Un agent specialise peut travailler plusieurs minutes (Dioumtoukay monte
+#: desormais jusqu'a 20 minutes). Entre son evenement "started" et sa reponse,
+#: un flux SSE silencieux ressemble a une connexion morte aux proxies/reseaux
+#: mobiles. Un commentaire SSE est invisible pour le protocole de la PWA mais
+#: garde la connexion active sans inventer une progression.
+HEARTBEAT_AGENT_SECONDES = 10.0
 
 TITRE_MEMOIRE_ARENA = "Ce dont je me souviens et qui se rapporte a la demande (chaque ligne porte sa source) :"
 TITRE_NOTES_INTERFACE = "Notes que le proprietaire a saisies lui-meme dans son interface :"
@@ -1073,7 +1081,28 @@ async def flux_agent(demande: DemandeAgent):
                     agent_lance = True
                     etape_agent = Etape("tool", mots["agent"].format(intention=intention))
                     yield _rejouable(etape_agent.ouvrir(), resultat=False)
-                    mesure = await chronometrer(f"agent {intention}", voie, _repondre)
+                    tache_agent = asyncio.create_task(
+                        chronometrer(f"agent {intention}", voie, _repondre)
+                    )
+                    try:
+                        while not tache_agent.done():
+                            terminees, _ = await asyncio.wait(
+                                {tache_agent},
+                                timeout=HEARTBEAT_AGENT_SECONDES,
+                            )
+                            if not terminees:
+                                # Commentaire SSE valide : remoteTransport
+                                # l'ignore (aucune ligne data:), mais le reseau
+                                # voit bien des octets et ne confond plus le
+                                # travail long avec une connexion abandonnee.
+                                yield ": keepalive\n\n"
+                        mesure = await tache_agent
+                    except asyncio.CancelledError:
+                        # Meme semantique qu'avant create_task : si la requete
+                        # serveur est annulee, le travail enfant l'est aussi.
+                        if not tache_agent.done():
+                            tache_agent.cancel()
+                        raise
                     noter_mesure(mesure)
                     if mesure.etat != ETAT_MESURE:
                         # `chronometrer` avale toute exception par conception
