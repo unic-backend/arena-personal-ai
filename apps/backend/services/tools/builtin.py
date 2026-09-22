@@ -258,6 +258,54 @@ class KnowledgeExplorer:
         )
 
 
+class TxtaiCompareArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    query: str = Field(min_length=1, max_length=500)
+    limit: int = Field(default=5, ge=1, le=10)
+
+
+class TxtaiCompareTool:
+    """Pont explicite vers le dernier connecteur dormant de l'inventaire."""
+
+    def __init__(self, registre: Any, vault: KnowledgeVault | None = None):
+        self.registre = registre
+        self.vault = vault or KnowledgeVault()
+
+    @staticmethod
+    def _demande_explicite(message: str) -> bool:
+        texte = (message or "").casefold()
+        return (
+            "txtai" in texte
+            or ("compar" in texte and "semant" in texte)
+            or ("benchmark" in texte and ("search" in texte or "recherche" in texte))
+            or ("banc d'essai" in texte and ("search" in texte or "recherche" in texte))
+        )
+
+    async def __call__(
+        self,
+        args: TxtaiCompareArgs,
+        contexte: dict[str, Any],
+    ) -> ToolResult:
+        # Le modele ne peut pas allumer txtai de lui-meme sur une question
+        # ordinaire. DEC-0051 reste donc vraie : usage explicite uniquement.
+        if not self._demande_explicite(str(contexte.get("message") or "")):
+            return ToolResult(ok=False, error="txtai_requires_explicit_user_request")
+
+        resultat = await self.vault.compare_txtai(
+            args.query,
+            self.registre,
+            limit=args.limit,
+        )
+        statut = str(resultat.get("status") or "UNKNOWN")
+        if statut != "SUCCESS":
+            return ToolResult(
+                ok=False,
+                error=f"txtai_{statut.casefold()}",
+                data=resultat,
+            )
+        return ToolResult(ok=True, data=resultat)
+
+
 class AttachmentArgs(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     attachment_id: str = Field(min_length=8, max_length=128)
@@ -433,6 +481,18 @@ def builtin_registry(client: httpx.AsyncClient, tavily_key: str = "",
         "Lit une plage de lignes d'une page precise du Knowledge Vault. Chemins hors vault refuses.",
         KnowledgeReadArgs, knowledge_explorer.read_page, timeout=3,
     ))
+
+    if registre is not None:
+        registry.register(Tool(
+            "txtai_compare",
+            "Compare explicitement txtai au retrieval hybride du Knowledge Vault. "
+            "A utiliser seulement si le proprietaire demande txtai ou une comparaison "
+            "des moteurs semantiques ; jamais pour une recherche ordinaire.",
+            TxtaiCompareArgs,
+            TxtaiCompareTool(registre, knowledge_vault),
+            timeout=20,
+            contextual=True,
+        ))
 
     media = AutonomousMediaTools(
         pieces_jointes=pieces_jointes, vision_agent=vision_agent,
