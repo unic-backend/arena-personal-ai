@@ -209,10 +209,10 @@ export function PersonaModal() {
                 <UserCheck size={14} />
               </span>
               <div className="flex-1">
-                <h2 id="persona-modal-title" className="text-[13.5px] font-medium text-zinc-100">
+                <h2 id="persona-modal-title" className="text-ui-body-sm font-medium text-zinc-100">
                   {t('persona.title')}
                 </h2>
-                <div className="font-mono text-[9px] text-zinc-400">
+                <div className="font-mono text-ui-meta text-zinc-400">
                   {t('persona.subtitle')}
                 </div>
               </div>
@@ -231,7 +231,7 @@ export function PersonaModal() {
               {/* Quick Presets */}
               <div>
                 <div className="mb-2 flex items-center justify-between px-0.5">
-                  <span className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.18em] text-zinc-500">
+                  <span className="flex items-center gap-1 font-mono text-ui-meta uppercase tracking-[0.18em] text-zinc-500">
                     <Wand2 size={10} className="text-accent-400" />
                     {t('persona.presets')}
                   </span>
@@ -247,7 +247,7 @@ export function PersonaModal() {
                       <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-white/8 bg-white/4">
                         {preset.icon}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-zinc-200">
+                      <span className="min-w-0 flex-1 truncate text-ui-meta font-medium text-zinc-200">
                         {fr ? preset.nameFr : preset.name}
                       </span>
                     </button>
@@ -257,7 +257,7 @@ export function PersonaModal() {
 
               {/* User Identity */}
               <div className="space-y-2">
-                <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-zinc-500">
+                <span className="font-mono text-ui-meta uppercase tracking-[0.18em] text-zinc-500">
                   {t('persona.identity')}
                 </span>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -268,7 +268,7 @@ export function PersonaModal() {
                       value={userName}
                       onChange={(e) => setUserName(e.target.value)}
                       placeholder={t('persona.namePh')}
-                      className="w-full rounded-lg border border-white/8 bg-ink-950/60 py-1.5 pl-8 pr-2.5 text-[11.5px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-accent-500/50"
+                      className="w-full rounded-lg border border-white/8 bg-ink-950/60 py-1.5 pl-8 pr-2.5 text-ui-meta text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-accent-500/50"
                     />
                   </div>
                   <div className="relative flex items-center">
@@ -278,7 +278,7 @@ export function PersonaModal() {
                       value={userRole}
                       onChange={(e) => setUserRole(e.target.value)}
                       placeholder={t('persona.rolePh')}
-                      className="w-full rounded-lg border border-white/8 bg-ink-950/60 py-1.5 pl-8 pr-2.5 text-[11.5px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-accent-500/50"
+                      className="w-full rounded-lg border border-white/8 bg-ink-950/60 py-1.5 pl-8 pr-2.5 text-ui-meta text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-accent-500/50"
                     />
                   </div>
                 </div>
@@ -286,7 +286,7 @@ export function PersonaModal() {
 
               {/* Preferred Tone */}
               <div>
-                <span className="mb-2 block font-mono text-[9px] uppercase tracking-[0.18em] text-zinc-500">
+                <span className="mb-2 block font-mono text-ui-meta uppercase tracking-[0.18em] text-zinc-500">
                   {t('persona.tone')}
                 </span>
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
@@ -311,8 +311,8 @@ export function PersonaModal() {
                           )}
                         />
                         <div className="min-w-0 flex-1">
-                          <div className="text-[11.5px] font-medium leading-tight">{opt.label}</div>
-                          <div className="truncate text-[9px] text-zinc-500">{opt.desc}</div>
+                          <div className="text-ui-meta font-medium leading-tight">{opt.label}</div>
+                          <div className="truncate text-ui-meta text-zinc-500">{opt.desc}</div>
                         </div>
                       </button>
                     );
@@ -322,7 +322,7 @@ export function PersonaModal() {
 
               {/* Response Format Preference */}
               <div>
-                <span className="mb-2 block font-mono text-[9px] uppercase tracking-[0.18em] text-zinc-500">
+                <span className="mb-2 block font-mono text-ui-meta uppercase tracking-[0.18em] text-zinc-500">
                   {t('persona.format')}
                 </span>
                 <div className="flex gap-1.5">
@@ -334,7 +334,7 @@ export function PersonaModal() {
                         type="button"
                         onClick={() => setResponseFormat(opt.id)}
                         className={cn(
-                          'flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-1.5 text-[10.5px] font-medium transition active:scale-95',
+                          'flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-1.5 text-ui-meta font-medium transition active:scale-95',
                           isSelected
                             ? 'border-accent-500/40 bg-accent-500/12 text-accent-300'
                             : 'border-white/8 bg-white/[0.02] text-zinc-400 hover:border-white/15 hover:text-zinc-200',
@@ -351,7 +351,7 @@ export function PersonaModal() {
               {/* Custom Freeform Instructions */}
               <div>
                 <div className="mb-1.5 flex items-center justify-between">
-                  <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-zinc-500">
+                  <span className="font-mono text-ui-meta uppercase tracking-[0.18em] text-zinc-500">
                     {t('persona.instructions')}
                   </span>
                   <span className="font-mono text-[8.5px] text-zinc-600">
@@ -363,7 +363,7 @@ export function PersonaModal() {
                   onChange={(e) => setCustomInstructions(e.target.value.slice(0, 1000))}
                   rows={4}
                   placeholder={t('persona.instructionsPh')}
-                  className="w-full resize-none rounded-xl border border-white/8 bg-ink-950/60 p-2.5 text-[11.5px] leading-relaxed text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-accent-500/50 scroll-slim"
+                  className="w-full resize-none rounded-xl border border-white/8 bg-ink-950/60 p-2.5 text-ui-meta leading-relaxed text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-accent-500/50 scroll-slim"
                 />
               </div>
             </div>
@@ -373,7 +373,7 @@ export function PersonaModal() {
               <button
                 type="button"
                 onClick={handleReset}
-                className="inline-flex items-center gap-1 text-[10.5px] text-zinc-500 transition hover:text-zinc-300"
+                className="inline-flex items-center gap-1 text-ui-meta text-zinc-500 transition hover:text-zinc-300"
               >
                 <RotateCcw size={11} />
                 {t('persona.reset')}
@@ -383,14 +383,14 @@ export function PersonaModal() {
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="rounded-lg px-3 py-1.5 text-[11.5px] font-medium text-zinc-400 transition hover:bg-white/5 hover:text-zinc-200"
+                  className="rounded-lg px-3 py-1.5 text-ui-meta font-medium text-zinc-400 transition hover:bg-white/5 hover:text-zinc-200"
                 >
                   {t('msg.cancel')}
                 </button>
                 <button
                   type="button"
                   onClick={handleSave}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-accent-500 px-3.5 py-1.5 text-[11.5px] font-medium text-ink-950 transition hover:bg-accent-400 active:scale-95"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-accent-500 px-3.5 py-1.5 text-ui-meta font-medium text-ink-950 transition hover:bg-accent-400 active:scale-95"
                 >
                   {savedBadge ? <Check size={13} strokeWidth={2.5} /> : <Sparkles size={13} />}
                   {savedBadge ? t('msg.copied') : t('persona.save')}
