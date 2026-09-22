@@ -288,6 +288,16 @@ class TestEtatCI:
 
 # --- La garde qui compte le plus --------------------------------------------------
 
+def test_une_ecriture_github_reussie_compte_comme_fichier_modifie():
+    rendu = [{
+        "action": "github_ecrire",
+        "ok": True,
+        "champs": {"CHEMIN": "apps/backend/config.py"},
+    }]
+
+    assert DioumtoukayAgent.fichiers_touches(rendu) == ["apps/backend/config.py"]
+
+
 def test_ouvrir_pr_et_etat_ci_ne_modifient_rien_dans_le_rapport():
     """Une PR en attente de confirmation n'a encore RIEN change sur le disque
     ni sur GitHub : elle ne doit jamais apparaitre parmi les fichiers modifies."""
