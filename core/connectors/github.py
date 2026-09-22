@@ -30,6 +30,7 @@ import logging
 import os
 import time
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -103,6 +104,13 @@ class ConnecteurGitHub(Connecteur):
             "lister": Capacite(
                 nom="lister", action="read",
                 description="Liste un dossier du depot a une reference donnee.",
+                ecriture=False),
+            "comparer": Capacite(
+                nom="comparer", action="read",
+                description=(
+                    "Compare deux references GitHub et rend l'ecart, les commits "
+                    "et les fichiers modifies."
+                ),
                 ecriture=False),
             "creer_branche": Capacite(
                 nom="creer_branche", action="write",
@@ -251,6 +259,88 @@ class ConnecteurGitHub(Connecteur):
             entrees=entrees,
             chemin=propre,
             ref=ref,
+        )
+
+    # -- comparer -------------------------------------------------------------------
+
+    def _faire_comparer(
+        self,
+        depot: str = "",
+        base: str = "main",
+        tete: str = "",
+        **_: Any,
+    ) -> ResultatAction:
+        """Compare deux references distantes sans checkout local.
+
+        GitHub renvoie a la fois l'avance/retard et les fichiers modifies. C'est
+        la preuve qui manquait a Dioumtoukay sur Railway : relire un seul fichier
+        pouvait verifier son contenu, mais pas montrer l'ensemble du changement
+        qu'une PR allait proposer.
+        """
+        if not depot or not base or not tete:
+            return echec(
+                "comparer", self.nom,
+                "depot, base et tete sont requis."
+            )
+
+        base_url = quote(base, safe="")
+        tete_url = quote(tete, safe="")
+        try:
+            reponse = self._requete(
+                "GET", f"/repos/{depot}/compare/{base_url}...{tete_url}"
+            )
+        except httpx.HTTPError as erreur:
+            return echec("comparer", depot, f"Requete GitHub en echec : {erreur}")
+
+        if reponse.status_code != 200:
+            return echec(
+                "comparer", depot,
+                f"GitHub repond {reponse.status_code} pour {base}...{tete}."
+            )
+
+        corps = reponse.json()
+        fichiers = []
+        for fichier in corps.get("files", []) or []:
+            patch = str(fichier.get("patch") or "")
+            # Une preuve lisible, mais pas un mur de diff : le patch complet
+            # reste chez GitHub. Les 4 000 premiers caracteres suffisent au
+            # modele pour voir la nature du changement sans exploser le prompt.
+            if len(patch) > 4_000:
+                patch = patch[:4_000] + "\n[... diff tronque ...]"
+            fichiers.append({
+                "chemin": fichier.get("filename", ""),
+                "statut": fichier.get("status", ""),
+                "ajouts": fichier.get("additions", 0),
+                "suppressions": fichier.get("deletions", 0),
+                "changements": fichier.get("changes", 0),
+                "patch": patch,
+            })
+
+        commits = [
+            {
+                "sha": str(item.get("sha", ""))[:12],
+                "message": ((item.get("commit") or {}).get("message") or "").splitlines()[0],
+            }
+            for item in (corps.get("commits") or [])
+        ]
+        statut = str(corps.get("status") or "inconnu")
+        ahead = int(corps.get("ahead_by") or 0)
+        behind = int(corps.get("behind_by") or 0)
+        total = int(corps.get("total_commits") or len(commits))
+
+        return succes(
+            "comparer", depot,
+            f"{base}...{tete} : {statut}, {ahead} en avance, {behind} en retard, "
+            f"{len(fichiers)} fichier(s) modifies.",
+            preuve=str((corps.get("head_commit") or {}).get("sha") or f"{base}...{tete}"),
+            base=base,
+            tete=tete,
+            statut=statut,
+            ahead_by=ahead,
+            behind_by=behind,
+            total_commits=total,
+            commits=commits,
+            fichiers=fichiers,
         )
 
     # -- ecrire_fichier -------------------------------------------------------------
