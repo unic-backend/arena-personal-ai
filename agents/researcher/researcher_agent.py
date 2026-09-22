@@ -83,7 +83,7 @@ class DeepResearcherAgent(BaseAgent):
 
         knowledge_text = "\n".join(
             f"[KV{i + 1}] {hit.title} ({hit.path}) sources={', '.join(hit.sources) or hit.path}\n"
-            f"{wrap(hit.snippet, TrustLevel.DOCUMENT, f'knowledge_vault:{hit.path}').text}\n"
+            f"{wrap(hit.snippet, TrustLevel.RETRIEVED, f'knowledge_vault:{hit.path}').text}\n"
             for i, hit in enumerate(knowledge_hits)
         )
 
