@@ -132,6 +132,36 @@ def test_chercher_code(monkeypatch):
     assert len(resultat.detail["occurrences"]) == 2
 
 
+# --- lister : explorer le depot sans checkout local --------------------------------
+
+def test_lister_un_dossier_distant(monkeypatch):
+    monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+    c = connecteur_pret(lambda r: json_reponse(200, [
+        {"name": "api", "path": "apps/api", "type": "dir", "sha": "d1", "size": 0},
+        {"name": "main.py", "path": "apps/main.py", "type": "file", "sha": "f1", "size": 42},
+    ]))
+
+    resultat = c.executer("lister", depot="o/r", chemin="apps", ref="fix-mobile")
+
+    assert resultat.statut is Statut.SUCCES
+    assert [e["chemin"] for e in resultat.detail["entrees"]] == [
+        "apps/api", "apps/main.py",
+    ]
+    assert resultat.detail["ref"] == "fix-mobile"
+
+
+def test_lister_refuse_un_fichier(monkeypatch):
+    monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+    c = connecteur_pret(lambda r: json_reponse(200, {
+        "name": "a.py", "path": "a.py", "type": "file", "sha": "x",
+    }))
+
+    resultat = c.executer("lister", depot="o/r", chemin="a.py")
+
+    assert resultat.statut is Statut.ECHEC
+    assert "pas un dossier" in resultat.message
+
+
 # --- ecrire_fichier : edition distante sans ecraser un changement concurrent -------
 
 class TestEcrireFichier:
@@ -347,10 +377,10 @@ def test_commentaires_pr_fusionne_revue_et_discussion(monkeypatch):
 
 # --- Capacités déclarées -------------------------------------------------------------
 
-def test_les_sept_capacites_sont_declarees():
+def test_les_huit_capacites_sont_declarees():
     c = ConnecteurGitHub()
     noms = set(c.capacites())
-    assert noms == {"lire_fichier", "chercher_code", "creer_branche",
+    assert noms == {"lire_fichier", "chercher_code", "lister", "creer_branche",
                     "ecrire_fichier", "creer_pull_request", "etat_ci",
                     "commentaires_pr"}
 
