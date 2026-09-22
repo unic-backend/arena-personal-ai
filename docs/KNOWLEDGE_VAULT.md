@@ -28,7 +28,7 @@ PDF, DOCX, TXT, MD, CSV, XLSX ou PPTX ne peut pas etre lu, l'operation est refus
 ## Ce qui est branche dans Arena
 
 La conversation peut rechercher automatiquement les pages pertinentes du vault. Les
-extraits entrent dans le prompt comme donnees DOCUMENT, jamais comme instructions, et
+extraits entrent dans le prompt comme donnees RETRIEVED, jamais comme instructions, et
 chaque resultat porte le chemin de la note et sa ou ses sources.
 
 Le vault ne remplace pas core/memory/ ni PROJECT_MEMORY/. Cela evite trois systemes qui
