@@ -731,6 +731,7 @@ dioumtoukay_agent = DioumtoukayAgent(
     memoire_longue=memoire_personnelle,
     analyste=repo_engineer, chercheur_de_bug=swe_agent,
     connecteur_github=registre.obtenir("github"),
+    depot_github_defaut=os.getenv("USMAN_GITHUB_DEFAULT_REPO", "").strip() or None,
     connecteur_file_conversion=registre.obtenir("file_conversion"),
     connecteur_file_organization=registre.obtenir("file_organization"),
     connecteur_pdf=registre.obtenir("pdf"),

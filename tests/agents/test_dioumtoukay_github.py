@@ -42,9 +42,152 @@ def bac(tmp_path):
     return tmp_path
 
 
-def agent(bac, reponses, connecteur_github=None):
-    return DioumtoukayAgent(provider=ModeleScripte(*reponses), atelier=Atelier(racine=bac),
-                            connecteur_github=connecteur_github)
+def agent(bac, reponses, connecteur_github=None, depot_github_defaut=None):
+    return DioumtoukayAgent(
+        provider=ModeleScripte(*reponses),
+        atelier=Atelier(racine=bac),
+        connecteur_github=connecteur_github,
+        depot_github_defaut=depot_github_defaut,
+    )
+
+
+# --- espace GitHub distant : le PC peut etre eteint -------------------------------
+
+class TestEspaceGitHubDistant:
+    def test_reperes_disent_qu_un_serveur_sans_git_doit_utiliser_github(self, bac):
+        a = agent(
+            bac,
+            [],
+            connecteur_github=FauxConnecteurGitHub(
+                succes("x", "x", "ok", preuve="x")
+            ),
+            depot_github_defaut="unic-backend/arena-personal-ai",
+        )
+
+        reperes = a._reperes("corrige le projet")
+
+        assert "AUCUN checkout git local" in reperes
+        assert "github_branche_creer" in reperes
+        assert "unic-backend/arena-personal-ai" in reperes
+
+    @pytest.mark.asyncio
+    async def test_liste_le_depot_distant_par_defaut(self, bac):
+        connecteur = FauxConnecteurGitHub(succes(
+            "lister", "unic-backend/arena-personal-ai",
+            "2 entree(s) dans apps.", preuve="2",
+            entrees=[{"chemin": "apps/backend"}, {"chemin": "apps/pwa"}],
+        ))
+        a = agent(
+            bac,
+            [
+                "ACTION: github_lister\nREF: main\nCHEMIN: apps",
+                "ACTION: terminer\nCONTENU:\nfini\nFIN",
+            ],
+            connecteur_github=connecteur,
+            depot_github_defaut="unic-backend/arena-personal-ai",
+        )
+
+        await a.run("explore le depot")
+
+        assert connecteur.appels[0] == (
+            "lister",
+            {
+                "depot": "unic-backend/arena-personal-ai",
+                "chemin": "apps",
+                "ref": "main",
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_lit_puis_ecrit_sur_le_depot_par_defaut(self, bac):
+        connecteur = FauxConnecteurGitHub(succes(
+            "ecrire_fichier", "unic-backend/arena-personal-ai",
+            "apps/pwa/src/App.tsx mis a jour sur fix-mobile.",
+            preuve="commit-2", sha="blob-2",
+        ))
+        a = agent(
+            bac,
+            [
+                "ACTION: github_lire\nREF: fix-mobile\nCHEMIN: apps/pwa/src/App.tsx",
+                "ACTION: github_ecrire\nBRANCHE: fix-mobile\n"
+                "CHEMIN: apps/pwa/src/App.tsx\nSHA: blob-1\n"
+                "MESSAGE: fix: mobile\nCONTENU:\nnouveau contenu\nFIN",
+                "ACTION: terminer\nCONTENU:\nfini\nFIN",
+            ],
+            connecteur_github=connecteur,
+            depot_github_defaut="unic-backend/arena-personal-ai",
+        )
+
+        resultat = await a.run("corrige le frontend depuis mon telephone")
+
+        assert resultat["status"] == "success"
+        assert connecteur.appels[0] == (
+            "lire_fichier",
+            {
+                "depot": "unic-backend/arena-personal-ai",
+                "chemin": "apps/pwa/src/App.tsx",
+                "ref": "fix-mobile",
+            },
+        )
+        assert connecteur.appels[1] == (
+            "ecrire_fichier",
+            {
+                "depot": "unic-backend/arena-personal-ai",
+                "chemin": "apps/pwa/src/App.tsx",
+                "branche": "fix-mobile",
+                "contenu": "nouveau contenu",
+                "sha_attendu": "blob-1",
+                "message": "fix: mobile",
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_cree_une_branche_distante_sans_depot_repete(self, bac):
+        connecteur = FauxConnecteurGitHub(succes(
+            "creer_branche", "unic-backend/arena-personal-ai",
+            "Branche fix-mobile creee.", preuve="abc",
+        ))
+        a = agent(
+            bac,
+            [
+                "ACTION: github_branche_creer\nNOM: fix-mobile\nDEPUIS: main",
+                "ACTION: terminer\nCONTENU:\nfini\nFIN",
+            ],
+            connecteur_github=connecteur,
+            depot_github_defaut="unic-backend/arena-personal-ai",
+        )
+
+        await a.run("cree une branche distante")
+
+        assert connecteur.appels[0] == (
+            "creer_branche",
+            {
+                "depot": "unic-backend/arena-personal-ai",
+                "nom_branche": "fix-mobile",
+                "depuis": "main",
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_ecriture_distante_exige_branche_et_chemin(self, bac):
+        connecteur = FauxConnecteurGitHub(succes(
+            "x", "x", "ne doit jamais etre lu", preuve="x",
+        ))
+        a = agent(
+            bac,
+            [
+                "ACTION: github_ecrire\nCHEMIN: a.py\nCONTENU:\nx\nFIN",
+                "ACTION: terminer\nCONTENU:\nfini\nFIN",
+            ],
+            connecteur_github=connecteur,
+            depot_github_defaut="o/r",
+        )
+
+        resultat = await a.run("modifie le fichier")
+
+        assert connecteur.appels == []
+        assert resultat["actions"][0]["ok"] is False
+        assert "BRANCHE" in resultat["actions"][0]["message"]
 
 
 # --- ouvrir_pr ------------------------------------------------------------------
@@ -144,6 +287,16 @@ class TestEtatCI:
 
 
 # --- La garde qui compte le plus --------------------------------------------------
+
+def test_une_ecriture_github_reussie_compte_comme_fichier_modifie():
+    rendu = [{
+        "action": "github_ecrire",
+        "ok": True,
+        "champs": {"CHEMIN": "apps/backend/config.py"},
+    }]
+
+    assert DioumtoukayAgent.fichiers_touches(rendu) == ["apps/backend/config.py"]
+
 
 def test_ouvrir_pr_et_etat_ci_ne_modifient_rien_dans_le_rapport():
     """Une PR en attente de confirmation n'a encore RIEN change sur le disque

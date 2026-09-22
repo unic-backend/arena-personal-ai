@@ -25,6 +25,7 @@ second mécanisme d'autorisation ici n'ajouterait rien.
 """
 from __future__ import annotations
 
+import base64
 import logging
 import os
 import time
@@ -99,9 +100,20 @@ class ConnecteurGitHub(Connecteur):
                 nom="chercher_code", action="read",
                 description="Cherche un terme dans le code du depot.",
                 ecriture=False),
+            "lister": Capacite(
+                nom="lister", action="read",
+                description="Liste un dossier du depot a une reference donnee.",
+                ecriture=False),
             "creer_branche": Capacite(
                 nom="creer_branche", action="write",
                 description="Cree une branche a partir d'une reference existante.",
+                ecriture=True),
+            "ecrire_fichier": Capacite(
+                nom="ecrire_fichier", action="write",
+                description=(
+                    "Cree ou met a jour un fichier sur une branche GitHub. "
+                    "Un fichier existant exige son SHA lu auparavant."
+                ),
                 ecriture=True),
             "creer_pull_request": Capacite(
                 nom="creer_pull_request", action="create_pr",
@@ -188,10 +200,165 @@ class ConnecteurGitHub(Connecteur):
         corps = reponse.json()
         if isinstance(corps, list):
             return echec("lire_fichier", depot, f"{chemin} est un dossier, pas un fichier.")
-        import base64
         contenu = base64.b64decode(corps.get("content", "")).decode("utf-8", errors="replace")
         return succes("lire_fichier", depot, f"{chemin} lu ({len(contenu)} caracteres).",
-                      preuve=corps.get("sha", ""), contenu=contenu)
+                      preuve=corps.get("sha", ""), contenu=contenu,
+                      sha=corps.get("sha", ""), ref=ref)
+
+    # -- lister ---------------------------------------------------------------------
+
+    def _faire_lister(self, depot: str = "", chemin: str = "",
+                      ref: str = "", **_: Any) -> ResultatAction:
+        if not depot:
+            return echec("lister", self.nom, "depot (owner/repo) est requis.")
+        propre = chemin.strip("/")
+        suffixe = f"/{propre}" if propre else ""
+        params = {"ref": ref} if ref else {}
+        try:
+            reponse = self._requete(
+                "GET", f"/repos/{depot}/contents{suffixe}", params=params
+            )
+        except httpx.HTTPError as erreur:
+            return echec("lister", depot, f"Requete GitHub en echec : {erreur}")
+
+        if reponse.status_code == 404:
+            cible = propre or "/"
+            return echec("lister", depot, f"Dossier introuvable : {cible}")
+        if reponse.status_code != 200:
+            return echec("lister", depot, f"GitHub repond {reponse.status_code}.")
+
+        corps = reponse.json()
+        if not isinstance(corps, list):
+            return echec(
+                "lister", depot,
+                f"{propre or '/'} est un fichier, pas un dossier."
+            )
+
+        entrees = [
+            {
+                "nom": item.get("name", ""),
+                "chemin": item.get("path", ""),
+                "type": item.get("type", ""),
+                "sha": item.get("sha", ""),
+                "taille": item.get("size", 0),
+            }
+            for item in corps
+        ]
+        return succes(
+            "lister", depot,
+            f"{len(entrees)} entree(s) dans {propre or '/'}.",
+            preuve=str(len(entrees)),
+            entrees=entrees,
+            chemin=propre,
+            ref=ref,
+        )
+
+    # -- ecrire_fichier -------------------------------------------------------------
+
+    def _faire_ecrire_fichier(
+        self,
+        depot: str = "",
+        chemin: str = "",
+        branche: str = "",
+        contenu: str = "",
+        sha_attendu: str = "",
+        message: str = "",
+        **_: Any,
+    ) -> ResultatAction:
+        """Cree ou met a jour un fichier via l API Contents de GitHub.
+
+        Pour un fichier EXISTANT, sha_attendu est obligatoire et doit etre
+        exactement le SHA observe par lire_fichier. C est l equivalent
+        distant de la regle de Dioumtoukay : lire avant de modifier.
+        Quelqu un qui pousse entre la lecture et l ecriture gagne : cette
+        ecriture est refusee au lieu d ecraser son travail.
+
+        Un fichier absent peut etre cree sans SHA. La branche est obligatoire :
+        ce connecteur n ecrit jamais implicitement sur la branche par defaut.
+        """
+        if not depot or not chemin or not branche:
+            return echec(
+                "ecrire_fichier", self.nom,
+                "depot, chemin et branche sont requis."
+            )
+
+        try:
+            actuel = self._requete(
+                "GET", f"/repos/{depot}/contents/{chemin}",
+                params={"ref": branche},
+            )
+        except httpx.HTTPError as erreur:
+            return echec("ecrire_fichier", depot, f"Requete GitHub en echec : {erreur}")
+
+        sha_actuel = ""
+        if actuel.status_code == 200:
+            corps_actuel = actuel.json()
+            if isinstance(corps_actuel, list):
+                return echec("ecrire_fichier", depot, f"{chemin} est un dossier, pas un fichier.")
+            sha_actuel = str(corps_actuel.get("sha", ""))
+            if not sha_attendu:
+                return echec(
+                    "ecrire_fichier", depot,
+                    f"{chemin} existe deja : lis-le d abord et fournis son SHA."
+                )
+            if sha_attendu != sha_actuel:
+                return echec(
+                    "ecrire_fichier", depot,
+                    f"{chemin} a change depuis sa lecture : SHA attendu "
+                    f"{sha_attendu}, SHA actuel {sha_actuel}. Relis le fichier avant d ecrire."
+                )
+        elif actuel.status_code == 404 and sha_attendu:
+            return echec(
+                "ecrire_fichier", depot,
+                f"{chemin} a disparu depuis sa lecture (SHA attendu {sha_attendu}). "
+                "Relis le dossier avant d ecrire."
+            )
+        elif actuel.status_code != 404:
+            return echec(
+                "ecrire_fichier", depot,
+                f"Impossible de verifier {chemin} avant ecriture : GitHub repond "
+                f"{actuel.status_code}."
+            )
+
+        corps = {
+            "message": message.strip() or f"chore: update {chemin}",
+            "content": base64.b64encode(contenu.encode("utf-8")).decode("ascii"),
+            "branch": branche,
+        }
+        if sha_actuel:
+            corps["sha"] = sha_actuel
+
+        try:
+            reponse = self._requete(
+                "PUT", f"/repos/{depot}/contents/{chemin}", json=corps
+            )
+        except httpx.HTTPError as erreur:
+            return echec("ecrire_fichier", depot, f"Requete GitHub en echec : {erreur}")
+
+        if reponse.status_code not in (200, 201):
+            try:
+                detail = reponse.json().get("message", "")
+            except ValueError:
+                detail = reponse.text
+            return echec(
+                "ecrire_fichier", depot,
+                f"GitHub refuse l ecriture ({reponse.status_code}) : {detail}"
+            )
+
+        resultat = reponse.json()
+        commit_sha = str((resultat.get("commit") or {}).get("sha", ""))
+        fichier_sha = str((resultat.get("content") or {}).get("sha", ""))
+        verbe = "cree" if reponse.status_code == 201 else "mis a jour"
+        return succes(
+            "ecrire_fichier", depot,
+            f"{chemin} {verbe} sur {branche}.",
+            preuve=commit_sha or fichier_sha,
+            chemin=chemin,
+            branche=branche,
+            commit_sha=commit_sha,
+            sha=fichier_sha,
+            url=(resultat.get("content") or {}).get("html_url", ""),
+        )
 
     # -- chercher_code --
 

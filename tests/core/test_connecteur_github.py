@@ -132,6 +132,146 @@ def test_chercher_code(monkeypatch):
     assert len(resultat.detail["occurrences"]) == 2
 
 
+# --- lister : explorer le depot sans checkout local --------------------------------
+
+def test_lister_un_dossier_distant(monkeypatch):
+    monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+    c = connecteur_pret(lambda r: json_reponse(200, [
+        {"name": "api", "path": "apps/api", "type": "dir", "sha": "d1", "size": 0},
+        {"name": "main.py", "path": "apps/main.py", "type": "file", "sha": "f1", "size": 42},
+    ]))
+
+    resultat = c.executer("lister", depot="o/r", chemin="apps", ref="fix-mobile")
+
+    assert resultat.statut is Statut.SUCCES
+    assert [e["chemin"] for e in resultat.detail["entrees"]] == [
+        "apps/api", "apps/main.py",
+    ]
+    assert resultat.detail["ref"] == "fix-mobile"
+
+
+def test_lister_refuse_un_fichier(monkeypatch):
+    monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+    c = connecteur_pret(lambda r: json_reponse(200, {
+        "name": "a.py", "path": "a.py", "type": "file", "sha": "x",
+    }))
+
+    resultat = c.executer("lister", depot="o/r", chemin="a.py")
+
+    assert resultat.statut is Statut.ECHEC
+    assert "pas un dossier" in resultat.message
+
+
+# --- ecrire_fichier : edition distante sans ecraser un changement concurrent -------
+
+class TestEcrireFichier:
+    def test_cree_un_fichier_absent_sur_la_branche_demandee(self, monkeypatch):
+        import base64
+
+        monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+        appels = []
+
+        def _repondre(r):
+            if r.method == "GET":
+                return json_reponse(404, {"message": "Not Found"})
+            corps = json.loads(r.content)
+            assert corps["branch"] == "fix-mobile"
+            assert "sha" not in corps
+            assert base64.b64decode(corps["content"]).decode() == "nouveau\n"
+            return json_reponse(201, {
+                "content": {"sha": "blob-new", "html_url": "https://x/f"},
+                "commit": {"sha": "commit-new"},
+            })
+
+        c = connecteur_pret(_repondre, journal_appels=appels)
+        resultat = c.executer(
+            "ecrire_fichier", depot="o/r", chemin="nouveau.txt",
+            branche="fix-mobile", contenu="nouveau\n", message="feat: nouveau",
+        )
+
+        assert resultat.statut is Statut.SUCCES
+        assert resultat.preuve == "commit-new"
+        assert [r.method for r in appels] == ["GET", "GET", "PUT"]
+
+    def test_met_a_jour_seulement_le_sha_reellement_lu(self, monkeypatch):
+        import base64
+
+        monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+        corps_put = []
+
+        def _repondre(r):
+            if r.method == "GET":
+                return json_reponse(200, {"sha": "blob-v1", "content": ""})
+            corps = json.loads(r.content)
+            corps_put.append(corps)
+            return json_reponse(200, {
+                "content": {"sha": "blob-v2", "html_url": "https://x/f"},
+                "commit": {"sha": "commit-v2"},
+            })
+
+        c = connecteur_pret(_repondre)
+        resultat = c.executer(
+            "ecrire_fichier", depot="o/r", chemin="a.py", branche="fix",
+            contenu="print('v2')\n", sha_attendu="blob-v1", message="fix: v2",
+        )
+
+        assert resultat.statut is Statut.SUCCES
+        assert len(corps_put) == 1
+        assert corps_put[0]["sha"] == "blob-v1"
+        assert base64.b64decode(corps_put[0]["content"]).decode() == "print('v2')\n"
+
+    def test_refuse_un_fichier_existant_jamais_lu(self, monkeypatch):
+        monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+        appels = []
+
+        c = connecteur_pret(
+            lambda r: json_reponse(200, {"sha": "blob-actuel", "content": ""}),
+            journal_appels=appels,
+        )
+        resultat = c.executer(
+            "ecrire_fichier", depot="o/r", chemin="a.py", branche="fix",
+            contenu="danger",
+        )
+
+        assert resultat.statut is Statut.ECHEC
+        assert "lis-le d abord" in resultat.message
+        assert [r.method for r in appels] == ["GET", "GET"]
+
+    def test_refuse_de_recreer_un_fichier_supprime_apres_lecture(self, monkeypatch):
+        monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+        appels = []
+
+        c = connecteur_pret(
+            lambda r: json_reponse(404, {"message": "Not Found"}),
+            journal_appels=appels,
+        )
+        resultat = c.executer(
+            "ecrire_fichier", depot="o/r", chemin="a.py", branche="fix",
+            contenu="danger", sha_attendu="blob-lu",
+        )
+
+        assert resultat.statut is Statut.ECHEC
+        assert "a disparu depuis sa lecture" in resultat.message
+        assert [r.method for r in appels] == ["GET", "GET"]
+
+    def test_refuse_un_sha_perime_avant_toute_ecriture(self, monkeypatch):
+        monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+        appels = []
+
+        c = connecteur_pret(
+            lambda r: json_reponse(200, {"sha": "blob-nouveau", "content": ""}),
+            journal_appels=appels,
+        )
+        resultat = c.executer(
+            "ecrire_fichier", depot="o/r", chemin="a.py", branche="fix",
+            contenu="danger", sha_attendu="blob-ancien",
+        )
+
+        assert resultat.statut is Statut.ECHEC
+        assert "a change depuis sa lecture" in resultat.message
+        assert [r.method for r in appels] == ["GET", "GET"]
+
+
 # --- creer_branche (ALLOWED — même risque que git push sous DEC-0038) --------------
 
 def test_creer_branche_va_directement_au_reseau_sans_confirmation(monkeypatch):
@@ -254,11 +394,12 @@ def test_commentaires_pr_fusionne_revue_et_discussion(monkeypatch):
 
 # --- Capacités déclarées -------------------------------------------------------------
 
-def test_les_six_capacites_sont_declarees():
+def test_les_huit_capacites_sont_declarees():
     c = ConnecteurGitHub()
     noms = set(c.capacites())
-    assert noms == {"lire_fichier", "chercher_code", "creer_branche",
-                    "creer_pull_request", "etat_ci", "commentaires_pr"}
+    assert noms == {"lire_fichier", "chercher_code", "lister", "creer_branche",
+                    "ecrire_fichier", "creer_pull_request", "etat_ci",
+                    "commentaires_pr"}
 
 
 def test_une_capacite_non_declaree_natteint_jamais_le_reseau(monkeypatch):
