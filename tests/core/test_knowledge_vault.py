@@ -237,3 +237,32 @@ async def test_agentic_tools_transportent_des_preuves_bornees(tmp_path: Path):
     assert lu.ok is True
     assert lu.data["sources"] == ["raw/chantier.md"]
     assert "Double montant" in lu.data["content"]
+
+
+
+async def test_hybrid_search_reutilise_les_embeddings_locaux_en_memoire(
+    tmp_path: Path, monkeypatch
+):
+    source = tmp_path / "memoire.md"
+    source.write_text(
+        "# Memoire locale\n\nUne reserve de securite reste disponible rapidement.",
+        encoding="utf-8",
+    )
+    vault = KnowledgeVault(tmp_path / "vault")
+    vault.ingest(source)
+
+    appels = 0
+
+    async def faux_embeddings(texts, **_kwargs):
+        nonlocal appels
+        appels += 1
+        return [[1.0, float(index)] for index, _ in enumerate(texts)]
+
+    monkeypatch.setattr("core.memory.semantique.embeddings_ollama", faux_embeddings)
+
+    premier = await vault.hybrid_search("reserve securite", limit=3)
+    second = await vault.hybrid_search("reserve securite", limit=3)
+
+    assert premier and second
+    assert appels == 1
+    assert premier[0].mode == "HYBRID_RRF"
