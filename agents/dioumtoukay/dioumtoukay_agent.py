@@ -53,15 +53,22 @@ from tools.atelier.atelier import Atelier, Resultat
 
 logger = logging.getLogger("usman.agent.dioumtoukay")
 
-#: Combien d'actions au maximum pour une demande. Un modèle qui tourne en rond
-#: consomme la machine sans rien produire ; au-delà, on rend ce qui a été fait
-#: et on le dit, plutôt que de continuer indéfiniment.
+#: Budget court pour le poste local : douze actions suffisent à la grande
+#: majorité des tâches et gardent une borne ferme face à un modèle qui erre.
 TOURS_MAX = 12
 
-#: Au-delà, le travail s'arrête même si `TOURS_MAX` n'est pas atteint. Une
-#: action peut coûter jusqu'à `DELAI_PAR_DEFAUT` (`Atelier`, 120s) : sans
-#: plafond de temps, douze tours sur des commandes lentes autorisent une
-#: session de plusieurs dizaines de minutes. Concept vérifié dans le code
+#: Sur Railway, un vrai cycle d'ingénierie distante coûte davantage d'étapes :
+#: explorer -> lire -> créer une branche -> corriger plusieurs fichiers ->
+#: comparer -> ouvrir une PR -> suivre la CI -> lire une revue -> recorriger.
+#: Le plafond de 12 coupait donc précisément les tâches complexes que les
+#: capacités GitHub ajoutées ensuite rendaient enfin possibles. On autorise
+#: plus de profondeur UNIQUEMENT dans ce mode, tout en conservant les gardes
+#: anti-boucle, anti-échecs et le plafond temporel ci-dessous.
+TOURS_MAX_GITHUB_DISTANT = 24
+
+#: Au-delà, le travail s'arrête même si le budget de tours n'est pas atteint.
+#: Une action peut coûter jusqu'à `DELAI_PAR_DEFAUT` (`Atelier`, 120s) :
+#: sans plafond de temps, une session profonde pourrait durer indéfiniment. Concept vérifié dans le code
 #: source de mini-SWE-agent (`AgentConfig.wall_time_limit_seconds`) — 0
 #: désactiverait la limite, comme chez eux, mais rien ici n'a demandé à la
 #: désactiver.
@@ -1710,7 +1717,9 @@ class DioumtoukayAgent(BaseAgent):
         echecs_consecutifs = 0
         terminaisons_sans_verification = 0
 
-        for tour in range(1, TOURS_MAX + 1):
+        tours_max = TOURS_MAX_GITHUB_DISTANT if github_distant else TOURS_MAX
+
+        for tour in range(1, tours_max + 1):
             ecoule = time.monotonic() - debut
             if ecoule >= DUREE_MAX_SECONDES:
                 conclusion = (
@@ -1867,7 +1876,7 @@ class DioumtoukayAgent(BaseAgent):
             # La borne est atteinte. Le dire : un rapport qui s'arrete sans
             # raison se lit comme un travail fini.
             conclusion = (
-                f"Arrete apres {TOURS_MAX} actions sans avoir conclu. "
+                f"Arrete apres {tours_max} actions sans avoir conclu. "
                 "Ce qui a ete fait est ci-dessous ; la suite reste a faire."
             )
 
