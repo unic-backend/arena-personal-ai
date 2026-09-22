@@ -237,6 +237,23 @@ class TestEcrireFichier:
         assert "lis-le d abord" in resultat.message
         assert [r.method for r in appels] == ["GET", "GET"]
 
+    def test_refuse_de_recreer_un_fichier_supprime_apres_lecture(self, monkeypatch):
+        monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+        appels = []
+
+        c = connecteur_pret(
+            lambda r: json_reponse(404, {"message": "Not Found"}),
+            journal_appels=appels,
+        )
+        resultat = c.executer(
+            "ecrire_fichier", depot="o/r", chemin="a.py", branche="fix",
+            contenu="danger", sha_attendu="blob-lu",
+        )
+
+        assert resultat.statut is Statut.ECHEC
+        assert "a disparu depuis sa lecture" in resultat.message
+        assert [r.method for r in appels] == ["GET", "GET"]
+
     def test_refuse_un_sha_perime_avant_toute_ecriture(self, monkeypatch):
         monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
         appels = []
