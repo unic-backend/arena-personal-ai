@@ -118,6 +118,118 @@ def test_lire_fichier_sans_parametres(monkeypatch):
     assert resultat.statut is Statut.ECHEC
 
 
+# --- remplacer_dans_fichier : patch textuel conflict-safe --------------------------
+
+class TestRemplacerDansFichier:
+    def test_remplace_une_occurrence_exacte_sans_rejouer_tout_le_fichier(self, monkeypatch):
+        import base64
+
+        monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+        appels = []
+        original = "alpha\nancienne valeur\nomega\n"
+
+        def _repondre(r):
+            if r.method == "GET":
+                return json_reponse(200, {
+                    "sha": "blob-v1",
+                    "content": base64.b64encode(original.encode()).decode(),
+                })
+            corps = json.loads(r.content)
+            contenu = base64.b64decode(corps["content"]).decode()
+            assert contenu == "alpha\nnouvelle valeur\nomega\n"
+            assert corps["sha"] == "blob-v1"
+            assert corps["branch"] == "fix-a"
+            return json_reponse(200, {
+                "content": {"sha": "blob-v2", "html_url": "https://x/a"},
+                "commit": {"sha": "commit-v2"},
+            })
+
+        c = connecteur_pret(_repondre, journal_appels=appels)
+        resultat = c.executer(
+            "remplacer_dans_fichier",
+            depot="o/r",
+            chemin="a.py",
+            branche="fix-a",
+            sha_attendu="blob-v1",
+            ancien="ancienne valeur",
+            nouveau="nouvelle valeur",
+            message="fix: valeur",
+        )
+
+        assert resultat.statut is Statut.SUCCES
+        assert resultat.preuve == "commit-v2"
+        assert [r.method for r in appels] == ["GET", "GET", "PUT"]
+
+    def test_sha_perime_refuse_avant_put(self, monkeypatch):
+        import base64
+
+        monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+        appels = []
+        c = connecteur_pret(
+            lambda r: json_reponse(200, {
+                "sha": "blob-nouveau",
+                "content": base64.b64encode(b"ancien").decode(),
+            }),
+            journal_appels=appels,
+        )
+
+        resultat = c.executer(
+            "remplacer_dans_fichier",
+            depot="o/r", chemin="a.py", branche="fix-a",
+            sha_attendu="blob-ancien", ancien="ancien", nouveau="nouveau",
+        )
+
+        assert resultat.statut is Statut.ECHEC
+        assert "a change depuis sa lecture" in resultat.message
+        assert [r.method for r in appels] == ["GET", "GET"]
+
+    def test_passage_ambigu_est_refuse_avant_put(self, monkeypatch):
+        import base64
+
+        monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+        appels = []
+        c = connecteur_pret(
+            lambda r: json_reponse(200, {
+                "sha": "blob-v1",
+                "content": base64.b64encode(b"x = 1\nx = 1\n").decode(),
+            }),
+            journal_appels=appels,
+        )
+
+        resultat = c.executer(
+            "remplacer_dans_fichier",
+            depot="o/r", chemin="a.py", branche="fix-a",
+            sha_attendu="blob-v1", ancien="x = 1", nouveau="x = 2",
+        )
+
+        assert resultat.statut is Statut.ECHEC
+        assert "apparait 2 fois" in resultat.message
+        assert [r.method for r in appels] == ["GET", "GET"]
+
+    def test_fichier_non_utf8_est_refuse_sans_corruption(self, monkeypatch):
+        import base64
+
+        monkeypatch.setenv("USMAN_GITHUB_TOKEN", "t")
+        appels = []
+        c = connecteur_pret(
+            lambda r: json_reponse(200, {
+                "sha": "blob-v1",
+                "content": base64.b64encode(b"\xff\xfe\x00").decode(),
+            }),
+            journal_appels=appels,
+        )
+
+        resultat = c.executer(
+            "remplacer_dans_fichier",
+            depot="o/r", chemin="binaire.dat", branche="fix-a",
+            sha_attendu="blob-v1", ancien="x", nouveau="y",
+        )
+
+        assert resultat.statut is Statut.ECHEC
+        assert "UTF-8" in resultat.message
+        assert [r.method for r in appels] == ["GET", "GET"]
+
+
 # --- chercher_code ------------------------------------------------------------------
 
 def test_chercher_code(monkeypatch):
@@ -463,12 +575,12 @@ def test_commentaires_pr_fusionne_revue_et_discussion(monkeypatch):
 
 # --- Capacités déclarées -------------------------------------------------------------
 
-def test_les_neuf_capacites_sont_declarees():
+def test_les_dix_capacites_sont_declarees():
     c = ConnecteurGitHub()
     noms = set(c.capacites())
     assert noms == {"lire_fichier", "chercher_code", "lister", "comparer",
-                    "creer_branche", "ecrire_fichier", "creer_pull_request",
-                    "etat_ci", "commentaires_pr"}
+                    "creer_branche", "ecrire_fichier", "remplacer_dans_fichier",
+                    "creer_pull_request", "etat_ci", "commentaires_pr"}
 
 
 def test_une_capacite_non_declaree_natteint_jamais_le_reseau(monkeypatch):
