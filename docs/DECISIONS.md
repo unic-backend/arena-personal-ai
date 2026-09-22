@@ -10689,7 +10689,7 @@ son chemin brut, son URL quand elle existe, et les reperes de page/OCR rendus pa
 le lecteur.
 
 La conversation standard cherche les pages pertinentes et injecte seulement des
-extraits bornes. Ils passent par `TrustLevel.DOCUMENT` : un texte trouve dans le
+extraits bornes. Ils passent par `TrustLevel.RETRIEVED` : un texte trouve dans le
 vault reste une donnee a consulter, jamais une instruction systeme.
 
 Obsidian est optionnel : le format Markdown et les wikilinks restent lisibles et
