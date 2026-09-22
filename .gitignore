@@ -44,6 +44,9 @@ data/travaux/*
 data/documents/*
 !data/documents/.gitkeep
 data/rag/*
+# Knowledge Vault personnel : sources, wiki compile et sorties restent locaux.
+data/knowledge_vault/*
+!data/knowledge_vault/.gitkeep
 # Fichiers produits par ARENA : audio synthetise, videos montees.
 # Ce sont des sorties, pas du source — elles ne se versionnent pas.
 data/audio/*

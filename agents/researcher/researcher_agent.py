@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
+from core.knowledge.vault import KnowledgeVault
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from core.security.trust import TrustLevel, wrap
@@ -13,7 +14,12 @@ logger = logging.getLogger("usman.agent.researcher")
 class DeepResearcherAgent(BaseAgent):
     """Agent de recherche profonde multi-sources (Pattern Kimi / Perplexity)."""
 
-    def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None):
+    def __init__(
+        self,
+        provider: ModelProvider,
+        memory: Optional[MemoryManager] = None,
+        knowledge_vault: Optional[KnowledgeVault] = None,
+    ):
         super().__init__(
             name="DeepResearcherAgent",
             description="Agent de recherche approfondie, croisement de sources et rapports d'intelligence.",
@@ -21,6 +27,7 @@ class DeepResearcherAgent(BaseAgent):
             memory=memory
         )
         self.search_tool = WebSearchTool()
+        self.knowledge_vault = knowledge_vault or KnowledgeVault()
 
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         logger.info(f"DeepResearcherAgent entame une recherche approfondie sur : {user_input}")
@@ -53,6 +60,13 @@ class DeepResearcherAgent(BaseAgent):
                 seen_urls.add(r["href"])
                 unique_sources.append(r)
 
+        # Le vault local est consulte en parallele conceptuellement avec le web :
+        # ce sont des preuves deja compilees, pas des instructions. Il n'est
+        # jamais obligatoire : un vault vide donne simplement zero source locale.
+        knowledge_hits = await asyncio.to_thread(
+            self.knowledge_vault.search, user_input, limit=5
+        )
+
         # 3. Synthèse d'intelligence de haut niveau
         # Le texte vient de pages que personne ne controle : il entre
         # **enveloppe**, au niveau EXTERNAL — origine annoncee, balises
@@ -67,6 +81,12 @@ class DeepResearcherAgent(BaseAgent):
             for i, s in enumerate(unique_sources)
         )
 
+        knowledge_text = "\n".join(
+            f"[KV{i + 1}] {hit.title} ({hit.path}) sources={', '.join(hit.sources) or hit.path}\n"
+            f"{wrap(hit.snippet, TrustLevel.RETRIEVED, f'knowledge_vault:{hit.path}').text}\n"
+            for i, hit in enumerate(knowledge_hits)
+        )
+
         synthesis_prompt = (
             "Tu es DeepResearcherAgent d'Usman, un expert en analyse stratégique d'élite.\n"
             "Rédige un Rapport d'Intelligence de Haut Niveau à partir des données web collectées ci-dessous.\n\n"
@@ -76,6 +96,7 @@ class DeepResearcherAgent(BaseAgent):
             "3. 🇸🇳 **Impact & Stratégie Sénégal / Afrique / International**\n"
             "4. 🔗 **Sources Consultées**\n\n"
             f"Sujet principal : {user_input}\n\n"
+            f"Connaissances locales sourcees :\n{knowledge_text or '(aucune source locale pertinente)'}\n\n"
             f"Données Web :\n{sources_text}\n\n"
             "Rapport d'Intelligence :"
         )
@@ -87,5 +108,6 @@ class DeepResearcherAgent(BaseAgent):
             "agent": self.name,
             "queries_used": queries,
             "sources_count": len(unique_sources),
+            "knowledge_sources_count": len(knowledge_hits),
             "response": synthesis.strip()
         }

@@ -1806,3 +1806,14 @@ Le proprietaire a ensuite autorise explicitement publication, pull request
 et fusion dans main si les verifications passent. Integration de main
 2fba07b en conservant les deux historiques documentaires.
 OpenAI/Tavily/Ollama reels non testes sans services configures.
+
+---
+
+## 2026-09-22 — Knowledge Vault ARENA — DEC-0129
+
+Integration du motif LLM Wiki demande par le proprietaire : sources brutes
+conservees, wiki Markdown interlie compatible Obsidian, carte JSON, recherche
+lexicale bornee et lint de provenance/liens/orphelins. Le vault vivant reste
+dans `data/knowledge_vault/`, ignore par Git. Le chat standard consulte les
+extraits pertinents avec la frontiere `TrustLevel.RETRIEVED` ; il ne remplace
+ni `core/memory/` ni `PROJECT_MEMORY/`.
