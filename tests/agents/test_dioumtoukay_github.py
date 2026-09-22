@@ -71,6 +71,34 @@ class TestEspaceGitHubDistant:
         assert "unic-backend/arena-personal-ai" in reperes
 
     @pytest.mark.asyncio
+    async def test_liste_le_depot_distant_par_defaut(self, bac):
+        connecteur = FauxConnecteurGitHub(succes(
+            "lister", "unic-backend/arena-personal-ai",
+            "2 entree(s) dans apps.", preuve="2",
+            entrees=[{"chemin": "apps/backend"}, {"chemin": "apps/pwa"}],
+        ))
+        a = agent(
+            bac,
+            [
+                "ACTION: github_lister\nREF: main\nCHEMIN: apps",
+                "ACTION: terminer\nCONTENU:\nfini\nFIN",
+            ],
+            connecteur_github=connecteur,
+            depot_github_defaut="unic-backend/arena-personal-ai",
+        )
+
+        await a.run("explore le depot")
+
+        assert connecteur.appels[0] == (
+            "lister",
+            {
+                "depot": "unic-backend/arena-personal-ai",
+                "chemin": "apps",
+                "ref": "main",
+            },
+        )
+
+    @pytest.mark.asyncio
     async def test_lit_puis_ecrit_sur_le_depot_par_defaut(self, bac):
         connecteur = FauxConnecteurGitHub(succes(
             "ecrire_fichier", "unic-backend/arena-personal-ai",
