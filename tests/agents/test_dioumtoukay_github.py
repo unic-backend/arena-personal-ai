@@ -71,6 +71,7 @@ class TestEspaceGitHubDistant:
         assert "AUCUN checkout git local" in reperes
         assert "github_branche_creer" in reperes
         assert "unic-backend/arena-personal-ai" in reperes
+        assert "Ce que contient la racine" not in reperes
 
     @pytest.mark.asyncio
     async def test_un_lister_local_est_redirige_vers_github_sur_railway(self, bac):
@@ -182,6 +183,34 @@ class TestEspaceGitHubDistant:
                 "depot": "unic-backend/arena-personal-ai",
                 "chemin": "apps",
                 "ref": "main",
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_recherche_github_explicite_respecte_le_dossier(self, bac):
+        connecteur = FauxConnecteurGitHub(succes(
+            "chercher_code", "unic-backend/arena-personal-ai",
+            "1 occurrence(s) de 'Composer'.", preuve="1",
+            occurrences=[{"chemin": "apps/pwa/src/Composer.tsx"}],
+        ))
+        a = agent(
+            bac,
+            [
+                "ACTION: github_chercher\nTEXTE: Composer\nCHEMIN: apps/pwa",
+                "ACTION: terminer\nCONTENU:\nTrouve.\nFIN",
+            ],
+            connecteur_github=connecteur,
+            depot_github_defaut="unic-backend/arena-personal-ai",
+        )
+
+        await a.run("cherche Composer dans apps/pwa")
+
+        assert connecteur.appels[0] == (
+            "chercher_code",
+            {
+                "depot": "unic-backend/arena-personal-ai",
+                "terme": "Composer",
+                "chemin": "apps/pwa",
             },
         )
 
