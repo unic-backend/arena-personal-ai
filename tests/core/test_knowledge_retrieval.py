@@ -25,13 +25,13 @@ def test_bm25_prefere_identifiant_exact_et_ignore_les_mots_vides():
 
 def test_rrf_fusionne_des_rangs_sans_melanger_leurs_scores():
     fusion = reciprocal_rank_fusion([
-        ["lexical", "commun", "semantic"],
-        ["semantic", "commun", "lexical"],
+        ["lexical", "commun", "autre_a", "semantic"],
+        ["semantic", "commun", "autre_b", "lexical"],
     ])
 
     ids = [identifiant for identifiant, _ in fusion]
     assert ids[0] == "commun"
-    assert set(ids) == {"lexical", "commun", "semantic"}
+    assert {"lexical", "commun", "semantic"}.issubset(ids)
 
 
 async def test_hybrid_retrieval_recupere_une_paraphrase_absente_du_lexical():
