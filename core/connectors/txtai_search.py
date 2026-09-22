@@ -36,7 +36,7 @@ from core.production.txtai_recherche import (
 
 logger = logging.getLogger("usman.connecteurs.txtai_search")
 
-TXTAI_EMBEDDING_TIMEOUT = 5.0
+TXTAI_EMBEDDING_TIMEOUT = 3.0
 
 
 async def _embeddings_txtai_bornes(textes):
