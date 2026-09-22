@@ -54,6 +54,22 @@ def agent(bac, reponses, connecteur_github=None, depot_github_defaut=None):
 # --- espace GitHub distant : le PC peut etre eteint -------------------------------
 
 class TestEspaceGitHubDistant:
+    def test_reperes_disent_qu_un_serveur_sans_git_doit_utiliser_github(self, bac):
+        a = agent(
+            bac,
+            [],
+            connecteur_github=FauxConnecteurGitHub(
+                succes("x", "x", "ok", preuve="x")
+            ),
+            depot_github_defaut="unic-backend/arena-personal-ai",
+        )
+
+        reperes = a._reperes("corrige le projet")
+
+        assert "AUCUN checkout git local" in reperes
+        assert "github_branche_creer" in reperes
+        assert "unic-backend/arena-personal-ai" in reperes
+
     @pytest.mark.asyncio
     async def test_lit_puis_ecrit_sur_le_depot_par_defaut(self, bac):
         connecteur = FauxConnecteurGitHub(succes(
