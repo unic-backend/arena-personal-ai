@@ -1528,7 +1528,9 @@ class DioumtoukayAgent(BaseAgent):
         # travail.
         methode = bloc_de_methode(choisir(user_input, "ATELIER"))
         base_consigne = CONSIGNE_GITHUB_DISTANT if github_distant else CONSIGNE
-        consigne = f"{base_consigne}\n\n{methode}" if methode else base_consigne
+        consigne = f"{base_consigne}\n\n{PROTOCOLE_QUALITE}"
+        if methode:
+            consigne += f"\n\n{methode}"
 
         # Une tache interrompue reprend ici, avec ses etapes deja faites en
         # guise de journal de depart : le modele voit ce qui a tourne et
@@ -1547,6 +1549,7 @@ class DioumtoukayAgent(BaseAgent):
         derniere_signature: Optional[tuple] = None
         repetitions_consecutives = 0
         echecs_consecutifs = 0
+        terminaisons_sans_verification = 0
 
         for tour in range(1, TOURS_MAX + 1):
             ecoule = time.monotonic() - debut
@@ -1578,6 +1581,23 @@ class DioumtoukayAgent(BaseAgent):
             illisibles_consecutives = 0
 
             if action.nom == "terminer":
+                mutation = self._mutation_non_verifiee(rendu)
+                if mutation is not None:
+                    terminaisons_sans_verification += 1
+                    cible = (mutation.get("champs") or {}).get("CHEMIN") or (
+                        mutation.get("champs") or {}).get("DESTINATION") or "la modification"
+                    journal_du_travail.append(
+                        "VERIFICATION OBLIGATOIRE : la derniere mutation reussie "
+                        f"({mutation['action']} sur {cible}) n'a encore aucune preuve "
+                        "executee apres elle. Utilise une action de verification adaptee "
+                        "au domaine avant de terminer.")
+                    if terminaisons_sans_verification >= 2:
+                        conclusion = (
+                            "Arrete : le moteur essaie de conclure sans verifier sa "
+                            "derniere modification. Le changement a ete fait, mais il "
+                            "reste non verifie.")
+                        break
+                    continue
                 conclusion = action.contenu.strip() or reponse.strip()
                 arrete_par_lui_meme = True
                 break
@@ -1731,11 +1751,74 @@ class DioumtoukayAgent(BaseAgent):
         return "\n".join(lignes)
 
     @staticmethod
-    def _invite(reperes: str, demande: str, journal_du_travail: List[str]) -> str:
-        """La demande, plus ce qui s'est réellement passé jusqu'ici."""
+    def _mutation_non_verifiee(rendu: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """La derniere mutation reussie si rien ne l'a verifiee ensuite."""
+        index_mutation: Optional[int] = None
+        for index, acte in enumerate(rendu):
+            if acte.get("ok") and acte.get("action") in ACTIONS_A_VERIFIER:
+                index_mutation = index
+        if index_mutation is None:
+            return None
+        for acte in rendu[index_mutation + 1:]:
+            if acte.get("ok") and acte.get("action") in ACTIONS_DE_VERIFICATION:
+                return None
+        return rendu[index_mutation]
+
+    @staticmethod
+    def _journal_pour_modele(journal_du_travail: List[str]) -> str:
+        """Contexte borne : recent complet, ancien resume.
+
+        Le journal durable n'est jamais tronque. Seule la COPIE remise au
+        modele a chaque tour est compacte pour eviter qu'une longue tache
+        repaye tous ses octets a chaque appel cloud.
+        """
+        if not journal_du_travail:
+            return ""
+        complet = "\n\n".join(journal_du_travail)
+        if len(complet) <= JOURNAL_MODELE_MAX_CARACTERES:
+            return complet
+
+        budget_recent = JOURNAL_MODELE_MAX_CARACTERES - JOURNAL_MODELE_RESUME_MAX_CARACTERES
+        recentes_inversees: List[str] = []
+        utilises = 0
+        index_premiere_recente = len(journal_du_travail)
+        for index in range(len(journal_du_travail) - 1, -1, -1):
+            etape = journal_du_travail[index]
+            cout = len(etape) + 2
+            if recentes_inversees and utilises + cout > budget_recent:
+                break
+            recentes_inversees.append(etape)
+            utilises += cout
+            index_premiere_recente = index
+
+        anciennes = journal_du_travail[:index_premiere_recente]
+        resumes = []
+        caracteres = 0
+        for etape in anciennes:
+            premiere = (etape.splitlines() or [""])[0].strip()
+            if not premiere:
+                continue
+            ligne = f"- {premiere}"
+            if caracteres + len(ligne) + 1 > JOURNAL_MODELE_RESUME_MAX_CARACTERES:
+                resumes.append("- ... etapes plus anciennes omises du contexte actif ...")
+                break
+            resumes.append(ligne)
+            caracteres += len(ligne) + 1
+
+        blocs = []
+        if resumes:
+            blocs.append("Etapes plus anciennes (resumees) :\n" + "\n".join(resumes))
+        blocs.append("Etapes recentes (sortie complete) :\n"
+                     + "\n\n".join(reversed(recentes_inversees)))
+        return "\n\n".join(blocs)
+
+    @classmethod
+    def _invite(cls, reperes: str, demande: str, journal_du_travail: List[str]) -> str:
+        """La demande, plus un contexte de travail borne et factuel."""
         blocs = [reperes, f"Demande du proprietaire : {demande}"]
-        if journal_du_travail:
-            blocs.append("Ce qui s'est passe jusqu'ici :\n" + "\n\n".join(journal_du_travail))
+        journal = cls._journal_pour_modele(journal_du_travail)
+        if journal:
+            blocs.append("Ce qui s'est passe jusqu'ici :\n" + journal)
         blocs.append("Action suivante :")
         return "\n\n".join(blocs)
 
@@ -1768,39 +1851,69 @@ class DioumtoukayAgent(BaseAgent):
                 touches.append(ou)
         return touches
 
+    @staticmethod
+    def _sortie_pour_rapport(acte: Dict[str, Any], limite: int = 6_000) -> str:
+        """Preuve lisible pour l'humain, jamais un dump de structure interne."""
+        sortie = str(acte.get("sortie") or "").strip()
+        if not sortie:
+            return ""
+        if len(sortie) <= limite:
+            return sortie
+        moitie = limite // 2
+        manque = len(sortie) - limite
+        return (sortie[:moitie]
+                + f"\n[… {manque} caracteres techniques masques …]\n"
+                + sortie[-moitie:])
+
     @classmethod
     def _rapport(cls, conclusion: str, rendu: List[Dict[str, Any]]) -> str:
-        """Le compte-rendu pour le propriétaire : ce qui a tourné, et son sort.
+        """Compte-rendu humain : resultat d'abord, preuves ensuite.
 
-        Les echecs ne sont pas fondus dans la conclusion : ils sont comptes a
-        part, parce que c'est la seule ligne qui lui dit s'il doit aller voir.
-
-        Les fichiers modifies sont nommes a part pour la meme raison : « il a
-        fait quelque chose » et « il a change ces trois fichiers-la » ne
-        demandent pas la meme attention.
+        La trace complete reste dans `actions` et le journal durable. La bulle
+        de chat n'est pas un log : elle ne doit pas commencer par des SHA,
+        tailles ou repr Python avant de dire ce qui a ete obtenu.
         """
-        echecs = [a for a in rendu if not a["ok"]]
-        entete = f"**Dioumtoukay — {len(rendu)} action(s)"
-        entete += f", {len(echecs)} en echec**" if echecs else ", aucune en echec**"
-
-        detail = "\n".join(
-            f"- {'OK ' if a['ok'] else 'ECHEC'} `{a['action']}` — {a['message']}"
-            for a in rendu) or "- aucune action executee"
+        parties: List[str] = []
+        conclusion_propre = (conclusion or "").strip()
+        if conclusion_propre:
+            parties.append(conclusion_propre)
 
         touches = cls.fichiers_touches(rendu)
-        modifies = ("\n\n**Fichiers modifies :** "
-                    + ", ".join(f"`{f}`" for f in touches)) if touches else ""
+        if touches:
+            parties.append(
+                "**Fichiers modifiés**\n"
+                + "\n".join(f"- `{chemin}`" for chemin in touches)
+            )
 
-        # La sortie d'un `analyser`/`diagnostiquer` REUSSI est le resultat
-        # lui-meme — la cacher derriere « RepoEngineerAgent a repondu » serait
-        # exactement le defaut que ces deux actions existent pour corriger :
-        # une analyse produite et jamais lue par le proprietaire.
-        analyses = "\n\n".join(
-            f"**{a['action']} :**\n{a['sortie']}"
-            for a in rendu if a["ok"] and a["action"] in ACTIONS_QUI_ANALYSENT and a.get("sortie"))
-        analyses = f"\n\n{analyses}" if analyses else ""
+        echecs = [a for a in rendu if not a.get("ok")]
+        if echecs:
+            parties.append(
+                "**À corriger**\n"
+                + "\n".join(
+                    f"- `{a.get('action', '?')}` — {a.get('message', 'échec')}"
+                    for a in echecs
+                )
+            )
 
-        return f"{entete}\n\n{detail}{modifies}{analyses}\n\n{conclusion}".strip()
+        preuves = []
+        for acte in rendu:
+            if not acte.get("ok") or acte.get("action") not in ACTIONS_QUI_ANALYSENT:
+                continue
+            sortie = cls._sortie_pour_rapport(acte)
+            if sortie:
+                preuves.append(f"**{acte['action']}**\n{sortie}")
+        if preuves:
+            parties.append("**Résultats vérifiés**\n\n" + "\n\n".join(preuves))
+
+        if rendu:
+            succes = sum(1 for acte in rendu if acte.get("ok"))
+            statut = (
+                f"{succes}/{len(rendu)} action(s) exécutée(s) avec succès"
+                if echecs else f"{len(rendu)} action(s) exécutée(s), aucune en échec"
+            )
+            parties.append(f"*Vérification : {statut}.*")
+
+        return "\n\n".join(parties).strip()
 
     def _retenir(self, demande: str, conclusion: str, rendu: List[Dict[str, Any]]) -> None:
         """Garde une trace de ce travail dans la mémoire longue.
