@@ -1,3 +1,8 @@
+---
+name: knowledge-vault
+description: Maintain and query ARENA's local sourced Markdown Knowledge Vault. Use when ingesting articles, papers, transcripts, reference documents, or durable domain knowledge; compiling source-backed wiki notes; querying the local knowledge base; or checking provenance, wikilinks, or graph health.
+---
+
 # Knowledge Vault
 
 Utilise ce skill quand la tache consiste a ajouter, compiler, consulter ou verifier des
