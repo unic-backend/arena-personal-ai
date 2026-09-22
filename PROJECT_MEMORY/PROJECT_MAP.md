@@ -37,6 +37,7 @@ Un module qu'aucun de ces quatre n'atteint est un orphelin :
 | `core/connectors/` | base + 8 connecteurs (voir DEPENDENCIES.md) |
 | `core/mcp/` | deux transports MCP : HTTP (`transport.py`, WanGP) et stdio (`stdio_transport.py`, OpenTakeoff) |
 | `core/memory/` | mémoire personnelle, récupération lexicale, sémantique, consolidation |
+| `core/knowledge/` | Knowledge Vault : sources documentaires Markdown, liens Obsidian, recherche, graphe et lint ; données vivantes dans `data/knowledge_vault/` hors Git |
 | `core/execution/` | voies (budgets), mesures (chronométrage), travaux de fond, coordination (tâches à état), crochets + disjoncteur (DEC-0013) |
 | `core/guardian/` | diagnostics + file de maintenance + cycle (DEC-0014) — DÉCOUVRE et RAPPORTE, ne MODIFIE jamais le dépôt |
 | `core/models/` | fournisseur Ollama |
