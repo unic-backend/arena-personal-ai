@@ -1815,5 +1815,5 @@ Integration du motif LLM Wiki demande par le proprietaire : sources brutes
 conservees, wiki Markdown interlie compatible Obsidian, carte JSON, recherche
 lexicale bornee et lint de provenance/liens/orphelins. Le vault vivant reste
 dans `data/knowledge_vault/`, ignore par Git. Le chat standard consulte les
-extraits pertinents avec la frontiere `TrustLevel.DOCUMENT` ; il ne remplace
+extraits pertinents avec la frontiere `TrustLevel.RETRIEVED` ; il ne remplace
 ni `core/memory/` ni `PROJECT_MEMORY/`.
