@@ -347,7 +347,7 @@ def test_commentaires_pr_fusionne_revue_et_discussion(monkeypatch):
 
 # --- Capacités déclarées -------------------------------------------------------------
 
-def test_les_six_capacites_sont_declarees():
+def test_les_sept_capacites_sont_declarees():
     c = ConnecteurGitHub()
     noms = set(c.capacites())
     assert noms == {"lire_fichier", "chercher_code", "creer_branche",
