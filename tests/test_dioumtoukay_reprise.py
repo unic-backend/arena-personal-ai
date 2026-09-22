@@ -217,10 +217,11 @@ class TestUneTacheInterrompueReprendVraiment:
         assert suite["reprise"] is True, "le travail deja fait a ete perdu"
         assert suite["status"] == "success"
         assert suite["tache"]["task_id"] == etat.identifiant
-        # 2 (premier passage) + 1 (le remplacement). `terminer` n'agit pas sur
-        # l'atelier : ce n'est pas une etape de travail, et la journaliser
-        # ferait croire a une action de plus qu'il n'y en a eu.
-        assert suite["tache"]["steps"] == 3, "les etapes des deux passages"
+        # 2 (premier passage) + 2 (remplacement + relecture de verification).
+        # `terminer` n'agit pas sur l'atelier : ce n'est pas une etape de
+        # travail. La relecture, elle, est une vraie action et doit rester
+        # tracee comme preuve de la correction.
+        assert suite["tache"]["steps"] == 4, "les etapes des deux passages"
 
     async def test_le_modele_voit_ce_qui_a_deja_ete_fait(self, tmp_path):
         """Reprendre sans le dire au modele le ferait tout relire."""
