@@ -11,7 +11,7 @@ RACINE = Path(__file__).resolve().parent.parent
 if str(RACINE) not in sys.path:
     sys.path.insert(0, str(RACINE))
 
-from core.knowledge import KnowledgeVault  # noqa: E402
+from core.knowledge.vault import KnowledgeVault  # noqa: E402
 
 
 def _afficher(valeur: Any) -> None:
