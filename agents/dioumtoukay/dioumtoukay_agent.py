@@ -173,7 +173,7 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
 #: Les actions qui modifient quelque chose. Elles sont comptées à part dans le
 #: rapport : « j'ai lu quatre fichiers » et « j'ai modifié quatre fichiers » ne
 #: se lisent pas pareil, et c'est la seconde phrase qui demande une vérification.
-ACTIONS_QUI_MODIFIENT = frozenset({"ecrire", "remplacer", "deplacer"})
+ACTIONS_QUI_MODIFIENT = frozenset({"ecrire", "remplacer", "deplacer", "github_ecrire"})
 
 #: Les actions dont la SORTIE est le résultat qui compte, pas seulement le
 #: message. `_rapport()` ne montre le détail complet que de celles-ci : pour
@@ -1493,10 +1493,12 @@ class DioumtoukayAgent(BaseAgent):
 
     @staticmethod
     def fichiers_touches(rendu: List[Dict[str, Any]]) -> List[str]:
-        """Les fichiers réellement modifiés — ceux qui ont changé sur le disque.
+        """Les fichiers réellement modifiés, localement ou sur GitHub.
 
         Une action tentée puis échouée ne compte pas : dire « fichier modifié »
-        d'un fichier intact serait la pire ligne du rapport.
+        d'un fichier intact serait la pire ligne du rapport. Pour github_ecrire,
+        ok signifie que GitHub a rendu un commit : la modification distante est
+        donc aussi une preuve réelle, pas une intention.
         """
         touches = []
         for acte in rendu:
