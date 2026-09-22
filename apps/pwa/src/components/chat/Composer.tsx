@@ -158,7 +158,7 @@ export function Composer({
                       </span>
                     )}
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[10.5px] font-medium text-zinc-200">{item.name}</div>
+                      <div className="truncate text-ui-meta font-medium text-zinc-200">{item.name}</div>
                       <div className={cn('truncate font-mono text-[8.5px]', item.status === 'failed' ? 'text-red-300/80' : 'text-zinc-600')}>
                         {item.status === 'processing'
                           ? t('composer.inspecting')
@@ -179,7 +179,7 @@ export function Composer({
                 ))}
               </div>
               {attachmentError && (
-                <div className="flex items-center gap-1.5 border-b border-red-400/10 bg-red-400/[0.04] px-3 py-1.5 text-[9.5px] text-red-300/85">
+                <div className="flex items-center gap-1.5 border-b border-red-400/10 bg-red-400/[0.04] px-3 py-1.5 text-ui-meta text-red-300/85">
                   <AlertCircle size={10} /> {attachmentError}
                 </div>
               )}
@@ -203,7 +203,7 @@ export function Composer({
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-400 opacity-75" />
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-accent-500" />
                   </span>
-                  <span className="font-mono text-[10px] font-medium text-accent-300">
+                  <span className="font-mono text-ui-meta font-medium text-accent-300">
                     {t('composer.micActive')}
                   </span>
                   {/* Live animated waveform visualizer */}
@@ -223,7 +223,7 @@ export function Composer({
                 <button
                   type="button"
                   onClick={stopDictation}
-                  className="inline-flex items-center gap-1 rounded border border-accent-500/30 bg-accent-500/20 px-1.5 py-0.5 text-[9.5px] font-medium text-accent-200 transition hover:bg-accent-500/30"
+                  className="inline-flex items-center gap-1 rounded border border-accent-500/30 bg-accent-500/20 px-1.5 py-0.5 text-ui-meta font-medium text-accent-200 transition hover:bg-accent-500/30"
                 >
                   <Square size={8} fill="currentColor" /> {t('composer.micStop')}
                 </button>
@@ -245,7 +245,7 @@ export function Composer({
             >
               <div className="flex items-center gap-2 border-b border-accent-500/20 bg-accent-500/[0.08] px-3.5 py-1.5">
                 <Loader2 size={11} className="animate-spin text-accent-400" />
-                <span className="font-mono text-[10px] font-medium text-accent-300">
+                <span className="font-mono text-ui-meta font-medium text-accent-300">
                   {t('composer.micTranscribing')}
                 </span>
               </div>
@@ -263,7 +263,7 @@ export function Composer({
               transition={{ duration: 0.18 }}
               className="overflow-hidden"
             >
-              <div className="flex items-center gap-2 border-b border-amber-400/20 bg-amber-400/[0.08] px-3.5 py-2 text-[10.5px] text-amber-200">
+              <div className="flex items-center gap-2 border-b border-amber-400/20 bg-amber-400/[0.08] px-3.5 py-2 text-ui-meta text-amber-200">
                 <AlertCircle size={12} className="shrink-0 text-amber-400" />
                 <span className="flex-1">{dictationNotice}</span>
                 <button
@@ -365,11 +365,11 @@ export function Composer({
                 }
               }}
               placeholder={running ? t('composer.running') : isListening ? t('composer.micActive') : t('composer.placeholder')}
-              className="writing-text max-h-[180px] w-full resize-none bg-transparent py-2 text-[16px] leading-relaxed text-zinc-100 outline-none placeholder:text-zinc-600 scroll-slim md:text-[13.5px]"
+              className="writing-text max-h-[180px] w-full resize-none bg-transparent py-2 text-[16px] leading-relaxed text-zinc-100 outline-none placeholder:text-zinc-600 scroll-slim md:text-ui-body-sm"
             />
             {/* Interim live speech transcript preview indicator */}
             {isListening && interimTranscript && (
-              <div className="pointer-events-none mt-[-4px] pb-1.5 font-mono text-[11px] italic text-accent-300/80">
+              <div className="pointer-events-none mt-[-4px] pb-1.5 font-mono text-ui-meta italic text-accent-300/80">
                 {interimTranscript}
               </div>
             )}
@@ -406,10 +406,10 @@ export function Composer({
           )}
         </div>
       </div>
-      <div className="mt-2 hidden items-center justify-center gap-3 text-[10px] text-zinc-600 sm:flex">
-        <span><kbd className="rounded border border-white/10 bg-white/5 px-1 font-mono text-[9px]">Enter</kbd> {t('composer.enter')}</span>
+      <div className="mt-2 hidden items-center justify-center gap-3 text-ui-meta text-zinc-600 sm:flex">
+        <span><kbd className="rounded border border-white/10 bg-white/5 px-1 font-mono text-ui-meta">Enter</kbd> {t('composer.enter')}</span>
         <span className="text-zinc-700">·</span>
-        <span><kbd className="rounded border border-white/10 bg-white/5 px-1 font-mono text-[9px]">Shift+Enter</kbd> {t('composer.shiftEnter')}</span>
+        <span><kbd className="rounded border border-white/10 bg-white/5 px-1 font-mono text-ui-meta">Shift+Enter</kbd> {t('composer.shiftEnter')}</span>
         <span className="text-zinc-700">·</span>
         <span>{t('composer.trust')}</span>
       </div>
