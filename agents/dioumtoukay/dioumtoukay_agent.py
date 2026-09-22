@@ -150,7 +150,7 @@ ECHECS_CONSECUTIFS_MAX = 3
 ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "executer", "analyser", "diagnostiquer",
            "github_lister", "github_lire", "github_chercher", "github_diff",
-           "github_branche_creer", "github_ecrire",
+           "github_branche_creer", "github_ecrire", "github_remplacer",
            "ouvrir_pr", "etat_ci", "commentaires_pr",
            "convertir", "organiser_inspecter", "organiser_planifier",
            "organiser_appliquer", "organiser_annuler",
@@ -173,7 +173,9 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
 #: Les actions qui modifient quelque chose. Elles sont comptées à part dans le
 #: rapport : « j'ai lu quatre fichiers » et « j'ai modifié quatre fichiers » ne
 #: se lisent pas pareil, et c'est la seconde phrase qui demande une vérification.
-ACTIONS_QUI_MODIFIENT = frozenset({"ecrire", "remplacer", "deplacer", "github_ecrire"})
+ACTIONS_QUI_MODIFIENT = frozenset({
+    "ecrire", "remplacer", "deplacer", "github_ecrire", "github_remplacer",
+})
 
 #: Mutations directes qui ne doivent jamais etre suivies immediatement de
 #: `terminer`. Une verification REELLE doit arriver APRES la derniere
@@ -181,7 +183,7 @@ ACTIONS_QUI_MODIFIENT = frozenset({"ecrire", "remplacer", "deplacer", "github_ec
 #: Le garde reste volontairement generique pour fonctionner aussi bien sur du
 #: code que sur des fichiers ordinaires.
 ACTIONS_A_VERIFIER = frozenset({
-    "ecrire", "remplacer", "deplacer", "github_ecrire",
+    "ecrire", "remplacer", "deplacer", "github_ecrire", "github_remplacer",
     "ordinateur_ecrire_fichier",
 })
 
@@ -331,6 +333,19 @@ SHA: sha rendu par github_lire si le fichier existe
 MESSAGE: fix: corrige la configuration
 CONTENU:
 le contenu complet du fichier
+FIN
+
+ACTION: github_remplacer
+DEPOT: owner/repo
+BRANCHE: fix-mobile
+CHEMIN: apps/backend/config.py
+SHA: sha rendu par github_lire
+MESSAGE: fix: corrige la configuration
+ANCIEN:
+le passage exact et unique lu dans le fichier
+FIN
+NOUVEAU:
+le passage qui le remplace
 FIN
 
 ACTION: ouvrir_pr
@@ -525,7 +540,10 @@ COMMENT TRAVAILLER
    `diagnostiquer` peuvent trouver plus vite qu'une suite de `chercher` a
    l'aveugle — ce sont deux specialistes, consulte-les, ne les remplace pas.
 2. LIRE avant de modifier. Tu ne modifies jamais un fichier que tu n'as pas lu
-   dans cette conversation. `analyser` et `diagnostiquer` NE MODIFIENT RIEN
+   dans cette conversation. Sur GitHub distant, pour une correction locale dans
+   un fichier existant, prefere `github_remplacer` : cite ANCIEN exactement et
+   remplace seulement ce passage. `github_ecrire` reecrit le fichier complet.
+   `analyser` et `diagnostiquer` NE MODIFIENT RIEN
    eux-memes : ils proposent, c'est toujours toi qui appliques par `remplacer`
    ou `ecrire`, apres avoir lu le fichier concerne.
 3. `remplacer` est la BONNE facon de corriger : tu cites le passage exact et il
@@ -669,6 +687,18 @@ CONTENU:
 le contenu COMPLET du fichier
 FIN
 
+ACTION: github_remplacer
+BRANCHE: fix-exemple
+CHEMIN: apps/backend/config.py
+SHA: sha rendu par github_lire
+MESSAGE: fix: corrige la configuration
+ANCIEN:
+le passage exact et unique lu dans le fichier
+FIN
+NOUVEAU:
+le passage qui le remplace
+FIN
+
 ACTION: ouvrir_pr
 TETE: fix-exemple
 BASE: main
@@ -695,6 +725,10 @@ REGLES :
 - commentaires_pr lit les retours de revue : traite les remarques avant de conclure.
 - Avant de modifier un fichier existant, lis-le sur la branche cible et reutilise
   exactement le SHA rendu. Un SHA absent ou perime est refuse par le connecteur.
+- Pour une correction locale dans un fichier existant, PREFERE github_remplacer :
+  envoie le passage ANCIEN exact et unique + le NOUVEAU. Le connecteur reconstruit
+  le fichier complet lui-meme. github_ecrire sert surtout a creer un fichier ou
+  quand l'ensemble de son contenu doit reellement changer.
 - Cree une branche de travail avant toute ecriture. Jamais d ecriture directe sur main.
 - Apres modification, verifie le fichier ou le diff. Si une CI existe, seul
   resume: succes est une preuve positive : en_cours, en_attente et echec ne
@@ -1493,6 +1527,25 @@ class DioumtoukayAgent(BaseAgent):
                 "ecrire_fichier", depot=depot, chemin=chemin, branche=branche,
                 contenu=action.contenu, sha_attendu=champs.get("SHA", ""),
                 message=champs.get("MESSAGE", ""))
+        if action.nom == "github_remplacer":
+            depot = champs.get("DEPOT") or self.depot_github_defaut
+            chemin, branche = champs.get("CHEMIN", ""), champs.get("BRANCHE", "")
+            if not depot or not chemin or not branche:
+                return Resultat(
+                    False, "Il manque DEPOT (owner/repo), CHEMIN ou BRANCHE.")
+            if "ANCIEN" not in action.blocs:
+                return Resultat(
+                    False, "Il manque le bloc ANCIEN: … FIN, le passage exact a remplacer.")
+            return self._via_github(
+                "remplacer_dans_fichier",
+                depot=depot,
+                chemin=chemin,
+                branche=branche,
+                sha_attendu=champs.get("SHA", ""),
+                ancien=action.blocs["ANCIEN"],
+                nouveau=action.blocs.get("NOUVEAU", ""),
+                message=champs.get("MESSAGE", ""),
+            )
         if action.nom == "ouvrir_pr":
             depot, tete = champs.get("DEPOT") or self.depot_github_defaut, champs.get("TETE", "")
             if not depot or not tete:
@@ -1873,7 +1926,7 @@ class DioumtoukayAgent(BaseAgent):
             ref = champs_verif.get("REF", "")
             return not branche or not ref or branche == ref
 
-        if mutation.get("action") == "github_ecrire":
+        if mutation.get("action") in {"github_ecrire", "github_remplacer"}:
             branche = champs_mutation.get("BRANCHE", "")
             if action == "github_lire":
                 return (
