@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from apps.backend.config import RENDERED_DIR
 from apps.backend.security import validate_media_path
 from apps.backend.services.tools.registry import Tool, ToolRegistry, ToolResult
+from core.knowledge import KnowledgeVault
 from core.models.confidentialite import Confidentialite, classer
 
 
@@ -113,6 +114,33 @@ class WebSearch:
                           "sources": sources, "limited_coverage": True},
                           error=None if sources else "no_sources")
 
+
+
+class KnowledgeSearchArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    query: str = Field(min_length=1, max_length=500)
+    limit: int = Field(default=5, ge=1, le=10)
+
+
+class KnowledgeSearch:
+    """Recherche read-only dans le Knowledge Vault local."""
+
+    def __init__(self, vault: KnowledgeVault | None = None):
+        self.vault = vault or KnowledgeVault()
+
+    async def __call__(self, args: KnowledgeSearchArgs) -> ToolResult:
+        try:
+            hits = self.vault.search(args.query, limit=args.limit)
+        except OSError:
+            return ToolResult(ok=False, error="knowledge_vault_unavailable")
+        return ToolResult(
+            ok=bool(hits),
+            data={
+                "source": "knowledge_vault",
+                "results": [hit.to_dict() for hit in hits],
+            },
+            error=None if hits else "no_knowledge_sources",
+        )
 
 
 class AttachmentArgs(BaseModel):
@@ -261,12 +289,18 @@ class AutonomousMediaTools:
 
 def builtin_registry(client: httpx.AsyncClient, tavily_key: str = "",
                      pieces_jointes: Any = None, vision_agent: Any = None,
-                     video_agent: Any = None, registre: Any = None) -> ToolRegistry:
+                     video_agent: Any = None, registre: Any = None,
+                     knowledge_vault: KnowledgeVault | None = None) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(Tool("calculate", "Calcule une expression arithmetique numerique.",
                            CalculateArgs, calculate, timeout=1))
     registry.register(Tool("web_search", "Recherche des faits et sources web. Ne jamais envoyer de secrets.",
                            SearchArgs, WebSearch(client, tavily_key), timeout=10))
+    registry.register(Tool(
+        "knowledge_search",
+        "Recherche dans la base de connaissance locale sourcee du proprietaire.",
+        KnowledgeSearchArgs, KnowledgeSearch(knowledge_vault), timeout=5,
+    ))
 
     media = AutonomousMediaTools(
         pieces_jointes=pieces_jointes, vision_agent=vision_agent,
