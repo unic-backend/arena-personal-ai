@@ -14,6 +14,7 @@ from apps.backend.security import validate_media_path
 from apps.backend.services.tools.registry import Tool, ToolRegistry, ToolResult
 from core.knowledge import KnowledgeVault
 from core.models.confidentialite import Confidentialite, classer
+from core.security.trust import TrustLevel, wrap
 
 
 class CalculateArgs(BaseModel):
@@ -137,7 +138,20 @@ class KnowledgeSearch:
             ok=bool(hits),
             data={
                 "source": "knowledge_vault",
-                "results": [hit.to_dict() for hit in hits],
+                "results": [
+                    {
+                        "path": hit.path,
+                        "title": hit.title,
+                        "score": hit.score,
+                        "sources": hit.sources,
+                        "content": wrap(
+                            hit.snippet,
+                            TrustLevel.DOCUMENT,
+                            f"knowledge_vault:{hit.path}",
+                        ).text,
+                    }
+                    for hit in hits
+                ],
             },
             error=None if hits else "no_knowledge_sources",
         )
