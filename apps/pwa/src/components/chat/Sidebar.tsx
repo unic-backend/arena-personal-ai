@@ -161,7 +161,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
               if (e.key === 'Enter') handleSaveRename(c.id);
               if (e.key === 'Escape') handleCancelRename();
             }}
-            className="w-full min-w-0 rounded bg-ink-950 px-2 py-1 text-ui-meta text-zinc-100 outline-none ring-1 ring-accent-500/50"
+            className="w-full min-w-0 rounded bg-ink-950 px-2 py-1 text-ui-input text-zinc-100 outline-none ring-1 ring-accent-500/50"
           />
           <button
             type="button"
@@ -201,7 +201,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1">
-            <span className="truncate text-ui-body-sm">{c.title || t('sidebar.untitled')}</span>
+            <span className="truncate text-ui-history">{c.title || t('sidebar.untitled')}</span>
             {c.pinned && <Pin size={9} className="shrink-0 text-accent-400" />}
           </div>
         </div>
@@ -253,7 +253,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
     if (!list.length) return null;
     return (
       <div key={title} className="space-y-0.5">
-        <div className="px-1.5 py-1 font-mono text-ui-meta uppercase tracking-[0.14em] text-zinc-600">{title}</div>
+        <div className="px-1.5 py-1 font-mono text-ui-section uppercase text-zinc-500">{title}</div>
         {list.map(renderConversationItem)}
       </div>
     );
@@ -286,9 +286,9 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             newChat();
             onClose?.();
           }}
-          className="flex w-full items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-ui-body-sm font-medium text-zinc-200 transition hover:border-white/15 hover:bg-white/[0.06] active:scale-[0.99]"
+          className="flex w-full items-center gap-2.5 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-ui-nav text-zinc-100 transition hover:border-white/15 hover:bg-white/[0.06] active:scale-[0.99]"
         >
-          <Plus size={14} className="text-accent-400" />
+          <Plus size={19} className="text-accent-400" />
           {t('sidebar.new')}
         </button>
       </div>
@@ -305,13 +305,13 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             onClose?.();
           }}
           className={cn(
-            'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-ui-body-sm transition active:scale-[0.99]',
+            'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left text-ui-nav transition active:scale-[0.99]',
             capaciteActive === null
               ? 'bg-accent-500/10 text-accent-200'
               : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200',
           )}
         >
-          <Sparkles size={14} className={capaciteActive === null ? 'text-accent-400' : 'text-zinc-500'} />
+          <Sparkles size={19} className={capaciteActive === null ? 'text-accent-400' : 'text-zinc-500'} />
           Usman
         </button>
         {CAPACITES.map((cap) => {
@@ -333,7 +333,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                   : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200',
               )}
             >
-              <Icone size={14} className={choisie ? 'text-accent-400' : 'text-zinc-500'} />
+              <Icone size={19} className={choisie ? 'text-accent-400' : 'text-zinc-500'} />
               {locale === 'fr' ? cap.nomFr : cap.nomEn}
             </button>
           );
@@ -344,13 +344,13 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       {conversationsDeLEspace.length > 0 && (
         <div className="mt-3 border-t border-white/6 px-3 pt-3">
           <div className="relative flex items-center">
-            <Search size={12} className="pointer-events-none absolute left-2.5 text-zinc-500" />
+            <Search size={16} className="pointer-events-none absolute left-2.5 text-zinc-500" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('sidebar.searchPh')}
-              className="w-full rounded-lg border border-white/8 bg-ink-950/60 py-1.5 pl-7 pr-7 text-ui-meta text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-accent-500/40"
+              className="w-full rounded-lg border border-white/8 bg-ink-950/60 py-2 pl-8 pr-8 text-ui-input text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-accent-500/40"
             />
             {searchQuery && (
               <button
@@ -401,9 +401,9 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             openSettings();
             onClose?.();
           }}
-          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-ui-body-sm text-zinc-400 transition hover:bg-white/[0.05] hover:text-zinc-100 active:scale-[0.99]"
+          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-ui-nav text-zinc-300 transition hover:bg-white/[0.05] hover:text-zinc-100 active:scale-[0.99]"
         >
-          <Settings size={15} className="text-zinc-500" />
+          <Settings size={19} className="text-zinc-500" />
           {locale === 'fr' ? 'Réglages' : 'Settings'}
         </button>
       </div>
