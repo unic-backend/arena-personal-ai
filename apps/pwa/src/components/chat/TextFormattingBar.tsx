@@ -98,7 +98,7 @@ export function TextFormattingBar({ textarea, value, setValue }: Props) {
 
   return (
     <div className="flex items-center gap-0.5 overflow-x-auto border-b border-white/6 px-2 py-1 scroll-slim">
-      <span className="shrink-0 px-1.5 font-serif text-[13px] text-zinc-500">Aa</span>
+      <span className="shrink-0 px-1.5 font-serif text-ui-body-sm text-zinc-500">Aa</span>
       <span className="mr-1 h-4 w-px shrink-0 bg-white/8" />
       {items.map((item) => (
         <button
