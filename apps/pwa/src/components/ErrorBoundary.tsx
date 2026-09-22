@@ -41,9 +41,9 @@ export class ErrorBoundary extends Component<Props, State> {
     if (!erreur) return this.props.children;
     if (this.props.repli) return this.props.repli(erreur);
     return (
-      <div className="rounded-xl border border-red-400/20 bg-red-400/[0.04] px-3.5 py-2.5 text-[12px] text-red-300/90">
+      <div className="rounded-xl border border-red-400/20 bg-red-400/[0.04] px-3.5 py-2.5 text-ui-body-sm text-red-300/90">
         Ce message n'a pas pu s'afficher. Le reste de la conversation est intact.
-        <div className="mt-1 font-mono text-[10.5px] text-zinc-500">{erreur.message}</div>
+        <div className="mt-1 font-mono text-ui-meta text-zinc-500">{erreur.message}</div>
       </div>
     );
   }
