@@ -26,7 +26,7 @@ from typing import Any, Dict, Optional
 
 from core.actions.resultat import ResultatAction, echec, non_configure, succes
 from core.connectors.base import Capacite, Connecteur, EtatSante, Sante, _maintenant
-from core.memory.semantique import mesurer
+from core.memory.semantique import embeddings_ollama, mesurer
 from core.production.txtai_recherche import (
     MAX_DOCUMENTS,
     _executer_dans_un_thread,
@@ -35,6 +35,13 @@ from core.production.txtai_recherche import (
 )
 
 logger = logging.getLogger("usman.connecteurs.txtai_search")
+
+TXTAI_EMBEDDING_TIMEOUT = 5.0
+
+
+async def _embeddings_txtai_bornes(textes):
+    """Meme Ollama/bge-m3 qu'ARENA, avec une latence bornee pour un banc optionnel."""
+    return await embeddings_ollama(textes, timeout=TXTAI_EMBEDDING_TIMEOUT)
 
 
 class ConnecteurTxtaiSearch(Connecteur):
@@ -48,7 +55,7 @@ class ConnecteurTxtaiSearch(Connecteur):
         # ASYNCHRONE, meme forme que `embeddings_ollama` — injectable pour
         # les tests, jamais un Ollama reellement joignable suppose sans le
         # mesurer (regle 1 de core/memory/semantique.py).
-        self._fournisseur_async = fournisseur_async
+        self._fournisseur_async = fournisseur_async or _embeddings_txtai_bornes
 
     def capacites(self) -> Dict[str, Capacite]:
         return {
@@ -105,8 +112,7 @@ class ConnecteurTxtaiSearch(Connecteur):
         if not requete:
             return echec(action=capacite.nom, cible=self.nom, message="Aucune requete fournie.")
 
-        transform = (faire_transform_synchrone(self._fournisseur_async)
-                    if self._fournisseur_async else None)
+        transform = faire_transform_synchrone(self._fournisseur_async)
         try:
             resultats = rechercher(documents, requete, top_k=top_k, transform=transform)
         except RuntimeError as erreur:
