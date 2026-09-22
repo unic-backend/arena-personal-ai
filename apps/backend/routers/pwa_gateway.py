@@ -729,6 +729,10 @@ def noter_mesure(mesure: Mesure) -> Mesure:
     return mesure
 
 
+DELAI_CACHE_ETAT_MOTEUR_SECONDES = 5.0
+_cache_etat_moteur: Dict[str, tuple[float, Dict[str, Any]]] = {}
+
+
 def _etat_du_moteur(nom_connecteur: str) -> Dict[str, Any]:
     """Le moteur qui executerait cette action repond-il, maintenant ?
 
@@ -742,6 +746,10 @@ def _etat_du_moteur(nom_connecteur: str) -> Dict[str, Any]:
     geste avant de dire non.
 
     L'etat vient de la sonde du connecteur, jamais d'une seconde logique.
+    Une mesure reussie est reutilisee pendant 5 secondes au maximum : assez
+    pour eviter de relancer un SDK lourd sur deux messages rapproches, assez
+    court pour qu'un bouton ne garde pas longtemps un etat perime. Une sonde
+    qui leve n'entre jamais dans ce cache.
 
     **Ce que coute une sonde, mesure le 19/09/2026** : `faceplugin` repond en
     **2 990 ms**, `ui_ux_pro_max` en 71 ms, `gmail` en 0 ms. Cette fonction
@@ -755,17 +763,30 @@ def _etat_du_moteur(nom_connecteur: str) -> Dict[str, Any]:
     **on n'interdit pas une action parce qu'on n'a pas su la mesurer.** Le
     doute laisse le bouton, il ne le retire pas.
     """
+    maintenant = time.monotonic()
+    precedent = _cache_etat_moteur.get(nom_connecteur)
+    if precedent is not None:
+        mesure_le, etat = precedent
+        if maintenant - mesure_le < DELAI_CACHE_ETAT_MOTEUR_SECONDES:
+            return dict(etat)
+
     try:
         sante = registre.obtenir(nom_connecteur).sonder()
     except Exception:  # noqa: BLE001 — ne pas savoir n'est pas un refus
+        # Une mesure impossible n'est pas mémorisée : le prochain tour peut
+        # retenter immédiatement au lieu de figer une incertitude.
         return {"disponible": True, "indisponible_raison": ""}
 
     if sante.etat is EtatSante.OPERATIONNEL:
-        return {"disponible": True, "indisponible_raison": ""}
-    raison = sante.message or sante.etat.value
-    if sante.ce_qui_manque:
-        raison = f"{raison} ({sante.ce_qui_manque})"
-    return {"disponible": False, "indisponible_raison": raison}
+        etat = {"disponible": True, "indisponible_raison": ""}
+    else:
+        raison = sante.message or sante.etat.value
+        if sante.ce_qui_manque:
+            raison = f"{raison} ({sante.ce_qui_manque})"
+        etat = {"disponible": False, "indisponible_raison": raison}
+
+    _cache_etat_moteur[nom_connecteur] = (maintenant, etat)
+    return dict(etat)
 
 
 def _documents_produits(resultat: Dict[str, Any]) -> List[Dict[str, Any]]:

@@ -17,10 +17,22 @@ cassé ».
 """
 from pathlib import Path
 
+import pytest
+
 from core.connectors.base import EtatSante, Sante
 
 RACINE = Path(__file__).resolve().parent.parent
 VUE = RACINE / "apps" / "pwa" / "src" / "components" / "chat" / "ChatMessage.tsx"
+
+
+@pytest.fixture(autouse=True)
+def cache_etat_propre():
+    """Chaque scénario mesure son propre connecteur, jamais un cache précédent."""
+    from apps.backend.routers import pwa_gateway
+
+    pwa_gateway._cache_etat_moteur.clear()
+    yield
+    pwa_gateway._cache_etat_moteur.clear()
 
 
 def _etat(monkeypatch, sante):

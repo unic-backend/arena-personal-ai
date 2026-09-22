@@ -137,8 +137,10 @@ dans l'historique public. Aucun test ne peut le vérifier depuis le dépôt.
    `TARIFS` (`core/models/usage.py`), et en saisir un seul ferait passer TOUS
    les fournisseurs pour « mesurés ». Le plafond qui tient est
    `AI_MAX_CLOUD_REQUESTS_PER_DAY`. Le chiffrage par fournisseur reste à faire.
-2. **La sonde `faceplugin` coûte ~3 s par réponse.** Un cache court la
-   supprimerait, au prix d'afficher un état qui n'est plus « maintenant ».
+2. **La première sonde `faceplugin` coûte toujours ~3 s.** Les mesures de
+   santé réussies sont maintenant réutilisées pendant 5 secondes au maximum :
+   deux messages rapprochés ne relancent plus le SDK lourd. Une sonde qui lève
+   n'est jamais mise en cache, et l'état est re-mesuré dès expiration.
 3. **Le tag `v0.1.0` n'a jamais été poussé** : son test est rouge en CI et sur
    `main` à l'identique. Ce n'est pas une régression, et ce n'est pas à
    « réparer » sans décision.
