@@ -121,6 +121,8 @@ class TestEspaceGitHubDistant:
         consigne = modele.system_prompts[0]
         assert "mode GitHub distant" in consigne
         assert "ACTION: github_lister" in consigne
+        assert "ACTION: github_diff" in consigne
+        assert "ACTION: commentaires_pr" in consigne
         assert "STANDARD DE TRAVAIL" in consigne
         assert "cause racine" in consigne
         assert "ACTION: ordinateur_creer" not in consigne
@@ -213,6 +215,43 @@ class TestEspaceGitHubDistant:
                 "chemin": "apps/pwa",
             },
         )
+
+    @pytest.mark.asyncio
+    async def test_compare_la_branche_distante_avant_de_conclure(self, bac):
+        connecteur = FauxConnecteurGitHub(succes(
+            "comparer", "unic-backend/arena-personal-ai",
+            "main...fix-mobile : ahead, 1 fichier modifie.", preuve="head",
+            statut="ahead", ahead_by=1, behind_by=0,
+            fichiers=[{
+                "chemin": "apps/pwa/src/App.tsx",
+                "statut": "modified",
+                "ajouts": 2,
+                "suppressions": 1,
+                "patch": "@@\n-old\n+new",
+            }],
+        ))
+        a = agent(
+            bac,
+            [
+                "ACTION: github_diff\nBASE: main\nTETE: fix-mobile",
+                "ACTION: terminer\nCONTENU:\nDiff verifie.\nFIN",
+            ],
+            connecteur_github=connecteur,
+            depot_github_defaut="unic-backend/arena-personal-ai",
+        )
+
+        resultat = await a.run("verifie le diff de fix-mobile")
+
+        assert resultat["status"] == "success"
+        assert connecteur.appels[0] == (
+            "comparer",
+            {
+                "depot": "unic-backend/arena-personal-ai",
+                "base": "main",
+                "tete": "fix-mobile",
+            },
+        )
+        assert "apps/pwa/src/App.tsx" in resultat["response"]
 
     @pytest.mark.asyncio
     async def test_lit_puis_ecrit_sur_le_depot_par_defaut(self, bac):
@@ -333,6 +372,95 @@ class TestQualiteExecution:
         assert [acte["action"] for acte in resultat["actions"]] == ["ecrire", "lire"]
         assert "Fichier relu et verifie." in resultat["response"]
         assert (bac / "note.txt").read_text() == "version 2"
+
+    @pytest.mark.asyncio
+    async def test_lire_un_autre_fichier_ne_valide_pas_la_mutation(self, bac):
+        (bac / "autre.txt").write_text("ancien", encoding="utf-8")
+        a = agent(bac, [
+            "ACTION: ecrire\nCHEMIN: note.txt\nCONTENU:\nversion 2\nFIN",
+            "ACTION: terminer\nCONTENU:\nc est bon\nFIN",
+            "ACTION: lire\nCHEMIN: autre.txt",
+            "ACTION: terminer\nCONTENU:\nmaintenant c est bon\nFIN",
+            "ACTION: lire\nCHEMIN: note.txt",
+            "ACTION: terminer\nCONTENU:\nnote.txt relu et verifie.\nFIN",
+        ])
+
+        resultat = await a.run("mets note.txt a jour et verifie le resultat")
+
+        assert resultat["status"] == "success"
+        assert [acte["action"] for acte in resultat["actions"]] == [
+            "ecrire", "lire", "lire",
+        ]
+        assert "note.txt relu et verifie" in resultat["response"]
+
+    def test_ci_rouge_ne_valide_jamais_une_ecriture_github(self):
+        mutation = {
+            "action": "github_ecrire",
+            "ok": True,
+            "champs": {"CHEMIN": "a.py", "BRANCHE": "fix-a"},
+        }
+        ci = {
+            "action": "etat_ci",
+            "ok": True,
+            "champs": {"REF": "fix-a"},
+            "sortie": "resume: echec\n- tests: failure",
+        }
+
+        assert DioumtoukayAgent._preuve_positive(mutation, ci) is False
+        assert DioumtoukayAgent._mutation_non_verifiee([mutation, ci]) == mutation
+
+    def test_ci_en_cours_ne_valide_jamais_une_ecriture_github(self):
+        mutation = {
+            "action": "github_ecrire",
+            "ok": True,
+            "champs": {"CHEMIN": "a.py", "BRANCHE": "fix-a"},
+        }
+        ci = {
+            "action": "etat_ci",
+            "ok": True,
+            "champs": {"REF": "fix-a"},
+            "sortie": "resume: en_cours\n- tests: in_progress",
+        }
+
+        assert DioumtoukayAgent._preuve_positive(mutation, ci) is False
+
+    def test_ci_verte_de_la_bonne_branche_valide_ecriture_github(self):
+        mutation = {
+            "action": "github_ecrire",
+            "ok": True,
+            "champs": {"CHEMIN": "a.py", "BRANCHE": "fix-a"},
+        }
+        ci = {
+            "action": "etat_ci",
+            "ok": True,
+            "champs": {"REF": "fix-a"},
+            "sortie": "resume: succes\n- tests: success",
+        }
+
+        assert DioumtoukayAgent._preuve_positive(mutation, ci) is True
+        assert DioumtoukayAgent._mutation_non_verifiee([mutation, ci]) is None
+
+    def test_diff_doit_concerner_la_branche_et_le_fichier_modifies(self):
+        mutation = {
+            "action": "github_ecrire",
+            "ok": True,
+            "champs": {"CHEMIN": "a.py", "BRANCHE": "fix-a"},
+        }
+        mauvais = {
+            "action": "github_diff",
+            "ok": True,
+            "champs": {"BASE": "main", "TETE": "autre-branche"},
+            "sortie": "fichiers modifies:\n- a.py (modified, +1/-0)",
+        }
+        bon = {
+            "action": "github_diff",
+            "ok": True,
+            "champs": {"BASE": "main", "TETE": "fix-a"},
+            "sortie": "fichiers modifies:\n- a.py (modified, +1/-0)",
+        }
+
+        assert DioumtoukayAgent._preuve_positive(mutation, mauvais) is False
+        assert DioumtoukayAgent._preuve_positive(mutation, bon) is True
 
     @pytest.mark.asyncio
     async def test_deux_conclusions_sans_preuve_restent_partielles(self, bac):
@@ -501,6 +629,34 @@ class TestOuvrirPR:
 
         assert resultat["actions"][0]["ok"] is False
         assert "rien a fusionner" in resultat["actions"][0]["message"]
+
+
+# --- commentaires de revue ---------------------------------------------------------
+
+class TestCommentairesPR:
+    @pytest.mark.asyncio
+    async def test_lit_les_commentaires_de_revue(self, bac):
+        connecteur = FauxConnecteurGitHub(succes(
+            "commentaires_pr", "o/r", "1 commentaire(s) sur la PR #7.",
+            preuve="1",
+            commentaires=[{
+                "auteur": "reviewer",
+                "corps": "Ajoute un test de regression.",
+                "genre": "revue",
+                "chemin": "a.py",
+            }],
+        ))
+        a = agent(bac, [
+            "ACTION: commentaires_pr\nDEPOT: o/r\nNUMERO: 7",
+            "ACTION: terminer\nCONTENU:\nUne revue demande un test de regression.\nFIN",
+        ], connecteur_github=connecteur)
+
+        resultat = await a.run("lis les retours de la PR 7")
+
+        assert connecteur.appels == [(
+            "commentaires_pr", {"depot": "o/r", "numero": 7}
+        )]
+        assert "Ajoute un test de regression" in resultat["response"]
 
 
 # --- etat_ci ---------------------------------------------------------------------
