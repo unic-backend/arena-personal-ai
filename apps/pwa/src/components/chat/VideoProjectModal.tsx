@@ -96,18 +96,18 @@ function EtapeRow({ etape, fr }: { etape: EtapeProjetResultat; fr: boolean }) {
       <span className="mt-[1px] shrink-0">{icone}</span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="truncate text-[12px] font-medium text-zinc-200">{etape.etape}</span>
+          <span className="truncate text-ui-body-sm font-medium text-zinc-200">{etape.etape}</span>
           {etape.tentatives > 1 && (
-            <span className="shrink-0 font-mono text-[9px] text-zinc-600">
+            <span className="shrink-0 font-mono text-ui-meta text-zinc-600">
               ×{etape.tentatives}
             </span>
           )}
         </div>
         {etape.raison && (
-          <div className="truncate text-[10.5px] text-zinc-500">{etape.raison}</div>
+          <div className="truncate text-ui-meta text-zinc-500">{etape.raison}</div>
         )}
       </div>
-      <span className="shrink-0 font-mono text-[9px] uppercase tracking-wide text-zinc-600">
+      <span className="shrink-0 font-mono text-ui-meta uppercase tracking-wide text-zinc-600">
         {fr
           ? { PENDING: 'attente', RUNNING: 'en cours', DONE: 'fait', FAILED: 'échec',
               SKIPPED: 'ignorée', NOT_REACHED: 'jamais lancée' }[etape.etat]
@@ -182,10 +182,10 @@ export function VideoProjectModal() {
                 <Clapperboard size={13} />
               </span>
               <div className="flex-1">
-                <h2 id="video-project-modal-title" className="text-[13.5px] font-medium text-zinc-100">
+                <h2 id="video-project-modal-title" className="text-ui-body-sm font-medium text-zinc-100">
                   {t('vidproj.title')}
                 </h2>
-                <div className="font-mono text-[9px] text-zinc-400">
+                <div className="font-mono text-ui-meta text-zinc-400">
                   {backend.enabled ? t('vidproj.routed') : t('vidproj.localOnly')}
                 </div>
               </div>
@@ -201,13 +201,13 @@ export function VideoProjectModal() {
 
             <div className="flex-1 space-y-4 overflow-y-auto p-4 scroll-slim">
               {!backend.enabled ? (
-                <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.05] p-3 text-[11.5px] leading-relaxed text-amber-200/90">
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.05] p-3 text-ui-meta leading-relaxed text-amber-200/90">
                   <AlertTriangle size={13} className="mb-1 inline-block" /> {t('vidproj.needBackend')}
                 </div>
               ) : (
                 <>
                   <div>
-                    <label htmlFor="vidproj-objectif" className="mb-1.5 block text-[10.5px] font-medium text-zinc-400">
+                    <label htmlFor="vidproj-objectif" className="mb-1.5 block text-ui-meta font-medium text-zinc-400">
                       {t('vidproj.objectifLabel')}
                     </label>
                     <textarea
@@ -216,14 +216,14 @@ export function VideoProjectModal() {
                       onChange={(e) => setObjectif(e.target.value)}
                       placeholder={t('vidproj.objectifPh')}
                       rows={3}
-                      className="w-full resize-none rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2.5 text-[12.5px] text-zinc-100 placeholder:text-zinc-600 focus:border-accent-500/40 focus:outline-none"
+                      className="w-full resize-none rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2.5 text-ui-body-sm text-zinc-100 placeholder:text-zinc-600 focus:border-accent-500/40 focus:outline-none"
                     />
                   </div>
 
                   <div>
                     <div className="mb-1.5 flex items-center justify-between">
-                      <span className="text-[10.5px] font-medium text-zinc-400">{t('vidproj.referencesLabel')}</span>
-                      <label className="inline-flex cursor-pointer items-center gap-1 text-[10.5px] font-medium text-accent-300 hover:text-accent-200">
+                      <span className="text-ui-meta font-medium text-zinc-400">{t('vidproj.referencesLabel')}</span>
+                      <label className="inline-flex cursor-pointer items-center gap-1 text-ui-meta font-medium text-accent-300 hover:text-accent-200">
                         <Paperclip size={11} />
                         {t('vidproj.addReference')}
                         <input
@@ -249,7 +249,7 @@ export function VideoProjectModal() {
                             key={r.id}
                             title={r.status === 'failed' ? r.error : r.name}
                             className={cn(
-                              'inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10.5px]',
+                              'inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-ui-meta',
                               r.status === 'failed'
                                 ? 'border-red-500/25 bg-red-500/[0.05] text-red-300'
                                 : 'border-white/10 bg-white/[0.03] text-zinc-300',
@@ -269,14 +269,14 @@ export function VideoProjectModal() {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-[9.5px] leading-relaxed text-zinc-600">{t('vidproj.referencesHint')}</p>
+                      <p className="text-ui-meta leading-relaxed text-zinc-600">{t('vidproj.referencesHint')}</p>
                     )}
                   </div>
 
                   <div>
                     <div className="mb-1.5 flex items-center justify-between">
-                      <span className="text-[10.5px] font-medium text-zinc-400">{t('vidproj.modeLabel')}</span>
-                      <span className="font-mono text-[9px] uppercase tracking-wide text-zinc-600">
+                      <span className="text-ui-meta font-medium text-zinc-400">{t('vidproj.modeLabel')}</span>
+                      <span className="font-mono text-ui-meta uppercase tracking-wide text-zinc-600">
                         {mode === 'auto' ? t('vidproj.modeAuto') : t('vidproj.modeTeam')}
                       </span>
                     </div>
@@ -297,7 +297,7 @@ export function VideoProjectModal() {
                             disabled={indisponible}
                             title={indisponible ? etat?.raison : undefined}
                             className={cn(
-                              'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition active:scale-95',
+                              'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-ui-meta font-medium transition active:scale-95',
                               indisponible
                                 ? 'cursor-not-allowed border-white/5 bg-white/[0.01] text-zinc-600 line-through decoration-zinc-700'
                                 : selected
@@ -316,14 +316,14 @@ export function VideoProjectModal() {
                          lue sans y toucher, sinon elle n'existe pas. */
                       <ul className="mt-2 space-y-1 border-l border-amber-500/25 pl-2.5">
                         {indisponibles.map(([nom, etat]) => (
-                          <li key={nom} className="text-[9.5px] leading-relaxed text-zinc-500">
+                          <li key={nom} className="text-ui-meta leading-relaxed text-zinc-500">
                             <span className="text-zinc-400">{labelCapacite(nom, fr)}</span>
                             {' — '}{etat.raison}
                           </li>
                         ))}
                       </ul>
                     )}
-                    <p className="mt-1.5 text-[9.5px] leading-relaxed text-zinc-600">
+                    <p className="mt-1.5 text-ui-meta leading-relaxed text-zinc-600">
                       {mode === 'auto' ? t('vidproj.modeAutoHint') : t('vidproj.modeTeamHint')}
                     </p>
                   </div>
@@ -332,14 +332,14 @@ export function VideoProjectModal() {
                     type="button"
                     disabled={submitting || !objectif.trim() || references.some((r) => r.status === 'uploading')}
                     onClick={() => void submit()}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-accent-500/30 bg-accent-500/10 px-3 py-2.5 text-[12.5px] font-medium text-accent-300 transition hover:bg-accent-500/15 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-accent-500/30 bg-accent-500/10 px-3 py-2.5 text-ui-body-sm font-medium text-accent-300 transition hover:bg-accent-500/15 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {submitting ? <Loader2 size={13} className="animate-spin" /> : <Video size={13} />}
                     {submitting ? t('vidproj.submitting') : t('vidproj.submit')}
                   </button>
 
                   {error && (
-                    <div className="rounded-xl border border-red-500/20 bg-red-500/[0.05] p-3 text-[11.5px] text-red-300">
+                    <div className="rounded-xl border border-red-500/20 bg-red-500/[0.05] p-3 text-ui-meta text-red-300">
                       {error === 'no-backend' ? t('vidproj.needBackend') : error}
                     </div>
                   )}
@@ -355,11 +355,11 @@ export function VideoProjectModal() {
                             : 'border-red-500/20 bg-red-500/[0.04]',
                       )}
                     >
-                      <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-zinc-200">
+                      <p className="whitespace-pre-wrap text-ui-body-sm leading-relaxed text-zinc-200">
                         {result.response}
                       </p>
                       {result.projet?.artefact_final && (
-                        <div className="mt-2 flex items-center gap-1.5 font-mono text-[10px] text-emerald-300">
+                        <div className="mt-2 flex items-center gap-1.5 font-mono text-ui-meta text-emerald-300">
                           <FileVideo2 size={11} /> {result.projet.artefact_final}
                         </div>
                       )}
@@ -377,7 +377,7 @@ export function VideoProjectModal() {
             </div>
 
             <div className="border-t border-white/7 px-4 py-2.5">
-              <p className="text-[9.5px] leading-relaxed text-zinc-600">{t('vidproj.footer')}</p>
+              <p className="text-ui-meta leading-relaxed text-zinc-600">{t('vidproj.footer')}</p>
             </div>
           </motion.div>
         </>
