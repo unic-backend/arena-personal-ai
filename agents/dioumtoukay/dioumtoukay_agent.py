@@ -68,8 +68,8 @@ TOURS_MAX_GITHUB_DISTANT = 24
 
 #: Au-delà, le travail s'arrête même si le budget de tours n'est pas atteint.
 #: Une action peut coûter jusqu'à `DELAI_PAR_DEFAUT` (`Atelier`, 120s) :
-#: sans plafond de temps, une session profonde pourrait durer indéfiniment. Concept vérifié dans le code
-#: source de mini-SWE-agent (`AgentConfig.wall_time_limit_seconds`) — 0
+#: sans plafond de temps, une session profonde pourrait durer indéfiniment.
+#: Concept vérifié dans le code source de mini-SWE-agent (`AgentConfig.wall_time_limit_seconds`) — 0
 #: désactiverait la limite, comme chez eux, mais rien ici n'a demandé à la
 #: désactiver.
 DUREE_MAX_SECONDES = 20 * 60
@@ -1880,7 +1880,14 @@ class DioumtoukayAgent(BaseAgent):
                 "Ce qui a ete fait est ci-dessous ; la suite reste a faire."
             )
 
-        self._retenir(user_input, conclusion, rendu)
+        # Le rapport final d'une tache reprise doit couvrir le TRAVAIL entier,
+        # pas seulement ce qui s'est execute depuis le dernier redemarrage.
+        # `actions` reste volontairement le delta de CE passage pour ne pas
+        # casser le contrat de l'API ; les fichiers et la memoire, eux, portent
+        # l'ensemble de la tache.
+        rendu_tache = [*rendu_precedent, *rendu]
+        fichiers_tache = self.fichiers_touches(rendu_tache)
+        self._retenir(user_input, conclusion, rendu_tache)
 
         # Terminee, ou interrompue donc REPRENABLE. C'est cette distinction qui
         # fait la difference entre « la suite reste a faire » (une phrase) et
@@ -1895,9 +1902,13 @@ class DioumtoukayAgent(BaseAgent):
             "agent": self.name,
             "moteur": self._moteur_utilise(),
             "actions": rendu,
-            "fichiers_modifies": self.fichiers_touches(rendu),
+            "fichiers_modifies": fichiers_tache,
             "response": self._rapport(
-                conclusion, rendu, termine=arrete_par_lui_meme),
+                conclusion,
+                rendu,
+                termine=arrete_par_lui_meme,
+                fichiers_tache=fichiers_tache,
+            ),
             "tache": tache.journal(),
             "reprise": reprise,
         }
@@ -2180,7 +2191,12 @@ class DioumtoukayAgent(BaseAgent):
 
     @classmethod
     def _rapport(
-        cls, conclusion: str, rendu: List[Dict[str, Any]], *, termine: bool = True
+        cls,
+        conclusion: str,
+        rendu: List[Dict[str, Any]],
+        *,
+        termine: bool = True,
+        fichiers_tache: Optional[List[str]] = None,
     ) -> str:
         """Compte-rendu humain : resultat d'abord, preuves ensuite.
 
@@ -2193,7 +2209,15 @@ class DioumtoukayAgent(BaseAgent):
         if conclusion_propre:
             parties.append(conclusion_propre)
 
-        touches = cls.fichiers_touches(rendu)
+        # Sur une reprise, les actions de CE passage ne racontent pas tout le
+        # travail : un fichier peut avoir ete modifie avant une coupure puis
+        # seulement relu/verifie ici. Le rapport recoit alors l'inventaire de
+        # la tache entiere, sans pour autant reafficher les vieux logs/echecs.
+        touches = (
+            list(fichiers_tache)
+            if fichiers_tache is not None
+            else cls.fichiers_touches(rendu)
+        )
         if touches:
             parties.append(
                 "**Fichiers modifiés**\n"
