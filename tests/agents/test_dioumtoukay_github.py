@@ -122,6 +122,7 @@ class TestEspaceGitHubDistant:
         assert "mode GitHub distant" in consigne
         assert "ACTION: github_lister" in consigne
         assert "ACTION: github_diff" in consigne
+        assert "ACTION: github_remplacer" in consigne
         assert "ACTION: commentaires_pr" in consigne
         assert "STANDARD DE TRAVAIL" in consigne
         assert "cause racine" in consigne
@@ -252,6 +253,44 @@ class TestEspaceGitHubDistant:
             },
         )
         assert "apps/pwa/src/App.tsx" in resultat["response"]
+
+    @pytest.mark.asyncio
+    async def test_remplacement_distant_n_envoie_que_le_passage_modifie(self, bac):
+        connecteur = FauxConnecteurGitHub(succes(
+            "remplacer_dans_fichier", "unic-backend/arena-personal-ai",
+            "apps/pwa/src/App.tsx modifie chirurgicalement sur fix-mobile.",
+            preuve="commit-2", sha="blob-2",
+        ))
+        a = agent(
+            bac,
+            [
+                "ACTION: github_remplacer\nBRANCHE: fix-mobile\n"
+                "CHEMIN: apps/pwa/src/App.tsx\nSHA: blob-1\n"
+                "MESSAGE: fix: mobile\nANCIEN:\nancienne ligne\nFIN\n"
+                "NOUVEAU:\nnouvelle ligne\nFIN",
+                "ACTION: github_lire\nREF: fix-mobile\nCHEMIN: apps/pwa/src/App.tsx",
+                "ACTION: terminer\nCONTENU:\nCorrection verifiee.\nFIN",
+            ],
+            connecteur_github=connecteur,
+            depot_github_defaut="unic-backend/arena-personal-ai",
+        )
+
+        resultat = await a.run("corrige une ligne du frontend")
+
+        assert resultat["status"] == "success"
+        assert connecteur.appels[0] == (
+            "remplacer_dans_fichier",
+            {
+                "depot": "unic-backend/arena-personal-ai",
+                "chemin": "apps/pwa/src/App.tsx",
+                "branche": "fix-mobile",
+                "sha_attendu": "blob-1",
+                "ancien": "ancienne ligne",
+                "nouveau": "nouvelle ligne",
+                "message": "fix: mobile",
+            },
+        )
+        assert "apps/pwa/src/App.tsx" in resultat["fichiers_modifies"]
 
     @pytest.mark.asyncio
     async def test_lit_puis_ecrit_sur_le_depot_par_defaut(self, bac):
@@ -463,6 +502,28 @@ class TestQualiteExecution:
 
         assert DioumtoukayAgent._preuve_positive(mutation, mauvais) is False
         assert DioumtoukayAgent._preuve_positive(mutation, bon) is True
+
+    def test_remplacement_github_exige_la_meme_preuve_que_ecriture_complete(self):
+        mutation = {
+            "action": "github_remplacer",
+            "ok": True,
+            "champs": {"CHEMIN": "a.py", "BRANCHE": "fix-a"},
+        }
+        mauvaise_lecture = {
+            "action": "github_lire",
+            "ok": True,
+            "champs": {"CHEMIN": "a.py", "REF": "main"},
+            "sortie": "ref: main\nsha: x\nCONTENU:\nancien",
+        }
+        bonne_lecture = {
+            "action": "github_lire",
+            "ok": True,
+            "champs": {"CHEMIN": "a.py", "REF": "fix-a"},
+            "sortie": "ref: fix-a\nsha: y\nCONTENU:\nnouveau",
+        }
+
+        assert DioumtoukayAgent._preuve_positive(mutation, mauvaise_lecture) is False
+        assert DioumtoukayAgent._preuve_positive(mutation, bonne_lecture) is True
 
     @pytest.mark.asyncio
     async def test_deux_conclusions_sans_preuve_restent_partielles(self, bac):
@@ -695,9 +756,10 @@ class TestEtatCI:
 
 # --- La garde qui compte le plus --------------------------------------------------
 
-def test_une_ecriture_github_reussie_compte_comme_fichier_modifie():
+@pytest.mark.parametrize("action", ["github_ecrire", "github_remplacer"])
+def test_une_ecriture_github_reussie_compte_comme_fichier_modifie(action):
     rendu = [{
-        "action": "github_ecrire",
+        "action": action,
         "ok": True,
         "champs": {"CHEMIN": "apps/backend/config.py"},
     }]
