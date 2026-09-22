@@ -880,6 +880,105 @@ class DioumtoukayAgent(BaseAgent):
         return Resultat(True, f"{nom_specialiste} a repondu.",
                         sortie=reponse.get("response", ""))
 
+    @staticmethod
+    def _detail_lisible(detail: Dict[str, Any]) -> str:
+        """Transforme un detail structure en texte stable, sans repr Python.
+
+        Les connecteurs rendent des dictionnaires utiles au moteur. Les afficher
+        tels quels donnait des blocs `{'sha': ..., 'taille': ...}` illisibles
+        sur mobile. Ici chaque structure devient des lignes/bullets ; les octets
+        ne sont jamais recopies.
+        """
+        lignes: List[str] = []
+        for cle, valeur in (detail or {}).items():
+            if isinstance(valeur, (bytes, bytearray)):
+                lignes.append(f"{cle}: {len(valeur)} octet(s)")
+                continue
+            if isinstance(valeur, list):
+                if not valeur:
+                    lignes.append(f"{cle}: aucun")
+                    continue
+                lignes.append(f"{cle}:")
+                for item in valeur:
+                    if isinstance(item, dict):
+                        morceaux = [
+                            f"{k}={v}" for k, v in item.items()
+                            if not isinstance(v, (dict, list, bytes, bytearray))
+                            and v not in ("", None)
+                        ]
+                        lignes.append("- " + ", ".join(morceaux))
+                    else:
+                        lignes.append(f"- {item}")
+                continue
+            if isinstance(valeur, dict):
+                lignes.append(f"{cle}:")
+                for sous_cle, sous_valeur in valeur.items():
+                    if isinstance(sous_valeur, (bytes, bytearray)):
+                        lignes.append(f"- {sous_cle}: {len(sous_valeur)} octet(s)")
+                    else:
+                        lignes.append(f"- {sous_cle}: {sous_valeur}")
+                continue
+            if valeur not in ("", None):
+                lignes.append(f"{cle}: {valeur}")
+        return "\n".join(lignes)
+
+    @classmethod
+    def _detail_github_lisible(cls, capacite: str, detail: Dict[str, Any]) -> str:
+        """Vue utile de GitHub pour le MODELE, sans bruit d'API.
+
+        Une lecture garde le contenu + SHA car l'ecriture optimiste en a besoin.
+        Un listing, en revanche, n'a aucune raison de transporter 11 SHA et
+        tailles : les chemins et types suffisent pour choisir l'etape suivante.
+        """
+        if capacite == "lister":
+            entrees = detail.get("entrees") or []
+            lignes = []
+            for entree in entrees:
+                if not isinstance(entree, dict):
+                    continue
+                chemin = entree.get("chemin") or entree.get("nom") or ""
+                if not chemin:
+                    continue
+                genre = "dossier" if entree.get("type") == "dir" else "fichier"
+                lignes.append(f"- {chemin} ({genre})")
+            return "\n".join(lignes)
+
+        if capacite == "lire_fichier":
+            contenu = str(detail.get("contenu") or "")
+            sha = str(detail.get("sha") or "")
+            ref = str(detail.get("ref") or "")
+            entete = []
+            if ref:
+                entete.append(f"ref: {ref}")
+            if sha:
+                entete.append(f"sha: {sha}")
+            entete.append("CONTENU:")
+            entete.append(contenu)
+            return "\n".join(entete)
+
+        if capacite == "chercher_code":
+            occurrences = detail.get("occurrences") or []
+            lignes = []
+            for occurrence in occurrences:
+                if not isinstance(occurrence, dict):
+                    continue
+                chemin = occurrence.get("chemin") or ""
+                if chemin:
+                    lignes.append(f"- {chemin}")
+            return "\n".join(lignes)
+
+        if capacite == "etat_ci":
+            lignes = [f"resume: {detail.get('resume', 'inconnu')}"]
+            for verification in detail.get("verifications") or []:
+                if not isinstance(verification, dict):
+                    continue
+                nom = verification.get("nom") or "verification"
+                statut = verification.get("conclusion") or verification.get("statut") or "inconnu"
+                lignes.append(f"- {nom}: {statut}")
+            return "\n".join(lignes)
+
+        return cls._detail_lisible(detail)
+
     def _via_github(self, capacite: str, **parametres: Any) -> Resultat:
         """Appelle le connecteur GitHub et rend son `ResultatAction` comme un
         `Resultat` ordinaire — Dioumtoukay ne voit qu'un seul type de resultat,
@@ -900,7 +999,7 @@ class DioumtoukayAgent(BaseAgent):
             return Resultat(False, f"GitHub n'a pas repondu : {type(erreur).__name__}: {erreur}")
 
         if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
-            detail = "\n".join(f"{cle}: {valeur}" for cle, valeur in resultat.detail.items())
+            detail = self._detail_github_lisible(capacite, resultat.detail or {})
             return Resultat(True, resultat.message, sortie=detail)
         return Resultat(False, resultat.message)
 
@@ -916,7 +1015,7 @@ class DioumtoukayAgent(BaseAgent):
             return Resultat(False, f"Conversion impossible : {type(erreur).__name__}: {erreur}")
 
         if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
-            detail = "\n".join(f"{cle}: {valeur}" for cle, valeur in resultat.detail.items())
+            detail = self._detail_lisible(resultat.detail or {})
             return Resultat(True, resultat.message, sortie=detail)
         return Resultat(False, resultat.message)
 
@@ -930,7 +1029,7 @@ class DioumtoukayAgent(BaseAgent):
             return Resultat(False, f"Classement impossible : {type(erreur).__name__}: {erreur}")
 
         if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
-            detail = "\n".join(f"{cle}: {valeur}" for cle, valeur in resultat.detail.items())
+            detail = self._detail_lisible(resultat.detail or {})
             return Resultat(True, resultat.message, sortie=detail)
         return Resultat(False, resultat.message)
 
@@ -965,7 +1064,7 @@ class DioumtoukayAgent(BaseAgent):
             return Resultat(False, f"Operation PDF impossible : {type(erreur).__name__}: {erreur}")
 
         if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
-            detail = "\n".join(f"{cle}: {valeur}" for cle, valeur in resultat.detail.items())
+            detail = self._detail_lisible(resultat.detail or {})
             return Resultat(True, resultat.message, sortie=detail)
         return Resultat(False, resultat.message)
 
@@ -989,13 +1088,8 @@ class DioumtoukayAgent(BaseAgent):
             return Resultat(False, f"Case injoignable : {type(erreur).__name__}: {erreur}")
 
         if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
-            lignes = []
-            for cle, valeur in resultat.detail.items():
-                if isinstance(valeur, (bytes, bytearray)):
-                    lignes.append(f"{cle}: {len(valeur)} octet(s)")
-                else:
-                    lignes.append(f"{cle}: {valeur}")
-            return Resultat(True, resultat.message, sortie="\n".join(lignes))
+            detail = self._detail_lisible(resultat.detail or {})
+            return Resultat(True, resultat.message, sortie=detail)
         return Resultat(False, resultat.message)
 
     @staticmethod
