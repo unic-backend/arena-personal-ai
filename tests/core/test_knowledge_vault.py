@@ -3,7 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from apps.backend.services.tools.builtin import KnowledgeSearch, KnowledgeSearchArgs
+from apps.backend.services.tools.builtin import (
+    KnowledgeExplorer,
+    KnowledgeFindArgs,
+    KnowledgeListArgs,
+    KnowledgeReadArgs,
+    KnowledgeSearch,
+    KnowledgeSearchArgs,
+)
 from core.knowledge.vault import KnowledgeVault
 
 
@@ -145,3 +152,88 @@ def test_search_ignore_les_mots_vides_pour_eviter_la_contamination(tmp_path: Pat
     vault.ingest(source)
 
     assert vault.search("comment faire avec cette chose") == []
+
+
+
+async def test_hybrid_search_signale_son_mode_et_ses_rangs(tmp_path: Path):
+    source = tmp_path / "urgence.md"
+    source.write_text(
+        "# Fonds de secours\n\nConserver une reserve liquide pour les urgences.",
+        encoding="utf-8",
+    )
+    vault = KnowledgeVault(tmp_path / "vault")
+    vault.ingest(source)
+
+    async def embedder(texts):
+        assert len(texts) == 2
+        return [[1.0, 0.0], [0.99, 0.01]]
+
+    resultats = await vault.hybrid_search(
+        "epargne de precaution",
+        limit=3,
+        embedder=embedder,
+    )
+
+    assert resultats
+    assert resultats[0].mode == "HYBRID_RRF"
+    assert resultats[0].signals["semantic_rank"] == 1
+    assert resultats[0].sources
+
+
+def test_agentic_vault_liste_trouve_et_lit_sans_sortir_du_dossier(tmp_path: Path):
+    vault = KnowledgeVault(tmp_path / "vault")
+    vault.initialize()
+    dossier = vault.wiki_dir / "concepts"
+    dossier.mkdir()
+    (dossier / "ba13.md").write_text(
+        "---\nsources:\n  - raw/ba13.md\n---\n"
+        "# BA13\n\nLe double montant est pose aux joints de plaques.\n",
+        encoding="utf-8",
+    )
+
+    assert vault.list_pages("**/*.md") == ["concepts/ba13.md", "index.md", "log.md"]
+    trouves = vault.find_text("double montant", context=0)
+    assert trouves == [{
+        "path": "concepts/ba13.md",
+        "line": 6,
+        "excerpt": "6: Le double montant est pose aux joints de plaques.",
+    }]
+
+    page = vault.read_page("concepts/ba13.md", offset=4, limit=2)
+    assert page["path"] == "concepts/ba13.md"
+    assert "double montant" in page["content"]
+    assert page["sources"] == ["raw/ba13.md"]
+
+    import pytest
+
+    with pytest.raises(ValueError):
+        vault.read_page("../../CLAUDE.md")
+
+
+async def test_agentic_tools_transportent_des_preuves_bornees(tmp_path: Path):
+    vault = KnowledgeVault(tmp_path / "vault")
+    vault.initialize()
+    dossier = vault.wiki_dir / "sources"
+    (dossier / "chantier.md").write_text(
+        "---\nsources:\n  - raw/chantier.md\n---\n"
+        "# Chantier\n\nDouble montant aux joints.\n",
+        encoding="utf-8",
+    )
+    explorer = KnowledgeExplorer(vault)
+
+    listing = await explorer.list_pages(KnowledgeListArgs(pattern="**/*.md", limit=10))
+    assert listing.ok is True
+    assert "sources/chantier.md" in listing.data["pages"]
+
+    trouve = await explorer.find_text(
+        KnowledgeFindArgs(query="double montant", max_results=5, context=0)
+    )
+    assert trouve.ok is True
+    assert "knowledge_vault:sources/chantier.md" in trouve.data["results"][0]["content"]
+
+    lu = await explorer.read_page(
+        KnowledgeReadArgs(path="sources/chantier.md", offset=0, limit=20)
+    )
+    assert lu.ok is True
+    assert lu.data["sources"] == ["raw/chantier.md"]
+    assert "Double montant" in lu.data["content"]
