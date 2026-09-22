@@ -1113,8 +1113,14 @@ async def flux_agent(demande: DemandeAgent):
                         return
                     yield _rejouable(etape_agent.fermer(), resultat=False)
                     yield _rejouable(jeton(resultat["response"]))
+                    moteur_agent = resultat.get("moteur")
+                    moteur_meta = (
+                        moteur_agent
+                        if isinstance(moteur_agent, dict) and moteur_agent.get("provider")
+                        else moteur_utilise()
+                    )
                     meta_final: Dict[str, Any] = {
-                        **moteur_utilise(),
+                        **moteur_meta,
                         "sources": resultat.get("sources", []),
                         "query": intention,
                         # Ce qui attend un accord, pour que l'interface pose un
