@@ -18,6 +18,7 @@ import hashlib
 import json
 import re
 import shutil
+import time
 import unicodedata
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -157,6 +158,10 @@ class KnowledgeVault:
         self.schema_path = self.root / "SCHEMA.md"
         self.index_path = self.wiki_dir / "index.md"
         self.log_path = self.wiki_dir / "log.md"
+        # Cache en memoire seulement : reutilise l'infrastructure d'embeddings
+        # existante sans creer une base vectorielle parallele.
+        self._semantic_index: Any = None
+        self._semantic_retry_after = 0.0
 
     def initialize(self) -> dict[str, str]:
         """Cree uniquement l'ossature manquante, sans ecraser un vault existant."""
@@ -445,14 +450,29 @@ class KnowledgeVault:
         """
         records, metadata = self._knowledge_records()
         fournisseur = embedder
-        if fournisseur is None and 0 < len(records) <= semantic_page_limit:
+        if (
+            fournisseur is None
+            and 0 < len(records) <= semantic_page_limit
+            and time.monotonic() >= self._semantic_retry_after
+        ):
             try:
-                from core.memory.semantique import embeddings_ollama
+                from core.memory.semantique import IndexSemantique
+
+                if self._semantic_index is None:
+                    self._semantic_index = IndexSemantique()
 
                 async def fournisseur(textes):
                     bornes = [texte[:8000] for texte in textes]
-                    return await embeddings_ollama(bornes, timeout=3.0)
+                    connus = await self._semantic_index.vecteurs(bornes)
+                    if len(connus) != len(set(bornes)):
+                        # Une machine sans Ollama ne doit pas repayer un timeout
+                        # a chaque message. Le lexical reste disponible pendant
+                        # le court refroidissement, puis le dense est retente.
+                        self._semantic_retry_after = time.monotonic() + 60.0
+                        return []
+                    return [connus[texte] for texte in bornes]
             except Exception:
+                self._semantic_retry_after = time.monotonic() + 60.0
                 fournisseur = None
 
         classement = await hybrid_ranking(
