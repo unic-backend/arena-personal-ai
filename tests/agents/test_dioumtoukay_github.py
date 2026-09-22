@@ -71,6 +71,7 @@ class TestEspaceGitHubDistant:
         assert "AUCUN checkout git local" in reperes
         assert "github_branche_creer" in reperes
         assert "unic-backend/arena-personal-ai" in reperes
+        assert "Ce que contient la racine" not in reperes
 
     @pytest.mark.asyncio
     async def test_un_lister_local_est_redirige_vers_github_sur_railway(self, bac):
@@ -120,6 +121,8 @@ class TestEspaceGitHubDistant:
         consigne = modele.system_prompts[0]
         assert "mode GitHub distant" in consigne
         assert "ACTION: github_lister" in consigne
+        assert "STANDARD DE TRAVAIL" in consigne
+        assert "cause racine" in consigne
         assert "ACTION: ordinateur_creer" not in consigne
         assert "ACTION: git_pousser" not in consigne
 
@@ -184,6 +187,34 @@ class TestEspaceGitHubDistant:
         )
 
     @pytest.mark.asyncio
+    async def test_recherche_github_explicite_respecte_le_dossier(self, bac):
+        connecteur = FauxConnecteurGitHub(succes(
+            "chercher_code", "unic-backend/arena-personal-ai",
+            "1 occurrence(s) de 'Composer'.", preuve="1",
+            occurrences=[{"chemin": "apps/pwa/src/Composer.tsx"}],
+        ))
+        a = agent(
+            bac,
+            [
+                "ACTION: github_chercher\nTEXTE: Composer\nCHEMIN: apps/pwa",
+                "ACTION: terminer\nCONTENU:\nTrouve.\nFIN",
+            ],
+            connecteur_github=connecteur,
+            depot_github_defaut="unic-backend/arena-personal-ai",
+        )
+
+        await a.run("cherche Composer dans apps/pwa")
+
+        assert connecteur.appels[0] == (
+            "chercher_code",
+            {
+                "depot": "unic-backend/arena-personal-ai",
+                "terme": "Composer",
+                "chemin": "apps/pwa",
+            },
+        )
+
+    @pytest.mark.asyncio
     async def test_lit_puis_ecrit_sur_le_depot_par_defaut(self, bac):
         connecteur = FauxConnecteurGitHub(succes(
             "ecrire_fichier", "unic-backend/arena-personal-ai",
@@ -197,6 +228,7 @@ class TestEspaceGitHubDistant:
                 "ACTION: github_ecrire\nBRANCHE: fix-mobile\n"
                 "CHEMIN: apps/pwa/src/App.tsx\nSHA: blob-1\n"
                 "MESSAGE: fix: mobile\nCONTENU:\nnouveau contenu\nFIN",
+                "ACTION: github_lire\nREF: fix-mobile\nCHEMIN: apps/pwa/src/App.tsx",
                 "ACTION: terminer\nCONTENU:\nfini\nFIN",
             ],
             connecteur_github=connecteur,
@@ -223,6 +255,14 @@ class TestEspaceGitHubDistant:
                 "contenu": "nouveau contenu",
                 "sha_attendu": "blob-1",
                 "message": "fix: mobile",
+            },
+        )
+        assert connecteur.appels[2] == (
+            "lire_fichier",
+            {
+                "depot": "unic-backend/arena-personal-ai",
+                "chemin": "apps/pwa/src/App.tsx",
+                "ref": "fix-mobile",
             },
         )
 
@@ -273,6 +313,104 @@ class TestEspaceGitHubDistant:
         assert connecteur.appels == []
         assert resultat["actions"][0]["ok"] is False
         assert "BRANCHE" in resultat["actions"][0]["message"]
+
+
+# --- qualite d'execution et rendu humain -----------------------------------------
+
+class TestQualiteExecution:
+    @pytest.mark.asyncio
+    async def test_refuse_de_terminer_juste_apres_une_ecriture(self, bac):
+        a = agent(bac, [
+            "ACTION: ecrire\nCHEMIN: note.txt\nCONTENU:\nversion 2\nFIN",
+            "ACTION: terminer\nCONTENU:\nc est bon\nFIN",
+            "ACTION: lire\nCHEMIN: note.txt",
+            "ACTION: terminer\nCONTENU:\nFichier relu et verifie.\nFIN",
+        ])
+
+        resultat = await a.run("mets note.txt a jour et verifie le resultat")
+
+        assert resultat["status"] == "success"
+        assert [acte["action"] for acte in resultat["actions"]] == ["ecrire", "lire"]
+        assert "Fichier relu et verifie." in resultat["response"]
+        assert (bac / "note.txt").read_text() == "version 2"
+
+    @pytest.mark.asyncio
+    async def test_deux_conclusions_sans_preuve_restent_partielles(self, bac):
+        a = agent(bac, [
+            "ACTION: ecrire\nCHEMIN: note.txt\nCONTENU:\nversion 2\nFIN",
+            "ACTION: terminer\nCONTENU:\nc est bon\nFIN",
+            "ACTION: terminer\nCONTENU:\ntoujours bon\nFIN",
+        ])
+
+        resultat = await a.run("modifie note.txt")
+
+        assert resultat["status"] == "partial"
+        assert "reste non verifie" in resultat["response"]
+
+    @pytest.mark.asyncio
+    async def test_listing_github_est_lisible_sans_sha_ni_repr_python(self, bac):
+        connecteur = FauxConnecteurGitHub(succes(
+            "lister", "unic-backend/arena-personal-ai",
+            "3 entree(s) dans apps/pwa.", preuve="3",
+            entrees=[
+                {"nom": "index.html", "chemin": "apps/pwa/index.html",
+                 "type": "file", "sha": "secret-tech-1", "taille": 120},
+                {"nom": "package.json", "chemin": "apps/pwa/package.json",
+                 "type": "file", "sha": "secret-tech-2", "taille": 240},
+                {"nom": "src", "chemin": "apps/pwa/src",
+                 "type": "dir", "sha": "secret-tech-3", "taille": 0},
+            ],
+            chemin="apps/pwa", ref="main",
+        ))
+        a = agent(
+            bac,
+            [
+                "ACTION: github_lister\nCHEMIN: apps/pwa\nREF: main",
+                "ACTION: terminer\nCONTENU:\nVoici le contenu demande.\nFIN",
+            ],
+            connecteur_github=connecteur,
+            depot_github_defaut="unic-backend/arena-personal-ai",
+        )
+
+        resultat = await a.run("liste apps/pwa")
+
+        texte = resultat["response"]
+        assert texte.startswith("Voici le contenu demande.")
+        assert "apps/pwa/index.html" in texte
+        assert "apps/pwa/package.json" in texte
+        assert "secret-tech-" not in texte
+        assert "'sha':" not in texte
+        assert "'taille':" not in texte
+
+    def test_detail_imbrique_ne_redevient_jamais_un_repr_python(self):
+        texte = DioumtoukayAgent._detail_lisible({
+            "preuve": {
+                "etapes": [
+                    {"nom": "tests", "etat": "success"},
+                    {"nom": "build", "etat": "success"},
+                ],
+                "brut": b"abc",
+            },
+        })
+
+        assert "{'nom':" not in texte
+        assert "nom: tests" in texte
+        assert "etat: success" in texte
+        assert "3 octet(s)" in texte
+
+    def test_journal_modele_compacte_les_anciennes_sorties_sans_perdre_la_derniere(self):
+        journal = [
+            f"> ACTION lire : ancien-{i}\nSORTIE:\n" + ("x" * 12_000)
+            for i in range(6)
+        ]
+        journal.append("> ACTION etat_ci : derniere-preuve\nSORTIE:\nsucces")
+
+        compact = DioumtoukayAgent._journal_pour_modele(journal)
+
+        assert "derniere-preuve" in compact
+        assert "Etapes plus anciennes (resumees)" in compact
+        assert len(compact) < len("\n\n".join(journal))
+        assert len(compact) < 50_000
 
 
 # --- ouvrir_pr ------------------------------------------------------------------

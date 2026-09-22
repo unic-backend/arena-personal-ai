@@ -175,6 +175,35 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
 #: se lisent pas pareil, et c'est la seconde phrase qui demande une vérification.
 ACTIONS_QUI_MODIFIENT = frozenset({"ecrire", "remplacer", "deplacer", "github_ecrire"})
 
+#: Mutations directes qui ne doivent jamais etre suivies immediatement de
+#: `terminer`. Une verification REELLE doit arriver APRES la derniere
+#: mutation : lire le resultat, lancer un test, regarder le diff ou la CI.
+#: Le garde reste volontairement generique pour fonctionner aussi bien sur du
+#: code que sur des fichiers ordinaires.
+ACTIONS_A_VERIFIER = frozenset({
+    "ecrire", "remplacer", "deplacer", "github_ecrire",
+    "ordinateur_ecrire_fichier",
+})
+
+#: Actions capables d'apporter une preuve apres une mutation. Le prompt métier
+#: decide quelle preuve est pertinente (tests pour du code, relecture pour un
+#: document, CI pour GitHub) ; ce garde empeche seulement « j'ai ecrit, donc
+#: c'est fini ».
+ACTIONS_DE_VERIFICATION = frozenset({
+    "lire", "chercher", "lister", "executer", "analyser", "diagnostiquer",
+    "github_lire", "github_lister", "github_chercher", "etat_ci",
+    "ordinateur_etat", "ordinateur_executer", "ordinateur_lire_fichier",
+    "git_statut", "git_diff", "git_branches_lister", "git_conflit_lire",
+})
+
+#: Le journal complet reste dans le stockage durable. Pour le MODELE, on borne
+#: seulement le contexte repasse a chaque tour : sinon douze lectures de
+#: 20 000 caracteres peuvent transformer une petite tache en requete enorme et
+#: provoquer un 429 cloud. Les etapes recentes restent completes ; les plus
+#: anciennes deviennent des resumes d'une ligne.
+JOURNAL_MODELE_MAX_CARACTERES = 42_000
+JOURNAL_MODELE_RESUME_MAX_CARACTERES = 8_000
+
 #: Les actions dont la SORTIE est le résultat qui compte, pas seulement le
 #: message. `_rapport()` ne montre le détail complet que de celles-ci : pour
 #: `lire` ou `chercher`, le message suffit et la sortie serait du bruit.
@@ -644,6 +673,30 @@ REGLES :
 """
 
 
+PROTOCOLE_QUALITE = """STANDARD DE TRAVAIL — VALABLE DANS TOUS LES DOMAINES
+
+- Commence par comprendre l'objectif concret et la preuve qui permettra de
+  dire que c'est termine. Ne transforme pas une demande simple en audit geant.
+- Mesure avant de conclure. Un fichier, une commande, une API, une image, une
+  CI ou un document reel vaut plus qu'une supposition.
+- Quand il y a un probleme, cherche la cause racine avant de corriger le
+  symptome. Change le minimum coherent, pas un cas special qui masque le bug.
+- Une modification n'est pas une preuve. Apres la DERNIERE mutation, verifie
+  le resultat avec l'outil adapte au domaine : test/diff/CI pour du code,
+  relecture pour un document, inspection pour des fichiers, etat reel pour un
+  service.
+- Si une methode de specialiste est fournie plus bas, applique-la comme une
+  discipline de travail, pas comme un personnage. Pour un domaine non couvert,
+  garde les memes principes : evidence, cause, changement minimal, verification.
+- Ne fabrique jamais une capacite absente. Si un outil manque ou une donnee
+  n'est pas accessible, nomme exactement la limite.
+- Le compte-rendu final est pour un humain : resultat d'abord, preuves utiles
+  ensuite. Pas de dictionnaires Python, de payloads internes, de SHA ou de
+  metadonnees brutes sauf si elles servent vraiment a la decision.
+- N'annonce jamais « termine », « corrige », « vert » ou « fonctionne » sans
+  preuve executee dans cette tache.
+"""
+
 @dataclass
 class Action:
     """Une action demandée par le modèle, telle qu'elle a été lue."""
@@ -827,6 +880,114 @@ class DioumtoukayAgent(BaseAgent):
         return Resultat(True, f"{nom_specialiste} a repondu.",
                         sortie=reponse.get("response", ""))
 
+    @staticmethod
+    def _detail_lisible(detail: Dict[str, Any]) -> str:
+        """Transforme une structure imbriquee en texte stable, jamais en repr Python."""
+        lignes: List[str] = []
+
+        def ajouter(nom: str, valeur: Any, niveau: int = 0, puce: bool = False) -> None:
+            indentation = "  " * niveau
+            prefixe = "- " if puce else ""
+            etiquette = f"{nom}: " if nom else ""
+
+            if isinstance(valeur, (bytes, bytearray)):
+                lignes.append(
+                    f"{indentation}{prefixe}{etiquette}{len(valeur)} octet(s)"
+                )
+                return
+
+            if isinstance(valeur, dict):
+                if nom:
+                    lignes.append(f"{indentation}{prefixe}{nom}:")
+                elif puce:
+                    lignes.append(f"{indentation}-")
+                for cle, sous_valeur in valeur.items():
+                    ajouter(str(cle), sous_valeur, niveau + 1)
+                return
+
+            if isinstance(valeur, (list, tuple)):
+                if nom:
+                    lignes.append(f"{indentation}{prefixe}{nom}:")
+                elif puce:
+                    lignes.append(f"{indentation}-")
+                if not valeur:
+                    lignes.append(f"{indentation}  aucun")
+                    return
+                for item in valeur:
+                    if isinstance(item, (dict, list, tuple)):
+                        ajouter("", item, niveau + 1, puce=True)
+                    elif isinstance(item, (bytes, bytearray)):
+                        lignes.append(
+                            f"{'  ' * (niveau + 1)}- {len(item)} octet(s)"
+                        )
+                    else:
+                        lignes.append(f"{'  ' * (niveau + 1)}- {item}")
+                return
+
+            if valeur not in ("", None):
+                lignes.append(f"{indentation}{prefixe}{etiquette}{valeur}")
+
+        for cle, valeur in (detail or {}).items():
+            ajouter(str(cle), valeur)
+        return "\n".join(lignes)
+
+    @classmethod
+    def _detail_github_lisible(cls, capacite: str, detail: Dict[str, Any]) -> str:
+        """Vue utile de GitHub pour le MODELE, sans bruit d'API.
+
+        Une lecture garde le contenu + SHA car l'ecriture optimiste en a besoin.
+        Un listing, en revanche, n'a aucune raison de transporter 11 SHA et
+        tailles : les chemins et types suffisent pour choisir l'etape suivante.
+        """
+        if capacite == "lister":
+            entrees = detail.get("entrees") or []
+            lignes = []
+            for entree in entrees:
+                if not isinstance(entree, dict):
+                    continue
+                chemin = entree.get("chemin") or entree.get("nom") or ""
+                if not chemin:
+                    continue
+                genre = "dossier" if entree.get("type") == "dir" else "fichier"
+                lignes.append(f"- {chemin} ({genre})")
+            return "\n".join(lignes)
+
+        if capacite == "lire_fichier":
+            contenu = str(detail.get("contenu") or "")
+            sha = str(detail.get("sha") or "")
+            ref = str(detail.get("ref") or "")
+            entete = []
+            if ref:
+                entete.append(f"ref: {ref}")
+            if sha:
+                entete.append(f"sha: {sha}")
+            entete.append("CONTENU:")
+            entete.append(contenu)
+            return "\n".join(entete)
+
+        if capacite == "chercher_code":
+            occurrences = detail.get("occurrences") or []
+            lignes = []
+            for occurrence in occurrences:
+                if not isinstance(occurrence, dict):
+                    continue
+                chemin = occurrence.get("chemin") or ""
+                if chemin:
+                    lignes.append(f"- {chemin}")
+            return "\n".join(lignes)
+
+        if capacite == "etat_ci":
+            lignes = [f"resume: {detail.get('resume', 'inconnu')}"]
+            for verification in detail.get("verifications") or []:
+                if not isinstance(verification, dict):
+                    continue
+                nom = verification.get("nom") or "verification"
+                statut = verification.get("conclusion") or verification.get("statut") or "inconnu"
+                lignes.append(f"- {nom}: {statut}")
+            return "\n".join(lignes)
+
+        return cls._detail_lisible(detail)
+
     def _via_github(self, capacite: str, **parametres: Any) -> Resultat:
         """Appelle le connecteur GitHub et rend son `ResultatAction` comme un
         `Resultat` ordinaire — Dioumtoukay ne voit qu'un seul type de resultat,
@@ -847,7 +1008,7 @@ class DioumtoukayAgent(BaseAgent):
             return Resultat(False, f"GitHub n'a pas repondu : {type(erreur).__name__}: {erreur}")
 
         if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
-            detail = "\n".join(f"{cle}: {valeur}" for cle, valeur in resultat.detail.items())
+            detail = self._detail_github_lisible(capacite, resultat.detail or {})
             return Resultat(True, resultat.message, sortie=detail)
         return Resultat(False, resultat.message)
 
@@ -863,7 +1024,7 @@ class DioumtoukayAgent(BaseAgent):
             return Resultat(False, f"Conversion impossible : {type(erreur).__name__}: {erreur}")
 
         if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
-            detail = "\n".join(f"{cle}: {valeur}" for cle, valeur in resultat.detail.items())
+            detail = self._detail_lisible(resultat.detail or {})
             return Resultat(True, resultat.message, sortie=detail)
         return Resultat(False, resultat.message)
 
@@ -877,7 +1038,7 @@ class DioumtoukayAgent(BaseAgent):
             return Resultat(False, f"Classement impossible : {type(erreur).__name__}: {erreur}")
 
         if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
-            detail = "\n".join(f"{cle}: {valeur}" for cle, valeur in resultat.detail.items())
+            detail = self._detail_lisible(resultat.detail or {})
             return Resultat(True, resultat.message, sortie=detail)
         return Resultat(False, resultat.message)
 
@@ -912,7 +1073,7 @@ class DioumtoukayAgent(BaseAgent):
             return Resultat(False, f"Operation PDF impossible : {type(erreur).__name__}: {erreur}")
 
         if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
-            detail = "\n".join(f"{cle}: {valeur}" for cle, valeur in resultat.detail.items())
+            detail = self._detail_lisible(resultat.detail or {})
             return Resultat(True, resultat.message, sortie=detail)
         return Resultat(False, resultat.message)
 
@@ -936,13 +1097,8 @@ class DioumtoukayAgent(BaseAgent):
             return Resultat(False, f"Case injoignable : {type(erreur).__name__}: {erreur}")
 
         if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
-            lignes = []
-            for cle, valeur in resultat.detail.items():
-                if isinstance(valeur, (bytes, bytearray)):
-                    lignes.append(f"{cle}: {len(valeur)} octet(s)")
-                else:
-                    lignes.append(f"{cle}: {valeur}")
-            return Resultat(True, resultat.message, sortie="\n".join(lignes))
+            detail = self._detail_lisible(resultat.detail or {})
+            return Resultat(True, resultat.message, sortie=detail)
         return Resultat(False, resultat.message)
 
     @staticmethod
@@ -1243,7 +1399,9 @@ class DioumtoukayAgent(BaseAgent):
             terme = champs.get("TEXTE", "")
             if not depot or not terme:
                 return Resultat(False, "Il manque DEPOT (owner/repo) ou TEXTE.")
-            return self._via_github("chercher_code", depot=depot, terme=terme)
+            return self._via_github(
+                "chercher_code", depot=depot, terme=terme,
+                chemin=self._chemin_github(champs.get("CHEMIN", ".")))
         if action.nom == "github_branche_creer":
             depot = champs.get("DEPOT") or self.depot_github_defaut
             nom = champs.get("NOM", "")
@@ -1381,7 +1539,9 @@ class DioumtoukayAgent(BaseAgent):
         # travail.
         methode = bloc_de_methode(choisir(user_input, "ATELIER"))
         base_consigne = CONSIGNE_GITHUB_DISTANT if github_distant else CONSIGNE
-        consigne = f"{base_consigne}\n\n{methode}" if methode else base_consigne
+        consigne = f"{base_consigne}\n\n{PROTOCOLE_QUALITE}"
+        if methode:
+            consigne += f"\n\n{methode}"
 
         # Une tache interrompue reprend ici, avec ses etapes deja faites en
         # guise de journal de depart : le modele voit ce qui a tourne et
@@ -1400,6 +1560,7 @@ class DioumtoukayAgent(BaseAgent):
         derniere_signature: Optional[tuple] = None
         repetitions_consecutives = 0
         echecs_consecutifs = 0
+        terminaisons_sans_verification = 0
 
         for tour in range(1, TOURS_MAX + 1):
             ecoule = time.monotonic() - debut
@@ -1431,6 +1592,23 @@ class DioumtoukayAgent(BaseAgent):
             illisibles_consecutives = 0
 
             if action.nom == "terminer":
+                mutation = self._mutation_non_verifiee(rendu)
+                if mutation is not None:
+                    terminaisons_sans_verification += 1
+                    cible = (mutation.get("champs") or {}).get("CHEMIN") or (
+                        mutation.get("champs") or {}).get("DESTINATION") or "la modification"
+                    journal_du_travail.append(
+                        "VERIFICATION OBLIGATOIRE : la derniere mutation reussie "
+                        f"({mutation['action']} sur {cible}) n'a encore aucune preuve "
+                        "executee apres elle. Utilise une action de verification adaptee "
+                        "au domaine avant de terminer.")
+                    if terminaisons_sans_verification >= 2:
+                        conclusion = (
+                            "Arrete : le moteur essaie de conclure sans verifier sa "
+                            "derniere modification. Le changement a ete fait, mais il "
+                            "reste non verifie.")
+                        break
+                    continue
                 conclusion = action.contenu.strip() or reponse.strip()
                 arrete_par_lui_meme = True
                 break
@@ -1555,9 +1733,10 @@ class DioumtoukayAgent(BaseAgent):
                     lignes.append("Fichiers modifies non commites :\n" + modifies
                                   if modifies else "Aucun fichier modifie.")
 
-        autour = self.atelier.lister(".")
-        if autour.ok:
-            lignes.append("Ce que contient la racine :\n" + autour.sortie)
+        if not github_distant:
+            autour = self.atelier.lister(".")
+            if autour.ok:
+                lignes.append("Ce que contient la racine :\n" + autour.sortie)
 
         # Mission ARENA x OPENCONTEXT (10/09/2026) : avant, seuls la racine,
         # la branche et le contenu du dossier etaient mesures ici -- jamais
@@ -1584,11 +1763,74 @@ class DioumtoukayAgent(BaseAgent):
         return "\n".join(lignes)
 
     @staticmethod
-    def _invite(reperes: str, demande: str, journal_du_travail: List[str]) -> str:
-        """La demande, plus ce qui s'est réellement passé jusqu'ici."""
+    def _mutation_non_verifiee(rendu: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """La derniere mutation reussie si rien ne l'a verifiee ensuite."""
+        index_mutation: Optional[int] = None
+        for index, acte in enumerate(rendu):
+            if acte.get("ok") and acte.get("action") in ACTIONS_A_VERIFIER:
+                index_mutation = index
+        if index_mutation is None:
+            return None
+        for acte in rendu[index_mutation + 1:]:
+            if acte.get("ok") and acte.get("action") in ACTIONS_DE_VERIFICATION:
+                return None
+        return rendu[index_mutation]
+
+    @staticmethod
+    def _journal_pour_modele(journal_du_travail: List[str]) -> str:
+        """Contexte borne : recent complet, ancien resume.
+
+        Le journal durable n'est jamais tronque. Seule la COPIE remise au
+        modele a chaque tour est compacte pour eviter qu'une longue tache
+        repaye tous ses octets a chaque appel cloud.
+        """
+        if not journal_du_travail:
+            return ""
+        complet = "\n\n".join(journal_du_travail)
+        if len(complet) <= JOURNAL_MODELE_MAX_CARACTERES:
+            return complet
+
+        budget_recent = JOURNAL_MODELE_MAX_CARACTERES - JOURNAL_MODELE_RESUME_MAX_CARACTERES
+        recentes_inversees: List[str] = []
+        utilises = 0
+        index_premiere_recente = len(journal_du_travail)
+        for index in range(len(journal_du_travail) - 1, -1, -1):
+            etape = journal_du_travail[index]
+            cout = len(etape) + 2
+            if recentes_inversees and utilises + cout > budget_recent:
+                break
+            recentes_inversees.append(etape)
+            utilises += cout
+            index_premiere_recente = index
+
+        anciennes = journal_du_travail[:index_premiere_recente]
+        resumes = []
+        caracteres = 0
+        for etape in anciennes:
+            premiere = (etape.splitlines() or [""])[0].strip()
+            if not premiere:
+                continue
+            ligne = f"- {premiere}"
+            if caracteres + len(ligne) + 1 > JOURNAL_MODELE_RESUME_MAX_CARACTERES:
+                resumes.append("- ... etapes plus anciennes omises du contexte actif ...")
+                break
+            resumes.append(ligne)
+            caracteres += len(ligne) + 1
+
+        blocs = []
+        if resumes:
+            blocs.append("Etapes plus anciennes (resumees) :\n" + "\n".join(resumes))
+        blocs.append("Etapes recentes (sortie complete) :\n"
+                     + "\n\n".join(reversed(recentes_inversees)))
+        return "\n\n".join(blocs)
+
+    @classmethod
+    def _invite(cls, reperes: str, demande: str, journal_du_travail: List[str]) -> str:
+        """La demande, plus un contexte de travail borne et factuel."""
         blocs = [reperes, f"Demande du proprietaire : {demande}"]
-        if journal_du_travail:
-            blocs.append("Ce qui s'est passe jusqu'ici :\n" + "\n\n".join(journal_du_travail))
+        journal = cls._journal_pour_modele(journal_du_travail)
+        if journal:
+            blocs.append("Ce qui s'est passe jusqu'ici :\n" + journal)
         blocs.append("Action suivante :")
         return "\n\n".join(blocs)
 
@@ -1621,39 +1863,70 @@ class DioumtoukayAgent(BaseAgent):
                 touches.append(ou)
         return touches
 
+    @staticmethod
+    def _sortie_pour_rapport(acte: Dict[str, Any], limite: int = 6_000) -> str:
+        """Preuve lisible pour l'humain, jamais un dump de structure interne."""
+        sortie = str(acte.get("sortie") or "").strip()
+        if not sortie:
+            return ""
+        if len(sortie) <= limite:
+            return sortie
+        moitie = limite // 2
+        manque = len(sortie) - limite
+        return (sortie[:moitie]
+                + f"\n[… {manque} caracteres techniques masques …]\n"
+                + sortie[-moitie:])
+
     @classmethod
     def _rapport(cls, conclusion: str, rendu: List[Dict[str, Any]]) -> str:
-        """Le compte-rendu pour le propriétaire : ce qui a tourné, et son sort.
+        """Compte-rendu humain : resultat d'abord, preuves ensuite.
 
-        Les echecs ne sont pas fondus dans la conclusion : ils sont comptes a
-        part, parce que c'est la seule ligne qui lui dit s'il doit aller voir.
-
-        Les fichiers modifies sont nommes a part pour la meme raison : « il a
-        fait quelque chose » et « il a change ces trois fichiers-la » ne
-        demandent pas la meme attention.
+        La trace complete reste dans `actions` et le journal durable. La bulle
+        de chat n'est pas un log : elle ne doit pas commencer par des SHA,
+        tailles ou repr Python avant de dire ce qui a ete obtenu.
         """
-        echecs = [a for a in rendu if not a["ok"]]
-        entete = f"**Dioumtoukay — {len(rendu)} action(s)"
-        entete += f", {len(echecs)} en echec**" if echecs else ", aucune en echec**"
-
-        detail = "\n".join(
-            f"- {'OK ' if a['ok'] else 'ECHEC'} `{a['action']}` — {a['message']}"
-            for a in rendu) or "- aucune action executee"
+        parties: List[str] = []
+        conclusion_propre = (conclusion or "").strip()
+        if conclusion_propre:
+            parties.append(conclusion_propre)
 
         touches = cls.fichiers_touches(rendu)
-        modifies = ("\n\n**Fichiers modifies :** "
-                    + ", ".join(f"`{f}`" for f in touches)) if touches else ""
+        if touches:
+            parties.append(
+                "**Fichiers modifiés**\n"
+                + "\n".join(f"- `{chemin}`" for chemin in touches)
+            )
 
-        # La sortie d'un `analyser`/`diagnostiquer` REUSSI est le resultat
-        # lui-meme — la cacher derriere « RepoEngineerAgent a repondu » serait
-        # exactement le defaut que ces deux actions existent pour corriger :
-        # une analyse produite et jamais lue par le proprietaire.
-        analyses = "\n\n".join(
-            f"**{a['action']} :**\n{a['sortie']}"
-            for a in rendu if a["ok"] and a["action"] in ACTIONS_QUI_ANALYSENT and a.get("sortie"))
-        analyses = f"\n\n{analyses}" if analyses else ""
+        echecs = [a for a in rendu if not a.get("ok")]
+        if echecs:
+            parties.append(
+                "**À corriger**\n"
+                + "\n".join(
+                    f"- `{a.get('action', '?')}` — {a.get('message', 'échec')}"
+                    for a in echecs
+                )
+            )
 
-        return f"{entete}\n\n{detail}{modifies}{analyses}\n\n{conclusion}".strip()
+        preuves = []
+        for acte in rendu:
+            if not acte.get("ok") or acte.get("action") not in ACTIONS_QUI_ANALYSENT:
+                continue
+            sortie = cls._sortie_pour_rapport(acte)
+            if sortie:
+                preuves.append(f"**{acte['action']}**\n{sortie}")
+        if preuves:
+            parties.append("**Résultats vérifiés**\n\n" + "\n\n".join(preuves))
+
+        if rendu:
+            succes = sum(1 for acte in rendu if acte.get("ok"))
+            statut = (
+                f"{succes}/{len(rendu)} action(s) exécutée(s) avec succès, "
+                f"{len(echecs)} en echec"
+                if echecs else f"{len(rendu)} action(s) exécutée(s), aucune en échec"
+            )
+            parties.append(f"*Vérification : {statut}.*")
+
+        return "\n\n".join(parties).strip()
 
     def _retenir(self, demande: str, conclusion: str, rendu: List[Dict[str, Any]]) -> None:
         """Garde une trace de ce travail dans la mémoire longue.
