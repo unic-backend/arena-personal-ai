@@ -71,6 +71,22 @@ AGE_MAX_SECONDES = 3600.0
 #: reprenables ne sont jamais purgées — ce serait perdre du travail.
 TERMINEES_GARDEES = 50
 
+#: Seulement les champs necessaires aux gardes de preuve traversent un
+#: redemarrage. Une commande, un message, une URL ou tout autre parametre
+#: potentiellement sensible n'a aucune raison de rester dans ce journal.
+CHAMPS_PREUVE_DURABLES = frozenset({
+    "CHEMIN", "DESTINATION", "BRANCHE", "REF", "TETE", "BASE",
+    "COMPUTER_ID", "DOSSIER",
+})
+
+
+def _champs_de_preuve(champs: Optional[Dict[str, str]]) -> Dict[str, str]:
+    return {
+        str(cle): str(valeur)
+        for cle, valeur in (champs or {}).items()
+        if str(cle) in CHAMPS_PREUVE_DURABLES and valeur not in (None, "")
+    }
+
 
 class EtatTache(str, Enum):
     """Où en est un travail. Seul `INTERROMPUE` se reprend."""
@@ -289,7 +305,7 @@ class JournalDeReprise:
             ok=ok,
             resume=(resume or "")[:400],
             duree_ms=duree_ms,
-            champs=dict(champs or {}),
+            champs=_champs_de_preuve(champs),
             sortie=(sortie or "")[:4_000],
         )
         tache.etapes.append(etape)
@@ -323,7 +339,7 @@ class JournalDeReprise:
             cible=cible,
             ok=False,
             confirmee=False,
-            champs=dict(champs or {}),
+            champs=_champs_de_preuve(champs),
         )
         tache.etapes.append(etape)
         tache.maj_le = _maintenant()
