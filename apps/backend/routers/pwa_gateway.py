@@ -71,7 +71,7 @@ from core.actions.confirmation_parlee import (
 from core.connectors.base import EtatSante
 from core.execution.mesures import ETAT_INDISPONIBLE, ETAT_MESURE, Mesure, chronometrer
 from core.execution.voies import budget_de, voie_pour
-from core.knowledge import KnowledgeVault
+from core.knowledge.vault import KnowledgeVault
 from core.memory.consolidation import grouper
 from core.memory.conversation import (
     rendre_le_fil,
