@@ -10669,3 +10669,44 @@ ni `FAILED`, ni `NOT_CONFIGURED`) bloquerait desormais toute conversion,
 meme si son intention etait de laisser la main a la conversion generique.
 Aucun agent mesure aujourd'hui ne pose un `document` dans cette intention :
 poser la cle signifie deja, partout dans le depot, « je me suis prononce ».
+
+
+## DEC-0129 — Le Knowledge Vault compile les sources ; il ne devient pas une seconde memoire
+
+*Decide le 22/09/2026 a la demande du proprietaire, d'apres le motif LLM Wiki.*
+
+### Decision
+
+ARENA garde une base de connaissance documentaire locale sous
+`data/knowledge_vault/`, avec trois couches : `raw/` (sources originales),
+`wiki/` (Markdown interlie compatible Obsidian) et `output/` (artefacts
+regenerables comme le graphe). Le dossier vivant est ignore par Git : le depot
+public porte le moteur, jamais les documents du proprietaire.
+
+L'ingestion reutilise `tools/documents/reader.py` au lieu d'inventer un second
+lecteur. Une source illisible est refusee. Chaque note source porte son SHA-256,
+son chemin brut, son URL quand elle existe, et les reperes de page/OCR rendus par
+le lecteur.
+
+La conversation standard cherche les pages pertinentes et injecte seulement des
+extraits bornes. Ils passent par `TrustLevel.DOCUMENT` : un texte trouve dans le
+vault reste une donnee a consulter, jamais une instruction systeme.
+
+Obsidian est optionnel : le format Markdown et les wikilinks restent lisibles et
+navigables sans lui. Aucun plugin Obsidian n'est requis au runtime.
+
+### Ce qui n'est pas construit
+
+- aucun second systeme de souvenirs : `core/memory/` reste la memoire personnelle ;
+- aucune seconde base vectorielle : le vault commence par une recherche lexicale
+  deterministic et pourra, si la taille l'exige, reutiliser les moteurs RAG deja
+  presents plutot qu'en creer un nouveau ;
+- aucune copie de code du gist ou du starter vault externe : seuls le motif et la
+  separation raw/wiki/output sont adaptes a l'architecture d'ARENA.
+
+### Ce que ca coute si c'est faux
+
+A grande echelle, une recherche lexicale sur les fichiers Markdown peut devenir
+moins precise ou plus lente. Le remede n'est pas une nouvelle memoire : ce sera
+d'indexer `wiki/` avec l'infrastructure RAG existante, en gardant Markdown comme
+source de verite et la provenance jusqu'a la reponse.
