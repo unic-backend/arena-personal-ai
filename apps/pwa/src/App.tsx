@@ -193,15 +193,15 @@ export default function App() {
                 conversation ouverte. Ce que le clic sur une capacite change
                 doit se lire dans l'en-tete, pas seulement dans la barre
                 laterale. */}
-            <span className="shrink-0 rounded-md bg-white/[0.04] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+            <span className="shrink-0 rounded-md bg-white/[0.04] px-2 py-0.5 font-mono text-ui-meta uppercase tracking-wider text-zinc-500">
               {nomEspace(espaceActif, locale)}
             </span>
-            <div className="min-w-0 truncate text-[13px] text-zinc-400">
+            <div className="min-w-0 truncate text-ui-body-sm text-zinc-400">
               {conv?.title && hasMessages ? conv.title : ''}
             </div>
             {/* Le badge n'apparaît que pendant le travail : rien à annoncer au repos. */}
             {isRunning && (
-              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-accent-500/30 bg-accent-500/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent-300">
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-accent-500/30 bg-accent-500/10 px-2 py-0.5 font-mono text-ui-meta uppercase tracking-wider text-accent-300">
                 <span className="inline-block h-1 w-1 animate-pulse-dot rounded-full bg-accent-400" />
                 {t('header.working')}
               </span>
