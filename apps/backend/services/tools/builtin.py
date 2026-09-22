@@ -146,7 +146,7 @@ class KnowledgeSearch:
                         "sources": hit.sources,
                         "content": wrap(
                             hit.snippet,
-                            TrustLevel.DOCUMENT,
+                            TrustLevel.RETRIEVED,
                             f"knowledge_vault:{hit.path}",
                         ).text,
                     }
