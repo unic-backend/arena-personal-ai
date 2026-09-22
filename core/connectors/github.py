@@ -307,6 +307,12 @@ class ConnecteurGitHub(Connecteur):
                     f"{chemin} a change depuis sa lecture : SHA attendu "
                     f"{sha_attendu}, SHA actuel {sha_actuel}. Relis le fichier avant d ecrire."
                 )
+        elif actuel.status_code == 404 and sha_attendu:
+            return echec(
+                "ecrire_fichier", depot,
+                f"{chemin} a disparu depuis sa lecture (SHA attendu {sha_attendu}). "
+                "Relis le dossier avant d ecrire."
+            )
         elif actuel.status_code != 404:
             return echec(
                 "ecrire_fichier", depot,
