@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from apps.backend.services.tools.builtin import (
     KnowledgeExplorer,
@@ -266,3 +267,82 @@ async def test_hybrid_search_reutilise_les_embeddings_locaux_en_memoire(
     assert premier and second
     assert appels == 1
     assert premier[0].mode == "HYBRID_RRF"
+
+
+
+async def test_compare_txtai_reveille_le_connecteur_et_mappe_les_chemins(tmp_path: Path):
+    vault = KnowledgeVault(tmp_path / "vault")
+    vault.initialize()
+    (vault.sources_dir / "a.md").write_text(
+        "---\nsources:\n  - raw/a.md\n---\n# A\n\nIsolation acoustique en laine de roche.\n",
+        encoding="utf-8",
+    )
+    (vault.sources_dir / "b.md").write_text(
+        "---\nsources:\n  - raw/b.md\n---\n# B\n\nPeinture de finition.\n",
+        encoding="utf-8",
+    )
+
+    appels = []
+
+    class FauxRegistre:
+        def executer(self, nom, capacite, **parametres):
+            appels.append((nom, capacite, parametres))
+            return SimpleNamespace(
+                statut=SimpleNamespace(value="SUCCESS"),
+                message="1 resultat",
+                detail={"resultats": [{"index": 0, "texte": "x", "score": 0.91}]},
+            )
+
+    async def faux_hybride(_query, *, limit=5, **_kwargs):
+        return [SimpleNamespace(
+            path="sources/a.md",
+            title="A",
+            score=1.0,
+            mode="BM25",
+            sources=["raw/a.md"],
+        )]
+
+    vault.hybrid_search = faux_hybride  # type: ignore[method-assign]
+
+    resultat = await vault.compare_txtai(
+        "isolation acoustique",
+        FauxRegistre(),
+        limit=3,
+    )
+
+    assert resultat["status"] == "SUCCESS"
+    assert appels[0][0:2] == ("txtai_search", "rechercher")
+    assert appels[0][2]["top_k"] == 3
+    assert resultat["txtai"][0]["path"] == "sources/a.md"
+    assert resultat["hybrid"][0]["path"] == "sources/a.md"
+    assert resultat["same_top1"] is True
+    assert resultat["quality_verdict"] is None
+
+
+async def test_compare_txtai_ne_declare_pas_un_moteur_absent_comme_reussi(tmp_path: Path):
+    vault = KnowledgeVault(tmp_path / "vault")
+    vault.initialize()
+    (vault.sources_dir / "a.md").write_text(
+        "# A\n\nUn document.",
+        encoding="utf-8",
+    )
+
+    class RegistreIndisponible:
+        def executer(self, _nom, _capacite, **_parametres):
+            return SimpleNamespace(
+                statut=SimpleNamespace(value="NOT_CONFIGURED"),
+                message="Ollama absent",
+                detail={},
+            )
+
+    async def aucun_hybride(_query, *, limit=5, **_kwargs):
+        return []
+
+    vault.hybrid_search = aucun_hybride  # type: ignore[method-assign]
+
+    resultat = await vault.compare_txtai("test", RegistreIndisponible())
+
+    assert resultat["status"] == "NOT_CONFIGURED"
+    assert resultat["txtai"] == []
+    assert "Ollama absent" in resultat["message"]
+    assert resultat["quality_verdict"] is None
