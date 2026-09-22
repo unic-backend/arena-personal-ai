@@ -175,6 +175,35 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
 #: se lisent pas pareil, et c'est la seconde phrase qui demande une vérification.
 ACTIONS_QUI_MODIFIENT = frozenset({"ecrire", "remplacer", "deplacer", "github_ecrire"})
 
+#: Mutations directes qui ne doivent jamais etre suivies immediatement de
+#: `terminer`. Une verification REELLE doit arriver APRES la derniere
+#: mutation : lire le resultat, lancer un test, regarder le diff ou la CI.
+#: Le garde reste volontairement generique pour fonctionner aussi bien sur du
+#: code que sur des fichiers ordinaires.
+ACTIONS_A_VERIFIER = frozenset({
+    "ecrire", "remplacer", "deplacer", "github_ecrire",
+    "ordinateur_ecrire_fichier",
+})
+
+#: Actions capables d'apporter une preuve apres une mutation. Le prompt métier
+#: decide quelle preuve est pertinente (tests pour du code, relecture pour un
+#: document, CI pour GitHub) ; ce garde empeche seulement « j'ai ecrit, donc
+#: c'est fini ».
+ACTIONS_DE_VERIFICATION = frozenset({
+    "lire", "chercher", "lister", "executer", "analyser", "diagnostiquer",
+    "github_lire", "github_lister", "github_chercher", "etat_ci",
+    "ordinateur_etat", "ordinateur_executer", "ordinateur_lire_fichier",
+    "git_statut", "git_diff", "git_branches_lister", "git_conflit_lire",
+})
+
+#: Le journal complet reste dans le stockage durable. Pour le MODELE, on borne
+#: seulement le contexte repasse a chaque tour : sinon douze lectures de
+#: 20 000 caracteres peuvent transformer une petite tache en requete enorme et
+#: provoquer un 429 cloud. Les etapes recentes restent completes ; les plus
+#: anciennes deviennent des resumes d'une ligne.
+JOURNAL_MODELE_MAX_CARACTERES = 42_000
+JOURNAL_MODELE_RESUME_MAX_CARACTERES = 8_000
+
 #: Les actions dont la SORTIE est le résultat qui compte, pas seulement le
 #: message. `_rapport()` ne montre le détail complet que de celles-ci : pour
 #: `lire` ou `chercher`, le message suffit et la sortie serait du bruit.
@@ -643,6 +672,30 @@ REGLES :
 - Si tu es bloque, termine et nomme exactement le blocage.
 """
 
+
+PROTOCOLE_QUALITE = """STANDARD DE TRAVAIL — VALABLE DANS TOUS LES DOMAINES
+
+- Commence par comprendre l'objectif concret et la preuve qui permettra de
+  dire que c'est termine. Ne transforme pas une demande simple en audit geant.
+- Mesure avant de conclure. Un fichier, une commande, une API, une image, une
+  CI ou un document reel vaut plus qu'une supposition.
+- Quand il y a un probleme, cherche la cause racine avant de corriger le
+  symptome. Change le minimum coherent, pas un cas special qui masque le bug.
+- Une modification n'est pas une preuve. Apres la DERNIERE mutation, verifie
+  le resultat avec l'outil adapte au domaine : test/diff/CI pour du code,
+  relecture pour un document, inspection pour des fichiers, etat reel pour un
+  service.
+- Si une methode de specialiste est fournie plus bas, applique-la comme une
+  discipline de travail, pas comme un personnage. Pour un domaine non couvert,
+  garde les memes principes : evidence, cause, changement minimal, verification.
+- Ne fabrique jamais une capacite absente. Si un outil manque ou une donnee
+  n'est pas accessible, nomme exactement la limite.
+- Le compte-rendu final est pour un humain : resultat d'abord, preuves utiles
+  ensuite. Pas de dictionnaires Python, de payloads internes, de SHA ou de
+  metadonnees brutes sauf si elles servent vraiment a la decision.
+- N'annonce jamais « termine », « corrige », « vert » ou « fonctionne » sans
+  preuve executee dans cette tache.
+"""
 
 @dataclass
 class Action:
