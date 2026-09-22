@@ -63,9 +63,7 @@ class DeepResearcherAgent(BaseAgent):
         # Le vault local est consulte en parallele conceptuellement avec le web :
         # ce sont des preuves deja compilees, pas des instructions. Il n'est
         # jamais obligatoire : un vault vide donne simplement zero source locale.
-        knowledge_hits = await asyncio.to_thread(
-            self.knowledge_vault.search, user_input, limit=5
-        )
+        knowledge_hits = await self.knowledge_vault.hybrid_search(user_input, limit=5)
 
         # 3. Synthèse d'intelligence de haut niveau
         # Le texte vient de pages que personne ne controle : il entre
