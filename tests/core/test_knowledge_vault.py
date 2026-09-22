@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from apps.backend.services.tools.builtin import KnowledgeSearch, KnowledgeSearchArgs
-from core.knowledge import KnowledgeVault
+from core.knowledge.vault import KnowledgeVault
 
 
 def test_initialize_cree_les_trois_couches_sans_ecraser(tmp_path: Path):
