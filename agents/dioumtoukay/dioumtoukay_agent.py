@@ -1725,21 +1725,36 @@ class DioumtoukayAgent(BaseAgent):
             illisibles_consecutives = 0
 
             if action.nom == "terminer":
-                mutation = self._mutation_non_verifiee(rendu)
-                if mutation is not None:
+                mutations = self._mutations_non_verifiees(rendu)
+                if mutations:
                     terminaisons_sans_verification += 1
-                    cible = (mutation.get("champs") or {}).get("CHEMIN") or (
-                        mutation.get("champs") or {}).get("DESTINATION") or "la modification"
+                    cibles = []
+                    for mutation in mutations[:5]:
+                        champs_mutation = mutation.get("champs") or {}
+                        cible = (
+                            champs_mutation.get("CHEMIN")
+                            or champs_mutation.get("DESTINATION")
+                            or "la modification"
+                        )
+                        cibles.append(f"{mutation['action']} sur {cible}")
+                    suffixe = (
+                        f" (+{len(mutations) - 5} autre(s))"
+                        if len(mutations) > 5 else ""
+                    )
                     journal_du_travail.append(
-                        "VERIFICATION OBLIGATOIRE : la derniere mutation reussie "
-                        f"({mutation['action']} sur {cible}) n'a encore aucune preuve "
-                        "executee apres elle. Utilise une action de verification adaptee "
-                        "au domaine avant de terminer.")
+                        "VERIFICATION OBLIGATOIRE : "
+                        f"{len(mutations)} mutation(s) reussie(s) n'ont encore aucune "
+                        "preuve pertinente executee apres elles : "
+                        + "; ".join(cibles) + suffixe
+                        + ". Utilise une verification qui couvre reellement chacune "
+                        "avant de terminer (relecture ciblee, diff, tests ou CI verte)."
+                    )
                     if terminaisons_sans_verification >= 2:
                         conclusion = (
-                            "Arrete : le moteur essaie de conclure sans verifier sa "
-                            "derniere modification. Le changement a ete fait, mais il "
-                            "reste non verifie.")
+                            "Arrete : le moteur essaie de conclure alors que "
+                            f"{len(mutations)} modification(s) restent non verifiees. "
+                            "Les changements ont ete faits, mais ils ne sont pas tous prouves."
+                        )
                         break
                     continue
                 conclusion = action.contenu.strip() or reponse.strip()
@@ -1973,22 +1988,35 @@ class DioumtoukayAgent(BaseAgent):
         return action in {"executer", "git_diff", "git_statut", "ordinateur_executer"}
 
     @classmethod
+    def _mutations_non_verifiees(
+        cls, rendu: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Toutes les mutations reussies qui n'ont pas encore de preuve pertinente.
+
+        Verifier seulement la DERNIERE mutation laissait un trou important :
+        modifier A puis B, relire uniquement B, et conclure rendait A invisible.
+        Une preuve globale (tests, diff GitHub, CI verte) peut naturellement
+        couvrir plusieurs mutations ; une simple relecture ne couvre que sa cible.
+        """
+        non_verifiees: List[Dict[str, Any]] = []
+        for index, mutation in enumerate(rendu):
+            if not mutation.get("ok") or mutation.get("action") not in ACTIONS_A_VERIFIER:
+                continue
+            verifiee = any(
+                cls._preuve_positive(mutation, acte)
+                for acte in rendu[index + 1:]
+            )
+            if not verifiee:
+                non_verifiees.append(mutation)
+        return non_verifiees
+
+    @classmethod
     def _mutation_non_verifiee(
         cls, rendu: List[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
-        """La derniere mutation reussie tant qu'aucune preuve pertinente ne suit."""
-        index_mutation: Optional[int] = None
-        for index, acte in enumerate(rendu):
-            if acte.get("ok") and acte.get("action") in ACTIONS_A_VERIFIER:
-                index_mutation = index
-        if index_mutation is None:
-            return None
-
-        mutation = rendu[index_mutation]
-        for acte in rendu[index_mutation + 1:]:
-            if cls._preuve_positive(mutation, acte):
-                return None
-        return mutation
+        """Compatibilite interne : la premiere mutation encore sans preuve."""
+        non_verifiees = cls._mutations_non_verifiees(rendu)
+        return non_verifiees[0] if non_verifiees else None
 
     @staticmethod
     def _journal_pour_modele(journal_du_travail: List[str]) -> str:
