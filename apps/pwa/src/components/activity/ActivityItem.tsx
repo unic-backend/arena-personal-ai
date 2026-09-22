@@ -23,7 +23,7 @@ export function ThinkingIndicator({ title, running }: { title: string; running: 
     <div className="flex items-center gap-2.5 py-0.5">
       <StatusIcon status={running ? 'running' : 'completed'} />
       <BrainGlyph />
-      <span className={cn('text-[12.5px]', running ? 'text-shimmer font-medium' : 'text-zinc-500')}>
+      <span className={cn('text-ui-body-sm', running ? 'text-shimmer font-medium' : 'text-zinc-500')}>
         {title}
       </span>
     </div>
@@ -125,7 +125,7 @@ export function ActivityItem({ node, ctx, depth = 0 }: { node: ActivityNode; ctx
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
-            <span className={cn('truncate text-[12.5px] font-medium leading-snug', titleColor)}>
+            <span className={cn('truncate text-ui-body-sm font-medium leading-snug', titleColor)}>
               {node.title}
             </span>
             {node.status === 'running' && node.phase !== 'progress' && (
@@ -135,7 +135,7 @@ export function ActivityItem({ node, ctx, depth = 0 }: { node: ActivityNode; ctx
           {node.description && (
             <div
               className={cn(
-                'truncate text-[11px] leading-snug',
+                'truncate text-ui-meta leading-snug',
                 node.status === 'running' ? 'text-shimmer' : node.status === 'failed' ? 'text-red-400/80' : 'text-zinc-500',
               )}
             >
@@ -146,7 +146,7 @@ export function ActivityItem({ node, ctx, depth = 0 }: { node: ActivityNode; ctx
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {node.durationMs !== undefined && node.status !== 'running' && (
-            <span className="font-mono text-[9.5px] tabular-nums text-zinc-600">
+            <span className="font-mono text-ui-meta tabular-nums text-zinc-600">
               {formatDuration(node.durationMs)}
             </span>
           )}
@@ -164,7 +164,7 @@ export function ActivityItem({ node, ctx, depth = 0 }: { node: ActivityNode; ctx
         <div className="mt-1.5">
           <button
             onClick={retryCommand}
-            className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[10.5px] font-medium text-zinc-200 transition hover:border-white/20 hover:bg-white/10 active:scale-95"
+            className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-ui-meta font-medium text-zinc-200 transition hover:border-white/20 hover:bg-white/10 active:scale-95"
           >
             {t('retry.command')}
           </button>
