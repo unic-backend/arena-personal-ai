@@ -87,6 +87,20 @@ class TestConnecteur:
         assert sante.etat is EtatSante.NON_CONFIGURE
         assert "Ollama" in sante.ce_qui_manque
 
+    def test_fournisseur_par_defaut_borne_le_timeout_ollama(self, monkeypatch):
+        appels = []
+
+        async def faux_ollama(textes, **kwargs):
+            appels.append((list(textes), kwargs))
+            return [_vecteur_deterministe(texte) for texte in textes]
+
+        monkeypatch.setattr("core.connectors.txtai_search.embeddings_ollama", faux_ollama)
+        sante = ConnecteurTxtaiSearch().sonder()
+
+        assert sante.etat is EtatSante.OPERATIONNEL
+        assert appels
+        assert appels[0][1]["timeout"] == 5.0
+
     def test_recherche_reelle_via_le_connecteur(self):
         connecteur = ConnecteurTxtaiSearch(fournisseur_async=_faux_fournisseur_ollama)
         resultat = connecteur.executer_confirmee(
