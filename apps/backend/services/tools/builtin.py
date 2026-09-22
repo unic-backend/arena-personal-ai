@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from apps.backend.config import RENDERED_DIR
 from apps.backend.security import validate_media_path
 from apps.backend.services.tools.registry import Tool, ToolRegistry, ToolResult
-from core.knowledge import KnowledgeVault
+from core.knowledge.vault import KnowledgeVault
 from core.models.confidentialite import Confidentialite, classer
 from core.security.trust import TrustLevel, wrap
 
