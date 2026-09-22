@@ -456,10 +456,13 @@ class KnowledgeVault:
             and time.monotonic() >= self._semantic_retry_after
         ):
             try:
-                from core.memory.semantique import IndexSemantique
+                from core.memory.semantique import IndexSemantique, embeddings_ollama
 
                 if self._semantic_index is None:
-                    self._semantic_index = IndexSemantique()
+                    async def embeddings_bornes(textes):
+                        return await embeddings_ollama(textes, timeout=3.0)
+
+                    self._semantic_index = IndexSemantique(fournisseur=embeddings_bornes)
 
                 async def fournisseur(textes):
                     bornes = [texte[:8000] for texte in textes]
