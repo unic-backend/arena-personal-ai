@@ -36,6 +36,8 @@ d'ouvrir le document entier quand on cherche juste « a-t-on déjà tranché ça
 
 | **DEC-0129** | **Knowledge Vault : compiler les sources en Markdown local sourcé** | `data/knowledge_vault/` sépare raw/wiki/output et reste hors Git ; Obsidian est un lecteur optionnel, pas une dépendance ; la conversation consulte le vault sans créer un second système de mémoire/vectorisation |
 
+| **DEC-0130** | **Knowledge Vault : BM25 + embeddings locaux + RRF + outils list/find/read** | aucun fournisseur cloud ni seconde base vectorielle ; repli BM25 explicite ; Recall@k/NDCG@k mesurables sur cas labels |
+
 ## Décisions de travail (hors ADR, mais qui gouvernent autant)
 
 | Règle | Où elle est écrite |
