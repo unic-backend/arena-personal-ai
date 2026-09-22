@@ -640,6 +640,7 @@ class KnowledgeVault:
             references.append({
                 "path": path,
                 "sources": list(page.get("sources") or []),
+                "snippet": re.sub(r"\s+", " ", texte[:800]).strip(),
             })
             total += len(texte)
 
@@ -651,6 +652,7 @@ class KnowledgeVault:
                 "score": hit.score,
                 "mode": hit.mode,
                 "sources": hit.sources,
+                "snippet": hit.snippet[:800],
             }
             for hit in hybrid_hits
         ]
@@ -690,6 +692,7 @@ class KnowledgeVault:
                     "path": ref["path"],
                     "score": float(item.get("score") or 0.0),
                     "sources": ref["sources"],
+                    "snippet": ref["snippet"],
                 })
 
         hybrid_paths = [item["path"] for item in hybrid]
