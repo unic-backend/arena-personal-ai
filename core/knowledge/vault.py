@@ -14,6 +14,7 @@ du depot). Toutes les donnees vivent sous data/knowledge_vault/, donc hors Git.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
@@ -586,6 +587,130 @@ class KnowledgeVault:
             "truncated": fin < len(lignes),
             "sources": _sources_frontmatter(texte),
             "content": contenu[:40_000],
+        }
+
+    async def compare_txtai(
+        self,
+        query: str,
+        registre: Any,
+        *,
+        limit: int = 5,
+        max_pages: int = 32,
+    ) -> dict[str, Any]:
+        """Compare explicitement le moteur txtai au retrieval courant.
+
+        Ce chemin n'est jamais appele par la recherche ordinaire. Il sert a
+        reveiller le connecteur historique sans contourner DEC-0051 : txtai
+        devient joignable sur demande explicite, tandis que le Knowledge Vault
+        hybride reste le moteur par defaut tant qu'un avantage n'est pas mesure
+        sur un jeu de verite terrain.
+
+        Le corpus est strictement borne : au plus 32 pages, 2 400 caracteres
+        par page et 60 000 caracteres au total. Aucun index n'est persiste.
+        """
+        if registre is None:
+            return {
+                "status": "NOT_CONFIGURED",
+                "message": "registre de connecteurs indisponible",
+                "txtai": [],
+                "hybrid": [],
+            }
+
+        limite = max(1, min(int(limit), 10))
+        plafond_pages = max(1, min(int(max_pages), 32))
+        chemins = [
+            path
+            for path in self.list_pages("**/*.md", limit=200)
+            if Path(path).name not in {"index.md", "log.md"}
+        ]
+
+        documents: list[str] = []
+        references: list[dict[str, Any]] = []
+        total = 0
+        for path in chemins:
+            if len(documents) >= plafond_pages or total >= 60_000:
+                break
+            page = self.read_page(path, offset=0, limit=120)
+            texte = str(page.get("content") or "").strip()[:2400]
+            if not texte:
+                continue
+            restant = 60_000 - total
+            texte = texte[:restant]
+            documents.append(texte)
+            references.append({
+                "path": path,
+                "sources": list(page.get("sources") or []),
+            })
+            total += len(texte)
+
+        hybrid_hits = await self.hybrid_search(query, limit=limite)
+        hybrid = [
+            {
+                "path": hit.path,
+                "title": hit.title,
+                "score": hit.score,
+                "mode": hit.mode,
+                "sources": hit.sources,
+            }
+            for hit in hybrid_hits
+        ]
+
+        if not documents:
+            return {
+                "status": "EMPTY",
+                "message": "aucune page documentaire exploitable dans le Knowledge Vault",
+                "txtai": [],
+                "hybrid": hybrid,
+                "corpus_pages": 0,
+            }
+
+        resultat = await asyncio.to_thread(
+            registre.executer,
+            "txtai_search",
+            "rechercher",
+            documents=documents,
+            requete=query,
+            top_k=limite,
+        )
+        statut = str(getattr(getattr(resultat, "statut", None), "value", "") or "UNKNOWN")
+        detail = getattr(resultat, "detail", None) or {}
+        message = str(getattr(resultat, "message", "") or "")
+
+        txtai: list[dict[str, Any]] = []
+        if statut == "SUCCESS":
+            for item in detail.get("resultats") or []:
+                try:
+                    index = int(item.get("index"))
+                except (TypeError, ValueError, AttributeError):
+                    continue
+                if not 0 <= index < len(references):
+                    continue
+                ref = references[index]
+                txtai.append({
+                    "path": ref["path"],
+                    "score": float(item.get("score") or 0.0),
+                    "sources": ref["sources"],
+                })
+
+        hybrid_paths = [item["path"] for item in hybrid]
+        txtai_paths = [item["path"] for item in txtai]
+        overlap = len(set(hybrid_paths[:limite]) & set(txtai_paths[:limite]))
+
+        return {
+            "status": statut,
+            "message": message,
+            "txtai": txtai,
+            "hybrid": hybrid,
+            "corpus_pages": len(documents),
+            "overlap_at_k": overlap,
+            "same_top1": bool(
+                hybrid_paths and txtai_paths and hybrid_paths[0] == txtai_paths[0]
+            ),
+            "quality_verdict": None,
+            "quality_note": (
+                "Aucun gagnant n'est declare sans jeu de pertinence labelle ; "
+                "ce rapport mesure les rangs et leur recouvrement seulement."
+            ),
         }
 
     def lint(self) -> LintReport:
