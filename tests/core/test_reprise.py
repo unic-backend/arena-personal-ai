@@ -112,6 +112,40 @@ class TestChaqueEtapeEstEcriteToutDeSuite:
         assert len(etapes) == 1
         assert etapes[0]["outil"] == "remplacer"
 
+    def test_le_journal_ne_persiste_que_les_champs_utiles_a_la_preuve(self, fichier):
+        journal = JournalDeReprise(fichier=fichier)
+        tache = journal.ouvrir(DEMANDE)
+
+        etape = journal.amorcer(
+            tache,
+            "github_ecrire",
+            cible="apps/a.py",
+            champs={
+                "CHEMIN": "apps/a.py",
+                "BRANCHE": "fix-a",
+                "MESSAGE": "message interne",
+                "URL": "https://exemple.test/?token=secret-a-ne-pas-garder",
+                "COMMANDE": "echo confidentiel",
+            },
+        )
+        journal.confirmer(
+            tache, etape, ok=True,
+            resume="ecriture terminee",
+            sortie="commit ok",
+        )
+
+        relu = JournalDeReprise(fichier=fichier).lire(tache.identifiant)
+        assert relu is not None
+        preuve = relu.etapes[0]
+        assert preuve.champs == {
+            "CHEMIN": "apps/a.py",
+            "BRANCHE": "fix-a",
+        }
+
+        brut = fichier.read_text(encoding="utf-8")
+        assert "secret-a-ne-pas-garder" not in brut
+        assert "echo confidentiel" not in brut
+
     def test_l_ecriture_est_atomique_aucun_fichier_a_moitie_ecrit(self, fichier):
         """Un journal illisible au moment ou il sert ne sert a rien."""
         journal = JournalDeReprise(fichier=fichier)
