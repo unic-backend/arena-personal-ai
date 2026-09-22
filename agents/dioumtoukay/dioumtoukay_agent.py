@@ -1422,6 +1422,14 @@ class DioumtoukayAgent(BaseAgent):
                 modifies = etat.sortie.strip()
                 lignes.append("Fichiers modifies non commites :\n" + modifies
                               if modifies else "Aucun fichier modifie.")
+        elif self.depot_github_defaut:
+            lignes.append(
+                "AUCUN checkout git local dans cette execution. Pour modifier le "
+                "depot distant, utilise exclusivement github_lire, github_chercher, "
+                "github_branche_creer et github_ecrire : les fichiers visibles sur "
+                "ce serveur peuvent etre ceux de l image de deploiement et une "
+                "modification locale ne serait pas un changement durable du depot."
+            )
 
         autour = self.atelier.lister(".")
         if autour.ok:
