@@ -26,11 +26,15 @@ def entetes() -> dict:
     return {"Authorization": f"Bearer {CLE_DE_TEST}"}
 
 
-def test_health_public_ne_divulgue_pas_la_topologie(client):
+def test_health_reste_compatible_avec_le_handshake_pwa(client):
     res = client.get("/health")
 
     assert res.status_code == 200
-    assert res.json() == {"status": "healthy"}
+    corps = res.json()
+    assert corps["ok"] is False
+    assert corps["authenticated"] is False
+    assert "provider" in corps
+    assert "interface" in corps
 
 
 def test_health_authentifie_annonce_le_diagnostic_reel(client, entetes):
