@@ -75,6 +75,7 @@ from core.connectors.gmail import GmailConnector
 from core.connectors.graphify import ConnecteurGraphify
 from core.connectors.hermes_evolution import ConnecteurHermesEvolution
 from core.connectors.hidream import HiDreamConnector
+from core.connectors.hyperframes import ConnecteurHyperframes
 from core.connectors.ifc import ConnecteurIfc
 from core.connectors.ifc_generation import ConnecteurIfcGeneration
 from core.connectors.krillinai import ConnecteurKrillinAI
@@ -467,7 +468,14 @@ registre.declarer(
     lambda: ConnecteurMontage(acces=acces, journal=journal, file_attente=file_attente,
                               crochets=crochets),
 )
-# Hyperframes: moteur de validation/rendu pour compositions video de lancement.\n# Sa sonde execute le doctor reel; un environnement incomplet reste NON_CONFIGURE.\nregistre.declarer(\n    "hyperframes",\n    lambda: ConnecteurHyperframes(acces=acces, journal=journal, file_attente=file_attente,\n                                  crochets=crochets),\n)\n# Metadonnees techniques (EXIF, video, audio) : lecture seule, aucune
+# Hyperframes: moteur de validation/rendu pour compositions video de lancement.
+# Sa sonde execute le doctor reel; un environnement incomplet reste NON_CONFIGURE.
+registre.declarer(
+    "hyperframes",
+    lambda: ConnecteurHyperframes(acces=acces, journal=journal, file_attente=file_attente,
+                                  crochets=crochets),
+)
+# Metadonnees techniques (EXIF, video, audio) : lecture seule, aucune
 # capacite d'ecriture declaree. Mission EXIF & Media Metadata — audite avant
 # d'ecrire une ligne, rien n'existait deja (`core/connectors/media_metadata.py`).
 # `VisionAgent` l'appelle en plus de Qwen3-VL pour une analyse « complete »,
@@ -866,10 +874,10 @@ _equipe = {
     "social": social_agent, "plaquiste": plaquiste_agent,
     "video_production": video_production_agent, "ui": ui_agent,
 }
-for _nom_collaborateur, _agent_collaborateur in _equipe.items():
-    collaborateurs.enregistrer(_nom_collaborateur, _agent_collaborateur)
-for _agent_collaborateur in _equipe.values():
-    _agent_collaborateur.collaborateurs = collaborateurs
+for _nom_collaborateur, _membre in _equipe.items():
+    collaborateurs.enregistrer(_nom_collaborateur, _membre)
+for _membre in _equipe.values():
+    _membre.collaborateurs = collaborateurs
 
 # Executive Intelligence (DEC-0086) n'est PAS enregistree ici : ce registre ne
 # connait que les espaces choisissables dans la barre laterale de la PWA
