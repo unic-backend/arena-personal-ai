@@ -668,6 +668,8 @@ class VideoProductionAgent(BaseAgent):
                 return await self._appeler_hidream_image(parametres)
             if capacite == "agnes":
                 return await self._appeler_agnes(parametres)
+            if capacite == "hyperframes_render":
+                return await self._appeler_hyperframes(parametres, references)
             # valider_graphe() ne laisse jamais passer autre chose que
             # CAPACITES_VIDEO : atteindre ceci serait un bug de ce module,
             # jamais une entree du modele.
@@ -1007,6 +1009,31 @@ class VideoProductionAgent(BaseAgent):
         demande = str(parametres.get("demande") or "assemble les references en un montage")
         resultat = await self.montage_agent.run(demande, context={"medias": medias})
         return self._verifie(resultat, "montage")
+
+    async def _appeler_hyperframes(self, parametres: Dict[str, Any],
+                                  references: List[str]) -> Dict[str, Any]:
+        """Rend une composition deja construite via le connecteur Hyperframes.
+
+        Le planificateur ne peut pas inventer un chemin: il choisit seulement
+        un index dans les references ouvertes par l'appelant. Le connecteur
+        refait son browser gate avant le rendu et l'ecriture reste soumise a
+        la confirmation ARENA.
+        """
+        if self.registre is None:
+            raise RuntimeError("aucun registre de connecteurs branche")
+        try:
+            index = int(parametres.get("composition_reference"))
+        except (TypeError, ValueError):
+            raise RuntimeError("reference de composition Hyperframes absente") from None
+        if not 0 <= index < len(references):
+            raise RuntimeError("reference de composition Hyperframes hors limites")
+        composition = Path(references[index])
+        if not composition.is_dir() or not (composition / "index.html").is_file():
+            raise RuntimeError("la reference n'est pas une composition Hyperframes")
+        resultat = self.registre.executer("hyperframes", "rendre", composition=str(composition))
+        if inspect.isawaitable(resultat):
+            resultat = await resultat
+        return self._verifie(_depuis_resultat_action(resultat), "hyperframes_render")
 
     # --- La reponse --------------------------------------------------------
 
