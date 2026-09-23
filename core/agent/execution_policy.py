@@ -48,7 +48,10 @@ def politique_pour(requete: str, pieces: Iterable[str] = ()) -> PolitiqueExecuti
         return PolitiqueExecution(Complexite.LONGUE, True, True, True, 4)
     if multi:
         return PolitiqueExecution(Complexite.MULTI_ETAPES, True, True, True, 3)
-    return PolitiqueExecution(Complexite.SIMPLE, False, False, False, 1)
+    # Une tache simple n'a pas a fan-out automatiquement. Une delegation
+    # EXPLICITE par un agent reste toutefois autorisee : demander un
+    # specialiste est deja une decision de routage, pas une exploration.
+    return PolitiqueExecution(Complexite.SIMPLE, True, False, False, 1)
 
 
 def delegation_autorisee(
