@@ -289,23 +289,29 @@ async def serve_frontend_classique():
 
 @app.get("/health")
 async def health_check(authorization: Optional[str] = Header(None)):
-    """Sonde publique minimale ; diagnostic detaille seulement avec une cle valide.
+    """Etat du serveur et validite de la cle presentee.
 
-    Un orchestrateur a seulement besoin de savoir si le processus HTTP vit.
-    Exposer publiquement modele, fournisseur, interface et inventaire des agents
-    donne inutilement la topologie d'ARENA a un visiteur non authentifie.
+    Cette route reste compatible avec la PWA existante : elle lit ces champs
+    avant de pouvoir envoyer une requete authentifiee. La securite repose sur
+    les routes metier protegees, pas sur la suppression de donnees necessaires
+    au handshake de l'interface.
     """
     ollama_online = await fast_provider.is_available()
     authentifie = cle_presentee_valide(authorization)
 
-    # Surface publique volontairement minuscule et stable pour Docker/Railway.
     if not authentifie:
-        return {"status": "healthy"}
+        raison = (
+            "Aucune cle presentee." if not authorization
+            else "La cle presentee n'est pas la bonne."
+        )
+    elif not ollama_online:
+        raison = "Ollama est hors-ligne : demarre-le avec `ollama serve`."
+    else:
+        raison = ""
 
-    raison = "" if ollama_online else "Ollama est hors-ligne : demarre-le avec `ollama serve`."
     return {
-        "ok": ollama_online,
-        "authenticated": True,
+        "ok": ollama_online and authentifie,
+        "authenticated": authentifie,
         "error": raison,
         "name": "ARENA",
         "provider": fast_provider.fournisseur_en_service or "indetermine",
