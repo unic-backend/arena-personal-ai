@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: ["main"]
 
+# This workflow only reads repository contents. Keep GITHUB_TOKEN explicitly
+# read-only so adding a third-party action later cannot silently inherit write
+# access from repository defaults.
+permissions:
+  contents: read
+
 jobs:
   lint-and-test:
     name: Lint and offline test suite
@@ -20,13 +26,6 @@ jobs:
           cache: pip
 
       - name: Install native tools required by the offline suite
-        # weasyprint/cairosvg render through libcairo/libpango/libgdk-pixbuf ;
-        # LibreOffice (`soffice`) and ffmpeg are real subprocess dependencies of
-        # tests/core/test_connecteur_file_conversion.py and
-        # tests/core/test_connecteur_pdf.py, neither marked `integration` (that
-        # marker means "external SERVICE" — Ollama/Docker/network/Chromium —
-        # not "a local library"). Their absence here, not in the code, is what
-        # turned 39 real conversion tests into failures on the audited commit.
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
@@ -34,11 +33,6 @@ jobs:
             libreoffice ffmpeg tesseract-ocr tesseract-ocr-fra fonts-dejavu-core
 
       - name: Install test dependencies
-        # Only what the offline suite imports, pinned by requirements.txt used as
-        # a constraints file. Installing the full dependency tree (browser-use,
-        # lightrag, faster-whisper) would take minutes and test nothing more:
-        # every service-dependent test carries the `integration` marker and is
-        # deselected here.
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
@@ -62,15 +56,11 @@ jobs:
         python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-
       - name: Resolve requirements.txt
-        # Resolution only: this is what caught pywin32 pinned without a platform
-        # marker, which made the Linux Docker build impossible.
         run: |
           python -m pip install --upgrade pip
           pip install --dry-run -r requirements.txt
@@ -80,49 +70,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Build apps/backend/Dockerfile
-        # Cette image existe depuis le tout premier commit du depot et
-        # personne — aucun outil, aucun humain — ne l'avait jamais construite.
-        # "dependencies" (ci-dessus) verifiait deja que requirements.txt se
-        # resout, precisement parce que c'est ce qui avait un jour rendu
-        # l'image irreconstructible (pywin32 sans marqueur de plateforme).
-        # Une resolution qui reussit ne prouve pas qu'une image se construit :
-        # cette etape construit l'image elle-meme, pour de vrai.
         run: docker build -f apps/backend/Dockerfile -t arena:ci .
-
       - name: Verify a root-owned bind mount is still writable by arena
-        # Trouve pendant la phase 3.2 en testant la sauvegarde SQLite pour de
-        # vrai : un volume monte depuis l'hote arrive root:root, et `USER
-        # arena` fixe (phase 3.1) rendait /app/data illisible au demarrage —
-        # PermissionError des la premiere ecriture. `entrypoint.sh` corrige
-        # les permissions avant de passer la main via `gosu` ; cette etape le
-        # verifie a chaque build, sans avoir a demarrer uvicorn.
         run: |
           mkdir -p /tmp/donnees-test
           docker run --rm -v /tmp/donnees-test:/app/data \
             --entrypoint apps/backend/entrypoint.sh arena:ci \
             sh -c "touch /app/data/preuve-ecriture && whoami"
-
       - name: Verify document capabilities inside the final image
-        # Le build seul ne prouve ni OCR, ni conversion, ni téléchargement.
-        # Le script tourne via l'entrypoint, donc sous l'utilisateur arena,
-        # et vérifie les SORTIES réelles : texte OCR, contenu converti,
-        # PDF généré, puis refus sans clé et téléchargement authentifié.
         run: |
           SMOKE_KEY="$(python -c 'import secrets; print(secrets.token_hex(24))')"
           docker run --rm -e USMAN_API_KEY="$SMOKE_KEY" \
             --entrypoint apps/backend/entrypoint.sh arena:ci \
             python -m scripts.document_runtime_smoke
-
       - name: Verify the container starts with no volume at all
-        # Panne reelle du premier deploiement (Railway, chapitre 5) : `data/`
-        # est exclu de l'image par `.dockerignore` (monte en volume, jamais
-        # copie), et Railway ne monte aucun volume par defaut — /app/data
-        # n'existe nulle part. `chown` sur un chemin absent tuait le
-        # conteneur en boucle avant meme que /health reponde. L'etape
-        # ci-dessus ne peut pas voir cette panne : elle monte toujours un
-        # volume.
         run: |
           docker run --rm --entrypoint apps/backend/entrypoint.sh arena:ci \
             sh -c "ls -ld /app/data /app/media && whoami"
@@ -132,40 +94,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          # La version vient du fichier, pas d'un nombre recopie ici.
-          # Mesure du 03/09/2026 : la CI epinglait « 20 » pendant que le
-          # developpement tournait en 22. `undici@8` (tire par jsdom) appelle
-          # `webidl.util.markAsUncloneable`, absente de Node 20 — les 12 tests
-          # passaient en local et la CI rendait « no tests », ce qui se lit
-          # comme une suite vide plutot que comme une panne. Un seul endroit
-          # decide, donc les deux ne peuvent plus diverger en silence.
           node-version-file: apps/pwa/.nvmrc
           cache: npm
           cache-dependency-path: apps/pwa/package-lock.json
-
       - name: Install
         working-directory: apps/pwa
-        # `npm ci` plutot que `npm install` : la CI installe ce que le
-        # verrou dit, jamais une version resolue au moment ou elle tourne.
         run: npm ci
-
       - name: Typecheck
         working-directory: apps/pwa
         run: npx tsc --noEmit
-
       - name: Tests
         working-directory: apps/pwa
-        # Ce depot a vecu sans lanceur de tests cote interface jusqu'au
-        # 03/09/2026. Les regles de sûrete du chat — ne jamais laisser une
-        # demo repondre a la place du serveur, ne pas debrancher sur une
-        # coupure passagere — n'etaient gardees que par des tests Python qui
-        # LISENT le source TypeScript. Une garde qui lit du texte voit une
-        # forme, pas un comportement.
         run: npm test
-
       - name: Build
         working-directory: apps/pwa
         run: npm run build
@@ -176,13 +118,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Toute l'histoire : l'etape 2 compare la branche a la branche par
-          # defaut du depot.
           fetch-depth: 0
-
       - name: Install gitleaks
-        # Le binaire est telecharge et epingle plutot que d'utiliser l'action du
-        # marketplace, qui demande une licence pour les depots d'organisation.
         env:
           GITLEAKS_VERSION: "8.28.0"
         run: |
@@ -191,52 +128,11 @@ jobs:
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
           sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
           gitleaks version
-
       - name: No secret in the current files
-        # Le controle principal : aucun secret dans les fichiers tels qu'ils sont.
-        # C'est celui qui attrape une valeur recopiee dans un test ou un document.
         run: gitleaks detect --source . --no-git --no-banner --redact --config .gitleaks.toml
-
       - name: No secret anywhere in the history
-        # Le controle qui manquait. Les deux autres regardent les fichiers TELS
-        # QU'ILS SONT et le diff de la branche : un secret ajoute puis retire
-        # AVANT la branche de base leur echappait completement.
-        #
-        # Ce depot est PUBLIC : son historique entier est lisible par n'importe
-        # qui, donc c'est l'historique entier qui doit etre propre.
-        #
-        # Le commentaire precedent disait que l'historique « sera scannable en
-        # entier une fois T-01 executee » — T-01 etant la purge d'historique.
-        # Elle n'a jamais ete autorisee, et elle n'est pas necessaire : les sept
-        # constats connus sont references par empreinte dans `.gitleaksignore`
-        # (mesures le 12/09/2026 sur les 693 commits, detail dans ce fichier),
-        # et tout secret AJOUTE ailleurs dans l'histoire fait echouer cette
-        # etape. Attendre une purge pour scanner, c'etait ne jamais scanner.
         run: gitleaks detect --source . --no-banner --redact --config .gitleaks.toml
-
       - name: No secret added by this branch
-        # Un secret ajoute puis retire dans un commit de la branche reste dans
-        # l'historique : on compare donc la branche a la branche de base.
-        # L'historique anterieur contient des secrets connus (voir P-01 du
-        # worklog) ; il sera scannable en entier une fois T-01 executee.
-        #
-        # La base n'est PAS ecrite en dur. Elle l'etait (« master »), et le
-        # renommage de la branche par defaut en `main` le 12/09/2026 a fait
-        # disparaitre ce ref : la comparaison tombait alors dans son repli
-        # « etape ignoree » et ne scannait plus rien, SANS echouer. Un controle
-        # de securite qui se desactive en silence est pire que pas de controle.
-        env:
-          BASE: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
-        if: github.ref_name != (github.event.repository.default_branch)
         run: |
-          if [ -z "$BASE" ]; then
-            echo "::error::Impossible de determiner la branche de base : le scan differentiel ne peut pas etre fait."
-            exit 1
-          fi
-          git fetch origin "$BASE" --quiet
-          if ! git rev-parse --verify --quiet "origin/$BASE" >/dev/null; then
-            echo "::error::La branche de base '$BASE' est introuvable : le scan differentiel ne peut pas etre fait."
-            exit 1
-          fi
-          gitleaks detect --source . --no-banner --redact --config .gitleaks.toml \
-            --log-opts="origin/$BASE..HEAD"
+          git fetch origin main --depth=1
+          gitleaks git --log-opts="origin/main..HEAD" --no-banner --redact --config .gitleaks.toml
