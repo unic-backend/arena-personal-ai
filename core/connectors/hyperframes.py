@@ -4,10 +4,12 @@ Integration originale inspiree du workflow MIT latent-spaces/brag. ARENA garde
 son orchestrateur Video; Hyperframes reste un moteur de validation/rendu.
 """
 from __future__ import annotations
+
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, Optional
+
 from apps.backend.config import RENDERED_DIR
 from core.actions.resultat import ResultatAction, echec, non_configure, succes
 from core.connectors.base import Capacite, Connecteur, EtatSante, Sante, _maintenant
