@@ -1,0 +1,13 @@
+{
+  "capability": "agnes_video",
+  "provider": "agnes",
+  "owner": "arena_video_workspace",
+  "standalone": true,
+  "composable": true,
+  "nested_orchestrator": false,
+  "workflows": ["simple", "creative", "manuscript", "poetry", "anchor"],
+  "submission_returns": "task_id",
+  "artifact_requires_completed_task": true,
+  "output_boundary": "rendered_media_directory",
+  "health_is_measured": true
+}
