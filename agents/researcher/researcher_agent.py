@@ -19,6 +19,7 @@ class DeepResearcherAgent(BaseAgent):
         provider: ModelProvider,
         memory: Optional[MemoryManager] = None,
         knowledge_vault: Optional[KnowledgeVault] = None,
+        registre: Any = None,
     ):
         super().__init__(
             name="DeepResearcherAgent",
@@ -28,6 +29,7 @@ class DeepResearcherAgent(BaseAgent):
         )
         self.search_tool = WebSearchTool()
         self.knowledge_vault = knowledge_vault or KnowledgeVault()
+        self.registre = registre
 
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         logger.info(f"DeepResearcherAgent entame une recherche approfondie sur : {user_input}")
@@ -60,6 +62,25 @@ class DeepResearcherAgent(BaseAgent):
         ))
         lots, knowledge_hits = await asyncio.gather(web_task, chercher_vault())
         all_results = [r for lot in lots for r in lot]
+        # Agent Reach est une couche complementaire pour les plateformes
+        # sociales/niche. Un echec n'abaisse jamais la recherche web existante.
+        reach_results = []
+        if self.registre is not None:
+            for plateforme in ("twitter", "reddit", "youtube", "linkedin"):
+                try:
+                    resultat = self.registre.executer(
+                        "agent_reach", "search", plateforme=plateforme,
+                        query=user_input,
+                    )
+                    if getattr(resultat, "reussi", False) and resultat.message:
+                        reach_results.append({
+                            "title": f"Agent Reach / {plateforme}",
+                            "href": f"agent-reach://{plateforme}",
+                            "body": resultat.message,
+                        })
+                except Exception as erreur:  # couche optionnelle, jamais bloquante
+                    logger.info("Agent Reach %s indisponible: %s", plateforme, erreur)
+        all_results.extend(reach_results)
 
         # Elimination des doublons d'URL
         unique_sources = []

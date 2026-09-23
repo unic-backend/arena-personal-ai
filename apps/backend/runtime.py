@@ -53,6 +53,7 @@ from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
 from core.agent.capacites import RegistreCapacites, adaptateur_synchrone
 from core.connectors import suivi_video
+from core.connectors.agent_reach import ConnecteurAgentReach
 from core.connectors.agnes import AgnesConnector
 from core.connectors.architecture_3d import ConnecteurArchitecture3D
 from core.connectors.audio_voix import ConnecteurAudioVoix
@@ -382,6 +383,13 @@ registre.declarer(
 # optionnel plus leger derriere le meme contrat, avec repli automatique.
 # Corrige au passage le seul chemin d'ARENA qui agissait sur le web sans
 # passer par ce registre. Voir core/connectors/browser.py.
+# Agent Reach complete le moteur web existant avec des routes sociales
+# mesurees. Il ne remplace ni DeepResearcher ni BrowserAgent et ne publie rien.
+registre.declarer(
+    "agent_reach",
+    lambda: ConnecteurAgentReach(acces=acces, journal=journal, file_attente=file_attente,
+                                 crochets=crochets),
+)
 registre.declarer(
     "browser",
     # `outil=` partage `ollama_rapide` — construite plus bas, atteinte ici
@@ -702,7 +710,7 @@ montage_agent = MontageAgent(provider=deep_provider, memory=memory, registre=reg
 editor_agent = EditorAgent(provider=deep_provider, memory=memory)
 subtitle_agent = SubtitleAgent(provider=deep_provider, memory=memory)
 coder_agent = CoderAgent(provider=coder_provider, memory=memory)
-researcher_agent = DeepResearcherAgent(provider=deep_provider, memory=memory)
+researcher_agent = DeepResearcherAgent(provider=deep_provider, memory=memory, registre=registre)
 clip_selector = ClipSelectorAgent(provider=deep_provider, memory=memory)
 publisher_agent = PublisherAgent(
     provider=fast_provider, memory=memory, journal=journal, registre=registre
