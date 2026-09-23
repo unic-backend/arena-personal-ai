@@ -51,6 +51,7 @@ from apps.backend.routers.chat import (
     garantir_un_texte,
 )
 from apps.backend.runtime import (
+    collaborateurs,
     dioumtoukay_agent,
     fast_provider,
     file_attente,
@@ -1548,7 +1549,7 @@ async def capacites_disponibles() -> Dict[str, Any]:
     sans dire pourquoi renvoie chercher une panne sans la nommer.
     """
     return {
-        "video": await disponibilite_video(registre, ollama_vision),
+        "video": await disponibilite_video(registre, ollama_vision, collaborateurs),
         # DEC-0041 : trois backends d'une capacite Software Engineering
         # unifiee, jamais devines depuis le seul fait que le processus tourne.
         "software_engineering": await disponibilite_swe(

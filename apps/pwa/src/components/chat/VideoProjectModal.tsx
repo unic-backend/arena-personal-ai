@@ -15,7 +15,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle, AudioLines, Ban, Check, Clapperboard, Eye, FileVideo2, Film,
   Image, ImagePlus, Languages, Loader2, Mic2, Paperclip, RectangleHorizontal,
-  RectangleVertical, Scissors, Sparkles, Subtitles, UserRoundCog, Video, Wand2, X,
+  RectangleVertical, Scissors, Sparkles, Subtitles, UserRoundCog, Users, Video, Wand2, X,
 } from 'lucide-react';
 import {
   CapaciteVideo, CAPACITES_VIDEO, EtapeProjetResultat, useVideoProject,
@@ -40,6 +40,8 @@ const ICONE_CAPACITE: Record<CapaciteVideo, typeof Eye> = {
   drift: Wand2,
   hidream_image: ImagePlus,
   agnes: Clapperboard,
+  hyperframes_render: Video,
+  specialiste: Users,
 };
 
 function labelCapacite(c: CapaciteVideo, fr: boolean): string {
@@ -59,6 +61,8 @@ function labelCapacite(c: CapaciteVideo, fr: boolean): string {
     drift: ['Montage IA (Drift)', 'AI editing (Drift)'],
     hidream_image: ['Image haute qualité (HiDream-I1)', 'High-quality image (HiDream-I1)'],
     agnes: ['Génération vidéo (Agnes)', 'Video generation (Agnes)'],
+    hyperframes_render: ['Vidéo de lancement (Hyperframes)', 'Launch video (Hyperframes)'],
+    specialiste: ['Collaboration agents', 'Agent collaboration'],
   };
   return fr ? labels[c][0] : labels[c][1];
 }

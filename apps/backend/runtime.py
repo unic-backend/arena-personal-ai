@@ -75,6 +75,7 @@ from core.connectors.gmail import GmailConnector
 from core.connectors.graphify import ConnecteurGraphify
 from core.connectors.hermes_evolution import ConnecteurHermesEvolution
 from core.connectors.hidream import HiDreamConnector
+from core.connectors.hyperframes import ConnecteurHyperframes
 from core.connectors.ifc import ConnecteurIfc
 from core.connectors.ifc_generation import ConnecteurIfcGeneration
 from core.connectors.krillinai import ConnecteurKrillinAI
@@ -467,6 +468,13 @@ registre.declarer(
     lambda: ConnecteurMontage(acces=acces, journal=journal, file_attente=file_attente,
                               crochets=crochets),
 )
+# Hyperframes: moteur de validation/rendu pour compositions video de lancement.
+# Sa sonde execute le doctor reel; un environnement incomplet reste NON_CONFIGURE.
+registre.declarer(
+    "hyperframes",
+    lambda: ConnecteurHyperframes(acces=acces, journal=journal, file_attente=file_attente,
+                                  crochets=crochets),
+)
 # Metadonnees techniques (EXIF, video, audio) : lecture seule, aucune
 # capacite d'ecriture declaree. Mission EXIF & Media Metadata — audite avant
 # d'ecrire une ligne, rien n'existait deja (`core/connectors/media_metadata.py`).
@@ -851,6 +859,26 @@ capacites.enregistrer("documents", adaptateur_synchrone(
     lambda texte: lightrag_tool.query(texte, mode="hybrid"), "LightRAG",
     est_un_echec=lightrag_echec,
 ))
+# Collaboration transversale entre TOUS les agents construits. Ce registre
+# est distinct de `capacites` (les espaces PWA) : l'interface garde ses
+# espaces stables, tandis que les agents peuvent se deleguer des sous-taches.
+collaborateurs = RegistreCapacites()
+_equipe = {
+    "orchestrator": orchestrator, "tendances": trend_agent, "video_analyse": video_agent,
+    "vision": vision_agent, "audio": audio_agent, "montage": montage_agent,
+    "edition": editor_agent, "sous_titres": subtitle_agent, "code": coder_agent,
+    "recherche": researcher_agent, "clips": clip_selector, "publication": publisher_agent,
+    "navigateur": browser_agent, "formel": formel_agent, "actualite": fresh_agent,
+    "finance": finance_agent, "executive": executive_agent, "repo": repo_engineer,
+    "swe": swe_agent, "atelier": dioumtoukay_agent, "email": email_agent,
+    "social": social_agent, "plaquiste": plaquiste_agent,
+    "video_production": video_production_agent, "ui": ui_agent,
+}
+for _nom_collaborateur in _equipe:
+    collaborateurs.enregistrer(_nom_collaborateur, _equipe[_nom_collaborateur])
+for _nom_collaborateur in _equipe:
+    _equipe[_nom_collaborateur].collaborateurs = collaborateurs
+
 # Executive Intelligence (DEC-0086) n'est PAS enregistree ici : ce registre ne
 # connait que les espaces choisissables dans la barre laterale de la PWA
 # (`INTENTION_PAR_ESPACE`, verifie par tests/test_runtime_capacites.py) —

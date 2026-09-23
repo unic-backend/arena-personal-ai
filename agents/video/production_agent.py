@@ -188,6 +188,7 @@ class VideoProductionAgent(BaseAgent):
         montage_agent: Any = None,
         registre: Any = None,
         journal: Optional[JournalProjets] = None,
+        collaborateurs: Any = None,
     ) -> None:
         super().__init__(
             name="VideoProductionAgent",
@@ -211,6 +212,10 @@ class VideoProductionAgent(BaseAgent):
         # l'absence de journal ne change AUCUN comportement d'execution — elle
         # retire seulement la reprise (`_executer` le gere explicitement).
         self.journal = journal
+        # Registre partage des specialistes ARENA. Il permet au projet Video
+        # de deleguer recherche, documents, code, metier, publication, etc.
+        # sans importer ni reconstruire aucun agent concret.
+        self.collaborateurs = collaborateurs
 
     async def run(self, objectif: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         contexte = context or {}
@@ -276,6 +281,24 @@ class VideoProductionAgent(BaseAgent):
             return self._erreur(f"Le plan de projet propose ne tient pas : {erreur}")
 
         return await self._executer(objectif, contexte, references, graphe, refus)
+
+    async def demander_specialiste(
+        self, specialiste: str, requete: str, contexte: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Delegue une sous-tache video a un autre specialiste ARENA.
+
+        Le registre est ferme et rempli par runtime : aucun nom invente par le
+        modele, aucun import circulaire, aucune seconde instance d'agent.
+        """
+        if self.collaborateurs is None:
+            return self._erreur("aucun registre de collaborateurs branche")
+        if not self.collaborateurs.connait(specialiste):
+            connus = ", ".join(sorted(self.collaborateurs.espaces()))
+            return self._erreur(
+                f"specialiste inconnu : {specialiste}. Disponibles : {connus or '(aucun)'}")
+        contexte_video = dict(contexte or {})
+        contexte_video.setdefault("origine", "video_production")
+        return await self.collaborateurs.demander(specialiste, requete, contexte_video)
 
     async def generer_image_personnage(self, personnage_id: str, description_scene: str
                                        ) -> Dict[str, Any]:
@@ -668,6 +691,15 @@ class VideoProductionAgent(BaseAgent):
                 return await self._appeler_hidream_image(parametres)
             if capacite == "agnes":
                 return await self._appeler_agnes(parametres)
+            if capacite == "hyperframes_render":
+                return await self._appeler_hyperframes(parametres, references)
+            if capacite == "specialiste":
+                nom = str(parametres.get("nom") or "").strip()
+                requete = str(parametres.get("requete") or "").strip()
+                if not nom or not requete:
+                    raise RuntimeError("specialiste: nom et requete sont obligatoires")
+                resultat = await self.demander_specialiste(nom, requete, {"projet": "video"})
+                return self._verifie(resultat, f"specialiste:{nom}")
             # valider_graphe() ne laisse jamais passer autre chose que
             # CAPACITES_VIDEO : atteindre ceci serait un bug de ce module,
             # jamais une entree du modele.
@@ -1007,6 +1039,31 @@ class VideoProductionAgent(BaseAgent):
         demande = str(parametres.get("demande") or "assemble les references en un montage")
         resultat = await self.montage_agent.run(demande, context={"medias": medias})
         return self._verifie(resultat, "montage")
+
+    async def _appeler_hyperframes(self, parametres: Dict[str, Any],
+                                  references: List[str]) -> Dict[str, Any]:
+        """Rend une composition deja construite via le connecteur Hyperframes.
+
+        Le planificateur ne peut pas inventer un chemin: il choisit seulement
+        un index dans les references ouvertes par l'appelant. Le connecteur
+        refait son browser gate avant le rendu et l'ecriture reste soumise a
+        la confirmation ARENA.
+        """
+        if self.registre is None:
+            raise RuntimeError("aucun registre de connecteurs branche")
+        try:
+            index = int(parametres.get("composition_reference"))
+        except (TypeError, ValueError):
+            raise RuntimeError("reference de composition Hyperframes absente") from None
+        if not 0 <= index < len(references):
+            raise RuntimeError("reference de composition Hyperframes hors limites")
+        composition = Path(references[index])
+        if not composition.is_dir() or not (composition / "index.html").is_file():
+            raise RuntimeError("la reference n'est pas une composition Hyperframes")
+        resultat = self.registre.executer("hyperframes", "rendre", composition=str(composition))
+        if inspect.isawaitable(resultat):
+            resultat = await resultat
+        return self._verifie(_depuis_resultat_action(resultat), "hyperframes_render")
 
     # --- La reponse --------------------------------------------------------
 
