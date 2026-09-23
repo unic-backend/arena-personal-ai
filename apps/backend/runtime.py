@@ -851,23 +851,26 @@ capacites.enregistrer("documents", adaptateur_synchrone(
     lambda texte: lightrag_tool.query(texte, mode="hybrid"), "LightRAG",
     est_un_echec=lightrag_echec,
 ))
-# Collaboration transversale : Video peut demander les specialistes deja
-# construits, sans les dupliquer. Les noms sont fermes et lisibles via le
-# meme RegistreCapacites que les espaces PWA.
-capacites.enregistrer("recherche", researcher_agent)
-capacites.enregistrer("tendances", trend_agent)
-capacites.enregistrer("edition", editor_agent)
-capacites.enregistrer("sous_titres", subtitle_agent)
-capacites.enregistrer("publication", publisher_agent)
-capacites.enregistrer("social", social_agent)
-capacites.enregistrer("finance", finance_agent)
-capacites.enregistrer("email", email_agent)
-capacites.enregistrer("repo", repo_engineer)
-capacites.enregistrer("atelier", dioumtoukay_agent)
-capacites.enregistrer("vision", vision_agent)
-capacites.enregistrer("audio", audio_agent)
-capacites.enregistrer("montage", montage_agent)
-video_production_agent.collaborateurs = capacites
+# Collaboration transversale entre TOUS les agents construits. Ce registre
+# est distinct de `capacites` (les espaces PWA) : l'interface garde ses
+# espaces stables, tandis que les agents peuvent se deleguer des sous-taches.
+collaborateurs = RegistreCapacites()
+_equipe = {
+    "orchestrator": orchestrator, "tendances": trend_agent, "video_analyse": video_agent,
+    "vision": vision_agent, "audio": audio_agent, "montage": montage_agent,
+    "edition": editor_agent, "sous_titres": subtitle_agent, "code": coder_agent,
+    "recherche": researcher_agent, "clips": clip_selector, "publication": publisher_agent,
+    "navigateur": browser_agent, "formel": formel_agent, "actualite": fresh_agent,
+    "finance": finance_agent, "executive": executive_agent, "repo": repo_engineer,
+    "swe": swe_agent, "atelier": dioumtoukay_agent, "email": email_agent,
+    "social": social_agent, "plaquiste": plaquiste_agent,
+    "video_production": video_production_agent, "ui": ui_agent,
+}
+for _nom_collaborateur, _agent_collaborateur in _equipe.items():
+    collaborateurs.enregistrer(_nom_collaborateur, _agent_collaborateur)
+for _agent_collaborateur in _equipe.values():
+    _agent_collaborateur.collaborateurs = collaborateurs
+
 # Executive Intelligence (DEC-0086) n'est PAS enregistree ici : ce registre ne
 # connait que les espaces choisissables dans la barre laterale de la PWA
 # (`INTENTION_PAR_ESPACE`, verifie par tests/test_runtime_capacites.py) —
