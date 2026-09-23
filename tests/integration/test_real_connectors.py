@@ -14,7 +14,7 @@ import pytest
 from core.connectors.agent_reach import ConnecteurAgentReach
 from core.connectors.base import EtatSante
 from core.connectors.calendrier import CalendrierConnector
-from core.connectors.github import GitHubConnector
+from core.connectors.github import ConnecteurGitHub
 from core.connectors.gmail import GmailConnector
 
 pytestmark = pytest.mark.integration
@@ -59,7 +59,7 @@ def test_github_real_auth_and_safe_read() -> None:
     _enabled()
     _require("USMAN_GITHUB_TOKEN")
     # sonder() calls GitHub with the configured token; no mutation capability.
-    _assert_real_health(GitHubConnector())
+    _assert_real_health(ConnecteurGitHub())
 
 
 def test_agent_reach_real_doctor() -> None:
