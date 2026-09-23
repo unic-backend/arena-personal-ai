@@ -53,6 +53,7 @@ from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
 from core.agent.capacites import RegistreCapacites, adaptateur_synchrone
 from core.connectors import suivi_video
+from core.connectors.agnes import AgnesConnector
 from core.connectors.architecture_3d import ConnecteurArchitecture3D
 from core.connectors.audio_voix import ConnecteurAudioVoix
 from core.connectors.browser import ConnecteurBrowser
@@ -230,6 +231,17 @@ registre.declarer(
     "xaar_kaname",
     lambda: XaarKanameConnector(acces=acces, journal=journal, file_attente=file_attente,
                                 crochets=crochets),
+)
+# Generation video Agnes (service auto-heberge separe, tools/video/__init__.py) —
+# meme discipline que wan2gp/hidream : sonde honnete, ecriture derriere
+# confirmation (video_generation.generate), jamais lance par ARENA. Mesure du
+# 23/09/2026 : la classe existait deja, testee en isolation, mais aucun
+# appelant reel ne passait par ici avant ce connecteur (voir
+# core/connectors/agnes.py pour la mesure complete).
+registre.declarer(
+    "agnes",
+    lambda: AgnesConnector(acces=acces, journal=journal, file_attente=file_attente,
+                           crochets=crochets),
 )
 # Analyse de visages : SDK Faceplugin, installe a cote (hors depot, aucune
 # licence declaree). Detecter et reperer sont des lectures ; extraire un

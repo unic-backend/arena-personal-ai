@@ -2,6 +2,35 @@
 
 ## [Non publié]
 
+### Ajouté — 23/09/2026 — Agnes rejoint réellement le chemin de production vidéo
+
+Le propriétaire a demandé de vérifier que le travail ajouté par ailleurs
+(~30 commits, mission Agnes) n'était pas « une poubelle » : `tools.video.
+AgnesProductionBridge` existait déjà, testé par vingt fichiers dans
+l'isolation, avec sa propre ADR (« Status: active ») — mais `grep -i agnes`
+sur `apps/backend/`, `agents/` (hors le fichier qui le définit) et le
+registre de connecteurs ne rendait rien. La documentation citait même un
+chemin d'import qui n'existe pas (`agents.video.AgnesProductionBridge`,
+`ImportError` vérifiée en exécution directe). Les tests de « réachabilité »
+ajoutés ensuite ne testaient que des capacités préexistantes par recherche
+de chaîne — jamais Agnes elle-même.
+
+`core/connectors/agnes.py` (nouveau) referme ce trou en suivant exactement
+le chemin de WanGP/MoneyPrinterTurbo/HiDream-I1/Xaar Kaname : passage par
+le registre, écriture derrière confirmation (`video_generation.generate`,
+section déjà existante), `etat_travail` qui collecte et valide le fichier
+avant de dire « terminé » plutôt que de croire le provider sur parole,
+annulation réelle. `"agnes"` rejoint `CAPACITES_VIDEO` et le prompt de
+planification (`core/production/plan_video.py`) ; `VideoProductionAgent`
+route la capacité vers son connecteur (`agents/video/production_agent.py`).
+
+Vérifié en exécution réelle, pas seulement par les tests : avant ce
+connecteur, un plan composant `{"capacite": "agnes", ...}` était refusé par
+`valider_graphe` (« capacite refusee "agnes" ») — le modèle ne pouvait même
+pas la proposer. Après, le même plan atteint réellement `registre.executer
+("agnes", "generer", ...)`, avec la même passerelle de confirmation que
+toute autre génération vidéo. Détail → `docs/DECISIONS.md`, DEC-0132.
+
 ### Corrigé — 21/09/2026 — Une question de clarification ne devient plus un PDF téléchargeable
 
 Suite de l'audit qui a produit le correctif précédent (DEC-0127) : sur une

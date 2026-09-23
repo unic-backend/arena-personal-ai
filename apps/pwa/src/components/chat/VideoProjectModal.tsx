@@ -39,6 +39,7 @@ const ICONE_CAPACITE: Record<CapaciteVideo, typeof Eye> = {
   krillin_cover: Image,
   drift: Wand2,
   hidream_image: ImagePlus,
+  agnes: Clapperboard,
 };
 
 function labelCapacite(c: CapaciteVideo, fr: boolean): string {
@@ -57,6 +58,7 @@ function labelCapacite(c: CapaciteVideo, fr: boolean): string {
     krillin_cover: ['Couverture (KrillinAI)', 'Cover image (KrillinAI)'],
     drift: ['Montage IA (Drift)', 'AI editing (Drift)'],
     hidream_image: ['Image haute qualité (HiDream-I1)', 'High-quality image (HiDream-I1)'],
+    agnes: ['Génération vidéo (Agnes)', 'Video generation (Agnes)'],
   };
   return fr ? labels[c][0] : labels[c][1];
 }

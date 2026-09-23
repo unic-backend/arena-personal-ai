@@ -10,6 +10,7 @@ from core.production.plan_video import (
     CAPACITES_VIDEO,
     PlanRefuse,
     extraire_json,
+    prompt_de_planification,
     valider_graphe,
 )
 
@@ -109,7 +110,7 @@ class TestMontageSurEcritureRefuse:
     @pytest.mark.parametrize("capacite_ecriture", [
         "wangp", "moneyprinter", "narration",
         "krillin_subtitle", "krillin_tts", "krillin_render_horizontal",
-        "krillin_render_vertical", "krillin_cover",
+        "krillin_render_vertical", "krillin_cover", "agnes",
     ])
     def test_un_montage_qui_depend_d_une_ecriture_est_refuse(self, capacite_ecriture):
         etapes, refus = valider_graphe([
@@ -126,3 +127,19 @@ class TestMontageSurEcritureRefuse:
         ])
         assert {e.id for e in etapes} == {"lire", "assembler"}
         assert refus == []
+
+
+class TestPromptDePlanification:
+    """Une capacite acceptee par `valider_graphe` mais absente de ce prompt
+    ne serait jamais proposee par le modele — les deux doivent avancer
+    ensemble."""
+
+    def test_chaque_capacite_autorisee_est_listee(self):
+        prompt = prompt_de_planification("un objectif", [])
+        for capacite in CAPACITES_VIDEO:
+            assert f"- {capacite}" in prompt
+
+    def test_agnes_porte_son_contrat_de_parametres(self):
+        prompt = prompt_de_planification("un objectif", [])
+        assert "agnes : parametres.prompt" in prompt
+        assert "workflow" in prompt

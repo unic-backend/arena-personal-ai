@@ -10807,3 +10807,81 @@ uniquement son etat : **dormant -> joignable explicitement**.
 `txtai_search` perd a nouveau son appelant. Le test historique qui interdit
 `txtai` dans l'aiguillage automatique de `apps/backend/routers/chat.py`
 reste en place.
+
+## DEC-0132 — Agnes rejoint video_generation par son connecteur, comme wangp/hidream
+
+**2026-09-23.**
+
+**Decision** : `core/connectors/agnes.py` (nouveau) enveloppe `tools.video.
+AgnesProductionBridge` dans le meme contrat que WanGP/MoneyPrinterTurbo/
+HiDream-I1/Xaar Kaname : `service = "video_generation"`, `generer` derriere
+`CONFIRMATION` (`config/permissions_services.yaml`, section deja existante —
+aucune nouvelle regle de permission n'a ete necessaire), `etat_travail` qui
+collecte et valide le fichier avant de dire « termine », `annuler_travail`
+qui appelle reellement `AgnesVideoProvider.stop()`. `"agnes"` rejoint
+`CAPACITES_VIDEO`/`CAPACITES_ECRITURE` (`core/production/plan_video.py`) et
+son contrat de parametres rejoint le prompt de planification ; `agents/
+video/production_agent.py::_adaptateur` route la capacite vers
+`_appeler_agnes`, qui passe par `self.registre` comme `_appeler_xaar_kaname`/
+`_appeler_hidream_image` — jamais un appel direct au pont HTTP.
+
+**Pourquoi** : mesure le 23/09/2026, en verifiant le travail ajoute par
+ailleurs (mission ChatGPT, ~30 commits, PR #285/#286). `tools.video.
+AgnesProductionBridge` existait deja, teste par vingt fichiers dans
+l'isolation, avec sa propre ADR (`docs/decisions/DEC-AGNES-PROVIDER.md`,
+« Status: active ») et sa propre documentation d'integration
+(`docs/AGNES_VIDEO_INTEGRATION.md`) — mais `grep -i agnes` sur `apps/
+backend/`, `agents/` (hors `tools/video/__init__.py` lui-meme) et `core/
+connectors/registre.py` ne rendait RIEN. La documentation citait meme un
+chemin d'import qui n'existe pas : `agents.video.AgnesProductionBridge`,
+verifie par execution directe :
+
+```
+>>> from agents.video import AgnesProductionBridge
+ImportError: cannot import name 'AgnesProductionBridge' from 'agents.video'
+```
+
+— `agents/video/__init__.py` est vide ; la classe reelle vit sous `tools.
+video.AgnesProductionBridge`. Les tests de "reachabilite" ajoutes ensuite
+(PR #288/#289/#290, `test_capability_reachability_contract.py`,
+`test_video_chat_reachability.py`, `test_runtime_connector_inventory_
+contract.py`) cherchaient des sous-chaines DEJA presentes avant Agnes
+(`'elif intent == "VISION"'`, `"video_production_agent.run("`...) — aucun
+n'importait le vrai module ni n'appelait le vrai registre, donc aucun n'a
+jamais pu voir le trou. `scripts/orphelins.py` disait « 0 orphelin reel »
+pour la meme raison qu'il mesure toujours : au niveau du FICHIER — la classe
+comptait comme atteinte seulement parce que `FFmpegTool`, dans le meme
+fichier `tools/video/__init__.py`, l'est reellement.
+
+Rejoue en execution directe, avant et apres ce connecteur (`VideoProduction
+Agent.run()` de bout en bout, plan JSON reel, registre reel de `apps/
+backend/runtime.py`) : avant, une etape `{"capacite": "agnes", ...}` etait
+refusee par `valider_graphe` (« capacite refusee "agnes" ») — le modele ne
+pouvait meme pas la PROPOSER, puisqu'elle n'apparaissait pas non plus dans
+`prompt_de_planification`. Apres, le meme plan atteint reellement `self.
+registre.executer("agnes", "generer", ...)`, gate a la confirmation comme
+tout le reste.
+
+Trois choses ecartees :
+
+- **Appeler `AgnesProductionBridge` en direct depuis l'agent**, en sautant le
+  registre. Contournerait `video_generation.generate = CONFIRMATION` — la
+  meme raison qui a deja ecarte cette approche pour Xaar Kaname/HiDream-I1.
+- **Un nouveau service de permission `agnes_video` dedie.** Une generation
+  video reste une generation video, quel que soit le moteur — deux regles
+  a maintenir en parallele pour la meme protection aurait ete la duplication
+  que `docs/BUILDWITHCLAUDE_GAP_ANALYSIS.md` (gate 7, « no-dormant-code »)
+  demande deja d'eviter.
+- **Exposer le mode `pipeline` propre a Agnes.** Ferait d'Agnes un second
+  orchestrateur composant ses propres etapes en interne — exactement ce que
+  `docs/decisions/DEC-AGNES-PROVIDER.md` interdit deja par ecrit, et le meme
+  raisonnement qui garde `krillin.pipeline` hors de `CAPACITES_VIDEO`.
+
+**Ce que ca coute si c'est faux** : Agnes tourne toujours hors de ce depot,
+sur son propre service HTTP auto-heberge (`AGNES_VIDEO_URL`, jamais lance
+par ARENA) — sans ce service demarre, `sonder()` rapporte `NON_CONFIGURE`,
+jamais un succes simule. Un plan qui compose `agnes` sans le service en
+route echoue proprement a la generation, comme WanGP/MoneyPrinter/HiDream
+dans la meme situation. Rien de nouveau n'est donc irreversible : retirer
+`"agnes"` de `CAPACITES_VIDEO` desactiverait la composition aussi simplement
+qu'elle a ete activee.
