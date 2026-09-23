@@ -39,6 +39,7 @@ PAR_CONNECTEUR: Dict[str, str] = {
     "drift": "drift",
     "hidream_image": "hidream",
     "agnes": "agnes",
+    "hyperframes_render": "hyperframes",
 }
 
 
@@ -69,6 +70,7 @@ def _depuis_connecteur(registre: Any, nom: str) -> Dict[str, Any]:
 async def disponibilite_video(
     registre: Any,
     fournisseur_vision: Optional[Any] = None,
+    collaborateurs: Optional[Any] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """Pour chaque capacité vidéo : disponible ou non, et pourquoi.
 
@@ -87,6 +89,19 @@ async def disponibilite_video(
         capacite: _depuis_connecteur(registre, connecteur)
         for capacite, connecteur in PAR_CONNECTEUR.items()
     }
+
+    # Une delegation est une capacite d'orchestration, pas un moteur externe.
+    # Elle n'est disponible que si le registre partage contient vraiment au
+    # moins un specialiste; jamais parce que son nom existe dans le plan.
+    if collaborateurs is None:
+        etats["specialiste"] = {
+            "disponible": False, "raison": "registre de collaborateurs non branche"}
+    else:
+        espaces = tuple(collaborateurs.espaces())
+        etats["specialiste"] = {
+            "disponible": bool(espaces),
+            "raison": "" if espaces else "aucun specialiste enregistre",
+        }
 
     # La vision ne passe pas par un connecteur : elle interroge le modèle.
     if fournisseur_vision is None:
