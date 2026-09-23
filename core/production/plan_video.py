@@ -51,7 +51,7 @@ from core.production.etat_projet import EtapeProjet
 CAPACITES_VIDEO: Tuple[str, ...] = (
     "vision", "transcription", "wangp", "moneyprinter", "narration", "xaar_kaname", "montage",
     "krillin_subtitle", "krillin_tts", "krillin_render_horizontal", "krillin_render_vertical",
-    "krillin_cover", "drift", "hidream_image", "agnes",
+    "krillin_cover", "drift", "hidream_image", "agnes", "hyperframes_render",
 )
 
 
@@ -166,7 +166,7 @@ def valider_graphe(
 CAPACITES_ECRITURE = frozenset({
     "wangp", "moneyprinter", "narration", "xaar_kaname",
     "krillin_subtitle", "krillin_tts", "krillin_render_horizontal", "krillin_render_vertical",
-    "krillin_cover", "drift", "hidream_image", "agnes",
+    "krillin_cover", "drift", "hidream_image", "agnes", "hyperframes_render",
 })
 
 
@@ -232,6 +232,7 @@ Contrats de parametres :
 - xaar_kaname : parametres.source_reference = index de l'image source,
   parametres.target_reference = index de l'image cible.
 - montage : parametres.references = liste d'indices de references ou d'artefacts.
+- hyperframes_render : parametres.composition_reference = index d'un dossier Hyperframes deja compose et valide; le rendu passe par confirmation.
 - krillin_subtitle : parametres.reference = index de la reference video,
   parametres.langue_origine, parametres.langue_cible (ex: "en", "fr"),
   parametres.caption_source = "manual" (transcription ARENA deja faite) ou
