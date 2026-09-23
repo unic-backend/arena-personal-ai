@@ -289,15 +289,12 @@ async def serve_frontend_classique():
 
 @app.get("/health")
 async def health_check(authorization: Optional[str] = Header(None)):
-    """Etat du serveur, et **si la cle presentee ouvre vraiment quelque chose**.
+    """Etat du serveur et validite de la cle presentee.
 
-    `ok` ne dit pas « le serveur est en vie » : il dit « tu peux obtenir une
-    reponse maintenant ». Il faut donc les deux — le modele disponible ET une
-    cle valable. Sans cela le panneau de l'interface passait au vert avec une
-    mauvaise cle, et chaque message repondait 401.
-
-    Les champs publics restent publics : cette route n'exige pas de cle, elle
-    se contente de dire ce que la cle presentee vaut.
+    Cette route reste compatible avec la PWA existante : elle lit ces champs
+    avant de pouvoir envoyer une requete authentifiee. La securite repose sur
+    les routes metier protegees, pas sur la suppression de donnees necessaires
+    au handshake de l'interface.
     """
     ollama_online = await fast_provider.is_available()
     authentifie = cle_presentee_valide(authorization)
@@ -313,31 +310,17 @@ async def health_check(authorization: Optional[str] = Header(None)):
         raison = ""
 
     return {
-        # `ok`, `name`, `provider` et `model` sont lus par l'interface PWA
-        # (`pingBackend`). Ils s'ajoutent aux champs existants sans en changer
-        # aucun : ce que lisaient les anciens appelants est intact.
         "ok": ollama_online and authentifie,
         "authenticated": authentifie,
         "error": raison,
         "name": "ARENA",
-        # **Jamais un nom ecrit en dur.** Ce champ valait « ollama » quoi qu'il
-        # arrive, et l'interface l'affiche tel quel sur le telephone
-        # (`backendStore.ts` : `remoteProvider: r.provider`). Un backend servi
-        # par Groq annoncait donc « ollama » : un ecran qui dit « local »
-        # pendant que le texte part chez un tiers.
-        #
-        # `fournisseur_en_service` rend `None` tant que rien n'a ete servi —
-        # c'est « on ne sait pas encore », jamais « local ».
         "provider": fast_provider.fournisseur_en_service or "indetermine",
         "model": fast_provider.model_name,
         "status": "healthy" if ollama_online else "degraded",
         "ollama_available": ollama_online,
         "interface": nom_interface(),
         "models": [fast_provider.model_name, deep_provider.model_name],
-        # Derivee des agents que `runtime` construit vraiment, jamais ecrite
-        # a la main : la liste figee qui etait ici taisait six agents bien
-        # vivants, dont l'assistant devis. Voir `runtime.agents_actifs`.
-        "agents_active": agents_actifs()
+        "agents_active": agents_actifs(),
     }
 
 

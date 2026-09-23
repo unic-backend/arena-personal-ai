@@ -109,6 +109,11 @@ jobs:
             --entrypoint apps/backend/entrypoint.sh arena:ci \
             sh -c "touch /app/data/preuve-ecriture && whoami"
 
+      - name: Verify runtime drops root privileges
+        run: |
+          test "$(docker run --rm --entrypoint apps/backend/entrypoint.sh arena:ci whoami)" = "arena"
+          test "$(docker run --rm --entrypoint apps/backend/entrypoint.sh arena:ci id -u)" != "0"
+
       - name: Verify document capabilities inside the final image
         # Le build seul ne prouve ni OCR, ni conversion, ni téléchargement.
         # Le script tourne via l'entrypoint, donc sous l'utilisateur arena,

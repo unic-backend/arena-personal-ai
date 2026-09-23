@@ -26,14 +26,22 @@ def entetes() -> dict:
     return {"Authorization": f"Bearer {CLE_DE_TEST}"}
 
 
-def test_health_repond_et_annonce_l_etat_d_ollama(client):
+def test_health_reste_compatible_avec_le_handshake_pwa(client):
     res = client.get("/health")
 
     assert res.status_code == 200
     corps = res.json()
-    # « healthy » ou « degraded » selon qu'Ollama tourne : les deux sont des
-    # réponses justes. Exiger « healthy » ferait échouer le test sur une machine
-    # sans Ollama, ce qui ne dit rien sur l'API.
+    assert corps["ok"] is False
+    assert corps["authenticated"] is False
+    assert "provider" in corps
+    assert "interface" in corps
+
+
+def test_health_authentifie_annonce_le_diagnostic_reel(client, entetes):
+    res = client.get("/health", headers=entetes)
+
+    assert res.status_code == 200
+    corps = res.json()
     assert corps["status"] in {"healthy", "degraded"}
     assert corps["ollama_available"] is (corps["status"] == "healthy")
     assert len(corps["agents_active"]) > 0
@@ -187,7 +195,7 @@ class TestSanteNAnnoncePasPlusQueCeQuiExiste:
         from core.agent.base_agent import BaseAgent
 
         construits = {o.name for o in vars(runtime).values() if isinstance(o, BaseAgent)}
-        annonces = set(client.get("/health").json()["agents_active"])
+        annonces = set(client.get("/health", headers={"Authorization": f"Bearer {CLE_DE_TEST}"}).json()["agents_active"])
 
         manquants = sorted(construits - annonces)
         assert not manquants, f"agents construits mais tus par /health : {manquants}"
@@ -199,7 +207,7 @@ class TestSanteNAnnoncePasPlusQueCeQuiExiste:
 
         construits = {o.name for o in vars(runtime).values() if isinstance(o, BaseAgent)}
         connus = construits | set(runtime.MOTEURS_NON_AGENTS)
-        annonces = set(client.get("/health").json()["agents_active"])
+        annonces = set(client.get("/health", headers={"Authorization": f"Bearer {CLE_DE_TEST}"}).json()["agents_active"])
 
         inventes = sorted(annonces - connus)
         assert not inventes, f"/health annonce ce qui n'existe pas : {inventes}"
@@ -447,3 +455,9 @@ class TestChaqueAgentConstruitEstAtteignable:
         assert "dispatch_request" in code, "chat.py n'a pas ete lu"
         assert "clip_selector" in code, "media.py n'a pas ete lu"
         assert len(code) > 20_000, "le balayage est trop court pour etre complet"
+
+
+def test_plafond_upload_media_par_defaut_est_borne():
+    from apps.backend.config import TAILLE_MAX_ENVOI
+
+    assert TAILLE_MAX_ENVOI <= 512 * 1024 * 1024
