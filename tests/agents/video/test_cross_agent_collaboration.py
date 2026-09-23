@@ -1,6 +1,8 @@
 import pytest
+
 from agents.video.production_agent import VideoProductionAgent
 from core.agent.capacites import RegistreCapacites
+
 
 class Provider:
     async def is_available(self): return True
