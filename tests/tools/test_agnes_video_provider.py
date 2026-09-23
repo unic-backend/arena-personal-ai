@@ -5,7 +5,7 @@ from email.message import Message
 
 import pytest
 
-from tools.video.agnes_provider import AgnesError, AgnesVideoProvider
+from tools.video import AgnesError, AgnesVideoProvider
 
 
 class FakeResponse:
