@@ -8,7 +8,7 @@ from core.agent.execution_policy import (
 def test_tache_simple_reste_legere():
     p = politique_pour("Quelle heure est-il ?")
     assert p.complexite is Complexite.SIMPLE
-    assert p.peut_deleguer is False
+    assert p.peut_deleguer is True
     assert p.verifier_avant_final is False
 
 
@@ -37,6 +37,7 @@ def test_delegation_refuse_boucle_et_budget():
     ) is False
 
 
-def test_tache_simple_ne_peut_pas_ouvrir_une_delegation():
+def test_tache_simple_autorise_une_delegation_explicite_bornee():
     p = politique_pour("bonjour")
-    assert delegation_autorisee(p, [], "researcher") is False
+    assert delegation_autorisee(p, [], "researcher") is True
+    assert delegation_autorisee(p, ["orchestrator"], "researcher") is False
