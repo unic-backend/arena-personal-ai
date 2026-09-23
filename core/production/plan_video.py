@@ -51,7 +51,7 @@ from core.production.etat_projet import EtapeProjet
 CAPACITES_VIDEO: Tuple[str, ...] = (
     "vision", "transcription", "wangp", "moneyprinter", "narration", "xaar_kaname", "montage",
     "krillin_subtitle", "krillin_tts", "krillin_render_horizontal", "krillin_render_vertical",
-    "krillin_cover", "drift", "hidream_image", "agnes", "hyperframes_render",
+    "krillin_cover", "drift", "hidream_image", "agnes", "hyperframes_render", "specialiste",
 )
 
 
@@ -233,6 +233,7 @@ Contrats de parametres :
   parametres.target_reference = index de l'image cible.
 - montage : parametres.references = liste d'indices de references ou d'artefacts.
 - hyperframes_render : parametres.composition_reference = index d'un dossier Hyperframes deja compose et valide; le rendu passe par confirmation.
+- specialiste : parametres.nom = specialiste ARENA (recherche, tendances, edition, sous_titres, publication, social, finance, email, repo, atelier, vision, audio, montage, plaquiste, code, ui, etc.), parametres.requete = sous-tache precise. Utilise-le quand une competence non-video ameliore reellement le projet.
 - krillin_subtitle : parametres.reference = index de la reference video,
   parametres.langue_origine, parametres.langue_cible (ex: "en", "fr"),
   parametres.caption_source = "manual" (transcription ARENA deja faite) ou
