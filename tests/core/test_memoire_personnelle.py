@@ -507,3 +507,28 @@ class TestIndexDuTri:
         ordre = [s.identifiant for s in memoire.souvenirs(limite=10)]
 
         assert ordre == [fort.identifiant, moyen.identifiant, faible.identifiant]
+
+
+# --- Suppression definitive ---------------------------------------------------
+
+def test_supprimer_efface_physiquement_et_ne_reapparait_dans_aucune_lecture(memoire):
+    souvenir = _retenir(memoire, contenu="Souvenir a effacer definitivement.")
+
+    assert memoire.supprimer(souvenir.identifiant) is True
+    assert memoire.lire(souvenir.identifiant) is None
+    assert all(s.identifiant != souvenir.identifiant for s in memoire.souvenirs())
+    assert all(
+        s.identifiant != souvenir.identifiant
+        for s in memoire.souvenirs_correspondant_a_des_mots(["effacer", "definitivement"])
+    )
+
+    import sqlite3
+    with sqlite3.connect(memoire.db_path) as connexion:
+        restant = connexion.execute(
+            "SELECT COUNT(*) FROM souvenirs WHERE identifiant = ?", (souvenir.identifiant,)
+        ).fetchone()[0]
+    assert restant == 0
+
+
+def test_supprimer_est_idempotent_sur_un_identifiant_absent(memoire):
+    assert memoire.supprimer("inexistant") is False
