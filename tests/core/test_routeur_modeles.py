@@ -88,6 +88,20 @@ async def test_un_secret_ne_part_jamais_au_cloud(mode):
     assert r.dernier_choix.classement.niveau is Confidentialite.TRES_SENSIBLE
 
 
+async def test_un_secret_dans_le_contexte_ne_touche_jamais_un_provider_cloud():
+    groq = FauxFournisseur("groq")
+    r = routeur(mode="CLOUD_PREFERRED", groq=groq)
+
+    reponse = await r.generate(
+        "resume ce document",
+        contexte=["Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.abcdefghijklmno"],
+    )
+
+    assert "local" in reponse
+    assert groq.appels == []
+    assert r.dernier_choix.classement.niveau is Confidentialite.TRES_SENSIBLE
+
+
 async def test_tout_tombe_sauf_ollama_et_arena_repond_quand_meme():
     """Sans réseau, ARENA reste un assistant."""
     r = routeur(groq=FauxFournisseur("groq", disponible=False),
