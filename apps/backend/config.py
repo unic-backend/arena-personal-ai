@@ -153,7 +153,10 @@ EXTENSIONS_MEDIA_AUTORISEES = {
     ".jpg", ".jpeg", ".png", ".webp", ".gif",
 }
 # Reglage : depend du disque de la machine.
-TAILLE_MAX_ENVOI = int(reglage("UPLOAD_MAX_BYTES", str(2 * 1024 * 1024 * 1024)))
+# Plafond prudent par defaut pour un serveur web. Les gros medias restent possibles
+# uniquement par configuration explicite de l'operateur ; 2 Go par defaut permettait
+# a quelques uploads concurrents de saturer disque/I/O avant toute production.
+TAILLE_MAX_ENVOI = int(reglage("UPLOAD_MAX_BYTES", str(512 * 1024 * 1024)))
 # Le fichier est ecrit par blocs : tout lire d'un coup chargerait la memoire.
 TAILLE_BLOC_ENVOI = 1024 * 1024
 
