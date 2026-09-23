@@ -38,6 +38,7 @@ PAR_CONNECTEUR: Dict[str, str] = {
     "krillin_cover": "krillinai",
     "drift": "drift",
     "hidream_image": "hidream",
+    "agnes": "agnes",
 }
 
 

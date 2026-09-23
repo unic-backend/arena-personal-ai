@@ -666,6 +666,8 @@ class VideoProductionAgent(BaseAgent):
                 return await self._appeler_drift(parametres, references)
             if capacite == "hidream_image":
                 return await self._appeler_hidream_image(parametres)
+            if capacite == "agnes":
+                return await self._appeler_agnes(parametres)
             # valider_graphe() ne laisse jamais passer autre chose que
             # CAPACITES_VIDEO : atteindre ceci serait un bug de ce module,
             # jamais une entree du modele.
@@ -859,6 +861,36 @@ class VideoProductionAgent(BaseAgent):
 
         traduit = await self._soumettre_image(appel, parametres.get("backend"))
         return self._verifie(traduit, "hidream_image")
+
+    async def _appeler_agnes(self, parametres: Dict[str, Any]) -> Dict[str, Any]:
+        """Agnes (service video auto-heberge separe), par son connecteur —
+        jamais en direct.
+
+        Mesure du 23/09/2026 : `tools.video.AgnesProductionBridge` existait
+        deja, teste en isolation, mais aucun chemin reel ne passait par ici —
+        cette methode ferme exactement ce trou. Meme raisonnement que
+        `_appeler_xaar_kaname`/`_appeler_hidream_image` : le connecteur porte
+        `generer` du service `video_generation`, que `config/
+        permissions_services.yaml` met a CONFIRMATION comme wangp/
+        moneyprinter — jamais une generation soumise sans passer par la file
+        d'attente existante.
+        """
+        if self.registre is None:
+            raise RuntimeError("aucun registre de connecteurs branche")
+
+        prompt = str(parametres.get("prompt") or "").strip()
+        if not prompt:
+            raise RuntimeError("prompt : aucune description de scene fournie")
+
+        appel: Dict[str, Any] = {"prompt": prompt}
+        for cle in ("workflow", "mode", "duration", "resolution"):
+            if parametres.get(cle) is not None:
+                appel[cle] = parametres[cle]
+
+        resultat = self.registre.executer("agnes", "generer", **appel)
+        if inspect.isawaitable(resultat):
+            resultat = await resultat
+        return self._verifie(_depuis_resultat_action(resultat), "agnes")
 
     async def _appeler_krillin(self, capacite_krillin: str, references: List[str],
                                **parametres_krillin: Any) -> Dict[str, Any]:

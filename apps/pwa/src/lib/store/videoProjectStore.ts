@@ -33,6 +33,7 @@ export const CAPACITES_VIDEO = [
   'krillin_cover',
   'drift',
   'hidream_image',
+  'agnes',
 ] as const;
 
 export type CapaciteVideo = (typeof CAPACITES_VIDEO)[number];

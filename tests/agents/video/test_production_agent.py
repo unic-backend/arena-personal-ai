@@ -890,6 +890,69 @@ class TestHiDreamImage:
         assert resultat["status"] == "warning"
 
 
+class TestAgnes:
+    """`agnes` — le trou mesure le 23/09/2026 : `tools.video.
+    AgnesProductionBridge` existait deja, teste en isolation par vingt
+    fichiers de tests, mais aucun plan de projet ne pouvait jamais le
+    composer (`capacite non cablee`, refuse par `valider_graphe` avant meme
+    d'atteindre `_adaptateur`). Ces tests exercent le VRAI branchement —
+    `agent.run()` de bout en bout, pas un appel direct a une methode privee —
+    exactement le chemin qu'un plan reel emprunte."""
+
+    async def test_agnes_dans_le_graphe_transmet_le_prompt(self):
+        modele = ModeleDouble([
+            '[{"id": "vid", "capacite": "agnes", '
+            '"parametres": {"prompt": "un chat qui saute", "workflow": "creative"}}]'
+        ])
+        registre = RegistreXaarDouble(reponse={
+            "statut": "SUCCESS", "message": "ok", "preuve": "abc123"})
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+
+        resultat = await agent.run("genere une video de chat", context={"references": []})
+
+        assert resultat["status"] == "success"
+        appel = registre.appels[0]
+        assert appel["connecteur"] == "agnes"
+        assert appel["capacite"] == "generer"
+        assert appel["parametres"]["prompt"] == "un chat qui saute"
+        assert appel["parametres"]["workflow"] == "creative"
+
+    async def test_agnes_soumet_pour_confirmation_jamais_un_succes_invente(self):
+        """Comme wangp/hidream_image : une soumission n'est pas un artefact final."""
+        modele = ModeleDouble([
+            '[{"id": "vid", "capacite": "agnes", "parametres": {"prompt": "un chat"}}]'
+        ])
+        registre = RegistreXaarDouble(reponse={
+            "statut": "NEEDS_CONFIRMATION", "message": "en attente"})
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+
+        resultat = await agent.run("genere une video", context={"references": []})
+
+        assert resultat["projet"]["artefact_final"] is None
+
+    async def test_agnes_sans_prompt_echoue_honnetement(self):
+        modele = ModeleDouble([
+            '[{"id": "vid", "capacite": "agnes", "parametres": {}}]'
+        ])
+        registre = RegistreXaarDouble()
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+
+        resultat = await agent.run("genere une video", context={"references": []})
+
+        assert resultat["status"] == "warning"
+        assert registre.appels == []
+
+    async def test_agnes_sans_registre_echoue_honnetement(self):
+        modele = ModeleDouble([
+            '[{"id": "vid", "capacite": "agnes", "parametres": {"prompt": "un chat"}}]'
+        ])
+        agent = VideoProductionAgent(provider=modele, registre=None)
+
+        resultat = await agent.run("genere une video", context={"references": []})
+
+        assert resultat["status"] == "warning"
+
+
 class TestGenererImageDirect:
     """`generer_image` — le point d'entree hors graphe de la capacite
     image-generation canonique (mission ARENA x HIDREAM-I1, DEC-0085)."""

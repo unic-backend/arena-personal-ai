@@ -41,10 +41,17 @@ from core.production.etat_projet import EtapeProjet
 #: TEXTE -> image HiDream -> scene wangp/image-a-video, exactement le
 #: pipeline que la mission decrit (§20). Reste une ECRITURE comme
 #: wangp/moneyprinter : le fichier reel n'existe qu'apres confirmation.
+#:
+#: « agnes » (`core/connectors/agnes.py`, mesure du 23/09/2026) genere une
+#: video via le service Agnes, auto-heberge a part — un PROVIDER de plus a
+#: cote de wangp/moneyprinter, jamais un second orchestrateur (le connecteur
+#: refuse deliberement d'exposer le mode `pipeline` propre a Agnes, meme
+#: raisonnement que krillin_* pour la meme raison). Reste une ECRITURE
+#: derriere confirmation, exactement comme wangp/moneyprinter/hidream_image.
 CAPACITES_VIDEO: Tuple[str, ...] = (
     "vision", "transcription", "wangp", "moneyprinter", "narration", "xaar_kaname", "montage",
     "krillin_subtitle", "krillin_tts", "krillin_render_horizontal", "krillin_render_vertical",
-    "krillin_cover", "drift", "hidream_image",
+    "krillin_cover", "drift", "hidream_image", "agnes",
 )
 
 
@@ -159,7 +166,7 @@ def valider_graphe(
 CAPACITES_ECRITURE = frozenset({
     "wangp", "moneyprinter", "narration", "xaar_kaname",
     "krillin_subtitle", "krillin_tts", "krillin_render_horizontal", "krillin_render_vertical",
-    "krillin_cover", "drift", "hidream_image",
+    "krillin_cover", "drift", "hidream_image", "agnes",
 })
 
 
@@ -245,6 +252,11 @@ Contrats de parametres :
   1248x832, 832x1248), parametres.seed (optionnel, reproductibilite),
   parametres.variante = "full"/"dev"/"fast" (par defaut "fast" — la plus
   legere).
+- agnes : parametres.prompt = texte de la scene (obligatoire),
+  parametres.workflow = "simple"/"creative"/"manuscript"/"poetry"/"anchor"
+  (par defaut "simple"), parametres.mode/duration/resolution optionnels
+  selon le workflow choisi. Une generation Agnes de plus dans le meme plan
+  compose bien avec un montage ulterieur, comme wangp/moneyprinter.
 
 Objectif du proprietaire :
 {objectif}
