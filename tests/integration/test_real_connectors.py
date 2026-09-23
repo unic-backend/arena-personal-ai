@@ -12,10 +12,10 @@ import shutil
 import pytest
 
 from core.connectors.agent_reach import ConnecteurAgentReach
-from core.connectors.calendrier import CalendarConnector
-from core.connectors.gmail import GmailConnector
-from core.connectors.github import GitHubConnector
 from core.connectors.base import EtatSante
+from core.connectors.calendrier import CalendarConnector
+from core.connectors.github import GitHubConnector
+from core.connectors.gmail import GmailConnector
 
 pytestmark = pytest.mark.integration
 
