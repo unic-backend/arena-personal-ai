@@ -382,6 +382,13 @@ registre.declarer(
 # optionnel plus leger derriere le meme contrat, avec repli automatique.
 # Corrige au passage le seul chemin d'ARENA qui agissait sur le web sans
 # passer par ce registre. Voir core/connectors/browser.py.
+# Agent Reach complete le moteur web existant avec des routes sociales
+# mesurees. Il ne remplace ni DeepResearcher ni BrowserAgent et ne publie rien.
+registre.declarer(
+    "agent_reach",
+    lambda: ConnecteurAgentReach(acces=acces, journal=journal, file_attente=file_attente,
+                                 crochets=crochets),
+)
 registre.declarer(
     "browser",
     # `outil=` partage `ollama_rapide` — construite plus bas, atteinte ici
