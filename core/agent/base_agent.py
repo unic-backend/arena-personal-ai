@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
+from core.agent.execution_policy import delegation_autorisee, politique_pour
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 
@@ -38,13 +39,14 @@ class BaseAgent(ABC):
                     "response": f"Specialiste inconnu: {specialiste}."}
         ctx = dict(contexte or {})
         profondeur = int(ctx.get("_delegation_depth") or 0)
-        if profondeur >= 4:
-            return {"status": "error", "agent": self.name,
-                    "response": "Delegation arretee: profondeur maximale atteinte."}
         chaine = list(ctx.get("_delegation_chain") or [])
-        if specialiste in chaine:
+        # La requete originale fixe le budget une seule fois. Un sous-agent ne
+        # peut pas augmenter son propre budget en reformulant sa sous-tache.
+        politique = politique_pour(str(ctx.get("_requete_racine") or requete))
+        if not delegation_autorisee(politique, chaine, specialiste):
             return {"status": "error", "agent": self.name,
-                    "response": "Delegation arretee: boucle detectee."}
+                    "response": "Delegation arretee: boucle ou budget atteint."}
+        ctx["_requete_racine"] = str(ctx.get("_requete_racine") or requete)
         ctx["_delegation_depth"] = profondeur + 1
         ctx["_delegation_chain"] = chaine + [self.name]
         ctx["origine_agent"] = self.name
