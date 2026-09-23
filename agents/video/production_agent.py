@@ -188,6 +188,7 @@ class VideoProductionAgent(BaseAgent):
         montage_agent: Any = None,
         registre: Any = None,
         journal: Optional[JournalProjets] = None,
+        collaborateurs: Any = None,
     ) -> None:
         super().__init__(
             name="VideoProductionAgent",
@@ -211,7 +212,7 @@ class VideoProductionAgent(BaseAgent):
         # l'absence de journal ne change AUCUN comportement d'execution — elle
         # retire seulement la reprise (`_executer` le gere explicitement).
         self.journal = journal
-
+        # Registre partage des specialistes ARENA. Il permet au projet Video\n        # de deleguer recherche, documents, code, metier, publication, etc.\n        # sans importer ni reconstruire aucun agent concret.\n        self.collaborateurs = collaborateurs\n
     async def run(self, objectif: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         contexte = context or {}
         references: List[str] = [r for r in (contexte.get("references") or []) if r]
@@ -276,6 +277,24 @@ class VideoProductionAgent(BaseAgent):
             return self._erreur(f"Le plan de projet propose ne tient pas : {erreur}")
 
         return await self._executer(objectif, contexte, references, graphe, refus)
+
+    async def demander_specialiste(
+        self, specialiste: str, requete: str, contexte: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Delegue une sous-tache video a un autre specialiste ARENA.
+
+        Le registre est ferme et rempli par runtime : aucun nom invente par le
+        modele, aucun import circulaire, aucune seconde instance d'agent.
+        """
+        if self.collaborateurs is None:
+            return self._erreur("aucun registre de collaborateurs branche")
+        if not self.collaborateurs.connait(specialiste):
+            connus = ", ".join(sorted(self.collaborateurs.espaces()))
+            return self._erreur(
+                f"specialiste inconnu : {specialiste}. Disponibles : {connus or '(aucun)'}")
+        contexte_video = dict(contexte or {})
+        contexte_video.setdefault("origine", "video_production")
+        return await self.collaborateurs.demander(specialiste, requete, contexte_video)
 
     async def generer_image_personnage(self, personnage_id: str, description_scene: str
                                        ) -> Dict[str, Any]:
