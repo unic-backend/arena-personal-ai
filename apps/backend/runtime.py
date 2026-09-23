@@ -54,6 +54,7 @@ from core.actions.journal import JournalDesActions
 from core.agent.capacites import RegistreCapacites, adaptateur_synchrone
 from core.connectors import suivi_video
 from core.connectors.agnes import AgnesConnector
+from core.connectors.agent_reach import ConnecteurAgentReach
 from core.connectors.architecture_3d import ConnecteurArchitecture3D
 from core.connectors.audio_voix import ConnecteurAudioVoix
 from core.connectors.browser import ConnecteurBrowser
