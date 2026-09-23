@@ -709,7 +709,7 @@ montage_agent = MontageAgent(provider=deep_provider, memory=memory, registre=reg
 editor_agent = EditorAgent(provider=deep_provider, memory=memory)
 subtitle_agent = SubtitleAgent(provider=deep_provider, memory=memory)
 coder_agent = CoderAgent(provider=coder_provider, memory=memory)
-researcher_agent = DeepResearcherAgent(provider=deep_provider, memory=memory)
+researcher_agent = DeepResearcherAgent(provider=deep_provider, memory=memory, registre=registre)
 clip_selector = ClipSelectorAgent(provider=deep_provider, memory=memory)
 publisher_agent = PublisherAgent(
     provider=fast_provider, memory=memory, journal=journal, registre=registre
