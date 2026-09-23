@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from apps.backend.config import RENDERED_DIR
 from tools.video.ffmpeg_tool import FFmpegTool
 
 
@@ -158,6 +159,83 @@ class ArenaVideoOrchestrator:
         return VideoWorkflowResult(self.agnes.name, task, output, postprocess)
 
 
+_SUCCESS = {"completed", "complete", "success", "succeeded"}
+
+
+class AgnesProductionBridge:
+    """Production-facing Agnes capability; ARENA remains the orchestrator."""
+
+    name = "agnes_video"
+
+    def __init__(self, orchestrator: ArenaVideoOrchestrator | None = None) -> None:
+        self.orchestrator = orchestrator or ArenaVideoOrchestrator()
+
+    def health(self) -> dict[str, Any]:
+        return self.orchestrator.agnes.health()
+
+    def submit(self, prompt: str, *, workflow: str = "simple", **options: Any) -> dict[str, Any]:
+        prompt = (prompt or "").strip()
+        if not prompt:
+            return self._error("Agnes: aucun prompt video fourni.")
+        try:
+            task = self.orchestrator.generate(prompt, workflow=workflow, **options)
+        except (AgnesError, ValueError, TypeError) as exc:
+            return self._error(str(exc))
+        return self._task_response(task, workflow)
+
+    def status(self, task_id: str) -> dict[str, Any]:
+        try:
+            task = self.orchestrator.agnes.task(task_id)
+        except (AgnesError, ValueError) as exc:
+            return self._error(str(exc))
+        return self._task_response(task, "status")
+
+    def collect(self, task_id: str, *, filename: str | None = None) -> dict[str, Any]:
+        try:
+            safe_id = self.orchestrator.agnes._id(task_id)
+        except (ValueError, TypeError) as exc:
+            return self._error(str(exc))
+        safe_name = Path(filename or f"agnes-{safe_id}.mp4").name
+        if not safe_name.lower().endswith((".mp4", ".mov", ".mkv", ".webm")):
+            return self._error("Agnes: extension de sortie video invalide.")
+        destination = RENDERED_DIR / safe_name
+        try:
+            result = self.orchestrator.collect(task_id, destination)
+        except (AgnesError, ValueError, OSError) as exc:
+            return self._error(str(exc))
+        if result.output is None:
+            return {
+                "statut": "PENDING",
+                "message": f"Agnes: tache {result.task.task_id} encore {result.task.status}.",
+                "task_id": result.task.task_id,
+                "provider": result.provider,
+                "etat_provider": result.task.status,
+            }
+        return {
+            "statut": "SUCCESS",
+            "message": "Agnes: video terminee et collectee par ARENA.",
+            "task_id": result.task.task_id,
+            "provider": result.provider,
+            "preuve": str(result.output),
+        }
+
+    @staticmethod
+    def _task_response(task: AgnesTask, workflow: str) -> dict[str, Any]:
+        status = task.status.lower()
+        return {
+            "statut": "SUCCESS" if status in _SUCCESS else "SUBMITTED",
+            "message": f"Agnes: tache {task.task_id} {task.status}.",
+            "task_id": task.task_id,
+            "provider": "agnes",
+            "workflow": workflow,
+            "etat_provider": task.status,
+        }
+
+    @staticmethod
+    def _error(message: str) -> dict[str, Any]:
+        return {"statut": "ERROR", "message": message, "provider": "agnes"}
+
+
 def agnes_capability(orchestrator: ArenaVideoOrchestrator | None = None) -> dict[str, Any]:
     engine = orchestrator or ArenaVideoOrchestrator()
     return {
@@ -173,6 +251,6 @@ def agnes_capability(orchestrator: ArenaVideoOrchestrator | None = None) -> dict
 
 
 __all__ = [
-    "AgnesError", "AgnesTask", "AgnesVideoProvider", "ArenaVideoOrchestrator",
-    "FFmpegTool", "VideoWorkflowResult", "agnes_capability",
+    "AgnesError", "AgnesProductionBridge", "AgnesTask", "AgnesVideoProvider",
+    "ArenaVideoOrchestrator", "FFmpegTool", "VideoWorkflowResult", "agnes_capability",
 ]
