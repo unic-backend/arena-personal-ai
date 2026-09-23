@@ -212,7 +212,11 @@ class VideoProductionAgent(BaseAgent):
         # l'absence de journal ne change AUCUN comportement d'execution — elle
         # retire seulement la reprise (`_executer` le gere explicitement).
         self.journal = journal
-        # Registre partage des specialistes ARENA. Il permet au projet Video\n        # de deleguer recherche, documents, code, metier, publication, etc.\n        # sans importer ni reconstruire aucun agent concret.\n        self.collaborateurs = collaborateurs\n
+        # Registre partage des specialistes ARENA. Il permet au projet Video
+        # de deleguer recherche, documents, code, metier, publication, etc.
+        # sans importer ni reconstruire aucun agent concret.
+        self.collaborateurs = collaborateurs
+
     async def run(self, objectif: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         contexte = context or {}
         references: List[str] = [r for r in (contexte.get("references") or []) if r]
