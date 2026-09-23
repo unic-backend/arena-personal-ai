@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: ["main"]
 
+# This workflow only reads repository contents. Explicit least privilege keeps
+# future actions from inheriting repository-default write access.
+permissions:
+  contents: read
+
 jobs:
   lint-and-test:
     name: Lint and offline test suite
