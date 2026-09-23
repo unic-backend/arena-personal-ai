@@ -874,10 +874,10 @@ _equipe = {
     "social": social_agent, "plaquiste": plaquiste_agent,
     "video_production": video_production_agent, "ui": ui_agent,
 }
-for _nom_collaborateur, _membre in _equipe.items():
-    collaborateurs.enregistrer(_nom_collaborateur, _membre)
-for _membre in _equipe.values():
-    _membre.collaborateurs = collaborateurs
+for _nom_collaborateur in _equipe:
+    collaborateurs.enregistrer(_nom_collaborateur, _equipe[_nom_collaborateur])
+for _nom_collaborateur in _equipe:
+    _equipe[_nom_collaborateur].collaborateurs = collaborateurs
 
 # Executive Intelligence (DEC-0086) n'est PAS enregistree ici : ce registre ne
 # connait que les espaces choisissables dans la barre laterale de la PWA
