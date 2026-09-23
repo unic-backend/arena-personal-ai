@@ -1826,3 +1826,12 @@ sans reprendre ses fournisseurs cloud : BM25 local, embeddings Ollama quand
 disponibles, RRF, outils read-only list/find/read et mesure Recall@k/NDCG@k.
 Le chat standard et DeepResearch utilisent le nouveau retrieval ; si le dense
 est indisponible, le mode annonce BM25 au lieu de simuler du semantique.
+
+
+## 2026-09-22 — Zero connecteur dormant — DEC-0131
+
+Audit du graphe des modules et du registre des connecteurs. Le graphe n'avait
+aucun module reel dormant ; le registre en avait encore un :
+`txtai_search`. Il est maintenant joignable depuis le Knowledge Vault, le
+chat PWA et le chat autonome pour une comparaison explicite. Le moteur par
+defaut ne change pas et aucun gagnant n'est declare sans labels.

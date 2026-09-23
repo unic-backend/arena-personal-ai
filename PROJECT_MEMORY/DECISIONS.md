@@ -38,6 +38,8 @@ d'ouvrir le document entier quand on cherche juste « a-t-on déjà tranché ça
 
 | **DEC-0130** | **Knowledge Vault : BM25 + embeddings locaux + RRF + outils list/find/read** | aucun fournisseur cloud ni seconde base vectorielle ; repli BM25 explicite ; Recall@k/NDCG@k mesurables sur cas labels |
 
+| **DEC-0131** | **Dormants : txtai devient joignable explicitement** | `DORMANTS_CONNUS` vide ; PWA + chat autonome peuvent comparer txtai au retrieval hybride ; aucun routage automatique |
+
 ## Décisions de travail (hors ADR, mais qui gouvernent autant)
 
 | Règle | Où elle est écrite |

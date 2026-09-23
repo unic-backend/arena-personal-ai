@@ -18,6 +18,8 @@ from apps.backend import security as securite
 from apps.backend.routers import pwa_gateway
 from apps.backend.routers.pwa_gateway import (
     PERSONA_MAX_CARACTERES,
+    comparaison_txtai_pertinente,
+    demande_comparaison_txtai,
     instructions_persona,
     prompt_systeme,
 )
@@ -108,6 +110,55 @@ def trames(texte: str) -> list:
 def demander(client, entetes, **corps):
     corps.setdefault("text", "Bonjour")
     return client.post("/agent/stream", headers=entetes, json=corps)
+
+
+def test_txtai_ne_se_declenche_que_sur_une_demande_explicite():
+    assert demande_comparaison_txtai("txtai : cherche isolation acoustique")
+    assert demande_comparaison_txtai("compare les moteurs de recherche semantique")
+    assert not demande_comparaison_txtai("cherche isolation acoustique dans mes documents")
+    assert not demande_comparaison_txtai("bonjour")
+
+
+async def test_comparaison_txtai_transporte_le_resultat_mesure(monkeypatch):
+    appels = []
+
+    async def comparer(query, registre, *, limit=5, max_pages=32):
+        appels.append((query, registre, limit, max_pages))
+        return {
+            "status": "SUCCESS",
+            "message": "ok",
+            "txtai": [{
+                "path": "sources/a.md",
+                "score": 0.9,
+                "sources": ["raw/a.md"],
+                "snippet": "La laine de roche absorbe une partie du bruit.",
+            }],
+            "hybrid": [{
+                "path": "sources/b.md",
+                "score": 1.2,
+                "mode": "BM25",
+                "sources": ["raw/b.md"],
+                "snippet": "Une autre source.",
+            }],
+            "overlap_at_k": 0,
+            "same_top1": False,
+            "quality_verdict": None,
+            "quality_note": "Aucun gagnant sans labels.",
+        }
+
+    monkeypatch.setattr(pwa_gateway.knowledge_vault, "compare_txtai", comparer)
+    rapport = {}
+    bloc = await comparaison_txtai_pertinente(
+        "Compare txtai avec la recherche semantique pour isolation",
+        rapport,
+    )
+
+    assert appels and appels[0][2] == 5
+    assert rapport["txtai"] == "SUCCESS"
+    assert "sources/a.md" in bloc and "sources/b.md" in bloc
+    assert "La laine de roche absorbe une partie du bruit." in bloc
+    assert "txtai_compare:sources/a.md" in bloc
+    assert "Aucun gagnant sans labels." in bloc
 
 
 # --- La fermeture du flux -----------------------------------------------------

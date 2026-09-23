@@ -10755,3 +10755,55 @@ Sur un tres gros vault, calculer des embeddings en direct deviendrait trop cher.
 dense est donc borne et BM25 reste toujours disponible. Si la taille justifie un index
 persistant plus tard, il devra reutiliser l'infrastructure RAG existante au lieu de creer
 une troisieme memoire.
+
+
+## DEC-0131 — Le dernier connecteur dormant est joignable, sans devenir le moteur par defaut
+
+*Decide le 22/09/2026 a la demande du proprietaire : « regarde ce qui dort
+dans mon projet et tu le reveille ».*
+
+### Mesure avant modification
+
+Deux detecteurs differents existent deja et ont ete relus avant de toucher au
+code :
+
+- `scripts/orphelins.py` + `tests/test_documentation.py` : aucun module reel
+  a reveiller ; seuls les marqueurs de paquet et services autonomes autorises
+  restent hors du graphe d'import.
+- `tests/test_connecteurs_dormants.py` : un seul connecteur encore sans
+  appelant, `txtai_search`.
+
+Le second cas etait explicite : txtai etait enregistre, teste et diagnostique,
+mais aucune route ni agent ne l'appelait.
+
+### Decision
+
+`KnowledgeVault.compare_txtai()` est le point unique qui execute
+`registre.executer("txtai_search", "rechercher", ...)`. Il construit un
+corpus ephemere et borne depuis les pages du Knowledge Vault, appelle txtai, puis
+rend cote a cote son classement et celui du retrieval hybride courant.
+
+Le vrai chat PWA peut le demander explicitement, et le chat autonome expose un
+outil `txtai_compare`. Dans les deux chemins, une question ordinaire ne
+declenche jamais txtai. Le banc accepte seulement une demande qui nomme txtai
+ou demande clairement une comparaison/benchmark des moteurs semantiques.
+
+### Bornes
+
+- 32 pages maximum ;
+- 2 400 caracteres maximum par page ;
+- 60 000 caracteres maximum au total ;
+- aucun index txtai persiste ;
+- aucune declaration de « meilleur moteur » sans jeu de pertinence labelle ;
+- une absence de txtai/Ollama reste `NOT_CONFIGURED`, jamais un faux succes.
+
+DEC-0051 reste donc vraie sur son point essentiel : txtai ne remplace pas
+silencieusement le moteur de recherche documentaire. Ce qui change est
+uniquement son etat : **dormant -> joignable explicitement**.
+
+### Garde de regression
+
+`DORMANTS_CONNUS` est maintenant vide. Le test des connecteurs echoue si
+`txtai_search` perd a nouveau son appelant. Le test historique qui interdit
+`txtai` dans l'aiguillage automatique de `apps/backend/routers/chat.py`
+reste en place.

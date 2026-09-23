@@ -44,22 +44,10 @@ RACINE = Path(__file__).resolve().parent.parent
 #: se négocie pas, c'est qu'ils ne se déclarent nulle part comme
 #: opérationnels tant qu'ils sont ici.
 DORMANTS_CONNUS = {
-    # Quatre des cinq derniers dormants ont ete reveilles le 12/09/2026, a la
-    # demande du proprietaire : `formbricks` et `workflow_guide` sur
-    # PlaquisteAgent, `galsen` sur FRESH_INFO, `graphify` en repli de la
-    # source `codebase` de `recherche_unifiee`.
-    #
-    # Celui-ci est reste, et ce n'est PAS un oubli : c'est sa propre decision
-    # anterieure qui l'interdit.
-    "txtai_search": "DEC-0051 : son usage est conditionne a un avantage "
-                    "DEMONTRE (« n'utilise txtai que lorsque son avantage est "
-                    "demontre »), et le banc de comparaison qui le montrerait "
-                    "exige des embeddings reels — donc Ollama, absent de ce "
-                    "conteneur. Un branchement sur RAG_DOCS a ete ecrit puis "
-                    "RETIRE le 12/09/2026 : il faisait tomber "
-                    "`TestPasDeRoutageAutomatique`, le test qui garde cette "
-                    "decision. Fabriquer la mesure aurait ete pire que "
-                    "l'attente.",
+    # 22/09/2026 : vide. Le dernier dormant, txtai_search, est maintenant
+    # joignable depuis le vrai chat PWA et le chat autonome pour une
+    # comparaison explicite. Il ne remplace toujours jamais le moteur par
+    # defaut : DEC-0051 reste gardee par TestPasDeRoutageAutomatique.
 }
 
 
@@ -204,6 +192,17 @@ def test_chaque_dormant_porte_sa_raison(nom):
 
     assert len(raison) > 25 and raison.endswith("."), (
         f"la raison de {nom} n'explique rien : « {raison} »")
+
+
+def test_txtai_a_bien_ete_reveille_sans_devenir_le_moteur_par_defaut():
+    """Le dernier dormant a un vrai appelant, mais reste un banc explicite."""
+    appelants = _appelants("txtai_search")
+
+    assert appelants, "txtai_search est redevenu dormant"
+    assert any("knowledge/vault.py" in ligne for ligne in appelants), (
+        "txtai_search n'est plus relie au Knowledge Vault : "
+        f"appelants trouves = {appelants}"
+    )
 
 
 def test_gitingest_a_bien_ete_reveille():

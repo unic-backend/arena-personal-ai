@@ -4,14 +4,16 @@ Suite de `core/production/txtai_recherche.py` — lire son en-tete d'abord :
 pourquoi ce n'est PAS un second RAG, et pourquoi aucun embeddings ne se
 recalcule deux fois (le vecteur vient d'Ollama, comme la memoire de chat).
 
-**Ce connecteur n'est cable dans aucun aiguillage automatique.** Contrairement
-a `workflow_guide`/`ui_generate`, il n'a pas de branche dans
-`apps/backend/routers/chat.py` : la mission elle-meme conditionne son usage a
-un avantage demontre, jamais mesure ici (pas d'Ollama joignable dans ce
-conteneur, `docs/DECISIONS.md` DEC-0051). Il reste une capacite REELLE et
-appelable — pour un banc de comparaison explicite sur la machine du
-proprietaire — sans jamais devenir le moteur silencieux d'une question
-ordinaire.
+**Ce connecteur n'est cable dans aucun aiguillage automatique.** Il est
+desormais joignable depuis le Knowledge Vault, le vrai chat PWA et le chat
+autonome pour un **banc de comparaison explicite**. Une question ordinaire ne
+le declenche jamais : DEC-0051 interdit toujours d'en faire le moteur par
+defaut tant qu'un avantage n'a pas ete mesure sur un jeu de pertinence labelle.
+
+Le 22/09/2026, c'etait le dernier connecteur de `DORMANTS_CONNUS` : code,
+tests et diagnostic existaient, mais aucun appelant de production ne pouvait
+l'executer. DEC-0131 l'a reveille sans changer le moteur documentaire par
+defaut.
 
 **Une seule capacite, une lecture.** `rechercher` ne persiste rien : l'index
 est reconstruit et jete a chaque appel, sur les documents FOURNIS dans le
@@ -24,7 +26,7 @@ from typing import Any, Dict, Optional
 
 from core.actions.resultat import ResultatAction, echec, non_configure, succes
 from core.connectors.base import Capacite, Connecteur, EtatSante, Sante, _maintenant
-from core.memory.semantique import mesurer
+from core.memory.semantique import embeddings_ollama, mesurer
 from core.production.txtai_recherche import (
     MAX_DOCUMENTS,
     _executer_dans_un_thread,
@@ -33,6 +35,13 @@ from core.production.txtai_recherche import (
 )
 
 logger = logging.getLogger("usman.connecteurs.txtai_search")
+
+TXTAI_EMBEDDING_TIMEOUT = 3.0
+
+
+async def _embeddings_txtai_bornes(textes):
+    """Meme Ollama/bge-m3 qu'ARENA, avec une latence bornee pour un banc optionnel."""
+    return await embeddings_ollama(textes, timeout=TXTAI_EMBEDDING_TIMEOUT)
 
 
 class ConnecteurTxtaiSearch(Connecteur):
@@ -46,7 +55,7 @@ class ConnecteurTxtaiSearch(Connecteur):
         # ASYNCHRONE, meme forme que `embeddings_ollama` — injectable pour
         # les tests, jamais un Ollama reellement joignable suppose sans le
         # mesurer (regle 1 de core/memory/semantique.py).
-        self._fournisseur_async = fournisseur_async
+        self._fournisseur_async = fournisseur_async or _embeddings_txtai_bornes
 
     def capacites(self) -> Dict[str, Capacite]:
         return {
@@ -103,8 +112,7 @@ class ConnecteurTxtaiSearch(Connecteur):
         if not requete:
             return echec(action=capacite.nom, cible=self.nom, message="Aucune requete fournie.")
 
-        transform = (faire_transform_synchrone(self._fournisseur_async)
-                    if self._fournisseur_async else None)
+        transform = faire_transform_synchrone(self._fournisseur_async)
         try:
             resultats = rechercher(documents, requete, top_k=top_k, transform=transform)
         except RuntimeError as erreur:
