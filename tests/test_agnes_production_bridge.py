@@ -1,7 +1,6 @@
 from pathlib import Path
 
-from agents.video.agnes_production_agent import AgnesProductionBridge
-from tools.video import AgnesTask, VideoWorkflowResult
+from tools.video import AgnesProductionBridge, AgnesTask, VideoWorkflowResult
 
 
 class FakeAgnes:
@@ -27,12 +26,14 @@ class FakeOrchestrator:
         self.agnes = FakeAgnes(status)
         self.output = output
         self.generated = []
+        self.destination = None
 
     def generate(self, prompt, *, workflow="simple", **options):
         self.generated.append((prompt, workflow, options))
         return self.agnes.current
 
     def collect(self, task_id, destination):
+        self.destination = Path(destination)
         if self.output is None:
             return VideoWorkflowResult("agnes", self.agnes.current)
         return VideoWorkflowResult("agnes", self.agnes.current, Path(self.output))
@@ -41,9 +42,7 @@ class FakeOrchestrator:
 def test_submit_exposes_real_task_without_fake_file():
     orchestrator = FakeOrchestrator()
     bridge = AgnesProductionBridge(orchestrator)
-
     result = bridge.submit("Dakar au lever du soleil", workflow="creative", duration=8)
-
     assert result["statut"] == "SUBMITTED"
     assert result["task_id"] == "task-42"
     assert "preuve" not in result
@@ -51,8 +50,7 @@ def test_submit_exposes_real_task_without_fake_file():
 
 
 def test_submit_rejects_empty_prompt():
-    result = AgnesProductionBridge(FakeOrchestrator()).submit("   ")
-    assert result["statut"] == "ERROR"
+    assert AgnesProductionBridge(FakeOrchestrator()).submit("   ")["statut"] == "ERROR"
 
 
 def test_collect_does_not_claim_file_while_task_pending():
@@ -64,26 +62,19 @@ def test_collect_does_not_claim_file_while_task_pending():
 def test_collect_returns_proof_only_for_collected_artifact(tmp_path):
     output = tmp_path / "final.mp4"
     output.write_bytes(b"video")
-    result = AgnesProductionBridge(
-        FakeOrchestrator(status="completed", output=output)
-    ).collect("task-42")
+    result = AgnesProductionBridge(FakeOrchestrator(status="completed", output=output)).collect("task-42")
     assert result["statut"] == "SUCCESS"
     assert result["preuve"] == str(output)
 
 
 def test_collect_sanitizes_requested_filename(monkeypatch, tmp_path):
-    import agents.video.agnes_production_agent as module
+    import tools.video as module
 
     monkeypatch.setattr(module, "RENDERED_DIR", tmp_path)
     orchestrator = FakeOrchestrator(status="completed", output=tmp_path / "safe.mp4")
-    bridge = AgnesProductionBridge(orchestrator)
-
-    result = bridge.collect("task-42", filename="../../escape.mp4")
-
+    result = AgnesProductionBridge(orchestrator).collect("task-42", filename="../../escape.mp4")
     assert result["statut"] == "SUCCESS"
-    # The bridge passes only the basename to the provider destination.
-    # FakeOrchestrator does not expose it, so assert the security primitive directly.
-    assert Path("../../escape.mp4").name == "escape.mp4"
+    assert orchestrator.destination == tmp_path / "escape.mp4"
 
 
 def test_health_is_measured_from_provider():
