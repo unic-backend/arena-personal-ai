@@ -35,3 +35,8 @@ def test_delegation_refuse_boucle_et_budget():
     assert delegation_autorisee(
         p, ["a", "b", "c", "d"], "coder"
     ) is False
+
+
+def test_tache_simple_ne_peut_pas_ouvrir_une_delegation():
+    p = politique_pour("bonjour")
+    assert delegation_autorisee(p, [], "researcher") is False
