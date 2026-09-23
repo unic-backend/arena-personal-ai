@@ -851,6 +851,23 @@ capacites.enregistrer("documents", adaptateur_synchrone(
     lambda texte: lightrag_tool.query(texte, mode="hybrid"), "LightRAG",
     est_un_echec=lightrag_echec,
 ))
+# Collaboration transversale : Video peut demander les specialistes deja
+# construits, sans les dupliquer. Les noms sont fermes et lisibles via le
+# meme RegistreCapacites que les espaces PWA.
+capacites.enregistrer("recherche", researcher_agent)
+capacites.enregistrer("tendances", trend_agent)
+capacites.enregistrer("edition", editor_agent)
+capacites.enregistrer("sous_titres", subtitle_agent)
+capacites.enregistrer("publication", publisher_agent)
+capacites.enregistrer("social", social_agent)
+capacites.enregistrer("finance", finance_agent)
+capacites.enregistrer("email", email_agent)
+capacites.enregistrer("repo", repo_engineer)
+capacites.enregistrer("atelier", dioumtoukay_agent)
+capacites.enregistrer("vision", vision_agent)
+capacites.enregistrer("audio", audio_agent)
+capacites.enregistrer("montage", montage_agent)
+video_production_agent.collaborateurs = capacites
 # Executive Intelligence (DEC-0086) n'est PAS enregistree ici : ce registre ne
 # connait que les espaces choisissables dans la barre laterale de la PWA
 # (`INTENTION_PAR_ESPACE`, verifie par tests/test_runtime_capacites.py) —
