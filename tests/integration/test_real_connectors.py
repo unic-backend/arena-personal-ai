@@ -13,7 +13,7 @@ import pytest
 
 from core.connectors.agent_reach import ConnecteurAgentReach
 from core.connectors.base import EtatSante
-from core.connectors.calendrier import CalendarConnector
+from core.connectors.calendrier import CalendrierConnector
 from core.connectors.github import GitHubConnector
 from core.connectors.gmail import GmailConnector
 
@@ -52,7 +52,7 @@ def test_calendar_real_auth_and_safe_read() -> None:
     _enabled()
     _require("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN")
     # sonder() authenticates and performs the connector's harmless health read.
-    _assert_real_health(CalendarConnector())
+    _assert_real_health(CalendrierConnector())
 
 
 def test_github_real_auth_and_safe_read() -> None:
