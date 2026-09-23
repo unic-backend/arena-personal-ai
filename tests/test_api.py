@@ -451,3 +451,9 @@ class TestChaqueAgentConstruitEstAtteignable:
         assert "dispatch_request" in code, "chat.py n'a pas ete lu"
         assert "clip_selector" in code, "media.py n'a pas ete lu"
         assert len(code) > 20_000, "le balayage est trop court pour etre complet"
+
+
+def test_plafond_upload_media_par_defaut_est_borne():
+    from apps.backend.config import TAILLE_MAX_ENVOI
+
+    assert TAILLE_MAX_ENVOI <= 512 * 1024 * 1024
