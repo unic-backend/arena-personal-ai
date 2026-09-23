@@ -467,7 +467,7 @@ registre.declarer(
     lambda: ConnecteurMontage(acces=acces, journal=journal, file_attente=file_attente,
                               crochets=crochets),
 )
-# Metadonnees techniques (EXIF, video, audio) : lecture seule, aucune
+# Hyperframes: moteur de validation/rendu pour compositions video de lancement.\n# Sa sonde execute le doctor reel; un environnement incomplet reste NON_CONFIGURE.\nregistre.declarer(\n    "hyperframes",\n    lambda: ConnecteurHyperframes(acces=acces, journal=journal, file_attente=file_attente,\n                                  crochets=crochets),\n)\n# Metadonnees techniques (EXIF, video, audio) : lecture seule, aucune
 # capacite d'ecriture declaree. Mission EXIF & Media Metadata — audite avant
 # d'ecrire une ligne, rien n'existait deja (`core/connectors/media_metadata.py`).
 # `VisionAgent` l'appelle en plus de Qwen3-VL pour une analyse « complete »,
