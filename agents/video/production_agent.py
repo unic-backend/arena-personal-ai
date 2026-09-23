@@ -689,6 +689,13 @@ class VideoProductionAgent(BaseAgent):
                 return await self._appeler_agnes(parametres)
             if capacite == "hyperframes_render":
                 return await self._appeler_hyperframes(parametres, references)
+            if capacite == "specialiste":
+                nom = str(parametres.get("nom") or "").strip()
+                requete = str(parametres.get("requete") or "").strip()
+                if not nom or not requete:
+                    raise RuntimeError("specialiste: nom et requete sont obligatoires")
+                resultat = await self.demander_specialiste(nom, requete, {"projet": "video"})
+                return self._verifie(resultat, f"specialiste:{nom}")
             # valider_graphe() ne laisse jamais passer autre chose que
             # CAPACITES_VIDEO : atteindre ceci serait un bug de ce module,
             # jamais une entree du modele.
