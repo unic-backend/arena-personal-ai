@@ -30,8 +30,8 @@ def test_health_is_measured_with_doctor(command, which):
 
 
 def test_video_planner_and_agent_really_route_hyperframes():
-    from core.production.plan_video import CAPACITES_VIDEO
     from agents.video import production_agent
+    from core.production.plan_video import CAPACITES_VIDEO
 
     assert "hyperframes_render" in CAPACITES_VIDEO
     source = Path(production_agent.__file__).read_text(encoding="utf-8")
