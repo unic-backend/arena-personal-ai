@@ -2,8 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.video.agnes_orchestrator import ArenaVideoOrchestrator
-from tools.video.agnes_provider import AgnesTask
+from tools.video import AgnesTask, ArenaVideoOrchestrator
 
 
 class FakeAgnes:
