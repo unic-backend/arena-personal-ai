@@ -20,6 +20,7 @@ import re
 from typing import List, Optional
 
 from core.executive.contrat import AnalyseSpecialiste, DecisionExecutive, Desaccord, Position
+from core.executive.operating_principles import bloc_pour_prompt
 from core.models.base import ModelProvider
 
 logger = logging.getLogger("usman.executive.synthese")
@@ -121,6 +122,9 @@ Analyses des roles :
 Desaccords structurels detectes (ne les efface jamais, explique-les) :
 {desaccords}
 
+Methode d'exploitation native d'ARENA :
+{principes}
+
 Ecris une recommandation executive en francais, de la longueur adaptee a la complexite \
 reelle de la question (une question simple merite une reponse courte). Regles strictes :
 - N'invente AUCUN chiffre absent des analyses ci-dessus.
@@ -150,6 +154,7 @@ async def synthetiser(
     texte_desaccords = "\n".join(d.remarque for d in desaccords) or "(aucun)"
     prompt = PROMPT_SYNTHESE.format(
         question=question, analyses=_bloc_analyses(analyses), desaccords=texte_desaccords,
+        principes=bloc_pour_prompt(),
     )
 
     reponse_modele: Optional[str] = None
