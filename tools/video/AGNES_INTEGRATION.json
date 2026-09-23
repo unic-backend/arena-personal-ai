@@ -1,0 +1,23 @@
+{
+  "provider": "agnes",
+  "upstream": "lcy362/agnes-video-generator",
+  "license": "MIT",
+  "endpoint_env": "AGNES_VIDEO_URL",
+  "default_endpoint": "http://127.0.0.1:8765",
+  "modes": ["simple", "creative", "manuscript", "poetry", "anchor"],
+  "capabilities": [
+    "text_to_video",
+    "image_to_video",
+    "multi_scene",
+    "narration",
+    "subtitles",
+    "digital_anchor",
+    "task_resume",
+    "artifacts"
+  ],
+  "composition": {
+    "standalone": true,
+    "arena_postprocessing": true,
+    "native_video_tools_preserved": true
+  }
+}
