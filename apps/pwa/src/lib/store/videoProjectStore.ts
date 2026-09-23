@@ -34,6 +34,8 @@ export const CAPACITES_VIDEO = [
   'drift',
   'hidream_image',
   'agnes',
+  'hyperframes_render',
+  'specialiste',
 ] as const;
 
 export type CapaciteVideo = (typeof CAPACITES_VIDEO)[number];
