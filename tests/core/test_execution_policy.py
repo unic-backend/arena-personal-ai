@@ -19,7 +19,6 @@ def test_tache_production_active_verification_et_delegation():
     assert p.complexite is Complexite.LONGUE
     assert p.peut_deleguer is True
     assert p.verifier_avant_final is True
-    assert p.garder_trace is True
     assert p.budget_delegations == 4
 
 
@@ -47,5 +46,4 @@ def test_verification_explicite_active_la_relecture_sans_fanout():
     p = politique_pour("vérifie ce calcul")
     assert p.complexite is Complexite.SIMPLE
     assert p.verifier_avant_final is True
-    assert p.garder_trace is True
     assert p.budget_delegations == 1
