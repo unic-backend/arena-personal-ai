@@ -31,4 +31,4 @@ jobs:
           pip install -r requirements-dev.txt
           pip install -c requirements.txt httpx pydantic pyyaml python-dotenv
       - name: Real connector probes (read-only)
-        run: pytest tests/integration/ -q -ra
+        run: pytest tests/integration/ -q -ra -m integration
