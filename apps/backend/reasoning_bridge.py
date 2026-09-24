@@ -47,29 +47,6 @@ logger = logging.getLogger("usman.backend.reasoning_bridge")
 CALCUL_REFUSE = "Erreur calcul"
 
 
-#: Ce qui, dans une demande, justifie de payer DEUX appels de modele en plus
-#: (une critique, et une revision si la critique dit KO) plutot que de s'en
-#: tenir au mode standard. Le mode approfondie n'est pas meilleur en soi :
-#: il est plus sur, et plus cher. La question est de savoir si ca vaut la
-#: peine pour CETTE demande.
-#:
-#: Les mots sont choisis pour etre non ambigus : « verifie » dans une phrase
-#: ordinaire parle bien de verification, jamais d'autre chose.
-MOTS_VERIFICATION = (
-    "vérifie", "verifie", "vérifies", "verifies",
-    "prouve", "prouves", "démontre", "demontre",
-    "corrige", "corriges", "correction",
-    "critique", "critiques", "relis", "relire",
-    "revois", "revoir", "revision", "révision",
-    "controle", "contrôle", "contrôler", "controler",
-    "assure-toi", "assure toi", "assurez-vous", "assurez vous",
-    "es-tu sûr", "es tu sur", "es-tu sur", "es tu sûr",
-    "tu es sûr", "tu es sur",
-    "sans erreur", "rigoureux", "rigoureuse",
-    "double-check", "double check", "verifie bien",
-)
-
-
 def profondeur_pour(demande: str) -> str:
     """Choisit la profondeur depuis le contrat d'execution partage."""
     politique = politique_pour(demande or "")
