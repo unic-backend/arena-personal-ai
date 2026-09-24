@@ -71,7 +71,7 @@ class BaseAgent(ABC):
                     "La demande principale peut continuer sans lui."
                 ),
             }
-        except Exception as erreur:  # une panne d'un specialiste reste locale
+        except Exception as erreur:  # noqa: BLE001 — panne du specialiste isolee
             return {
                 "status": "error",
                 "agent": self.name,
