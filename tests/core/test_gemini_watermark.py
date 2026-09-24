@@ -7,7 +7,7 @@ from core.production import gemini_watermark as gwr
 
 
 def _image(path: Path) -> None:
-    Image.new("RGB", (64, 64), "white").save(path)
+    Image.new("RGB", (256, 256), "white").save(path)
 
 
 def test_nettoyage_invoque_cli_et_valide_sortie(tmp_path, monkeypatch):
