@@ -17,6 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The changed-code gate compares the PR head to its base SHA. The
+          # default shallow checkout contains only the synthetic merge commit,
+          # so the base object may be absent and git diff exits 128.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -55,6 +60,16 @@ jobs:
 
       - name: Ruff
         run: ruff check .
+
+      - name: Silent failure gate on changed Python code
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$BASE" ]; then
+            python scripts/silent_failure_gate.py --base "$BASE"
+          else
+            python scripts/silent_failure_gate.py
+          fi
 
       - name: Pytest
         run: pytest
