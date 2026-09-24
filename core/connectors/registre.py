@@ -136,14 +136,20 @@ class RegistreConnecteurs:
                 inventaire.append({
                     "nom": nom, "service": getattr(connecteur, "service", ""),
                     "capacites": [],
-                    "sante": Sante(\n                        EtatSante.EN_PANNE,\n                        message=f"Inventaire illisible ({type(erreur).__name__}).",\n                    ).to_dict(),
+                    "sante": Sante(
+                        EtatSante.EN_PANNE,
+                        message=f"Inventaire illisible ({type(erreur).__name__}).",
+                    ).to_dict(),
                 })
         return inventaire
 
     # --- Aiguillage -----------------------------------------------------------
 
     def _absent(self, nom: str, capacite: str) -> ResultatAction:
-        motif = (\n            f"hors service ({self._casses[nom]})"\n            if nom in self._casses else "non declare"\n        )
+        motif = (
+            f"hors service ({self._casses[nom]})"
+            if nom in self._casses else "non declare"
+        )
         return non_implemente(
             action=capacite, cible=nom,
             message=f"Connecteur « {nom} » {motif}. Rien n'a ete tente.",
