@@ -35,6 +35,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
+from core.agent.execution_policy import politique_pour
+
 logger = logging.getLogger("usman.backend.reasoning_bridge")
 
 
@@ -68,28 +70,7 @@ MOTS_VERIFICATION = (
 )
 
 
-def profondeur_pour(demande: str) -> str:
-    """Choisit `standard` ou `approfondie` selon la demande.
-
-    Regles deterministes, aucun appel modele :
-
-    1. Un mot de verification (voir `MOTS_VERIFICATION`) -> `approfondie`.
-    2. Une demande longue (>200 caracteres) -> `approfondie`. Une question
-       longue porte souvent plusieurs contraintes, et la critique aide a
-       detecter les contraintes oubliees.
-    3. Sinon -> `standard`.
-
-    L'objectif n'est pas d'etre fin, il est d'etre PREVISIBLE. Une demande
-    qui contient « verifie » merite une critique ; une demande qui dit
-    « combien font 12 % de 340 » n'en merite pas.
-    """
-    texte = (demande or "").lower()
-    if any(mot in texte for mot in MOTS_VERIFICATION):
-        return "approfondie"
-    if len(demande or "") > 200:
-        return "approfondie"
-    return "standard"
-
+def profondeur_pour(demande: str) -> str:\n    """Choisit la profondeur depuis le contrat d execution partage.\n\n    PolitiqueExecution.verifier_avant_final pilote reellement le moteur :\n    les demandes complexes passent par critique/revision ; les demandes\n    simples restent legeres.\n    """\n    politique = politique_pour(demande or "")\n    return "approfondie" if politique.verifier_avant_final else "standard"\n
 
 def note_de_calcul(calcul: str) -> str:
     """Ce qu'il faut ajouter a la reponse quand le calcul a ete refuse.
