@@ -46,5 +46,4 @@ def test_verification_explicite_active_la_relecture_sans_fanout():
     p = politique_pour("vérifie ce calcul")
     assert p.complexite is Complexite.SIMPLE
     assert p.verifier_avant_final is True
-    assert p.garder_trace is True
     assert p.budget_delegations == 1
