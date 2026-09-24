@@ -110,7 +110,7 @@ def test_un_connecteur_casse_rend_une_sante_qui_porte_sa_cause(registre):
     sante = registre.sante("casse")
 
     assert sante.etat is EtatSante.EN_PANNE
-    assert "jeton absent" in sante.message
+    assert "RuntimeError" in sante.message\n    assert "jeton absent" not in sante.message
 
 
 def test_une_fabrique_qui_rend_autre_chose_qu_un_connecteur_est_cassee(registre):
@@ -151,7 +151,7 @@ def test_executer_un_connecteur_casse_dit_pourquoi(registre):
 
     assert resultat.statut is Statut.NON_IMPLEMENTE
     assert "hors service" in resultat.message
-    assert "jeton absent" in resultat.message
+    assert "RuntimeError" in resultat.message\n    assert "jeton absent" not in resultat.message
 
 
 def test_la_sante_d_un_nom_inconnu_est_inconnue(registre):
