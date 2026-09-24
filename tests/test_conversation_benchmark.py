@@ -6,13 +6,12 @@ Les 5 graines sont multipliées par 20 distracteurs pour 100 scénarios stables.
 import json
 from pathlib import Path
 
-from core.evaluation import SignalEvaluation, TentativeEvaluation, agreger
-
 from apps.backend.services.conversation_intelligence import (
     accept_memory,
     score_memory,
     understand,
 )
+from core.evaluation import SignalEvaluation, TentativeEvaluation, agreger
 
 DATA = json.loads((Path(__file__).with_name("conversation_benchmark.json")).read_text(encoding="utf-8"))
 DISTRACTORS = [
