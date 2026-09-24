@@ -38,7 +38,7 @@ async def test_video_specialiste_herite_du_budget_anti_boucle():
         "cherche cette information",
         {
             "_requete_racine": "bonjour",
-            "_delegation_chain": ["video_production"],
+            "_delegation_chain": ["VideoProductionAgent"],
         },
     )
 
