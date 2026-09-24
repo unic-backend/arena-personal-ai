@@ -6,7 +6,6 @@ from core.agent.execution_policy import delegation_autorisee, politique_pour
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 
-
 # Un specialiste distant/local peut se bloquer (modele, outil, reseau). Une
 # collaboration ne doit jamais immobiliser l'agent appelant sans limite.
 DELAI_SPECIALISTE_SECONDES = 45.0
