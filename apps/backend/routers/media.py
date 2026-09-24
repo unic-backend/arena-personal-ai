@@ -20,6 +20,7 @@ from apps.backend.config import (
 from apps.backend.pieces_jointes import nom_de_fichier_sur
 from apps.backend.runtime import clip_selector, editor_agent, permissions, subtitle_agent, video_agent
 from apps.backend.security import limiter_debit, verify_api_key
+from core.production.gemini_watermark import retirer_filigrane_gemini
 from tools.video.nettoyage import purger_artefacts_anciens
 
 logger = logging.getLogger("usman.backend")
@@ -263,3 +264,36 @@ async def process_video_pipeline(video_path: str = Form(...)):
     except Exception as e:
         logger.error(f"Erreur pipeline vidéo: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
+
+
+@router.post("/api/media/remove-gemini-watermark", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
+async def remove_gemini_watermark(media_path: str = Form(...)):
+    """Retire le filigrane visible Gemini d'une image deja envoyee dans ARENA."""
+    if not permissions.is_allowed("WRITE_FILES"):
+        raise HTTPException(status_code=403, detail="Ecriture non autorisee.")
+
+    source = Path(media_path).resolve()
+    try:
+        source.relative_to(MEDIA_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Acces refuse.") from None
+    if not source.is_file():
+        raise HTTPException(status_code=404, detail="Fichier introuvable.")
+
+    if source.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
+        raise HTTPException(status_code=415, detail="Le nettoyage Gemini accepte uniquement une image.")
+
+    RENDERED_DIR.mkdir(parents=True, exist_ok=True)
+    destination = RENDERED_DIR / f"{source.stem}_gemini_clean.png"
+    resultat = retirer_filigrane_gemini(source, destination)
+    if not resultat.ok or resultat.sortie is None:
+        raise HTTPException(status_code=422, detail=resultat.erreur)
+
+    return {
+        "status": "success",
+        "source": source.name,
+        "rendered": str(resultat.sortie),
+        "media_web_url": f"/media/rendered/{resultat.sortie.name}",
+        "engine": "@pilio/gemini-watermark-remover",
+        "details": resultat.details,
+    }
