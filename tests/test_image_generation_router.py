@@ -169,3 +169,16 @@ def test_workflows_rend_le_catalogue_sans_toucher_au_registre(client, entetes, m
 def test_workflows_exige_la_cle(client):
     res = client.get("/api/image/workflows")
     assert res.status_code == 401
+
+
+def test_bibliotheque_prompts_exige_la_cle(client):
+    res = client.get("/api/image/prompts")
+    assert res.status_code == 401
+
+
+def test_bibliotheque_prompts_est_reellement_joignable(client, entetes):
+    res = client.get("/api/image/prompts?q=architecture", headers=entetes)
+    assert res.status_code == 200
+    prompts = res.json()["prompts"]
+    assert [p["id"] for p in prompts] == ["architecture"]
+    assert "{sujet}" in prompts[0]["template"]
