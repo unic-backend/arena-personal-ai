@@ -42,9 +42,10 @@ class RegistreConnecteurs:
     def __init__(self) -> None:
         self._fabriques: Dict[str, Fabrique] = {}
         self._construits: Dict[str, Connecteur] = {}
-        # Nom -> message d'erreur de construction. Un connecteur qui a echoue
-        # n'est pas retente a chaque appel : il repondrait la meme chose, en
-        # plus lent, et remplirait les journaux.
+        # Nom -> cause publique SURE de l'echec de construction. Le detail brut reste
+        # dans les logs serveur : une exception peut contenir un jeton, une URL
+        # signee ou un autre secret de configuration et ne doit jamais remonter
+        # dans l'API/inventaire.
         self._casses: Dict[str, str] = {}
 
     # --- Declaration ----------------------------------------------------------
@@ -81,7 +82,7 @@ class RegistreConnecteurs:
         try:
             connecteur = self._fabriques[nom]()
         except Exception as erreur:
-            self._casses[nom] = str(erreur)
+            self._casses[nom] = type(erreur).__name__
             logger.error(
                 "Connecteur %s : construction impossible (%s). Il est marque hors "
                 "service ; les autres connecteurs ne sont pas affectes.", nom, erreur,
@@ -109,7 +110,7 @@ class RegistreConnecteurs:
         if connecteur is None:
             return Sante(
                 EtatSante.EN_PANNE,
-                message=f"Construction impossible : {self._casses.get(nom, 'raison inconnue')}",
+                message=f"Construction impossible ({self._casses.get(nom, 'raison inconnue')}).",
             )
         return connecteur.sante()
 
@@ -135,14 +136,20 @@ class RegistreConnecteurs:
                 inventaire.append({
                     "nom": nom, "service": getattr(connecteur, "service", ""),
                     "capacites": [],
-                    "sante": Sante(EtatSante.EN_PANNE, message=str(erreur)).to_dict(),
+                    "sante": Sante(
+                        EtatSante.EN_PANNE,
+                        message=f"Inventaire illisible ({type(erreur).__name__}).",
+                    ).to_dict(),
                 })
         return inventaire
 
     # --- Aiguillage -----------------------------------------------------------
 
     def _absent(self, nom: str, capacite: str) -> ResultatAction:
-        motif = f"hors service : {self._casses[nom]}" if nom in self._casses else "non declare"
+        motif = (
+            f"hors service ({self._casses[nom]})"
+            if nom in self._casses else "non declare"
+        )
         return non_implemente(
             action=capacite, cible=nom,
             message=f"Connecteur « {nom} » {motif}. Rien n'a ete tente.",
