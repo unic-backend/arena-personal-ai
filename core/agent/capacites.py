@@ -16,6 +16,7 @@ Le registre est rempli une fois, au demarrage, par ce module de composition.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Callable, Dict, List, Optional, Protocol
 
@@ -97,10 +98,9 @@ def adaptateur_synchrone(
 ) -> Capacite:
     """Enveloppe un outil synchrone (`fn(texte) -> str`) dans le contrat `run`.
 
-    Necessaire pour 'documents' : `LightRAGTool.query` rend une chaine, pas le
-    dictionnaire structure `{status, agent, response, ...}` que tous les
-    agents rendent. Plutot que de faire porter cette difference a chaque
-    appelant, elle est absorbee ici, une seule fois.
+    La fonction synchrone est executee dans un thread via `asyncio.to_thread` :
+    certains outils font de l'I/O ou du calcul et ne doivent jamais bloquer la
+    boucle asyncio qui sert simultanement les autres requetes du backend.
 
     `est_un_echec` : un outil qui rend une chaine ne peut pas dire « j'ai
     echoue » autrement. Sans ce predicat, l'adaptateur annoncait
@@ -111,7 +111,7 @@ def adaptateur_synchrone(
 
     class _Adaptateur:
         async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-            reponse = fonction(user_input)
+            reponse = await asyncio.to_thread(fonction, user_input)
             rate = bool(est_un_echec and est_un_echec(reponse))
             return {"status": "error" if rate else "success",
                     "agent": nom_agent, "response": reponse}
