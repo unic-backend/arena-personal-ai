@@ -11,9 +11,41 @@ from apps.backend.services.conversation_intelligence import (
     score_memory,
     understand,
 )
-from core.evaluation import SignalEvaluation, TentativeEvaluation, agreger
 
 DATA = json.loads((Path(__file__).with_name("conversation_benchmark.json")).read_text(encoding="utf-8"))
+
+
+class SignalEvaluation:
+    def __init__(self, nom, valeur):
+        self.nom = nom
+        self.valeur = valeur
+
+
+class TentativeEvaluation:
+    def __init__(self, scenario, correcte, signaux=(), erreur=None):
+        self.scenario = scenario
+        self.correcte = correcte
+        self.signaux = signaux
+        self.erreur = erreur
+
+
+def agreger(tentatives):
+    total = len(tentatives)
+    correctes = sum(t.correcte for t in tentatives)
+    sommes = {}
+    comptes = {}
+    for tentative in tentatives:
+        for signal in tentative.signaux:
+            sommes[signal.nom] = sommes.get(signal.nom, 0.0) + signal.valeur
+            comptes[signal.nom] = comptes.get(signal.nom, 0) + 1
+    return {
+        "total": total,
+        "correctes": correctes,
+        "score": correctes / total if total else 0.0,
+        "moyennes": {nom: sommes[nom] / comptes[nom] for nom in sommes},
+    }
+
+
 DISTRACTORS = [
     "serveur", "voiture", "vidéo", "chantier", "ordinateur", "PDF", "facture", "mémoire", "Qwen", "Wan",
     "RTX", "téléphone", "client", "devis", "Docker", "GitHub", "plafond", "isolation", "banque", "application",
@@ -51,7 +83,7 @@ def test_precision_first_benchmark():
             ))
     rapport = agreger(tentatives)
     # Precision est le critère bloquant : aucun distracteur manifestement hors sujet accepté.
-    assert rapport.total == rapport.correctes == 100
-    assert rapport.score == 1.0
-    assert rapport.moyennes["rejet_hors_sujet"] == 1.0
-    assert rapport.moyennes["transition"] == 1.0
+    assert rapport["total"] == rapport["correctes"] == 100
+    assert rapport["score"] == 1.0
+    assert rapport["moyennes"]["rejet_hors_sujet"] == 1.0
+    assert rapport["moyennes"]["transition"] == 1.0
