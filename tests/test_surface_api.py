@@ -54,6 +54,8 @@ SURFACE_ATTENDUE = {
     "/v1/chat/completions": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/upload": (["POST"], ["verify_api_key"]),
     "/api/process-video": (["POST"], ["verify_api_key", "limiter_debit"]),
+    # Nettoyage specialise des sorties Gemini, branche sur le pipeline media existant.
+    "/api/media/remove-gemini-watermark": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/chat": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/v1/chat": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/chat/stream": (["POST"], ["verify_api_key", "limiter_debit"]),
