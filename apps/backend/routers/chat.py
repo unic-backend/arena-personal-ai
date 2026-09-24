@@ -955,6 +955,27 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
             context={"session_id": session_id, "intent": intent},
         )
 
+    # Frontiere unique de sortie des agents/connecteurs. Un composant interne
+    # mal forme ne doit pas faire tomber tout /api/chat avec TypeError/KeyError :
+    # on transforme sa panne en resultat explicite, puis le garde de texte
+    # commun aux surfaces fait le reste.
+    if not isinstance(result, dict):
+        logger.error("Intention %s : resultat invalide de type %s", intent, type(result).__name__)
+        result = {
+            "status": "error",
+            "agent": intent,
+            "response": f"`{intent}` a rendu un resultat interne invalide.",
+        }
+    else:
+        result = dict(result)
+        if not a_produit_un_texte(result.get("response")):
+            statut = str(result.get("status", "")).lower()
+            detail = result.get("detail")
+            if statut == "error" and detail:
+                logger.warning("Intention %s en echec sans texte exploitable", intent)
+            result["status"] = "error"
+            result["response"] = garantir_un_texte(result.get("response"), intent)
+
     # L'aiguilleur sait quelle branche il a prise ; sans cela, la reponse annoncait
     # « CHAT » meme quand un agent specialise avait repondu.
     result["intent"] = intent
