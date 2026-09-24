@@ -17,6 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The changed-code gate compares the PR head to its base SHA. The
+          # default shallow checkout contains only the synthetic merge commit,
+          # so the base object may be absent and git diff exits 128.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
