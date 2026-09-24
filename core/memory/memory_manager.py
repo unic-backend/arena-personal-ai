@@ -7,9 +7,26 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("usman.memory")
 
+MAX_RECENT_HISTORY = 200
+MAX_LISTED_FACTS = 100
+
 
 class AmbiguousMemoryFactError(LookupError):
     """Raised when an unscoped fact key exists in more than one memory category."""
+
+
+def _bounded_limit(limit: int, maximum: int) -> int:
+    """Keep SQLite LIMIT values finite and non-negative.
+
+    SQLite interprets a negative LIMIT as "no limit". Memory reads feed model
+    context, so an accidental negative or excessively large value must never
+    turn a bounded context read into an unbounded database read.
+    """
+    try:
+        requested = int(limit)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(requested, maximum))
 
 
 class MemoryManager:
@@ -88,11 +105,14 @@ class MemoryManager:
             conn.commit()
 
     def get_recent_history(self, session_id: str, limit: int = 10) -> List[Dict[str, str]]:
+        safe_limit = _bounded_limit(limit, MAX_RECENT_HISTORY)
+        if safe_limit == 0:
+            return []
         with closing(self._get_connection()) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT role, content FROM short_term_memory WHERE session_id = ? ORDER BY id DESC LIMIT ?",
-                (session_id, limit),
+                (session_id, safe_limit),
             )
             rows = cursor.fetchall()
             return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
@@ -152,12 +172,15 @@ class MemoryManager:
             return None
 
     def list_facts(self, category: str, limit: int = 8) -> List[Dict[str, Any]]:
+        safe_limit = _bounded_limit(limit, MAX_LISTED_FACTS)
+        if safe_limit == 0:
+            return []
         with closing(self._get_connection()) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT key, value, metadata, updated_at FROM long_term_memory "
                 "WHERE category = ? ORDER BY updated_at DESC, id DESC LIMIT ?",
-                (category, limit),
+                (category, safe_limit),
             )
             resultats = []
             for row in cursor.fetchall():
