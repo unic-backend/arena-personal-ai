@@ -200,7 +200,10 @@ class Connecteur(ABC):
             logger.error("Sonde de %s en echec : %s", self.nom or self.service, erreur)
             return Sante(
                 EtatSante.EN_PANNE,
-                message=f"La sonde a echoue : {erreur}",
+                message=(
+                    "La sonde du connecteur a echoue "
+                    f"({type(erreur).__name__})."
+                ),
                 mesure_le=_maintenant(),
             )
 
@@ -379,7 +382,11 @@ class Connecteur(ABC):
             resultat = self._executer(capacite, **parametres)
         except Exception as erreur:
             logger.error("%s.%s a leve : %s", self.nom, capacite.nom, erreur)
-            resultat = echec(capacite.nom, cible, f"Erreur pendant l'execution : {erreur}")
+            resultat = echec(
+                capacite.nom,
+                cible,
+                f"Erreur pendant l'execution ({type(erreur).__name__}).",
+            )
 
         if not isinstance(resultat, ResultatAction):
             logger.error("%s.%s a rendu %r au lieu d'un ResultatAction.",
