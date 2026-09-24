@@ -39,6 +39,9 @@ class BaseAgent(ABC):
         if self.collaborateurs is None:
             return {"status": "error", "agent": self.name,
                     "response": "Aucun registre de collaborateurs branche."}
+        if specialiste == self.name:
+            return {"status": "error", "agent": self.name,
+                    "response": "Delegation arretee: un agent ne peut pas se deleguer a lui-meme."}
         if not self.collaborateurs.connait(specialiste):
             return {"status": "error", "agent": self.name,
                     "response": f"specialiste inconnu: {specialiste}."}
