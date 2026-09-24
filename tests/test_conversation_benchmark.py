@@ -6,6 +6,8 @@ Les 5 graines sont multipliées par 20 distracteurs pour 100 scénarios stables.
 import json
 from pathlib import Path
 
+from core.evaluation import SignalEvaluation, TentativeEvaluation, agreger
+
 from apps.backend.services.conversation_intelligence import (
     accept_memory,
     score_memory,
@@ -24,11 +26,9 @@ def test_benchmark_has_one_hundred_scenarios():
 
 
 def test_precision_first_benchmark():
-    passed = 0
-    total = 0
+    tentatives = []
     for seed in DATA["scenarios"]:
         for distractor in DISTRACTORS:
-            total += 1
             history = [{"role": "user", "content": text} for text in seed["history"]]
             state = understand(seed["query"], history)
             wrong = {
@@ -42,7 +42,17 @@ def test_precision_first_benchmark():
                 transition_ok = state.transition in {"CONTINUATION", "TOPIC_RETURN"}
             elif seed["expect"] == "topic_return":
                 transition_ok = state.transition == "TOPIC_RETURN"
-            if wrong_rejected and transition_ok:
-                passed += 1
+            tentatives.append(TentativeEvaluation(
+                scenario=f"{seed['id']}:{distractor}",
+                correcte=wrong_rejected and transition_ok,
+                signaux=(
+                    SignalEvaluation("rejet_hors_sujet", float(wrong_rejected)),
+                    SignalEvaluation("transition", float(transition_ok)),
+                ),
+            ))
+    rapport = agreger(tentatives)
     # Precision est le critère bloquant : aucun distracteur manifestement hors sujet accepté.
-    assert passed == total == 100
+    assert rapport.total == rapport.correctes == 100
+    assert rapport.score == 1.0
+    assert rapport.moyennes["rejet_hors_sujet"] == 1.0
+    assert rapport.moyennes["transition"] == 1.0
