@@ -76,3 +76,17 @@ async def test_specialiste_sain_reste_appele_reellement():
     assert resultat == {
         "status": "success", "agent": "researcher", "response": "cherche ceci"
     }
+
+
+@pytest.mark.asyncio
+async def test_agent_ne_se_delegue_jamais_a_lui_meme():
+    registre = RegistreCapacites()
+    appelant = _Agent("orchestrator")
+    registre.enregistrer("orchestrator", appelant)
+    appelant.collaborateurs = registre
+
+    resultat = await appelant.demander_specialiste("orchestrator", "continue")
+
+    assert resultat["status"] == "error"
+    assert resultat["agent"] == "orchestrator"
+    assert "lui-meme" in resultat["response"]
