@@ -190,6 +190,8 @@ tokenizers==0.23.1
 tqdm==4.70.0
 truststore==0.10.4
 typing-inspection==0.4.4
+shellingham==1.5.4
+typer==0.27.2
 typing_extensions==4.15.0
 tzdata==2026.3
 uritemplate==4.2.0
