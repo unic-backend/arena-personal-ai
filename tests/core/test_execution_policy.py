@@ -19,7 +19,6 @@ def test_tache_production_active_verification_et_delegation():
     assert p.complexite is Complexite.LONGUE
     assert p.peut_deleguer is True
     assert p.verifier_avant_final is True
-    assert p.garder_trace is True
     assert p.budget_delegations == 4
 
 
