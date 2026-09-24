@@ -29,10 +29,15 @@ class TestProfondeurPour:
         assert profondeur_pour("combien font 12 % de 340") == "standard"
         assert profondeur_pour("résous x^2 - 5x + 6 = 0") == "standard"
 
-    def test_une_demande_longue_passe_approfondie(self):
+    def test_une_demande_complexe_passe_approfondie(self):
+        assert profondeur_pour(
+            "Analyse tout le depot, corrige puis teste de bout en bout sans regression"
+        ) == "approfondie"
+
+    def test_la_longueur_seule_ne_force_plus_une_critique(self):
         longue = "explique-moi " + "vraiment " * 30 + "ce point précis"
         assert len(longue) > 200
-        assert profondeur_pour(longue) == "approfondie"
+        assert profondeur_pour(longue) == "standard"
 
     def test_chaine_vide_reste_standard(self):
         assert profondeur_pour("") == "standard"

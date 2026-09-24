@@ -35,6 +35,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
+from core.agent.execution_policy import politique_pour
+
 logger = logging.getLogger("usman.backend.reasoning_bridge")
 
 
@@ -45,50 +47,10 @@ logger = logging.getLogger("usman.backend.reasoning_bridge")
 CALCUL_REFUSE = "Erreur calcul"
 
 
-#: Ce qui, dans une demande, justifie de payer DEUX appels de modele en plus
-#: (une critique, et une revision si la critique dit KO) plutot que de s'en
-#: tenir au mode standard. Le mode approfondie n'est pas meilleur en soi :
-#: il est plus sur, et plus cher. La question est de savoir si ca vaut la
-#: peine pour CETTE demande.
-#:
-#: Les mots sont choisis pour etre non ambigus : « verifie » dans une phrase
-#: ordinaire parle bien de verification, jamais d'autre chose.
-MOTS_VERIFICATION = (
-    "vérifie", "verifie", "vérifies", "verifies",
-    "prouve", "prouves", "démontre", "demontre",
-    "corrige", "corriges", "correction",
-    "critique", "critiques", "relis", "relire",
-    "revois", "revoir", "revision", "révision",
-    "controle", "contrôle", "contrôler", "controler",
-    "assure-toi", "assure toi", "assurez-vous", "assurez vous",
-    "es-tu sûr", "es tu sur", "es-tu sur", "es tu sûr",
-    "tu es sûr", "tu es sur",
-    "sans erreur", "rigoureux", "rigoureuse",
-    "double-check", "double check", "verifie bien",
-)
-
-
 def profondeur_pour(demande: str) -> str:
-    """Choisit `standard` ou `approfondie` selon la demande.
-
-    Regles deterministes, aucun appel modele :
-
-    1. Un mot de verification (voir `MOTS_VERIFICATION`) -> `approfondie`.
-    2. Une demande longue (>200 caracteres) -> `approfondie`. Une question
-       longue porte souvent plusieurs contraintes, et la critique aide a
-       detecter les contraintes oubliees.
-    3. Sinon -> `standard`.
-
-    L'objectif n'est pas d'etre fin, il est d'etre PREVISIBLE. Une demande
-    qui contient « verifie » merite une critique ; une demande qui dit
-    « combien font 12 % de 340 » n'en merite pas.
-    """
-    texte = (demande or "").lower()
-    if any(mot in texte for mot in MOTS_VERIFICATION):
-        return "approfondie"
-    if len(demande or "") > 200:
-        return "approfondie"
-    return "standard"
+    """Choisit la profondeur depuis le contrat d'execution partage."""
+    politique = politique_pour(demande or "")
+    return "approfondie" if politique.verifier_avant_final else "standard"
 
 
 def note_de_calcul(calcul: str) -> str:

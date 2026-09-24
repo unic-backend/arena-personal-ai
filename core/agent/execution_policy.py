@@ -35,6 +35,12 @@ _MARQUEURS_LONGS = (
     "tout le depot", "tout le dépôt", "profond", "complet", "production",
     "de bout en bout", "end-to-end", "e2e", "sans regression", "sans régression",
 )
+_MARQUEURS_VERIFICATION = (
+    "verifie", "vérifie", "prouve", "démontre", "demontre", "corrige",
+    "critique", "relis", "revoir", "révision", "revision", "contrôle",
+    "controle", "sans erreur", "rigoureux", "double-check", "double check",
+    "es-tu sûr", "es tu sur", "tu es sûr", "tu es sur",
+)
 
 
 def politique_pour(requete: str, pieces: Iterable[str] = ()) -> PolitiqueExecution:
@@ -42,12 +48,15 @@ def politique_pour(requete: str, pieces: Iterable[str] = ()) -> PolitiqueExecuti
     texte = (requete or "").casefold()
     nb_pieces = sum(1 for _ in pieces)
     longue = any(m in texte for m in _MARQUEURS_LONGS) or nb_pieces >= 4
+    verification = any(m in texte for m in _MARQUEURS_VERIFICATION)
     multi = longue or sum(m in texte for m in _MARQUEURS_MULTI) >= 2
 
     if longue:
         return PolitiqueExecution(Complexite.LONGUE, True, True, True, 4)
     if multi:
         return PolitiqueExecution(Complexite.MULTI_ETAPES, True, True, True, 3)
+    if verification:
+        return PolitiqueExecution(Complexite.SIMPLE, True, True, True, 1)
     # Une tache simple n'a pas a fan-out automatiquement. Une delegation
     # EXPLICITE par un agent reste toutefois autorisee : demander un
     # specialiste est deja une decision de routage, pas une exploration.

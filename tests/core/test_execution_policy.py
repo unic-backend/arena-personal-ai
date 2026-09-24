@@ -41,3 +41,11 @@ def test_tache_simple_autorise_une_delegation_explicite_bornee():
     p = politique_pour("bonjour")
     assert delegation_autorisee(p, [], "researcher") is True
     assert delegation_autorisee(p, ["orchestrator"], "researcher") is False
+
+
+def test_verification_explicite_active_la_relecture_sans_fanout():
+    p = politique_pour("vérifie ce calcul")
+    assert p.complexite is Complexite.SIMPLE
+    assert p.verifier_avant_final is True
+    assert p.garder_trace is True
+    assert p.budget_delegations == 1
