@@ -51,10 +51,10 @@ def audit_orphans() -> None:
 
 @app.command()
 def performance(
-    iterations: int = typer.Option(30, min=1, max=10_000, help="Iterations du baseline."),
+    samples: int = typer.Option(30, min=1, max=10_000, help="Echantillons du baseline."),
 ) -> None:
     """Lance le baseline reproductible des operations locales."""
-    executer_script("performance_baseline.py", ("--iterations", str(iterations)))
+    executer_script("performance_baseline.py", ("--samples", str(samples)))
 
 
 if __name__ == "__main__":
