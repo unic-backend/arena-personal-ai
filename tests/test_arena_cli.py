@@ -38,14 +38,14 @@ def test_audit_orphans_est_reellement_joignable(monkeypatch):
     assert calls[0][0][-1].endswith("orphelins.py")
 
 
-def test_performance_transmet_iterations(monkeypatch):
+def test_performance_transmet_samples(monkeypatch):
     calls = []
     monkeypatch.setattr(arena_cli.subprocess, "run", _fake_run(calls))
 
-    result = runner.invoke(arena_cli.app, ["performance", "--iterations", "7"])
+    result = runner.invoke(arena_cli.app, ["performance", "--samples", "7"])
 
     assert result.exit_code == 0
-    assert calls[0][0][-2:] == ["--iterations", "7"]
+    assert calls[0][0][-2:] == ["--samples", "7"]
 
 
 def test_code_echec_du_script_est_propage(monkeypatch):
