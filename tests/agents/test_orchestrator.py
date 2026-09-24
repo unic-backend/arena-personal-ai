@@ -627,3 +627,32 @@ class TestAiguillageUiGenerate:
         sont pas generer le code d'une interface."""
         agent = OrchestratorAgent(provider=fake_provider, memory=None)
         assert agent._classer_par_mots_cles(phrase) == attendu
+
+
+async def test_run_injecte_reellement_le_contexte_projet_dans_le_modele(
+    provider_factory, monkeypatch
+):
+    provider = provider_factory("CHAT", "Réponse finale")
+    agent = OrchestratorAgent(provider=provider, memory=None)
+
+    class Contexte:
+        contenu = "# PROJECT_MAP.md\ncontexte sentinelle ARENA"
+        fichiers = ("PROJECT_MAP.md",)
+        caracteres = 48
+        tronque = False
+
+    appels = []
+
+    def charger(tache, budget_caracteres):
+        appels.append((tache, budget_caracteres))
+        return Contexte()
+
+    monkeypatch.setattr(
+        "agents.orchestrator.orchestrator_agent.charger_contexte_projet", charger
+    )
+
+    resultat = await agent.run("travaille sur mon projet", context={"intent": "CHAT"})
+
+    assert appels and appels[0][0] == "travaille sur mon projet"
+    assert "contexte sentinelle ARENA" in provider.appels[-1]["system_prompt"]
+    assert resultat["response"] == "Réponse finale"
