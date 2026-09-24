@@ -19,6 +19,9 @@ httpx==0.28.1
 openai==2.26.0            # AsyncOpenAI; meme version que browser-use
 chromadb==1.5.9           # index persistant du chat autonome, charge a la demande
 
+# --- CLI operateur unifiee (scripts/arena_cli.py) ---
+typer==0.27.2             # facade typee; les commandes reutilisent les scripts canoniques
+
 # --- Outils ---
 faster-whisper==1.2.1     # tools/audio/transcription_tool.py
 ddgs==9.15.0               # tools/search/web_search_tool.py
