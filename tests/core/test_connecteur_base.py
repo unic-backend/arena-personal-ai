@@ -232,7 +232,8 @@ def test_une_sonde_qui_leve_rend_en_panne_sans_remonter(acces):
     sante = Casse(acces=acces()).sante()
 
     assert sante.etat is EtatSante.EN_PANNE
-    assert "socket ferme" in sante.message
+    assert "RuntimeError" in sante.message
+    assert "socket ferme" not in sante.message
     assert sante.mesure_le is not None
 
 
@@ -267,7 +268,8 @@ def test_une_implementation_qui_leve_devient_un_echec(acces):
     resultat = Explosive(acces=acces()).executer("lire")
 
     assert resultat.statut is Statut.ECHEC
-    assert "connexion perdue" in resultat.message
+    assert "ConnectionError" in resultat.message
+    assert "connexion perdue" not in resultat.message
 
 
 def test_une_implementation_qui_rend_un_dictionnaire_devient_un_echec(acces):
