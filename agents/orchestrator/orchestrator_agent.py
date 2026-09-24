@@ -4,6 +4,7 @@ import re
 from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
+from core.context.projet import charger_contexte_projet
 from core.execution.voies import budget_de, voie_pour
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
@@ -1085,6 +1086,14 @@ class OrchestratorAgent(BaseAgent):
 
         history = self.memory.get_recent_history(session_id=session_id, limit=6) if self.memory else []
 
+        # PROJECT_MEMORY est charge progressivement selon la tache et dans la
+        # limite de la voie choisie. Ce chemin est reel : le contexte retenu
+        # entre dans le system prompt de l'appel modele de ce tour.
+        contexte_projet = charger_contexte_projet(
+            user_input,
+            budget_caracteres=max(1, budget.memoire_caracteres),
+        )
+
         # PROMPT MONDIAL SANS BIAIS LOCAL FORCÉ
         system_prompt = (
             f"Tu es Usman, une intelligence artificielle internationale de haut niveau, au service de {owner_name}.\n"
@@ -1095,6 +1104,11 @@ class OrchestratorAgent(BaseAgent):
             f"3. Pour les événements futurs (ex: Coupe du Monde 2026), rappelle poliment que l'événement n'a pas encore eu lieu et donne les faits historiques connus si pertinents.\n"
             f"4. Réponds en français fluide, naturel et professionnel."
         )
+        if contexte_projet.contenu:
+            system_prompt += (
+                "\\n\\nContexte projet ARENA pertinent pour cette tâche :\\n"
+                + contexte_projet.contenu
+            )
 
         prompt_lines = []
         for msg in history:
