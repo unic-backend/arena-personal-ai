@@ -70,7 +70,11 @@ MOTS_VERIFICATION = (
 )
 
 
-def profondeur_pour(demande: str) -> str:\n    """Choisit la profondeur depuis le contrat d execution partage.\n\n    PolitiqueExecution.verifier_avant_final pilote reellement le moteur :\n    les demandes complexes passent par critique/revision ; les demandes\n    simples restent legeres.\n    """\n    politique = politique_pour(demande or "")\n    return "approfondie" if politique.verifier_avant_final else "standard"\n
+def profondeur_pour(demande: str) -> str:
+    """Choisit la profondeur depuis le contrat d'execution partage."""
+    politique = politique_pour(demande or "")
+    return "approfondie" if politique.verifier_avant_final else "standard"
+
 
 def note_de_calcul(calcul: str) -> str:
     """Ce qu'il faut ajouter a la reponse quand le calcul a ete refuse.
