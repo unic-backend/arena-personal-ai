@@ -1,9 +1,14 @@
+import asyncio
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
 from core.agent.execution_policy import delegation_autorisee, politique_pour
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
+
+# Un specialiste distant/local peut se bloquer (modele, outil, reseau). Une
+# collaboration ne doit jamais immobiliser l'agent appelant sans limite.
+DELAI_SPECIALISTE_SECONDES = 45.0
 
 
 class BaseAgent(ABC):
@@ -50,7 +55,28 @@ class BaseAgent(ABC):
         ctx["_delegation_depth"] = profondeur + 1
         ctx["_delegation_chain"] = chaine + [self.name]
         ctx["origine_agent"] = self.name
-        return await self.collaborateurs.demander(specialiste, requete, ctx)
+        try:
+            return await asyncio.wait_for(
+                self.collaborateurs.demander(specialiste, requete, ctx),
+                timeout=DELAI_SPECIALISTE_SECONDES,
+            )
+        except asyncio.TimeoutError:
+            return {
+                "status": "error",
+                "agent": self.name,
+                "specialiste": specialiste,
+                "response": (
+                    f"Le specialiste {specialiste} n'a pas repondu dans le delai. "
+                    "La demande principale peut continuer sans lui."
+                ),
+            }
+        except Exception as erreur:
+            return {
+                "status": "error",
+                "agent": self.name,
+                "specialiste": specialiste,
+                "response": f"Le specialiste {specialiste} est indisponible: {type(erreur).__name__}.",
+            }
 
     @abstractmethod
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
