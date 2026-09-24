@@ -129,6 +129,24 @@ async def test_le_repli_n_a_pas_lieu_apres_le_premier_mot():
     assert local.appels == [], "on ne rejoue pas la reponse ailleurs"
 
 
+async def test_ovhcloud_est_un_vrai_repli_avant_deepinfra():
+    groq = FauxFournisseur("groq", disponible=False)
+    ovhcloud = FauxFournisseur("ovhcloud", texte="ovh")
+    deepinfra = FauxFournisseur("deepinfra")
+    r = RouteurModeles(
+        local=FauxFournisseur(LOCAL),
+        distants={"groq": groq, "ovhcloud": ovhcloud, "deepinfra": deepinfra},
+        mode="HYBRIDE",
+    )
+
+    reponse = await r.generate("quelle est la capitale du Senegal ?")
+
+    assert "ovhcloud" in reponse
+    assert r.dernier_choix.fournisseur == "ovhcloud"
+    assert r.dernier_choix.replis == ["groq"]
+    assert deepinfra.appels == []
+
+
 # --- L'ordre des questions -------------------------------------------------------------
 
 async def test_le_cloud_sert_quand_rien_ne_l_interdit():
