@@ -10,6 +10,8 @@ Ce que ce registre doit garantir :
 - un outil synchrone (`LightRAGTool.query`) peut etre expose avec le meme
   contrat que les agents, sans que l'appelant ait a le savoir.
 """
+import asyncio
+import threading
 from typing import Any, Dict, Optional
 
 import pytest
@@ -125,6 +127,32 @@ class TestAdaptateurSynchrone:
 
         assert resultat["response"] == "trouve"
         assert appels == ["cherche le devis"]
+
+    async def test_l_outil_synchrone_ne_bloque_pas_la_boucle_asyncio(self):
+        thread_principal = threading.get_ident()
+        thread_outil = None
+        outil_demarre = threading.Event()
+        liberer_outil = threading.Event()
+
+        def outil(texte):
+            nonlocal thread_outil
+            thread_outil = threading.get_ident()
+            outil_demarre.set()
+            liberer_outil.wait(timeout=1)
+            return texte
+
+        capacite = adaptateur_synchrone(outil, "Outil")
+        tache = asyncio.create_task(capacite.run("travail"))
+        await asyncio.to_thread(outil_demarre.wait, 1)
+
+        # Si l'outil tournait directement dans la boucle, cette coroutine ne
+        # pourrait pas reprendre tant que `liberer_outil` reste ferme.
+        await asyncio.wait_for(asyncio.sleep(0), timeout=0.1)
+        assert thread_outil is not None
+        assert thread_outil != thread_principal
+
+        liberer_outil.set()
+        assert (await tache)["response"] == "travail"
 
 
 class TestUnEchecNeSeFaitPasPasserPourUneReponse:
