@@ -1,5 +1,7 @@
 import pytest
+
 from core.context import projet
+
 
 @pytest.fixture
 def memoire(tmp_path, monkeypatch):
