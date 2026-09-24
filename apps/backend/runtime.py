@@ -113,6 +113,7 @@ from core.models.anthropic_provider import AnthropicProvider
 from core.models.deepinfra_provider import DeepInfraProvider
 from core.models.groq_provider import GroqProvider
 from core.models.ollama_provider import OllamaProvider
+from core.models.ovhcloud_provider import OVHCloudProvider
 from core.models.routeur import RouteurModeles
 from core.models.statistiques import StatistiquesRoutage
 from core.models.usage import CompteurUsage
@@ -672,7 +673,7 @@ def _aiguilleur(local: OllamaProvider) -> RouteurModeles:
         # Un fournisseur sans cle est ecarte par `RouteurModeles` : le citer
         # ici ne le rend pas actif, il le rend seulement possible.
         distants={"anthropic": AnthropicProvider(), "groq": GroqProvider(),
-                  "deepinfra": DeepInfraProvider()},
+                  "ovhcloud": OVHCloudProvider(), "deepinfra": DeepInfraProvider()},
         mode=MODE_IA, fournisseur_demande=FOURNISSEUR_DEMANDE,
         compteur=compteur_usage,
         statistiques=statistiques_routage,
