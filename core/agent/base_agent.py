@@ -71,7 +71,7 @@ class BaseAgent(ABC):
                     "La demande principale peut continuer sans lui."
                 ),
             }
-        except Exception as erreur:  # noqa: BLE001
+        except Exception as erreur:
             return {
                 "status": "error",
                 "agent": self.name,
