@@ -119,3 +119,8 @@ class TestConstruction:
     def test_un_seuil_sous_1_est_refuse(self):
         with pytest.raises(ValueError):
             Disjoncteur(seuil=0)
+
+    @pytest.mark.parametrize("repos_secondes", [0, -1, -30.0])
+    def test_un_repos_non_positif_est_refuse(self, repos_secondes):
+        with pytest.raises(ValueError):
+            Disjoncteur(repos_secondes=repos_secondes)

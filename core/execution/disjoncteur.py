@@ -56,6 +56,8 @@ class Disjoncteur:
     def __init__(self, seuil: int = SEUIL_PAR_DEFAUT, repos_secondes: float = REPOS_SECONDES) -> None:
         if seuil < 1:
             raise ValueError("Un disjoncteur qui s'ouvre a zero echec n'en attend aucun.")
+        if repos_secondes <= 0:
+            raise ValueError("Le repos du disjoncteur doit etre strictement positif.")
         self.seuil = seuil
         self.repos_secondes = repos_secondes
         self._etats: Dict[Tuple[str, str], _Etat] = {}
