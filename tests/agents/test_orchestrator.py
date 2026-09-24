@@ -632,7 +632,7 @@ class TestAiguillageUiGenerate:
 async def test_run_injecte_reellement_le_contexte_projet_dans_le_modele(
     provider_factory, monkeypatch
 ):
-    provider = provider_factory("CHAT", "Réponse finale")
+    provider = provider_factory("Réponse finale")
     agent = OrchestratorAgent(provider=provider, memory=None)
 
     class Contexte:
