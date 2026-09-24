@@ -87,7 +87,7 @@ Pillow==12.3.0            # core/production/conversion/moteurs.py — conversion
                           # epingle exactement Pillow==12.3.0, en conflit avec le
                           # 12.0.0 fixe ici auparavant (audit externe, commit f7f0478).
                           # API utilisee (`Image.open`/`Image.new`) inchangee.
-weasyprint==68.1           # core/production/conversion/moteurs.py — HTML/Markdown/TXT -> PDF
+weasyprint==70.0           # core/production/conversion/moteurs.py — HTML/Markdown/TXT -> PDF
                           # (DEC-0074). BSD-3-Clause. Exige libcairo/libpango SYSTEME (mesure
                           # presents dans l'image de ce depot) ; absents, `sonder()` rapporte
                           # NON_CONFIGURE au lieu de planter au demarrage.
@@ -105,7 +105,7 @@ mcp==2.1.1                # core/mcp/memory_server.py — serveur MCP exposant l
                           # browser-use 0.13.10 (voir ligne 25 ci-dessus, meme version
                           # exacte) : declaree ici parce que le code l'importe desormais
                           # directement, jamais parce qu'elle manquait.
-cryptography==41.0.7      # core/memory/chiffrement.py — chiffrement au repos (AES-256-GCM
+cryptography==50.0.0      # core/memory/chiffrement.py — chiffrement au repos (AES-256-GCM
                           # + PBKDF2-HMAC-SHA256) des souvenirs marques sensibles. DEJA
                           # presente transitivement dans cet environnement ; declaree ici
                           # pour la meme raison que mcp ci-dessus.
