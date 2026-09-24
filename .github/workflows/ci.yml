@@ -56,6 +56,16 @@ jobs:
       - name: Ruff
         run: ruff check .
 
+      - name: Silent failure gate on changed Python code
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$BASE" ]; then
+            python scripts/silent_failure_gate.py --base "$BASE"
+          else
+            python scripts/silent_failure_gate.py
+          fi
+
       - name: Pytest
         run: pytest
 
