@@ -8,6 +8,10 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger("usman.memory")
 
 
+class AmbiguousMemoryFactError(LookupError):
+    """Raised when an unscoped fact key exists in more than one memory category."""
+
+
 class MemoryManager:
     def __init__(self, db_path: str = "data/database/memory.db"):
         self.db_path = Path(db_path)
@@ -22,7 +26,6 @@ class MemoryManager:
     def _init_db(self):
         with closing(self._get_connection()) as conn:
             cursor = conn.cursor()
-
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS short_term_memory (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,7 +35,6 @@ class MemoryManager:
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS long_term_memory (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,13 +54,6 @@ class MemoryManager:
 
     @staticmethod
     def _migrate_fact_identity(cursor: sqlite3.Cursor) -> None:
-        """Replace the legacy global UNIQUE(key) constraint with category-scoped identity.
-
-        A fact key such as ``status`` or ``owner`` is not globally unique across memory
-        domains. The old schema silently moved an existing fact to another category when
-        the same key was written there. Rebuilding the table preserves existing rows while
-        making ``(category, key)`` the durable identity.
-        """
         row = cursor.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='long_term_memory'"
         ).fetchone()
@@ -66,7 +61,6 @@ class MemoryManager:
         normalized = " ".join(schema.upper().split())
         if "KEY TEXT UNIQUE" not in normalized:
             return
-
         cursor.execute("ALTER TABLE long_term_memory RENAME TO long_term_memory_legacy")
         cursor.execute("""
             CREATE TABLE long_term_memory (
@@ -106,7 +100,6 @@ class MemoryManager:
     def set_fact(self, category: str, key: str, value: Any, metadata: Optional[Dict] = None):
         val_str = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
         meta_str = json.dumps(metadata) if metadata else None
-
         with closing(self._get_connection()) as conn:
             conn.cursor().execute(
                 """
@@ -122,25 +115,35 @@ class MemoryManager:
             conn.commit()
 
     def get_fact(self, key: str, category: Optional[str] = None) -> Optional[Any]:
-        """Return a fact by key, optionally scoped to a category.
+        """Return a fact without silently crossing memory domains.
 
-        The optional category keeps existing callers compatible while allowing callers
-        that know their memory domain to avoid ambiguous cross-category reads.
+        Category-scoped reads are deterministic. Legacy unscoped reads remain supported
+        only when the key has zero or one match; if several categories define the same
+        key, callers must choose the category explicitly instead of receiving whichever
+        fact happened to be updated most recently.
         """
         with closing(self._get_connection()) as conn:
             cursor = conn.cursor()
             if category is None:
                 cursor.execute(
-                    "SELECT value FROM long_term_memory WHERE key = ? "
-                    "ORDER BY updated_at DESC, id DESC LIMIT 1",
+                    "SELECT category, value FROM long_term_memory WHERE key = ? "
+                    "ORDER BY updated_at DESC, id DESC LIMIT 2",
                     (key,),
                 )
+                rows = cursor.fetchall()
+                if len(rows) > 1:
+                    categories = ", ".join(sorted({row["category"] for row in rows}))
+                    raise AmbiguousMemoryFactError(
+                        f"Fact {key!r} exists in multiple categories ({categories}); "
+                        "pass category explicitly"
+                    )
+                row = rows[0] if rows else None
             else:
                 cursor.execute(
                     "SELECT value FROM long_term_memory WHERE category = ? AND key = ?",
                     (category, key),
                 )
-            row = cursor.fetchone()
+                row = cursor.fetchone()
             if row:
                 try:
                     return json.loads(row["value"])
@@ -168,14 +171,10 @@ class MemoryManager:
                         metadonnees = json.loads(row["metadata"])
                     except (json.JSONDecodeError, TypeError):
                         metadonnees = row["metadata"]
-                resultats.append(
-                    {
-                        "key": row["key"],
-                        "value": valeur,
-                        "metadata": metadonnees,
-                        "updated_at": row["updated_at"],
-                    }
-                )
+                resultats.append({
+                    "key": row["key"], "value": valeur,
+                    "metadata": metadonnees, "updated_at": row["updated_at"],
+                })
             return resultats
 
 
@@ -184,7 +183,6 @@ if __name__ == "__main__":
     mem.set_fact("user_profile", "owner", "Ousmane", {"role": "Propriétaire"})
     mem.add_chat_message("default", "user", "Bonjour Usman")
     mem.add_chat_message("default", "assistant", "Bonjour Usman, mémoire SQLite initialisée.")
-
     print("MemoryManager SQLite initialise avec succes !")
     print("   Proprietaire enregistre:", mem.get_fact("owner", category="user_profile"))
     print("   Historique recupere:", mem.get_recent_history("default"))
