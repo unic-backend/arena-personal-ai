@@ -234,7 +234,7 @@ def _mode_ia() -> str:
 MODE_IA = _mode_ia()
 
 # Le fournisseur demande par le proprietaire. AUTO laisse l'aiguilleur decider.
-FOURNISSEURS = ("AUTO", "LOCAL", "ANTHROPIC", "GROQ", "DEEPINFRA")
+FOURNISSEURS = ("AUTO", "LOCAL", "ANTHROPIC", "GROQ", "DEEPINFRA", "OVHCLOUD")
 FOURNISSEUR_DEMANDE = os.getenv("AI_DEFAULT_PROVIDER", "AUTO").strip().upper()
 if FOURNISSEUR_DEMANDE not in FOURNISSEURS:
     logging.getLogger("usman.config").warning(
@@ -268,6 +268,12 @@ GROQ_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
 DEEPINFRA_API_KEY = os.getenv("DEEPINFRA_API_KEY", "")
 DEEPINFRA_MODELE = os.getenv("DEEPINFRA_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
 DEEPINFRA_URL = os.getenv("DEEPINFRA_BASE_URL", "https://api.deepinfra.com/v1/openai")
+
+# OVHcloud AI Endpoints parle le meme protocole OpenAI que Groq/DeepInfra.
+# Sans cle il reste absent du routeur : aucune requete anonyme n'est supposee.
+OVHCLOUD_API_KEY = os.getenv("OVHCLOUD_API_KEY", "")
+OVHCLOUD_MODELE = os.getenv("OVHCLOUD_MODEL", "gpt-oss-120b")
+OVHCLOUD_URL = os.getenv("OVHCLOUD_BASE_URL", "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1")
 
 # Garde-fous de depense. Atteints, ARENA retombe sur Ollama — il ne s'arrete pas.
 # `0` veut dire « pas de plafond », et c'est un choix qui doit etre ecrit.
