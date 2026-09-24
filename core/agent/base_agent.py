@@ -43,7 +43,6 @@ class BaseAgent(ABC):
             return {"status": "error", "agent": self.name,
                     "response": f"specialiste inconnu: {specialiste}."}
         ctx = dict(contexte or {})
-        profondeur = int(ctx.get("_delegation_depth") or 0)
         chaine = list(ctx.get("_delegation_chain") or [])
         # La requete originale fixe le budget une seule fois. Un sous-agent ne
         # peut pas augmenter son propre budget en reformulant sa sous-tache.
@@ -52,7 +51,6 @@ class BaseAgent(ABC):
             return {"status": "error", "agent": self.name,
                     "response": "Delegation arretee: boucle ou budget atteint."}
         ctx["_requete_racine"] = str(ctx.get("_requete_racine") or requete)
-        ctx["_delegation_depth"] = profondeur + 1
         ctx["_delegation_chain"] = chaine + [self.name]
         ctx["origine_agent"] = self.name
         try:
