@@ -34,7 +34,7 @@ ENV USMAN_CHROMA_PATH=/app/data/chroma_db
 # Les paquets LibreOffice sont ciblés plutôt que le méta-paquet complet et
 # --no-install-recommends évite d'embarquer les composants sans usage.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg curl gosu \
+    ffmpeg curl gosu nodejs npm \
     tesseract-ocr tesseract-ocr-fra \
     libreoffice-writer libreoffice-calc libreoffice-impress \
     libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 \
@@ -43,6 +43,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# Moteur MIT specialise, version epinglee : utilise par /api/media/remove-gemini-watermark.
+# `sharp` est le decodeur/encodeur requis par le chemin CLI fichier.
+RUN npm install --global @pilio/gemini-watermark-remover@1.0.45 sharp@0.34.5 \
+    && gwr --help >/dev/null
 
 COPY . .
 COPY --from=pwa-builder /pwa/dist ./apps/pwa/dist
