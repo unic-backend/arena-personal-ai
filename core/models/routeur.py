@@ -76,7 +76,7 @@ REPOS_APRES_ECHEC_SECONDES = 120.0
 #: Tant qu'`ANTHROPIC_API_KEY` est vide, ce fournisseur n'entre pas dans
 #: `self.distants` et cette ligne ne change rien. `AI_DEFAULT_PROVIDER=GROQ`
 #: rend la main a Groq sans toucher au code.
-ORDRE_CLOUD = ("anthropic", "groq", "deepinfra")
+ORDRE_CLOUD = ("anthropic", "groq", "ovhcloud", "deepinfra")
 LOCAL = "local"
 
 
@@ -184,7 +184,7 @@ class RouteurModeles(ModelProvider):
 
         if self.fournisseur_demande == "LOCAL":
             return [LOCAL], "le proprietaire a demande sa machine"
-        if self.fournisseur_demande in ("ANTHROPIC", "GROQ", "DEEPINFRA"):
+        if self.fournisseur_demande in ("ANTHROPIC", "GROQ", "DEEPINFRA", "OVHCLOUD"):
             nom = self.fournisseur_demande.lower()
             if nom not in self.distants:
                 return [LOCAL], f"{nom} n'est pas configure : sa machine repond"
