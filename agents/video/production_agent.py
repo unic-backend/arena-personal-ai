@@ -285,20 +285,19 @@ class VideoProductionAgent(BaseAgent):
     async def demander_specialiste(
         self, specialiste: str, requete: str, contexte: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Delegue une sous-tache video a un autre specialiste ARENA.
+        """Delegue via le contrat commun de BaseAgent.
 
-        Le registre est ferme et rempli par runtime : aucun nom invente par le
-        modele, aucun import circulaire, aucune seconde instance d'agent.
+        Video ajoutait historiquement son propre chemin direct vers le registre.
+        Ce chemin contournait le budget anti-boucle, le delai maximum et
+        l'isolation des erreurs appliques a tous les autres agents. On conserve
+        seulement le contexte metier Video puis on laisse BaseAgent appliquer
+        les memes garde-fous que partout ailleurs.
         """
-        if self.collaborateurs is None:
-            return self._erreur("aucun registre de collaborateurs branche")
-        if not self.collaborateurs.connait(specialiste):
-            connus = ", ".join(sorted(self.collaborateurs.espaces()))
-            return self._erreur(
-                f"specialiste inconnu : {specialiste}. Disponibles : {connus or '(aucun)'}")
         contexte_video = dict(contexte or {})
         contexte_video.setdefault("origine", "video_production")
-        return await self.collaborateurs.demander(specialiste, requete, contexte_video)
+        return await super().demander_specialiste(
+            specialiste, requete, contexte_video
+        )
 
     async def generer_image_personnage(self, personnage_id: str, description_scene: str
                                        ) -> Dict[str, Any]:

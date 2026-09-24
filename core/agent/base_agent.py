@@ -41,7 +41,7 @@ class BaseAgent(ABC):
                     "response": "Aucun registre de collaborateurs branche."}
         if not self.collaborateurs.connait(specialiste):
             return {"status": "error", "agent": self.name,
-                    "response": f"Specialiste inconnu: {specialiste}."}
+                    "response": f"specialiste inconnu: {specialiste}."}
         ctx = dict(contexte or {})
         profondeur = int(ctx.get("_delegation_depth") or 0)
         chaine = list(ctx.get("_delegation_chain") or [])
