@@ -51,7 +51,7 @@ from core.production.etat_projet import EtapeProjet
 CAPACITES_VIDEO: Tuple[str, ...] = (
     "vision", "transcription", "wangp", "moneyprinter", "narration", "xaar_kaname", "montage",
     "krillin_subtitle", "krillin_tts", "krillin_render_horizontal", "krillin_render_vertical",
-    "krillin_cover", "drift", "hidream_image", "agnes", "hyperframes_render", "specialiste",
+    "krillin_cover", "drift", "vectcut", "hidream_image", "agnes", "hyperframes_render", "specialiste",
 )
 
 
@@ -166,7 +166,7 @@ def valider_graphe(
 CAPACITES_ECRITURE = frozenset({
     "wangp", "moneyprinter", "narration", "xaar_kaname",
     "krillin_subtitle", "krillin_tts", "krillin_render_horizontal", "krillin_render_vertical",
-    "krillin_cover", "drift", "hidream_image", "agnes", "hyperframes_render",
+    "krillin_cover", "drift", "vectcut", "hidream_image", "agnes", "hyperframes_render",
 })
 
 
@@ -248,6 +248,10 @@ Contrats de parametres :
 - drift : parametres.demande = texte de la demande de montage/edition
   (ex: "coupe les silences", "ajoute une transition entre les deux clips"),
   parametres.references = liste d'indices de references a ouvrir dans Drift.
+- vectcut : parametres.outil = un outil parmi create_draft/add_video/add_audio/
+  add_image/add_text/add_subtitle/add_effect/add_sticker/add_video_keyframe/
+  get_video_duration/save_draft ; parametres.arguments = objet transmis a
+  l'outil. Utilise VectCut pour creer/modifier un draft CapCut/Jianying.
 - hidream_image : parametres.prompt = texte de l'image (obligatoire),
   parametres.negative_prompt (optionnel), parametres.width/height (une des
   resolutions publiees : 1024x1024, 768x1360, 1360x768, 880x1168, 1168x880,
