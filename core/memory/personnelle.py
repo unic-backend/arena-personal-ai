@@ -1106,6 +1106,52 @@ class MemoirePersonnelle:
             for ligne in lignes
         ]
 
+    def chemin_relations(
+        self, depuis: str, vers: str, projet: Optional[str] = None, profondeur_max: int = 4,
+    ) -> List[Relation]:
+        """Trouve un chemin relationnel court et traçable entre deux entités.
+
+        Chaque arête rendue est une Relation existante avec sa source : aucune
+        relation n'est inférée. La profondeur est bornée pour éviter qu'un graphe
+        mémoire volumineux ne transforme une lecture en parcours non maîtrisé.
+        """
+        depart, arrivee = (depuis or "").strip(), (vers or "").strip()
+        if not depart or not arrivee or depart == arrivee:
+            return []
+        profondeur = max(1, min(int(profondeur_max), 8))
+        requete = f"SELECT * FROM {self.TABLE_RELATIONS}"
+        arguments: List[Any] = []
+        if projet is not None:
+            requete += " WHERE projet = ?"
+            arguments.append(projet)
+        requete += " ORDER BY cree_le DESC"
+        with closing(self._connexion()) as connexion:
+            lignes = connexion.execute(requete, arguments).fetchall()
+
+        adjacence: Dict[str, List[Relation]] = {}
+        for ligne in lignes:
+            relation = Relation(
+                identifiant=ligne["identifiant"], depuis=ligne["depuis"], lien=ligne["lien"],
+                vers=ligne["vers"], source=ligne["source"], projet=ligne["projet"],
+                cree_le=ligne["cree_le"],
+            )
+            adjacence.setdefault(relation.depuis, []).append(relation)
+
+        file: List[Tuple[str, List[Relation]]] = [(depart, [])]
+        visites = {depart}
+        while file:
+            noeud, chemin = file.pop(0)
+            if len(chemin) >= profondeur:
+                continue
+            for relation in adjacence.get(noeud, []):
+                nouveau = [*chemin, relation]
+                if relation.vers == arrivee:
+                    return nouveau
+                if relation.vers not in visites:
+                    visites.add(relation.vers)
+                    file.append((relation.vers, nouveau))
+        return []
+
     # --- Migration --------------------------------------------------------------
 
     def migrer_depuis_long_terme(self, source: str = "long_term_memory") -> int:
