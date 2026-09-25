@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { eventStats, filterEventLog, uniqueTools, type LoggedChunk } from './devtools';
 
 const rows: LoggedChunk[] = [
-  { ts: 1000, chunk: { type: 'activity', event: { id: '1', kind: 'tool', status: 'running', phase: 'started', title: 'Recherche', tool: 'web' } } },
+  { ts: 1000, chunk: { type: 'activity', event: { id: '1', kind: 'tool', status: 'running', phase: 'started', title: 'Recherche', tool: 'web', startedAt: 1000 } } },
   { ts: 1100, chunk: { type: 'token', text: 'Bonjour' } },
-  { ts: 1250, chunk: { type: 'activity', event: { id: '2', kind: 'tool', status: 'completed', phase: 'completed', title: 'Recherche', tool: 'web' } } },
+  { ts: 1250, chunk: { type: 'activity', event: { id: '2', kind: 'tool', status: 'completed', phase: 'completed', title: 'Recherche', tool: 'web', startedAt: 1000, completedAt: 1250 } } },
   { ts: 1400, chunk: { type: 'error', message: 'timeout provider' } },
 ];
 
