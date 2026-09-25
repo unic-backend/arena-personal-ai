@@ -47,3 +47,16 @@ def test_appel_mcp_reellement_atteint_le_client():
     assert client.appels == [
         ("get_video_duration", {"video_url": "https://example.test/video.mp4"})
     ]
+
+
+
+def test_echec_applicatif_vectcut_ne_devient_jamais_un_succes():
+    client = FauxVectCut(reponse=Reponse(
+        ok=True,
+        resultat={"content": [{"type": "text", "text": '{"success": false, "error": "draft absent"}'}]},
+    ))
+    connecteur = ConnecteurVectCut(client=client)
+    resultat = connecteur._executer(connecteur.capacites()["save_draft"])
+
+    assert resultat.statut is Statut.ECHEC
+    assert "draft absent" in resultat.message
