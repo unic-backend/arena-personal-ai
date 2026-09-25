@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Pause, Play, Trash2, X } from 'lucide-react';
+import { Pause, Play, Search, Trash2, X } from 'lucide-react';
 import { useChat } from '../../lib/store/chatStore';
 import type { StreamChunk } from '../../lib/activity/types';
 import { useI18n } from '../../lib/i18n';
 import { cn } from '../../utils/cn';
+import { eventStats, filterEventLog, uniqueTools, type EventFilter } from '../../lib/activity/devtools';
 
 const TYPE_STYLE: Record<StreamChunk['type'], { label: string; cls: string }> = {
   activity: { label: 'event', cls: 'text-accent-300' },
@@ -31,6 +32,9 @@ export function EventLogDrawer() {
   const { eventLog, logOpen, toggleLog, clearLog } = useChat();
   const { t } = useI18n();
   const [paused, setPaused] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<EventFilter>('all');
+  const [toolFilter, setToolFilter] = useState('');
+  const [query, setQuery] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const frozen = useRef(eventLog);
 
@@ -52,7 +56,10 @@ export function EventLogDrawer() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [logOpen, toggleLog]);
 
-  const rows = paused ? frozen.current : eventLog;
+  const sourceRows = paused ? frozen.current : eventLog;
+  const tools = uniqueTools(sourceRows);
+  const rows = filterEventLog(sourceRows, typeFilter, toolFilter, query);
+  const stats = eventStats(sourceRows);
 
   return (
     <AnimatePresence>
@@ -86,6 +93,50 @@ export function EventLogDrawer() {
             <button onClick={toggleLog} className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/5 hover:text-zinc-200" title={t('log.close')}>
               <X size={14} />
             </button>
+          </div>
+
+          <div className="space-y-2 border-b border-white/6 px-4 py-2.5">
+            <div className="grid grid-cols-4 gap-1 font-mono text-ui-meta">
+              <span className="rounded bg-white/[0.03] px-2 py-1 text-zinc-500">events {stats.total}</span>
+              <span className="rounded bg-white/[0.03] px-2 py-1 text-zinc-500">tools {stats.tools}</span>
+              <span className="rounded bg-white/[0.03] px-2 py-1 text-red-300">errors {stats.error}</span>
+              <span className="rounded bg-white/[0.03] px-2 py-1 text-zinc-500">
+                {stats.durationMs === null ? '—' : `${stats.durationMs}ms`}
+              </span>
+            </div>
+            <div className="flex gap-1.5">
+              <select
+                aria-label="Event type"
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value as EventFilter)}
+                className="min-w-0 rounded-md border border-white/8 bg-ink-950 px-2 py-1 font-mono text-ui-meta text-zinc-400"
+              >
+                <option value="all">all</option>
+                <option value="activity">event</option>
+                <option value="token">token</option>
+                <option value="done">done</option>
+                <option value="error">error</option>
+              </select>
+              <select
+                aria-label="Tool"
+                value={toolFilter}
+                onChange={(e) => setToolFilter(e.target.value)}
+                className="min-w-0 rounded-md border border-white/8 bg-ink-950 px-2 py-1 font-mono text-ui-meta text-zinc-400"
+              >
+                <option value="">all tools</option>
+                {tools.map((tool) => <option key={tool} value={tool}>{tool}</option>)}
+              </select>
+              <label className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-white/8 bg-ink-950 px-2">
+                <Search size={11} className="shrink-0 text-zinc-600" />
+                <input
+                  aria-label="Search events"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="search"
+                  className="min-w-0 flex-1 bg-transparent py-1 font-mono text-ui-meta text-zinc-300 outline-none placeholder:text-zinc-700"
+                />
+              </label>
+            </div>
           </div>
 
           <div
