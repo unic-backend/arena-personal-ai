@@ -94,8 +94,8 @@ from core.connectors.stockage_jetons import charger_tout as _charger_jetons_pers
 from core.connectors.txtai_search import ConnecteurTxtaiSearch
 from core.connectors.ui_generate import ConnecteurUiGenerate
 from core.connectors.ui_ux_pro_max import ConnecteurUiUxProMax
-from core.connectors.wan2gp import Wan2GPConnector
 from core.connectors.vectcut import ConnecteurVectCut
+from core.connectors.wan2gp import Wan2GPConnector
 from core.connectors.workflow_guide import ConnecteurWorkflowGuide
 from core.connectors.xaar_kaname import XaarKanameConnector
 from core.conversations.depot import DepotConversations
