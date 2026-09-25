@@ -6,6 +6,7 @@ aucun second agent vidéo, aucune dépendance VectCut ajoutée au coeur d'ARENA.
 """
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -115,7 +116,21 @@ class ConnecteurVectCut(Connecteur):
         if not reponse.ok:
             return echec(action=capacite.nom, cible=self.nom,
                          message=f"VectCut MCP a échoué : {reponse.raison}.")
-        donnees = reponse.resultat
+        donnees: Any = reponse.resultat
+        contenu = reponse.resultat.get("content") if isinstance(reponse.resultat, dict) else None
+        if isinstance(contenu, list) and contenu:
+            texte = contenu[0].get("text") if isinstance(contenu[0], dict) else None
+            if isinstance(texte, str):
+                try:
+                    donnees = json.loads(texte)
+                except json.JSONDecodeError:
+                    donnees = reponse.resultat
+        if isinstance(donnees, dict) and donnees.get("success") is False:
+            return echec(
+                action=capacite.nom,
+                cible=self.nom,
+                message=f"VectCut a refusé {capacite.nom} : {donnees.get('error') or 'erreur inconnue'}.",
+            )
         return succes(
             action=capacite.nom,
             cible=self.nom,
