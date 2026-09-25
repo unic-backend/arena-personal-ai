@@ -37,6 +37,7 @@ PAR_CONNECTEUR: Dict[str, str] = {
     "krillin_render_vertical": "krillinai",
     "krillin_cover": "krillinai",
     "drift": "drift",
+    "vectcut": "vectcut",
     "hidream_image": "hidream",
     "agnes": "agnes",
     "hyperframes_render": "hyperframes",
