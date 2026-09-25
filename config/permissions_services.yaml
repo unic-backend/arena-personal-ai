@@ -205,6 +205,13 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     document:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
 
+  # VectCutAPI : edite des drafts CapCut/Jianying via un serveur MCP stdio
+  # local. Mesurer la duree ne change rien ; toutes les autres operations
+  # creent/modifient un draft et restent derriere confirmation + WRITE_FILES.
+  video_editing:
+    read:        {decision: ALLOWED,      risque: LOW}
+    apply:       {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+
   # Xaar Kaname / Deep-Live-Cam : transformation locale d'une image/video.
   # Le moteur ecrit un nouvel artefact sur disque et utilise le GPU :
   # confirmation obligatoire + coupe-circuit WRITE_FILES.

@@ -32,6 +32,7 @@ export const CAPACITES_VIDEO = [
   'krillin_render_vertical',
   'krillin_cover',
   'drift',
+  'vectcut',
   'hidream_image',
   'agnes',
   'hyperframes_render',

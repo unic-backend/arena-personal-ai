@@ -686,6 +686,8 @@ class VideoProductionAgent(BaseAgent):
                     "cover", references, prompt=parametres.get("prompt"))
             if capacite == "drift":
                 return await self._appeler_drift(parametres, references)
+            if capacite == "vectcut":
+                return await self._appeler_vectcut(parametres)
             if capacite == "hidream_image":
                 return await self._appeler_hidream_image(parametres)
             if capacite == "agnes":
@@ -1008,6 +1010,21 @@ class VideoProductionAgent(BaseAgent):
         if refus:
             traduit["message"] = traduit.get("message", "") + "\nEcarte : " + " ".join(refus)
         return traduit
+
+    async def _appeler_vectcut(self, parametres: Dict[str, Any]) -> Dict[str, Any]:
+        """Exécute un outil VectCutAPI par le registre et ses permissions."""
+        if self.registre is None:
+            raise RuntimeError("aucun registre de connecteurs branche")
+        outil = str(parametres.get("outil") or "").strip()
+        arguments = parametres.get("arguments") or {}
+        if not outil:
+            raise RuntimeError("vectcut : aucun outil fourni")
+        if not isinstance(arguments, dict):
+            raise RuntimeError("vectcut : arguments doit etre un objet")
+        resultat = self.registre.executer("vectcut", outil, **arguments)
+        if inspect.isawaitable(resultat):
+            resultat = await resultat
+        return self._verifie(_depuis_resultat_action(resultat), "vectcut")
 
     async def _executer_drift(self, capacite: str, **parametres: Any) -> Any:
         """Un appel `registre.executer("drift", ...)`, synchrone ou pas —
