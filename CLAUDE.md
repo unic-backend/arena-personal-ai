@@ -18,7 +18,7 @@ vraiment.
 
 ```
 python scripts/orphelins.py
-→ 333 modules, 269 atteints.   (mesuré par CI le 24/09/2026)
+→ 334 modules, 270 atteints.   (mesuré par CI le 25/09/2026)
 ```
 
 C'est la mesure, et elle ne se raconte pas — **elle se refait**. Ce bloc a
