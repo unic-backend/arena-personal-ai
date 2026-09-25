@@ -134,6 +134,7 @@ SURFACE_ATTENDUE = {
     # HIDREAM-I1, DEC-0085) — la capacite image-generation canonique.
     "/api/image/generer": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/image/capacites": (["GET"], ["verify_api_key", "limiter_debit"]),
+    "/api/image/prompts": (["GET"], ["verify_api_key", "limiter_debit"]),
     # Catalogue des workflows ComfyUI approuves (mission ARENA x COMFYUI,
     # DEC-0087) — backend ALTERNATIF pour la meme capacite image-generation.
     "/api/image/workflows": (["GET"], ["verify_api_key", "limiter_debit"]),

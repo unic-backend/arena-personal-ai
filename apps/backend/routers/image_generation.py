@@ -11,7 +11,7 @@ l'etat et les capacites relisent directement le registre, comme
 `hidream`, pour ne rien changer au comportement mesure par DEC-0085.
 """
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -24,6 +24,23 @@ from core.production.image_backend_router import BACKEND_PAR_DEFAUT
 logger = logging.getLogger("usman.backend.image_generation")
 
 router = APIRouter()
+
+
+PROMPTS_VISUELS = {
+    "produit": "Photographie produit premium de {sujet}, composition propre, eclairage studio, details nets.",
+    "architecture": "Visualisation architecturale de {sujet}, proportions realistes, materiaux lisibles, lumiere naturelle.",
+    "portrait": "Portrait photographique de {sujet}, peau naturelle, eclairage soigne, profondeur de champ realiste.",
+    "affiche": "Affiche visuelle de {sujet}, hierarchie graphique claire, composition forte, espace reserve au texte.",
+}
+
+
+def lister_prompts_visuels(recherche: Optional[str] = None) -> List[Dict[str, str]]:
+    terme = (recherche or "").strip().lower()
+    return [
+        {"id": identifiant, "template": template}
+        for identifiant, template in PROMPTS_VISUELS.items()
+        if not terme or terme in identifiant.lower() or terme in template.lower()
+    ]
 
 
 class GenererImageRequest(BaseModel):
@@ -43,6 +60,13 @@ class GenererImageRequest(BaseModel):
     ckpt_name: Optional[str] = None
     steps: Optional[int] = None
     cfg: Optional[float] = None
+
+
+@router.get("/api/image/prompts",
+           dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
+async def prompts_image(q: Optional[str] = None) -> Dict[str, Any]:
+    """Bibliotheque native et deterministe de points de depart visuels."""
+    return {"prompts": lister_prompts_visuels(q)}
 
 
 @router.post("/api/image/generer",
