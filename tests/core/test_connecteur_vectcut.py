@@ -1,5 +1,5 @@
 from core.actions.resultat import Statut
-from core.connectors.vectcut import ConnecteurVectCut, OUTILS
+from core.connectors.vectcut import OUTILS, ConnecteurVectCut
 from core.mcp.transport import Reponse
 
 
@@ -47,7 +47,6 @@ def test_appel_mcp_reellement_atteint_le_client():
     assert client.appels == [
         ("get_video_duration", {"video_url": "https://example.test/video.mp4"})
     ]
-
 
 
 def test_echec_applicatif_vectcut_ne_devient_jamais_un_succes():
