@@ -90,6 +90,10 @@ class ChatRequest(BaseModel):
     # fil entier aplati pour cette seule intention (voir pwa_gateway.py).
     # Vides pour tout le reste de l'API, qui continue de ne lire que `prompt`.
     history: List[Dict[str, str]] = Field(default_factory=list)
+    # Vrai quand l'appelant affirme que `history` est le fil faisant foi, y
+    # compris quand il est vide. Sans ce bit, [] est indistinguable de « aucun
+    # historique fourni » et FRESH_INFO peut relire un vieux seau serveur.
+    history_authoritative: bool = False
     message_actuel: Optional[str] = None
 
 
@@ -929,14 +933,16 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
             # Le session_id porte l'historique : sans lui, une question elliptique
             # ("Celle de 2006 ?" apres une question sur une coupe du monde) part en
             # recherche telle quelle et cherche le mauvais sujet.
-            result = await fresh_agent.run(
-                request.prompt,
-                context={
-                    "session_id": session_id,
-                    "history": request.history or memory.get_recent_history(
-                        session_id=session_id, limit=8),
-                },
-            )
+            contexte_fresh: Dict[str, Any] = {"session_id": session_id}
+            if request.history_authoritative:
+                # [] signifie ici « aucun tour precedent », pas « va chercher
+                # ailleurs ». La passerelle PWA a deja reconstruit le fil
+                # autoritatif, anciens tours serveur compris.
+                contexte_fresh["history"] = request.history
+                contexte_fresh["history_authoritative"] = True
+            elif request.history:
+                contexte_fresh["history"] = request.history
+            result = await fresh_agent.run(request.prompt, context=contexte_fresh)
     elif intent == "STUDIO":
         result = await lancer_studio(video_agent, editor_agent, subtitle_agent)
     elif intent == "EMAIL":
