@@ -783,10 +783,14 @@ def _session_de(demande: DemandeAgent) -> str:
 #:   Le fil y entre comme **contexte**, jamais comme question — le moteur le
 #:   borne et l'annonce (`core/reasoning/reasoning_engine.py`), et le choix de
 #:   la profondeur continue de ne lire que la question.
+#: - `FRESH_INFO` : une question elliptique (« qui sont les buteurs ? ») doit
+#:   etre reformulee depuis le fil autoritatif du telephone. Sans ce passage,
+#:   FreshInfoAgent retombe sur le journal serveur et peut reprendre un ancien
+#:   sujet pourtant remplace/corrige dans l'interface.
 #:
 #: Les autres n'y sont pas : rien ne dit qu'ils ont le meme besoin, et
 #: l'elargir sans le mesurer serait la meme erreur en sens inverse.
-INTENTIONS_AVEC_FIL = ("PLAQUISTE", "DEEP_REASONING")
+INTENTIONS_AVEC_FIL = ("PLAQUISTE", "DEEP_REASONING", "FRESH_INFO")
 
 
 def _tours_relus(demande: DemandeAgent) -> List[Dict[str, str]]:
