@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Corrigé — 26/09/2026 — Une décision d'affaires n'est plus avalée par un devis en attente
+
+Avec une question de devis en attente, « devrions-nous accepter ce contrat ? »
+partait au Plaquiste : `demande_executive` et `demande_la_date` avaient été
+ajoutés à `analyze_intent` sans être recopiés dans la liste des contrôles qui
+libèrent la question. Un test compare maintenant les deux listes (DEC-0137).
+
 ### Corrigé — 26/09/2026 — « Medina » depuis le téléphone revient au devis
 
 La règle « une réponse à une question d'ARENA revient à l'agent qui l'a

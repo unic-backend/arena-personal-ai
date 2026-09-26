@@ -174,3 +174,37 @@ def test_sans_question_retenue_le_classeur_garde_la_main() -> None:
     from apps.backend.routers import chat as module_chat
 
     assert module_chat.intention_dune_reponse_attendue([], "Medina", "s-inconnue") is None
+
+
+def test_tout_controle_avant_l_espace_libere_la_question() -> None:
+    """La liste des controles qui priment suit `analyze_intent`, sans recopie oubliee.
+
+    Mesure du 26/09/2026 : `demande_executive` et `demande_la_date` avaient
+    rejoint `analyze_intent` apres que `CONTROLES_QUI_PRIMENT` avait ete
+    ecrite, et n'y avaient jamais ete ajoutes. Une question de devis en
+    attente avalait alors « devrions-nous accepter ce contrat ? ».
+    """
+    import inspect
+    import re
+
+    from agents.orchestrator.orchestrator_agent import OrchestratorAgent
+    from apps.backend.routers import chat as module_chat
+
+    source = inspect.getsource(OrchestratorAgent.analyze_intent)
+    avant_l_espace = source.split("if espace")[0]
+    appeles = re.findall(r"if self\.(\w+)\(user_input\)", avant_l_espace)
+    # `exige_verification` est exclu volontairement : « aujourd'hui » est
+    # aussi une reponse (« le chantier commence aujourd'hui »).
+    attendus = [nom for nom in appeles if nom != "exige_verification"]
+
+    assert attendus, "l'analyse de la source d'analyze_intent n'a rien trouve"
+    assert sorted(attendus) == sorted(module_chat.CONTROLES_QUI_PRIMENT)
+
+
+def test_une_decision_d_affaires_libere_la_question() -> None:
+    from apps.backend.routers import chat as module_chat
+
+    q.noter("s1", "PLAQUISTE", {"statut": "INCOMPLET", "manquants": ["lieu"]})
+
+    assert module_chat.intention_dune_reponse_attendue(
+        [], "devrions-nous accepter ce contrat ?", "s1") is None

@@ -626,9 +626,18 @@ async def _joindre_document(
 #: Ils sont nommes, pas devines : chacun est deja un controle sans modele de
 #: `analyze_intent`, et les reutiliser evite d'ecrire ici une deuxieme
 #: definition de « ca parle d'autre chose ».
+#:
+#: Tous les controles qu'`analyze_intent` passe AVANT l'espace y figurent, sauf
+#: un : `exige_verification`, parce que « aujourd'hui » ou « en ce moment »
+#: sont aussi des REPONSES (« le chantier commence aujourd'hui »).
+#: `demande_executive` et `demande_la_date` manquaient jusqu'au 26/09/2026 :
+#: ajoutes a `analyze_intent` apres cette liste, jamais recopies ici — une
+#: question de devis en attente avalait « devrions-nous accepter ce contrat ? ».
+#: `tests/test_question_en_attente.py` compare desormais les deux listes.
 CONTROLES_QUI_PRIMENT = (
     "question_personnelle", "salutation_pure",
     "demande_de_courrier", "demande_financiere",
+    "demande_executive", "demande_la_date",
 )
 
 
