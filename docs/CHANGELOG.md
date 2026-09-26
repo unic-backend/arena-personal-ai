@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Documenté — 26/09/2026 — TurboVNC audité, non intégré
+
+Le serveur TurboVNC ne tourne que sous Linux/Un*x ; Windows n'y est que
+client, et la machine du propriétaire est sous Windows. L'intégrer aurait
+ajouté un connecteur dormant. Audit et conditions de réouverture :
+`docs/audits/turbovnc_audit.md` (DEC-0135).
+
 ### Corrigé — 26/09/2026 — Emojis illisibles dans les réponses du chat
 
 `/api/chat` affichait un charabia à la place de ❌ et ⚠️ : trois

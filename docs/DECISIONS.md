@@ -10945,3 +10945,23 @@ echouer le test en nommant `apps/backend/routers/chat.py:991`.
 texte sain. Borne : un morceau n'est retenu que s'il redevient de l'UTF-8
 strictement valide, et `test_le_detecteur_laisse_le_texte_sain` fixe le
 francais courant (« », é, à, ç, œ) et les emojis intacts comme sains.
+
+## DEC-0135 — TurboVNC n'est pas intégré : aucun serveur ne tournerait là où ARENA tourne
+
+**2026-09-26.**
+
+**Decision** : pas de connecteur, pas de dépendance, aucun code. L'audit est
+dans `docs/audits/turbovnc_audit.md`. Décision du propriétaire, sur la
+question posée le 25/09/2026 (« Ne pas intégrer »).
+
+**Pourquoi** : le serveur TurboVNC est Linux/Un*x uniquement (tableau des
+prérequis de TurboVNC lui-même, commit `8ef3739` : Windows et Mac n'y sont que
+clients), sans API programmable (`vncserver` est un script Perl), et sa vue
+web dépend d'un noVNC fourni à part. La machine du propriétaire est sous
+Windows : un connecteur serait « non configuré » pour toujours — un composant
+dormant de plus.
+
+**Ce que ca coute si c'est faux** : si le propriétaire veut un jour voir en
+direct le bureau Case depuis son téléphone, il faudra monter TurboVNC + noVNC
+dans l'image Case — travail hors d'ARENA, que rien ici n'empêche. Les
+conditions de réouverture sont écrites dans l'audit.
