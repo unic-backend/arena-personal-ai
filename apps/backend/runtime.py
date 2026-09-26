@@ -824,9 +824,13 @@ ui_agent = UiGenerationAgent(provider=deep_provider, memory=memory, registre=reg
 #: elle est interrompue. La relancer toute seule au demarrage rejouerait des
 #: ecritures dont personne n'a verifie l'effet : elle reste INTERROMPUE et
 #: visible, et c'est au proprietaire de la redemander.
+#:
+#: Le generateur est retrouve PAR SON NOM, au moment de la reprise (DEC-0141).
+#: Jusqu'au 26/09/2026 on passait ici `registre.obtenir("video_generation")`,
+#: evalue une fois a l'import : un nom de service, donc `None`.
 FABRIQUES_DE_REPRISE = {
     suivi_video.TYPE_REPRISE: suivi_video.fabrique_de_reprise(
-        registre.obtenir("video_generation")),
+        lambda nom: registre.obtenir(nom)),
 }
 
 

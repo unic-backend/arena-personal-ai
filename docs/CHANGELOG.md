@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Corrigé — 26/09/2026 — Le suivi d'une vidéo en cours survit enfin à un redémarrage
+
+Au redémarrage, ARENA devait reprendre le suivi des générations vidéo en cours
+(WanGP ou MoneyPrinter). Il cherchait le connecteur sous un nom de service
+(`video_generation`), recevait `None`, et chaque reprise échouait. Le suivi
+retient maintenant son générateur et le retrouve par son nom (DEC-0141).
+
 ### Corrigé — 26/09/2026 — L'espace Vidéo atteint le studio
 
 Depuis l'espace « Vidéo » de la PWA, « sous-titre ma vidéo » partait à

@@ -11109,3 +11109,35 @@ il exige desormais les cinq intentions qu'il gardait, sans interdire d'en ajoute
 **Ce que ca coute si c'est faux** : une phrase d'analyse contenant un mot du
 studio (« sous-titres ») partirait au studio depuis l'espace Video — ce
 qu'elle faisait deja sans espace.
+
+## DEC-0141 — Un suivi de generation video se reprend chez SON generateur
+
+**2026-09-26.**
+
+**Decision** : `core/connectors/suivi_video.py::suivre_en_fond` retient le nom du
+generateur (`connecteur`) dans le descripteur du travail, et
+`fabrique_de_reprise` recoit une fonction `nom -> connecteur` au lieu d'un
+connecteur fige. `apps/backend/runtime.py::FABRIQUES_DE_REPRISE` lui passe
+`lambda nom: registre.obtenir(nom)`, resolu au moment de la reprise. Un
+generateur introuvable leve `ValueError` : le travail reste INTERROMPU,
+visible, au lieu de tourner sur rien.
+
+**Pourquoi** : mesure du 26/09/2026 en croisant chaque appel au registre avec
+les connecteurs declares. `FABRIQUES_DE_REPRISE` passait
+`registre.obtenir("video_generation")` — un nom de SERVICE, pas de connecteur
+(les generateurs s'appellent `wan2gp` et `moneyprinter`) — evalue une fois a
+l'import : `None`. Le seul travail de ce depot qui se reprend reellement apres
+un redemarrage (DEC du suivi video) echouait donc sur `None.executer`. Et le
+bon connecteur fige n'aurait pas suffi : le suivi porte sur MoneyPrinter OU
+WanGP (`VideoAnalyzerAgent.derniere_generation`), et un `job_id` MoneyPrinter
+redemande a WanGP ne rend rien.
+
+**Sabotage** : sur l'ancien code, les trois tests de
+`TestLaRepriseDuVraiRuntime` echouent (nom non retenu, reprise sur `None`,
+generateur inconnu accepte). `test_un_suivi_coupe_par_un_redemarrage_est_repris`
+passe desormais `lambda _nom: connecteur` au lieu du connecteur : seule sa
+facon d'appeler la fabrique change, ses assertions sont intactes.
+
+**Ce que ca coute si c'est faux** : les suivis interrompus AVANT ce correctif
+n'ont pas de nom de generateur dans leur descripteur ; ils restent INTERROMPUS
+au lieu d'etre repris — ce qu'ils etaient deja de fait, sans le dire.
