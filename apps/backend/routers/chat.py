@@ -930,7 +930,13 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
             # ("Celle de 2006 ?" apres une question sur une coupe du monde) part en
             # recherche telle quelle et cherche le mauvais sujet.
             result = await fresh_agent.run(
-                request.prompt, context={"session_id": session_id})
+                request.prompt,
+                context={
+                    "session_id": session_id,
+                    "history": request.history or memory.get_recent_history(
+                        session_id=session_id, limit=8),
+                },
+            )
     elif intent == "STUDIO":
         result = await lancer_studio(video_agent, editor_agent, subtitle_agent)
     elif intent == "EMAIL":
