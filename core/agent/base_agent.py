@@ -15,6 +15,7 @@ from core.agent.message import (
 )
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
+from core.models.routeur import cause_lisible
 from core.security.trust import TrustLevel, wrap
 
 # Un specialiste distant/local peut se bloquer (modele, outil, reseau). Une
@@ -195,7 +196,10 @@ class BaseAgent(ABC):
                 "status": "error",
                 "agent": self.name,
                 "specialiste": destinataire,
-                "response": f"Le specialiste {destinataire} est indisponible: {type(erreur).__name__}.",
+                # La cause, pas seulement son type (DEC-0148) : « RuntimeError »
+                # ne disait pas au proprietaire que tous ses modeles etaient
+                # tombes, ni lequel relancer.
+                "response": f"Le specialiste {destinataire} est indisponible : {cause_lisible(erreur)}",
             }
             return resultat
         finally:

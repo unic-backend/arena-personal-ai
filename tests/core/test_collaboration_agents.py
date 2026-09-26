@@ -386,3 +386,55 @@ async def test_le_livrable_d_un_projet_est_verifie_aussi():
 
     assert rendu["verification"]["chiffres_non_verifies"] == ["12 500 000"]
     assert "a verifier avant tout usage : 12 500 000" in rendu["synthese"]
+
+
+# --- Ce que chaque tour demande, et ce qu'une panne dit (DEC-0148) -----------
+
+from core.models.routeur import AucunFournisseur  # noqa: E402
+
+
+async def test_le_premier_tour_ne_demande_de_repondre_a_personne():
+    """Mesure du 26/09/2026 : invite a « repondre aux autres » au premier tour,
+    le plaquiste a invente les positions de trois agents qui n'avaient pas parle."""
+    agents = _projet()
+    lead = _Specialiste("ChefAgent", "coordonne", competences=("coordination",))
+    registre = _equipe(lead, *agents.values())
+
+    await tenir_table_ronde(registre, "cloisons et plafond", lead=lead, tours=2)
+
+    premier, second = agents["cloisons"].recus[:2]
+    assert "personne n'a encore rien dit" in premier
+    assert "N'attribue aucune position" in premier
+    assert "Reponds" not in premier, "au premier tour, il n'y a rien a quoi repondre"
+    assert "Reponds uniquement aux interventions reelles" in second
+    assert "Autour de la table : chef, cloison" in premier
+
+
+async def test_une_panne_de_modele_dit_sa_cause_et_rien_de_plus():
+    agents = _projet()
+    diagnostic = "Aucun fournisseur n'a pu repondre. Essayes : groq, local."
+
+    async def en_panne(user_input, context=None):
+        raise AucunFournisseur(diagnostic)
+
+    async def fuite(user_input, context=None):
+        raise RuntimeError("https://api.exemple/v1?key=SECRET-123")
+
+    agents["cloisons"].run = en_panne
+    agents["budget"].run = fuite
+
+    class _ModeleEnPanne:
+        async def generate(self, prompt, system_prompt=None, **options):
+            raise AucunFournisseur(diagnostic)
+
+    lead = _Specialiste("ChefAgent", "coordonne", competences=("coordination",),
+                        modele=_ModeleEnPanne())
+    registre = _equipe(lead, *agents.values())
+
+    table = await tenir_table_ronde(registre, "cloisons plafond et budget", lead=lead, tours=1)
+
+    paroles = {i["agent"]: i["texte"] for i in table.tours[0]}
+    assert diagnostic in paroles["cloison"]
+    assert paroles["budget"].endswith("indisponible : RuntimeError")
+    assert "SECRET" not in table.synthese and "SECRET" not in paroles["budget"]
+    assert table.synthese.startswith(f"(Synthese indisponible : {diagnostic})")

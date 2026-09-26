@@ -474,6 +474,18 @@ class TestQuandPersonneNePeutRepondre:
         assert "CLOUD_PREFERRED" not in message, (
             "le cloud avait déjà le droit : proposer de l'autoriser n'a aucun sens")
 
+    async def test_l_echec_est_une_exception_dont_le_texte_peut_etre_montre(self):
+        """DEC-0148 : les agents montrent la cause d'un `AucunFournisseur`, et
+        seulement le type de toute autre exception."""
+        r = self._tous_absents()
+
+        with pytest.raises(routeur_modeles.AucunFournisseur) as echec:
+            await r.generate("bonjour, comment vas-tu ?")
+
+        assert routeur_modeles.cause_lisible(echec.value) == str(echec.value)
+        assert routeur_modeles.cause_lisible(
+            RuntimeError("https://api.exemple/v1?key=SECRET")) == "RuntimeError"
+
     async def test_le_flux_echoue_avec_le_meme_diagnostic_que_la_generation(self):
         """Deux chemins, une seule vérité : le flux ne dit pas autre chose."""
         r = self._tous_absents()

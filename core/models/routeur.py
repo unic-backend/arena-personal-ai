@@ -80,6 +80,29 @@ ORDRE_CLOUD = ("anthropic", "groq", "ovhcloud", "deepinfra")
 LOCAL = "local"
 
 
+class AucunFournisseur(RuntimeError):
+    """Tous les fournisseurs ont echoue.
+
+    Son message est celui de `RouteurModeles._pourquoi_personne` : la cause et
+    ce qui la leverait, ecrits pour le proprietaire, sans aucune cle ni URL
+    portant un secret. C'est la seule exception dont le texte peut lui etre
+    montre tel quel (`cause_lisible`) ; un `RuntimeError` reste un
+    `RuntimeError` pour qui l'attrapait deja.
+    """
+
+
+def cause_lisible(erreur: BaseException) -> str:
+    """Ce qu'on peut dire d'un echec a l'utilisateur.
+
+    Le message d'`AucunFournisseur` est rendu en entier ; pour toute autre
+    exception, seulement son type — le texte d'une exception quelconque peut
+    porter une URL avec sa cle (DEC-0148).
+    """
+    if isinstance(erreur, AucunFournisseur) and str(erreur).strip():
+        return str(erreur).strip()
+    return type(erreur).__name__
+
+
 @dataclass
 class EtatFournisseur:
     """Ce qu'on sait d'un fournisseur, sans le redemander a chaque phrase."""
@@ -369,7 +392,7 @@ class RouteurModeles(ModelProvider):
         # Tous ont echoue, Ollama compris : on le dit, on n'invente pas de reponse.
         self.dernier_choix = Choix(LOCAL, "tous les fournisseurs ont echoue",
                                    classement, essayes)
-        raise RuntimeError(self._pourquoi_personne(classement, candidats, essayes))
+        raise AucunFournisseur(self._pourquoi_personne(classement, candidats, essayes))
 
     async def generate(self, prompt: str, system_prompt: Optional[str] = None,
                        contexte: Optional[Sequence[str]] = None) -> str:
@@ -480,7 +503,7 @@ class RouteurModeles(ModelProvider):
 
         self.dernier_choix = Choix(LOCAL, "tous les fournisseurs ont echoue",
                                    classement, essayes)
-        raise RuntimeError(self._pourquoi_personne(classement, candidats, essayes))
+        raise AucunFournisseur(self._pourquoi_personne(classement, candidats, essayes))
 
     async def is_available(self) -> bool:
         """ARENA peut-il repondre ? Vrai des qu'un seul fournisseur repond."""

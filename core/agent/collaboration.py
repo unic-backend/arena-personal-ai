@@ -42,6 +42,7 @@ from core.agent.espace_de_travail import ESPACES
 from core.agent.message import MessageAgent, tache_racine
 from core.agent.verification_synthese import agents_ayant_travaille, verifier_synthese
 from core.execution.coordination import Coordination, Etape
+from core.models.routeur import cause_lisible
 from core.security.trust import TrustLevel, wrap
 
 logger = logging.getLogger("usman.agent.collaboration")
@@ -121,11 +122,26 @@ class TableRonde:
                 "project_id": self.project_id, "verification": self.verification}
 
 
-def _consigne_de_table(probleme: str, tour: int) -> str:
+def _consigne_de_table(probleme: str, tour: int, autour: List[str]) -> str:
+    """La consigne d'un tour (DEC-0148).
+
+    Mesure du 26/09/2026 : la consigne unique demandait au premier tour de
+    « repondre a ce que les autres ont dit » alors que personne n'avait parle.
+    Le plaquiste a obei en inventant les positions de finance, tendances et
+    orchestrator. Le premier tour dit donc que personne n'a parle ; les
+    suivants renvoient au seul debat reel.
+    """
+    if tour == 1:
+        consigne = ("Tu parles au premier tour : personne n'a encore rien dit. N'attribue "
+                    "aucune position, aucun chiffre ni aucune remarque a un autre agent.")
+    else:
+        consigne = ("Reponds uniquement aux interventions reelles du debat joint : "
+                    "n'attribue a un agent que ce qu'il y a ecrit. Conteste ce qui te "
+                    "parait faux, propose une alternative si tu en as une.")
     return (
-        f"Table ronde, tour {tour}. Probleme pose : {probleme}\n\n"
-        "Donne TON analyse selon ta specialite. Reponds a ce que les autres ont dit, "
-        "conteste ce qui te parait faux, propose une alternative si tu en as une. "
+        f"Table ronde, tour {tour}. Autour de la table : {', '.join(autour)}. "
+        f"Probleme pose : {probleme}\n\n"
+        f"Donne TON analyse selon ta specialite. {consigne} "
         "S'il manque autour de la table une competence dont le probleme a besoin, "
         "ajoute une ligne [[INVITER:<competence>|<pourquoi>]].")
 
@@ -163,7 +179,8 @@ async def tenir_table_ronde(registre: Any, probleme: str, lead: Optional[BaseAge
             # Ceux qui parlent A CE TOUR : un invite entre au tour suivant.
             parlants = list(table.participants)
             reponses = await lead.deleguer_en_parallele(
-                [{"destinataire": cle, "requete": _consigne_de_table(probleme, numero)}
+                [{"destinataire": cle,
+                  "requete": _consigne_de_table(probleme, numero, [cle_lead, *parlants])}
                  for cle in parlants],
                 contexte={"contexte": contexte, "project_id": racine.project_id})
             interventions = []
@@ -234,7 +251,7 @@ async def _synthetiser(lead: BaseAgent, matiere: str, consigne: str) -> str:
         return (await lead.rediger(prompt=f"{matiere}\n\n{consigne}")).strip()
     except Exception as erreur:  # noqa: BLE001 — le travail des autres reste rendu
         logger.warning("Synthese impossible par %s : %s", lead.name, erreur)
-        return f"(Synthese indisponible : {type(erreur).__name__}.)\n{matiere}"
+        return f"(Synthese indisponible : {cause_lisible(erreur)})\n{matiere}"
 
 
 # --- Le projet ---------------------------------------------------------------
