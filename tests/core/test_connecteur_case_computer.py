@@ -362,7 +362,8 @@ class TestActionsGUI:
 
         assert resultat.statut.value == "SUCCESS"
         assert commandes
-        assert repr(texte) in commandes[0]
+        commande = httpx.Response(200, content=commandes[0]).json()["command"]
+        assert commande == f"import pyautogui; pyautogui.write({texte!r}, interval=0.01)"
 
 
 # --- Detruire ---------------------------------------------------------------------------
