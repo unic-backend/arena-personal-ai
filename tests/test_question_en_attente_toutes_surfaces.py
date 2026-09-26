@@ -66,7 +66,7 @@ def classeur_faux(monkeypatch):
 def _espion_du_dispatch(monkeypatch, module):
     vues = []
 
-    async def _espion(requete, intent=None):
+    async def _espion(requete, intent=None, **_options):
         vues.append(intent)
         return {"response": "ok", "agent": "espion", "sources": []}
 

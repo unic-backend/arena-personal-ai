@@ -11053,3 +11053,32 @@ mots-cles, cinq phrases).
 sans le mot « vidéo » (« fais le doublage en wolof ») tombe en CHAT au lieu
 d'AUDIO quand le modele est en panne ; et un mot de code colle a un autre
 (« pycode ») n'est plus reconnu. Les deux restent atteignables par le modele.
+
+## DEC-0139 — Un tour entre une fois dans le fil, avec la phrase du proprietaire
+
+**2026-09-26.**
+
+**Decision** : l'ecriture du tour dans `short_term_memory` quitte `_aiguiller`
+pour `dispatch_request::_consigner_le_tour` (`apps/backend/routers/chat.py`),
+qui ecrit `request.message_actuel or request.prompt` — la phrase du
+proprietaire, jamais le fil aplati. `dispatch_request(consigner_le_tour=False)`
+laisse l'ecriture a l'appelant qui la fait deja : la PWA
+(`apps/backend/routers/pwa_gateway.py::consigner`, qui consigne aussi ses
+echecs et la memoire longue).
+
+**Pourquoi** : mesure du 26/09/2026 par la vraie route `/agent/stream`. Apres
+« Medina », le fil contenait quatre lignes au lieu de deux : le fil ENTIER
+aplati (« Ousmane: … / Usman: … / Ousmane: Medina / Usman: ») enregistre comme
+un seul message du proprietaire — pour PLAQUISTE, la PWA et la passerelle
+OpenAI mettent le fil dans `prompt` — puis le meme tour une seconde fois par
+la PWA. Le fil se recopiait dans lui-meme a chaque tour et remplissait la
+fenetre de six tours relus ensuite.
+
+**Sabotage** : sans le correctif, `tests/test_fil_ecrit_une_fois.py` echoue
+pour la PWA et la passerelle OpenAI ; le temoin `/api/chat` passe dans les
+deux cas. Les faux `dispatch_request` des tests acceptent desormais
+`**_options` (signature seulement, aucune assertion touchee) : six fichiers de tests.
+
+**Ce que ca coute si c'est faux** : un nouvel appelant qui passerait
+`consigner_le_tour=False` sans consigner lui-meme perdrait ses tours du fil ;
+le defaut reste `True`, et seule la PWA le desactive.

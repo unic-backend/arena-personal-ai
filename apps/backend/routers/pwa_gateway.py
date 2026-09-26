@@ -1243,6 +1243,11 @@ async def flux_agent(demande: DemandeAgent):
                                 message_actuel=demande.text if intention == "PLAQUISTE" else None,
                             ),
                             intent=intention,
+                            # La PWA consigne elle-meme ce tour (`consigner`
+                            # ci-dessus), echecs et memoire longue compris :
+                            # le laisser aussi a `dispatch_request` l'ecrivait
+                            # deux fois.
+                            consigner_le_tour=False,
                         )
 
                     # A partir d'ici, l'action peut avoir un effet reel.

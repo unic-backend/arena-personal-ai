@@ -756,7 +756,11 @@ async def classer_la_demande(
     return await orchestrator.analyze_intent(texte)
 
 
-async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -> Dict[str, Any]:
+async def dispatch_request(
+    request: ChatRequest,
+    intent: Optional[str] = None,
+    consigner_le_tour: bool = True,
+) -> Dict[str, Any]:
     """Aiguille la demande vers l'agent choisi, en declarant son type de tache.
 
     `intent` permet a l'appelant de transmettre une classification deja faite :
@@ -772,6 +776,10 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
     cent-quatre-vingts lignes de l'aiguillage aurait demande de toutes les
     reindenter, pour un diff illisible et un risque sans rapport avec ce qu'on
     cherche a mesurer.
+
+    `consigner_le_tour=False` : l'appelant ecrit lui-meme le tour dans le fil
+    (la PWA, qui consigne aussi ses echecs et la memoire longue). Sans cette
+    option, chaque tour d'agent specialise du telephone etait ecrit DEUX fois.
     """
     if intent is None:
         intent = await classer_la_demande(
@@ -779,6 +787,8 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
             request.session_id or "default", a_classer=request.prompt)
     with tache(intent):
         reponse = await _aiguiller(request, intent)
+    if consigner_le_tour:
+        _consigner_le_tour(request, reponse)
     # Ce tour a-t-il laisse une question sans reponse ? Si oui, le prochain
     # message lui revient — quel que soit l'agent. Si non, ce qui attendait
     # est efface : une question deja repondue ne doit plus aspirer ses
@@ -1021,10 +1031,25 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
     # L'aiguilleur sait quelle branche il a prise ; sans cela, la reponse annoncait
     # « CHAT » meme quand un agent specialise avait repondu.
     result["intent"] = intent
-
-    memory.add_chat_message(session_id=session_id, role="user", content=request.prompt)
-    memory.add_chat_message(session_id=session_id, role="assistant", content=result["response"])
     return result
+
+
+def _consigner_le_tour(request: ChatRequest, reponse: Dict[str, Any]) -> None:
+    """Ecrit le tour dans le fil de la session : SA phrase, et la reponse.
+
+    **Sa phrase, pas `prompt`** (26/09/2026). Pour PLAQUISTE, la PWA et la
+    passerelle OpenAI mettent dans `prompt` le fil ENTIER aplati
+    (« Ousmane: … / Usman: … / Ousmane: Medina / Usman: ») et gardent la
+    phrase du jour dans `message_actuel`. Ecrire `prompt` enregistrait donc,
+    a chaque tour, toute la conversation comme un seul message du
+    proprietaire — un fil qui se recopiait dans lui-meme et remplissait la
+    fenetre relue par les tours suivants.
+    """
+    session_id = request.session_id or "default"
+    memory.add_chat_message(session_id=session_id, role="user",
+                            content=request.message_actuel or request.prompt)
+    memory.add_chat_message(session_id=session_id, role="assistant",
+                            content=str(reponse.get("response") or ""))
 
 @router.post("/api/chat", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
 async def chat_endpoint(request: ChatRequest):

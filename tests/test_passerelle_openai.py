@@ -205,7 +205,7 @@ class TestFilDeLaConversation:
 
         vues = []
 
-        async def espion(demande, intent=None):
+        async def espion(demande, intent=None, **_options):
             vues.append(demande.session_id)
             return {"response": "ok", "sources": []}
 
@@ -233,7 +233,7 @@ class TestFilDeLaConversation:
 
         vues = []
 
-        async def espion(demande, intent=None):
+        async def espion(demande, intent=None, **_options):
             vues.append(demande)
             return {"response": "ok", "sources": []}
 

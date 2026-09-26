@@ -119,7 +119,7 @@ def test_un_agent_specialise_est_chronometre_sur_sa_propre_voie(
     fournisseur()
     intention("VIDEO_ANALYSIS")
 
-    async def _repondre(requete, intent=None):
+    async def _repondre(requete, intent=None, **_options):
         return {"response": "ok", "agent": "VideoAnalyzerAgent", "intent": intent}
 
     monkeypatch.setattr(pwa_gateway, "dispatch_request", _repondre)
