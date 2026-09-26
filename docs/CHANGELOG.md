@@ -2,6 +2,15 @@
 
 ## [Non publié]
 
+### Corrigé — 26/09/2026 — La synthèse d'une table ronde ne s'invente plus rien
+
+Ta table ronde sur le budget des cloisons citait un agent qui n'était pas à la
+table et posait un exemple de devis calculé de tête, faux (417 plaques au lieu
+de 241 pour 250 m², pose comptée sur 250 m² au lieu de 500 m² développés). La
+synthèse a désormais l'interdiction de citer un absent ou d'ajouter un chiffre
+que personne n'a donné, et tout ce qui passe malgré tout est signalé sous elle
+— « à vérifier avant tout usage » — sans être corrigé en silence (DEC-0147).
+
 ### Ajouté — 26/09/2026 — Tes agents tiennent des tables rondes et mènent des projets ensemble
 
 « Fais une table ronde de tes agents sur le budget des cloisons » : les agents
