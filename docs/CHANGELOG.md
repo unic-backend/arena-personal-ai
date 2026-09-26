@@ -10,6 +10,13 @@ devis » : chaque demande qui enchaîne plusieurs métiers est découpée, chaqu
 morceau va à son agent, et le résultat de l'un est transmis au suivant.
 Jusqu'ici un seul agent recevait tout et ne faisait que sa part (DEC-0143).
 
+### Corrigé — 26/09/2026 — Deux agents qui se renvoient la balle s'arrêtent tout de suite
+
+Quand un agent déléguait à un autre qui lui re-déléguait, la protection
+anti-boucle ne reconnaissait jamais le retour : elle comparait le nom de
+classe (`CoderAgent`) à la clé du registre (`code`). La boucle tournait
+jusqu'au budget. L'identité d'un agent est maintenant sa clé (DEC-0142).
+
 ### Corrigé — 26/09/2026 — Le suivi d'une vidéo en cours survit enfin à un redémarrage
 
 Au redémarrage, ARENA devait reprendre le suivi des générations vidéo en cours

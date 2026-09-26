@@ -71,6 +71,18 @@ class RegistreCapacites:
     def connait(self, espace: str) -> bool:
         return espace in self._capacites
 
+    def cle_de(self, capacite: Any) -> Optional[str]:
+        """La cle sous laquelle CET objet est enregistre, ou `None`.
+
+        Par identite, jamais par nom : `CoderAgent` est enregistre sous
+        `code`, et une chaine de delegation qui retenait `CoderAgent` ne
+        reconnaissait jamais qu'on lui redemandait `code` (26/09/2026).
+        """
+        for espace, enregistre in self._capacites.items():
+            if enregistre is capacite:
+                return espace
+        return None
+
     def espaces(self) -> List[str]:
         return list(self._capacites)
 

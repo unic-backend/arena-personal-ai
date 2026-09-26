@@ -11142,6 +11142,32 @@ facon d'appeler la fabrique change, ses assertions sont intactes.
 n'ont pas de nom de generateur dans leur descripteur ; ils restent INTERROMPUS
 au lieu d'etre repris — ce qu'ils etaient deja de fait, sans le dire.
 
+## DEC-0142 — Dans une delegation, un agent est identifie par sa cle de registre
+
+**2026-09-26.**
+
+**Decision** : `core/agent/base_agent.py::demander_specialiste` identifie l'agent
+appelant par sa cle dans le registre des collaborateurs
+(`RegistreCapacites.cle_de`, par identite d'objet) — `code`, `plaquiste`,
+`atelier`… — et non plus par son nom de classe (`CoderAgent`). C'est cette cle
+qui entre dans `_delegation_chain` et qui bloque l'auto-delegation.
+
+**Pourquoi** : mesure du 26/09/2026, en verifiant que les agents peuvent
+s'appeler entre eux (demande du proprietaire). La chaine retenait `self.name`
+et `delegation_autorisee` cherchait la CLE demandee dedans : les deux ne se
+rencontrent jamais en production (aucun agent n'a un nom egal a sa cle).
+Reproduit avec deux agents qui se re-deleguent : A -> B -> A -> B -> A, cinq
+appels, arretes seulement par le budget — au lieu de s'arreter au premier
+retour sur A. Le test d'auto-delegation existant passait parce que son agent
+s'appelait exactement comme sa cle (`orchestrator`).
+
+**Sabotage** : sans le correctif, la boucle et l'auto-delegation par la cle
+echouent dans `tests/core/test_specialist_call_resilience.py`.
+
+**Ce que ca coute si c'est faux** : un agent enregistre sous deux cles serait
+identifie par la premiere seulement ; aucun ne l'est aujourd'hui dans
+`apps/backend/runtime.py::_equipe`.
+
 ## DEC-0143 — Une demande qui nomme plusieurs metiers fait travailler plusieurs agents
 
 **2026-09-26.**
