@@ -10994,3 +10994,27 @@ question, le classeur garde la main » passe dans les deux cas.
 `_a_change_de_sujet` le reconnaisse irait a l'agent qui attendait, au plus
 pendant la demi-heure de validite (`DELAI_DE_VALIDITE_SECONDES`) — le meme
 risque que `/api/chat` portait deja, desormais le meme partout.
+
+## DEC-0137 — Les controles qui liberent une question en attente suivent analyze_intent
+
+**2026-09-26.**
+
+**Decision** : `CONTROLES_QUI_PRIMENT` (`apps/backend/routers/chat.py`) reprend
+tous les controles deterministes qu'`analyze_intent` passe avant l'espace, sauf
+`exige_verification` (« aujourd'hui » est aussi une reponse). `demande_executive`
+et `demande_la_date` y entrent. Un test lit la source d'`analyze_intent` et
+compare les deux listes.
+
+**Pourquoi** : mesure du 26/09/2026. Ces deux controles ont rejoint
+`analyze_intent` apres l'ecriture de la liste (DEC-0086 pour l'executif), et
+personne ne les y a recopies — meme mecanisme de derive que DEC-0133. Avec une
+question de devis en attente, « devrions-nous accepter ce contrat ? » partait
+au Plaquiste. Depuis DEC-0136 la question en attente est relue sur le
+telephone aussi, ce qui rendait l'oubli visible la ou le proprietaire parle.
+
+**Sabotage** : retirer les deux noms fait echouer le test de comparaison et
+`test_une_decision_d_affaires_libere_la_question`.
+
+**Ce que ca coute si c'est faux** : une reponse qui contiendrait une phrase
+executive exacte (« accepter ce chantier ») liberait la question au lieu d'y
+repondre ; le proprietaire devrait redonner l'information une fois.
