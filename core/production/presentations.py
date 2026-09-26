@@ -63,6 +63,7 @@ def generer_pptx(plan: Dict[str, Any], sortie: Path) -> Dict[str, Any]:
 
     def couleur(hexstr: str) -> RGBColor:
         return RGBColor.from_string(hexstr)
+
     for numero, spec in enumerate(plan["slides"]):
         slide = prs.slides.add_slide(prs.slide_layouts[6])
         fond = slide.background.fill
