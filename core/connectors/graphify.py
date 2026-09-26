@@ -34,8 +34,8 @@ chemin de lecture de PDF/DOCX/XLSX/PPTX d'ARENA, inchange.
 
 1. **Construire le graphe ecrit sur disque (`graphify-out/`) ; interroger,
    jamais.** `construire` passe donc par le coupe-circuit `WRITE_FILES`,
-   comme toute ecriture de ce depot ; les quatre lectures (interroger,
-   chemin, expliquer, hubs) n'exigent que la cle API.
+   comme toute ecriture de ce depot ; les cinq lectures (interroger,
+   chemin, expliquer, hubs, impact) n'exigent que la cle API.
 2. **Aucun graphe construit n'est jamais promis a jour.** `sonder()` rend
    NON_CONFIGURE tant qu'aucun `graphify-out/graph.json` n'existe encore —
    jamais OPERATIONNEL sur un fichier qui pourrait dater de la veille sans
@@ -340,7 +340,6 @@ class ConnecteurGraphify(Connecteur):
         return succes(action="hubs", cible=self.nom,
                      message=resume or "Aucun noeud dans le graphe.",
                      preuve=str(GRAPH_JSON), hubs=noeuds)
-
 
     def _impact(self, cible: str) -> ResultatAction:
         """Impact structurel mesure via le graphe Graphify existant."""
