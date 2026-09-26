@@ -12,11 +12,14 @@ THEMES = {
 MAX_SLIDES = 40
 MAX_PUCES = 12
 
+
 class PresentationInvalide(ValueError):
     pass
 
+
 def _texte(value: Any, max_chars: int) -> str:
     return str(value or "").strip()[:max_chars]
+
 
 def normaliser_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(plan, dict):
@@ -46,15 +49,18 @@ def normaliser_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
         propres.append({"titre": stitre, "puces": puces})
     return {"titre": titre, "theme": theme, "slides": propres}
 
+
 def generer_pptx(plan: Dict[str, Any], sortie: Path) -> Dict[str, Any]:
     from pptx import Presentation
     from pptx.dml.color import RGBColor
     from pptx.util import Inches, Pt
+
     plan = normaliser_plan(plan)
     palette = THEMES[plan["theme"]]
     prs = Presentation()
     prs.slide_width = Inches(13.333)
     prs.slide_height = Inches(7.5)
+
     def couleur(hexstr: str) -> RGBColor:
         return RGBColor.from_string(hexstr)
     for numero, spec in enumerate(plan["slides"]):
