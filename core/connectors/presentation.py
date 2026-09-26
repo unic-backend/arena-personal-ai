@@ -1,11 +1,13 @@
 """Connecteur de présentations éditables, natif Arena."""
 from __future__ import annotations
+
 import json
 import re
 import time
 import unicodedata
 from pathlib import Path
 from typing import Any, Dict, Optional
+
 from apps.backend.config import RENDERED_DIR
 from core.actions.resultat import ResultatAction, echec, non_configure, succes
 from core.connectors.base import Capacite, Connecteur, EtatSante, Sante, _maintenant
