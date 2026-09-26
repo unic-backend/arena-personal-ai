@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Corrigé — 26/09/2026 — « Fais un montage de mes vidéos » est reconnu même sans modèle
+
+Quand tes modèles ne répondaient pas, « fais un montage de mes vidéos de
+mariage » ou « monte ces clips en une vidéo tiktok » partaient en simple
+conversation. Une demande qui associe un verbe de montage à des vidéos, clips
+ou extraits va maintenant à l'agent de montage (DEC-0149).
+
 ### Corrigé — 26/09/2026 — Table ronde : plus d'avis inventés au premier tour, et une panne dit pourquoi
 
 Au premier tour, un agent devait « répondre aux autres » alors que personne

@@ -409,6 +409,11 @@ class TestAiguillageDuMontage:
         "assemble les clips et ajoute mon logo sur la vidéo",
         "mets un titre sur la vidéo du chantier",
         "prépare-moi un plan de montage",
+        # Mesure du 26/09/2026 : ces deux-la partaient en CHAT sans modele.
+        "fais un montage de mes vidéos de mariage avec de la musique",
+        "monte ces clips en une vidéo tiktok marrante",
+        "compile mes extraits de match en un short",
+        "je veux un montage drôle avec mes vidéos de vacances",
     ])
     def test_une_demande_de_montage_va_au_montage(self, fake_provider, phrase):
         agent = OrchestratorAgent(provider=fake_provider, memory=None)
@@ -418,6 +423,11 @@ class TestAiguillageDuMontage:
         ("génère une vidéo sur la pose de placo", "VIDEO_ANALYSIS"),
         ("où en est ma vidéo ?", "VIDEO_ANALYSIS"),
         ("fais-moi un devis pour le chantier de Ouakam", "PLAQUISTE"),
+        # Un verbe de montage SANS objet video n'est pas un montage video.
+        ("monte la cloison et les rails du plafond", "PLAQUISTE"),
+        ("le montage des rails de la cloison est fini ?", "PLAQUISTE"),
+        ("fais-moi une vidéo drôle d'un chat qui danse", "VIDEO_ANALYSIS"),
+        ("compile ce programme python", "CODE_EXECUTION"),
     ])
     def test_le_montage_ne_capture_pas_les_voisins(self, fake_provider, phrase, attendu):
         """Générer une vidéo, en suivre une, ou chiffrer un chantier : trois
