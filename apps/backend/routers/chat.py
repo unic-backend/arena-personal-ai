@@ -54,6 +54,7 @@ from apps.backend.runtime import (
 )
 from apps.backend.security import limiter_debit, validate_media_path, verify_api_key
 from apps.backend.studio import lancer_studio
+from core.agent import equipe
 from core.architecture.plan import executer as executer_architecture
 from core.context.recherche_unifiee import MOTS_MEMOIRE
 from core.executive import question_en_attente
@@ -750,10 +751,33 @@ async def classer_la_demande(
     attendue = intention_dune_reponse_attendue(historique, message, session_id)
     if attendue is not None:
         return attendue
+    # Une demande qui enchaine plusieurs metiers part vers son PREMIER agent
+    # specialise : c'est `dispatch_request` qui fera travailler l'equipe. Sans
+    # cela, la PWA classait parfois l'ensemble en conversation et n'appelait
+    # jamais `dispatch_request` (DEC-0143).
+    plan = await equipe.planifier(message, _classer_un_morceau)
+    if plan:
+        return plan[0].intention
     texte = message if a_classer is None else a_classer
     if espace:
         return await orchestrator.analyze_intent(texte, espace=espace)
     return await orchestrator.analyze_intent(texte)
+
+
+async def _classer_un_morceau(morceau: str) -> str:
+    """Classe un morceau d'une demande composee, sans espace.
+
+    Sans espace, volontairement : l'espace impose son agent par defaut, et
+    tous les morceaux partiraient alors chez le meme — plus d'equipe du tout.
+    """
+    return await orchestrator.analyze_intent(morceau)
+
+
+async def _aiguiller_une_etape(request: ChatRequest, texte: str, intention: str) -> Dict[str, Any]:
+    """Une etape d'equipe passe par le MEME aiguillage qu'une demande seule."""
+    etape = request.model_copy(update={"prompt": texte, "message_actuel": None})
+    with tache(intention):
+        return await _aiguiller(etape, intention)
 
 
 async def dispatch_request(
@@ -785,8 +809,19 @@ async def dispatch_request(
         intent = await classer_la_demande(
             request.message_actuel or request.prompt, request.history,
             request.session_id or "default", a_classer=request.prompt)
-    with tache(intent):
-        reponse = await _aiguiller(request, intent)
+    session = request.session_id or "default"
+    # Une reponse a une question d'ARENA ne se decoupe jamais : elle revient
+    # entiere a l'agent qui l'a posee.
+    plan = ([] if question_en_attente.en_attente(session) is not None
+            else await equipe.planifier(request.message_actuel or request.prompt,
+                                        _classer_un_morceau))
+    if plan:
+        reponse = await equipe.executer(
+            plan, lambda texte, intention: _aiguiller_une_etape(request, texte, intention))
+        intent = str(reponse.get("intention") or intent)
+    else:
+        with tache(intent):
+            reponse = await _aiguiller(request, intent)
     if consigner_le_tour:
         _consigner_le_tour(request, reponse)
     # Ce tour a-t-il laisse une question sans reponse ? Si oui, le prochain

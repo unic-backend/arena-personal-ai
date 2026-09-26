@@ -11,6 +11,14 @@ téléphone peut consulter tes documents avant de répondre. Seize agents et la
 conversation sont branchés sur un mécanisme commun ; Documents, GraphRAG et
 le raisonnement vérifié deviennent consultables par tous (DEC-0144).
 
+### Ajouté — 26/09/2026 — Les agents travaillent ensemble sur une même demande
+
+« Fais un devis … et envoie-le par mail », « cherche la dernière version de
+FastAPI puis écris-moi un script », « analyse cette photo et fais-moi le
+devis » : chaque demande qui enchaîne plusieurs métiers est découpée, chaque
+morceau va à son agent, et le résultat de l'un est transmis au suivant.
+Jusqu'ici un seul agent recevait tout et ne faisait que sa part (DEC-0143).
+
 ### Corrigé — 26/09/2026 — Deux agents qui se renvoient la balle s'arrêtent tout de suite
 
 Quand un agent déléguait à un autre qui lui re-déléguait, la protection

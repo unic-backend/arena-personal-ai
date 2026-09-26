@@ -194,6 +194,9 @@ RESEAUX = (
     # compte, pas de la destination d'un fichier.
     "mon tiktok", "sur tiktok", "mon compte tiktok", "mon instagram",
     "mon compte instagram", "mes abonnes", "mes abonnés",
+    # Publier ce qu'on vient de produire (26/09/2026) : « publie-la sur mes
+    # reseaux » restait en conversation.
+    "sur mes réseaux", "sur mes reseaux", "publie-la", "publie-le", "publie-les",
 )
 
 #: Ce qui parle de SON AGENDA, sans ambiguite possible. Teste avant tout le
@@ -267,6 +270,14 @@ COURRIER = (
     # « gmail » pour parler d'autre chose que de sa boite.
     "gmail", "ma messagerie", "dans ma messagerie", "mes courriels",
     "boite mail", "boîte mail", "boite de réception", "boîte de reception",
+    # ENVOYER un mail (26/09/2026). L'agent courrier sait envoyer (derriere
+    # confirmation), mais aucun mot ne l'y menait : « envoie-le par mail a
+    # khady@… » restait en conversation. « ecris un mail au client » n'est
+    # PAS ici : rediger pour un client reste le metier.
+    "envoie un mail", "envoie un e-mail", "envoie un email", "envoyer un mail",
+    "envoie-le par mail", "envoie-la par mail", "envoie-les par mail",
+    "envoie le par mail", "envoie la par mail", "envoie les par mail",
+    "par mail à", "par mail a ", "par e-mail à", "par email à",
 )
 
 #: Fabriquer une video sur un sujet. Teste AVANT le metier, pour la meme raison
@@ -276,7 +287,7 @@ FABRIQUER_VIDEO = (
     "fais-moi une vidéo", "fais moi une video", "fais-moi une video",
     "fais moi une vidéo", "génère une vidéo", "genere une video",
     "crée une vidéo", "cree une video", "fabrique une vidéo",
-    "fabrique une video",
+    "fabrique une video", "fais une vidéo", "fais une video", "fais un short",
     # « monte une vidéo » n'est PLUS ici : MONTAGE, teste avant, l'a toujours
     # capte — l'entree etait morte (mesure du 26/09/2026,
     # `test_chaque_mot_cle_mene_a_sa_famille`).
@@ -622,7 +633,8 @@ VIDEO_ANALYSIS  : analyser, découper ou reformater un fichier vidéo ; fabrique
 VIDEO_PROJET    : un projet vidéo complet qui doit faire collaborer PLUSIEURS
                   capacités (analyse d'images, génération, narration, montage)
                   sur un même résultat — pas une seule d'entre elles prise seule.
-EMAIL           : lire, trier ou répondre à son courrier.
+EMAIL           : lire, trier ou répondre à son courrier, ou ENVOYER un mail
+                  (« envoie-le par mail à … »).
 SOCIAL          : écrire, relire ou préparer une publication pour ses réseaux.
 PLAQUISTE       : metier du proprietaire — devis, facture, mail client,
                   argumentaire, planning de chantier, BA13, cloison, plafond,
