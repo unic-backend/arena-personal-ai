@@ -39,7 +39,15 @@ class BaseAgent(ABC):
         if self.collaborateurs is None:
             return {"status": "error", "agent": self.name,
                     "response": "Aucun registre de collaborateurs branche."}
-        if specialiste == self.name:
+        # L'identite d'un agent dans une delegation est SA CLE dans le
+        # registre (`code`, `plaquiste`...), pas son nom de classe
+        # (`CoderAgent`). Jusqu'au 26/09/2026 la chaine retenait `self.name`
+        # et comparait avec la cle demandee : les deux ne se rencontraient
+        # jamais, et A -> B -> A -> B -> A tournait jusqu'au budget au lieu
+        # de s'arreter au premier retour sur A.
+        cle_de = getattr(self.collaborateurs, "cle_de", None)
+        moi = (cle_de(self) if callable(cle_de) else None) or self.name
+        if specialiste in (self.name, moi):
             return {"status": "error", "agent": self.name,
                     "response": "Delegation arretee: un agent ne peut pas se deleguer a lui-meme."}
         if not self.collaborateurs.connait(specialiste):
@@ -54,7 +62,7 @@ class BaseAgent(ABC):
             return {"status": "error", "agent": self.name,
                     "response": "Delegation arretee: boucle ou budget atteint."}
         ctx["_requete_racine"] = str(ctx.get("_requete_racine") or requete)
-        ctx["_delegation_chain"] = chaine + [self.name]
+        ctx["_delegation_chain"] = chaine + [moi]
         ctx["origine_agent"] = self.name
         try:
             return await asyncio.wait_for(
