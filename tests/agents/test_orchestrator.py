@@ -3,6 +3,8 @@
 L'aiguillage passe désormais par le modèle rapide. Le fournisseur est scripté :
 on choisit ce que « le modèle » répond, y compris quand il répond n'importe quoi.
 """
+import re
+
 import pytest
 
 from agents.orchestrator.orchestrator_agent import INTENTIONS, OrchestratorAgent
@@ -211,6 +213,28 @@ async def test_le_prompt_de_classification_decrit_fresh_info(provider_factory):
     prompt = provider.appels[0]["prompt"]
     assert "FRESH_INFO" in prompt
     assert "dernière version" in prompt
+
+
+@pytest.mark.parametrize("etiquette", sorted(INTENTIONS))
+async def test_chaque_intention_est_proposee_au_modele(provider_factory, etiquette):
+    """Une etiquette absente du prompt est une etiquette que le modele ne choisit jamais.
+
+    Mesure du 26/09/2026 : sept des vingt-huit intentions (MONTAGE, AUDIO,
+    VISAGE, DESIGN_UI, PREUVE_FORMELLE, ARCHITECTURE_3D, EXECUTIVE) etaient
+    acceptees par l'analyseur mais jamais decrites au modele. Tant que le
+    modele repondait, leurs agents n'etaient joignables que par l'espace de la
+    PWA ou par le repli — c'est-a-dire quand le modele etait en panne.
+    Le test `reprise telle quelle` ne pouvait pas le voir : il fait dire
+    l'etiquette au faux modele au lieu de regarder ce qu'on lui montre.
+    """
+    provider = provider_factory("CHAT")
+    agent = OrchestratorAgent(provider=provider, memory=None)
+
+    await agent.analyze_intent("peu importe")
+
+    prompt = provider.appels[0]["prompt"]
+    # Une ligne de description, pas une simple mention dans un exemple.
+    assert re.search(rf"^{etiquette}\s*:", prompt, re.MULTILINE), etiquette
 
 
 async def test_la_demande_de_l_utilisateur_est_bien_celle_qui_est_classee(provider_factory):

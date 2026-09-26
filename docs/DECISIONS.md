@@ -10885,3 +10885,35 @@ route echoue proprement a la generation, comme WanGP/MoneyPrinter/HiDream
 dans la meme situation. Rien de nouveau n'est donc irreversible : retirer
 `"agnes"` de `CAPACITES_VIDEO` desactiverait la composition aussi simplement
 qu'elle a ete activee.
+
+## DEC-0133 — Le classeur par modele connait les vingt-huit intentions, pas vingt et une
+
+**2026-09-26.**
+
+**Decision** : `PROMPT_CLASSIFICATION` (`agents/orchestrator/orchestrator_agent.py`)
+decrit desormais les sept intentions qui lui manquaient — EXECUTIVE, MONTAGE,
+AUDIO, VISAGE, DESIGN_UI, PREUVE_FORMELLE, ARCHITECTURE_3D — chacune avec la
+frontiere qui la separe de sa voisine (MONTAGE/VIDEO_ANALYSIS, VISAGE/VISION,
+DESIGN_UI/UI_GENERATE, PREUVE_FORMELLE/DEEP_REASONING, ARCHITECTURE_3D/PLAQUISTE).
+`tests/agents/test_orchestrator.py::test_chaque_intention_est_proposee_au_modele`
+parcourt `INTENTIONS` et exige une ligne de description par etiquette.
+
+**Pourquoi** : mesure du 26/09/2026. `analyze_intent` n'appelle le repli par
+mots-cles que si le modele est injoignable ou repond hors liste ; quand il
+repond, il choisit parmi ce que le prompt lui montre. Or le prompt n'en montrait
+que 21 sur 28. L'analyseur ACCEPTAIT les sept autres (`candidat in INTENTIONS`),
+et `_aiguiller` les servait toutes — d'ou un trou invisible : leurs agents
+n'etaient joignables en chat libre que depuis l'espace de la PWA, ou quand le
+modele etait en panne. EXECUTIVE y echappait en partie grace a
+`demande_executive`, controle deterministe avant le modele, mais seulement pour
+ses phrases exactes. Le test existant `test_une_etiquette_connue_est_reprise_
+telle_quelle` ne pouvait pas le voir : il fait dire l'etiquette au faux modele
+au lieu de regarder ce qu'on lui presente.
+
+**Sabotage** : retirer les sept lignes fait echouer exactement sept cas du
+nouveau test, un par intention manquante ; les remettre les fait passer.
+
+**Ce que ca coute si c'est faux** : un modele qui confondrait une nouvelle
+etiquette avec sa voisine enverrait la demande a un agent proche mais pas au
+bon — un risque borne par les frontieres ecrites dans chaque description, et
+visible dans les journaux (`Espace`/`repli` y sont deja traces).

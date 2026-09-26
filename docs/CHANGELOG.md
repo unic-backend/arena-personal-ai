@@ -2,6 +2,16 @@
 
 ## [Non publié]
 
+### Corrigé — 26/09/2026 — Sept agents que le classeur par modèle ne pouvait jamais choisir
+
+`PROMPT_CLASSIFICATION` ne décrivait que 21 des 28 intentions d'`INTENTIONS`.
+Tant que le modèle répondait, MONTAGE, AUDIO, VISAGE, DESIGN_UI,
+PREUVE_FORMELLE, ARCHITECTURE_3D et EXECUTIVE n'étaient atteignables qu'en
+cliquant l'espace de la PWA, ou quand le modèle tombait en panne et que le
+repli par mots-clés prenait le relais. Les sept sont maintenant décrites, avec
+leur frontière face à l'intention voisine, et un test paramétré sur
+`INTENTIONS` interdit qu'une intention future soit oubliée du prompt (DEC-0133).
+
 ### Ajouté — 23/09/2026 — Agnes rejoint réellement le chemin de production vidéo
 
 Le propriétaire a demandé de vérifier que le travail ajouté par ailleurs

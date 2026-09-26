@@ -626,6 +626,27 @@ FINANCE         : analyser un actif financier (crypto, action, marché) —
                   reste FRESH_INFO ; ici il s'agit d'évaluer, de chiffrer un
                   risque, ou de recommander (« analyse le bitcoin »,
                   « quel est le risque de cette position »).
+EXECUTIVE       : décision d'affaires — accepter ou non un contrat, un chantier,
+                  une offre ; stratégie d'expansion ou d'acquisition client ;
+                  rapport ou résumé exécutif. On recommande, on n'agit pas.
+MONTAGE         : assembler SES clips ou rushes existants en une vidéo finie —
+                  couper, coller, ordonner sur une timeline, ajouter un logo
+                  ou un titre. Rien à générer : la matière existe déjà.
+AUDIO           : le son d'un fichier ou d'un texte — transcrire ce qui est
+                  dit, lire un texte à voix haute, voix off, narration,
+                  doublage, cloner une voix.
+VISAGE          : analyser des VISAGES sur une image — les détecter, les
+                  compter, en extraire les repères, comparer deux visages
+                  (même personne ?). Une image sans question de visage reste VISION.
+DESIGN_UI       : CONSEIL de design, sans code — design system, palette,
+                  typographie, charte graphique, maquette, règles UX,
+                  améliorer l'interface. Produire le code de l'écran est UI_GENERATE.
+PREUVE_FORMELLE : vérifier ou écrire une preuve FORMELLE (Lean) — « vérifie
+                  cette preuve », « prouve formellement ». Un calcul ou une
+                  démonstration ordinaire reste DEEP_REASONING.
+ARCHITECTURE_3D : dessiner ou modéliser un bâtiment en 3D — maison, murs,
+                  plan 3D, scène 3D. Chiffrer une cloison reste PLAQUISTE ;
+                  la tracer est ARCHITECTURE_3D.
 
 Attention : parler DE code, DE maths ou D'une erreur n'est pas demander d'en produire.
 « Explique-moi le code de la route » est CHAT, pas CODE_EXECUTION.
