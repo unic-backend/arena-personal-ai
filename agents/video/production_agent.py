@@ -41,6 +41,7 @@ from core.models.base import ModelProvider
 from core.production import image_backend_router, personnage_video, plan_drift
 from core.production.etat_projet import EtapeProjet, EtatProjetVideo
 from core.production.journal_projet import EtatJob, Job, JournalProjets
+from core.production.presenter_qualite import EtatPresentateur
 from core.production.plan_video import (
     CAPACITES_VIDEO,
     PlanRefuse,
@@ -221,6 +222,9 @@ class VideoProductionAgent(BaseAgent):
         # de deleguer recherche, documents, code, metier, publication, etc.
         # sans importer ni reconstruire aucun agent concret.
         self.collaborateurs = collaborateurs
+        # Garde-fous presenter : etat vivant du pipeline, expose par l'agent
+        # pour que les appels reels puissent avancer uniquement sur preuves.
+        self.etat_presentateur = EtatPresentateur()
 
     async def run(self, objectif: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         contexte = context or {}
