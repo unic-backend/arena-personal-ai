@@ -80,4 +80,4 @@ def test_synthese_interdit_de_changer_evenement_pour_coller_aux_sources():
     from agents.fresh_info.fresh_info_agent import GABARIT_SYNTHESE
 
     assert "HORS SUJET" in GABARIT_SYNTHESE
-    assert "Ne change jamais silencieusement" in GABARIT_SYNTHESE
+    assert "Ne change jamais le sujet" in GABARIT_SYNTHESE
