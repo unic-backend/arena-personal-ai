@@ -32,6 +32,8 @@ def test_recherche_modeles_hf_est_reelle_et_bornee():
 
 def test_metadata_modele_conserve_parametres_licence_et_gated():
     def handler(request):
+        if request.url.path == "/api/models" and request.url.params.get("limit") == "1":
+            return httpx.Response(200, json=[{"id": "health/model"}])
         if request.url.path == "/api/models/org/model":
             return httpx.Response(200, json={
                 "id": "org/model",
