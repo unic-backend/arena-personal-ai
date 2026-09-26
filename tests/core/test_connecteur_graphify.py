@@ -72,15 +72,15 @@ def _double_subprocess(script: Dict[str, Any]):
 
 
 class TestCapacitesEtSante:
-    def test_cinq_capacites_declarees(self):
+    def test_six_capacites_declarees(self):
         connecteur = ConnecteurGraphify()
         noms = set(connecteur.capacites())
-        assert noms == {"construire", "interroger", "chemin", "expliquer", "hubs"}
+        assert noms == {"construire", "interroger", "chemin", "expliquer", "hubs", "impact"}
 
     def test_seul_construire_ecrit(self):
         capacites = ConnecteurGraphify().capacites()
         assert capacites["construire"].ecriture is True
-        for nom in ("interroger", "chemin", "expliquer", "hubs"):
+        for nom in ("interroger", "chemin", "expliquer", "hubs", "impact"):
             assert capacites[nom].ecriture is False, f"{nom} ne devrait rien ecrire"
 
     def test_authentifier_toujours_vrai(self):
@@ -129,6 +129,7 @@ class TestExecutionSansGraphe:
         ("chemin", {"depuis": "A", "vers": "B"}),
         ("expliquer", {"noeud": "A"}),
         ("hubs", {}),
+        ("impact", {"cible": "A"}),
     ])
     def test_non_configure_sans_graphe(self, graphe_absent, capacite, parametres):
         connecteur = ConnecteurGraphify()
@@ -219,6 +220,25 @@ class TestLecturesAvecGraphe:
 
         assert resultat.statut is Statut.SUCCES
         assert "Degree: 1" in resultat.message
+
+    def test_impact_reutilise_les_connexions_graphify(self, graphe_construit, monkeypatch):
+        recu = {}
+
+        def _explain(arguments):
+            recu["arguments"] = arguments
+            return subprocess.CompletedProcess(
+                args=arguments, returncode=0,
+                stdout="Node: auth.py\n  <- imported_by api.py\n", stderr="")
+
+        monkeypatch.setattr(ConnecteurGraphify, "_lancer", _double_subprocess({
+            "explain": _explain}))
+
+        resultat = ConnecteurGraphify().executer_confirmee("impact", cible="auth.py")
+
+        assert resultat.statut is Statut.SUCCES
+        assert recu["arguments"] == ["explain", "auth.py"]
+        assert "imported_by api.py" in resultat.message
+        assert resultat.detail["analyse"] == "connexions_directes_graphify"
 
     def test_hubs_parse_le_json(self, graphe_construit, monkeypatch):
         monkeypatch.setattr(ConnecteurGraphify, "_lancer", _double_subprocess({
