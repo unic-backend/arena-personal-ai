@@ -11366,3 +11366,40 @@ qui rejoint retrouve ce qui a ete fait. Tout garde les garde-fous de DEC-0145
 lexical ; une demande formulee sans les mots des competences declarees peut
 reunir une table moins pertinente — elle reste bornee et visible dans
 l'espace (`GET /api/agents/espaces/{id}`).
+
+## DEC-0147 — Une synthese d'equipe ne cite que ceux qui ont travaille et ne s'invente aucun chiffre
+
+**2026-09-26.**
+
+**Constat** (table ronde reelle du proprietaire, « budget des cloisons »,
+participants plaquiste et finance, coordonnee par orchestrator) : la synthese
+du lead attribuait une position a `recherche`, absent de la table, et posait
+un exemple chiffre calcule de tete — 417 plaques pour 250 m2 de mur
+(250 / 0,6) quand `agents/plaquiste/calcul_materiaux.py` en donne 241 avec
+les ratios du proprietaire, une pose facturee sur 250 m2 au lieu des 500 m2
+developpes de `config/metier.yaml::regle_surface`, un TTC faux de 6 782 FCFA,
+et une marge degressive et une majoration de 5 % que personne n'avait
+proposees. Cause : la synthese de DEC-0146 etait ecrite librement par le
+modele du lead, sans regle ni controle.
+
+**Decision** :
+
+- La consigne de synthese (table ronde ET projet) nomme les seuls agents
+  citables et interdit tout chiffre, prix, taux, quantite ou calcul que les
+  intervenants n'ont pas donne : il faut dire qu'il manque.
+- `core/agent/verification_synthese.py` relit la synthese et SIGNALE sous
+  elle, sans rien corriger (discipline de `controle_prix.py`) :
+  - les agents du registre ecrits comme des noms (parenthese, gras, liste
+    « a / b ») qui n'ont ni participe ni recu de tache sous la meme racine —
+    un collegue consulte en chemin, lu dans l'espace de travail, n'est pas
+    un absent ;
+  - les montants (>= 100) et pourcentages absents de l'enonce et du debat,
+    quel que soit le separateur de milliers ; les dates sont ignorees.
+- Le resultat est aussi rendu en donnees : `verification` dans
+  `TableRonde.en_dict()` et dans le rendu de `conduire_projet`.
+
+**Ce que ca coute si c'est faux** : un calcul JUSTE fait par la synthese est
+signale « a verifier » — c'est voulu, il n'a pas ete verifie. Un agent cite
+en texte courant (« le plaquiste propose ») n'est pas detecte : le controle
+reste etroit pour ne pas crier sur les mots ordinaires (« code »,
+« publication », « vision »).

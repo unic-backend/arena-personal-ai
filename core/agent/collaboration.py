@@ -22,6 +22,11 @@ paralelisme par vagues, etats ecrits — l'ordonnanceur existant, pas un second.
 Toutes les communications passent par `BaseAgent.transmettre` : memes
 garde-fous (boucle, profondeur, budget, delai) et meme espace de travail
 partage (`core/agent/espace_de_travail.py`).
+
+**Une synthese ne s'invente rien** (DEC-0147) : sa consigne lui interdit de
+citer un agent absent ou d'ajouter un chiffre que personne n'a donne, et
+`core/agent/verification_synthese.py` relit ce qu'elle a ecrit et signale
+sous elle ce qui manque de source — sans rien corriger.
 """
 from __future__ import annotations
 
@@ -35,6 +40,7 @@ from core.agent.base_agent import BaseAgent
 from core.agent.equipe import decouper
 from core.agent.espace_de_travail import ESPACES
 from core.agent.message import MessageAgent, tache_racine
+from core.agent.verification_synthese import agents_ayant_travaille, verifier_synthese
 from core.execution.coordination import Coordination, Etape
 from core.security.trust import TrustLevel, wrap
 
@@ -99,6 +105,7 @@ class TableRonde:
     tours: List[List[Dict[str, str]]] = field(default_factory=list)
     synthese: str = ""
     project_id: str = ""
+    verification: Dict[str, Any] = field(default_factory=dict)
 
     def transcription(self) -> str:
         lignes = []
@@ -111,7 +118,7 @@ class TableRonde:
         return {"probleme": self.probleme, "lead": self.lead,
                 "participants": self.participants, "invites": self.invites,
                 "tours": self.tours, "synthese": self.synthese,
-                "project_id": self.project_id}
+                "project_id": self.project_id, "verification": self.verification}
 
 
 def _consigne_de_table(probleme: str, tour: int) -> str:
@@ -169,10 +176,15 @@ async def tenir_table_ronde(registre: Any, probleme: str, lead: Optional[BaseAge
             fil["interventions"].extend({"tour": numero, **i} for i in interventions)
         fil["participants"] = list(table.participants)
 
-        table.synthese = await _synthetiser(
-            lead, f"Probleme : {probleme}\n\nDebat de la table ronde :\n{table.transcription()}",
+        debat = f"Probleme : {probleme}\n\nDebat de la table ronde :\n{table.transcription()}"
+        synthese = await _synthetiser(
+            lead, debat,
             "Fusionne les analyses en UNE solution commune : ce qui fait consensus, "
-            "ce qui reste en desaccord et pourquoi, la proposition retenue.")
+            "ce qui reste en desaccord et pourquoi, la proposition retenue."
+            + _REGLES_DE_SYNTHESE.format(presents=", ".join([cle_lead, *table.participants])))
+        table.synthese, table.verification = _verifier(
+            synthese, [debat], registre, espace, racine.root_task_id,
+            {cle_lead, *table.participants})
         espace.decider(cle_lead, table.synthese)
         ESPACES.sauver(racine.project_id)
     return table
@@ -191,6 +203,28 @@ def _inviter(registre: Any, table: TableRonde, cle_lead: str, competence: str,
     table.participants.append(candidats[0].id)
     table.invites.append({"agent": candidats[0].id, "competence": competence.strip(),
                           "raison": raison.strip(), "par": par})
+
+
+#: Ce que toute synthese d'equipe s'interdit (DEC-0147). Mesure : sans ces
+#: regles, une synthese reelle attribuait une position a un agent absent et
+#: posait un exemple chiffre calcule de tete, faux.
+_REGLES_DE_SYNTHESE = (
+    "\n\nRegles strictes : ne cite que ces agents : {presents}. N'ajoute aucun "
+    "chiffre, prix, taux, quantite ou calcul que les intervenants n'ont pas donne ; "
+    "s'il manque un chiffre pour conclure, dis qu'il manque au lieu de l'estimer.")
+
+
+def _verifier(synthese: str, sources: List[str], registre: Any, espace: Any,
+              root_task_id: str, presents: set) -> tuple:
+    """(synthese suivie de ses signalements, verification en dict)."""
+    verification = verifier_synthese(
+        synthese, sources, registre,
+        presents | agents_ayant_travaille(espace, root_task_id))
+    avertissement = verification.avertissement()
+    if avertissement:
+        logger.warning("Synthese signalee : %s", verification.en_dict())
+    return (f"{synthese}\n\n{avertissement}" if avertissement else synthese,
+            verification.en_dict())
 
 
 async def _synthetiser(lead: BaseAgent, matiere: str, consigne: str) -> str:
@@ -310,16 +344,21 @@ async def conduire_projet(registre: Any, projet: str, lead: Optional[BaseAgent] 
 
         faites = "\n\n".join(f"{i + 1}. {t.objectif} ({t.agent or 'aucun agent'}, {t.etat}) :\n{t.resultat}"
                              for i, t in enumerate(sous_taches))
+        matiere = f"Projet : {projet}\n\nSous-taches :\n{faites}"
+        presents = {cle_lead, *(t.agent for t in sous_taches if t.agent)}
         synthese = await _synthetiser(
-            lead, f"Projet : {projet}\n\nSous-taches :\n{faites}",
+            lead, matiere,
             "Assemble ces resultats en un livrable unique. Dis clairement ce qui "
-            "n'a pas pu etre fait.")
+            "n'a pas pu etre fait."
+            + _REGLES_DE_SYNTHESE.format(presents=", ".join(sorted(presents))))
+        synthese, verification = _verifier(
+            synthese, [matiere], registre, espace, racine.root_task_id, presents)
         espace.decider(cle_lead, synthese)
         ESPACES.sauver(racine.project_id)
 
     return {
         "projet": projet, "lead": cle_lead, "project_id": racine.project_id,
         "sous_taches": [t.__dict__ for t in sous_taches],
-        "trace": execution.to_dict(), "synthese": synthese,
+        "trace": execution.to_dict(), "synthese": synthese, "verification": verification,
         "agents": sorted({t.agent for t in sous_taches if t.agent}),
     }

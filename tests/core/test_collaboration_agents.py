@@ -260,3 +260,129 @@ def test_le_telephone_lance_une_table_ronde(monkeypatch):
                     if ligne.startswith("data:") and '"token"' in ligne)
     assert "Table ronde" in texte
     assert agents["budget"].recus or agents["cloisons"].recus
+
+
+# --- Une synthese ne s'invente rien (DEC-0147) ----------------------------------
+
+from core.agent.verification_synthese import verifier_synthese  # noqa: E402
+
+#: Extraits VERBATIM de la synthese recue par le proprietaire le 26/09/2026
+#: (table ronde « budget des cloisons », participants plaquiste et finance).
+_SYNTHESE_REELLE = """
+| **« Les packs tout-compris sont toujours moins chers »** (recherche) | Valable uniquement avec des materiaux premium. |
+| ≤ 100 m² | **5 000** | Cout de base. |
+| 100 m² < ≤ 400 m² | **4 500** | Gain de 10 % grace a la mutualisation. |
+| > 400 m² | **4 000** | Economies d'echelle. |
+- **+ 5 %** sur le total du cout matiere.
+2. **Marge** = % selon la surface (15 % / 12 % / 10 %).
+3. **Prix TTC** = (Cout HT + Marge) x **1,18** (TVA 18 %).
+> - Quantite plaques = 250 ÷ 0,6 ≈ 417 plaques → 417 x 4 500 = 1 876 500 FCFA.
+> - Majoration 5 % → 1 970 325 FCFA.
+> - TTC = (3 095 325 + 371 439) x 1,18 ≈ **4 084 000 FCFA**.
+| Mise a jour du **prix des matieres premieres** | **Recherche / Tendances** | Mensuelle |
+| Audit de l'**outil de devis** | **Orchestrator / Atelier** | Semestrielle |
+| Retour terrain | **Plaquiste** (chef de chantier) | Apres chaque chantier |
+"""
+
+_DEBAT_REEL = (
+    "Probleme : fais une table ronde sur le budget des cloisons de 250 m2\n"
+    "[Tour 1] plaquiste : BA13 standard a 4 500 FCFA, forfait pose 5 000 FCFA/m2.\n"
+    "[Tour 1] finance : une marge de 15 % et la TVA a 18 %.")
+
+
+def _ecosysteme_reel():
+    """Les agents de la table reelle et ceux que la synthese a cites a tort."""
+    agents = {}
+    for cle, nom in [("orchestrator", "OrchestratorAgent"), ("plaquiste", "PlaquisteAgent"),
+                     ("finance", "FinanceAgent"), ("recherche", "ResearcherAgent"),
+                     ("tendances", "TrendAnalyzerAgent"), ("atelier", "AtelierAgent")]:
+        agent = _Specialiste(nom, f"agent {cle}")
+        agent.identifiant = cle
+        agents[cle] = agent
+    return agents, _equipe(*agents.values())
+
+
+def test_la_synthese_reelle_du_proprietaire_est_signalee():
+    _agents, registre = _ecosysteme_reel()
+
+    verification = verifier_synthese(_SYNTHESE_REELLE, [_DEBAT_REEL], registre,
+                                     presents={"orchestrator", "plaquiste", "finance"})
+
+    assert verification.agents_absents == ["recherche", "tendances", "atelier"]
+    signales = set(verification.chiffres_non_verifies)
+    # Le calcul de tete et ce que personne n'avait propose.
+    assert {"417", "1 876 500", "1 970 325", "4 084 000", "4 000", "100", "400"} <= signales
+    assert {"5 %", "12 %", "10 %"} <= signales
+    # Ce que les participants ont bien dit n'est jamais signale.
+    assert not signales & {"4 500", "5 000", "15 %", "18 %", "250"}
+
+
+def test_une_synthese_fidele_ne_declenche_rien():
+    _agents, registre = _ecosysteme_reel()
+    fidele = ("**Plaquiste** et **Finance** s'accordent : BA13 a 4500 FCFA, pose a "
+              "5 000 FCFA/m2, marge de 15 %, TVA 18 %. **BA13 standard** retenu "
+              "le 26/09/2026. Il manque le prix du transport pour conclure.")
+
+    verification = verifier_synthese(fidele, [_DEBAT_REEL], registre,
+                                     presents={"orchestrator", "plaquiste", "finance"})
+
+    assert verification.propre, verification.en_dict()
+    assert verification.avertissement() == ""
+
+
+async def test_la_table_ronde_signale_sous_la_synthese_sans_la_corriger():
+    agents, registre = _ecosysteme_reel()
+    agents["plaquiste"].competences = ("cloison", "budget")
+    agents["finance"].competences = ("budget", "marge")
+    lead = agents["orchestrator"]
+    lead.provider = _Modele(_SYNTHESE_REELLE)
+
+    table = await tenir_table_ronde(registre, "budget des cloisons", lead=lead, tours=1)
+
+    assert set(table.participants) == {"plaquiste", "finance"}
+    assert table.synthese.startswith(_SYNTHESE_REELLE.strip()[:40]), "rien n'est reecrit"
+    assert "Verification automatique" in table.synthese
+    assert table.verification["agents_absents"] == ["recherche", "tendances", "atelier"]
+    assert "417" in table.verification["chiffres_non_verifies"]
+    assert table.en_dict()["verification"] == table.verification
+    consigne = lead.provider.prompts[-1]
+    assert "ne cite que ces agents : orchestrator" in consigne
+    assert "dis qu'il manque au lieu de l'estimer" in consigne
+
+
+async def test_un_agent_consulte_en_chemin_n_est_pas_un_absent():
+    """Un participant qui consulte un collegue le fait travailler : la
+    synthese peut le citer. L'espace de travail en garde la trace."""
+    agents, registre = _ecosysteme_reel()
+
+    class _Consultant(_Specialiste):
+        async def run(self, user_input, context=None):
+            avis = await self.demander_specialiste("recherche", "prix du BA13 ?")
+            return {"status": "success", "response": f"cloisons ; recherche dit {avis['response']}"}
+
+    consultant = _Consultant("CloisonAgent", "cloisons", competences=("cloison",))
+    registre.enregistrer_agent(consultant)
+    lead = agents["orchestrator"]
+    lead.provider = _Modele("Accord general (cloison) ; prix a confirmer (recherche) "
+                            "et (tendances).")
+
+    table = await tenir_table_ronde(registre, "cloison", lead=lead, tours=1)
+
+    assert table.participants == ["cloison"]
+    assert table.verification["agents_absents"] == ["tendances"]
+
+
+async def test_le_livrable_d_un_projet_est_verifie_aussi():
+    agents = _projet()
+    plan = json.dumps([
+        {"objectif": "verifier la structure beton", "competence": "structure beton", "depend_de": []},
+        {"objectif": "etablir le budget", "competence": "budget chiffrage", "depend_de": [0]},
+    ])
+    lead = _Specialiste("ChefAgent", "coordonne les projets", competences=("coordination",),
+                        modele=_Modele(plan, "Livrable : budget total 12 500 000 FCFA."))
+    registre = _equipe(lead, *agents.values())
+
+    rendu = await conduire_projet(registre, "renover le garage", lead=lead)
+
+    assert rendu["verification"]["chiffres_non_verifies"] == ["12 500 000"]
+    assert "a verifier avant tout usage : 12 500 000" in rendu["synthese"]
