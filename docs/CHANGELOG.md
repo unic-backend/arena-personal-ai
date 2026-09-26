@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Corrigé — 26/09/2026 — « Doublage » redevient un mur quand le modèle est en panne
+
+Le repli par mots-clés envoyait « fais-moi un devis pour un doublage de 20 m2 »
+à la synthèse vocale, « fais la transcription de cette vidéo » à l'exécution de
+code (« transcription » contient « script ») et « maquette 3d » au conseil
+d'interface. Un test vérifie désormais que chaque mot-clé de chaque famille
+mène à son propre agent (DEC-0138).
+
 ### Corrigé — 26/09/2026 — Une décision d'affaires n'est plus avalée par un devis en attente
 
 Avec une question de devis en attente, « devrions-nous accepter ce contrat ? »
