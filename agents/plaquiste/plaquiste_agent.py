@@ -1083,6 +1083,11 @@ def _rendre_premiere_page(chemin: str) -> Optional[str]:
 class PlaquisteAgent(BaseAgent):
     """Devis, mails, argumentaire client et planification pour UniC Plaquiste."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "plaquiste"
+    competences = ('devis', 'facture', 'chantier', 'plaquiste', 'ba13', 'cloison', 'faux plafond', 'planning')
+
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
                  metier: Optional[Dict[str, Any]] = None,
                  registre: Optional[RegistreConnecteurs] = None,

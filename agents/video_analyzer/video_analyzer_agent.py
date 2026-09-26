@@ -137,6 +137,11 @@ def sujet_de(texte: str) -> Optional[str]:
 class VideoAnalyzerAgent(BaseAgent):
     """Agent charge de transcrire, d'analyser, et de suivre ce qui se genere."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "video_analyse"
+    competences = ('analyse video', 'generation video', 'suivi de generation', 'decoupe video', 'prompt de scene')
+
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
                  registre: Optional[RegistreConnecteurs] = None,
                  travaux: Optional[FileDeTravaux] = None,

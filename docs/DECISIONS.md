@@ -11257,3 +11257,61 @@ nommant le bloc des collegues.
 **Ce que ca coute si c'est faux** : un modele local qui ecrirait la ligne de
 demande sans raison ferait un appel de collegue de trop (borne a deux) ; la
 liste des collegues allonge chaque invite de ~30 lignes.
+
+## DEC-0145 — L'ecosysteme d'agents se decouvre lui-meme ; aucune liste d'agents n'est tenue a la main
+
+**2026-09-26.**
+
+**Decision** : le registre des collaborateurs (`core/agent/capacites.py::
+RegistreCapacites`, deja existant — aucun second registre) est rempli par
+DECOUVERTE (`core/agent/decouverte.py`) : la derniere instruction de
+`apps/backend/runtime.py` parcourt l'espace de noms de composition et inscrit
+tout `BaseAgent` et tout outil qui declare un `identifiant` et un `run`
+asynchrone. La liste ecrite a la main (`_equipe`) et les inscriptions une a
+une des outils disparaissent.
+
+- **Chaque agent se decrit lui-meme** : `identifiant` (sinon deduit de son nom
+  d'instance, puis de sa classe), `competences`, `version`. Les 25 agents
+  existants declarent l'identifiant qu'ils portaient deja (`code`,
+  `plaquiste`, `atelier`...) : les plans et les modeles qui les nomment ne
+  changent pas.
+- **Fiche d'agent** (`FicheAgent`) : id, nom, description, capacites,
+  competences, outils (attributs venant de `tools.*`/`core.connectors`...),
+  statut, disponibilite, memoire, permissions, interface, version,
+  metadonnees — lue sur l'agent, jamais supposee.
+- **Recherche par competence** (`RegistreCapacites.rechercher`,
+  `decouverte.classer`) : deterministe, sans modele, ponderee par la rarete des
+  mots parmi les agents presents.
+- **Message standard** (`core/agent/message.py::MessageAgent`) : sender,
+  recipient, task_id, parent_task_id, root_task_id, depth, project_id,
+  objective, context, requirements, expected_output, priority, metadata.
+- **Arbre de taches** porte par le contexte asyncio (`TACHE_EN_COURS`) :
+  detection de cycle (A -> B -> A), profondeur maximale configurable
+  (`ARENA_COLLAB_PROFONDEUR_MAX`, 4 par defaut), budget de sous-taches par
+  demande racine (`ARENA_COLLAB_TACHES_MAX`, 16), delai par appel. Chaque
+  demande de l'utilisateur ouvre UNE tache racine dans `dispatch_request`.
+- **BaseAgent** : `transmettre(message)`, `demander_specialiste`,
+  `trouver_competents`, `demander_competence(besoin, requete)`,
+  `deleguer_en_parallele([...])` ; le modele d'un agent peut ecrire
+  `[[COMPETENCE:<besoin>|<question>]]` quand il ignore QUI sait.
+- Un agent ajoute plus tard : construit dans le runtime -> decouvert ; cree
+  en cours de route -> `RegistreCapacites.enregistrer_agent(agent)`.
+
+**Pourquoi** : demande du proprietaire le 26/09/2026 — un vrai systeme
+multi-agents qui ne depende d'aucune liste d'agents, fonctionne avec 5, 20
+ou 100 agents et accueille un nouvel agent sans modification. Mesure : 25
+agents construits par le runtime, 25 classes ; registre rempli a la main ;
+aucune recherche par competence ; une demande « simple » ne pouvait deleguer
+qu'a un niveau.
+
+**Tests modifies** : `tests/core/test_video_specialist_guardrails.py::
+test_video_specialiste_herite_du_budget_anti_boucle` figeait la delegation a
+un seul niveau pour une demande simple ; il verifie desormais le meme
+garde-fou a la profondeur maximale configuree. La methode de communication
+s'appelle `transmettre`, pas `envoyer` : `tests/agents/test_executive_agent.py`
+interdit a l'agent executive toute methode d'action nommee `envoyer`.
+
+**Ce que ca coute si c'est faux** : un objet du runtime qui declarerait un
+`identifiant` et un `run` sans etre un agent deviendrait consultable ; deux
+agents declarant le meme identifiant sont departages par un suffixe, avec un
+avertissement au journal.

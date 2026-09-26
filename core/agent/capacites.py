@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Callable, Dict, List, Optional, Protocol
+from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol
 
 logger = logging.getLogger("usman.agent.capacites")
 
@@ -90,6 +90,74 @@ class RegistreCapacites:
     def espaces(self) -> List[str]:
         return list(self._capacites)
 
+    # --- L'ecosysteme d'agents (DEC-0145) -----------------------------------
+
+    def enregistrer_agent(self, agent: Any) -> str:
+        """Inscrit un agent sous l'identifiant qu'il declare, et le branche.
+
+        C'est la seule porte pour un agent ajoute plus tard : construit, puis
+        inscrit ici — par la decouverte au demarrage (`peupler`) ou par un
+        appel direct pour un agent cree en cours de route. Un `BaseAgent`
+        inscrit recoit ce registre comme collaborateurs : il peut consulter
+        tous les autres, et tous peuvent le consulter.
+        """
+        from core.agent.base_agent import BaseAgent
+        from core.agent.decouverte import identifiant_de
+
+        cle = identifiant_de(agent)
+        deja = self._capacites.get(cle)
+        if deja is not None and deja is not agent:
+            # Deux agents ne partagent jamais un identifiant en silence.
+            nouvelle = f"{cle}_{type(agent).__name__.lower()}"
+            logger.warning("Identifiant %r deja pris par %s : %s inscrit sous %r.",
+                           cle, type(deja).__name__, type(agent).__name__, nouvelle)
+            cle = nouvelle
+        self._capacites[cle] = agent
+        if isinstance(agent, BaseAgent):
+            agent.collaborateurs = self
+        return cle
+
+    def peupler(self, espace_de_noms: Dict[str, Any]) -> List[str]:
+        """Inscrit TOUS les agents trouves dans `espace_de_noms` (DEC-0145).
+
+        Aucune liste : un agent construit dans le module de composition est
+        trouve, qu'il existe aujourd'hui ou qu'il soit ajoute demain.
+        """
+        from core.agent.decouverte import decouvrir
+
+        return [self.enregistrer_agent(agent) for agent in decouvrir(espace_de_noms)]
+
+    def retirer(self, espace: str) -> None:
+        """Retire un agent (il quitte l'ecosysteme). Absent : rien a faire."""
+        self._capacites.pop(espace, None)
+
+    def fiche(self, espace: str):
+        """La fiche de l'agent `espace`, lue sur l'agent lui-meme."""
+        from core.agent.decouverte import fiche_de
+
+        capacite = self._capacites.get(espace)
+        if capacite is None:
+            raise CapaciteInconnue(espace, self.espaces())
+        fiche = fiche_de(capacite)
+        fiche.id = espace
+        return fiche
+
+    def fiches(self) -> List[Any]:
+        return [self.fiche(espace) for espace in self.espaces()]
+
+    def rechercher(self, besoin: str, nombre: int = 3,
+                   exclure: Iterable[str] = ()) -> List[Any]:
+        """Les agents les plus competents pour `besoin`, meilleur d'abord.
+
+        Deterministe, sans modele (`core/agent/decouverte.py::classer`) : la
+        recherche marche meme quand aucun modele ne repond.
+        """
+        from core.agent.decouverte import classer
+
+        exclus = set(exclure)
+        candidats = [f for f in self.fiches() if f.id not in exclus]
+        return [fiche for fiche, _score in classer(besoin, candidats)[:max(0, nombre)]]
+
     async def demander(
         self, espace: str, requete: str, contexte: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
@@ -112,6 +180,7 @@ def adaptateur_synchrone(
     nom_agent: str,
     est_un_echec: Optional[Callable[[str], bool]] = None,
     description: str = "",
+    identifiant: str = "",
 ) -> Capacite:
     """Enveloppe un outil synchrone (`fn(texte) -> str`) dans le contrat `run`.
 
@@ -137,4 +206,9 @@ def adaptateur_synchrone(
     # Lue par `BaseAgent._liste_des_collegues` : un collegue sans description
     # est un nom que le modele ne sait pas quand appeler.
     adaptateur.description = description
+    # Un outil qui declare un identifiant accepte d'etre consulte par tous :
+    # la decouverte le trouve (`core/agent/decouverte.py::est_un_agent`).
+    if identifiant:
+        adaptateur.identifiant = identifiant
+        adaptateur.name = nom_agent
     return adaptateur

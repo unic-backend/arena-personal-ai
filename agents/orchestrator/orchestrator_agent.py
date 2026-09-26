@@ -698,6 +698,11 @@ Demande : {demande}
 class OrchestratorAgent(BaseAgent):
     """Agent principal de décision et de routage universel."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "orchestrator"
+    competences = ('conversation generale', 'routage des demandes', 'question generale', 'explication', 'avis')
+
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None):
         super().__init__(
             name="OrchestratorAgent",

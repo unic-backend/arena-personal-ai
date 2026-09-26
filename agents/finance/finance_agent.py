@@ -133,6 +133,11 @@ class FinanceAgent(BaseAgent):
     marche, calcul quantitatif et moteur de risque, puis fait interpreter le
     resultat par le modele — jamais l'inverse."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "finance"
+    competences = ('analyse financiere', 'marche', 'crypto', 'action', 'risque', 'portefeuille')
+
     def __init__(
         self,
         provider: ModelProvider,

@@ -177,6 +177,11 @@ class VideoProductionAgent(BaseAgent):
     (`NOT_CONFIGURED`, jamais simulee).
     """
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "video_production"
+    competences = ('projet video complet', 'production video', 'orchestration video')
+
     def __init__(
         self,
         provider: ModelProvider,

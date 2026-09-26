@@ -2,6 +2,15 @@
 
 ## [Non publié]
 
+### Ajouté — 26/09/2026 — Les agents se découvrent eux-mêmes et se cherchent par compétence
+
+Plus aucune liste d'agents écrite à la main : chaque agent construit par le
+runtime est découvert et inscrit automatiquement, avec sa fiche (compétences,
+outils, mémoire, permissions). Un agent peut chercher « qui sait faire X »
+sans connaître son nom, déléguer en chaîne sur plusieurs niveaux, ou faire
+travailler plusieurs collègues en parallèle — sous des garde-fous communs :
+boucles détectées, profondeur et budget configurables (DEC-0145).
+
 ### Ajouté — 26/09/2026 — Chaque agent peut demander l'aide d'un collègue
 
 Usman Coder peut demander la dernière version d'une bibliothèque à l'agent

@@ -13,6 +13,11 @@ logger = logging.getLogger("usman.agent.editor")
 class EditorAgent(BaseAgent):
     """Agent monteur vidéo chargé du recadrage vertical et du découpage."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "edition"
+    competences = ('reformatage video', 'format vertical 9:16', 'recadrage video')
+
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None):
         super().__init__(
             name="EditorAgent",

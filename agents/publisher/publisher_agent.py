@@ -41,6 +41,11 @@ GABARIT_BROUILLON = (
 class PublisherAgent(BaseAgent):
     """Prepare la publication d'une video et rend l'etat reel de l'envoi."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "publication"
+    competences = ('publication', 'mise en ligne', 'plateformes sociales')
+
     def __init__(
         self,
         provider: ModelProvider,

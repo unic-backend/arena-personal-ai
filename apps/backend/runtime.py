@@ -896,21 +896,6 @@ capacites.enregistrer("documents", adaptateur_synchrone(
 # est distinct de `capacites` (les espaces PWA) : l'interface garde ses
 # espaces stables, tandis que les agents peuvent se deleguer des sous-taches.
 collaborateurs = RegistreCapacites()
-_equipe = {
-    "orchestrator": orchestrator, "tendances": trend_agent, "video_analyse": video_agent,
-    "vision": vision_agent, "audio": audio_agent, "montage": montage_agent,
-    "edition": editor_agent, "sous_titres": subtitle_agent, "code": coder_agent,
-    "recherche": researcher_agent, "clips": clip_selector, "publication": publisher_agent,
-    "navigateur": browser_agent, "formel": formel_agent, "actualite": fresh_agent,
-    "finance": finance_agent, "executive": executive_agent, "repo": repo_engineer,
-    "swe": swe_agent, "atelier": dioumtoukay_agent, "email": email_agent,
-    "social": social_agent, "plaquiste": plaquiste_agent,
-    "video_production": video_production_agent, "ui": ui_agent,
-}
-for _nom_collaborateur in _equipe:
-    collaborateurs.enregistrer(_nom_collaborateur, _equipe[_nom_collaborateur])
-for _nom_collaborateur in _equipe:
-    _equipe[_nom_collaborateur].collaborateurs = collaborateurs
 
 
 class _RaisonnementCollegue:
@@ -920,6 +905,8 @@ class _RaisonnementCollegue:
     importe ICI a l'appel : il importe lui-meme ce module.
     """
 
+    identifiant = "raisonnement"
+    name = "ReasoningEngine"
     description = ("resout un probleme mathematique, un calcul ou une "
                    "demonstration, avec calcul verifie")
 
@@ -929,20 +916,21 @@ class _RaisonnementCollegue:
         return await resoudre_profondement(user_input, moteur=reasoning_engine)
 
 
-# Ce que les agents ne pouvaient pas consulter, alors que le chat y accede
-# (mesure du 26/09/2026) : les documents du proprietaire, les liens entre
-# eux, le raisonnement verifie. Ce sont des outils, pas des agents : ils ne
-# consultent personne a leur tour, ils repondent.
-collaborateurs.enregistrer("documents", adaptateur_synchrone(
+# Des outils, pas des agents : ils ne consultent personne a leur tour, ils
+# repondent. Ils DECLARENT leur identifiant, et c'est ce qui les rend
+# consultables — la decouverte ci-dessous les trouve comme les agents.
+collegue_documents = adaptateur_synchrone(
     lambda texte: lightrag_tool.query(texte, mode="hybrid"), "LightRAG",
     est_un_echec=lightrag_echec,
     description="repond a partir des documents du proprietaire (devis, contrats, notes)",
-))
-collaborateurs.enregistrer("graphe", adaptateur_synchrone(
+    identifiant="documents",
+)
+collegue_graphe = adaptateur_synchrone(
     lambda texte: str(graphrag_tool.query_global(texte).get("response", "")), "GraphRAG",
     description="repond sur les liens entre les documents du proprietaire",
-))
-collaborateurs.enregistrer("raisonnement", _RaisonnementCollegue())
+    identifiant="graphe",
+)
+collegue_raisonnement = _RaisonnementCollegue()
 
 # Executive Intelligence (DEC-0086) n'est PAS enregistree ici : ce registre ne
 # connait que les espaces choisissables dans la barre laterale de la PWA
@@ -975,3 +963,18 @@ def agents_actifs() -> list:
     trouves = {objet.name for objet in globals().values()
                if isinstance(objet, BaseAgent)}
     return sorted(trouves) + list(MOTEURS_NON_AGENTS)
+
+
+# --- L'ecosysteme d'agents (DEC-0145) ---------------------------------------
+#
+# DERNIERE instruction du module, volontairement : tout agent construit
+# au-dessus — aujourd'hui ou demain — est decouvert ici et inscrit dans
+# `collaborateurs`, sans liste a tenir a jour. Chaque agent y est inscrit sous
+# l'identifiant qu'il declare lui-meme (`BaseAgent.identifiant`), recoit le
+# registre, et peut des lors consulter tous les autres.
+#
+# Jusqu'au 26/09/2026 ce registre etait rempli par une liste ecrite a la main
+# (`_equipe`) : un agent ajoute sans y penser restait injoignable.
+agents_decouverts = collaborateurs.peupler(globals())
+logger.info("Ecosysteme d'agents : %d decouverts (%s).",
+            len(agents_decouverts), ", ".join(agents_decouverts))

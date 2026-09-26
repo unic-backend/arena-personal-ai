@@ -14,6 +14,11 @@ logger = logging.getLogger("usman.agent.researcher")
 class DeepResearcherAgent(BaseAgent):
     """Agent de recherche profonde multi-sources (Pattern Kimi / Perplexity)."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "recherche"
+    competences = ('recherche approfondie', 'etude', 'rapport documente', 'croisement de sources')
+
     def __init__(
         self,
         provider: ModelProvider,

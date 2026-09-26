@@ -196,6 +196,11 @@ def choisir(texte: str) -> Optional[Capacite]:
 class SocialAgent(BaseAgent):
     """Prepare ce qui part sur ses reseaux, et s'arrete la ou commence l'envoi."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "social"
+    competences = ('reseaux sociaux', 'publication linkedin', 'accroches', 'redaction de post')
+
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
                  memoire_personnelle: Optional[MemoirePersonnelle] = None,
                  registre: Optional[RegistreConnecteurs] = None,

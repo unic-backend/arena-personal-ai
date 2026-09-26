@@ -12,6 +12,11 @@ logger = logging.getLogger("usman.agent.coder")
 class CoderAgent(BaseAgent):
     """Agent autonome de programmation sécurisé dans le bac à sable OpenSandbox."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "code"
+    competences = ('code', 'programmation', 'script python', 'execution de code', 'calcul')
+
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None):
         super().__init__(
             name="CoderAgent",

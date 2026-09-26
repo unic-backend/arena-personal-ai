@@ -12,6 +12,11 @@ logger = logging.getLogger("usman.agent.subtitle")
 class SubtitleAgent(BaseAgent):
     """Agent chargé de la correction contextuelle et de la génération des sous-titres CapCut/TikTok."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "sous_titres"
+    competences = ('sous-titres', 'correction orthographique', 'formatage de sous-titres')
+
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None):
         super().__init__(
             name="SubtitleAgent",

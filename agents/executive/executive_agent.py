@@ -40,6 +40,11 @@ class ExecutiveAgent(BaseAgent):
     """Coordonne les specialistes existants d'ARENA pour une decision
     d'affaires — jamais un CEO artificiel qui joue un role (mission §5)."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "executive"
+    competences = ('decision d affaires', 'strategie', 'evaluation d offre', 'contrat')
+
     def __init__(
         self,
         provider: ModelProvider,

@@ -31,6 +31,11 @@ logger = logging.getLogger("usman.agent.ui_generation")
 class UiGenerationAgent(BaseAgent):
     """Une description en langage naturel devient une interface reelle."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "ui"
+    competences = ('interface', 'page web', 'ecran d application', 'code d interface')
+
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
                 *, registre: Any = None) -> None:
         super().__init__(

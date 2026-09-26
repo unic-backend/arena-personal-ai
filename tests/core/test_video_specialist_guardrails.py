@@ -30,6 +30,15 @@ def _agent(collaborateurs):
 
 
 async def test_video_specialiste_herite_du_budget_anti_boucle():
+    """La video herite du meme garde-fou que tous les agents.
+
+    Jusqu'au 26/09/2026 une demande « simple » ne pouvait deleguer qu'a un
+    niveau ; le proprietaire a demande une collaboration recursive a
+    profondeur configurable (DEC-0145). Le garde-fou est le meme, a la
+    profondeur maximale configuree.
+    """
+    from core.agent.message import PROFONDEUR_MAX
+
     collaborateurs = _Collaborateurs()
     agent = _agent(collaborateurs)
 
@@ -38,7 +47,7 @@ async def test_video_specialiste_herite_du_budget_anti_boucle():
         "cherche cette information",
         {
             "_requete_racine": "bonjour",
-            "_delegation_chain": ["VideoProductionAgent"],
+            "_delegation_chain": [f"agent-{n}" for n in range(PROFONDEUR_MAX)],
         },
     )
 
