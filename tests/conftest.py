@@ -29,6 +29,10 @@ if str(RACINE) not in sys.path:
 # chargement, et `runtime.py` construit ses magasins dans la foulee.
 os.environ.setdefault(
     "USMAN_DB_PATH", str(Path(tempfile.mkdtemp(prefix="usman-tests-")) / "memoire.db"))
+# Meme raison pour les espaces de travail collaboratifs (DEC-0146) : un projet
+# ecrit par un test ne doit ni remplir `data/`, ni revenir dans le suivant.
+os.environ.setdefault(
+    "USMAN_ESPACES_COLLABORATION", str(Path(tempfile.mkdtemp(prefix="usman-espaces-"))))
 
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider

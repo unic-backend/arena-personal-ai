@@ -59,6 +59,12 @@ SURFACE_ATTENDUE = {
     "/api/chat": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/v1/chat": (["POST"], ["verify_api_key", "limiter_debit"]),
     "/api/chat/stream": (["POST"], ["verify_api_key", "limiter_debit"]),
+    # L'ecosysteme d'agents (DEC-0146) : fiches decouvertes, table ronde,
+    # projet d'equipe, espace partage. Tables et projets appellent le modele.
+    "/api/agents": (["GET"], ["verify_api_key", "limiter_debit"]),
+    "/api/agents/table-ronde": (["POST"], ["verify_api_key", "limiter_debit"]),
+    "/api/agents/projet": (["POST"], ["verify_api_key", "limiter_debit"]),
+    "/api/agents/espaces/{project_id}": (["GET"], ["verify_api_key", "limiter_debit"]),
     # Chronologie des actions, lecture seule (VOLET ARENA OS, phase 2.2).
     "/api/actions": (["GET"], ["verify_api_key", "limiter_debit"]),
     # File d'attente et confirmation humaine (phase 5.2).

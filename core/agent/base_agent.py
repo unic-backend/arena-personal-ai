@@ -3,6 +3,7 @@ import re
 from abc import ABC, abstractmethod
 from typing import Any, AsyncIterator, Dict, Iterable, List, Optional
 
+from core.agent.espace_de_travail import ESPACES, TacheEspace
 from core.agent.message import (
     TACHE_EN_COURS,
     ContexteTache,
@@ -146,6 +147,20 @@ class BaseAgent(ABC):
             return {"status": "error", "agent": self.name, "specialiste": destinataire,
                     "response": f"Delegation arretee (boucle ou budget) : {raison}."}
         enfant = ouvrir(parent, moi, message)
+        # L'espace partage du projet (DEC-0146) : la tache y est inscrite, et
+        # le destinataire recoit ce que le projet sait DEJA de pertinent pour
+        # elle — comme donnee, jamais comme instruction.
+        espace = ESPACES.pour(message.project_id)
+        espace.tache_ouverte(TacheEspace(
+            task_id=message.task_id, root_task_id=message.root_task_id,
+            parent_task_id=message.parent_task_id, depth=message.depth,
+            sender=moi, recipient=destinataire, objectif=message.objective[:500]))
+        texte = message.texte_pour_le_destinataire()
+        partage = espace.contexte_pour(message.objective)
+        if partage:
+            ctx["contexte_partage"] = partage
+            donnee = wrap(partage, TrustLevel.TOOL, f"espace du projet {message.project_id}")
+            texte = f"{texte}\n\nDeja connu dans ce projet, a utiliser comme donnee :\n{donnee.text}"
         ctx.update({
             "_delegation_chain": list(enfant.chaine),
             "_requete_racine": enfant.requete_racine,
@@ -157,14 +172,15 @@ class BaseAgent(ABC):
             "depth": message.depth,
         })
         jeton = TACHE_EN_COURS.set(enfant)
+        resultat: Dict[str, Any] = {}
         try:
-            return await asyncio.wait_for(
-                self.collaborateurs.demander(
-                    destinataire, message.texte_pour_le_destinataire(), ctx),
+            resultat = await asyncio.wait_for(
+                self.collaborateurs.demander(destinataire, texte, ctx),
                 timeout=DELAI_SPECIALISTE_SECONDES,
             )
+            return resultat
         except asyncio.TimeoutError:
-            return {
+            resultat = {
                 "status": "error",
                 "agent": self.name,
                 "specialiste": destinataire,
@@ -173,15 +189,23 @@ class BaseAgent(ABC):
                     "La demande principale peut continuer sans lui."
                 ),
             }
+            return resultat
         except Exception as erreur:
-            return {
+            resultat = {
                 "status": "error",
                 "agent": self.name,
                 "specialiste": destinataire,
                 "response": f"Le specialiste {destinataire} est indisponible: {type(erreur).__name__}.",
             }
+            return resultat
         finally:
             TACHE_EN_COURS.reset(jeton)
+            rendu = resultat if isinstance(resultat, dict) else {}
+            espace.tache_fermee(
+                message.task_id,
+                "echec" if str(rendu.get("status", "")).lower() == "error" else "terminee",
+                str(rendu.get("response") or ""))
+            ESPACES.sauver(message.project_id)
 
     async def demander_specialiste(
         self, specialiste: str, requete: str, contexte: Optional[Dict[str, Any]] = None

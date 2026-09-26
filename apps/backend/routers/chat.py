@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from agents.orchestrator.orchestrator_agent import PHRASES_TABLE_RONDE
 from agents.plaquiste.plaquiste_agent import champs_demandes_au_tour_precedent
 from agents.video_analyzer.video_analyzer_agent import demande_de_suivi
 from apps.backend.config import AGENTS_SPECIALISES, MEDIA_DIR
@@ -25,6 +26,7 @@ from apps.backend.runtime import (
     audio_agent,
     browser_agent,
     coder_agent,
+    collaborateurs,
     dioumtoukay_agent,
     editor_agent,
     email_agent,
@@ -55,6 +57,7 @@ from apps.backend.runtime import (
 from apps.backend.security import limiter_debit, validate_media_path, verify_api_key
 from apps.backend.studio import lancer_studio
 from core.agent import equipe
+from core.agent.collaboration import conduire_projet, tenir_table_ronde
 from core.agent.message import tache_racine
 from core.architecture.plan import executer as executer_architecture
 from core.context.recherche_unifiee import MOTS_MEMOIRE
@@ -639,7 +642,7 @@ async def _joindre_document(
 CONTROLES_QUI_PRIMENT = (
     "question_personnelle", "salutation_pure",
     "demande_de_courrier", "demande_financiere",
-    "demande_executive", "demande_la_date",
+    "demande_executive", "demande_d_equipe", "demande_la_date",
 )
 
 
@@ -867,6 +870,33 @@ def _fil_de_la_session(request: ChatRequest, session_id: str) -> str:
     return rendre_le_fil(tours, proprietaire)
 
 
+async def _travail_d_equipe(texte: str, session_id: str) -> Dict[str, Any]:
+    """Table ronde si la phrase la demande, sinon projet decoupe et reparti.
+
+    Le compte rendu nomme ce que chaque agent a fait : le proprietaire voit
+    qui a travaille, pas seulement la synthese.
+    """
+    try:
+        if any(phrase in texte.lower() for phrase in PHRASES_TABLE_RONDE):
+            table = await tenir_table_ronde(collaborateurs, texte, project_id=session_id)
+            invites = "".join(f"\n- {i['agent']} invite par {i['par']} ({i['competence']})"
+                              for i in table.invites)
+            entete = (f"**Table ronde** — coordonnee par {table.lead}, "
+                      f"participants : {', '.join(table.participants) or 'aucun'}"
+                      + (f"\nInvites en cours de route :{invites}" if invites else ""))
+            return {"status": "success", "agent": f"TableRonde({table.lead})",
+                    "response": f"{entete}\n\n{table.synthese}", "equipe": table.en_dict()}
+        rendu = await conduire_projet(collaborateurs, texte, project_id=session_id)
+        lignes = "\n".join(f"{i + 1}. {t['objectif']} -> {t['agent'] or 'aucun agent'} ({t['etat']})"
+                            for i, t in enumerate(rendu["sous_taches"]))
+        return {"status": "success", "agent": f"Projet({rendu['lead']})",
+                "response": f"**Projet reparti** — mene par {rendu['lead']}\n{lignes}\n\n"
+                            f"{rendu['synthese']}",
+                "equipe": rendu}
+    except LookupError as erreur:
+        return {"status": "error", "agent": "Equipe", "response": str(erreur)}
+
+
 async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
     """Le corps de l'aiguillage. `intent` est toujours connu ici."""
     session_id = request.session_id or "default"
@@ -997,6 +1027,10 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         # (agents/finance/finance_agent.py). Jamais d'ordre reel : aucune
         # capacite d'ecriture n'existe sur le connecteur market_data.
         result = await finance_agent.run(request.prompt)
+    elif intent == "EQUIPE":
+        # Plusieurs agents sur une meme demande (DEC-0146) : table ronde ou
+        # projet reparti. Les agents viennent du registre, par competence.
+        result = await _travail_d_equipe(request.prompt, session_id)
     elif intent == "EXECUTIVE":
         # Executive Intelligence (mission ARENA x OPENEXECUTIVE, DEC-0086) :
         # coordonne les specialistes existants d'ARENA, jamais un second

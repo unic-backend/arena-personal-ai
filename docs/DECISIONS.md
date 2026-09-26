@@ -11315,3 +11315,54 @@ interdit a l'agent executive toute methode d'action nommee `envoyer`.
 `identifiant` et un `run` sans etre un agent deviendrait consultable ; deux
 agents declarant le meme identifiant sont departages par un suffixe, avec un
 avertissement au journal.
+
+## DEC-0146 — Les agents travaillent en equipe : table ronde, lead dynamique, projet decoupe, espace partage
+
+**2026-09-26.**
+
+**Decision** : au-dessus de la decouverte et de la delegation de DEC-0145,
+trois formes de travail collectif, toutes construites sur le registre
+existant (`RegistreCapacites`) et sur `BaseAgent.transmettre` — aucun second
+bus de messages.
+
+- **Espace de travail partage** (`core/agent/espace_de_travail.py`) : par
+  `project_id`, le contexte verse, l'arbre des taches (qui, quoi, pour qui,
+  etat), les discussions, les sorties et les decisions. Chaque delegation y
+  inscrit sa tache et la ferme. Le contexte LOCAL d'un agent reste son
+  message et sa memoire ; le contexte PARTAGE lui est ajoute seulement quand
+  il est pertinent (`contexte_pour(besoin)`, mots communs, budget de
+  caracteres), comme DONNEE (`trust.wrap`), jamais comme instruction.
+  Persistance par `core/execution/journal_disque.py` dans
+  `USMAN_ESPACES_COLLABORATION` (defaut `data/collaboration/`).
+- **Lead dynamique** (`collaboration.choisir_lead`) : l'agent le plus
+  competent pour la tache, parmi ceux qui savent rediger ; aucun
+  coordinateur fixe.
+- **Table ronde** (`tenir_table_ronde`) : les participants sont choisis par
+  le probleme (recherche par competence, `PARTICIPANTS_MAX` = 5), parlent en
+  parallele a chaque tour (`TOURS` = 2), voient le tour precedent, et peuvent
+  faire entrer un agent qui manque en ecrivant `[[INVITER:<competence>|<raison>]]`
+  (`INVITES_MAX` = 3). Le lead synthetise ; la synthese devient une decision
+  de l'espace.
+- **Projet** (`conduire_projet`) : le lead decoupe (JSON : objectif,
+  competence, dependances ; a defaut, `equipe.decouper` sur les
+  enchainements), chaque sous-tache va a l'agent competent, et l'execution
+  passe par `core/execution/coordination.py::Coordination.executer_parallele`
+  (vagues de dependances, resultats des dependances transmis). Le lead
+  assemble le livrable.
+- **Acces** : routes `GET /api/agents`, `POST /api/agents/table-ronde`,
+  `POST /api/agents/projet`, `GET /api/agents/espaces/{project_id}`
+  (`apps/backend/routers/ecosysteme.py`, cle d'API et limiteur de debit) ; et
+  l'intention `EQUIPE` du chat (« fais une table ronde de tes agents sur… »,
+  « faites travailler vos agents ensemble… »), controle deterministe
+  `demande_d_equipe` qui prime sur le modele.
+
+**Pourquoi** : demande du proprietaire le 26/09/2026 — table ronde dont les
+participants dependent du probleme, invitations en cours de discussion, lead
+qui depend de la tache, projet decoupe et reparti, espace commun ou un agent
+qui rejoint retrouve ce qui a ete fait. Tout garde les garde-fous de DEC-0145
+(cycle, profondeur, budget par tache racine).
+
+**Ce que ca coute si c'est faux** : le choix des participants et du lead est
+lexical ; une demande formulee sans les mots des competences declarees peut
+reunir une table moins pertinente — elle reste bornee et visible dans
+l'espace (`GET /api/agents/espaces/{id}`).

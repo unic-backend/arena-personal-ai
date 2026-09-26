@@ -2,6 +2,16 @@
 
 ## [Non publié]
 
+### Ajouté — 26/09/2026 — Tes agents tiennent des tables rondes et mènent des projets ensemble
+
+« Fais une table ronde de tes agents sur le budget des cloisons » : les agents
+utiles au problème sont choisis automatiquement, discutent en parallèle sur
+plusieurs tours, peuvent inviter un collègue qui manque, et l'agent le plus
+compétent fait la synthèse. Un projet complexe est découpé, chaque morceau va
+à l'agent compétent, dans l'ordre des dépendances. Tout est gardé dans un
+espace de travail partagé par projet (tâches, discussions, résultats,
+décisions), consultable par l'API (DEC-0146).
+
 ### Ajouté — 26/09/2026 — Les agents se découvrent eux-mêmes et se cherchent par compétence
 
 Plus aucune liste d'agents écrite à la main : chaque agent construit par le
