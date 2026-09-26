@@ -297,6 +297,10 @@ services:
     document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
     lecture:     {decision: ALLOWED,      risque: LOW}
 
+  # Présentations PPTX natives : fichier local neuf, relu avant succès.
+  presentation:
+    document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+
   # Graphify : le graphe structurel du depot (DEC-0046). Interroger un graphe
   # deja construit ne touche a rien — meme lecture que `takeoff.read`.
   # Construire ecrit graphify-out/ (graph.json, graph.html, GRAPH_REPORT.md) :
