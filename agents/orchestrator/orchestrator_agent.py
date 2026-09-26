@@ -469,6 +469,18 @@ MONTAGE = (
     "mets un titre sur la vidéo", "timeline", "monte ces rushes", "mes rushes",
 )
 
+#: Un verbe de montage suivi, dans la meme phrase, de ce qu'on monte. Mesure du
+#: 26/09/2026 : sans modele joignable, « fais un montage de mes videos de
+#: mariage » et « monte ces clips en une video tiktok » partaient en CHAT —
+#: la liste ci-dessus connait « fais LE montage », pas « fais UN montage », et
+#: aucune liste de locutions ne suivra toutes les facons de le dire. Le couple
+#: verbe + objet video reste etroit : « montage des rails » ou « monte la
+#: cloison » (son metier) n'ont pas d'objet video et n'y entrent pas.
+DEMANDE_DE_MONTAGE = re.compile(
+    r"\b(?:monte|monter|montes|montez|montage|assemble|assembler|compile|compiler)\b"
+    r"[^.?!\n]{0,60}?"
+    r"\b(?:vid[eé]os?|clips?|rushes?|s[eé]quences?|extraits?|shorts?|tiktok|reels?)\b")
+
 #: Preparer le prompt d une scene precise pour WanGP — distinct de FABRIQUER_VIDEO,
 #: qui fabrique une video COMPLETE sur un sujet (MoneyPrinterTurbo, aucun audit).
 #: Teste AVANT FABRIQUER_VIDEO : « prepare » est un verbe partage par les deux.
@@ -1106,7 +1118,7 @@ class OrchestratorAgent(BaseAgent):
         # Monter une video a partir de ses propres fichiers. Teste AVANT
         # PLANIFIER_SCENE et FABRIQUER_VIDEO : « monte la video du chantier »
         # n est ni un prompt de generation, ni une demande de devis.
-        if any(k in text for k in MONTAGE):
+        if any(k in text for k in MONTAGE) or DEMANDE_DE_MONTAGE.search(text):
             return "MONTAGE"
 
         # Planifier une scene. Teste AVANT FABRIQUER_VIDEO : « prepare » est un

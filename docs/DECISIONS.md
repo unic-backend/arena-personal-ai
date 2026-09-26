@@ -11436,3 +11436,28 @@ cloisons ») :
 tour malgre la consigne ; la verification de DEC-0147 ne le signale que dans
 la synthese, pas dans les interventions. Une panne qui n'est pas celle du
 routeur reste resumee a son type.
+
+## DEC-0149 — Sans modele, une demande de montage se reconnait a son verbe et a son objet video
+
+**2026-09-26.**
+
+**Constat** : quand aucun modele ne peut classer une demande (c'etait le cas
+pendant la table ronde du proprietaire le meme jour), le repli par mots-cles
+est le seul classificateur. Mesure : « fais un montage de mes videos de
+mariage avec de la musique » et « monte ces clips en une video tiktok
+marrante » partaient en CHAT — `MONTAGE` connaissait « fais LE montage », pas
+« fais UN montage ». Le proprietaire rappelle que son IA est generaliste :
+videos droles, montages, tout sujet.
+
+**Decision** : `DEMANDE_DE_MONTAGE` (`agents/orchestrator/orchestrator_agent.py`)
+reconnait un verbe de montage (monte, montage, assemble, compile...) suivi,
+dans la meme phrase et a moins de 60 caracteres, d'un objet video (video,
+clip, rush, sequence, extrait, short, tiktok, reel). Teste a la meme place que
+la liste `MONTAGE`, qu'il complete sans la remplacer.
+
+**Ce que ca coute si c'est faux** : une phrase qui associe un verbe de
+montage et un mot video sans demander de montage partirait a l'agent de
+montage, qui demande alors les fichiers. « monte la cloison » ou « le montage
+des rails » n'ont pas d'objet video et restent au metier. Non corrige ici :
+la locution existante « fais le montage » capte aussi « fais le montage des
+rails de la cloison » (mesure sur `main`, anterieur a cette decision).
