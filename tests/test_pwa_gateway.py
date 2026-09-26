@@ -505,7 +505,13 @@ async def test_sans_persona_le_prompt_systeme_est_inchange(
     « ce dont je me souviens » fait partie du prompt systeme. Sur une memoire
     peuplee par les tests precedents, cette egalite comparerait la memoire au
     lieu du persona. L'assertion, elle, n'a pas bouge d'un caractere.
+
+    Depuis le 26/09/2026 (DEC-0144), la conversation peut consulter un
+    collegue : le bloc qui les liste est ajoute par l'orchestrateur, jamais
+    par le persona. L'egalite reste exacte — elle nomme ce bloc au lieu de
+    l'ignorer.
     """
+    from core.agent.base_agent import CONSIGNE_COLLEGUES
     from core.memory.personnelle import MemoirePersonnelle
 
     monkeypatch.setattr(pwa_gateway, "memoire_personnelle",
@@ -514,7 +520,9 @@ async def test_sans_persona_le_prompt_systeme_est_inchange(
 
     demander(client, entetes)
 
-    assert faux.systemes[0] == await prompt_systeme(None)
+    collegues = CONSIGNE_COLLEGUES.format(
+        collegues=pwa_gateway.orchestrator._liste_des_collegues())
+    assert faux.systemes[0] == f"{await prompt_systeme(None)}\n{collegues}".strip()
 
 
 @pytest.mark.parametrize("persona", [None, {}, {"instructions": ""}, {"instructions": "   "}])

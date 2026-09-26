@@ -349,7 +349,7 @@ class FreshInfoAgent(BaseAgent):
         prompt = GABARIT_SYNTHESE.format(
             sources=self._formater_les_sources(lues, part, question), question=question
         )
-        reponse = await self.provider.generate(prompt=prompt)
+        reponse = await self.rediger(prompt=prompt)
 
         return {
             "status": "success",

@@ -2019,7 +2019,7 @@ class PlaquisteAgent(BaseAgent):
                 f"{resume}.\n{document['message']}"
             )
 
-        reponse = ((await self.provider.generate(prompt=user_input, system_prompt=instruction)) or "").strip()
+        reponse = ((await self.rediger(prompt=user_input, system_prompt=instruction)) or "").strip()
 
         # L instruction dit au modele de ne pas alterer un prix. Ce controle-ci
         # verifie qu il ne l a pas fait : une consigne n est pas une garantie, et

@@ -1777,7 +1777,7 @@ class DioumtoukayAgent(BaseAgent):
 
             invite = self._invite(reperes, user_input, journal_du_travail)
             try:
-                reponse = await self.provider.generate(prompt=invite, system_prompt=consigne)
+                reponse = await self.rediger(prompt=invite, system_prompt=consigne)
             except Exception as erreur:  # noqa: BLE001 — l'echec se nomme
                 logger.warning("Dioumtoukay : le moteur n'a pas repondu : %s", erreur)
                 conclusion = f"Le moteur n'a pas repondu au tour {tour} : {erreur}"

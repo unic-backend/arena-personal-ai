@@ -2,6 +2,15 @@
 
 ## [Non publié]
 
+### Ajouté — 26/09/2026 — Chaque agent peut demander l'aide d'un collègue
+
+Usman Coder peut demander la dernière version d'une bibliothèque à l'agent
+d'actualité, la Recherche peut lire tes documents, Dioumtoukay peut faire
+écrire un script au Coder, la Vidéo peut interroger la Vision, le chat du
+téléphone peut consulter tes documents avant de répondre. Seize agents et la
+conversation sont branchés sur un mécanisme commun ; Documents, GraphRAG et
+le raisonnement vérifié deviennent consultables par tous (DEC-0144).
+
 ### Corrigé — 26/09/2026 — Deux agents qui se renvoient la balle s'arrêtent tout de suite
 
 Quand un agent déléguait à un autre qui lui re-déléguait, la protection

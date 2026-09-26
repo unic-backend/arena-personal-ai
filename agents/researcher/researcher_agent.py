@@ -124,7 +124,7 @@ class DeepResearcherAgent(BaseAgent):
             "Rapport d'Intelligence :"
         )
 
-        synthesis = await self.provider.generate(prompt=synthesis_prompt)
+        synthesis = await self.rediger(prompt=synthesis_prompt)
 
         return {
             "status": "success",

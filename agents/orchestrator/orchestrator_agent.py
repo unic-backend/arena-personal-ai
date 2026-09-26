@@ -1170,7 +1170,7 @@ class OrchestratorAgent(BaseAgent):
         prompt_lines.append(f"{owner_name}: {user_input}")
         prompt_lines.append("Usman:")
 
-        reply = await self.provider.generate(prompt="\n".join(prompt_lines), system_prompt=system_prompt)
+        reply = await self.rediger(prompt="\n".join(prompt_lines), system_prompt=system_prompt)
         return {
             "intent": intent,
             # La voie voyage avec la reponse : sans elle, personne en aval ne

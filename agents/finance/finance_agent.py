@@ -296,7 +296,7 @@ class FinanceAgent(BaseAgent):
             contexte=contexte,
         )
         try:
-            return (await self.provider.generate(prompt=prompt)).strip()
+            return (await self.rediger(prompt=prompt)).strip()
         except Exception as erreur:  # noqa: BLE001 — un modele indisponible ne doit pas priver des chiffres deja calcules
             logger.warning("Interpretation indisponible pour %s : %s", actif, erreur)
             return None

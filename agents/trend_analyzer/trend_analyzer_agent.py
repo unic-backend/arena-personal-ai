@@ -52,7 +52,7 @@ Résultats web:
 
 Synthèse des tendances:"""
 
-        ai_synthesis = await self.provider.generate(prompt=prompt)
+        ai_synthesis = await self.rediger(prompt=prompt)
 
         return {
             "status": "success",

@@ -62,7 +62,7 @@ class PublisherAgent(BaseAgent):
     async def _brouillon(self, sujet: str) -> str:
         """Fait rediger le post. Sans modele disponible, on le dit au lieu d'inventer."""
         try:
-            texte = await self.provider.generate(prompt=GABARIT_BROUILLON.format(sujet=sujet))
+            texte = await self.rediger(prompt=GABARIT_BROUILLON.format(sujet=sujet))
             return texte.strip()
         except Exception as erreur:
             logger.warning("Brouillon impossible : %s", erreur)

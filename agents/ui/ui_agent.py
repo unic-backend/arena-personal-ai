@@ -55,7 +55,7 @@ class UiGenerationAgent(BaseAgent):
 
         prompt = prompt_systeme(framework) + "\n\n" + prompt_utilisateur(user_input, existant)
         try:
-            reponse_brute = await self.provider.generate(prompt=prompt)
+            reponse_brute = await self.rediger(prompt=prompt)
         except Exception as erreur:  # noqa: BLE001 — httpx, timeout, modele absent
             logger.warning("Le modele n'a pas repondu pour la generation d'interface : %s", erreur)
             return self._erreur(f"Je n'ai pas pu joindre le modele : {erreur}")
