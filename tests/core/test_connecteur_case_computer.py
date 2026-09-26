@@ -311,6 +311,61 @@ class TestNavigationEtCapture:
         assert resultat.detail["png"] == octets_png_factices
 
 
+# --- Computer Use structure ---------------------------------------------------------------
+
+class TestActionsGUI:
+    def test_clic_est_traduit_en_primitive_pyautogui_bornee(self):
+        commandes = []
+
+        def _repondre(requete: httpx.Request) -> httpx.Response:
+            if requete.url.path.endswith("/exec"):
+                commandes.append(requete.read().decode("utf-8"))
+                return json_reponse(200, {"exit_code": 0, "stdout": "", "stderr": ""})
+            return json_reponse(200, {"ok": True, "computers": 0, "docker": True,
+                                      "max_running": 4, "running": 0, "max_ram_mb": 1, "ram_mb": 0})
+
+        c = ConnecteurCaseComputer(client=httpx.Client(transport=httpx.MockTransport(_repondre)))
+        resultat = c.executer("agir_gui", computer_id="c1", action_gui="clic", x=320, y=240)
+
+        assert resultat.statut.value == "SUCCESS"
+        assert commandes
+        assert "pyautogui.click(320, 240)" in commandes[0]
+
+    def test_action_gui_inconnue_est_refusee_sans_exec(self):
+        appels_exec = []
+
+        def _repondre(requete: httpx.Request) -> httpx.Response:
+            if requete.url.path.endswith("/exec"):
+                appels_exec.append(requete)
+            return json_reponse(200, {"ok": True, "computers": 0, "docker": True,
+                                      "max_running": 4, "running": 0, "max_ram_mb": 1, "ram_mb": 0})
+
+        c = ConnecteurCaseComputer(client=httpx.Client(transport=httpx.MockTransport(_repondre)))
+        resultat = c.executer("agir_gui", computer_id="c1", action_gui="python_libre")
+
+        assert resultat.statut.value == "FAILED"
+        assert not appels_exec
+
+    def test_saisie_ne_devient_jamais_du_code_python_libre(self):
+        commandes = []
+
+        def _repondre(requete: httpx.Request) -> httpx.Response:
+            if requete.url.path.endswith("/exec"):
+                commandes.append(requete.read().decode("utf-8"))
+                return json_reponse(200, {"exit_code": 0, "stdout": "", "stderr": ""})
+            return json_reponse(200, {"ok": True, "computers": 0, "docker": True,
+                                      "max_running": 4, "running": 0, "max_ram_mb": 1, "ram_mb": 0})
+
+        c = ConnecteurCaseComputer(client=httpx.Client(transport=httpx.MockTransport(_repondre)))
+        texte = "bonjour'); import os; os.system('danger"
+        resultat = c.executer("agir_gui", computer_id="c1", action_gui="saisir", texte=texte)
+
+        assert resultat.statut.value == "SUCCESS"
+        assert commandes
+        commande = httpx.Response(200, content=commandes[0]).json()["command"]
+        assert commande == f"import pyautogui; pyautogui.write({texte!r}, interval=0.01)"
+
+
 # --- Detruire ---------------------------------------------------------------------------
 
 class TestDetruire:
