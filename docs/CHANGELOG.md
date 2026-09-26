@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Corrigé — 26/09/2026 — L'espace Vidéo atteint le studio
+
+Depuis l'espace « Vidéo » de la PWA, « sous-titre ma vidéo » partait à
+l'analyse vidéo au lieu du studio (9:16 + sous-titres incrustés), et
+« idée de vidéo » à l'analyse au lieu des tendances — alors que les deux
+phrases arrivaient au bon agent sans espace (DEC-0140).
+
 ### Corrigé — 26/09/2026 — Le fil du téléphone ne se recopie plus dans lui-même
 
 Chaque tour d'un agent spécialisé depuis le téléphone était écrit deux fois

@@ -46,8 +46,14 @@ INTENTION_PAR_ESPACE = {
 #:
 #: Un espace absent de cette table garde exactement l'ancien comportement :
 #: son defaut s'applique sans discussion.
+#:
+#: `STUDIO` et `TREND_SEARCH` manquaient jusqu'au 26/09/2026 : depuis l'espace
+#: « Video », « sous-titre ma video » partait a l'analyse au lieu du studio
+#: (9:16 + sous-titres incrustes), et « idée de vidéo » aussi — alors que les
+#: deux y allaient sans espace. Meme mecanisme qu'au 03/09.
 FAMILLE_PAR_ESPACE = {
-    "video": {"VIDEO_ANALYSIS", "MONTAGE", "VIDEO_PROJET", "AUDIO", "VISION"},
+    "video": {"VIDEO_ANALYSIS", "MONTAGE", "VIDEO_PROJET", "AUDIO", "VISION",
+              "STUDIO", "TREND_SEARCH"},
 }
 
 # Liste fermée : toute réponse du modèle hors de cet ensemble est rejetée.

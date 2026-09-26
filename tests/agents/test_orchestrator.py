@@ -342,6 +342,21 @@ class TestRoutageParEspace:
 
         assert resultat == "CHAT"
 
+    @pytest.mark.parametrize("phrase,attendu", [
+        ("sous-titre ma video", "STUDIO"),
+        ("mets ma vidéo en vertical avec sous-titres", "STUDIO"),
+        ("donne-moi une idée de vidéo", "TREND_SEARCH"),
+        ("analyse cette vidéo", "VIDEO_ANALYSIS"),
+    ])
+    async def test_l_espace_video_atteint_le_studio_et_les_tendances(
+            self, provider_factory, phrase, attendu):
+        """Mesure du 26/09/2026 : sans espace, ces phrases allaient au studio et
+        aux tendances ; depuis l'espace « Video », a l'analyse — `STUDIO` et
+        `TREND_SEARCH` manquaient a `FAMILLE_PAR_ESPACE["video"]`."""
+        agent = OrchestratorAgent(provider=provider_factory(), memory=None)
+
+        assert await agent.analyze_intent(phrase, espace="video") == attendu
+
 
 class TestSalutationPure:
     """Regression du 30/08/2026 : une salutation forcait un devis fabrique.
