@@ -189,6 +189,7 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
 #: se lisent pas pareil, et c'est la seconde phrase qui demande une vérification.
 ACTIONS_QUI_MODIFIENT = frozenset({
     "ecrire", "remplacer", "deplacer", "github_ecrire", "github_remplacer",
+    "session_publier",
 })
 
 #: Mutations directes qui ne doivent jamais etre suivies immediatement de
@@ -198,7 +199,7 @@ ACTIONS_QUI_MODIFIENT = frozenset({
 #: code que sur des fichiers ordinaires.
 ACTIONS_A_VERIFIER = frozenset({
     "ecrire", "remplacer", "deplacer", "github_ecrire", "github_remplacer",
-    "ordinateur_ecrire_fichier",
+    "ordinateur_ecrire_fichier", "session_publier",
 })
 
 #: Actions capables d'apporter une preuve apres une mutation. Le prompt métier
