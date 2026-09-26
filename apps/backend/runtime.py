@@ -88,6 +88,7 @@ from core.connectors.montage import ConnecteurMontage
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
 from core.connectors.openviking import ConnecteurOpenViking
 from core.connectors.pdf import ConnecteurPdf
+from core.connectors.presentation import ConnecteurPresentation
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.securite_chantier import ConnecteurSecuriteChantier
 from core.connectors.stockage_jetons import charger_tout as _charger_jetons_persistants
@@ -601,6 +602,11 @@ registre.declarer(
     lambda: ConnecteurPdf(acces=acces, journal=journal, file_attente=file_attente,
                           crochets=crochets),
 )
+registre.declarer(
+    "presentation",
+    lambda: ConnecteurPresentation(acces=acces, journal=journal, file_attente=file_attente,
+                                   crochets=crochets),
+)
 
 # Case (mission ARENA x CASE, DEC-0092) : un ordinateur Linux ISOLE et
 # PERSISTANT, distinct de la machine du proprietaire (Atelier reste le seul
@@ -770,6 +776,8 @@ dioumtoukay_agent = DioumtoukayAgent(
     connecteur_file_conversion=registre.obtenir("file_conversion"),
     connecteur_file_organization=registre.obtenir("file_organization"),
     connecteur_pdf=registre.obtenir("pdf"),
+    connecteur_presentation=registre.obtenir("presentation"),
+    registre_connecteurs=registre,
     connecteur_case=registre.obtenir("case"),
     reprises=JournalDeReprise())
 # Raisonnement profond : plan, calcul reellement execute en bac a sable, puis

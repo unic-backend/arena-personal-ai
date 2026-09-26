@@ -168,6 +168,7 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "convertir", "organiser_inspecter", "organiser_planifier",
            "organiser_appliquer", "organiser_annuler",
            "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
+           "presentation_generer",
            "isoler", "nettoyer_worktree",
            "ordinateur_lister", "ordinateur_creer", "ordinateur_etat",
            "ordinateur_dormir", "ordinateur_reveiller", "ordinateur_executer",
@@ -421,6 +422,11 @@ PAGES: 3,4,5,6,7
 
 ACTION: pdf_extraire_texte
 CHEMIN: facture.pdf
+
+ACTION: presentation_generer
+CONTENU:
+{"titre":"Projet","theme":"clair","slides":[{"titre":"Introduction","puces":["Objectif","Contexte"]}]}
+FIN
 
 ACTION: isoler
 NOM: correctif-toiture
@@ -859,6 +865,8 @@ class DioumtoukayAgent(BaseAgent):
                  connecteur_file_conversion: Optional[Any] = None,
                  connecteur_file_organization: Optional[Any] = None,
                  connecteur_pdf: Optional[Any] = None,
+                 connecteur_presentation: Optional[Any] = None,
+                 registre_connecteurs: Optional[Any] = None,
                  connecteur_case: Optional[Any] = None,
                  reprises: Optional[JournalDeReprise] = None,
                  depot_github_defaut: Optional[str] = None):
@@ -904,6 +912,8 @@ class DioumtoukayAgent(BaseAgent):
         # jamais la source — aucune ne demande de confirmation pour cette
         # raison meme.
         self.connecteur_pdf = connecteur_pdf
+        self.connecteur_presentation = connecteur_presentation
+        self.registre_connecteurs = registre_connecteurs
         # Le connecteur Case (DEC-0092, mission ARENA x CASE) : un ordinateur
         # Linux ISOLE et persistant, distinct de la machine du proprietaire
         # (Atelier reste le seul chemin vers celle-ci, DEC-0038 inchange).
@@ -1232,6 +1242,22 @@ class DioumtoukayAgent(BaseAgent):
         if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
             detail = self._detail_lisible(resultat.detail or {})
             return Resultat(True, resultat.message, sortie=detail)
+        return Resultat(False, resultat.message)
+
+    def _via_presentation(self, **parametres: Any) -> Resultat:
+        """Pont vers le générateur PPTX natif, sans moteur Dashi embarqué."""
+        connecteur = self.connecteur_presentation
+        if self.registre_connecteurs is not None:
+            connecteur = self.registre_connecteurs.obtenir("presentation")
+        if connecteur is None:
+            return Resultat(False, "Le connecteur de présentation n'est pas branché.")
+        try:
+            resultat = connecteur.executer("generer", **parametres)
+        except Exception as erreur:  # noqa: BLE001
+            return Resultat(False, f"Présentation impossible : {type(erreur).__name__}: {erreur}")
+        if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
+            return Resultat(True, resultat.message,
+                            sortie=self._detail_lisible(resultat.detail or {}))
         return Resultat(False, resultat.message)
 
     def _via_case(self, capacite: str, confirmee: bool = False,
@@ -1690,6 +1716,10 @@ class DioumtoukayAgent(BaseAgent):
             if not chemin:
                 return Resultat(False, "Il manque CHEMIN — le fichier PDF à lire.")
             return self._via_pdf("extraire_texte", fichier=chemin)
+        if action.nom == "presentation_generer":
+            if not action.contenu.strip():
+                return Resultat(False, "Il manque CONTENU — le plan JSON de la présentation.")
+            return self._via_presentation(plan=action.contenu)
         # `executer` : la ligne devient une LISTE d'arguments. Ce n'est pas une
         # restriction de ce qu'il peut lancer — c'est ce qui empeche un nom de
         # fichier contenant une espace ou un `;` de devenir deux commandes.
