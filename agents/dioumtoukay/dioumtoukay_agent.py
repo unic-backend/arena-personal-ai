@@ -169,7 +169,7 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "organiser_appliquer", "organiser_annuler",
            "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
            "presentation_generer", "hf_modeles", "hf_modele",
-           "isoler", "nettoyer_worktree",
+           "isoler", "session_publier", "nettoyer_worktree",
            "ordinateur_lister", "ordinateur_creer", "ordinateur_etat",
            "ordinateur_dormir", "ordinateur_reveiller", "ordinateur_executer",
            "ordinateur_lire_fichier", "ordinateur_ecrire_fichier",
@@ -189,6 +189,7 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
 #: se lisent pas pareil, et c'est la seconde phrase qui demande une vérification.
 ACTIONS_QUI_MODIFIENT = frozenset({
     "ecrire", "remplacer", "deplacer", "github_ecrire", "github_remplacer",
+    "session_publier",
 })
 
 #: Mutations directes qui ne doivent jamais etre suivies immediatement de
@@ -198,7 +199,7 @@ ACTIONS_QUI_MODIFIENT = frozenset({
 #: code que sur des fichiers ordinaires.
 ACTIONS_A_VERIFIER = frozenset({
     "ecrire", "remplacer", "deplacer", "github_ecrire", "github_remplacer",
-    "ordinateur_ecrire_fichier",
+    "ordinateur_ecrire_fichier", "session_publier",
 })
 
 #: Actions capables d'apporter une preuve apres une mutation. Le prompt métier
@@ -1396,6 +1397,11 @@ class DioumtoukayAgent(BaseAgent):
             if not nom:
                 return Resultat(False, "Il manque NOM — le nom de la branche/worktree a creer.")
             return self.atelier.isoler(nom, base=champs.get("BASE") or "HEAD")
+        if action.nom == "session_publier":
+            dossier = champs.get("DOSSIER", "")
+            if not dossier:
+                return Resultat(False, "Il manque DOSSIER — le worktree isole a publier.")
+            return self.atelier.session_publier(dossier)
         if action.nom == "nettoyer_worktree":
             nom = champs.get("NOM", "")
             if not nom:

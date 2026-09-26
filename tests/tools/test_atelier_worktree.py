@@ -5,6 +5,7 @@ worktree isolé — jamais un double de git.
 """
 import subprocess
 
+from tools.atelier import git_ops
 from tools.atelier.atelier import Atelier
 
 
@@ -103,3 +104,58 @@ class TestNettoyerWorktree:
         assert (depot / ".worktrees" / "precieux" / "pas_sauvegarde.txt").is_file(), (
             "le fichier non commite doit survivre au nettoyage refuse"
         )
+
+
+
+class TestPublierSession:
+    def test_refuse_une_session_sale_avant_push(self, tmp_path, monkeypatch):
+        depot = tmp_path / "depot"
+        _depot(depot)
+        atelier = Atelier(racine=depot)
+        cree = atelier.isoler("session-sale")
+        chemin = cree.donnees["chemin"]
+        (depot / ".worktrees" / "session-sale" / "dirty.txt").write_text(
+            "non commite", encoding="utf-8")
+        pousse = []
+        monkeypatch.setattr(git_ops, "pousser", lambda *a, **k: pousse.append((a, k)))
+
+        resultat = atelier.session_publier(chemin)
+
+        assert resultat.ok is False
+        assert "non commites" in resultat.message
+        assert pousse == []
+
+    def test_refuse_main_meme_si_propre(self, tmp_path, monkeypatch):
+        depot = tmp_path / "depot"
+        _depot(depot)
+        pousse = []
+        monkeypatch.setattr(git_ops, "pousser", lambda *a, **k: pousse.append((a, k)))
+
+        resultat = Atelier(racine=depot).session_publier(str(depot))
+
+        assert resultat.ok is False
+        assert "protegee" in resultat.message
+        assert pousse == []
+
+    def test_publie_uniquement_la_branche_isolee_propre(self, tmp_path, monkeypatch):
+        depot = tmp_path / "depot"
+        _depot(depot)
+        atelier = Atelier(racine=depot)
+        cree = atelier.isoler("session-review")
+        chemin = cree.donnees["chemin"]
+        appels = []
+
+        def _pousser(racine, **kwargs):
+            appels.append((racine, kwargs))
+            return git_ops.ResultatOperation(
+                ok=True, operation="push", message="pousse",
+                sortie="", donnees={})
+
+        monkeypatch.setattr(git_ops, "pousser", _pousser)
+
+        resultat = atelier.session_publier(chemin)
+
+        assert resultat.ok is True
+        assert resultat.donnees["branche"] == "session-review"
+        assert resultat.donnees["prochaine_etape"] == "ouvrir_pr"
+        assert appels[0][1]["branche"] == "session-review"

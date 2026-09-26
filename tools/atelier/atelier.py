@@ -699,6 +699,49 @@ class Atelier:
             ou, distant=distant, branche=branche, force_avec_bail=force_avec_bail,
             identifiant_operation=identifiant_operation, journal=self._journal_git_ops))
 
+    def session_publier(self, dossier: str, distant: str = "origin") -> Resultat:
+        """Publie une session de code isolee seulement quand elle est reviewable.
+
+        Concept inspire du cycle de travail de Kortix, implemente nativement :
+        le worktree/branche reste celui d'Atelier et le push celui de git_ops.
+        Cette methode n'ouvre ni ne fusionne de PR ; le connecteur GitHub garde
+        sa confirmation humaine et ses controles CI.
+        """
+        ou = self._chemin(dossier)
+        try:
+            etat = git_etat.lire_etat(ou)
+        except git_etat.ErreurGit as erreur:
+            r = Resultat(False, f"Session illisible ({ou}) : {erreur}")
+            self._noter("session_publier", str(ou), r)
+            return r
+        if etat.detachee or not etat.branche:
+            r = Resultat(False, "Session refusee : HEAD detachee, aucune branche publiable.")
+        elif etat.branche_protegee():
+            r = Resultat(False, f"Session refusee : {etat.branche} est une branche protegee.")
+        elif not etat.propre:
+            r = Resultat(False, "Session refusee : changements non commites presents.",
+                         donnees=etat.to_dict())
+        elif etat.operation is not git_etat.EtatOperation.PROPRE:
+            r = Resultat(False, f"Session refusee : operation Git {etat.operation.value} en cours.")
+        else:
+            r = self._depuis_operation("session_publier", git_ops.pousser(
+                ou, distant=distant, branche=etat.branche,
+                journal=self._journal_git_ops))
+            if r.ok:
+                r.donnees.update({
+                    "branche": etat.branche,
+                    "tete": etat.tete,
+                    "dossier": str(ou),
+                    "prochaine_etape": "ouvrir_pr",
+                })
+                r.message = (
+                    f"Session {etat.branche} publiee. "
+                    "Prochaine etape : comparer puis ouvrir une PR pour revue."
+                )
+            return r
+        self._noter("session_publier", str(ou), r)
+        return r
+
     def git_fusionner(self, branche: str, tete_attendue: Optional[str] = None,
                       identifiant_operation: Optional[str] = None, dossier: Optional[str] = None) -> Resultat:
         """`git merge` — un conflit laisse le dépôt en fusion, à résoudre via
