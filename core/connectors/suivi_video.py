@@ -27,7 +27,7 @@ Ce module fait le pont entre le connecteur WanGP et la file de travaux de fond
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from core.execution.travaux import FileDeTravaux, Travail
 
@@ -181,20 +181,36 @@ def suivre_en_fond(
         # Ce travail est le seul du depot qui se reprend REELLEMENT apres un
         # redemarrage : son etat ne vit pas ici, il vit chez WanGP. Reprendre,
         # c'est simplement redemander « ou en est la tache job_id ? ».
+        # Le GENERATEUR est retenu avec la tache : un `job_id` MoneyPrinter
+        # redemande a WanGP ne rend rien. Sans son nom, la reprise ne saurait
+        # pas a qui reposer la question.
         descripteur={
             "type": TYPE_REPRISE,
-            "parametres": {"job_id": job_id, "nom": nom, "intervalle": intervalle},
+            "parametres": {"job_id": job_id, "nom": nom, "intervalle": intervalle,
+                           "connecteur": str(getattr(connecteur, "nom", "") or "")},
             "passer_le_travail": True,
         },
     )
 
 
-def fabrique_de_reprise(connecteur: Any):
+def fabrique_de_reprise(trouver_connecteur: Callable[[str], Any]):
     """Reconstruit un suivi a partir de son descripteur, pour le demarrage.
 
-    Rendue a `FileDeTravaux.reprendre_les_interrompus` : le journal ne porte
-    que `job_id` et l'intervalle ; le connecteur, lui, vient d'ici. C'est ce
-    qui permet de reprendre sans avoir jamais serialise une closure.
+    Rendue a `FileDeTravaux.reprendre_les_interrompus` : le journal porte
+    `job_id`, l'intervalle et le NOM du generateur ; le connecteur, lui, est
+    retrouve ici par ce nom, au moment de la reprise. C'est ce qui permet de
+    reprendre sans avoir jamais serialise une closure.
+
+    **Mesure du 26/09/2026.** Cette fabrique recevait un connecteur fige au
+    demarrage, `registre.obtenir("video_generation")` — un nom de SERVICE,
+    pas de connecteur : `None`. Le seul travail de ce depot qui se reprend
+    reellement echouait donc sur `None.executer` a chaque redemarrage. Et
+    meme le bon connecteur n'aurait pas suffi : un suivi MoneyPrinter repris
+    chez WanGP ne rend rien.
+
+    Args:
+        trouver_connecteur: `nom -> connecteur` (le `obtenir` du registre),
+            `None` quand le nom est inconnu ou le connecteur hors service.
     """
 
     def fabriquer(parametres: Dict[str, Any]):
@@ -202,6 +218,13 @@ def fabrique_de_reprise(connecteur: Any):
         intervalle = float(parametres.get("intervalle", INTERVALLE_SECONDES))
         if not job_id:
             raise ValueError("un suivi sans job_id ne se reprend pas")
+        nom = str(parametres.get("connecteur", "") or "")
+        connecteur = trouver_connecteur(nom)
+        if connecteur is None:
+            # Mieux vaut rester INTERROMPU, visible, que tourner sur un
+            # connecteur absent jusqu'au plafond d'erreurs.
+            raise ValueError(f"generateur {nom!r} introuvable : le suivi {job_id} "
+                             "ne se reprend pas")
         return lambda travail: suivre_generation(
             connecteur, job_id, travail, intervalle)
 

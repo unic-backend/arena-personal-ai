@@ -184,7 +184,7 @@ class TestRepriseApresRedemarrage:
 
         connecteur = FauxConnecteur([FINI])
         repris = relue.reprendre_les_interrompus(
-            {"suivi_generation_video": fabrique_de_reprise(connecteur)})
+            {"suivi_generation_video": fabrique_de_reprise(lambda _nom: connecteur)})
 
         assert len(repris) == 1
         suivi = (await relue.attendre(repris[0].identifiant, delai=2.0)).resultat
@@ -194,7 +194,54 @@ class TestRepriseApresRedemarrage:
 
     def test_un_suivi_sans_job_id_ne_se_reprend_pas(self):
         """Mieux vaut refuser que reconstruire un suivi qui ne regarde rien."""
-        fabriquer = fabrique_de_reprise(FauxConnecteur([EN_COURS]))
+        fabriquer = fabrique_de_reprise(lambda _nom: FauxConnecteur([EN_COURS]))
 
         with pytest.raises(ValueError):
             fabriquer({})
+
+
+class TestLaRepriseDuVraiRuntime:
+    """Le cablage reel de `apps/backend/runtime.py`, pas une fabrique de test.
+
+    Mesure du 26/09/2026 : `FABRIQUES_DE_REPRISE` recevait
+    `registre.obtenir("video_generation")` — un nom de service, donc `None` —
+    et chaque suivi repris au redemarrage echouait sur `None.executer`.
+    """
+
+    class _Nomme(FauxConnecteur):
+        def __init__(self, nom, instantanes):
+            super().__init__(instantanes)
+            self.nom = nom
+
+    async def test_le_generateur_est_retenu_avec_la_tache(self, tmp_path):
+        file = FileDeTravaux(fichier=tmp_path / "file.json")
+
+        travail = suivre_en_fond(self._Nomme("moneyprinter", [FINI]), file, "job-m",
+                                 intervalle=0)
+        await file.attendre(travail.identifiant, delai=2.0)
+
+        assert travail.descripteur["parametres"]["connecteur"] == "moneyprinter"
+
+    async def test_la_reprise_redemande_au_bon_generateur(self, monkeypatch):
+        from apps.backend import runtime
+
+        generateurs = {"wan2gp": self._Nomme("wan2gp", [FINI]),
+                       "moneyprinter": self._Nomme("moneyprinter", [FINI])}
+        monkeypatch.setattr(runtime.registre, "obtenir", generateurs.get)
+        fabrique = runtime.FABRIQUES_DE_REPRISE["suivi_generation_video"]
+
+        appel = fabrique({"job_id": "job-m", "connecteur": "moneyprinter", "intervalle": 0})
+        suivi = await appel(None)
+
+        assert suivi.reussi is True
+        assert generateurs["moneyprinter"].appels >= 1
+        assert generateurs["wan2gp"].appels == 0, "un suivi MoneyPrinter repris chez WanGP"
+
+    def test_un_generateur_inconnu_laisse_le_travail_interrompu(self, monkeypatch):
+        from apps.backend import runtime
+
+        monkeypatch.setattr(runtime.registre, "obtenir", lambda _nom: None)
+        fabrique = runtime.FABRIQUES_DE_REPRISE["suivi_generation_video"]
+
+        with pytest.raises(ValueError):
+            fabrique({"job_id": "job-x", "connecteur": "video_generation"})
