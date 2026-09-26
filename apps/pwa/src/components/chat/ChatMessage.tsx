@@ -8,6 +8,7 @@ import type { ChatMessage as Msg } from '../../lib/store/chatStore';
 import type { AttachmentSummary } from '../../lib/attachments';
 import { adresseOuvrable, annulerAction, confirmerAction } from '../../lib/actions/confirmer';
 import { activeRemoteCfg } from '../../lib/store/backendStore';
+import { cartesSources } from '../../lib/activity/generativeResults';
 import { formatDuration } from '../../lib/activity/types';
 import { fmtBytes, fmtTime } from '../../lib/agent/video';
 import { AIActivity } from '../activity/ActivityTimeline';
@@ -246,23 +247,46 @@ function nettoyerRaison(raison: string | undefined): string {
 }
 
 function SourcesStrip({ msg }: { msg: Msg }) {
-  const sources = msg.meta?.sources;
+  const sources = cartesSources(msg.meta?.sources);
   const { t } = useI18n();
-  if (!sources?.length) return null;
+  if (!sources.length) return null;
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-1.5">
-      <span className="mr-1 font-mono text-ui-meta uppercase tracking-widest text-zinc-600">{t('msg.sources')}</span>
-      {sources.map((s, i) => (
-        <span
-          key={i}
-          title={`${s.title}${s.date ? ` · ${s.date}` : ''}`}
-          className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-white/[0.03] py-1 pl-1.5 pr-2.5 text-ui-meta text-zinc-400 transition hover:border-white/15 hover:text-zinc-200"
-        >
-          <DomainMark domain={s.domain} className="!h-[14px] !w-[14px] text-[8px]" />
-          {s.domain}
-        </span>
-      ))}
-    </div>
+    <section className="mt-3 space-y-2" aria-label={t('msg.sources')}>
+      <div className="font-mono text-ui-meta uppercase tracking-widest text-zinc-600">
+        {t('msg.sources')}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {sources.map((source) => {
+          const contenu = (
+            <>
+              <div className="flex items-center gap-2">
+                <DomainMark domain={source.domain} className="!h-[16px] !w-[16px] text-[8px]" />
+                <span className="min-w-0 truncate font-medium text-zinc-200">{source.title}</span>
+              </div>
+              <div className="mt-1 flex items-center gap-2 font-mono text-ui-meta text-zinc-500">
+                <span className="truncate">{source.domain || source.url}</span>
+                {source.date && <span className="shrink-0">{source.date}</span>}
+              </div>
+              {source.excerpt && (
+                <p className="mt-1.5 line-clamp-3 text-ui-meta leading-relaxed text-zinc-400">
+                  {source.excerpt}
+                </p>
+              )}
+            </>
+          );
+          const classes = "block min-w-0 rounded-xl border border-white/8 bg-white/[0.025] p-3 text-left transition hover:border-white/15 hover:bg-white/[0.045]";
+          return source.url ? (
+            <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className={classes}>
+              {contenu}
+            </a>
+          ) : (
+            <div key={`${source.domain}|${source.title}`} className={classes}>
+              {contenu}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
