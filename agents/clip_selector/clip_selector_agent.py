@@ -14,6 +14,11 @@ logger = logging.getLogger("usman.agent.clip_selector")
 class ClipSelectorAgent(BaseAgent):
     """Agent autonome de détection et découpe des meilleurs moments viraux."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "clips"
+    competences = ('selection de clips', 'passages engageants', 'decoupe de moments forts')
+
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None):
         super().__init__(
             name="ClipSelectorAgent",

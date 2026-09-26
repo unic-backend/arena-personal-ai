@@ -135,6 +135,11 @@ def texte_a_lire(phrase: str) -> str:
 class AudioAgent(BaseAgent):
     """Parler, ecouter — en passant par le connecteur, jamais en direct."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "audio"
+    competences = ('transcription', 'voix off', 'lecture a voix haute', 'narration', 'clonage vocal')
+
     def __init__(
         self,
         provider: ModelProvider,

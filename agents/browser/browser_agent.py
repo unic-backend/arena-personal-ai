@@ -30,6 +30,11 @@ class BrowserAgent(BaseAgent):
     la réponse — un défaut trouvé en lisant le code, pas supposé.
     """
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "navigateur"
+    competences = ('navigation web', 'formulaire', 'site web', 'scraping')
+
     def __init__(
         self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
         registre: Optional[RegistreConnecteurs] = None,

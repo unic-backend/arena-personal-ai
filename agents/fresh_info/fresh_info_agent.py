@@ -96,6 +96,11 @@ RÉPONSE (avec les numéros de source) :"""
 class FreshInfoAgent(BaseAgent):
     """Répond aux questions d'actualité en lisant réellement le web."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "actualite"
+    competences = ('actualite', 'information recente', 'derniere version', 'prix actuel', 'recherche web')
+
     def __init__(
         self,
         provider: ModelProvider,

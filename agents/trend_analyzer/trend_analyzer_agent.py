@@ -12,6 +12,11 @@ logger = logging.getLogger("usman.agent.trend_analyzer")
 class TrendAnalyzerAgent(BaseAgent):
     """Agent d'analyse de tendances (Sénégal, Afrique Francophone, International)."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "tendances"
+    competences = ('tendances', 'idees de contenu', 'videos virales', 'sujets chauds')
+
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None):
         super().__init__(
             name="TrendAnalyzerAgent",

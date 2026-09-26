@@ -15,6 +15,11 @@ class RepoEngineerAgent(BaseAgent):
     Il LIT la structure du depot et propose un plan. Il ne modifie aucun fichier.
     """
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "repo"
+    competences = ('architecture de depot', 'analyse de code', 'plusieurs fichiers')
+
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
                  registre: Any = None):
         super().__init__(

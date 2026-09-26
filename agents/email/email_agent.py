@@ -93,6 +93,11 @@ def demande_d_envoi(texte: str) -> bool:
 class EmailAgent(BaseAgent):
     """Lit le courrier du proprietaire, le trie, et prepare ses reponses."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "email"
+    competences = ('courrier', 'mail', 'envoi de mail', 'tri de la boite')
+
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
                  registre: Optional[RegistreConnecteurs] = None):
         super().__init__(

@@ -879,6 +879,11 @@ def analyser_action(texte: str) -> Optional[Action]:
 class DioumtoukayAgent(BaseAgent):
     """Il entre dans les fichiers, le terminal et le dépôt, et il agit."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "atelier"
+    competences = ('fichiers de la machine', 'terminal', 'commande', 'depot git', 'action sur l ordinateur')
+
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
                  atelier: Optional[Atelier] = None,
                  memoire_longue: Optional[MemoirePersonnelle] = None,

@@ -45,6 +45,11 @@ LARGEUR_PAR_DEFAUT, HAUTEUR_PAR_DEFAUT = 1080, 1920
 class MontageAgent(BaseAgent):
     """Traduit une demande de montage en operations, puis les fait executer."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "montage"
+    competences = ('montage video', 'assemblage de clips', 'timeline', 'rushes')
+
     def __init__(
         self,
         provider: ModelProvider,

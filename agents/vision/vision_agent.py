@@ -84,6 +84,11 @@ def demande_metadonnees_techniques(texte: str) -> bool:
 class VisionAgent(BaseAgent):
     """Agent charge de comprendre une image et de repondre a son sujet."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "vision"
+    competences = ('image', 'photo', 'ocr', 'lecture de plan', 'capture d ecran', 'metadonnees photo')
+
     def __init__(
         self,
         provider: ModelProvider,

@@ -55,6 +55,7 @@ from apps.backend.runtime import (
 from apps.backend.security import limiter_debit, validate_media_path, verify_api_key
 from apps.backend.studio import lancer_studio
 from core.agent import equipe
+from core.agent.message import tache_racine
 from core.architecture.plan import executer as executer_architecture
 from core.context.recherche_unifiee import MOTS_MEMOIRE
 from core.executive import question_en_attente
@@ -815,13 +816,17 @@ async def dispatch_request(
     plan = ([] if question_en_attente.en_attente(session) is not None
             else await equipe.planifier(request.message_actuel or request.prompt,
                                         _classer_un_morceau))
-    if plan:
-        reponse = await equipe.executer(
-            plan, lambda texte, intention: _aiguiller_une_etape(request, texte, intention))
-        intent = str(reponse.get("intention") or intent)
-    else:
-        with tache(intent):
-            reponse = await _aiguiller(request, intent)
+    # UNE tache racine par demande (DEC-0145) : toutes les delegations entre
+    # agents faites pour elle — a toute profondeur, en parallele — partagent
+    # son identifiant, son projet (la session) et son budget.
+    with tache_racine(request.message_actuel or request.prompt, project_id=session):
+        if plan:
+            reponse = await equipe.executer(
+                plan, lambda texte, intention: _aiguiller_une_etape(request, texte, intention))
+            intent = str(reponse.get("intention") or intent)
+        else:
+            with tache(intent):
+                reponse = await _aiguiller(request, intent)
     if consigner_le_tour:
         _consigner_le_tour(request, reponse)
     # Ce tour a-t-il laisse une question sans reponse ? Si oui, le prochain

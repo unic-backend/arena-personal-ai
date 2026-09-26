@@ -77,6 +77,11 @@ def source_lean(phrase: str) -> Optional[str]:
 class FormelAgent(BaseAgent):
     """Verifier une preuve — en passant par le connecteur, jamais en direct."""
 
+    #: Comment l'agent se presente au registre (DEC-0145) : lu par la
+    #: decouverte, jamais recopie dans une liste centrale.
+    identifiant = "formel"
+    competences = ('preuve formelle', 'lean', 'verification formelle', 'theoreme')
+
     def __init__(
         self,
         provider: ModelProvider,
