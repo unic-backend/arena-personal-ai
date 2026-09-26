@@ -10965,3 +10965,32 @@ dormant de plus.
 direct le bureau Case depuis son téléphone, il faudra monter TurboVNC + noVNC
 dans l'image Case — travail hors d'ARENA, que rien ici n'empêche. Les
 conditions de réouverture sont écrites dans l'audit.
+
+## DEC-0136 — Une question en attente est relue sur toutes les surfaces, pas seulement /api/chat
+
+**2026-09-26.**
+
+**Decision** : `apps/backend/routers/chat.py::classer_la_demande` est le seul
+classement d'une demande : la question en attente d'abord
+(`intention_dune_reponse_attendue`), le classeur ensuite. `dispatch_request`,
+`/api/chat/stream`, la PWA (`apps/backend/routers/pwa_gateway.py`) et la
+passerelle OpenAI (`apps/backend/routers/openai_gateway.py`) l'appellent
+tous ; plus aucun n'appelle `orchestrator.analyze_intent` en direct.
+
+**Pourquoi** : mesure du 26/09/2026. Le correctif du 20/09 (« Medina » apres
+la question du lieu d'un devis) ne vivait que dans `dispatch_request`, et
+seulement quand l'appelant n'avait pas deja classe. Les trois autres surfaces
+classaient elles-memes puis passaient l'intention — dont la PWA, le chemin
+que le proprietaire emprunte depuis son telephone. Reproduit par la vraie
+route `/agent/stream` : question du devis notee pour la session, « Medina »
+envoye, `dispatch_request` recevait `FRESH_INFO` (recherche web). La question
+etait notee apres chaque tour et relue par personne sur ce chemin.
+
+**Sabotage** : `tests/test_question_en_attente_toutes_surfaces.py` — sans le
+correctif, les trois surfaces echouent (PWA, OpenAI, flux) ; le temoin « sans
+question, le classeur garde la main » passe dans les deux cas.
+
+**Ce que ca coute si c'est faux** : une phrase qui change de sujet sans que
+`_a_change_de_sujet` le reconnaisse irait a l'agent qui attendait, au plus
+pendant la demi-heure de validite (`DELAI_DE_VALIDITE_SECONDES`) — le meme
+risque que `/api/chat` portait deja, desormais le meme partout.

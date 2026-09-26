@@ -17,6 +17,7 @@ from apps.backend.config import AGENTS_SPECIALISES
 from apps.backend.prompts import prompt_avec_methode
 from apps.backend.routers.chat import (
     ChatRequest,
+    classer_la_demande,
     dispatch_request,
     formater_sources,
     garantir_un_texte,
@@ -30,7 +31,9 @@ from apps.backend.runtime import (
     graphrag_tool,
     lightrag_tool,
     memory,
-    orchestrator,
+    # Plus appele ici : le classement passe par `classer_la_demande`. Garde
+    # comme point d'acces au MEME singleton, que les tests remplacent.
+    orchestrator,  # noqa: F401
     plaquiste_agent,
     repo_engineer,
     researcher_agent,
@@ -288,7 +291,9 @@ async def _repondre(body: dict, stream: bool, model_requested: str):
         return _reponse_openai(garantir_un_texte(contenu, model_requested, ALTERNATIVE_MENU), model_requested, stream)
 
     # ---- usman-chat : aiguillage automatique selon la question ----
-    intent = await orchestrator.analyze_intent(last_user_msg)
+    intent = await classer_la_demande(
+        last_user_msg, [m for m in messages if m.get("role") in ROLES_DU_FIL][:-1],
+        chat_req.session_id)
     logger.info(f"Modele 'usman-chat' -> intention detectee : {intent}")
 
     if intent in AGENTS_SPECIALISES:

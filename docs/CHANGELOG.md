@@ -2,6 +2,15 @@
 
 ## [Non publié]
 
+### Corrigé — 26/09/2026 — « Medina » depuis le téléphone revient au devis
+
+La règle « une réponse à une question d'ARENA revient à l'agent qui l'a
+posée » (20/09) ne s'appliquait qu'à `/api/chat`. La PWA, la passerelle
+OpenAI et `/api/chat/stream` classaient la phrase elles-mêmes : depuis le
+téléphone, « Medina » répondu à « quel est le lieu du chantier ? » partait
+toujours en recherche web. Un seul point de classement,
+`classer_la_demande`, sert désormais toutes les surfaces (DEC-0136).
+
 ### Documenté — 26/09/2026 — TurboVNC audité, non intégré
 
 Le serveur TurboVNC ne tourne que sous Linux/Un*x ; Windows n'y est que
