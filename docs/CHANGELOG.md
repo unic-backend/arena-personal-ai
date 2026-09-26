@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Corrigé — 26/09/2026 — Le fil du téléphone ne se recopie plus dans lui-même
+
+Chaque tour d'un agent spécialisé depuis le téléphone était écrit deux fois
+dans le fil du serveur, et pour le devis le premier exemplaire contenait toute
+la conversation aplatie comme un seul message du propriétaire. La mémoire des
+tours suivants se remplissait de copies. Un tour s'écrit désormais une fois,
+avec sa phrase (DEC-0139).
+
 ### Corrigé — 26/09/2026 — « Doublage » redevient un mur quand le modèle est en panne
 
 Le repli par mots-clés envoyait « fais-moi un devis pour un doublage de 20 m2 »

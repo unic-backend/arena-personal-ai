@@ -157,7 +157,7 @@ def test_une_etape_qui_ne_tourne_pas_n_emet_rien(client, entetes, monkeypatch):
         return "EMAIL"
     monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _email)
 
-    async def _resultat(_requete, intent=None):
+    async def _resultat(_requete, intent=None, **_options):
         return {"response": "Message envoye.", "sources": []}
     monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
 
@@ -172,7 +172,7 @@ def test_un_agent_specialise_porte_son_nom(client, entetes, monkeypatch):
         return "EMAIL"
     monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _email)
 
-    async def _resultat(_requete, intent=None):
+    async def _resultat(_requete, intent=None, **_options):
         return {"response": "Message envoye.", "sources": []}
     monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
 
@@ -187,7 +187,7 @@ def test_un_agent_en_echec_ferme_son_etape_en_echec(client, entetes, monkeypatch
         return "EMAIL"
     monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _email)
 
-    async def _casse(_requete, intent=None):
+    async def _casse(_requete, intent=None, **_options):
         raise ConnectionError("Gmail injoignable")
     monkeypatch.setattr(pwa_gateway, "dispatch_request", _casse)
 

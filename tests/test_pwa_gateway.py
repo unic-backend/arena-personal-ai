@@ -281,7 +281,7 @@ def test_un_agent_specialise_long_garde_le_flux_sse_vivant(
         return "ATELIER"
     monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _atelier)
 
-    async def _lent(_requete, intent=None):
+    async def _lent(_requete, intent=None, **_options):
         await asyncio.sleep(0.025)
         return {
             "response": "Travail long termine.",
@@ -311,7 +311,7 @@ def test_un_agent_specialise_peut_annoncer_son_vrai_moteur(
         return "ATELIER"
     monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _atelier)
 
-    async def _resultat(_requete, intent=None):
+    async def _resultat(_requete, intent=None, **_options):
         return {
             "response": "Travail termine.",
             "sources": [],
@@ -554,7 +554,7 @@ def test_les_pieces_jointes_atteignent_un_agent_specialise(
 
     recu: dict = {}
 
-    async def _resultat(requete, intent=None):
+    async def _resultat(requete, intent=None, **_options):
         recu["attachments"] = requete.attachments
         return {"response": "Une photo de chantier.", "sources": []}
     monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
@@ -581,7 +581,7 @@ def test_un_agent_specialise_qui_leve_rend_une_vraie_erreur(
         return "EMAIL"
     monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _email)
 
-    async def _casse(_requete, intent=None):
+    async def _casse(_requete, intent=None, **_options):
         raise RuntimeError("Aucun fournisseur disponible pour SENSIBLE")
     monkeypatch.setattr(pwa_gateway, "dispatch_request", _casse)
 
@@ -620,7 +620,7 @@ def test_les_huit_intentions_reconnectees_atteignent_dispatch_request(
 
     appels = []
 
-    async def _resultat(requete, intent=None):
+    async def _resultat(requete, intent=None, **_options):
         appels.append((intent, requete.prompt))
         return {"response": f"Reponse specialisee de {intent}.", "sources": []}
     monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
@@ -708,7 +708,7 @@ class TestContinuiteDeConversation:
 
         recu = {}
 
-        async def _resultat(requete, intent=None):
+        async def _resultat(requete, intent=None, **_options):
             recu["session_id"] = requete.session_id
             return {"response": "Coupe du monde 2006 : Italie.", "sources": []}
         monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
@@ -746,7 +746,7 @@ class TestIdempotenceParRunId:
 
         appels = []
 
-        async def _resultat(_requete, intent=None):
+        async def _resultat(_requete, intent=None, **_options):
             appels.append(intent)
             return {"response": f"E-mail envoye (appel {len(appels)}).", "sources": []}
         monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
@@ -774,7 +774,7 @@ class TestIdempotenceParRunId:
 
         appels = []
 
-        async def _echec(_requete, intent=None):
+        async def _echec(_requete, intent=None, **_options):
             appels.append(intent)
             return {"response": "", "sources": []}  # reponse vide -> erreur metier
         monkeypatch.setattr(pwa_gateway, "dispatch_request", _echec)
@@ -802,7 +802,7 @@ class TestIdempotenceParRunId:
 
         appels = []
 
-        async def _resultat(_requete, intent=None):
+        async def _resultat(_requete, intent=None, **_options):
             appels.append(intent)
             return {"response": "Ne devrait jamais s'executer.", "sources": []}
         monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
@@ -828,7 +828,7 @@ class TestIdempotenceParRunId:
 
         appels = []
 
-        async def _resultat(_requete, intent=None):
+        async def _resultat(_requete, intent=None, **_options):
             appels.append(intent)
             return {"response": f"reponse {len(appels)}", "sources": []}
         monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
@@ -855,7 +855,7 @@ class TestIdempotenceParRunId:
 
         appels = []
 
-        async def _resultat_puis_coupure(_requete, intent=None):
+        async def _resultat_puis_coupure(_requete, intent=None, **_options):
             appels.append(intent)
             # L'action a eu son effet, puis le client disparait : la tache est
             # ANNULEE. `chronometrer` n'attrape que `Exception` (mesures.py) —
@@ -900,7 +900,7 @@ def test_plaquiste_recoit_le_fil_entier_pas_la_derniere_ligne_seule(
 
     recu: dict = {}
 
-    async def _resultat(requete, intent=None):
+    async def _resultat(requete, intent=None, **_options):
         recu["prompt"] = requete.prompt
         recu["history"] = requete.history
         recu["message_actuel"] = requete.message_actuel
@@ -937,7 +937,7 @@ def test_un_autre_agent_specialise_ne_recoit_que_la_derniere_ligne(
 
     recu: dict = {}
 
-    async def _resultat(requete, intent=None):
+    async def _resultat(requete, intent=None, **_options):
         recu["prompt"] = requete.prompt
         recu["history"] = requete.history
         recu["message_actuel"] = requete.message_actuel
@@ -964,7 +964,7 @@ def test_le_persona_n_est_pas_applique_a_un_agent_specialise(
         return "PLAQUISTE"
     monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _plaquiste)
 
-    async def _resultat(_requete, intent=None):
+    async def _resultat(_requete, intent=None, **_options):
         return {"response": "Devis chiffre.", "sources": []}
     monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
 
@@ -983,7 +983,7 @@ def test_l_espace_de_la_requete_route_vers_son_agent(client, entetes, fournisseu
 
     intent_recu = {}
 
-    async def _resultat(_requete, intent=None):
+    async def _resultat(_requete, intent=None, **_options):
         intent_recu["valeur"] = intent
         return {"response": "Voici le script.", "sources": []}
     monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
@@ -1576,7 +1576,7 @@ class TestReponseVide:
 
     @pytest.fixture
     def agent_muet(self, monkeypatch):
-        async def muet(demande, intent=None):
+        async def muet(demande, intent=None, **_options):
             return {"response": "", "agent": "ResearcherAgent", "sources": []}
 
         async def recherche(*_a, **_k):
@@ -1603,7 +1603,7 @@ class TestLeDocumentEcritRemonteAuTelephone:
     """
 
     def _reponse_agent(self, document):
-        async def repondre(demande, intent=None):
+        async def repondre(demande, intent=None, **_options):
             return {"response": "Devis ecrit.", "agent": "PlaquisteAgent",
                     "sources": [], "document": document}
         return repondre
@@ -1755,7 +1755,7 @@ class TestLeFilCoupeParLeTelephone:
 
         recu: dict = {}
 
-        async def _resultat(requete, intent=None):
+        async def _resultat(requete, intent=None, **_options):
             recu["prompt"] = requete.prompt
             recu["history"] = requete.history
             return {"response": "40,8", "sources": []}
@@ -1789,7 +1789,7 @@ class TestLeFilCoupeParLeTelephone:
 
         recu: dict = {}
 
-        async def _resultat(requete, intent=None):
+        async def _resultat(requete, intent=None, **_options):
             recu["history"] = requete.history
             return {"response": "Envoye.", "sources": []}
         monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
@@ -1859,7 +1859,7 @@ class TestUnAgentSpecialiseLaisseUneTrace:
         return monkeypatch
 
     def _repondre(self, monkeypatch, reponse):
-        async def _resultat(_requete, intent=None):
+        async def _resultat(_requete, intent=None, **_options):
             return {"response": reponse, "sources": []}
         monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
 
@@ -1884,7 +1884,7 @@ class TestUnAgentSpecialiseLaisseUneTrace:
         """Ce qui est consigne est ce qui s'est reellement passe. Sans cela le
         fil garderait deux tours du proprietaire d'affilee, et le tour suivant
         ne saurait pas que celui-ci a rate."""
-        async def _casse(_requete, intent=None):
+        async def _casse(_requete, intent=None, **_options):
             raise ConnectionError("Gmail injoignable")
         agent.setattr(pwa_gateway, "dispatch_request", _casse)
         conv = f"conv-trace-{uuid4()}"

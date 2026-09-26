@@ -337,7 +337,7 @@ class TestChatNeMentPasSurUneReponseVide:
             self, client, entetes, monkeypatch):
         import apps.backend.routers.chat as chat
 
-        async def muet(demande, intent=None):
+        async def muet(demande, intent=None, **_options):
             return {"response": "", "agent": "ResearcherAgent",
                     "intent": "DEEP_RESEARCH"}
 
@@ -361,7 +361,7 @@ class TestChatNeMentPasSurUneReponseVide:
 
         import apps.backend.routers.chat as chat
 
-        async def muet(demande, intent=None):
+        async def muet(demande, intent=None, **_options):
             return {"response": "", "agent": "ResearcherAgent"}
 
         async def recherche(*_a, **_k):
