@@ -41,7 +41,6 @@ from core.models.base import ModelProvider
 from core.production import image_backend_router, personnage_video, plan_drift
 from core.production.etat_projet import EtapeProjet, EtatProjetVideo
 from core.production.journal_projet import EtatJob, Job, JournalProjets
-from core.production.presenter_qualite import EtatPresentateur
 from core.production.plan_video import (
     CAPACITES_VIDEO,
     PlanRefuse,
@@ -49,6 +48,7 @@ from core.production.plan_video import (
     prompt_de_planification,
     valider_graphe,
 )
+from core.production.presenter_qualite import EtatPresentateur
 
 logger = logging.getLogger("usman.agent.production_video")
 
