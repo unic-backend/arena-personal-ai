@@ -71,12 +71,12 @@ from core.connectors.file_organization import ConnecteurFileOrganization
 from core.connectors.formbricks import ConnecteurFormbricks
 from core.connectors.galsen import GalsenConnector
 from core.connectors.github import ConnecteurGitHub
-from core.connectors.huggingface import ConnecteurHuggingFace
 from core.connectors.gitingest import ConnecteurGitIngest
 from core.connectors.gmail import GmailConnector
 from core.connectors.graphify import ConnecteurGraphify
 from core.connectors.hermes_evolution import ConnecteurHermesEvolution
 from core.connectors.hidream import HiDreamConnector
+from core.connectors.huggingface import ConnecteurHuggingFace
 from core.connectors.hyperframes import ConnecteurHyperframes
 from core.connectors.ifc import ConnecteurIfc
 from core.connectors.ifc_generation import ConnecteurIfcGeneration
