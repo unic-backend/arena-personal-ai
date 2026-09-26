@@ -777,6 +777,7 @@ dioumtoukay_agent = DioumtoukayAgent(
     connecteur_file_organization=registre.obtenir("file_organization"),
     connecteur_pdf=registre.obtenir("pdf"),
     connecteur_presentation=registre.obtenir("presentation"),
+    registre_connecteurs=registre,
     connecteur_case=registre.obtenir("case"),
     reprises=JournalDeReprise())
 # Raisonnement profond : plan, calcul reellement execute en bac a sable, puis
