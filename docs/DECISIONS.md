@@ -11082,3 +11082,30 @@ deux cas. Les faux `dispatch_request` des tests acceptent desormais
 **Ce que ca coute si c'est faux** : un nouvel appelant qui passerait
 `consigner_le_tour=False` sans consigner lui-meme perdrait ses tours du fil ;
 le defaut reste `True`, et seule la PWA le desactive.
+
+## DEC-0140 — L'espace Video atteint le studio et les tendances
+
+**2026-09-26.**
+
+**Decision** : `FAMILLE_PAR_ESPACE["video"]` (`agents/orchestrator/orchestrator_agent.py`)
+gagne `STUDIO` et `TREND_SEARCH`. Depuis l'espace « Video », un mot-cle qui
+nomme l'une de ces deux actions l'emporte sur le defaut `VIDEO_ANALYSIS`,
+comme MONTAGE, AUDIO, VISION et VIDEO_PROJET le faisaient deja.
+
+**Pourquoi** : mesure du 26/09/2026. « sous-titre ma video » et « mets ma
+vidéo en vertical avec sous-titres » allaient au studio sans espace, et a
+l'analyse depuis l'espace « Video » ; « donne-moi une idée de vidéo » de meme
+pour les tendances. Choisir l'espace rendait le routage pire que ne rien
+choisir — exactement le defaut que la table corrigeait le 03/09, pour deux
+intentions video oubliees en l'ecrivant.
+
+`tests/test_video_chat_reachability.py` figeait la chaine exacte de la famille ;
+il exige desormais les cinq intentions qu'il gardait, sans interdire d'en ajouter.
+
+**Sabotage** : sans l'ajout, les trois phrases STUDIO/TREND_SEARCH de
+`test_l_espace_video_atteint_le_studio_et_les_tendances` echouent ; le temoin
+« analyse cette vidéo » passe.
+
+**Ce que ca coute si c'est faux** : une phrase d'analyse contenant un mot du
+studio (« sous-titres ») partirait au studio depuis l'espace Video — ce
+qu'elle faisait deja sans espace.
