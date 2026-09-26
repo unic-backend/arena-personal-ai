@@ -11167,3 +11167,42 @@ echouent dans `tests/core/test_specialist_call_resilience.py`.
 **Ce que ca coute si c'est faux** : un agent enregistre sous deux cles serait
 identifie par la premiere seulement ; aucun ne l'est aujourd'hui dans
 `apps/backend/runtime.py::_equipe`.
+
+## DEC-0143 — Une demande qui nomme plusieurs metiers fait travailler plusieurs agents
+
+**2026-09-26.**
+
+**Decision** : `core/agent/equipe.py` (nouveau) decoupe une demande sur ses
+enchainements explicites (« puis », « ensuite », « et » + verbe d'action),
+confie chaque morceau a SON agent par le meme aiguillage qu'une demande seule
+(`_aiguiller`, donc les memes garde-fous : un envoi de mail reste confirme),
+et passe le resultat de chaque etape a la suivante comme DONNEE
+(`core/security/trust.py::wrap`, niveau TOOL). Branche dans
+`apps/backend/routers/chat.py` : `classer_la_demande` rend le premier agent de
+l'equipe (la PWA prend alors le chemin des agents specialises) et
+`dispatch_request` execute l'equipe — pour les quatre surfaces. Trois etapes au
+plus ; une etape ratee arrete l'equipe et nomme ce qui n'a pas ete lance ; une
+reponse a une question d'ARENA ne se decoupe jamais.
+
+Les mots-cles qui empechaient deux agents de se trouver sont completes :
+envoyer un mail (COURRIER, et la description EMAIL du classeur), publier
+« sur mes reseaux » (RESEAUX), « fais une vidéo » (FABRIQUER_VIDEO).
+
+**Pourquoi** : demande du proprietaire le 26/09/2026 — « tous les agents
+doivent pouvoir travailler ensemble, aucun agent n'est prisonnier de ses
+capacites ». Mesure : le registre des collaborateurs connaissait 25 agents,
+mais un seul (la production video) deleguait. Chaque demande a deux metiers
+partait chez un seul agent : « fais un devis … et envoie-le par mail » ->
+PLAQUISTE (aucun envoi), « cherche la derniere version de FastAPI puis ecris un
+script » -> FRESH_INFO (aucun script), « analyse cette photo du chantier et
+fais-moi le devis » -> VISION (aucun devis).
+
+**Sabotage** : sans le branchement dans `chat.py`,
+`tests/test_agents_travaillent_ensemble.py` voit le seul Plaquiste appele, par
+`dispatch_request` comme par la route du telephone.
+
+**Ce que ca coute si c'est faux** : une phrase qui enchaine deux actions pour
+le MEME besoin (« ecris une fonction puis corrige-la ») reste a un seul agent —
+voulu ; une phrase coupee a tort sur « et » + verbe lance deux agents la ou un
+suffisait, chacun avec ses garde-fous. Chaque morceau classe coute un appel au
+classeur, seulement quand la phrase a au moins deux morceaux.
