@@ -137,6 +137,10 @@ class ConnecteurGraphify(Connecteur):
                 nom="hubs", action="read",
                 description="Les noeuds les plus connectes : les points d'appui de l'architecture.",
                 ecriture=False),
+            "impact": Capacite(
+                nom="impact", action="read",
+                description="Connexions structurelles reelles d'un fichier ou symbole.",
+                ecriture=False),
         }
 
     def sonder(self) -> Sante:
@@ -209,6 +213,8 @@ class ConnecteurGraphify(Connecteur):
             return self._expliquer(str(parametres.get("noeud") or "").strip())
         if capacite.nom == "hubs":
             return self._hubs(int(parametres.get("top") or 10))
+        if capacite.nom == "impact":
+            return self._impact(str(parametres.get("cible") or "").strip())
 
         return echec(action=capacite.nom, cible=self.nom,
                      message=f"Capacite « {capacite.nom} » non implementee.")
@@ -334,3 +340,27 @@ class ConnecteurGraphify(Connecteur):
         return succes(action="hubs", cible=self.nom,
                      message=resume or "Aucun noeud dans le graphe.",
                      preuve=str(GRAPH_JSON), hubs=noeuds)
+
+
+    def _impact(self, cible: str) -> ResultatAction:
+        """Impact structurel mesure via le graphe Graphify existant."""
+        if not cible:
+            return echec(action="impact", cible=self.nom,
+                         message="Il faut un fichier ou symbole a analyser.")
+        if not GRAPH_JSON.exists():
+            return non_configure(action="impact", cible=self.nom,
+                                 ce_qui_manque="la capacite construire, une premiere fois")
+        try:
+            acheve = self._lancer(["explain", cible], DELAI_REQUETE_SECONDES)
+        except (subprocess.TimeoutExpired, OSError) as erreur:
+            return echec(action="impact", cible=self.nom, message=str(erreur))
+        if acheve.returncode != 0:
+            detail = (acheve.stderr or acheve.stdout or "").strip()[:500]
+            return echec(action="impact", cible=self.nom,
+                         message=detail or "Analyse d'impact impossible.")
+        reponse = (acheve.stdout or "").strip()
+        if not reponse:
+            return echec(action="impact", cible=self.nom,
+                         message=f"{cible} est introuvable dans le graphe.")
+        return succes(action="impact", cible=self.nom, message=reponse,
+                     preuve=str(GRAPH_JSON), analyse="connexions_directes_graphify")
