@@ -866,6 +866,7 @@ class DioumtoukayAgent(BaseAgent):
                  connecteur_file_organization: Optional[Any] = None,
                  connecteur_pdf: Optional[Any] = None,
                  connecteur_presentation: Optional[Any] = None,
+                 registre_connecteurs: Optional[Any] = None,
                  connecteur_case: Optional[Any] = None,
                  reprises: Optional[JournalDeReprise] = None,
                  depot_github_defaut: Optional[str] = None):
@@ -912,6 +913,7 @@ class DioumtoukayAgent(BaseAgent):
         # raison meme.
         self.connecteur_pdf = connecteur_pdf
         self.connecteur_presentation = connecteur_presentation
+        self.registre_connecteurs = registre_connecteurs
         # Le connecteur Case (DEC-0092, mission ARENA x CASE) : un ordinateur
         # Linux ISOLE et persistant, distinct de la machine du proprietaire
         # (Atelier reste le seul chemin vers celle-ci, DEC-0038 inchange).
