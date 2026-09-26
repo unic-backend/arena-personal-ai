@@ -42,6 +42,24 @@ async def test_historique_fourni_par_interface_est_prioritaire_sur_memoire_stale
 
 
 @pytest.mark.asyncio
+async def test_historique_autoritatif_vide_ne_relit_jamais_la_memoire_serveur():
+    provider = Provider()
+
+    class MemoryInterdite:
+        def get_recent_history(self, session_id, limit=8):
+            raise AssertionError("un fil autoritatif vide ne doit pas relire la memoire")
+
+    agent = FreshInfoAgent(provider=provider, memory=MemoryInterdite())
+    question = await agent._reformuler_si_ellipse(
+        "Quel temps fait-il aujourd'hui ?",
+        {"session_id": "nouveau-fil", "history": [], "history_authoritative": True},
+    )
+
+    assert question == "Quel temps fait-il aujourd'hui ?"
+    assert provider.prompts == []
+
+
+@pytest.mark.asyncio
 async def test_sans_historique_interface_relit_plusieurs_tours_de_session():
     provider = Provider()
 
