@@ -267,6 +267,10 @@ services:
     write:       {decision: ALLOWED,      risque: LOW}
     create_pr:   {decision: CONFIRMATION, risque: HIGH}
 
+  # Hugging Face Hub : decouverte et metadonnees uniquement.
+  huggingface:
+    read:        {decision: ALLOWED,      risque: LOW}
+
   # Conversion de fichiers (DEC-0074) : un fichier FOURNI par le proprietaire,
   # ecrit dans un format different, sous media/rendered/conversions/ — meme
   # logique que le devis/ifc_generation/ui_generate : le fichier reste local,
