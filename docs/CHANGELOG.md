@@ -2,6 +2,40 @@
 
 ## [Non publié]
 
+### Corrigé — 26/09/2026 — « Medina » depuis le téléphone revient au devis
+
+La règle « une réponse à une question d'ARENA revient à l'agent qui l'a
+posée » (20/09) ne s'appliquait qu'à `/api/chat`. La PWA, la passerelle
+OpenAI et `/api/chat/stream` classaient la phrase elles-mêmes : depuis le
+téléphone, « Medina » répondu à « quel est le lieu du chantier ? » partait
+toujours en recherche web. Un seul point de classement,
+`classer_la_demande`, sert désormais toutes les surfaces (DEC-0136).
+
+### Documenté — 26/09/2026 — TurboVNC audité, non intégré
+
+Le serveur TurboVNC ne tourne que sous Linux/Un*x ; Windows n'y est que
+client, et la machine du propriétaire est sous Windows. L'intégrer aurait
+ajouté un connecteur dormant. Audit et conditions de réouverture :
+`docs/audits/turbovnc_audit.md` (DEC-0135).
+
+### Corrigé — 26/09/2026 — Emojis illisibles dans les réponses du chat
+
+`/api/chat` affichait un charabia à la place de ❌ et ⚠️ : trois
+lignes de `apps/backend/routers/chat.py` portaient des emojis UTF-8 relus en
+cp1252. Le test d'encodage ne cherchait qu'une liste fermée de séquences
+(accents, tirets) et laissait passer tout emoji ; il reconnaît maintenant le
+double encodage par sa forme, en plus de la liste (DEC-0134).
+
+### Corrigé — 26/09/2026 — Sept agents que le classeur par modèle ne pouvait jamais choisir
+
+`PROMPT_CLASSIFICATION` ne décrivait que 21 des 28 intentions d'`INTENTIONS`.
+Tant que le modèle répondait, MONTAGE, AUDIO, VISAGE, DESIGN_UI,
+PREUVE_FORMELLE, ARCHITECTURE_3D et EXECUTIVE n'étaient atteignables qu'en
+cliquant l'espace de la PWA, ou quand le modèle tombait en panne et que le
+repli par mots-clés prenait le relais. Les sept sont maintenant décrites, avec
+leur frontière face à l'intention voisine, et un test paramétré sur
+`INTENTIONS` interdit qu'une intention future soit oubliée du prompt (DEC-0133).
+
 ### Ajouté — 23/09/2026 — Agnes rejoint réellement le chemin de production vidéo
 
 Le propriétaire a demandé de vérifier que le travail ajouté par ailleurs

@@ -47,6 +47,7 @@ from apps.backend.prompts import prompt_avec_methode
 from apps.backend.routers.chat import (
     ChatRequest,
     a_produit_un_texte,
+    classer_la_demande,
     dispatch_request,
     garantir_un_texte,
 )
@@ -60,7 +61,9 @@ from apps.backend.runtime import (
     memory,
     mesures_execution,
     ollama_vision,
-    orchestrator,
+    # Plus appele ici : le classement passe par `classer_la_demande`. Garde
+    # comme point d'acces au MEME singleton, que les tests remplacent.
+    orchestrator,  # noqa: F401
     pieces_jointes,
     registre,
 )
@@ -1132,7 +1135,8 @@ async def flux_agent(demande: DemandeAgent):
             # de mieux.
             lecture = Etape("analysis", mots["lecture"])
             yield lecture.ouvrir()
-            intention = await orchestrator.analyze_intent(demande.text, espace=demande.espace)
+            intention = await classer_la_demande(
+                demande.text, demande.history, session, espace=demande.espace)
             yield lecture.fermer(intention)
             voie = voie_pour(intention)
             # Ce que ce tour aura reellement coute. La cible vient de la voie ;

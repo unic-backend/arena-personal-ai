@@ -274,7 +274,7 @@ def note_de_calcul(calcul: str) -> str:
     """
     if not calcul or not calcul.startswith(CALCUL_REFUSE):
         return ""
-    return ("\n\nâš ï¸ Le calcul n a pas pu etre execute : "
+    return ("\n\n⚠️ Le calcul n a pas pu etre execute : "
             f"{calcul[len(CALCUL_REFUSE):].lstrip(' :')} "
             "Ce qui precede n a donc ete verifie par aucun calcul.")
 
@@ -708,6 +708,45 @@ def intention_dune_reponse_attendue(
     return "PLAQUISTE"
 
 
+async def classer_la_demande(
+    message: str,
+    historique: List[Dict[str, str]],
+    session_id: str,
+    espace: Optional[str] = None,
+    a_classer: Optional[str] = None,
+) -> str:
+    """Le SEUL classement d'une demande, pour toutes les surfaces.
+
+    AVANT le classeur, et sans modele : une reponse a une question qu'ARENA
+    vient de poser n'est pas une nouvelle demande. Le classeur ne lit que le
+    message courant — « Medina » seul ne peut pas lui rappeler qu'un devis
+    attend son lieu de chantier.
+
+    **Pourquoi une fonction a part (26/09/2026).** Cette regle ne vivait que
+    dans `dispatch_request`, quand l'appelant n'avait pas deja classe. Or la
+    PWA (`pwa_gateway.py`), la passerelle OpenAI et `/api/chat/stream`
+    classent elles-memes, puis passent l'intention : le telephone — le chemin
+    que le proprietaire emprunte vraiment — envoyait donc toujours « Medina »
+    a la recherche web, question du devis en attente ou non. La question
+    etait notee apres chaque tour, et relue par personne.
+
+    Args:
+        message: la phrase du proprietaire, telle quelle.
+        historique: les tours precedents (repli quand l'etat serveur manque).
+        session_id: la session ou la question a ete notee.
+        espace: l'espace choisi dans la PWA, s'il y en a un.
+        a_classer: le texte a donner au classeur quand il differe de `message`
+            (le fil aplati de `dispatch_request`).
+    """
+    attendue = intention_dune_reponse_attendue(historique, message, session_id)
+    if attendue is not None:
+        return attendue
+    texte = message if a_classer is None else a_classer
+    if espace:
+        return await orchestrator.analyze_intent(texte, espace=espace)
+    return await orchestrator.analyze_intent(texte)
+
+
 async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -> Dict[str, Any]:
     """Aiguille la demande vers l'agent choisi, en declarant son type de tache.
 
@@ -726,15 +765,9 @@ async def dispatch_request(request: ChatRequest, intent: Optional[str] = None) -
     cherche a mesurer.
     """
     if intent is None:
-        # AVANT le classeur, et sans modele : une reponse a une question
-        # qu'ARENA vient de poser n'est pas une nouvelle demande. Le classeur
-        # ne lit que le message courant — « Medina » seul ne peut pas lui
-        # rappeler qu'un devis attend son lieu de chantier.
-        intent = intention_dune_reponse_attendue(
-            request.history, request.message_actuel or request.prompt,
-            request.session_id or "default")
-    if intent is None:
-        intent = await orchestrator.analyze_intent(request.prompt)
+        intent = await classer_la_demande(
+            request.message_actuel or request.prompt, request.history,
+            request.session_id or "default", a_classer=request.prompt)
     with tache(intent):
         reponse = await _aiguiller(request, intent)
     # Ce tour a-t-il laisse une question sans reponse ? Si oui, le prochain
@@ -988,7 +1021,7 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
 async def chat_endpoint(request: ChatRequest):
     try:
         if not await fast_provider.is_available():
-            return {"status": "error", "model": fast_provider.model_name, "response": "âŒ Ollama hors-ligne."}
+            return {"status": "error", "model": fast_provider.model_name, "response": "❌ Ollama hors-ligne."}
 
         result = await dispatch_request(request)
         intention = result.get("intent", "CHAT")
@@ -1006,12 +1039,12 @@ async def chat_endpoint(request: ChatRequest):
         }
     except Exception as e:
         logger.error(f"Erreur endpoint chat: {e}", exc_info=True)
-        return {"status": "error", "model": "error", "response": f"âŒ {str(e)}"}
+        return {"status": "error", "model": "error", "response": f"❌ {str(e)}"}
 
 @router.post("/api/chat/stream", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
 async def chat_stream_endpoint(request: ChatRequest):
     session_id = request.session_id or "default"
-    intent = await orchestrator.analyze_intent(request.prompt)
+    intent = await classer_la_demande(request.prompt, request.history, session_id)
 
     if intent in AGENTS_SPECIALISES:
         result = await dispatch_request(request, intent=intent)

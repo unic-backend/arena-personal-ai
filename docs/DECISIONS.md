@@ -10885,3 +10885,112 @@ route echoue proprement a la generation, comme WanGP/MoneyPrinter/HiDream
 dans la meme situation. Rien de nouveau n'est donc irreversible : retirer
 `"agnes"` de `CAPACITES_VIDEO` desactiverait la composition aussi simplement
 qu'elle a ete activee.
+
+## DEC-0133 — Le classeur par modele connait les vingt-huit intentions, pas vingt et une
+
+**2026-09-26.**
+
+**Decision** : `PROMPT_CLASSIFICATION` (`agents/orchestrator/orchestrator_agent.py`)
+decrit desormais les sept intentions qui lui manquaient — EXECUTIVE, MONTAGE,
+AUDIO, VISAGE, DESIGN_UI, PREUVE_FORMELLE, ARCHITECTURE_3D — chacune avec la
+frontiere qui la separe de sa voisine (MONTAGE/VIDEO_ANALYSIS, VISAGE/VISION,
+DESIGN_UI/UI_GENERATE, PREUVE_FORMELLE/DEEP_REASONING, ARCHITECTURE_3D/PLAQUISTE).
+`tests/agents/test_orchestrator.py::test_chaque_intention_est_proposee_au_modele`
+parcourt `INTENTIONS` et exige une ligne de description par etiquette.
+
+**Pourquoi** : mesure du 26/09/2026. `analyze_intent` n'appelle le repli par
+mots-cles que si le modele est injoignable ou repond hors liste ; quand il
+repond, il choisit parmi ce que le prompt lui montre. Or le prompt n'en montrait
+que 21 sur 28. L'analyseur ACCEPTAIT les sept autres (`candidat in INTENTIONS`),
+et `_aiguiller` les servait toutes — d'ou un trou invisible : leurs agents
+n'etaient joignables en chat libre que depuis l'espace de la PWA, ou quand le
+modele etait en panne. EXECUTIVE y echappait en partie grace a
+`demande_executive`, controle deterministe avant le modele, mais seulement pour
+ses phrases exactes. Le test existant `test_une_etiquette_connue_est_reprise_
+telle_quelle` ne pouvait pas le voir : il fait dire l'etiquette au faux modele
+au lieu de regarder ce qu'on lui presente.
+
+**Sabotage** : retirer les sept lignes fait echouer exactement sept cas du
+nouveau test, un par intention manquante ; les remettre les fait passer.
+
+**Ce que ca coute si c'est faux** : un modele qui confondrait une nouvelle
+etiquette avec sa voisine enverrait la demande a un agent proche mais pas au
+bon — un risque borne par les frontieres ecrites dans chaque description, et
+visible dans les journaux (`Espace`/`repli` y sont deja traces).
+
+## DEC-0134 — Le double encodage se detecte par sa forme, plus par une liste
+
+**2026-09-26.**
+
+**Decision** : `tests/test_encodage.py::double_encodages` reconnait tout morceau
+de texte qui, ramene a ses octets cp1252 (les cinq octets non definis passes
+tels quels), redevient une sequence UTF-8 valide. L'ancienne liste fermee
+(`DOUBLE_ENCODAGE`) reste en plus, parce que le « à » abime y figure avec une espace
+simple (l'espace insecable perdue en route) que la forme generique ne peut pas reconnaitre. Les trois lignes
+abimees de `apps/backend/routers/chat.py` sont reparees.
+
+**Pourquoi** : mesure du 26/09/2026. `/api/chat` rendait au proprietaire
+« Ollama hors-ligne. » (deux fois) et « Le calcul n a pas pu etre execute »
+precedes d'un charabia de trois a six caracteres au lieu de la croix rouge et
+du panneau d'alerte : des emojis UTF-8 relus en cp1252. La liste fermee, ecrite pour les
+accents et les tirets, ne connaissait aucun emoji — et `❌` (E2 9D 8C) contient
+justement 0x9D, un octet que cp1252 ne definit pas, donc invisible a toute
+liste ecrite a la main.
+
+**Sabotage** : sur `main`, `tests/test_encodage.py` passe avec ces trois lignes
+abimees ; avec le detecteur generique, remettre la croix abimee dans `chat.py` fait
+echouer le test en nommant `apps/backend/routers/chat.py:991`.
+
+**Ce que ca coute si c'est faux** : un faux positif bloquerait la CI sur un
+texte sain. Borne : un morceau n'est retenu que s'il redevient de l'UTF-8
+strictement valide, et `test_le_detecteur_laisse_le_texte_sain` fixe le
+francais courant (« », é, à, ç, œ) et les emojis intacts comme sains.
+
+## DEC-0135 — TurboVNC n'est pas intégré : aucun serveur ne tournerait là où ARENA tourne
+
+**2026-09-26.**
+
+**Decision** : pas de connecteur, pas de dépendance, aucun code. L'audit est
+dans `docs/audits/turbovnc_audit.md`. Décision du propriétaire, sur la
+question posée le 25/09/2026 (« Ne pas intégrer »).
+
+**Pourquoi** : le serveur TurboVNC est Linux/Un*x uniquement (tableau des
+prérequis de TurboVNC lui-même, commit `8ef3739` : Windows et Mac n'y sont que
+clients), sans API programmable (`vncserver` est un script Perl), et sa vue
+web dépend d'un noVNC fourni à part. La machine du propriétaire est sous
+Windows : un connecteur serait « non configuré » pour toujours — un composant
+dormant de plus.
+
+**Ce que ca coute si c'est faux** : si le propriétaire veut un jour voir en
+direct le bureau Case depuis son téléphone, il faudra monter TurboVNC + noVNC
+dans l'image Case — travail hors d'ARENA, que rien ici n'empêche. Les
+conditions de réouverture sont écrites dans l'audit.
+
+## DEC-0136 — Une question en attente est relue sur toutes les surfaces, pas seulement /api/chat
+
+**2026-09-26.**
+
+**Decision** : `apps/backend/routers/chat.py::classer_la_demande` est le seul
+classement d'une demande : la question en attente d'abord
+(`intention_dune_reponse_attendue`), le classeur ensuite. `dispatch_request`,
+`/api/chat/stream`, la PWA (`apps/backend/routers/pwa_gateway.py`) et la
+passerelle OpenAI (`apps/backend/routers/openai_gateway.py`) l'appellent
+tous ; plus aucun n'appelle `orchestrator.analyze_intent` en direct.
+
+**Pourquoi** : mesure du 26/09/2026. Le correctif du 20/09 (« Medina » apres
+la question du lieu d'un devis) ne vivait que dans `dispatch_request`, et
+seulement quand l'appelant n'avait pas deja classe. Les trois autres surfaces
+classaient elles-memes puis passaient l'intention — dont la PWA, le chemin
+que le proprietaire emprunte depuis son telephone. Reproduit par la vraie
+route `/agent/stream` : question du devis notee pour la session, « Medina »
+envoye, `dispatch_request` recevait `FRESH_INFO` (recherche web). La question
+etait notee apres chaque tour et relue par personne sur ce chemin.
+
+**Sabotage** : `tests/test_question_en_attente_toutes_surfaces.py` — sans le
+correctif, les trois surfaces echouent (PWA, OpenAI, flux) ; le temoin « sans
+question, le classeur garde la main » passe dans les deux cas.
+
+**Ce que ca coute si c'est faux** : une phrase qui change de sujet sans que
+`_a_change_de_sujet` le reconnaisse irait a l'agent qui attendait, au plus
+pendant la demi-heure de validite (`DELAI_DE_VALIDITE_SECONDES`) — le meme
+risque que `/api/chat` portait deja, desormais le meme partout.
