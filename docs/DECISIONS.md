@@ -11018,3 +11018,38 @@ telephone aussi, ce qui rendait l'oubli visible la ou le proprietaire parle.
 **Ce que ca coute si c'est faux** : une reponse qui contiendrait une phrase
 executive exacte (« accepter ce chantier ») liberait la question au lieu d'y
 repondre ; le proprietaire devrait redonner l'information une fois.
+
+## DEC-0138 — Chaque mot-cle du repli mene a sa propre famille
+
+**2026-09-26.**
+
+**Decision** : quatre corrections dans `_classer_par_mots_cles`
+(`agents/orchestrator/orchestrator_agent.py`), et un test qui lit les familles
+dans la source du repli et exige que chaque mot-cle, pris seul, rende
+l'intention de SA famille :
+
+- AUDIO ne porte plus « doublage » seul — chez un plaquiste c'est un mur
+  (METIER, `agents/plaquiste/metre.py`) — mais « doublage de la vidéo »,
+  « doublage vidéo », etc. Le prompt du classeur par modele dit de meme
+  (« doublage d'une VIDÉO » pour AUDIO, « doublage de mur » pour PLAQUISTE).
+- Les mots du code et du raisonnement se cherchent au DEBUT d'un mot
+  (`_commence_un_mot`) : « transcription » et « description » ne contiennent
+  plus « script », « épreuve » ne contient plus « preuve ». « écris un » porte
+  son espace : « écris une lettre » n'est pas du code.
+- DESIGN_UI ne capte plus une phrase qui porte un marqueur 3D (« maquette 3d »).
+- « monte une vidéo » quitte FABRIQUER_VIDEO : MONTAGE, teste avant, l'avait
+  toujours capte — l'entree etait morte.
+
+**Pourquoi** : mesure du 26/09/2026, quand le modele est injoignable (le repli
+est alors le SEUL classeur) : « fais-moi un devis pour un doublage de 20 m2 »
+partait a la synthese vocale, « fais la transcription de cette vidéo » a
+l'execution de code, « je veux une maquette 3d de la maison » au conseil
+d'interface.
+
+**Sabotage** : l'ancien repli fait echouer dix cas des nouveaux tests (cinq
+mots-cles, cinq phrases).
+
+**Ce que ca coute si c'est faux** : une demande de doublage video formulee
+sans le mot « vidéo » (« fais le doublage en wolof ») tombe en CHAT au lieu
+d'AUDIO quand le modele est en panne ; et un mot de code colle a un autre
+(« pycode ») n'est plus reconnu. Les deux restent atteignables par le modele.

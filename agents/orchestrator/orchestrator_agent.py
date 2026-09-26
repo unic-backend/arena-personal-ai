@@ -270,7 +270,10 @@ FABRIQUER_VIDEO = (
     "fais-moi une vidéo", "fais moi une video", "fais-moi une video",
     "fais moi une vidéo", "génère une vidéo", "genere une video",
     "crée une vidéo", "cree une video", "fabrique une vidéo",
-    "fabrique une video", "monte une vidéo", "monte une video",
+    "fabrique une video",
+    # « monte une vidéo » n'est PLUS ici : MONTAGE, teste avant, l'a toujours
+    # capte — l'entree etait morte (mesure du 26/09/2026,
+    # `test_chaque_mot_cle_mene_a_sa_famille`).
     "fais-moi un short", "fais moi un short", "crée un short", "cree un short",
     "génère un short", "genere un short",
 )
@@ -319,7 +322,12 @@ AUDIO = (
     "a voix haute", "à voix haute", "transforme ce texte en voix",
     "genere une voix", "génère une voix", "synthese vocale", "synthèse vocale",
     "narration", "en voix francaise", "en voix française",
-    "double cette video", "double cette vidéo", "doublage",
+    "double cette video", "double cette vidéo",
+    # Jamais « doublage » seul : chez un plaquiste c'est un MUR (METIER,
+    # `agents/plaquiste/metre.py`). « devis pour un doublage de 20 m2 »
+    # partait ici, vers la synthese vocale (mesure du 26/09/2026).
+    "doublage de la video", "doublage de la vidéo", "doublage de cette video",
+    "doublage de cette vidéo", "doublage video", "doublage vidéo", "doublage audio",
     "quelles voix", "quels moteurs audio", "moteurs de voix",
 )
 
@@ -583,6 +591,15 @@ FORMULATIONS_COURANTES = (
 )
 
 
+def _commence_un_mot(texte: str, mots) -> bool:
+    """Vrai si l'un des `mots` apparait au debut d'un mot de `texte`.
+
+    « script » trouve « scripts » et « script python », jamais
+    « transcription ». Un `in` nu confondait les deux.
+    """
+    return any(re.search(rf"\b{re.escape(mot)}", texte) for mot in mots)
+
+
 PROMPT_CLASSIFICATION = """Tu es un classifieur d'intention. Tu ne réponds jamais à la demande.
 Choisis UNE seule étiquette parmi cette liste, et réponds UNIQUEMENT par cette étiquette :
 
@@ -602,7 +619,8 @@ VIDEO_PROJET    : un projet vidéo complet qui doit faire collaborer PLUSIEURS
 EMAIL           : lire, trier ou répondre à son courrier.
 SOCIAL          : écrire, relire ou préparer une publication pour ses réseaux.
 PLAQUISTE       : metier du proprietaire — devis, facture, mail client,
-                  argumentaire, planning de chantier, BA13, cloison, plafond.
+                  argumentaire, planning de chantier, BA13, cloison, plafond,
+                  doublage de mur.
 STUDIO          : traiter une vidéo de bout en bout — vertical 9:16 et
                   sous-titres incrustés, en une seule demande.
 BROWSER         : ouvrir un site, naviguer, remplir un formulaire.
@@ -634,7 +652,7 @@ MONTAGE         : assembler SES clips ou rushes existants en une vidéo finie �
                   ou un titre. Rien à générer : la matière existe déjà.
 AUDIO           : le son d'un fichier ou d'un texte — transcrire ce qui est
                   dit, lire un texte à voix haute, voix off, narration,
-                  doublage, cloner une voix.
+                  doublage d'une VIDÉO, cloner une voix.
 VISAGE          : analyser des VISAGES sur une image — les détecter, les
                   compter, en extraire les repères, comparer deux visages
                   (même personne ?). Une image sans question de visage reste VISION.
@@ -908,7 +926,10 @@ class OrchestratorAgent(BaseAgent):
         if any(k in text for k in UI_GENERATE):
             return "UI_GENERATE"
 
-        if any(k in text for k in DESIGN_UI):
+        # « maquette » est aux deux : maquette d'ecran ici, maquette 3D d'une
+        # maison plus bas. Une phrase qui porte un marqueur 3D n'est jamais un
+        # conseil d'interface — « maquette 3d » partait ici (26/09/2026).
+        if any(k in text for k in DESIGN_UI) and not any(k in text for k in ARCHITECTURE_3D):
             return "DESIGN_UI"
 
         # Son agenda. Teste en premier : ces formulations ne veulent jamais dire
@@ -968,7 +989,7 @@ class OrchestratorAgent(BaseAgent):
 
         # Raisonnement profond & Maths complexes
         reasoning_keywords = ["équation", "equation", "résous", "resous", "matrice", "intégrale", "dérivée", "démontre", "démontrer", "calcul complexe", "preuve"]
-        if any(k in text for k in reasoning_keywords) and not dit_le_metier:
+        if _commence_un_mot(text, reasoning_keywords) and not dit_le_metier:
             return "DEEP_REASONING"
 
         # Code & Programmation. « calcule », « erreur » et « bug » sont des mots
@@ -976,8 +997,13 @@ class OrchestratorAgent(BaseAgent):
         # une erreur dans le devis » sont du metier, pas de la programmation.
         # D'ou la garde METIER — meme raison que les « Teste AVANT le metier »
         # plus bas, en sens inverse.
-        code_keywords = ["code", "python", "script", "fonction", "programme", "calcule", "factorielle", "fibonacci", "algorithme", "bug", "erreur", "écris un"]
-        if any(k in text for k in code_keywords) and not dit_le_metier:
+        # Au DEBUT d'un mot, jamais au milieu : « transcription » et
+        # « description » contiennent « script », « épreuve » contient
+        # « preuve ». « écris un » porte son espace : « écris une lettre »
+        # n'est pas du code. Mesure du 26/09/2026 : « fais la transcription de
+        # cette vidéo » partait a l'execution de code.
+        code_keywords = ["code", "python", "script", "fonction", "programme", "calcule", "factorielle", "fibonacci", "algorithme", "bug", "erreur", "écris un "]
+        if _commence_un_mot(text, code_keywords) and not dit_le_metier:
             return "CODE_EXECUTION"
 
         # Recherche Profonde

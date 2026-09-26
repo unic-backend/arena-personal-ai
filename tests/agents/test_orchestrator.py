@@ -680,3 +680,50 @@ async def test_run_injecte_reellement_le_contexte_projet_dans_le_modele(
     assert appels and appels[0][0] == "travaille sur mon projet"
     assert "contexte sentinelle ARENA" in provider.appels[-1]["system_prompt"]
     assert resultat["response"] == "Réponse finale"
+
+
+def _familles_du_repli():
+    """Les couples (famille de mots-cles, intention) lus dans le repli lui-meme.
+
+    Lus dans la source plutot que recopies ici : une famille ajoutee demain
+    entre dans le test sans que personne ait a y penser.
+    """
+    import inspect
+
+    import agents.orchestrator.orchestrator_agent as module
+
+    source = inspect.getsource(OrchestratorAgent._classer_par_mots_cles)
+    couples = re.findall(
+        r"for k in ([A-Z_0-9]+)\)[^\n]*:\n\s+return \"([A-Z_0-9]+)\"", source)
+    return [(famille, intention, mot)
+            for famille, intention in couples
+            for mot in getattr(module, famille)]
+
+
+@pytest.mark.parametrize("famille, intention, mot", _familles_du_repli())
+def test_chaque_mot_cle_mene_a_sa_famille(famille, intention, mot):
+    """Un mot-cle capte par une famille testee AVANT la sienne est un agent
+    qui ne se retrouve jamais. Mesure du 26/09/2026 : cinq l'etaient —
+    « doublage » (METIER) partait en AUDIO, « transcription » en code (elle
+    contient « script »), « maquette 3d » en DESIGN_UI, et « monte une
+    vidéo » figurait dans deux familles dont une ne pouvait jamais gagner.
+    """
+    assert OrchestratorAgent._classer_par_mots_cles(None, mot) == intention
+
+
+def test_les_familles_du_repli_sont_bien_lues():
+    assert len({famille for famille, _, _ in _familles_du_repli()}) >= 15
+
+
+@pytest.mark.parametrize("phrase, attendu", [
+    ("fais-moi un devis pour un doublage de 20 m2", "PLAQUISTE"),
+    ("combien de plaques pour un doublage placo", "PLAQUISTE"),
+    ("fais le doublage de cette vidéo en wolof", "AUDIO"),
+    ("fais la transcription de cette vidéo", "AUDIO"),
+    ("écris une description de mon entreprise", "CHAT"),
+    ("je veux une maquette 3d de la maison", "ARCHITECTURE_3D"),
+    ("écris un script python pour trier des fichiers", "CODE_EXECUTION"),
+    ("corrige ce bug dans mon script", "CODE_EXECUTION"),
+])
+def test_le_repli_ne_confond_plus_les_mots_partages(phrase, attendu):
+    assert OrchestratorAgent._classer_par_mots_cles(None, phrase) == attendu
