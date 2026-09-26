@@ -174,7 +174,7 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "ordinateur_dormir", "ordinateur_reveiller", "ordinateur_executer",
            "ordinateur_lire_fichier", "ordinateur_ecrire_fichier",
            "ordinateur_naviguer", "ordinateur_capture_ecran",
-           "ordinateur_detruire",
+           "ordinateur_agir_gui", "ordinateur_detruire",
            "git_statut", "git_diff", "git_checkpoint", "git_restaurer",
            "git_stager", "git_desindexer", "git_commettre",
            "git_branches_lister", "git_branche_creer", "git_basculer",
@@ -261,7 +261,7 @@ _CHAMP = re.compile(
     r"|SHA|PLAN_ID|CONFIRMER_SUPPRESSION|OPERATION|PAGES|DEGRES|FORMAT_PDFX|NOM|NUMERO|COMPUTER_ID|URL"
     r"|CIBLE|IDENTIFIANT|IDENTIFIANT_OPERATION|DISTANT|BRANCHE|AMEND|FORCE_AVEC_BAIL"
     r"|TETE_ATTENDUE|REBASE|SUR|COMMIT|DEPUIS|BASCULER|MESSAGE|INDEX|GARDER"
-    r"|INCLURE_NON_SUIVIS)"
+    r"|INCLURE_NON_SUIVIS|ACTION_GUI|X|Y|TOUCHE|TOUCHES|DELTA)"
     r"\s*:\s*(.+)$",
     re.IGNORECASE | re.MULTILINE)
 
@@ -467,6 +467,22 @@ URL: https://exemple.test
 
 ACTION: ordinateur_capture_ecran
 COMPUTER_ID: id de l'ordinateur
+
+ACTION: ordinateur_agir_gui
+COMPUTER_ID: id de l'ordinateur
+ACTION_GUI: clic
+X: 640
+Y: 420
+
+ACTION: ordinateur_agir_gui
+COMPUTER_ID: id de l'ordinateur
+ACTION_GUI: saisir
+TEXTE: Bonjour
+
+ACTION: ordinateur_agir_gui
+COMPUTER_ID: id de l'ordinateur
+ACTION_GUI: raccourci
+TOUCHES: ctrl,l
 
 ACTION: ordinateur_dormir
 COMPUTER_ID: id de l'ordinateur
@@ -1425,6 +1441,23 @@ class DioumtoukayAgent(BaseAgent):
             if not cid:
                 return Resultat(False, "Il manque COMPUTER_ID.")
             return self._via_case("capture_ecran", computer_id=cid)
+        if action.nom == "ordinateur_agir_gui":
+            cid = champs.get("COMPUTER_ID", "")
+            action_gui = champs.get("ACTION_GUI", "")
+            if not cid or not action_gui:
+                return Resultat(False, "Il manque COMPUTER_ID ou ACTION_GUI.")
+            try:
+                x = int(champs.get("X", "0"))
+                y = int(champs.get("Y", "0"))
+                delta = int(champs.get("DELTA", "0"))
+            except ValueError:
+                return Resultat(False, "X, Y et DELTA doivent etre des entiers.")
+            touches = [t.strip() for t in champs.get("TOUCHES", "").split(",") if t.strip()]
+            return self._via_case(
+                "agir_gui", computer_id=cid, action_gui=action_gui,
+                x=x, y=y, texte=champs.get("TEXTE", ""),
+                touche=champs.get("TOUCHE", ""), touches=touches, delta=delta,
+            )
         if action.nom == "ordinateur_detruire":
             cid = champs.get("COMPUTER_ID", "")
             if not cid:
