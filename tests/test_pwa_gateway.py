@@ -1797,6 +1797,7 @@ class TestLeFilCoupeParLeTelephone:
 
         async def _resultat(requete, intent=None, **_options):
             recu["history"] = requete.history
+            recu["history_authoritative"] = requete.history_authoritative
             return {"response": "Reponse sourcee.", "sources": []}
         monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
 
@@ -1812,6 +1813,10 @@ class TestLeFilCoupeParLeTelephone:
         assert recu["history"] == historique, (
             "FRESH_INFO n'a pas recu l'historique autoritatif du telephone : "
             "il peut retomber sur un ancien sujet du journal serveur"
+        )
+        assert recu["history_authoritative"] is True, (
+            "le fil PWA arrive sans marque autoritative : [] pourrait etre "
+            "remplace par une memoire serveur stale"
         )
 
     def test_un_autre_agent_specialise_ne_recoit_toujours_pas_le_fil(
