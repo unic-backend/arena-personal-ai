@@ -76,6 +76,7 @@ from core.connectors.gmail import GmailConnector
 from core.connectors.graphify import ConnecteurGraphify
 from core.connectors.hermes_evolution import ConnecteurHermesEvolution
 from core.connectors.hidream import HiDreamConnector
+from core.connectors.huggingface import ConnecteurHuggingFace
 from core.connectors.hyperframes import ConnecteurHyperframes
 from core.connectors.ifc import ConnecteurIfc
 from core.connectors.ifc_generation import ConnecteurIfcGeneration
@@ -530,6 +531,11 @@ registre.declarer(
     "github",
     lambda: ConnecteurGitHub(acces=acces, journal=journal, file_attente=file_attente,
                              crochets=crochets),
+)
+registre.declarer(
+    "huggingface",
+    lambda: ConnecteurHuggingFace(acces=acces, journal=journal, file_attente=file_attente,
+                                  crochets=crochets),
 )
 # Journal des actions a effet externe. Meme fichier que la memoire, table a part.
 journal = JournalDesActions(db_path=str(DB_PATH))

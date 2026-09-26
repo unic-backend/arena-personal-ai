@@ -168,7 +168,7 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "convertir", "organiser_inspecter", "organiser_planifier",
            "organiser_appliquer", "organiser_annuler",
            "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
-           "presentation_generer",
+           "presentation_generer", "hf_modeles", "hf_modele",
            "isoler", "nettoyer_worktree",
            "ordinateur_lister", "ordinateur_creer", "ordinateur_etat",
            "ordinateur_dormir", "ordinateur_reveiller", "ordinateur_executer",
@@ -427,6 +427,12 @@ ACTION: presentation_generer
 CONTENU:
 {"titre":"Projet","theme":"clair","slides":[{"titre":"Introduction","puces":["Objectif","Contexte"]}]}
 FIN
+
+ACTION: hf_modeles
+TEXTE: qwen coder
+
+ACTION: hf_modele
+NOM: Qwen/Qwen3-8B
 
 ACTION: isoler
 NOM: correctif-toiture
@@ -1244,6 +1250,19 @@ class DioumtoukayAgent(BaseAgent):
             return Resultat(True, resultat.message, sortie=detail)
         return Resultat(False, resultat.message)
 
+    def _via_huggingface(self, capacite: str, **parametres: Any) -> Resultat:
+        """Interroge le Hub via le registre reel de connecteurs."""
+        if self.registre_connecteurs is None:
+            return Resultat(False, "Le registre de connecteurs n'est pas branche.")
+        connecteur = self.registre_connecteurs.obtenir("huggingface")
+        if connecteur is None:
+            return Resultat(False, "Hugging Face n'est pas branche.")
+        resultat = connecteur.executer(capacite, **parametres)
+        if resultat.statut in (Statut.SUCCES, Statut.PARTIEL):
+            return Resultat(True, resultat.message,
+                            sortie=self._detail_lisible(resultat.detail or {}))
+        return Resultat(False, resultat.message)
+
     def _via_presentation(self, **parametres: Any) -> Resultat:
         """Pont vers le générateur PPTX natif, sans moteur Dashi embarqué."""
         connecteur = self.connecteur_presentation
@@ -1720,6 +1739,16 @@ class DioumtoukayAgent(BaseAgent):
             if not action.contenu.strip():
                 return Resultat(False, "Il manque CONTENU — le plan JSON de la présentation.")
             return self._via_presentation(plan=action.contenu)
+        if action.nom == "hf_modeles":
+            recherche = champs.get("TEXTE", "")
+            if not recherche:
+                return Resultat(False, "Il manque TEXTE — le modele ou la tache a chercher.")
+            return self._via_huggingface("chercher_modeles", recherche=recherche)
+        if action.nom == "hf_modele":
+            modele = champs.get("NOM", "")
+            if not modele:
+                return Resultat(False, "Il manque NOM — organisation/modele.")
+            return self._via_huggingface("modele", modele=modele)
         # `executer` : la ligne devient une LISTE d'arguments. Ce n'est pas une
         # restriction de ce qu'il peut lancer — c'est ce qui empeche un nom de
         # fichier contenant une espace ou un `;` de devenir deux commandes.
