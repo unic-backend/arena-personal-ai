@@ -506,7 +506,7 @@ class VideoAnalyzerAgent(BaseAgent):
 Transcription: "{full_text}"
 Analyse:"""
 
-        ai_analysis = await self.provider.generate(prompt=prompt)
+        ai_analysis = await self.rediger(prompt=prompt)
 
         return {
             "status": "success",

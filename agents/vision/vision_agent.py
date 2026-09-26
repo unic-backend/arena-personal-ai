@@ -157,7 +157,7 @@ class VisionAgent(BaseAgent):
         prompt = f"{RAPPEL_DONNEE}\n\n{question}"
 
         try:
-            reponse = await self.provider.generate(
+            reponse = await self.rediger(
                 prompt=prompt,
                 images=[image.image_base64 for image in images],
             )

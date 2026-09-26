@@ -898,6 +898,38 @@ for _nom_collaborateur in _equipe:
 for _nom_collaborateur in _equipe:
     _equipe[_nom_collaborateur].collaborateurs = collaborateurs
 
+
+class _RaisonnementCollegue:
+    """Le raisonnement profond, joignable comme un collegue (DEC-0144).
+
+    Ce n'est pas un agent mais un pont (`apps/backend/reasoning_bridge.py`),
+    importe ICI a l'appel : il importe lui-meme ce module.
+    """
+
+    description = ("resout un probleme mathematique, un calcul ou une "
+                   "demonstration, avec calcul verifie")
+
+    async def run(self, user_input: str, context=None):
+        from apps.backend.reasoning_bridge import resoudre_profondement
+
+        return await resoudre_profondement(user_input, moteur=reasoning_engine)
+
+
+# Ce que les agents ne pouvaient pas consulter, alors que le chat y accede
+# (mesure du 26/09/2026) : les documents du proprietaire, les liens entre
+# eux, le raisonnement verifie. Ce sont des outils, pas des agents : ils ne
+# consultent personne a leur tour, ils repondent.
+collaborateurs.enregistrer("documents", adaptateur_synchrone(
+    lambda texte: lightrag_tool.query(texte, mode="hybrid"), "LightRAG",
+    est_un_echec=lightrag_echec,
+    description="repond a partir des documents du proprietaire (devis, contrats, notes)",
+))
+collaborateurs.enregistrer("graphe", adaptateur_synchrone(
+    lambda texte: str(graphrag_tool.query_global(texte).get("response", "")), "GraphRAG",
+    description="repond sur les liens entre les documents du proprietaire",
+))
+collaborateurs.enregistrer("raisonnement", _RaisonnementCollegue())
+
 # Executive Intelligence (DEC-0086) n'est PAS enregistree ici : ce registre ne
 # connait que les espaces choisissables dans la barre laterale de la PWA
 # (`INTENTION_PAR_ESPACE`, verifie par tests/test_runtime_capacites.py) —

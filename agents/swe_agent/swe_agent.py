@@ -82,7 +82,7 @@ class SWEAgent(BaseAgent):
             + (f"\n\n{methode}" if methode else "")
         )
 
-        analysis = await self.provider.generate(prompt=prompt)
+        analysis = await self.rediger(prompt=prompt)
 
         return {
             "status": "success",

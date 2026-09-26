@@ -11206,3 +11206,54 @@ le MEME besoin (« ecris une fonction puis corrige-la ») reste a un seul agent 
 voulu ; une phrase coupee a tort sur « et » + verbe lance deux agents la ou un
 suffisait, chacun avec ses garde-fous. Chaque morceau classe coute un appel au
 classeur, seulement quand la phrase a au moins deux morceaux.
+
+## DEC-0144 — Chaque agent peut consulter un collegue pendant son propre travail
+
+**2026-09-26.**
+
+**Decision** : `core/agent/base_agent.py` donne a TOUS les agents deux methodes,
+`rediger` et `rediger_en_flux`. Elles interrogent le modele de l'agent en lui
+listant ses collegues ; s'il repond `[[COLLEGUE:<cle>|<question>]]`, le collegue
+est appele par `demander_specialiste` (boucle, budget, delai : les garde-fous
+existants), sa reponse revient comme DONNEE (`core/security/trust.py::wrap`,
+TOOL), et le modele termine son travail. Deux consultations au plus ; une
+demande restee au dernier tour n'est jamais montree. En flux, seuls les
+premiers caracteres sont retenus le temps de savoir si la reponse est une
+demande — une reponse ordinaire coule comme avant.
+
+La chaine de delegation voyage desormais dans le contexte asyncio
+(`_DELEGATION_EN_COURS`) : un agent consulte qui consulte a son tour n'a pas a
+transmettre son `context` a la main pour que A -> B -> A soit refuse.
+
+Branches : l'appel de travail principal de seize agents — code, recherche,
+actualite, atelier (Dioumtoukay), plaquiste, email, social (trois),
+vision, orchestrateur (chat), analyse video, tendances, finance, repo, swe,
+ui, publication — et la conversation du telephone
+(`apps/backend/routers/pwa_gateway.py`, par `orchestrator.rediger_en_flux`).
+Nouveaux collegues dans `apps/backend/runtime.py::collaborateurs` :
+`documents` (LightRAG), `graphe` (GraphRAG), `raisonnement` (moteur de
+raisonnement verifie). Sans registre de collaborateurs (un agent seul, un
+test), `rediger` est exactement `provider.generate`.
+
+**Pourquoi** : demande du proprietaire le 26/09/2026 — tous les agents, pas
+seulement le devis, doivent pouvoir se servir les uns des autres. Mesure :
+25 agents enregistres comme collaborateurs, UN seul (production video)
+appelait un collegue ; `documents` n'etait dans le registre d'aucun agent.
+
+**Non branches, et pourquoi** : les appels qui produisent un format ferme
+(plan JSON de montage et de production video, selection de clips, code Lean,
+correction de sous-titres, reformulation de question, tri du courrier,
+extraction du devis) — une demande de collegue y casserait le format attendu,
+et la production video consulte deja par son plan. Audio, edition,
+navigateur et executive n'interrogent pas de modele libre : ils restent
+consultables, sans consulter eux-memes.
+
+**Sabotage** : sans le branchement (mecanisme garde), dix-huit tests de
+`tests/core/test_consultation_collegues.py` echouent — les seize agents, le
+runtime et la route du telephone. `tests/test_pwa_gateway.py::
+test_sans_persona_le_prompt_systeme_est_inchange` garde son egalite exacte en
+nommant le bloc des collegues.
+
+**Ce que ca coute si c'est faux** : un modele local qui ecrirait la ligne de
+demande sans raison ferait un appel de collegue de trop (borne a deux) ; la
+liste des collegues allonge chaque invite de ~30 lignes.

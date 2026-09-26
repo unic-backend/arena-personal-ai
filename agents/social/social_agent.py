@@ -258,7 +258,7 @@ class SocialAgent(BaseAgent):
             return self._sans_voix(execution, manquantes)
         execution.etape(f"voix chargee ({len(voix)} section(s))")
 
-        brouillon = ((await self.provider.generate(
+        brouillon = ((await self.rediger(
             prompt=f"Sujet de la publication : {sujet}",
             system_prompt=self._instruction(INSTRUCTION_PUBLICATION))) or "").strip()
         execution.etape("brouillon ecrit")
@@ -301,7 +301,7 @@ class SocialAgent(BaseAgent):
             return self._sans_voix(execution, memoire_voix.manquantes(voix))
         execution.etape("voix chargee")
 
-        brut = ((await self.provider.generate(
+        brut = ((await self.rediger(
             prompt=f"Sujet : {sujet}",
             system_prompt=self._instruction(INSTRUCTION_ACCROCHES))) or "").strip()
         execution.etape("crochets ecrits")
@@ -350,7 +350,7 @@ class SocialAgent(BaseAgent):
         if memoire_voix.manquantes(voix):
             return self._sans_voix(execution, memoire_voix.manquantes(voix))
         execution.etape("voix chargee")
-        reponse = ((await self.provider.generate(
+        reponse = ((await self.rediger(
             prompt=demande, system_prompt=self._instruction(INSTRUCTION_PROFIL))) or "").strip()
         execution.etape("proposition ecrite")
         return self._rendre(execution, reponse, statut="PRET")

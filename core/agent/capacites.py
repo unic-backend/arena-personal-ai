@@ -71,6 +71,10 @@ class RegistreCapacites:
     def connait(self, espace: str) -> bool:
         return espace in self._capacites
 
+    def obtenir(self, espace: str) -> Optional[Capacite]:
+        """L'agent enregistre sous `espace`, ou `None`."""
+        return self._capacites.get(espace)
+
     def cle_de(self, capacite: Any) -> Optional[str]:
         """La cle sous laquelle CET objet est enregistre, ou `None`.
 
@@ -107,6 +111,7 @@ def adaptateur_synchrone(
     fonction: Callable[[str], str],
     nom_agent: str,
     est_un_echec: Optional[Callable[[str], bool]] = None,
+    description: str = "",
 ) -> Capacite:
     """Enveloppe un outil synchrone (`fn(texte) -> str`) dans le contrat `run`.
 
@@ -128,4 +133,8 @@ def adaptateur_synchrone(
             return {"status": "error" if rate else "success",
                     "agent": nom_agent, "response": reponse}
 
-    return _Adaptateur()
+    adaptateur = _Adaptateur()
+    # Lue par `BaseAgent._liste_des_collegues` : un collegue sans description
+    # est un nom que le modele ne sait pas quand appeler.
+    adaptateur.description = description
+    return adaptateur

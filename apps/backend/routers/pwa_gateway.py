@@ -61,9 +61,7 @@ from apps.backend.runtime import (
     memory,
     mesures_execution,
     ollama_vision,
-    # Plus appele ici : le classement passe par `classer_la_demande`. Garde
-    # comme point d'acces au MEME singleton, que les tests remplacent.
-    orchestrator,  # noqa: F401
+    orchestrator,
     pieces_jointes,
     registre,
 )
@@ -1402,7 +1400,11 @@ async def flux_agent(demande: DemandeAgent):
 
             etape_reponse = Etape("response", mots["reponse"])
             yield etape_reponse.ouvrir()
-            async for morceau in fast_provider.generate_stream(fil, systeme):
+            # Par l'orchestrateur, et plus directement par le modele : la
+            # conversation du telephone peut desormais consulter un collegue
+            # (documents, recherche, code...) avant de repondre (DEC-0144).
+            async for morceau in orchestrator.rediger_en_flux(
+                    fil, systeme, fournisseur=fast_provider):
                 complet += morceau
                 yield jeton(morceau)
             yield etape_reponse.fermer()

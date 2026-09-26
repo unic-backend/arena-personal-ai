@@ -39,7 +39,7 @@ class CoderAgent(BaseAgent):
             + (f"\n\n{methode}" if methode else "")
         )
 
-        raw_code = await self.provider.generate(prompt=prompt)
+        raw_code = await self.rediger(prompt=prompt)
         res = self.interpreter.execute_python_code(raw_code)
 
         attempts = 0

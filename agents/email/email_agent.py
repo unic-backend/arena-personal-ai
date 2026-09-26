@@ -183,7 +183,7 @@ class EmailAgent(BaseAgent):
 
         if demande_d_envoi(user_input):
             try:
-                brouillon = ((await self.provider.generate(
+                brouillon = ((await self.rediger(
                     prompt=user_input, system_prompt=INSTRUCTION_BROUILLON)) or "").strip()
             except Exception as erreur:  # noqa: BLE001 — un modele indisponible se rapporte
                 return self._reponse_sans_modele(erreur, messages=[])
