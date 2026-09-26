@@ -71,6 +71,7 @@ from core.connectors.file_organization import ConnecteurFileOrganization
 from core.connectors.formbricks import ConnecteurFormbricks
 from core.connectors.galsen import GalsenConnector
 from core.connectors.github import ConnecteurGitHub
+from core.connectors.huggingface import ConnecteurHuggingFace
 from core.connectors.gitingest import ConnecteurGitIngest
 from core.connectors.gmail import GmailConnector
 from core.connectors.graphify import ConnecteurGraphify
@@ -530,6 +531,11 @@ registre.declarer(
     "github",
     lambda: ConnecteurGitHub(acces=acces, journal=journal, file_attente=file_attente,
                              crochets=crochets),
+)
+registre.declarer(
+    "huggingface",
+    lambda: ConnecteurHuggingFace(acces=acces, journal=journal, file_attente=file_attente,
+                                  crochets=crochets),
 )
 # Journal des actions a effet externe. Meme fichier que la memoire, table a part.
 journal = JournalDesActions(db_path=str(DB_PATH))
