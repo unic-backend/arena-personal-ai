@@ -1242,6 +1242,10 @@ async def flux_agent(demande: DemandeAgent):
                                 history=(_fil_complet(demande)
                                          if intention in INTENTIONS_AVEC_FIL
                                          else []),
+                                # Pour FRESH_INFO, meme [] fait foi : la
+                                # passerelle a deja reuni le fil du telephone et
+                                # les anciens tours de CETTE conversation.
+                                history_authoritative=(intention == "FRESH_INFO"),
                                 message_actuel=demande.text if intention == "PLAQUISTE" else None,
                             ),
                             intent=intention,
