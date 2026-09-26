@@ -1246,10 +1246,13 @@ class DioumtoukayAgent(BaseAgent):
 
     def _via_presentation(self, **parametres: Any) -> Resultat:
         """Pont vers le générateur PPTX natif, sans moteur Dashi embarqué."""
-        if self.connecteur_presentation is None:
+        connecteur = self.connecteur_presentation
+        if self.registre_connecteurs is not None:
+            connecteur = self.registre_connecteurs.obtenir("presentation")
+        if connecteur is None:
             return Resultat(False, "Le connecteur de présentation n'est pas branché.")
         try:
-            resultat = self.connecteur_presentation.executer("generer", **parametres)
+            resultat = connecteur.executer("generer", **parametres)
         except Exception as erreur:  # noqa: BLE001
             return Resultat(False, f"Présentation impossible : {type(erreur).__name__}: {erreur}")
         if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
