@@ -275,8 +275,12 @@ class FreshInfoAgent(BaseAgent):
         contexte = context or {}
         historique = contexte.get("history")
         session_id = contexte.get("session_id")
-        if not historique and session_id and self.memory:
-            historique = self.memory.get_recent_history(session_id=session_id, limit=8)
+        # Un [] autoritatif veut dire « cette conversation n'a aucun tour
+        # precedent ». Ne jamais le remplacer par un journal serveur qui peut
+        # appartenir a un etat plus ancien ou a un client sans conversation_id.
+        if not contexte.get("history_authoritative"):
+            if not historique and session_id and self.memory:
+                historique = self.memory.get_recent_history(session_id=session_id, limit=8)
         if not historique:
             return user_input
 
