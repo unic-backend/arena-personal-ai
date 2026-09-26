@@ -149,7 +149,7 @@ class TestPublierSession:
             appels.append((racine, kwargs))
             return git_ops.ResultatOperation(
                 ok=True, operation="push", message="pousse",
-                sortie="", code=0, donnees={})
+                sortie="", donnees={})
 
         monkeypatch.setattr(git_ops, "pousser", _pousser)
 
