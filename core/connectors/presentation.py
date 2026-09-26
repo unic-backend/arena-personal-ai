@@ -13,21 +13,27 @@ from core.actions.resultat import ResultatAction, echec, non_configure, succes
 from core.connectors.base import Capacite, Connecteur, EtatSante, Sante, _maintenant
 from core.production.presentations import PresentationInvalide, generer_pptx
 
+
 def _slug(value: str) -> str:
     normalise = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
     return re.sub(r"[^a-zA-Z0-9]+", "-", normalise).strip("-").lower()[:60] or "presentation"
 
+
 class ConnecteurPresentation(Connecteur):
     service = "presentation"
     nom = "presentation"
+
     def __init__(self, dossier: Optional[Path] = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.dossier = Path(dossier) if dossier else RENDERED_DIR / "presentations"
+
     def capacites(self) -> Dict[str, Capacite]:
         return {"generer": Capacite(nom="generer", action="document",
             description="Génère un PPTX éditable depuis un plan structuré de slides.", ecriture=True)}
+
     def authentifier(self) -> bool:
         return True
+
     def sonder(self) -> Sante:
         try:
             import pptx  # noqa: F401
@@ -36,6 +42,7 @@ class ConnecteurPresentation(Connecteur):
                          ce_qui_manque="pip install python-pptx", mesure_le=_maintenant())
         return Sante(etat=EtatSante.OPERATIONNEL, message="python-pptx disponible.",
                      mesure_le=_maintenant())
+
     def _executer(self, capacite: Capacite, **parametres: Any) -> ResultatAction:
         plan = parametres.get("plan")
         if isinstance(plan, str):
