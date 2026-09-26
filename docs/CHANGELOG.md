@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Corrigé — 26/09/2026 — Emojis illisibles dans les réponses du chat
+
+`/api/chat` affichait un charabia à la place de ❌ et ⚠️ : trois
+lignes de `apps/backend/routers/chat.py` portaient des emojis UTF-8 relus en
+cp1252. Le test d'encodage ne cherchait qu'une liste fermée de séquences
+(accents, tirets) et laissait passer tout emoji ; il reconnaît maintenant le
+double encodage par sa forme, en plus de la liste (DEC-0134).
+
 ### Corrigé — 26/09/2026 — Sept agents que le classeur par modèle ne pouvait jamais choisir
 
 `PROMPT_CLASSIFICATION` ne décrivait que 21 des 28 intentions d'`INTENTIONS`.

@@ -10917,3 +10917,31 @@ nouveau test, un par intention manquante ; les remettre les fait passer.
 etiquette avec sa voisine enverrait la demande a un agent proche mais pas au
 bon — un risque borne par les frontieres ecrites dans chaque description, et
 visible dans les journaux (`Espace`/`repli` y sont deja traces).
+
+## DEC-0134 — Le double encodage se detecte par sa forme, plus par une liste
+
+**2026-09-26.**
+
+**Decision** : `tests/test_encodage.py::double_encodages` reconnait tout morceau
+de texte qui, ramene a ses octets cp1252 (les cinq octets non definis passes
+tels quels), redevient une sequence UTF-8 valide. L'ancienne liste fermee
+(`DOUBLE_ENCODAGE`) reste en plus, parce que le « à » abime y figure avec une espace
+simple (l'espace insecable perdue en route) que la forme generique ne peut pas reconnaitre. Les trois lignes
+abimees de `apps/backend/routers/chat.py` sont reparees.
+
+**Pourquoi** : mesure du 26/09/2026. `/api/chat` rendait au proprietaire
+« Ollama hors-ligne. » (deux fois) et « Le calcul n a pas pu etre execute »
+precedes d'un charabia de trois a six caracteres au lieu de la croix rouge et
+du panneau d'alerte : des emojis UTF-8 relus en cp1252. La liste fermee, ecrite pour les
+accents et les tirets, ne connaissait aucun emoji — et `❌` (E2 9D 8C) contient
+justement 0x9D, un octet que cp1252 ne definit pas, donc invisible a toute
+liste ecrite a la main.
+
+**Sabotage** : sur `main`, `tests/test_encodage.py` passe avec ces trois lignes
+abimees ; avec le detecteur generique, remettre la croix abimee dans `chat.py` fait
+echouer le test en nommant `apps/backend/routers/chat.py:991`.
+
+**Ce que ca coute si c'est faux** : un faux positif bloquerait la CI sur un
+texte sain. Borne : un morceau n'est retenu que s'il redevient de l'UTF-8
+strictement valide, et `test_le_detecteur_laisse_le_texte_sain` fixe le
+francais courant (« », é, à, ç, œ) et les emojis intacts comme sains.

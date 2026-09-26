@@ -274,7 +274,7 @@ def note_de_calcul(calcul: str) -> str:
     """
     if not calcul or not calcul.startswith(CALCUL_REFUSE):
         return ""
-    return ("\n\nâš ï¸ Le calcul n a pas pu etre execute : "
+    return ("\n\n⚠️ Le calcul n a pas pu etre execute : "
             f"{calcul[len(CALCUL_REFUSE):].lstrip(' :')} "
             "Ce qui precede n a donc ete verifie par aucun calcul.")
 
@@ -988,7 +988,7 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
 async def chat_endpoint(request: ChatRequest):
     try:
         if not await fast_provider.is_available():
-            return {"status": "error", "model": fast_provider.model_name, "response": "âŒ Ollama hors-ligne."}
+            return {"status": "error", "model": fast_provider.model_name, "response": "❌ Ollama hors-ligne."}
 
         result = await dispatch_request(request)
         intention = result.get("intent", "CHAT")
@@ -1006,7 +1006,7 @@ async def chat_endpoint(request: ChatRequest):
         }
     except Exception as e:
         logger.error(f"Erreur endpoint chat: {e}", exc_info=True)
-        return {"status": "error", "model": "error", "response": f"âŒ {str(e)}"}
+        return {"status": "error", "model": "error", "response": f"❌ {str(e)}"}
 
 @router.post("/api/chat/stream", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
 async def chat_stream_endpoint(request: ChatRequest):

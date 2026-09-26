@@ -5,7 +5,10 @@ qui lisent la première ligne : un `grep '^import'` ne voyait pas le premier
 import de dix modules, ce qui a failli faire oublier `httpx` et `PyYAML` dans
 `requirements.txt`.
 """
+import re
 from pathlib import Path
+
+import pytest
 
 BOM = b"\xef\xbb\xbf"
 RACINE = Path(__file__).resolve().parent.parent
@@ -53,6 +56,70 @@ DOUBLE_ENCODAGE = (
     "Ãª", "Ã´", "Ã®", "Ã¹", "Â«", "Â»",
 )
 
+#: Chaque octet relu en cp1252 donne un caractere. Les cinq octets que cp1252
+#: ne definit pas (0x81, 0x8D, 0x8F, 0x90, 0x9D) passent tels quels, en
+#: caractere de controle — c'est ce que fait Windows, et c'est ce qui rendait
+#: `❌` (E2 9D 8C) invisible a la liste fermee ci-dessus.
+_OCTET_DU_CARACTERE = {}
+for _octet in range(256):
+    try:
+        _OCTET_DU_CARACTERE[bytes([_octet]).decode("cp1252")] = _octet
+    except UnicodeDecodeError:
+        _OCTET_DU_CARACTERE[chr(_octet)] = _octet
+
+#: Une tete de sequence UTF-8 (0xC2-0xF4) suivie d'octets de continuation
+#: (0x80-0xBF), le tout relu en cp1252.
+_SEQUENCE_SUSPECTE = re.compile(
+    "[Â-ô]["
+    + "".join(re.escape(c) for c, o in _OCTET_DU_CARACTERE.items() if 0x80 <= o <= 0xBF)
+    + "]+")
+
+
+def double_encodages(ligne: str) -> list:
+    """Les morceaux de `ligne` qui sont de l'UTF-8 relu en cp1252.
+
+    Generique, et non plus une liste de motifs : mesure du 26/09/2026,
+    `apps/backend/routers/chat.py` affichait `âŒ Ollama hors-ligne.` et
+    `âš ï¸ Le calcul…` au proprietaire, et la liste fermee — ecrite pour les
+    accents et les tirets — ne connaissait aucun emoji. Un morceau n'est
+    retenu que s'il redevient de l'UTF-8 **valide** une fois ramene a ses
+    octets : « é» » (E9 BB) n'est pas une sequence complete et reste sain.
+    """
+    generiques = [
+        morceau for morceau in _SEQUENCE_SUSPECTE.findall(ligne)
+        if _redevient_utf8(morceau)
+    ]
+    # La liste fermee reste EN PLUS : `Ã ` y figure avec une espace simple (le
+    # `\xa0` de « à » perdu en route), qui ne redevient plus de l'UTF-8 et que
+    # le detecteur generique ne peut donc pas voir.
+    return generiques + [motif for motif in DOUBLE_ENCODAGE if motif in ligne]
+
+
+def _redevient_utf8(morceau: str) -> bool:
+    try:
+        bytes(_OCTET_DU_CARACTERE[c] for c in morceau).decode("utf-8")
+    except (KeyError, UnicodeDecodeError):
+        return False
+    return True
+
+
+@pytest.mark.parametrize("abime", DOUBLE_ENCODAGE + (
+    "\u00e2\u009d\u0152",                    # ❌
+    "\u00e2\u0161\u00a0\u00ef\u00b8\u008f",  # ⚠️
+    "\u00e2\u0153\u2026",                    # ✅
+    "\u00f0\u0178\u017d\u00ac",              # 🎬
+))
+def test_le_detecteur_attrape_les_accents_et_les_emojis(abime):
+    assert double_encodages(f"texte {abime} texte")
+
+
+@pytest.mark.parametrize("sain", [
+    "« Qualité » — déjà là, à côté, où, ça, Ça, œuvre, naïf, été»",
+    "❌ Ollama hors-ligne.", "⚠️ Le calcul", "✅ fait", "🎬 montage",
+])
+def test_le_detecteur_laisse_le_texte_sain(sain):
+    assert double_encodages(sain) == []
+
 EXTENSIONS_TEXTE = {".py", ".ts", ".tsx", ".md", ".yaml", ".yml", ".json"}
 
 
@@ -84,7 +151,7 @@ def test_aucun_fichier_ne_porte_de_double_encodage():
         except (UnicodeDecodeError, OSError):
             continue
         for numero, ligne in enumerate(texte.splitlines(), 1):
-            if any(motif in ligne for motif in DOUBLE_ENCODAGE):
+            if double_encodages(ligne):
                 abimes.append(f"{chemin.relative_to(RACINE)}:{numero}")
                 break
 
