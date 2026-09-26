@@ -11403,3 +11403,36 @@ signale « a verifier » — c'est voulu, il n'a pas ete verifie. Un agent cite
 en texte courant (« le plaquiste propose ») n'est pas detecte : le controle
 reste etroit pour ne pas crier sur les mots ordinaires (« code »,
 « publication », « vision »).
+
+## DEC-0148 — Un tour de table ne fait repondre a personne qui n'a pas parle ; une panne dit sa cause
+
+**2026-09-26.**
+
+**Constat** (deuxieme table ronde reelle du proprietaire, « budget des
+cloisons ») :
+
+1. Au premier tour, le plaquiste a ecrit un tableau des positions de
+   finance, tendances et orchestrator — aucun des trois n'avait parle. La
+   consigne unique de DEC-0146 lui demandait de « repondre a ce que les
+   autres ont dit » alors que personne n'avait encore rien dit.
+2. Au second tour, le plaquiste et la synthese ont echoue ; le proprietaire
+   n'a lu que « RuntimeError ». Le routeur avait pourtant ecrit la cause et
+   le remede (`_pourquoi_personne`) : `BaseAgent.transmettre` et
+   `_synthetiser` n'en gardaient que le type.
+
+**Decision** :
+
+- `_consigne_de_table` depend du tour et nomme qui est autour de la table.
+  Premier tour : « personne n'a encore rien dit », aucune position, aucun
+  chiffre ni aucune remarque attribues a un autre agent. Tours suivants :
+  repondre uniquement aux interventions reelles du debat joint.
+- `core/models/routeur.py` leve `AucunFournisseur` (sous-classe de
+  `RuntimeError` : tout `except RuntimeError` existant l'attrape encore).
+  `cause_lisible(erreur)` rend son message en entier, et seulement le TYPE de
+  toute autre exception — le texte d'une exception quelconque peut porter une
+  URL avec sa cle. Utilise par `BaseAgent.transmettre` et par la synthese.
+
+**Ce que ca coute si c'est faux** : un modele peut encore inventer au premier
+tour malgre la consigne ; la verification de DEC-0147 ne le signale que dans
+la synthese, pas dans les interventions. Une panne qui n'est pas celle du
+routeur reste resumee a son type.

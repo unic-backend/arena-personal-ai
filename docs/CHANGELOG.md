@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Corrigé — 26/09/2026 — Table ronde : plus d'avis inventés au premier tour, et une panne dit pourquoi
+
+Au premier tour, un agent devait « répondre aux autres » alors que personne
+n'avait parlé : le plaquiste inventait l'avis de finance, tendances et
+orchestrator. Chaque tour dit maintenant qui est autour de la table et à quoi
+répondre. Quand tes modèles ne répondent plus, tu lis la cause et quoi relancer
+au lieu de « RuntimeError » (DEC-0148).
+
 ### Corrigé — 26/09/2026 — La synthèse d'une table ronde ne s'invente plus rien
 
 Ta table ronde sur le budget des cloisons citait un agent qui n'était pas à la
