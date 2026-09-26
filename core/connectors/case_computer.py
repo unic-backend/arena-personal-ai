@@ -152,6 +152,13 @@ class ConnecteurCaseComputer(Connecteur):
                 nom="capture_ecran", action="read",
                 description="Capture d'ecran de l'ordinateur isole (reveille s'il dormait).",
                 ecriture=False),
+            "agir_gui": Capacite(
+                nom="agir_gui", action="write",
+                description=(
+                    "Execute une primitive GUI explicite dans l'ordinateur isole "
+                    "(clic, saisie, touche, raccourci ou defilement)."
+                ),
+                ecriture=True),
             "detruire": Capacite(
                 nom="detruire", action="destroy",
                 description="Detruit definitivement un ordinateur et ses donnees persistantes.",
@@ -373,6 +380,61 @@ class ConnecteurCaseComputer(Connecteur):
         return succes("capture_ecran", computer_id,
                       f"Capture recue ({len(reponse.content)} octets PNG).",
                       preuve=computer_id, png=reponse.content)
+
+    def _faire_agir_gui(
+        self,
+        computer_id: str = "",
+        action_gui: str = "",
+        x: int = 0,
+        y: int = 0,
+        texte: str = "",
+        touche: str = "",
+        touches: Optional[list[str]] = None,
+        delta: int = 0,
+        **_: Any,
+    ) -> ResultatAction:
+        """Primitive GUI etroite, inspiree du cycle observation/action d'Agent-S.
+
+        Le modele ne fournit jamais du Python a executer. Arena traduit une
+        action structuree vers une commande PyAutoGUI fixe, puis la fait tourner
+        dans l'ordinateur Case isole. Cela garde le registre, les permissions,
+        le journal et le cycle de vie existants comme unique chemin d'execution.
+        """
+        if not computer_id:
+            return echec("agir_gui", self.nom, "computer_id est requis.")
+
+        action = action_gui.strip().lower()
+        if action == "clic":
+            commande = (
+                "import pyautogui; "
+                f"pyautogui.click({int(x)}, {int(y)})"
+            )
+        elif action == "saisir":
+            commande = (
+                "import pyautogui; "
+                f"pyautogui.write({texte!r}, interval=0.01)"
+            )
+        elif action == "touche":
+            if not touche:
+                return echec("agir_gui", computer_id, "touche est requise.")
+            commande = f"import pyautogui; pyautogui.press({touche!r})"
+        elif action == "raccourci":
+            propres = [str(t).strip() for t in (touches or []) if str(t).strip()]
+            if not propres:
+                return echec("agir_gui", computer_id, "touches est requis.")
+            commande = f"import pyautogui; pyautogui.hotkey(*{propres!r})"
+        elif action == "defiler":
+            commande = f"import pyautogui; pyautogui.scroll({int(delta)})"
+        else:
+            return echec(
+                "agir_gui",
+                computer_id,
+                "action_gui inconnue : utiliser clic, saisir, touche, raccourci ou defiler.",
+            )
+
+        return self._faire_executer_commande(
+            computer_id=computer_id, commande=commande, timeout_s=15
+        )
 
     def _faire_detruire(self, computer_id: str = "", **_: Any) -> ResultatAction:
         if not computer_id:
