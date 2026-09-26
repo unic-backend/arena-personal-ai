@@ -28,8 +28,13 @@ class ConnecteurPresentation(Connecteur):
         self.dossier = Path(dossier) if dossier else RENDERED_DIR / "presentations"
 
     def capacites(self) -> Dict[str, Capacite]:
-        return {"generer": Capacite(nom="generer", action="document",
-            description="Génère un PPTX éditable depuis un plan structuré de slides.", ecriture=True)}
+        return {
+            "generer": Capacite(
+                nom="generer", action="document",
+                description="Génère un PPTX éditable depuis un plan structuré de slides.",
+                ecriture=True,
+            )
+        }
 
     def authentifier(self) -> bool:
         return True
@@ -63,7 +68,8 @@ class ConnecteurPresentation(Connecteur):
             return echec(capacite.nom, self.nom, f"Génération PPTX impossible : {erreur}")
         if not sortie.is_file() or sortie.stat().st_size == 0:
             return echec(capacite.nom, self.nom, "Aucun fichier PPTX réel n'a été produit.")
-        url = f"/media/rendered/presentations/{sortie.name}" if self.dossier == RENDERED_DIR / "presentations" else None
+        url = (f"/media/rendered/presentations/{sortie.name}"
+               if self.dossier == RENDERED_DIR / "presentations" else None)
         if url:
             detail["url"] = url
         detail["taille_octets"] = sortie.stat().st_size
