@@ -80,6 +80,8 @@ GABARIT_SYNTHESE = """Tu es Usman. Réponds à la question en t'appuyant UNIQUEM
 Règles :
 - Cite tes sources avec leur numéro entre crochets, par exemple [1].
 - Si les sources ne répondent pas à la question, dis-le clairement au lieu de deviner.
+- Une source qui parle d'une autre personne, équipe, compétition, entreprise, lieu, produit ou événement que la QUESTION est HORS SUJET : ignore-la, même si certains mots se ressemblent.
+- Ne change jamais silencieusement l'entité ou l'événement demandé pour correspondre aux sources disponibles.
 - Ne complète pas avec tes connaissances propres : elles peuvent être périmées.
 - Quand une source porte une date entre parenthèses, dis-la : « selon [2], le 14/08… ».
 - Entre deux sources qui se contredisent, retiens la plus récente et dis pourquoi.
@@ -270,10 +272,11 @@ class FreshInfoAgent(BaseAgent):
         tour precedent), la question part telle quelle : rien a completer, et
         un appel modele inutile couterait de la latence pour rien.
         """
-        session_id = (context or {}).get("session_id")
-        if not session_id or not self.memory:
-            return user_input
-        historique = self.memory.get_recent_history(session_id=session_id, limit=4)
+        contexte = context or {}
+        historique = contexte.get("history")
+        session_id = contexte.get("session_id")
+        if not historique and session_id and self.memory:
+            historique = self.memory.get_recent_history(session_id=session_id, limit=8)
         if not historique:
             return user_input
 
