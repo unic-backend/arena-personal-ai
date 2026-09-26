@@ -67,6 +67,10 @@ JOURNAL_PROJETS_PATH = Path(
 # Meme dossier `data/` que le reste : un volume monte la porte tout.
 JOURNAL_TRAVAUX_PATH = Path(
     os.getenv("USMAN_JOURNAL_TRAVAUX") or BASE_DIR / "data" / "travaux" / "file.json")
+# Les espaces de travail partages des projets collaboratifs entre agents
+# (core/agent/espace_de_travail.py, DEC-0146). Meme dossier `data/`.
+ESPACES_COLLABORATION_DIR = Path(
+    os.getenv("USMAN_ESPACES_COLLABORATION") or BASE_DIR / "data" / "collaboration")
 
 # --- Environnement -------------------------------------------------------------
 # `APP_ENV` existait deja dans `.env.example`, sans qu'aucun code ne le lise.
@@ -305,4 +309,6 @@ AGENTS_SPECIALISES = frozenset({
     # tests/test_configuration_clients.py::TestLesHuitIntentionsReconnectees.
     "ARCHITECTURE_3D", "PREUVE_FORMELLE", "VIDEO_PROJET", "FINANCE",
     "EXECUTIVE", "VISAGE", "DESIGN_UI", "UI_GENERATE",
+    # Table ronde / projet reparti entre agents (DEC-0146).
+    "EQUIPE",
 })

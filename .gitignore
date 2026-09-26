@@ -57,6 +57,9 @@ data/montages/*
 # (meme raison que data/travaux/*).
 data/personnages/*
 !data/personnages/.gitkeep
+# Espaces de travail des projets collaboratifs entre agents (DEC-0146) :
+# demandes et resultats du proprietaire — donnee personnelle, jamais du source.
+data/collaboration/*
 logs/*.log
 
 # Node.js / Frontend

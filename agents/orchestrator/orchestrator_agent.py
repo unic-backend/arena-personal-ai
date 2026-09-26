@@ -103,7 +103,25 @@ INTENTIONS = {
     "ARCHITECTURE_3D",
     "FINANCE",
     "EXECUTIVE",
+    "EQUIPE",
 }
+
+#: Ce qui demande de faire travailler PLUSIEURS agents ensemble (DEC-0146) :
+#: une table ronde, ou un projet a decouper et repartir. Des locutions
+#: completes — « equipe » seul est trop courant (« mon equipe de chantier »).
+PHRASES_TABLE_RONDE = (
+    "table ronde", "reunion des agents", "réunion des agents", "fais debattre",
+    "fais débattre", "debat entre agents", "débat entre agents",
+    "avis de tous les agents", "consulte tous tes agents", "consulte tous les agents",
+)
+PHRASES_PROJET_D_EQUIPE = (
+    "decompose ce projet", "décompose ce projet", "decoupe ce projet",
+    "découpe ce projet", "repartis ce projet", "répartis ce projet",
+    "prends ce projet en main", "mene ce projet", "mène ce projet",
+    "fais travailler tes agents", "fais travailler tous tes agents",
+    "fais travailler plusieurs agents",
+)
+PHRASES_EQUIPE = PHRASES_TABLE_RONDE + PHRASES_PROJET_D_EQUIPE
 
 #: Ce qui demande de CONSTRUIRE ou d'INSPECTER un batiment en 3D. Teste
 #: avant le metier : « une cloison de 4 m » est un devis, « dessine une
@@ -680,6 +698,8 @@ DESIGN_UI       : CONSEIL de design, sans code — design system, palette,
 PREUVE_FORMELLE : vérifier ou écrire une preuve FORMELLE (Lean) — « vérifie
                   cette preuve », « prouve formellement ». Un calcul ou une
                   démonstration ordinaire reste DEEP_REASONING.
+EQUIPE          : faire travailler PLUSIEURS agents ensemble — une table ronde
+                  entre agents, ou un projet a decouper et repartir entre eux.
 ARCHITECTURE_3D : dessiner ou modéliser un bâtiment en 3D — maison, murs,
                   plan 3D, scène 3D. Chiffrer une cloison reste PLAQUISTE ;
                   la tracer est ARCHITECTURE_3D.
@@ -810,6 +830,14 @@ class OrchestratorAgent(BaseAgent):
         return any(v in texte for v in VERBES_FINANCE) and _nomme_un_actif_financier(texte)
 
     @staticmethod
+    def demande_d_equipe(user_input: str) -> bool:
+        """Dit si la phrase demande de faire travailler PLUSIEURS agents
+        ensemble — table ronde ou projet reparti (DEC-0146). Locutions
+        completes seulement."""
+        texte = (user_input or "").lower()
+        return any(phrase in texte for phrase in PHRASES_EQUIPE)
+
+    @staticmethod
     def demande_executive(user_input: str) -> bool:
         """Dit si la phrase demande une DECISION D'AFFAIRES (mission ARENA x
         OPENEXECUTIVE, DEC-0086) — jamais un devis ordinaire (PLAQUISTE le
@@ -870,6 +898,10 @@ class OrchestratorAgent(BaseAgent):
         if self.demande_executive(user_input):
             logger.info("Demande de decision d'affaires explicite -> EXECUTIVE, avant le controle date")
             return "EXECUTIVE"
+
+        if self.demande_d_equipe(user_input):
+            logger.info("Demande de travail d'equipe entre agents -> EQUIPE")
+            return "EQUIPE"
 
         if self.demande_la_date(user_input):
             logger.info("Question de date : l'horloge de la machine repond -> CHAT")
@@ -975,6 +1007,9 @@ class OrchestratorAgent(BaseAgent):
         # Meme raison de placement que la finance juste au-dessus.
         if OrchestratorAgent.demande_executive(user_input):
             return "EXECUTIVE"
+
+        if any(k in text for k in PHRASES_EQUIPE):
+            return "EQUIPE"
 
         # Information fraiche : la reponse a pu changer depuis l'entrainement du modele.
         fresh_keywords = [

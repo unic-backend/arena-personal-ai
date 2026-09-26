@@ -166,6 +166,9 @@ VOIE_PAR_INTENTION: Dict[str, Voie] = {
     # et le role strategie_marche peut sortir chercher sur le web, meme
     # raison que FINANCE juste au-dessus.
     "EXECUTIVE": Voie.RECHERCHE,
+    # Table ronde / projet reparti entre agents (DEC-0146) : plusieurs agents,
+    # plusieurs tours, une synthese — meme ampleur qu'EXECUTIVE.
+    "EQUIPE": Voie.RECHERCHE,
 }
 
 #: Voie d'une intention inconnue. La moins chere **qui puisse encore repondre** :

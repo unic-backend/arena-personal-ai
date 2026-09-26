@@ -38,6 +38,7 @@ from apps.backend.config import (
     CLOUD_COUT_MAX_PAR_REQUETE,
     CLOUD_REQUETES_PAR_JOUR,
     DB_PATH,
+    ESPACES_COLLABORATION_DIR,
     FOURNISSEUR_DEMANDE,
     JOURNAL_PROJETS_PATH,
     JOURNAL_TRAVAUX_PATH,
@@ -52,6 +53,7 @@ from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.actions.attente import FileDAttente
 from core.actions.journal import JournalDesActions
 from core.agent.capacites import RegistreCapacites, adaptateur_synchrone
+from core.agent.espace_de_travail import ESPACES
 from core.connectors import suivi_video
 from core.connectors.agent_reach import ConnecteurAgentReach
 from core.connectors.agnes import AgnesConnector
@@ -976,5 +978,7 @@ def agents_actifs() -> list:
 # Jusqu'au 26/09/2026 ce registre etait rempli par une liste ecrite a la main
 # (`_equipe`) : un agent ajoute sans y penser restait injoignable.
 agents_decouverts = collaborateurs.peupler(globals())
+# L'espace de travail partage des projets collaboratifs survit au redemarrage.
+ESPACES.dossier = ESPACES_COLLABORATION_DIR
 logger.info("Ecosysteme d'agents : %d decouverts (%s).",
             len(agents_decouverts), ", ".join(agents_decouverts))
