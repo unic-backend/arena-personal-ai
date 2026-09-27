@@ -105,6 +105,21 @@ function fauxAttachment(kind: 'audio' | 'document' = 'audio') {
   };
 }
 
+function fauxOfficeAttachment() {
+  return {
+    id: 'att-office',
+    name: 'budget.xlsx',
+    size: 2048,
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    kind: 'document' as const,
+    file: new File(['xlsx-binary'], 'budget.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }),
+    url: '',
+    status: 'ready' as const,
+  };
+}
+
 describe('makeRemoteTransport — statut metier des pieces jointes', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -153,6 +168,53 @@ describe('makeRemoteTransport — statut metier des pieces jointes', () => {
       kind: 'audio',
       path: '/app/media/incoming/memo.mp3',
       size: 1234,
+    });
+  });
+
+  it('un XLSX passe par /office/files et son chemin atteint /agent/stream', async () => {
+    const urls: string[] = [];
+    let corpsAgent: Record<string, unknown> | undefined;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      urls.push(url);
+      if (url.endsWith('/office/files')) {
+        return new Response(JSON.stringify({
+          status: 'success',
+          filename: 'budget.xlsx',
+          original_filename: 'budget.xlsx',
+          path: '/app/data/univer/imports/budget.xlsx',
+          size_bytes: 2048,
+        }), { status: 200 });
+      }
+      if (url.endsWith('/agent/stream')) {
+        corpsAgent = JSON.parse(String(init?.body));
+        return new Response('data: {"type":"done","meta":{}}\n\n', { status: 200 });
+      }
+      throw new Error(`route inattendue: ${url}`);
+    }));
+
+    const transport = makeRemoteTransport({ url: 'https://exemple.test' });
+    const evenements = await collecter(transport.run(
+      { text: 'modifie ce fichier Excel', attachments: [fauxOfficeAttachment()] } as never,
+      {} as never,
+      new AbortController().signal,
+    ));
+
+    expect(urls.some((url) => url.endsWith('/office/files'))).toBe(true);
+    expect(urls.some((url) => url.endsWith('/files'))).toBe(false);
+    expect(corpsAgent?.office_paths).toEqual(['/app/data/univer/imports/budget.xlsx']);
+    expect(corpsAgent?.attachments).toEqual([]);
+    expect(corpsAgent?.media_paths).toEqual([]);
+
+    const activites = evenements
+      .filter((e): e is { type: 'activity'; event: import('./types').ActivityEvent } =>
+        (e as { type: string }).type === 'activity')
+      .map((e) => e.event);
+    const piece = activites.filter((e) => e.tool === 'file_uploader').pop();
+    expect(piece?.status).toBe('completed');
+    expect(piece?.output).toMatchObject({
+      kind: 'office',
+      path: '/app/data/univer/imports/budget.xlsx',
+      size: 2048,
     });
   });
 
