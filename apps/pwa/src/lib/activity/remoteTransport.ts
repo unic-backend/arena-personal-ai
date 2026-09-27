@@ -66,6 +66,12 @@ interface UploadedMedia {
   size_bytes: number;
 }
 
+const OFFICE_EDITABLE_RE = /\.(?:xls|xlsx|xlsm|csv|tsv|doc|docx|ppt|pptx|pptm|ppsx|ppsm|potx)$/i;
+
+function isEditableOfficeAttachment(name: string): boolean {
+  return OFFICE_EDITABLE_RE.test(name.trim());
+}
+
 function eventId(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -135,6 +141,7 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
       const fr = uiLocale() === 'fr';
       const uploaded: UploadedAttachment[] = [];
       const mediaPaths: string[] = [];
+      const officePaths: string[] = [];
       let preparedCount = 0;
       const attachments = request.attachments ?? [];
 
@@ -174,12 +181,18 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
             const form = new FormData();
             form.append('file', attachment.file, attachment.name);
             const isMedia = attachment.kind === 'audio' || attachment.kind === 'video';
-            if (!isMedia) form.append('kind', attachment.kind);
+            const isOffice = isEditableOfficeAttachment(attachment.name);
+            if (!isMedia && !isOffice) form.append('kind', attachment.kind);
 
-            // Les documents/images vont au dépôt de pièces jointes. Les médias
-            // vont au stockage média : /files ne sait volontairement pas lire
-            // audio/vidéo et les refusait avant même que Whisper puisse agir.
-            const upload = await fetch(`${base}${isMedia ? '/api/upload' : '/files'}`, {
+            // Trois contrats : documents/images -> extraction éphémère /files ;
+            // médias -> stockage média ; Office éditable -> staging binaire
+            // persistant juste assez longtemps pour l'import Univer.
+            const uploadPath = isMedia
+              ? '/api/upload'
+              : isOffice
+                ? '/office/files'
+                : '/files';
+            const upload = await fetch(`${base}${uploadPath}`, {
               method: 'POST',
               headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
               body: form,
@@ -190,16 +203,23 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
               throw new Error(`${upload.status}${detail ? ` · ${detail.slice(0, 160)}` : ''}`);
             }
 
-            if (isMedia) {
+            if (isMedia || isOffice) {
               const result = (await upload.json()) as UploadedMedia;
               if (result.status !== 'success' || !result.path) {
-                throw new Error(fr ? 'Le média n\'a pas été stocké.' : 'The media was not stored.');
+                throw new Error(
+                  isOffice
+                    ? (fr ? 'Le document Office n\'a pas été stocké.' : 'The Office document was not stored.')
+                    : (fr ? 'Le média n\'a pas été stocké.' : 'The media was not stored.'),
+                );
               }
-              mediaPaths.push(result.path);
+              if (isOffice) officePaths.push(result.path);
+              else mediaPaths.push(result.path);
               child = finishEvent(child, 'completed', {
-                description: fr ? 'Média reçu et prêt à analyser' : 'Media received and ready to analyze',
+                description: isOffice
+                  ? (fr ? 'Document Office reçu et prêt à modifier' : 'Office document received and ready to edit')
+                  : (fr ? 'Média reçu et prêt à analyser' : 'Media received and ready to analyze'),
                 output: {
-                  kind: attachment.kind,
+                  kind: isOffice ? 'office' : attachment.kind,
                   path: result.path,
                   size: result.size_bytes,
                 },
@@ -262,6 +282,7 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
             files: preparedCount,
             attachments: uploaded,
             mediaPaths,
+            officePaths,
           },
           progress: { done: preparedCount, total: attachments.length, unit: fr ? 'fichiers' : 'files' },
         });
@@ -278,6 +299,7 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
         history: request.history ?? [],
         attachments: uploaded.map((value) => value.id),
         media_paths: mediaPaths,
+        office_paths: officePaths,
         connectors: await resolveActiveConnectors(),
         run_id: runId,
         // Identite STABLE du fil (le `activeId` du store), distincte de
