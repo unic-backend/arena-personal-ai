@@ -387,9 +387,25 @@ class ConnecteurUniverOffice(Connecteur):
                     return echec(capacite.nom, self.nom, erreur)
                 if not fichier.is_file() or fichier.stat().st_size == 0:
                     return echec(capacite.nom, self.nom, "L'import n'a produit aucun .univer réel.")
+
+                # Les pièces Office de la PWA sont un staging, pas un second
+                # stockage documentaire. Une fois les octets réellement
+                # importés dans .univer, on retire ce doublon.
+                staging = (self.dossier / "imports").resolve()
+                source_supprimee = False
+                try:
+                    source.relative_to(staging)
+                    source.unlink(missing_ok=True)
+                    source_supprimee = True
+                except ValueError:
+                    # Une source utilisateur déjà durable (data/ ou media/)
+                    # n'est jamais supprimée par effet de bord.
+                    pass
+
                 return self._resultat_json(
                     capacite.nom, f"{source.name} importé dans {fichier.name}",
                     str(fichier), charge or {}, fichier=str(fichier), source=str(source),
+                    staging_supprime=source_supprimee,
                 )
 
             fichier = self._fichier(str(parametres.get("fichier") or ""))
