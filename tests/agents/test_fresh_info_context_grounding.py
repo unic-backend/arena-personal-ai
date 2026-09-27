@@ -259,3 +259,38 @@ async def test_question_courte_avec_sujet_explicit_ne_recupere_pas_l_ancien_suje
 
     assert question == "Qui sont les Beatles ?"
     assert "barcelone" not in question.casefold()
+
+
+@pytest.mark.asyncio
+async def test_plusieurs_suivis_restent_sur_le_dernier_sujet_concret():
+    provider = ProviderQuiPerdLeSujet()
+    recherche = RechercheTracee([])
+    agent = FreshInfoAgent(provider=provider, search_tool=recherche)
+    history = [
+        {
+            "role": "user",
+            "content": "Quel a été le dernier match du FC Barcelone ?",
+        },
+        {
+            "role": "assistant",
+            "content": "Je vérifie le dernier match du FC Barcelone.",
+        },
+        {
+            "role": "user",
+            "content": "Qui sont les buteurs ?",
+        },
+        {
+            "role": "assistant",
+            "content": "Je vérifie les buteurs.",
+        },
+    ]
+
+    await agent.run(
+        "Et l'homme du match ?",
+        {"history": history, "history_authoritative": True},
+    )
+
+    assert recherche.requetes
+    requete = recherche.requetes[0].casefold()
+    assert "barcelone" in requete
+    assert "homme du match" in requete
