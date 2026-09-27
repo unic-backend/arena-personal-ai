@@ -365,17 +365,26 @@ class FreshInfoAgent(BaseAgent):
         return re.sub(r"\\W+", " ", (texte or "").casefold()).strip()
 
     @classmethod
-    def _dernier_message_utilisateur(
+    def _dernier_message_avec_ancre(
         cls, historique: List[Dict[str, Any]], user_input: str
-    ) -> str:
+    ) -> tuple[str, List[str]]:
+        """Dernier tour utilisateur qui nomme vraiment un sujet.
+
+        On saute les suivis eux-memes. Ainsi une chaine
+        « Barcelone -> buteurs ? -> homme du match ? » reste rattachee a
+        Barcelone au troisieme tour au lieu de s'ancrer sur « buteurs ».
+        """
         courant = cls._normaliser_phrase(user_input)
         for message in reversed(historique):
             if message.get("role") != "user":
                 continue
             contenu = str(message.get("content") or "").strip()
-            if contenu and cls._normaliser_phrase(contenu) != courant:
-                return contenu
-        return ""
+            if not contenu or cls._normaliser_phrase(contenu) == courant:
+                continue
+            ancres = cls._termes_ancrage(contenu)
+            if ancres:
+                return contenu, ancres
+        return "", []
 
     @classmethod
     def _requete_de_suivi(
@@ -397,8 +406,8 @@ class FreshInfoAgent(BaseAgent):
     ) -> List[str]:
         if not cls._question_de_suivi_sans_ancre(user_input):
             return []
-        precedent = cls._dernier_message_utilisateur(historique, user_input)
-        return cls._termes_ancrage(precedent) if precedent else []
+        _, ancres = cls._dernier_message_avec_ancre(historique, user_input)
+        return ancres
 
     @staticmethod
     def _source_mentionne_une_ancre(
@@ -427,8 +436,14 @@ class FreshInfoAgent(BaseAgent):
         if not historique:
             return user_input
 
-        precedent = self._dernier_message_utilisateur(historique, user_input)
-        ancres = self._ancres_de_suivi(user_input, historique)
+        precedent, ancres_precedentes = self._dernier_message_avec_ancre(
+            historique, user_input
+        )
+        ancres = (
+            ancres_precedentes
+            if self._question_de_suivi_sans_ancre(user_input)
+            else []
+        )
 
         lignes = "\n".join(
             f"{'Utilisateur' if msg['role'] == 'user' else 'Usman'}: {msg['content']}"
