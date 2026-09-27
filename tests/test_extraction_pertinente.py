@@ -21,7 +21,53 @@ PALMARES = "\n\n".join([
 ])
 
 
+MATCH_SEVILLE_BARCA = "\n".join([
+    "1 - 3",
+    "Séville",
+    "19/09",
+    "1 - 3",
+    "Barcelone",
+    "Temps forts",
+    "69'",
+    "1 - 3",
+    "(PD Lamine Yamal) Raphinha",
+    "52'",
+    "1 - 2",
+    "(PD Lamine Yamal) Raphinha",
+    "22'",
+    "1 - 1",
+    "(PD A. Christensen) Raphinha",
+    "19'",
+    "1 - 0",
+    "Y. Fofana (PD Félix Correia)",
+]) + "\n" + ("navigation et statistiques secondaires sans rapport\n" * 80)
+
+
 class TestExtractionPertinente:
+    def test_un_tableau_de_match_garde_les_lignes_buteurs_sans_mots_de_question(self):
+        extrait = extraire(
+            MATCH_SEVILLE_BARCA,
+            "Qui sont les buteurs du dernier match du FC Barcelone contre Séville ?",
+            360,
+        )
+
+        assert "Raphinha" in extrait
+        assert "Y. Fofana" in extrait
+        assert "19'" in extrait
+        assert "69'" in extrait
+
+    def test_un_bloc_evenement_ne_depasse_pas_le_budget(self):
+        extrait = extraire(
+            MATCH_SEVILLE_BARCA,
+            "Qui sont les buteurs du dernier match du FC Barcelone contre Séville ?",
+            220,
+        )
+
+        assert len(extrait) <= 220
+        assert "Séville" in extrait
+        assert "Barcelone" in extrait
+
+
     def test_le_passage_qui_repond_survit_a_la_coupe(self):
         """Le cas exact du 2026-08-26."""
         extrait = extraire(PALMARES, "qui a gagné la dernière coupe du monde 2026", 300)
