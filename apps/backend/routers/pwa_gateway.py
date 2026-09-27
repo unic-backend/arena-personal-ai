@@ -8,7 +8,7 @@ parle. **C'est la seconde qui est retenue.**
 Le protocole, releve dans son code (`src/lib/activity/`) :
 
 - `POST /agent/stream` — corps JSON `{text, locale, history, attachments,
-  connectors, run_id, conversation_id, persona, memories}`, reponse en
+  media_paths, connectors, run_id, conversation_id, persona, memories}`, reponse en
   `text/event-stream`. `conversation_id` (stable, un par fil) porte la
   session memoire ; `run_id` (nouveau a chaque message) reste ce qu'il a
   toujours ete, un identifiant d'EXECUTION — les deux ne se confondent plus
@@ -149,6 +149,9 @@ class DemandeAgent(BaseModel):
     locale: Optional[str] = None
     history: List[Dict[str, str]] = Field(default_factory=list)
     attachments: List[str] = Field(default_factory=list)
+    # Chemins renvoyes par /api/upload pour les medias audio/video de CE tour.
+    # Ils restent revalides sous MEDIA_DIR par dispatch_request avant lecture.
+    media_paths: List[str] = Field(default_factory=list)
     connectors: Any = None
     run_id: Optional[str] = None
     # Identite STABLE de la conversation (le `activeId` de son store cote
@@ -1231,6 +1234,8 @@ async def flux_agent(demande: DemandeAgent):
                             ChatRequest(
                                 prompt=texte, session_id=session,
                                 attachments=demande.attachments,
+                                video_path=(demande.media_paths[0]
+                                            if demande.media_paths else None),
                                 # Structure encore intacte pour PLAQUISTE : `texte`
                                 # ci-dessus est deja le fil aplati (pour le modele
                                 # et les recherches par mots-cles existantes) ;
