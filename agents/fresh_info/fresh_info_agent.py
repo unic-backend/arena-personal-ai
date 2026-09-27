@@ -106,7 +106,8 @@ MOTS_VIDES_ANCRAGE = frozenset({
     "son", "sont", "sur", "ta", "tes", "ton", "tu", "un", "une", "vos", "votre",
     "vous", "web", "internet", "verifie", "vérifie", "rapidement", "parle", "dis",
     "donne", "question", "source", "sources", "fc", "exact", "exacte", "recent",
-    "récente", "récent", "aujourd'hui", "aujourd’hui",
+    "récente", "récent", "aujourd'hui", "aujourd’hui", "pourquoi", "comment",
+    "quand", "combien", "lequel", "laquelle", "lesquels", "lesquelles",
 })
 
 TERMES_SUIVI_GENERIQUES = frozenset({
@@ -330,6 +331,11 @@ class FreshInfoAgent(BaseAgent):
         tokens = [t.casefold().strip("'’_-") for t in bruts if t.strip("'’_-")]
         if not tokens:
             return False
+        # Un sujet concret dans la phrase du jour prime toujours sur le fil
+        # precedent. « Et le score de Barça ? » ne doit pas etre rattache a
+        # l'equipe dont on parlait juste avant.
+        if cls._termes_ancrage(texte):
+            return False
         if tokens[0] == "et" or any(t in DEICTIQUES_SUIVI for t in tokens):
             return True
 
@@ -400,10 +406,13 @@ class FreshInfoAgent(BaseAgent):
     ) -> bool:
         corpus = " ".join([
             str(page.get("title") or ""),
-            str(page.get("url") or ""),
-            str(page.get("text") or ""),
+            str(page.get("url") or page.get("href") or ""),
+            str(page.get("text") or page.get("body") or ""),
         ]).casefold()
-        return any(ancre in corpus for ancre in ancres)
+        return any(
+            re.search(rf"(?<!\\w){re.escape(ancre)}(?!\\w)", corpus)
+            for ancre in ancres
+        )
 
     async def _reformuler_si_ellipse(
         self, user_input: str, context: Optional[Dict[str, Any]]
@@ -487,6 +496,19 @@ class FreshInfoAgent(BaseAgent):
                     "mes connaissances propres peuvent etre perimees."
                 ),
             }
+
+        if ancres_suivi:
+            # Les resultats dont le titre/extrait mentionne deja le sujet passent
+            # devant. On ne jette encore rien : une page peut etre pertinente
+            # meme si son snippet ne contient pas l'entite. Le filtre dur vient
+            # apres lecture, sur le contenu reel.
+            resultats = sorted(
+                resultats,
+                key=lambda resultat: self._source_mentionne_une_ancre(
+                    resultat, ancres_suivi
+                ),
+                reverse=True,
+            )
 
         pages = await self._lire_les_pages(resultats)
         lues = [p for p in pages if p["status"] == "FETCHED" and p["text"].strip()]
