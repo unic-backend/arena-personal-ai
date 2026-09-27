@@ -302,7 +302,11 @@ class FreshInfoAgent(BaseAgent):
 
     @staticmethod
     def _tokens(texte: str) -> List[str]:
-        return re.findall(r"[\wÀ-ÿ'’-]+", texte or "")
+        # Les apostrophes francaises marquent souvent une contraction
+        # grammaticale (l'homme, d'abord, qu'il), pas une entite. Les garder
+        # soudées faisait de « l'homme » une fausse ancre et cassait les suivis.
+        # O'Connor devient O + Connor : "Connor" reste une ancre suffisante.
+        return re.findall(r"[\wÀ-ÿ-]+", texte or "")
 
     @classmethod
     def _termes_ancrage(cls, texte: str) -> List[str]:
