@@ -25,6 +25,8 @@ def test_une_analyse_de_reunion_est_reconnue(phrase):
     "Réunion des agents",
     "Fais une réunion des agents pour débattre.",
     "Appelle Mamadou demain.",
+    "Analyse cet appel d'offres et donne les actions.",
+    "Résume l'appel d’offres du client.",
     "Analyse cette vidéo de chantier.",
 ])
 def test_ce_qui_n_est_pas_une_analyse_de_reunion_reste_hors_du_chemin(phrase):
