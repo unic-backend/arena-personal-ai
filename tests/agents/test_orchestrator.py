@@ -425,6 +425,8 @@ class TestAiguillageDuMontage:
         ("fais-moi un devis pour le chantier de Ouakam", "PLAQUISTE"),
         # Un verbe de montage SANS objet video n'est pas un montage video.
         ("monte la cloison et les rails du plafond", "PLAQUISTE"),
+        # Locution de la liste, sans objet video, dans une phrase du metier.
+        ("fais le montage des rails de la cloison", "PLAQUISTE"),
         ("le montage des rails de la cloison est fini ?", "PLAQUISTE"),
         ("fais-moi une vidéo drôle d'un chat qui danse", "VIDEO_ANALYSIS"),
         ("compile ce programme python", "CODE_EXECUTION"),

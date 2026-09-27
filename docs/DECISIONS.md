@@ -11461,3 +11461,7 @@ montage, qui demande alors les fichiers. « monte la cloison » ou « le montage
 des rails » n'ont pas d'objet video et restent au metier. Non corrige ici :
 la locution existante « fais le montage » capte aussi « fais le montage des
 rails de la cloison » (mesure sur `main`, anterieur a cette decision).
+*Corrige le 27/09/2026* : une locution de la liste `MONTAGE` ne compte plus,
+dans une phrase qui porte un mot du metier (`METIER`), que si elle nomme aussi
+un objet video ; « fais le montage des rails de la cloison » reste au metier,
+« fais-moi le montage de la video du chantier » au montage.
