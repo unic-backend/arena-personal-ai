@@ -5,6 +5,7 @@ import pytest
 from core.meetings.intelligence import (
     construire_prompt_reunion,
     est_demande_analyse_reunion,
+    formater_metriques_reunion,
     mesurer_reunion,
 )
 
@@ -92,3 +93,15 @@ def test_le_prompt_interdit_les_actions_et_locuteurs_inventes():
     assert "Une action doit être explicitement soutenue" in prompt
     assert "N'invente jamais l'identité d'un locuteur" in prompt
     assert "<TRANSCRIPTION>" in prompt
+
+
+
+def test_le_format_visible_ne_transforme_pas_les_absences_en_zero():
+    texte = formater_metriques_reunion(
+        mesurer_reunion("Bonjour ?", None, None)
+    )
+
+    assert "Durée : non disponible" in texte
+    assert "Débit : non disponible" in texte
+    assert "Questions détectées : 1" in texte
+    assert "pas de diarisation fiable" in texte
