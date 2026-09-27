@@ -114,6 +114,29 @@ def mesurer_reunion(
     return metriques
 
 
+def formater_metriques_reunion(metriques: dict[str, Any]) -> str:
+    """Rend les mesures visibles sans transformer une absence en zéro."""
+    duree = metriques.get("duration_seconds")
+    debit = metriques.get("words_per_minute")
+    lignes = [
+        "Métriques mesurées",
+        f"- Durée : {duree:.1f} s" if isinstance(duree, (int, float)) else "- Durée : non disponible",
+        f"- Mots : {int(metriques.get('word_count') or 0)}",
+        f"- Débit : {debit:.1f} mots/min" if isinstance(debit, (int, float)) else "- Débit : non disponible",
+        f"- Questions détectées : {int(metriques.get('question_count') or 0)}",
+    ]
+    if metriques.get("speaker_separation_available"):
+        ratios = metriques.get("speaker_talk_ratio") or {}
+        details = ", ".join(
+            f"{locuteur}: {float(ratio) * 100:.1f}%"
+            for locuteur, ratio in ratios.items()
+        )
+        lignes.append(f"- Répartition des locuteurs : {details or 'non disponible'}")
+    else:
+        lignes.append("- Répartition des locuteurs : non disponible (pas de diarisation fiable)")
+    return "\n".join(lignes)
+
+
 def construire_prompt_reunion(transcription: str, metriques: dict[str, Any]) -> str:
     """Construit une analyse strictement ancrée dans la transcription."""
     separation = (
