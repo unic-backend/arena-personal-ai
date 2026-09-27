@@ -93,6 +93,41 @@ QUESTION : {question}
 
 RÉPONSE (avec les numéros de source) :"""
 
+# Mots qui n'identifient pas un sujet. Ils servent a distinguer une vraie
+# entite ("Barcelone", "Python", "Bitcoin") d'un suivi sans sujet
+# ("Qui sont les buteurs ?", "Quel etait le score ?").
+MOTS_VIDES_ANCRAGE = frozenset({
+    "a", "ai", "au", "aux", "avec", "ce", "ces", "cet", "cette", "comme",
+    "dans", "de", "des", "du", "elle", "elles", "en", "est", "et", "eux",
+    "il", "ils", "la", "le", "les", "leur", "leurs", "lui", "ma", "maintenant",
+    "mes", "mon", "ne", "notre", "nous", "ou", "où", "par", "pas", "pour",
+    "que", "quel", "quelle", "quelles", "quels", "qui", "sa", "sans", "ses",
+    "son", "sont", "sur", "ta", "tes", "ton", "tu", "un", "une", "vos",
+    "votre", "vous", "web", "internet", "verifie", "vérifie", "rapidement",
+    "parle", "dis", "donne", "question", "source", "sources", "fc",
+})
+
+TERMES_SUIVI_GENERIQUES = frozenset({
+    "buteur", "buteurs", "score", "scores", "resultat", "résultat", "resultats",
+    "résultats", "gagnant", "gagnants", "gagne", "gagné", "gagner", "vainqueur",
+    "vainqueurs", "homme", "match", "joueur", "joueurs", "statistique",
+    "statistiques", "stats", "classement", "composition", "compo", "details",
+    "détails", "autre", "autres", "deuxieme", "deuxième", "premier", "première",
+    "apres", "après",
+})
+
+DEICTIQUES_SUIVI = frozenset({
+    "cela", "ça", "celui", "celle", "ceux", "celles", "cette", "ces", "lui",
+    "elle", "eux", "elles",
+})
+
+TERMES_CONTEXTE_RECHERCHE = frozenset({
+    "dernier", "derniere", "dernière", "match", "score", "version", "prix",
+    "cours", "resultat", "résultat", "meteo", "météo", "temps", "president",
+    "président", "election", "élection", "finale", "coupe", "championnat",
+    "date", "heure", "modele", "modèle", "sortie", "classement",
+})
+
 
 class FreshInfoAgent(BaseAgent):
     """Répond aux questions d'actualité en lisant réellement le web."""
@@ -262,26 +297,127 @@ class FreshInfoAgent(BaseAgent):
             blocs.append(f"[{numero}] {page['title']}\n    ({page['url']})\n{enveloppe.text}")
         return "\n\n".join(blocs)
 
+    @staticmethod
+    def _tokens(texte: str) -> List[str]:
+        return re.findall(r"[\\wÀ-ÿ'’-]+", texte or "")
+
+    @classmethod
+    def _termes_ancrage(cls, texte: str) -> List[str]:
+        """Termes assez specifiques pour identifier le sujet d'une question."""
+        termes: List[str] = []
+        vus = set()
+        for brut in cls._tokens(texte):
+            terme = brut.casefold().strip("'’_-")
+            if not terme or terme.isdigit() or terme in MOTS_VIDES_ANCRAGE:
+                continue
+            if terme in TERMES_SUIVI_GENERIQUES or terme in TERMES_CONTEXTE_RECHERCHE:
+                continue
+            # Les acronymes courts (OM, UK...) comptent seulement s'ils etaient
+            # ecrits en capitales. Les mots ordinaires de deux lettres non.
+            if len(terme) < 3 and not (len(brut) >= 2 and brut.isupper()):
+                continue
+            if terme not in vus:
+                vus.add(terme)
+                termes.append(terme)
+        return termes
+
+    @classmethod
+    def _question_de_suivi_sans_ancre(cls, texte: str) -> bool:
+        """Vrai quand la phrase depend clairement d'un sujet precedent."""
+        bruts = cls._tokens(texte)
+        tokens = [t.casefold().strip("'’_-") for t in bruts if t.strip("'’_-")]
+        if not tokens:
+            return False
+        if tokens[0] == "et" or any(t in DEICTIQUES_SUIVI for t in tokens):
+            return True
+
+        contenus = [
+            t for t in tokens
+            if t not in MOTS_VIDES_ANCRAGE and len(t) >= 3
+        ]
+        return bool(contenus) and all(t in TERMES_SUIVI_GENERIQUES for t in contenus)
+
+    def _historique_du_contexte(
+        self, context: Optional[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        contexte = context or {}
+        historique = contexte.get("history")
+        session_id = contexte.get("session_id")
+        # Un [] autoritatif signifie vraiment « aucun tour precedent ».
+        if contexte.get("history_authoritative"):
+            return list(historique or [])
+        if not historique and session_id and self.memory:
+            historique = self.memory.get_recent_history(
+                session_id=session_id, limit=8
+            )
+        return list(historique or [])
+
+    @staticmethod
+    def _normaliser_phrase(texte: str) -> str:
+        return re.sub(r"\\W+", " ", (texte or "").casefold()).strip()
+
+    @classmethod
+    def _dernier_message_utilisateur(
+        cls, historique: List[Dict[str, Any]], user_input: str
+    ) -> str:
+        courant = cls._normaliser_phrase(user_input)
+        for message in reversed(historique):
+            if message.get("role") != "user":
+                continue
+            contenu = str(message.get("content") or "").strip()
+            if contenu and cls._normaliser_phrase(contenu) != courant:
+                return contenu
+        return ""
+
+    @classmethod
+    def _requete_de_suivi(
+        cls, precedent: str, user_input: str, ancres: List[str]
+    ) -> str:
+        """Construit un filet deterministe si le modele perd le sujet."""
+        utiles: List[str] = []
+        ancres_set = set(ancres)
+        for brut in cls._tokens(precedent):
+            terme = brut.casefold().strip("'’_-")
+            if terme in ancres_set or terme in TERMES_CONTEXTE_RECHERCHE:
+                utiles.append(brut)
+        prefixe = " ".join(utiles[:12]).strip()
+        return f"{prefixe} — {user_input.strip()}" if prefixe else user_input
+
+    @classmethod
+    def _ancres_de_suivi(
+        cls, user_input: str, historique: List[Dict[str, Any]]
+    ) -> List[str]:
+        if not cls._question_de_suivi_sans_ancre(user_input):
+            return []
+        precedent = cls._dernier_message_utilisateur(historique, user_input)
+        return cls._termes_ancrage(precedent) if precedent else []
+
+    @staticmethod
+    def _source_mentionne_une_ancre(
+        page: Dict[str, Any], ancres: List[str]
+    ) -> bool:
+        corpus = " ".join([
+            str(page.get("title") or ""),
+            str(page.get("url") or ""),
+            str(page.get("text") or ""),
+        ]).casefold()
+        return any(ancre in corpus for ancre in ancres)
+
     async def _reformuler_si_ellipse(
         self, user_input: str, context: Optional[Dict[str, Any]]
     ) -> str:
         """Complete une question elliptique avec le sujet d'un echange precedent.
 
-        Sans historique disponible (pas de session, pas de memoire, ou aucun
-        tour precedent), la question part telle quelle : rien a completer, et
-        un appel modele inutile couterait de la latence pour rien.
+        Le modele peut reformuler, mais il n'a plus le droit de perdre un sujet
+        deterministe. Si une question de suivi sans ancre reste sans l'entite du
+        tour precedent, une requete contextuelle est construite sans modele.
         """
-        contexte = context or {}
-        historique = contexte.get("history")
-        session_id = contexte.get("session_id")
-        # Un [] autoritatif veut dire « cette conversation n'a aucun tour
-        # precedent ». Ne jamais le remplacer par un journal serveur qui peut
-        # appartenir a un etat plus ancien ou a un client sans conversation_id.
-        if not contexte.get("history_authoritative"):
-            if not historique and session_id and self.memory:
-                historique = self.memory.get_recent_history(session_id=session_id, limit=8)
+        historique = self._historique_du_contexte(context)
         if not historique:
             return user_input
+
+        precedent = self._dernier_message_utilisateur(historique, user_input)
+        ancres = self._ancres_de_suivi(user_input, historique)
 
         lignes = "\n".join(
             f"{'Utilisateur' if msg['role'] == 'user' else 'Usman'}: {msg['content']}"
@@ -290,19 +426,40 @@ class FreshInfoAgent(BaseAgent):
         prompt = GABARIT_REFORMULATION.format(historique=lignes, question=user_input)
         try:
             reformulee = (await self.provider.generate(prompt=prompt)).strip()
-        except Exception as erreur:  # noqa: BLE001 — une reformulation ratee n'annule pas la recherche
-            logger.warning(f"Reformulation impossible, question gardee telle quelle : {erreur}")
-            return user_input
-        return reformulee or user_input
+        except Exception as erreur:  # noqa: BLE001
+            logger.warning(
+                "Reformulation impossible, filet deterministe si necessaire : %s",
+                erreur,
+            )
+            reformulee = user_input
+
+        reformulee = reformulee or user_input
+        if ancres:
+            bas = reformulee.casefold()
+            if not any(ancre in bas for ancre in ancres):
+                repliee = self._requete_de_suivi(precedent, user_input, ancres)
+                logger.warning(
+                    "Reformulation sans ancre (%s) : requete rattachee au fil -> %s",
+                    ", ".join(ancres),
+                    repliee,
+                )
+                return repliee
+        return reformulee
 
     async def run(
         self, user_input: str, context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
+        historique = self._historique_du_contexte(context)
+        ancres_suivi = self._ancres_de_suivi(user_input, historique)
         question = await self._reformuler_si_ellipse(user_input, context)
         if question != user_input:
-            logger.info(f"FreshInfoAgent cherche : {question} (reformulee depuis « {user_input} »)")
+            logger.info(
+                "FreshInfoAgent cherche : %s (reformulee depuis « %s »)",
+                question,
+                user_input,
+            )
         else:
-            logger.info(f"FreshInfoAgent cherche : {question}")
+            logger.info("FreshInfoAgent cherche : %s", question)
         # `search` est bloquant : lance tel quel, il fige la boucle et donc tout
         # le serveur. Il part dans un fil d execution, avec un plafond.
         try:
@@ -355,6 +512,35 @@ class FreshInfoAgent(BaseAgent):
                     f"Pages tentees :\n{details}"
                 ),
             }
+
+        # Deuxieme barriere, independante du modele : pour une question de suivi
+        # sans sujet explicite, une source doit mentionner au moins une ancre du
+        # tour precedent. Le 27/09/2026, « Qui sont les buteurs » apres une
+        # question sur le FC Barcelone avait cherche cette phrase seule puis cite
+        # une page de hockey. Une consigne de prompt ne peut pas reparer une
+        # source qui n'aurait jamais du entrer dans la synthese.
+        if ancres_suivi:
+            pertinentes = [
+                page for page in lues
+                if self._source_mentionne_une_ancre(page, ancres_suivi)
+            ]
+            if not pertinentes:
+                logger.warning(
+                    "Toutes les sources sont hors sujet pour les ancres : %s",
+                    ", ".join(ancres_suivi),
+                )
+                return {
+                    "status": "warning",
+                    "agent": self.name,
+                    "query": question,
+                    "sources": [],
+                    "response": (
+                        "Les resultats trouves ne concernent pas le sujet de la "
+                        "conversation. Je prefere ne pas repondre plutot que "
+                        "melanger des personnes ou des evenements differents."
+                    ),
+                }
+            lues = pertinentes
 
         part = self._repartir_le_budget(lues)
         prompt = GABARIT_SYNTHESE.format(
