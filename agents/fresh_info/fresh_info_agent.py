@@ -97,14 +97,16 @@ RÉPONSE (avec les numéros de source) :"""
 # entite ("Barcelone", "Python", "Bitcoin") d'un suivi sans sujet
 # ("Qui sont les buteurs ?", "Quel etait le score ?").
 MOTS_VIDES_ANCRAGE = frozenset({
-    "a", "ai", "au", "aux", "avec", "ce", "ces", "cet", "cette", "comme",
-    "dans", "de", "des", "du", "elle", "elles", "en", "est", "et", "eux",
-    "il", "ils", "la", "le", "les", "leur", "leurs", "lui", "ma", "maintenant",
-    "mes", "mon", "ne", "notre", "nous", "ou", "où", "par", "pas", "pour",
-    "que", "quel", "quelle", "quelles", "quels", "qui", "sa", "sans", "ses",
-    "son", "sont", "sur", "ta", "tes", "ton", "tu", "un", "une", "vos",
-    "votre", "vous", "web", "internet", "verifie", "vérifie", "rapidement",
-    "parle", "dis", "donne", "question", "source", "sources", "fc",
+    "a", "ai", "au", "aux", "avec", "avait", "ce", "ces", "cet", "cette",
+    "comme", "dans", "de", "des", "du", "elle", "elles", "en", "entre", "est",
+    "et", "ete", "été", "etait", "était", "eux", "fait", "faire", "il", "ils",
+    "la", "le", "les", "leur", "leurs", "lui", "ma", "maintenant", "mes", "mon",
+    "ne", "notre", "nous", "ou", "où", "par", "pas", "pour", "que", "quel",
+    "quelle", "quelles", "quels", "qui", "sa", "sans", "sera", "serait", "ses",
+    "son", "sont", "sur", "ta", "tes", "ton", "tu", "un", "une", "vos", "votre",
+    "vous", "web", "internet", "verifie", "vérifie", "rapidement", "parle", "dis",
+    "donne", "question", "source", "sources", "fc", "exact", "exacte", "recent",
+    "récente", "récent", "aujourd'hui", "aujourd’hui",
 })
 
 TERMES_SUIVI_GENERIQUES = frozenset({
