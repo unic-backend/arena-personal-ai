@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 from core.agent.base_agent import BaseAgent
 from core.context.projet import charger_contexte_projet
 from core.execution.voies import budget_de, voie_pour
+from core.meetings.intelligence import est_demande_analyse_reunion
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 
@@ -658,8 +659,10 @@ CODE_EXECUTION  : écrire ou exécuter du code, un script, un programme.
 DEEP_REASONING  : résoudre un problème mathématique ou une démonstration.
 DEEP_RESEARCH   : produire une étude, un rapport documenté, une recherche approfondie.
 TREND_SEARCH    : chercher des tendances ou des idées de contenu vidéo.
-VIDEO_ANALYSIS  : analyser, découper ou reformater un fichier vidéo ; fabriquer
-                  une vidéo ; suivre une génération ; préparer le prompt d'une scène.
+VIDEO_ANALYSIS  : analyser, découper ou reformater un fichier vidéo ; analyser
+                  un enregistrement audio/vidéo de réunion ou d'appel pour produire
+                  résumé, points clés, décisions et actions ; fabriquer une vidéo ;
+                  suivre une génération ; préparer le prompt d'une scène.
 VIDEO_PROJET    : un projet vidéo complet qui doit faire collaborer PLUSIEURS
                   capacités (analyse d'images, génération, narration, montage)
                   sur un même résultat — pas une seule d'entre elles prise seule.
@@ -915,6 +918,10 @@ class OrchestratorAgent(BaseAgent):
             logger.info("Demande de travail d'equipe entre agents -> EQUIPE")
             return "EQUIPE"
 
+        if est_demande_analyse_reunion(user_input):
+            logger.info("Analyse explicite d'une réunion enregistrée -> VIDEO_ANALYSIS")
+            return "VIDEO_ANALYSIS"
+
         if self.demande_la_date(user_input):
             logger.info("Question de date : l'horloge de la machine repond -> CHAT")
             return "CHAT"
@@ -1109,6 +1116,12 @@ class OrchestratorAgent(BaseAgent):
         # souvent le chantier lui-meme, sans etre une demande de devis.
         if any(k in text for k in VISION):
             return "VISION"
+
+        # Une réunion enregistrée à ANALYSER va dans la chaîne média complète
+        # (transcription + métriques + synthèse). Une simple « transcris cette
+        # réunion » ne matche pas ce prédicat et reste AUDIO juste dessous.
+        if est_demande_analyse_reunion(user_input):
+            return "VIDEO_ANALYSIS"
 
         # Le son : parler ou ecouter. Teste AVANT le montage et le metier —
         # « transcris la video du chantier » porte les mots des deux autres.
