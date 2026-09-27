@@ -6,7 +6,7 @@ aucun appel reseau.
 """
 import pytest
 
-from core.reasoning.reasoning_engine import ReasoningEngine
+from core.reasoning.reasoning_engine import ReasoningEngine, _niveau_verification
 
 PLAN_AVEC_CODE = (
     "Plan : resoudre l'equation avec sympy.\n"
@@ -240,3 +240,46 @@ async def test_un_contexte_vide_ou_blanc_n_ajoute_rien(provider_factory):
     await moteur.solve_complex_task("Resous x + 1 = 2", contexte="   \n  ")
 
     assert "Contexte" not in provider.appels[0]["prompt"]
+
+
+# --- Confiance fondee sur des preuves, pas sur l'assurance du modele ---------
+
+
+def test_verification_ne_fabrique_pas_un_score_sans_preuve():
+    resultat = _niveau_verification(
+        {"success": True, "sans_code": True, "stdout": ""},
+        None,
+    )
+    assert resultat["niveau"] == "UNVERIFIED"
+    assert "critique_absente" in resultat["limites"]
+    assert "aucun_calcul_requis" in resultat["limites"]
+
+
+def test_verification_partielle_si_un_seul_signal_est_mesure():
+    resultat = _niveau_verification(
+        {"success": True, "stdout": "42"},
+        None,
+    )
+    assert resultat["niveau"] == "PARTIAL"
+    assert resultat["preuves"] == ["calcul_execute"]
+
+
+def test_verification_complete_exige_calcul_execute_et_critique_ok():
+    resultat = _niveau_verification(
+        {"success": True, "stdout": "42"},
+        {"ok": True, "raison": "coherent", "confiance": 0.99},
+    )
+    assert resultat == {
+        "niveau": "VERIFIED",
+        "preuves": ["calcul_execute", "critique_ok"],
+        "limites": [],
+    }
+
+
+def test_confiance_llm_seule_ne_devient_jamais_verified():
+    resultat = _niveau_verification(
+        {"success": True, "sans_code": True},
+        {"ok": True, "confiance": 1.0},
+    )
+    assert resultat["niveau"] == "PARTIAL"
+    assert "calcul_execute" not in resultat["preuves"]
