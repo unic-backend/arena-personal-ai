@@ -301,7 +301,7 @@ class BaseAgent(ABC):
         return "\n".join(lignes)
 
     async def rediger(self, prompt: str, system_prompt: Optional[str] = None,
-                      **options: Any) -> str:
+                      consulter: bool = True, **options: Any) -> str:
         """Interroge le modele de l'agent, en lui permettant de consulter un collegue.
 
         **Pourquoi (DEC-0144).** Mesure du 26/09/2026 : sur vingt-cinq agents
@@ -317,12 +317,18 @@ class BaseAgent(ABC):
 
         Sans registre de collaborateurs (un agent construit seul, un test),
         c'est exactement `provider.generate` : rien n'est ajoute a l'invite.
+
+        `consulter=False` (DEC-0150) : une redaction qui doit s'en tenir a ses
+        sources — la synthese d'une recherche web — ne peut pas demander
+        l'avis d'un collegue. La reponse d'un collegue vient de SON modele,
+        pas du web : elle ferait entrer dans une reponse « sourcee » un fait
+        que personne n'a lu.
         """
         options_modele = dict(options)
         if system_prompt is not None:
             options_modele["system_prompt"] = system_prompt
         # `getattr` : des tests construisent un agent sans `__init__`.
-        if getattr(self, "collaborateurs", None) is None:
+        if not consulter or getattr(self, "collaborateurs", None) is None:
             return await self.provider.generate(prompt=prompt, **options_modele)
 
         consigne = CONSIGNE_COLLEGUES.format(collegues=self._liste_des_collegues())

@@ -21,6 +21,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from core.agent.base_agent import BaseAgent
+from core.agent.verification_synthese import avertissement_sources, elements_sans_source
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from core.security.trust import TrustLevel, wrap
@@ -814,10 +815,17 @@ class FreshInfoAgent(BaseAgent):
                 lues = meme_evenement
 
         part = self._repartir_le_budget(lues)
-        prompt = GABARIT_SYNTHESE.format(
-            sources=self._formater_les_sources(lues, part, question), question=question
-        )
-        reponse = await self.rediger(prompt=prompt)
+        sources_lues = self._formater_les_sources(lues, part, question)
+        prompt = GABARIT_SYNTHESE.format(sources=sources_lues, question=question)
+        # `consulter=False` (DEC-0150) : un collegue repondrait de SA memoire,
+        # pas du web — son avis entrerait dans une reponse dite sourcee.
+        reponse = (await self.rediger(prompt=prompt, consulter=False)).strip()
+        # Ce qui sort de la synthese est relu contre ce qui y est entre : un nom
+        # ou un chiffre absent des extraits recus n'a pas pu en venir.
+        sans_source = elements_sans_source(reponse, [user_input, question, sources_lues])
+        if sans_source:
+            logger.warning("Reponse web : elements sans source %s", sans_source)
+            reponse = f"{reponse}\n\n{avertissement_sources(sans_source)}"
 
         return {
             "status": "success",
@@ -838,5 +846,6 @@ class FreshInfoAgent(BaseAgent):
                 {"url": p["url"], "reason": p.get("reason", "illisible")}
                 for p in pages if p["status"] != "FETCHED"
             ],
+            "sans_source": sans_source,
             "response": reponse.strip(),
         }

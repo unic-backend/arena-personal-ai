@@ -140,7 +140,9 @@ async def test_le_flux_consulte_sans_montrer_la_demande():
 AGENTS_BRANCHES = {
     "agents.coder.coder_agent": "CoderAgent",
     "agents.researcher.researcher_agent": "DeepResearcherAgent",
-    "agents.fresh_info.fresh_info_agent": "FreshInfoAgent",
+    # FreshInfoAgent n'y est plus (DEC-0150) : sa synthese s'en tient au web
+    # et ne consulte personne — `tests/agents/test_fresh_info_answer_grounding.py`
+    # le verifie. Il reste consultable PAR les autres (cle « actualite »).
     "agents.dioumtoukay.dioumtoukay_agent": "DioumtoukayAgent",
     "agents.plaquiste.plaquiste_agent": "PlaquisteAgent",
     "agents.email.email_agent": "EmailAgent",

@@ -2,6 +2,15 @@
 
 ## [Non publié]
 
+### Corrigé — 27/09/2026 — Une réponse « vérifiée sur le web » signale ce qu'elle n'a pas lu
+
+La réponse à une question d'actualité pouvait encore contenir un nom ou un
+chiffre écrit de mémoire — un buteur de trop, une minute inventée — avec une
+citation [1] qui lui donnait l'air sourcé. Elle est maintenant relue contre
+les extraits réellement lus : ce qui n'y figure pas est signalé sous la
+réponse. Et la synthèse web ne peut plus demander l'avis d'un autre agent,
+qui répondrait de sa mémoire et pas du web (DEC-0150).
+
 ### Corrigé — 26/09/2026 — « Fais un montage de mes vidéos » est reconnu même sans modèle
 
 Quand tes modèles ne répondaient pas, « fais un montage de mes vidéos de

@@ -11461,3 +11461,42 @@ montage, qui demande alors les fichiers. « monte la cloison » ou « le montage
 des rails » n'ont pas d'objet video et restent au metier. Non corrige ici :
 la locution existante « fais le montage » capte aussi « fais le montage des
 rails de la cloison » (mesure sur `main`, anterieur a cette decision).
+
+## DEC-0150 — Une reponse web ne consulte aucun collegue, et ce qui en sort est relu contre ce qui y est entre
+
+**2026-09-27.**
+
+**Constat** : dans la nuit du 26 au 27/09/2026, six PR (#345 a #350) ont
+resserre ce qui ENTRE dans la synthese de `FreshInfoAgent` (fil de la
+conversation, sujet deterministe, evenement resolu, extraction des fiches de
+match). Le proprietaire constate que l'IA hallucine toujours. Deux trous
+restaient, en aval :
+
+1. Depuis DEC-0144 (commit d60070b, le mien), la synthese passait par
+   `BaseAgent.rediger`, qui propose au modele de consulter un collegue. La
+   reponse d'un collegue vient de SON modele, pas du web : elle pouvait entrer
+   dans une reponse presentee comme sourcee.
+2. Rien ne relisait la reponse : un buteur, un score ou une minute ecrits de
+   memoire passaient tels quels, citation [1] comprise.
+
+**Decision** :
+
+- `BaseAgent.rediger(..., consulter=False)` appelle le modele sans la consigne
+  d'equipe. La synthese web l'utilise. `FreshInfoAgent` reste consultable PAR
+  les autres agents ; il ne consulte plus personne pendant sa synthese.
+- `core/agent/verification_synthese.py::elements_sans_source` compare la
+  reponse au texte exact que le modele a recu (question et extraits) : noms
+  propres (forme traduite admise, « Seville » pour « Sevilla »), scores (dans
+  un sens ou dans l'autre), nombres de deux chiffres et plus. Ce qui n'y
+  figure pas est SIGNALE sous la reponse, jamais reecrit, et rendu dans
+  `sans_source`.
+
+**Test modifie** : `tests/core/test_consultation_collegues.py` ne compte plus
+`FreshInfoAgent` parmi les agents dont le travail consulte un collegue ; le
+contraire est desormais verifie par
+`tests/agents/test_fresh_info_answer_grounding.py`.
+
+**Ce que ca coute si c'est faux** : un surnom absent des sources (« Barca »)
+ou un calcul juste fait par le modele est signale « a ne pas tenir pour
+acquis » ; un nom propre ecrit en debut de phrase et qui est aussi un mot
+courant de la liste n'est pas controle.
