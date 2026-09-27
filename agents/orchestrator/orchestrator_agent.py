@@ -697,8 +697,9 @@ SWE_FIX         : corriger un bug dans un fichier existant.
 REPO_ENGINEERING: travailler sur plusieurs fichiers d'un dépôt à la fois.
 ATELIER         : agir vraiment sur la machine — ouvrir, ranger ou corriger SES
                   fichiers, lancer une commande dans SON terminal, travailler
-                  sur SON depot git. La difference avec REPO_ENGINEERING tient
-                  en un mot : ici on execute au lieu de proposer.
+                  sur SON depot git ; créer, lire ou modifier un document Office
+                  éditable (Excel/Word/PowerPoint). La différence avec
+                  REPO_ENGINEERING tient en un mot : ici on exécute au lieu de proposer.
 RAG_DOCS        : répondre à partir des documents de l'utilisateur.
 GRAPHRAG        : question sur les liens entre les documents.
 VISION          : comprendre une image, une photo, un plan ou une capture
