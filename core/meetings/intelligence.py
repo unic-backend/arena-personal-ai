@@ -15,6 +15,8 @@ import re
 from collections import Counter
 from typing import Any, Iterable
 
+from core.security.trust import TrustLevel, wrap
+
 _MOT_REUNION = re.compile(
     r"\b(?:réunion|reunion|meeting|appel|call|enregistrement)\b",
     re.IGNORECASE,
@@ -146,7 +148,12 @@ def formater_metriques_reunion(metriques: dict[str, Any]) -> str:
 
 
 def construire_prompt_reunion(transcription: str, metriques: dict[str, Any]) -> str:
-    """Construit une analyse strictement ancrée dans la transcription."""
+    """Construit une analyse ancrée, avec la transcription comme donnée."""
+    transcription_donnee = wrap(
+        transcription,
+        TrustLevel.DOCUMENT,
+        "transcription de réunion",
+    ).text
     separation = (
         "Des étiquettes de locuteurs existent dans les segments."
         if metriques.get("speaker_separation_available")
@@ -177,5 +184,5 @@ Rends exactement ces sections en français :
 5. Questions ouvertes
 
 <TRANSCRIPTION>
-{transcription}
+{transcription_donnee}
 </TRANSCRIPTION>"""
