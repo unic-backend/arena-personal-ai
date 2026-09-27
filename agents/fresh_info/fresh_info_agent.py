@@ -131,6 +131,14 @@ TERMES_CONTEXTE_RECHERCHE = frozenset({
     "date", "heure", "modele", "modèle", "sortie", "classement",
 })
 
+TERMES_DETAIL_EVENEMENT = frozenset({
+    "but", "buts", "buteur", "buteurs", "marque", "marqué", "marquee", "marquée",
+    "homme", "mvp", "composition", "compo", "score", "scores",
+})
+MOTS_LIAISON_EVENEMENT = frozenset({
+    "contre", "lors", "pendant", "entre", "avec", "apres", "après",
+})
+
 # Mots capitalises d'une reponse qui ne precisent pas l'evenement resolu.
 # Les autres noms propres et scores peuvent servir d'INDICES DE RECHERCHE au
 # tour suivant, mais jamais de faits : ils devront etre retrouves dans les
@@ -250,20 +258,86 @@ class FreshInfoAgent(BaseAgent):
         """Nombre de caractères accordé à chaque source retenue."""
         return max(500, self.budget_caracteres // max(1, len(lues)))
 
-    @staticmethod
-    def extraire_pertinent(texte: str, question: str, taille: int) -> str:
-        """Garde les passages qui parlent de la question, pas le debut de la page.
+    @classmethod
+    def _bloc_evenement_pertinent(
+        cls, paragraphes: List[str], question: str, taille: int
+    ) -> str:
+        """Conserve une fiche d'evenement comme un bloc, pas ligne par ligne.
 
-        Mesure du 2026-08-26 : a « qui a gagne la derniere coupe du monde »,
-        Usman a repondu « la derniere Coupe du Monde remportee par l equipe
-        francaise a eu lieu en 2018 » — en citant une page de palmares qui
-        contient la bonne reponse plus bas. L extrait envoye au modele etait
-        les N premiers caracteres, c est-a-dire l introduction.
+        Les pages de match affichent souvent :
+        equipe A -> score -> equipe B -> minute -> joueur.
+        Le joueur n'a alors aucun mot en commun avec « qui sont les buteurs ? ».
+        Un classement lexical par ligne supprimait precisement cette ligne.
+        On repere donc les deux entites de l'evenement dans la premiere fiche
+        compacte, puis on garde le bloc qui suit dans le budget.
+        """
+        tokens = {
+            t.casefold().strip("'’_-") for t in cls._tokens(question)
+            if t.strip("'’_-")
+        }
+        if not (tokens & TERMES_DETAIL_EVENEMENT):
+            return ""
 
-        Le decoupage est par paragraphe, le classement par nombre de mots de la
-        question presents. **L ordre du document est conserve** : un palmares
-        lu a l envers se comprend mal. A egalite, le passage le plus haut gagne,
-        ce qui redonne le comportement d avant quand rien ne ressort.
+        ancres = [
+            a for a in cls._termes_ancrage(question)
+            if a not in TERMES_DETAIL_EVENEMENT
+            and a not in MOTS_LIAISON_EVENEMENT
+        ]
+        # Deux entites independantes sont necessaires pour eviter de prendre une
+        # zone generale sur un seul club/personne comme si c'etait l'evenement.
+        if len(ancres) < 2:
+            return ""
+
+        trouvees: Dict[str, int] = {}
+        fin = None
+        for rang, paragraphe in enumerate(paragraphes):
+            bas = paragraphe.casefold()
+            for ancre in ancres:
+                if ancre in trouvees:
+                    continue
+                if re.search(rf"(?<!\w){re.escape(ancre)}(?!\w)", bas):
+                    trouvees[ancre] = rang
+            if len(trouvees) >= 2:
+                fin = rang
+                break
+
+        if fin is None:
+            return ""
+        debut_ancre = min(trouvees.values())
+        # Si les deux entites sont tres eloignees, il ne s'agit probablement
+        # pas d'une meme fiche d'evenement.
+        if fin - debut_ancre > 30:
+            return ""
+
+        debut = max(0, debut_ancre - 3)
+        retenus: List[str] = []
+        total = 0
+        for paragraphe in paragraphes[debut:]:
+            ajout = len(paragraphe) + (1 if retenus else 0)
+            if total + ajout > taille:
+                break
+            retenus.append(paragraphe)
+            total += ajout
+
+        bloc = "\n".join(retenus).strip()
+        # Un vrai bloc de match/detail doit contenir au moins un signal
+        # structurel (score ou minute), sinon on laisse le classement lexical.
+        signal = bool(
+            re.search(r"(?<!\d)\d{1,2}\s*[-–—:]\s*\d{1,2}(?!\d)", bloc)
+            or re.search(r"\b\d{1,3}(?:\+\d{1,2})?\s*['’]", bloc)
+        )
+        return bloc if signal else ""
+
+    @classmethod
+    def extraire_pertinent(cls, texte: str, question: str, taille: int) -> str:
+        """Garde les passages qui repondent sans casser les blocs structures.
+
+        Pour les pages d'evenement (match, score, buteurs, composition), on
+        conserve d'abord la fiche compacte autour des entites demandees afin
+        que les lignes « minute / joueur / score » survivent ensemble.
+
+        Sinon, le comportement historique reste lexical par paragraphe et
+        conserve l'ordre du document.
         """
         if len(texte) <= taille:
             return texte.strip()
@@ -272,7 +346,16 @@ class FreshInfoAgent(BaseAgent):
             mot for mot in re.findall(r"[\wàâäéèêëîïôöùûüç]{4,}", (question or "").lower())
         }
         paragraphes = [p.strip() for p in re.split(r"\n\s*\n|\n", texte) if p.strip()]
-        if not mots or not paragraphes:
+        if not paragraphes:
+            return texte[:taille].strip()
+
+        bloc_evenement = cls._bloc_evenement_pertinent(
+            paragraphes, question, taille
+        )
+        if bloc_evenement:
+            return bloc_evenement[:taille].strip()
+
+        if not mots:
             return texte[:taille].strip()
 
         scores = []
@@ -461,8 +544,19 @@ class FreshInfoAgent(BaseAgent):
 
             # Un score aide la requete, mais le filtre dur preferera un nom
             # propre s'il en existe car 3-1 peut apparaitre sur plusieurs matchs.
-            for score in re.findall(r"(?<!\d)\d{1,2}\s*[-–—:]\s*\d{1,2}(?!\d)", contenu):
-                normalise = re.sub(r"\s+", "", score).replace("–", "-").replace("—", "-")
+            for score in re.findall(
+                r"(?<!\d)\d{1,2}\s*(?:[-–—:]|à)\s*\d{1,2}(?!\d)",
+                contenu,
+                flags=re.IGNORECASE,
+            ):
+                normalise = (
+                    re.sub(r"\s+", "", score)
+                    .replace("–", "-")
+                    .replace("—", "-")
+                    .replace(":", "-")
+                    .replace("à", "-")
+                    .replace("À", "-")
+                )
                 if normalise not in vus:
                     vus.add(normalise)
                     indices.append(normalise)
