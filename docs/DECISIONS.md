@@ -11465,3 +11465,54 @@ rails de la cloison » (mesure sur `main`, anterieur a cette decision).
 dans une phrase qui porte un mot du metier (`METIER`), que si elle nomme aussi
 un objet video ; « fais le montage des rails de la cloison » reste au metier,
 « fais-moi le montage de la video du chantier » au montage.
+
+## DEC-0150 — Une reponse web ne consulte aucun collegue, et ce qui en sort est relu contre ce qui y est entre
+
+**2026-09-27.**
+
+**Constat** : dans la nuit du 26 au 27/09/2026, six PR (#345 a #350) ont
+resserre ce qui ENTRE dans la synthese de `FreshInfoAgent` (fil de la
+conversation, sujet deterministe, evenement resolu, extraction des fiches de
+match). Le proprietaire constate que l'IA hallucine toujours. Deux trous
+restaient, en aval :
+
+1. Depuis DEC-0144 (commit d60070b, le mien), la synthese passait par
+   `BaseAgent.rediger`, qui propose au modele de consulter un collegue. La
+   reponse d'un collegue vient de SON modele, pas du web : elle pouvait entrer
+   dans une reponse presentee comme sourcee.
+2. Rien ne relisait la reponse : un buteur, un score ou une minute ecrits de
+   memoire passaient tels quels, citation [1] comprise.
+
+**Decision** :
+
+- `BaseAgent.rediger(..., consulter=False)` appelle le modele sans la consigne
+  d'equipe. Trois syntheses qui promettent de s'en tenir aux donnees recues
+  l'utilisent : la reponse web (`FreshInfoAgent`), le rapport de recherche
+  « a partir des donnees web collectees » (`DeepResearcherAgent`) et
+  l'interpretation financiere qui « n'invente aucun chiffre »
+  (`FinanceAgent`). Ils restent consultables PAR les autres agents ; ils ne
+  consultent plus personne pendant ces syntheses.
+- `core/agent/verification_synthese.py::elements_sans_source` compare la
+  reponse au texte exact que le modele a recu (question et extraits) : noms
+  propres (forme traduite admise, « Seville » pour « Sevilla »), scores (dans
+  un sens ou dans l'autre), nombres de deux chiffres et plus. Ce qui n'y
+  figure pas est SIGNALE sous la reponse, jamais reecrit, et rendu dans
+  `sans_source`.
+
+- **Erreur trouvee en verifiant #347, #349 et #350** : leurs barrieres
+  comparaient les ancres a la lettre. L'ancre francaise « barcelone » et
+  l'indice « seville » ne reconnaissaient pas une page anglaise qui ecrit
+  « Barcelona » et « Sevilla » : le suivi « Qui sont les buteurs ? » etait
+  refuse comme hors sujet, et l'extraction ne trouvait pas la fiche du match.
+  `verification_synthese.terme_present` (accents ignores, forme traduite
+  admise des 5 lettres) remplace la comparaison exacte aux deux endroits.
+
+**Test modifie** : `tests/core/test_consultation_collegues.py` ne compte plus
+ces trois agents parmi ceux dont le travail consulte un collegue ; le
+contraire est desormais verifie (`test_une_synthese_sur_donnees_ne_consulte_personne`,
+et en comportement par `tests/agents/test_fresh_info_answer_grounding.py`).
+
+**Ce que ca coute si c'est faux** : un surnom absent des sources (« Barca »)
+ou un calcul juste fait par le modele est signale « a ne pas tenir pour
+acquis » ; un nom propre ecrit en debut de phrase et qui est aussi un mot
+courant de la liste n'est pas controle.

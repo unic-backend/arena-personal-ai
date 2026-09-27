@@ -151,3 +151,139 @@ def agents_ayant_travaille(espace: Any, root_task_id: str) -> Set[str]:
     """Les agents qui ont recu une tache sous cette racine, lus dans l'espace
     de travail — un agent consulte en chemin par un participant y figure."""
     return {t.recipient for t in espace.taches.values() if t.root_task_id == root_task_id}
+
+
+# --- Une reponse sourcee, confrontee aux sources qu'elle a recues (DEC-0150) ---
+#
+# La synthese d'une recherche web promet de s'en tenir a ses sources. Nuit du
+# 26 au 27/09/2026, six PR ont resserre ce qui ENTRE dans la synthese (sujet,
+# evenement, extraction) ; rien ne relisait ce qui en SORT. Un modele qui
+# « complete » une liste de buteurs avec un nom de memoire passait tel quel.
+# Ce controle compare la reponse au texte exact que le modele a recu : un nom
+# propre ou un chiffre qui n'y figure pas n'a pas pu venir de ces sources.
+
+#: Mots qui ouvrent une phrase francaise sans etre un nom propre.
+_DEBUTS_DE_PHRASE = frozenset(normaliser(m) for m in (
+    "le la les l un une des du de d en au aux ce cet cette ces c il elle ils elles on nous "
+    "je tu vous oui non aucun aucune pour par sur dans avec sans mais donc ainsi cependant "
+    "toutefois neanmoins enfin puis ensuite alors voici voila selon source sources reponse "
+    "note attention remarque resultat score buteur buteurs match date lieu quel quelle quels "
+    "quelles qui que quoi comment pourquoi quand ou apres avant lors pendant depuis malgre "
+    "grace contre entre chaque tous toutes tout plusieurs certains certaines seul seule meme "
+    "cela ceci ca est sa son ses leur leurs notre nos votre vos mon ma mes premier premiere "
+    "deuxieme troisieme dernier derniere derniers dernieres autre autres aussi encore deja "
+    "malheureusement heureusement actuellement recemment officiellement finalement "
+    "concernant quant pas plus moins tres bien car si comme lorsque parce puisque d'apres "
+    "d’apres a y sont etait ont avait sera il y en resume conclusion information "
+    "informations detail details verification").split())
+
+_MOT_CAPITALISE = re.compile(r"(?<![\w'’])([A-ZÀ-ÖØ-Þ][\wÀ-ÿ'’-]{2,})")
+_FIN_DE_PHRASE = re.compile(r"(?:^|[.!?]\s+|\n\s*(?:[-*•>|]\s*|\d+[.)]\s*|#+\s*)*)$")
+_SCORE = re.compile(r"(?<![\d,])(\d{1,2})\s*(?:[-–—:]|\bà\b)\s*(\d{1,2})(?![\d,])")
+_NOMBRE = re.compile(rf"(?<![\d,])\d{{1,3}}(?:[{_SEPARATEURS}]\d{{3}})+(?!\d)|(?<![\d,])\d+(?!\d)")
+_CITATION = re.compile(r"\[\d+(?:\s*[,-]\s*\d+)*\]")
+#: Au-dela, les elements sans source sont resumes.
+ELEMENTS_AFFICHES = 10
+
+
+def _nombres(texte: str) -> set:
+    valeurs = set()
+    for brut in _NOMBRE.findall(_DATE.sub(lambda m: " ".join(re.split(r"[/.-]", m.group(0))), texte)):
+        try:
+            valeurs.add(int(re.sub(rf"[{_SEPARATEURS}]", "", brut)))
+        except ValueError:
+            continue
+    return valeurs
+
+
+def _scores(texte: str) -> set:
+    return {tuple(sorted((int(a), int(b)))) for a, b in _SCORE.findall(texte)}
+
+
+def _mots_des_sources(texte: str) -> set:
+    return set(re.findall(r"[a-z0-9]+", normaliser(texte)))
+
+
+def _mot_connu(partie: str, mots_sources: set) -> bool:
+    if partie in mots_sources:
+        return True
+    prefixe = max(5, len(partie) - 2)
+    return len(partie) >= 5 and any(
+        len(mot) >= 5 and mot[:prefixe] == partie[:prefixe] for mot in mots_sources)
+
+
+def _nom_connu(nom: str, mots_sources: set) -> bool:
+    """Le nom figure dans les sources — ou sa forme dans une autre langue :
+    « Seville » pour « Sevilla », « Barcelone » pour « Barcelona » partagent
+    tout sauf leur terminaison."""
+    forme = normaliser(nom)
+    parties = [p for p in re.findall(r"[a-z0-9]+", forme) if len(p) >= 3]
+    return all(_mot_connu(partie, mots_sources) for partie in parties)
+
+
+def terme_present(terme: str, texte: str) -> bool:
+    """`terme` figure dans `texte`, accents et casse ignores, forme traduite
+    admise (« barcelone » dans une page qui ecrit « Barcelona »). Un terme de
+    moins de 5 lettres doit y figurer tel quel ; un score (« 3-1 ») aussi."""
+    forme = normaliser(terme).strip()
+    if not forme:
+        return False
+    if not re.fullmatch(r"[a-z0-9]+", forme):
+        return re.search(rf"(?<!\w){re.escape(forme)}(?!\w)", normaliser(texte)) is not None
+    return _mot_connu(forme, _mots_des_sources(texte))
+
+
+def elements_sans_source(reponse: str, sources: Iterable[str]) -> List[str]:
+    """Les noms propres et les chiffres de `reponse` absents de `sources`.
+
+    `sources` doit etre ce que le modele a RECU (question et extraits), pas
+    les pages entieres : un nom present dans une page mais absent de
+    l'extrait n'a pas pu venir de l'extrait.
+
+    Etroit par construction : un mot capitalise en debut de phrase n'est
+    compte que s'il n'est pas un mot courant ; un chiffre isole d'un seul
+    signe est ignore (hors score) ; les numeros de citation [1] aussi.
+    """
+    corpus = "\n".join(str(s or "") for s in sources)
+    mots_sources = _mots_des_sources(corpus)
+    nombres_sources = _nombres(corpus)
+    scores_sources = _scores(corpus)
+    texte = _CITATION.sub(" ", str(reponse or "")).replace("**", "").replace("__", "")
+
+    manquants: List[str] = []
+
+    def signaler(element: str) -> None:
+        if element not in manquants:
+            manquants.append(element)
+
+    for trouve in _MOT_CAPITALISE.finditer(texte):
+        nom = trouve.group(1).strip("'’-")
+        en_tete = bool(_FIN_DE_PHRASE.search(texte[:trouve.start()]))
+        if en_tete and normaliser(nom).strip("'’") in _DEBUTS_DE_PHRASE:
+            continue
+        if normaliser(nom).split("'")[0] in _DEBUTS_DE_PHRASE and en_tete:
+            continue
+        if not _nom_connu(nom, mots_sources):
+            signaler(nom)
+
+    for a, b in _SCORE.findall(texte):
+        paire = tuple(sorted((int(a), int(b))))
+        if paire not in scores_sources:
+            signaler(f"{a}-{b}")
+    sans_scores = _SCORE.sub(" ", texte)
+    for valeur in sorted(_nombres(sans_scores), key=lambda v: sans_scores.find(str(v))):
+        if valeur >= 10 and valeur not in nombres_sources:
+            signaler(str(valeur))
+    return manquants
+
+
+def avertissement_sources(manquants: List[str]) -> str:
+    """Le bloc ajoute sous une reponse sourcee ; vide si tout a une source."""
+    if not manquants:
+        return ""
+    montres = manquants[:ELEMENTS_AFFICHES]
+    reste = len(manquants) - len(montres)
+    return ("---\n**Verification automatique** : ces elements de la reponse ne "
+            f"figurent dans aucune source lue : {', '.join(montres)}"
+            + (f" et {reste} autre(s)" if reste > 0 else "")
+            + ". Ne les tiens pas pour acquis.")

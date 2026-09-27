@@ -21,6 +21,11 @@ import re
 from typing import Any, Dict, List, Optional
 
 from core.agent.base_agent import BaseAgent
+from core.agent.verification_synthese import (
+    avertissement_sources,
+    elements_sans_source,
+    terme_present,
+)
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from core.security.trust import TrustLevel, wrap
@@ -291,11 +296,11 @@ class FreshInfoAgent(BaseAgent):
         trouvees: Dict[str, int] = {}
         fin = None
         for rang, paragraphe in enumerate(paragraphes):
-            bas = paragraphe.casefold()
             for ancre in ancres:
                 if ancre in trouvees:
                     continue
-                if re.search(rf"(?<!\w){re.escape(ancre)}(?!\w)", bas):
+                # Forme traduite admise : « seville » trouve « Sevilla ».
+                if terme_present(ancre, paragraphe):
                     trouvees[ancre] = rang
             if len(trouvees) >= 2:
                 fin = rang
@@ -607,11 +612,11 @@ class FreshInfoAgent(BaseAgent):
             str(page.get("title") or ""),
             str(page.get("url") or page.get("href") or ""),
             str(page.get("text") or page.get("body") or ""),
-        ]).casefold()
-        return any(
-            re.search(rf"(?<!\w){re.escape(ancre)}(?!\w)", corpus)
-            for ancre in ancres
-        )
+        ])
+        # Accents et forme traduite admis (DEC-0150) : l'ancre francaise
+        # « barcelone » doit reconnaitre une page qui ecrit « Barcelona »,
+        # sinon la barriere refuse a tort une source anglaise du bon match.
+        return any(terme_present(ancre, corpus) for ancre in ancres)
 
     async def _reformuler_si_ellipse(
         self, user_input: str, context: Optional[Dict[str, Any]]
@@ -814,10 +819,17 @@ class FreshInfoAgent(BaseAgent):
                 lues = meme_evenement
 
         part = self._repartir_le_budget(lues)
-        prompt = GABARIT_SYNTHESE.format(
-            sources=self._formater_les_sources(lues, part, question), question=question
-        )
-        reponse = await self.rediger(prompt=prompt)
+        sources_lues = self._formater_les_sources(lues, part, question)
+        prompt = GABARIT_SYNTHESE.format(sources=sources_lues, question=question)
+        # `consulter=False` (DEC-0150) : un collegue repondrait de SA memoire,
+        # pas du web — son avis entrerait dans une reponse dite sourcee.
+        reponse = (await self.rediger(prompt=prompt, consulter=False)).strip()
+        # Ce qui sort de la synthese est relu contre ce qui y est entre : un nom
+        # ou un chiffre absent des extraits recus n'a pas pu en venir.
+        sans_source = elements_sans_source(reponse, [user_input, question, sources_lues])
+        if sans_source:
+            logger.warning("Reponse web : elements sans source %s", sans_source)
+            reponse = f"{reponse}\n\n{avertissement_sources(sans_source)}"
 
         return {
             "status": "success",
@@ -838,5 +850,6 @@ class FreshInfoAgent(BaseAgent):
                 {"url": p["url"], "reason": p.get("reason", "illisible")}
                 for p in pages if p["status"] != "FETCHED"
             ],
+            "sans_source": sans_source,
             "response": reponse.strip(),
         }

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 from uuid import uuid4
 
 import pytest
@@ -139,8 +140,11 @@ async def test_le_flux_consulte_sans_montrer_la_demande():
 #: Les agents dont l'appel de travail principal doit passer par `rediger`.
 AGENTS_BRANCHES = {
     "agents.coder.coder_agent": "CoderAgent",
-    "agents.researcher.researcher_agent": "DeepResearcherAgent",
-    "agents.fresh_info.fresh_info_agent": "FreshInfoAgent",
+    # FreshInfoAgent, DeepResearcherAgent et FinanceAgent n'y sont plus
+    # (DEC-0150) : leur synthese s'en tient aux donnees recues et ne consulte
+    # personne — `test_une_synthese_sur_donnees_ne_consulte_personne` ci-dessous
+    # et `tests/agents/test_fresh_info_answer_grounding.py` le verifient. Ils
+    # restent consultables PAR les autres.
     "agents.dioumtoukay.dioumtoukay_agent": "DioumtoukayAgent",
     "agents.plaquiste.plaquiste_agent": "PlaquisteAgent",
     "agents.email.email_agent": "EmailAgent",
@@ -149,7 +153,6 @@ AGENTS_BRANCHES = {
     "agents.orchestrator.orchestrator_agent": "OrchestratorAgent",
     "agents.video_analyzer.video_analyzer_agent": "VideoAnalyzerAgent",
     "agents.trend_analyzer.trend_analyzer_agent": "TrendAnalyzerAgent",
-    "agents.finance.finance_agent": "FinanceAgent",
     "agents.repo_engineer.repo_engineer_agent": "RepoEngineerAgent",
     "agents.swe_agent.swe_agent": "SWEAgent",
     "agents.ui.ui_agent": "UiGenerationAgent",
@@ -208,3 +211,23 @@ def test_le_telephone_consulte_un_collegue(monkeypatch):
     assert documents.questions == ["Quel est le prix du BA13 dans mes devis ?"]
     assert "4 500 F" in texte
     assert "[[COLLEGUE" not in texte
+
+
+#: Les syntheses qui promettent de s'en tenir aux donnees qu'on leur donne
+#: (web lu, chiffres calcules) : un collegue y ferait entrer sa memoire.
+SYNTHESES_SUR_DONNEES = {
+    "agents.fresh_info.fresh_info_agent": "FreshInfoAgent",
+    "agents.researcher.researcher_agent": "DeepResearcherAgent",
+    "agents.finance.finance_agent": "FinanceAgent",
+}
+
+
+@pytest.mark.parametrize("module, classe", sorted(SYNTHESES_SUR_DONNEES.items()))
+def test_une_synthese_sur_donnees_ne_consulte_personne(module, classe):
+    import importlib
+
+    source = inspect.getsource(getattr(importlib.import_module(module), classe))
+    appels = re.findall(r"self\.rediger\(([^\n]*)", source)
+    assert appels, f"{classe} n'appelle plus rediger"
+    assert all("consulter=False" in appel for appel in appels), (
+        f"{classe} laisse sa synthese consulter un collegue : {appels}")

@@ -301,7 +301,9 @@ class FinanceAgent(BaseAgent):
             contexte=contexte,
         )
         try:
-            return (await self.rediger(prompt=prompt)).strip()
+            # « N'invente AUCUN chiffre » : un collegue en apporterait de sa
+            # memoire, que personne n'a calcules (DEC-0150).
+            return (await self.rediger(prompt=prompt, consulter=False)).strip()
         except Exception as erreur:  # noqa: BLE001 — un modele indisponible ne doit pas priver des chiffres deja calcules
             logger.warning("Interpretation indisponible pour %s : %s", actif, erreur)
             return None
