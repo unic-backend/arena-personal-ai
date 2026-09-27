@@ -294,3 +294,148 @@ async def test_plusieurs_suivis_restent_sur_le_dernier_sujet_concret():
     requete = recherche.requetes[0].casefold()
     assert "barcelone" in requete
     assert "homme du match" in requete
+
+
+class ProviderSuiviEvenement:
+    def __init__(self):
+        self.prompts = []
+
+    async def generate(self, prompt, **kwargs):
+        self.prompts.append(prompt)
+        if "Nouvelle question" in prompt:
+            return "Qui a marqué les buts lors du dernier match du FC Barcelone ?"
+        return "Réponse vérifiée [1]."
+
+
+def _historique_barca_seville():
+    return [
+        {
+            "role": "user",
+            "content": (
+                "Quel a été le dernier match du FC Barcelone et quel était "
+                "le score exact ? Vérifie sur le web."
+            ),
+        },
+        {
+            "role": "assistant",
+            "content": (
+                "Le dernier match du FC Barcelone était contre Séville. "
+                "Barcelone l'a emporté 3-1."
+            ),
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_suivi_detail_reutilise_l_evenement_resolu_comme_indice_de_recherche():
+    """Reproduction du log production du 27/09/2026 a 01:20."""
+    provider = ProviderSuiviEvenement()
+    recherche = RechercheTracee([])
+    agent = FreshInfoAgent(provider=provider, search_tool=recherche)
+
+    await agent.run(
+        "Qui sont les buteurs ?",
+        {
+            "history": _historique_barca_seville(),
+            "history_authoritative": True,
+        },
+    )
+
+    assert recherche.requetes
+    requete = recherche.requetes[0].casefold()
+    assert "barcelone" in requete
+    assert "séville" in requete
+    assert "3-1" in requete
+
+
+@pytest.mark.asyncio
+async def test_suivi_detail_elimine_une_source_du_bon_club_mais_du_mauvais_evenement():
+    provider = ProviderSuiviEvenement()
+    recherche = RechercheTracee([
+        {
+            "title": "Une jeune joueuse du FC Barcelone",
+            "href": "https://med1.test/barca-jeune",
+            "body": "Actualité générale du FC Barcelone sans rapport avec Séville.",
+        },
+        {
+            "title": "FC Barcelone - Séville 3-1",
+            "href": "https://officiel.test/barca-seville",
+            "body": "FC Barcelone contre Séville, victoire 3-1.",
+        },
+    ])
+    lecteur = LecteurParUrl({
+        "https://med1.test/barca-jeune": {
+            "status": "FETCHED",
+            "url": "https://med1.test/barca-jeune",
+            "title": "Une jeune joueuse du FC Barcelone",
+            "text": "Actualité générale du FC Barcelone sans détail sur le match demandé.",
+            "truncated": False,
+        },
+        "https://officiel.test/barca-seville": {
+            "status": "FETCHED",
+            "url": "https://officiel.test/barca-seville",
+            "title": "FC Barcelone - Séville 3-1",
+            "text": (
+                "Le FC Barcelone a battu Séville 3-1. "
+                "Les buteurs du match sont indiqués dans ce compte rendu."
+            ),
+            "truncated": False,
+        },
+    })
+    agent = FreshInfoAgent(
+        provider=provider,
+        search_tool=recherche,
+        fetcher=lecteur,
+    )
+
+    resultat = await agent.run(
+        "Qui sont les buteurs ?",
+        {
+            "history": _historique_barca_seville(),
+            "history_authoritative": True,
+        },
+    )
+
+    assert resultat["status"] == "success"
+    assert [s["url"] for s in resultat["sources"]] == [
+        "https://officiel.test/barca-seville"
+    ]
+    assert "med1.test" not in provider.prompts[-1]
+
+
+@pytest.mark.asyncio
+async def test_suivi_detail_refuse_si_aucune_source_ne_confirme_l_evenement_resolu():
+    provider = ProviderSuiviEvenement()
+    recherche = RechercheTracee([{
+        "title": "FC Barcelone actualité",
+        "href": "https://general.test/barca",
+        "body": "Actualité générale du FC Barcelone.",
+    }])
+    lecteur = LecteurParUrl({
+        "https://general.test/barca": {
+            "status": "FETCHED",
+            "url": "https://general.test/barca",
+            "title": "FC Barcelone actualité",
+            "text": "Actualité générale du FC Barcelone sans mention de Séville.",
+            "truncated": False,
+        },
+    })
+    agent = FreshInfoAgent(
+        provider=provider,
+        search_tool=recherche,
+        fetcher=lecteur,
+    )
+
+    resultat = await agent.run(
+        "Qui sont les buteurs ?",
+        {
+            "history": _historique_barca_seville(),
+            "history_authoritative": True,
+        },
+    )
+
+    assert resultat["status"] == "warning"
+    assert resultat["sources"] == []
+    assert "evenement precis" in resultat["response"]
+    # Reformulation uniquement : aucune synthese avec une mauvaise rencontre.
+    assert len(provider.prompts) == 1
