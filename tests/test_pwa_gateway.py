@@ -1782,6 +1782,43 @@ class TestLeFilCoupeParLeTelephone:
             "le fil a ete fondu dans la question : le moteur ne sait plus a "
             "quoi il doit repondre")
 
+    def test_fresh_info_recoit_le_fil_autoritatif_du_telephone(
+        self, client, entetes, fournisseur, monkeypatch,
+    ):
+        """La recherche de suivi doit partir du fil affiche, pas d'un vieux sujet serveur."""
+        fournisseur()
+        conv = f"conv-fresh-fil-{uuid4()}"
+
+        async def _fresh(_demande, espace=None):
+            return "FRESH_INFO"
+        monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _fresh)
+
+        recu: dict = {}
+
+        async def _resultat(requete, intent=None, **_options):
+            recu["history"] = requete.history
+            recu["history_authoritative"] = requete.history_authoritative
+            return {"response": "Reponse sourcee.", "sources": []}
+        monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+        historique = [
+            {"role": "user", "content": "Qui a gagne entre Angleterre et Espagne ?"},
+            {"role": "assistant", "content": "Je verifie le match demande."},
+        ]
+        demander(
+            client, entetes, text="Qui sont les buteurs ?",
+            conversation_id=conv, run_id=f"run-{uuid4()}", history=historique,
+        )
+
+        assert recu["history"] == historique, (
+            "FRESH_INFO n'a pas recu l'historique autoritatif du telephone : "
+            "il peut retomber sur un ancien sujet du journal serveur"
+        )
+        assert recu["history_authoritative"] is True, (
+            "le fil PWA arrive sans marque autoritative : [] pourrait etre "
+            "remplace par une memoire serveur stale"
+        )
+
     def test_un_autre_agent_specialise_ne_recoit_toujours_pas_le_fil(
         self, client, entetes, fournisseur, monkeypatch,
     ):

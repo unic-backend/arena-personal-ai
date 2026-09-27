@@ -80,6 +80,7 @@ GABARIT_SYNTHESE = """Tu es Usman. Réponds à la question en t'appuyant UNIQUEM
 Règles :
 - Cite tes sources avec leur numéro entre crochets, par exemple [1].
 - Si les sources ne répondent pas à la question, dis-le clairement au lieu de deviner.
+- HORS SUJET : ignore. Ne change jamais le sujet demandé.
 - Ne complète pas avec tes connaissances propres : elles peuvent être périmées.
 - Quand une source porte une date entre parenthèses, dis-la : « selon [2], le 14/08… ».
 - Entre deux sources qui se contredisent, retiens la plus récente et dis pourquoi.
@@ -270,10 +271,15 @@ class FreshInfoAgent(BaseAgent):
         tour precedent), la question part telle quelle : rien a completer, et
         un appel modele inutile couterait de la latence pour rien.
         """
-        session_id = (context or {}).get("session_id")
-        if not session_id or not self.memory:
-            return user_input
-        historique = self.memory.get_recent_history(session_id=session_id, limit=4)
+        contexte = context or {}
+        historique = contexte.get("history")
+        session_id = contexte.get("session_id")
+        # Un [] autoritatif veut dire « cette conversation n'a aucun tour
+        # precedent ». Ne jamais le remplacer par un journal serveur qui peut
+        # appartenir a un etat plus ancien ou a un client sans conversation_id.
+        if not contexte.get("history_authoritative"):
+            if not historique and session_id and self.memory:
+                historique = self.memory.get_recent_history(session_id=session_id, limit=8)
         if not historique:
             return user_input
 
