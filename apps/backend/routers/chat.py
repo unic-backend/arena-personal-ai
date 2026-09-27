@@ -1014,7 +1014,14 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         # `medias_montables` couvre deja l audio (mp3, wav, m4a...) en plus
         # de la video, et la transcription lit les deux.
         result = await audio_agent.run(
-            request.prompt, context={"medias": medias_montables(request.video_path)})
+            request.prompt,
+            context={
+                "medias": medias_montables(request.video_path),
+                # Le média explicitement joint à CE tour gagne sur les anciens
+                # fichiers déjà présents dans media/incoming.
+                "video_path": request.video_path,
+            },
+        )
     elif intent == "MONTAGE":
         # L inventaire ouvert au modele : ses propres fichiers, et rien
         # d autre. `validate_media_path` tient deja la frontiere du dossier
