@@ -1565,20 +1565,22 @@ async def envoyer_fichier_office(file: UploadFile = File(...)):
         raise HTTPException(status_code=403, detail="Écriture de fichiers non autorisée.")
 
     destination = _destination_office_unique(file.filename or "sans-nom")
-    contenu = await lire_borne(file, pieces_jointes.taille_max)
-    if contenu is None:
-        destination.unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=413,
-            detail=f"Fichier trop volumineux (maximum {pieces_jointes.taille_max / 1024**2:.0f} Mo).",
-        )
-    if not contenu:
-        destination.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail="Fichier vide.")
-
     try:
+        contenu = await lire_borne(file, pieces_jointes.taille_max)
+        if contenu is None:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    "Fichier trop volumineux (maximum "
+                    f"{pieces_jointes.taille_max / 1024**2:.0f} Mo)."
+                ),
+            )
+        if not contenu:
+            raise HTTPException(status_code=400, detail="Fichier vide.")
         destination.write_bytes(contenu)
     except Exception:
+        # Le nom a déjà été réservé atomiquement. Toute sortie avant écriture
+        # complète doit enlever ce placeholder, y compris une lecture interrompue.
         destination.unlink(missing_ok=True)
         raise
 
