@@ -302,7 +302,7 @@ class FreshInfoAgent(BaseAgent):
 
     @staticmethod
     def _tokens(texte: str) -> List[str]:
-        return re.findall(r"[\\wÀ-ÿ'’-]+", texte or "")
+        return re.findall(r"[\wÀ-ÿ'’-]+", texte or "")
 
     @classmethod
     def _termes_ancrage(cls, texte: str) -> List[str]:
@@ -362,7 +362,7 @@ class FreshInfoAgent(BaseAgent):
 
     @staticmethod
     def _normaliser_phrase(texte: str) -> str:
-        return re.sub(r"\\W+", " ", (texte or "").casefold()).strip()
+        return re.sub(r"\W+", " ", (texte or "").casefold()).strip()
 
     @classmethod
     def _dernier_message_avec_ancre(
@@ -419,7 +419,7 @@ class FreshInfoAgent(BaseAgent):
             str(page.get("text") or page.get("body") or ""),
         ]).casefold()
         return any(
-            re.search(rf"(?<!\\w){re.escape(ancre)}(?!\\w)", corpus)
+            re.search(rf"(?<!\w){re.escape(ancre)}(?!\w)", corpus)
             for ancre in ancres
         )
 
