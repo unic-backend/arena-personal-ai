@@ -212,9 +212,29 @@ class ConnecteurUniverOffice(Connecteur):
                 mesure_le=_maintenant(),
             )
         version = (resultat.stdout or resultat.stderr or "").strip()
+        trouvee = re.search(r"(?<!\\d)(\\d+\\.\\d+\\.\\d+)(?!\\d)", version)
+        if trouvee is None or trouvee.group(1) != VERSION_ATTENDUE:
+            return Sante(
+                etat=EtatSante.EN_PANNE,
+                message=(
+                    f"Version Univer incompatible : {version or 'inconnue'} ; "
+                    f"ARENA attend exactement {VERSION_ATTENDUE}."
+                ),
+                mesure_le=_maintenant(),
+            )
+
+        licence_production = bool(os.getenv("UNIVER_LICENSE", "").strip())
+        licence = (
+            "licence runtime fournie explicitement via UNIVER_LICENSE"
+            if licence_production
+            else (
+                "runtime de développement localhost embarqué par Univer CLI "
+                "(90 jours, ce n'est pas une licence de production)"
+            )
+        )
         return Sante(
             etat=EtatSante.OPERATIONNEL,
-            message=version or "Univer CLI répond.",
+            message=f"Univer CLI {VERSION_ATTENDUE} opérationnel ; {licence}.",
             mesure_le=_maintenant(),
         )
 
@@ -345,6 +365,15 @@ class ConnecteurUniverOffice(Connecteur):
                     action=capacite.nom, cible=self.nom, message=sante.message,
                     preuve=sante.mesure_le or "univer-version",
                     sante=sante.to_dict(),
+                    version_attendue=VERSION_ATTENDUE,
+                    licence_runtime=(
+                        "configured"
+                        if os.getenv("UNIVER_LICENSE", "").strip()
+                        else "bundled_development_90_day"
+                    ),
+                    production_license_verified=bool(
+                        os.getenv("UNIVER_LICENSE", "").strip()
+                    ),
                 )
 
             if capacite.nom == "creer":
