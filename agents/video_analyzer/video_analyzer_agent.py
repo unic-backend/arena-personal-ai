@@ -556,6 +556,9 @@ Analyse:"""
             ],
             "meeting_metrics": meeting_metrics,
             "ai_analysis": ai_analysis.strip(),
+            # La frontière chat affiche `response`, pas `ai_analysis`. Sans
+            # ce champ une analyse réussie était transformée en erreur vide.
+            "response": ai_analysis.strip(),
             # Aucune generation suivie sur ce chemin : `None`, jamais un etat
             # invente pour remplir le champ.
             "suivi": None,
