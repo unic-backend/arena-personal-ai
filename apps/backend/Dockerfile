@@ -18,7 +18,15 @@ RUN npm ci
 COPY apps/pwa/ ./
 RUN npm run build
 
-# --- Etape 2 : l'image de service --------------------------------------------
+# --- Etape 2 : moteur Office local Univer ------------------------------------
+# Version epinglee et Node 24 : le CLI amont declare Node >=24. Le binaire est
+# construit une fois ici, puis copie dans l'image Python finale. Aucun
+# "npm install latest" au demarrage et aucune dependance au serveur Workspace.
+FROM node:24-slim AS univer-runtime
+RUN npm install --global univer-cli@0.5.0 \
+    && univer --version
+
+# --- Etape 3 : l'image de service --------------------------------------------
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -34,19 +42,32 @@ ENV USMAN_CHROMA_PATH=/app/data/chroma_db
 # Les paquets LibreOffice sont ciblés plutôt que le méta-paquet complet et
 # --no-install-recommends évite d'embarquer les composants sans usage.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg curl gosu nodejs npm \
+    ffmpeg curl gosu chromium \
     tesseract-ocr tesseract-ocr-fra \
     libreoffice-writer libreoffice-calc libreoffice-impress \
     libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 \
     fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
+# Node 24 + Univer CLI public épinglé, copiés depuis l'étape dédiée.
+# npm/npx sont des liens vers /usr/local/lib/node_modules : le répertoire est
+# donc copié avec eux avant l'installation des autres outils Node d'ARENA.
+COPY --from=univer-runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=univer-runtime /usr/local/bin/npm /usr/local/bin/npm
+COPY --from=univer-runtime /usr/local/bin/npx /usr/local/bin/npx
+COPY --from=univer-runtime /usr/local/bin/univer /usr/local/bin/univer
+COPY --from=univer-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
+
+ENV UNIVER_RENDER_BROWSER=/usr/bin/chromium
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 # Moteur MIT specialise, version epinglee : utilise par /api/media/remove-gemini-watermark.
 # `sharp` est le decodeur/encodeur requis par le chemin CLI fichier.
 RUN npm install --global @pilio/gemini-watermark-remover@1.0.45 sharp@0.34.5 \
-    && gwr --help >/dev/null
+    && gwr --help >/dev/null \
+    && univer --version \
+    && chromium --version
 
 COPY . .
 COPY --from=pwa-builder /pwa/dist ./apps/pwa/dist
