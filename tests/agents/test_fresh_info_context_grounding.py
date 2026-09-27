@@ -416,7 +416,7 @@ async def test_suivi_detail_refuse_si_aucune_source_ne_confirme_l_evenement_reso
             "status": "FETCHED",
             "url": "https://general.test/barca",
             "title": "FC Barcelone actualité",
-            "text": "Actualité générale du FC Barcelone sans mention de Séville.",
+            "text": "Actualité générale du FC Barcelone sans mention de l’adversaire.",
             "truncated": False,
         },
     })
