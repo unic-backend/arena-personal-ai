@@ -2083,7 +2083,12 @@ class DioumtoukayAgent(BaseAgent):
         # Le mode d espace de travail est mesure UNE fois. Sur Railway, les
         # fichiers de /app sont une image de deploiement, pas un checkout Git.
         github_distant = self._workspace_github_distant()
-        reperes = self._reperes(user_input, github_distant=github_distant)
+        office_paths = [
+            str(p) for p in ((context or {}).get("office_paths") or []) if str(p).strip()
+        ]
+        reperes = self._reperes(
+            user_input, github_distant=github_distant, office_paths=office_paths
+        )
 
         # La methode d'un specialiste (`debugging`/`tests`/`architecture`...,
         # `core/specialistes/catalogue.py`) n'atteignait jamais Dioumtoukay :
@@ -2401,7 +2406,12 @@ class DioumtoukayAgent(BaseAgent):
 
     # --- Ce qu'il voit, et ce qu'il rend ---------------------------------------------
 
-    def _reperes(self, demande: str, github_distant: Optional[bool] = None) -> str:
+    def _reperes(
+        self,
+        demande: str,
+        github_distant: Optional[bool] = None,
+        office_paths: Optional[List[str]] = None,
+    ) -> str:
         """Où il est, et ce qu'il y a autour. Mesuré, jamais supposé.
 
         Sans ça, le premier tour partait à l'aveugle : le modèle dépensait deux
@@ -2417,6 +2427,13 @@ class DioumtoukayAgent(BaseAgent):
                 "Depot GitHub distant par defaut : "
                 f"{self.depot_github_defaut}. Les actions github_* travaillent "
                 "sur ce depot sans dependre du disque de cette machine."
+            )
+
+        if office_paths:
+            lignes.append(
+                "Fichiers Office joints à CE tour, déposés par le serveur et "
+                "utilisables comme SOURCE pour office_importer :\n"
+                + "\n".join(f"- {chemin}" for chemin in office_paths)
             )
 
         if github_distant is None:
