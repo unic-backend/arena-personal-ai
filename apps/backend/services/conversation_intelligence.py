@@ -31,7 +31,8 @@ ENTITY_STOPWORDS = {
 }
 REFERENCE = re.compile(
     r"\b(?:il|elle|ils|elles|ça|ca|ceci|cela|celui|celle|ceux|celles|this|that|it|he|she|they|"
-    r"premier|première|deuxième|second|seconde|autre|précédent|precedent|avant|earlier)\b",
+    r"premier|première|deuxième|second|seconde|autre|précédent|precedent|avant|earlier|"
+    r"continue(?:r|z)?|repren(?:ds|ez)|reprendre|poursuis|poursuivez|poursuivre|go on|keep going)\b",
     re.IGNORECASE,
 )
 RETURN = re.compile(
