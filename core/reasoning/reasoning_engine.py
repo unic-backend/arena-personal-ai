@@ -157,6 +157,48 @@ def _analyser_critique(texte: str) -> Dict[str, Any]:
     return {"ok": ok, "raison": raison, "confiance": confiance}
 
 
+def _niveau_verification(
+    calcul: Any,
+    critique: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Qualification deterministe des preuves, jamais un score LLM maquille.
+
+    Inspire du principe de confiance explicite de Kong : le modele peut donner
+    son avis, mais seul un signal mesure change le niveau de verification.
+    """
+    preuves = []
+    limites = []
+
+    calcul_execute = (
+        isinstance(calcul, dict)
+        and bool(calcul.get("success"))
+        and not bool(calcul.get("sans_code"))
+    )
+    if calcul_execute:
+        preuves.append("calcul_execute")
+    elif isinstance(calcul, dict) and calcul.get("sans_code"):
+        limites.append("aucun_calcul_requis")
+    else:
+        limites.append("calcul_non_verifie")
+
+    critique_ok = isinstance(critique, dict) and critique.get("ok") is True
+    if critique_ok:
+        preuves.append("critique_ok")
+    elif isinstance(critique, dict) and critique.get("ok") is False:
+        limites.append("critique_ko")
+    else:
+        limites.append("critique_absente")
+
+    if calcul_execute and critique_ok:
+        niveau = "VERIFIED"
+    elif calcul_execute or critique_ok:
+        niveau = "PARTIAL"
+    else:
+        niveau = "UNVERIFIED"
+
+    return {"niveau": niveau, "preuves": preuves, "limites": limites}
+
+
 class ReasoningEngine:
     """Raisonnement profond : plan, calcul, synthese.
 
@@ -440,6 +482,8 @@ class ReasoningEngine:
                 "confiance": brut.get("confiance"),
             }
 
+        verification = _niveau_verification(calcul, critique_finale)
+
         return {
             "status": "success" if etat.aboutie else "error",
             "plan": str(etat.resultats.get("plan", "")).strip(),
@@ -447,6 +491,7 @@ class ReasoningEngine:
             "final_response": final_response,
             "profondeur": profondeur,
             "critique": critique_finale,
+            "verification": verification,
             # L'etat reel des etapes, pour que l'interface montre ce qui s'est
             # passe au lieu de l'inventer.
             "coordination": etat.to_dict(),
