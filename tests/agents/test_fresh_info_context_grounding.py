@@ -90,6 +90,8 @@ class ProviderQuiPerdLeSujet:
     async def generate(self, prompt, **kwargs):
         self.prompts.append(prompt)
         if "Nouvelle question" in prompt:
+            if "Qui sont les Beatles ?" in prompt:
+                return "Qui sont les Beatles ?"
             return "Qui sont les buteurs"
         return "Reponse sourcee [1]."
 
@@ -255,4 +257,5 @@ async def test_question_courte_avec_sujet_explicit_ne_recupere_pas_l_ancien_suje
         },
     )
 
-    assert question == "Qui sont les buteurs"
+    assert question == "Qui sont les Beatles ?"
+    assert "barcelone" not in question.casefold()
