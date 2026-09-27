@@ -34,6 +34,7 @@ def test_runtime_declares_key_external_and_local_connectors():
         "wan2gp",
         "hidream",
         "comfyui",
+        "office_univer",
     )
     missing = [name for name in required if f'\"{name}\"' not in source]
     assert not missing, f"Connecteurs attendus non declares dans runtime: {missing}"
