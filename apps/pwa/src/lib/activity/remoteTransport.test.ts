@@ -149,7 +149,11 @@ describe('makeRemoteTransport — statut metier des pieces jointes', () => {
       .map((e) => e.event);
     const pieceAudio = activites.filter((e) => e.tool === 'file_uploader').pop();
     expect(pieceAudio?.status).toBe('completed');
-    expect(pieceAudio?.description).toContain('Média reçu');
+    expect(pieceAudio?.output).toMatchObject({
+      kind: 'audio',
+      path: '/app/media/incoming/memo.mp3',
+      size: 1234,
+    });
   });
 
   it('un fichier reellement lu (readable=true) reste "completed"', async () => {
