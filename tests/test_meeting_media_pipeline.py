@@ -67,6 +67,8 @@ async def test_un_enregistrement_de_reunion_produit_un_resultat_affichable(
     assert resultat["meeting_metrics"]["speaker_separation_available"] is False
     assert resultat["response"] == resultat["ai_analysis"]
     assert "Fatou envoie le PDF demain" in resultat["response"]
+    assert "Métriques mesurées" in resultat["response"]
+    assert "Répartition des locuteurs : non disponible" in resultat["response"]
 
     prompt, options = provider.prompts[-1]
     assert "UNIQUEMENT" in prompt
