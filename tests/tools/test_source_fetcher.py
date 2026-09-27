@@ -46,6 +46,31 @@ def test_le_titre_de_la_page_est_recupere():
     assert titre == "Sortie de Python 3.14"
 
 
+def test_navigation_aside_et_footer_ne_mangent_pas_le_budget_du_contenu():
+    page = """
+    <html>
+      <head><title>Match</title></head>
+      <body>
+        <nav>""" + ("menu inutile " * 200) + """</nav>
+        <aside>publicité et liens sans rapport</aside>
+        <main>
+          <h1>Séville - Barcelone</h1>
+          <p>Y. Fofana 19'</p>
+          <p>Raphinha 22', 52', 69'</p>
+        </main>
+        <footer>""" + ("footer inutile " * 200) + """</footer>
+      </body>
+    </html>
+    """
+    texte, _ = extraire_texte(page)
+
+    assert "menu inutile" not in texte
+    assert "footer inutile" not in texte
+    assert "publicité et liens" not in texte
+    assert "Y. Fofana 19'" in texte
+    assert "Raphinha 22', 52', 69'" in texte
+
+
 def test_les_entites_html_sont_decodees():
     texte, _ = extraire_texte(PAGE)
 
