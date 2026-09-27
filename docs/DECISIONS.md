@@ -11482,8 +11482,12 @@ restaient, en aval :
 **Decision** :
 
 - `BaseAgent.rediger(..., consulter=False)` appelle le modele sans la consigne
-  d'equipe. La synthese web l'utilise. `FreshInfoAgent` reste consultable PAR
-  les autres agents ; il ne consulte plus personne pendant sa synthese.
+  d'equipe. Trois syntheses qui promettent de s'en tenir aux donnees recues
+  l'utilisent : la reponse web (`FreshInfoAgent`), le rapport de recherche
+  « a partir des donnees web collectees » (`DeepResearcherAgent`) et
+  l'interpretation financiere qui « n'invente aucun chiffre »
+  (`FinanceAgent`). Ils restent consultables PAR les autres agents ; ils ne
+  consultent plus personne pendant ces syntheses.
 - `core/agent/verification_synthese.py::elements_sans_source` compare la
   reponse au texte exact que le modele a recu (question et extraits) : noms
   propres (forme traduite admise, « Seville » pour « Sevilla »), scores (dans
@@ -11492,9 +11496,9 @@ restaient, en aval :
   `sans_source`.
 
 **Test modifie** : `tests/core/test_consultation_collegues.py` ne compte plus
-`FreshInfoAgent` parmi les agents dont le travail consulte un collegue ; le
-contraire est desormais verifie par
-`tests/agents/test_fresh_info_answer_grounding.py`.
+ces trois agents parmi ceux dont le travail consulte un collegue ; le
+contraire est desormais verifie (`test_une_synthese_sur_donnees_ne_consulte_personne`,
+et en comportement par `tests/agents/test_fresh_info_answer_grounding.py`).
 
 **Ce que ca coute si c'est faux** : un surnom absent des sources (« Barca »)
 ou un calcul juste fait par le modele est signale « a ne pas tenir pour

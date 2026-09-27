@@ -129,7 +129,9 @@ class DeepResearcherAgent(BaseAgent):
             "Rapport d'Intelligence :"
         )
 
-        synthesis = await self.rediger(prompt=synthesis_prompt)
+        # Un rapport « a partir des donnees web collectees » ne consulte aucun
+        # collegue (DEC-0150) : sa reponse viendrait de SA memoire, pas du web.
+        synthesis = await self.rediger(prompt=synthesis_prompt, consulter=False)
 
         return {
             "status": "success",
