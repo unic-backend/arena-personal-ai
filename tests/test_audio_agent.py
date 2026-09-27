@@ -139,6 +139,28 @@ class TestLaChaine:
         assert parametres["chemin"] == str(media)
 
     @pytest.mark.asyncio
+    async def test_le_media_explicitement_joint_gagne_sur_un_ancien_fichier(
+        self, audio, tmp_path
+    ):
+        ancien = tmp_path / "ancien.wav"
+        courant = tmp_path / "reunion.wav"
+        ancien.write_bytes(b"ancien")
+        courant.write_bytes(b"courant")
+        agent = audio()
+
+        await agent.run(
+            "transcris cette réunion",
+            context={
+                "medias": [str(ancien), str(courant)],
+                "video_path": str(courant),
+            },
+        )
+
+        _, capacite, parametres = agent.registre.appels[0]
+        assert capacite == "transcrire"
+        assert parametres["chemin"] == str(courant)
+
+    @pytest.mark.asyncio
     async def test_une_question_sur_les_moteurs_liste_sans_rien_ecrire(self, audio):
         agent = audio()
         r = await agent.run("quelles voix sont disponibles ?")

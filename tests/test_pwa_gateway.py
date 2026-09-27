@@ -1960,3 +1960,40 @@ class TestUnAgentSpecialiseLaisseUneTrace:
                  conversation_id=conv, run_id=f"run-{uuid4()}", history=[])
 
         assert "Ecris a Seck pour le chantier" in faux.prompts[-1]
+
+
+
+def test_un_media_joint_a_la_pwa_arrive_au_chemin_specialise(
+    client, entetes, fournisseur, monkeypatch,
+):
+    """Le chemin renvoyé par /api/upload ne doit pas mourir dans la passerelle."""
+    fournisseur()
+
+    async def _video(_demande, espace=None):
+        return "VIDEO_ANALYSIS"
+
+    monkeypatch.setattr(pwa_gateway.orchestrator, "analyze_intent", _video)
+    appels = []
+
+    async def _resultat(requete, intent=None, **_options):
+        appels.append((intent, requete.video_path, requete.attachments))
+        return {"response": "Compte rendu vérifié.", "sources": []}
+
+    monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+    reponse = demander(
+        client,
+        entetes,
+        text="Fais le compte rendu de cette réunion.",
+        media_paths=["/app/media/incoming/reunion.m4a"],
+    )
+    charges = trames(reponse.text)
+
+    assert appels == [
+        ("VIDEO_ANALYSIS", "/app/media/incoming/reunion.m4a", [])
+    ]
+    assert any(
+        charge.get("type") == "token"
+        and charge.get("text") == "Compte rendu vérifié."
+        for charge in charges
+    )

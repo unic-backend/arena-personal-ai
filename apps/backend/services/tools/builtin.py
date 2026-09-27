@@ -1,5 +1,6 @@
 """Calcul arithmetique borne et recherche HTTP sans execution arbitraire."""
 import ast
+import logging
 import math
 import operator
 from pathlib import Path
@@ -15,6 +16,8 @@ from apps.backend.services.tools.registry import Tool, ToolRegistry, ToolResult
 from core.knowledge.vault import KnowledgeVault
 from core.models.confidentialite import Confidentialite, classer
 from core.security.trust import TrustLevel, wrap
+
+logger = logging.getLogger("usman.backend.tools.builtin")
 
 
 class CalculateArgs(BaseModel):
@@ -89,8 +92,11 @@ class WebSearch:
                            if self._safe_url(str(item.get("url", "")))]
                 if sources:
                     return ToolResult(ok=True, data={"provider": "tavily", "sources": sources})
-            except (httpx.HTTPError, ValueError, TypeError, AttributeError):
-                pass  # DDG remains usable when Tavily times out or exhausts its quota
+            except (httpx.HTTPError, ValueError, TypeError, AttributeError) as exc:
+                logger.info(
+                    "Tavily indisponible (%s), repli vers DuckDuckGo Instant Answer.",
+                    type(exc).__name__,
+                )
         response = await self.client.get("https://api.duckduckgo.com/", params={
             "q": args.query, "format": "json", "no_html": 1, "no_redirect": 1,
         })
@@ -408,10 +414,14 @@ class AutonomousMediaTools:
         # faire passer ce résultat pour une compréhension visuelle des frames.
         return ToolResult(ok=True, data={
             "name": chemin.name,
-            "analysis_kind": "audio_transcription_and_text_analysis",
+            "analysis_kind": (
+                resultat.get("analysis_kind")
+                or "audio_transcription_and_text_analysis"
+            ),
             "transcription": resultat.get("transcription") or "",
             "duration": resultat.get("duration"),
             "segments": resultat.get("segments"),
+            "meeting_metrics": resultat.get("meeting_metrics"),
             "analysis": resultat.get("ai_analysis") or "",
             "visual_frame_analysis": False,
         })
@@ -513,7 +523,8 @@ def builtin_registry(client: httpx.AsyncClient, tavily_key: str = "",
     if video_agent is not None:
         registry.register(Tool(
             "analyze_video_audio",
-            "Transcrit et analyse la piste audio d'une vidéo déjà uploadée. "
+            "Transcrit et analyse un média audio ou la piste audio d'une vidéo déjà uploadée. "
+            "Peut produire le compte rendu d'une réunion enregistrée. "
             "Ce n'est PAS une analyse visuelle des frames.",
             VideoArgs, media.analyser_video, timeout=120, contextual=True,
         ))

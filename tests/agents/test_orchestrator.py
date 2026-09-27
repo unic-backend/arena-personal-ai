@@ -754,3 +754,43 @@ def test_les_familles_du_repli_sont_bien_lues():
 ])
 def test_le_repli_ne_confond_plus_les_mots_partages(phrase, attendu):
     assert OrchestratorAgent._classer_par_mots_cles(None, phrase) == attendu
+
+
+
+class TestAiguillageDesReunionsEnregistrees:
+    @pytest.mark.parametrize("phrase", [
+        "Fais le compte rendu de cette réunion.",
+        "Résume cet appel enregistré et donne les actions.",
+        "Analyse cet enregistrement et donne les points clés.",
+    ])
+    def test_le_repli_envoie_l_analyse_de_reunion_au_media(
+        self, fake_provider, phrase,
+    ):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+
+        assert agent._classer_par_mots_cles(phrase) == "VIDEO_ANALYSIS"
+
+    async def test_l_analyse_explicite_ne_depend_pas_du_modele_classeur(
+        self, provider_factory,
+    ):
+        provider = provider_factory("CHAT")
+        agent = OrchestratorAgent(provider=provider, memory=None)
+
+        resultat = await agent.analyze_intent(
+            "Fais le compte rendu de cette réunion et liste les actions."
+        )
+
+        assert resultat == "VIDEO_ANALYSIS"
+        assert provider.appels == []
+
+    def test_transcrire_une_reunion_reste_de_l_audio(self, fake_provider):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+
+        assert agent._classer_par_mots_cles("Transcris cette réunion.") == "AUDIO"
+
+    def test_reunion_des_agents_reste_du_travail_d_equipe(self, fake_provider):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+
+        assert agent._classer_par_mots_cles(
+            "Fais une réunion des agents pour débattre."
+        ) == "EQUIPE"

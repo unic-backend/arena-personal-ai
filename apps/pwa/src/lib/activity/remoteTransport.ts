@@ -58,6 +58,14 @@ interface UploadedAttachment {
   reason?: string | null;
 }
 
+interface UploadedMedia {
+  status: string;
+  filename: string;
+  original_filename: string;
+  path: string;
+  size_bytes: number;
+}
+
 function eventId(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -126,6 +134,8 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
     async *run(request: AgentRequest, _ctx, signal: AbortSignal) {
       const fr = uiLocale() === 'fr';
       const uploaded: UploadedAttachment[] = [];
+      const mediaPaths: string[] = [];
+      let preparedCount = 0;
       const attachments = request.attachments ?? [];
 
       if (attachments.length) {
@@ -163,8 +173,13 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
           try {
             const form = new FormData();
             form.append('file', attachment.file, attachment.name);
-            form.append('kind', attachment.kind);
-            const upload = await fetch(`${base}/files`, {
+            const isMedia = attachment.kind === 'audio' || attachment.kind === 'video';
+            if (!isMedia) form.append('kind', attachment.kind);
+
+            // Les documents/images vont au dépôt de pièces jointes. Les médias
+            // vont au stockage média : /files ne sait volontairement pas lire
+            // audio/vidéo et les refusait avant même que Whisper puisse agir.
+            const upload = await fetch(`${base}${isMedia ? '/api/upload' : '/files'}`, {
               method: 'POST',
               headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
               body: form,
@@ -174,46 +189,59 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
               const detail = await upload.text().catch(() => '');
               throw new Error(`${upload.status}${detail ? ` · ${detail.slice(0, 160)}` : ''}`);
             }
-            const result = (await upload.json()) as UploadedAttachment;
-            uploaded.push(result);
-            // HTTP 200 ne veut dire que « le serveur a repondu » : `/files`
-            // rend toujours un objet, meme pour un fichier refuse
-            // (`ECHEC`/`NON_PRIS_EN_CHARGE`, voir apps/backend/pieces_jointes.py).
-            // Avant ce correctif, cette activite passait pour « reussie »
-            // dans les deux cas — un fichier audio joint, jamais lu, se
-            // voyait annoncer « recu et inspecte » (audit externe, commit
-            // f7f0478). L'etat metier, pas seulement le code HTTP, decide.
-            if (result.readable === false) {
-              child = finishEvent(child, 'failed', {
-                description: result.reason
-                  || (fr ? 'Ce fichier n\'a pas pu etre lu.' : 'This file could not be read.'),
+
+            if (isMedia) {
+              const result = (await upload.json()) as UploadedMedia;
+              if (result.status !== 'success' || !result.path) {
+                throw new Error(fr ? 'Le média n\'a pas été stocké.' : 'The media was not stored.');
+              }
+              mediaPaths.push(result.path);
+              child = finishEvent(child, 'completed', {
+                description: fr ? 'Média reçu et prêt à analyser' : 'Media received and ready to analyze',
                 output: {
-                  id: result.id,
-                  kind: result.kind,
-                  status: result.status,
-                  readable: false,
+                  kind: attachment.kind,
+                  path: result.path,
+                  size: result.size_bytes,
                 },
               });
             } else {
-              child = finishEvent(child, 'completed', {
-                description: fr ? 'Fichier reçu et inspecté' : 'File received and inspected',
-                output: {
-                  id: result.id,
-                  kind: result.kind,
-                  metadata: result.metadata,
-                  extractedCharacters: result.extractedCharacters,
-                },
-              });
+              const result = (await upload.json()) as UploadedAttachment;
+              uploaded.push(result);
+              // HTTP 200 ne veut dire que « le serveur a repondu » : /files
+              // rend toujours un objet, meme pour un fichier refuse.
+              if (result.readable === false) {
+                child = finishEvent(child, 'failed', {
+                  description: result.reason
+                    || (fr ? 'Ce fichier n\'a pas pu être lu.' : 'This file could not be read.'),
+                  output: {
+                    id: result.id,
+                    kind: result.kind,
+                    status: result.status,
+                    readable: false,
+                  },
+                });
+              } else {
+                child = finishEvent(child, 'completed', {
+                  description: fr ? 'Fichier reçu et inspecté' : 'File received and inspected',
+                  output: {
+                    id: result.id,
+                    kind: result.kind,
+                    metadata: result.metadata,
+                    extractedCharacters: result.extractedCharacters,
+                  },
+                });
+              }
             }
+            preparedCount += 1;
             yield { type: 'activity', event: child };
 
             root = {
               ...root,
               phase: 'progress',
               description: fr
-                ? `${uploaded.length}/${attachments.length} fichiers envoyés`
-                : `${uploaded.length}/${attachments.length} files uploaded`,
-              progress: { done: uploaded.length, total: attachments.length, unit: fr ? 'fichiers' : 'files' },
+                ? `${preparedCount}/${attachments.length} fichiers envoyés`
+                : `${preparedCount}/${attachments.length} files uploaded`,
+              progress: { done: preparedCount, total: attachments.length, unit: fr ? 'fichiers' : 'files' },
             };
             yield { type: 'activity', event: root };
           } catch (error) {
@@ -228,10 +256,14 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
 
         root = finishEvent(root, 'completed', {
           description: fr
-            ? `${uploaded.length} pièce(s) jointe(s) préparée(s)`
-            : `${uploaded.length} attachment(s) prepared`,
-          output: { files: uploaded.length, attachments: uploaded },
-          progress: { done: uploaded.length, total: attachments.length, unit: fr ? 'fichiers' : 'files' },
+            ? `${preparedCount} pièce(s) jointe(s) préparée(s)`
+            : `${preparedCount} attachment(s) prepared`,
+          output: {
+            files: preparedCount,
+            attachments: uploaded,
+            mediaPaths,
+          },
+          progress: { done: preparedCount, total: attachments.length, unit: fr ? 'fichiers' : 'files' },
         });
         yield { type: 'activity', event: root };
       }
@@ -245,6 +277,7 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
         locale: uiLocale(),
         history: request.history ?? [],
         attachments: uploaded.map((value) => value.id),
+        media_paths: mediaPaths,
         connectors: await resolveActiveConnectors(),
         run_id: runId,
         // Identite STABLE du fil (le `activeId` du store), distincte de

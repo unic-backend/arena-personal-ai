@@ -36,6 +36,12 @@ from core.connectors.base import EtatSante
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.suivi_video import suivre_en_fond
 from core.execution.travaux import EtatTravail, FileDeTravaux, Travail
+from core.meetings.intelligence import (
+    construire_prompt_reunion,
+    est_demande_analyse_reunion,
+    formater_metriques_reunion,
+    mesurer_reunion,
+)
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from tools.audio.transcription_tool import ModeleAbsent, TranscriptionTool
@@ -140,7 +146,10 @@ class VideoAnalyzerAgent(BaseAgent):
     #: Comment l'agent se presente au registre (DEC-0145) : lu par la
     #: decouverte, jamais recopie dans une liste centrale.
     identifiant = "video_analyse"
-    competences = ('analyse video', 'generation video', 'suivi de generation', 'decoupe video', 'prompt de scene')
+    competences = (
+        'analyse video', 'analyse reunion', 'compte rendu reunion',
+        'generation video', 'suivi de generation', 'decoupe video', 'prompt de scene',
+    )
 
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
                  registre: Optional[RegistreConnecteurs] = None,
@@ -452,7 +461,7 @@ class VideoAnalyzerAgent(BaseAgent):
             return {
                 "status": "error",
                 "agent": self.name,
-                "response": "❌ Aucune vidéo valide fournie pour l'analyse."
+                "response": "❌ Aucun média audio ou vidéo valide fourni pour l'analyse."
             }
 
         video_file = Path(video_path)
@@ -502,21 +511,45 @@ class VideoAnalyzerAgent(BaseAgent):
                 "segments": transcription_res["segments"],
                 "response": "❌ La transcription ne contient aucun texte exploitable.",
             }
-        # 3. Analyse du contenu par Qwen 3.5
-        prompt = f"""Tu es un expert en analyse vidéo. Analyse la transcription suivante et propose :
+        # 3. Analyse du contenu. Une réunion est un cas spécialisé de CETTE
+        # même chaîne média : même fichier, même FFmpeg, même Whisper, même
+        # modèle. Aucun second agent ni service VideoDB n'est ajouté.
+        analyse_reunion = est_demande_analyse_reunion(user_input)
+        meeting_metrics = None
+        if analyse_reunion:
+            meeting_metrics = mesurer_reunion(
+                full_text,
+                transcription_res["segments"],
+                transcription_res["duration"],
+            )
+            prompt = construire_prompt_reunion(full_text, meeting_metrics)
+            # Une synthèse de réunion doit rester ancrée dans la transcription.
+            # Un collègue LLM ajouterait une source non présente dans l'appel.
+            ai_analysis = await self.rediger(prompt=prompt, consulter=False)
+            ai_analysis = (
+                ai_analysis.strip()
+                + "\n\n"
+                + formater_metriques_reunion(meeting_metrics)
+            )
+            analysis_kind = "meeting_transcript_analysis"
+        else:
+            prompt = f"""Tu es un expert en analyse vidéo. Analyse la transcription suivante et propose :
 1. Un résumé concis du contenu.
 2. Les thèmes principaux abordés.
 3. Une note de potentiel pour en faire un extrait court (Short/TikTok) de 0 à 10.
 
 Transcription: "{full_text}"
 Analyse:"""
-
-        ai_analysis = await self.rediger(prompt=prompt)
+            ai_analysis = await self.rediger(prompt=prompt)
+            analysis_kind = "audio_transcription_and_text_analysis"
 
         return {
             "status": "success",
             "agent": self.name,
+            # Conservé pour compatibilité avec les appelants vidéo existants.
             "video_name": video_file.name,
+            "media_name": video_file.name,
+            "analysis_kind": analysis_kind,
             "duration": transcription_res["duration"],
             "transcription": full_text,
             "segments": transcription_res["segments"],
@@ -527,7 +560,11 @@ Analyse:"""
                     ("segments", transcription_res["segments"]),
                 ) if valeur is None
             ],
+            "meeting_metrics": meeting_metrics,
             "ai_analysis": ai_analysis.strip(),
+            # La frontière chat affiche `response`, pas `ai_analysis`. Sans
+            # ce champ une analyse réussie était transformée en erreur vide.
+            "response": ai_analysis.strip(),
             # Aucune generation suivie sur ce chemin : `None`, jamais un etat
             # invente pour remplir le champ.
             "suivi": None,

@@ -86,14 +86,11 @@ describe('makeRemoteTransport — identite de conversation', () => {
 });
 
 /* ─────────────────────────────────────────────────────────────
-   L'etat metier de /files (readable/status), pas seulement le code HTTP.
+   Deux voies d'upload, deux contrats réels.
 
-   Audit externe (commit f7f0478) : `/files` rend TOUJOURS un objet avec un
-   code 200, meme pour un fichier refuse (ECHEC/NON_PRIS_EN_CHARGE — un
-   fichier audio joint, par exemple, qu'aucun lecteur ne sait extraire).
-   Avant ce correctif, l'activite de cette piece etait quand meme marquee
-   « completed » avec « Fichier reçu et inspecté » — l'interface annoncait
-   une reussite pour un fichier jamais lu.
+   /files lit les documents/images. /api/upload stocke les médias audio/vidéo
+   pour FFmpeg + Whisper. Envoyer un média à /files le faisait refuser avant
+   que l'agent audio/vidéo puisse seulement le voir.
    ───────────────────────────────────────────────────────────── */
 function fauxAttachment(kind: 'audio' | 'document' = 'audio') {
   return {
@@ -113,32 +110,50 @@ describe('makeRemoteTransport — statut metier des pieces jointes', () => {
     vi.unstubAllGlobals();
   });
 
-  it('un fichier refuse (readable=false) devient une activite "failed", jamais "completed"', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      if (url.endsWith('/files')) {
+  it('un audio passe par /api/upload et son chemin atteint /agent/stream', async () => {
+    const urls: string[] = [];
+    let corpsAgent: Record<string, unknown> | undefined;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      urls.push(url);
+      if (url.endsWith('/api/upload')) {
         return new Response(JSON.stringify({
-          id: 'p1', name: 'memo.mp3', size: 1234, status: 'NON_PRIS_EN_CHARGE',
-          readable: false, reason: 'format audio non pris en charge par /files',
-          nature: 'document', truncated: false, characters: 0,
+          status: 'success',
+          filename: 'memo.mp3',
+          original_filename: 'memo.mp3',
+          path: '/app/media/incoming/memo.mp3',
+          size_bytes: 1234,
         }), { status: 200 });
       }
-      return new Response('data: {"type":"done","meta":{}}\n\n', { status: 200 });
+      if (url.endsWith('/agent/stream')) {
+        corpsAgent = JSON.parse(String(init?.body));
+        return new Response('data: {"type":"done","meta":{}}\n\n', { status: 200 });
+      }
+      throw new Error(`route inattendue: ${url}`);
     }));
 
     const transport = makeRemoteTransport({ url: 'https://exemple.test' });
     const evenements = await collecter(transport.run(
-      { text: 'voici un memo vocal', attachments: [fauxAttachment('audio')] } as never,
+      { text: 'fais le compte rendu de cette réunion', attachments: [fauxAttachment('audio')] } as never,
       {} as never,
       new AbortController().signal,
     ));
+
+    expect(urls.some((url) => url.endsWith('/api/upload'))).toBe(true);
+    expect(urls.some((url) => url.endsWith('/files'))).toBe(false);
+    expect(corpsAgent?.media_paths).toEqual(['/app/media/incoming/memo.mp3']);
+    expect(corpsAgent?.attachments).toEqual([]);
 
     const activites = evenements
       .filter((e): e is { type: 'activity'; event: import('./types').ActivityEvent } =>
         (e as { type: string }).type === 'activity')
       .map((e) => e.event);
     const pieceAudio = activites.filter((e) => e.tool === 'file_uploader').pop();
-    expect(pieceAudio?.status).toBe('failed');
-    expect(pieceAudio?.description).toContain('format audio non pris en charge');
+    expect(pieceAudio?.status).toBe('completed');
+    expect(pieceAudio?.output).toMatchObject({
+      kind: 'audio',
+      path: '/app/media/incoming/memo.mp3',
+      size: 1234,
+    });
   });
 
   it('un fichier reellement lu (readable=true) reste "completed"', async () => {
