@@ -103,6 +103,51 @@ class TestStrategieDeRecherche:
         assert resultats, "la recherche rend encore zéro résultat"
         assert ("text", None) in [(a["categorie"], a["timelimit"]) for a in moteur.appels]
 
+    def test_la_passe_texte_recente_conserve_le_sens_temporel_et_retire_le_bruit(self):
+        outil = WebSearchTool()
+        ciblee = outil.cibler_requete_recente(
+            "Quel a été le dernier match du FC Barcelone et quel était "
+            "le score exact ? Vérifie sur le web."
+        )
+
+        bas = ciblee.casefold()
+        assert "dernier" in bas
+        assert "match" in bas
+        assert "fc" in bas
+        assert "barcelone" in bas
+        assert "score" in bas
+        assert "resultats" in bas
+        assert "calendrier" in bas
+        assert "verifie" not in bas
+        assert "web" not in bas
+        assert "quel" not in bas
+
+    def test_le_fallback_texte_utilise_d_abord_la_requete_ciblee_recente(self):
+        appels = []
+
+        def moteur(categorie, query, max_results, timelimit=None):
+            appels.append((categorie, timelimit, query))
+            if categorie == "text" and query == (
+                "dernier match FC Barcelone score resultats calendrier"
+            ):
+                return [_resultat("https://club.test/resultats")]
+            return []
+
+        outil = WebSearchTool()
+        outil._executer = moteur
+        resultats = outil.search(
+            "Quel a été le dernier match du FC Barcelone et quel était "
+            "le score exact ? Vérifie sur le web.",
+            max_results=1,
+            recent=True,
+        )
+
+        assert [r["href"] for r in resultats] == ["https://club.test/resultats"]
+        appels_text = [a for a in appels if a[0] == "text"]
+        assert appels_text[0][2] == (
+            "dernier match FC Barcelone score resultats calendrier"
+        )
+
     def test_une_question_intemporelle_ne_paie_pas_le_filtre_de_fraicheur(self):
         moteur = MoteurDouble({("text", None): [_resultat("https://d.test")]})
         outil = WebSearchTool()
