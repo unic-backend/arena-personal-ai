@@ -39,6 +39,7 @@ from core.execution.travaux import EtatTravail, FileDeTravaux, Travail
 from core.meetings.intelligence import (
     construire_prompt_reunion,
     est_demande_analyse_reunion,
+    formater_metriques_reunion,
     mesurer_reunion,
 )
 from core.memory.memory_manager import MemoryManager
@@ -525,6 +526,11 @@ class VideoAnalyzerAgent(BaseAgent):
             # Une synthèse de réunion doit rester ancrée dans la transcription.
             # Un collègue LLM ajouterait une source non présente dans l'appel.
             ai_analysis = await self.rediger(prompt=prompt, consulter=False)
+            ai_analysis = (
+                ai_analysis.strip()
+                + "\n\n"
+                + formater_metriques_reunion(meeting_metrics)
+            )
             analysis_kind = "meeting_transcript_analysis"
         else:
             prompt = f"""Tu es un expert en analyse vidéo. Analyse la transcription suivante et propose :
