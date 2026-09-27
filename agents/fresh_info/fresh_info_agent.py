@@ -82,7 +82,7 @@ Règles :
 - Si les sources ne répondent pas à la question, dis-le clairement au lieu de deviner.
 - HORS SUJET : ignore. Ne change jamais le sujet demandé.
 - Ne complète pas avec tes connaissances propres : elles peuvent être périmées.
-- Quand une source porte une date entre parenthèses, dis-la : « selon [2], le 14/08… ».
+- Pour « dernier/plus récent » : compare les dates d'événement ; sans chronologie prouvée, refuse.
 - Entre deux sources qui se contredisent, retiens la plus récente et dis pourquoi.
 - Réponds en français, de manière directe.
 
