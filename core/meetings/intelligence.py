@@ -29,6 +29,10 @@ _REUNION_D_AGENTS = re.compile(
     r"\b(?:réunion|reunion|meeting)\s+(?:de|des|entre)\s+(?:mes\s+)?agents?\b",
     re.IGNORECASE,
 )
+_APPEL_D_OFFRES = re.compile(
+    r"\bappel\s+d['’ ]?offres?\b",
+    re.IGNORECASE,
+)
 _MOT = re.compile(r"[\wÀ-ÿ]+(?:['’\-][\wÀ-ÿ]+)*", re.UNICODE)
 
 
@@ -39,7 +43,11 @@ def est_demande_analyse_reunion(texte: str) -> bool:
     agents » reste le travail d'équipe interne d'ARENA, pas l'analyse d'un média.
     """
     valeur = (texte or "").strip()
-    if not valeur or _REUNION_D_AGENTS.search(valeur):
+    if (
+        not valeur
+        or _REUNION_D_AGENTS.search(valeur)
+        or _APPEL_D_OFFRES.search(valeur)
+    ):
         return False
     return bool(_MOT_REUNION.search(valeur) and _MOT_ANALYSE.search(valeur))
 
