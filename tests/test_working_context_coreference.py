@@ -45,3 +45,11 @@ def test_working_context_does_not_match_substrings_or_stopwords():
     memories = MemoryEngine._working_candidates(history, "Continue avec ça")
 
     assert memories == []
+
+
+def test_continue_inside_a_statement_does_not_force_a_reference():
+    history = _history("Le projet vidéo utilise Wan.")
+
+    state = understand("Le chantier continue demain.", history)
+
+    assert state.transition == "TOPIC_SHIFT"
