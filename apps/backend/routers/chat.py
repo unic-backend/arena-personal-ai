@@ -83,6 +83,10 @@ class ChatRequest(BaseModel):
     video_path: Optional[str] = None
     region: Optional[str] = "Sénégal"
     attachments: List[str] = Field(default_factory=list)
+    # Chemins serveur de binaires Office joints à ce tour. Ils proviennent de
+    # /office/files ; Dioumtoukay les voit comme sources d'import, jamais comme
+    # commandes. Le connecteur Univer revalide encore leur frontière disque.
+    office_paths: List[str] = Field(default_factory=list)
     # Les deux champs suivants ne servent qu'a PLAQUISTE (chapitre metier,
     # capture deterministe du destinataire d'un devis — DEC a venir) :
     # `history` porte les tours precedents, structures ; `message_actuel`
@@ -992,6 +996,7 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         # qui lit et propose sans jamais rien modifier. DEC-0038.
         result = await dioumtoukay_agent.run(request.prompt, context={
             "session_id": session_id,
+            "office_paths": list(request.office_paths),
         })
     elif intent == "RAG_DOCS":
         # Ses documents restent hors de l index tant que personne ne les y met.
