@@ -81,3 +81,216 @@ def test_synthese_interdit_de_changer_evenement_pour_coller_aux_sources():
 
     assert "HORS SUJET" in GABARIT_SYNTHESE
     assert "Ne change jamais le sujet" in GABARIT_SYNTHESE
+
+
+class ProviderQuiPerdLeSujet:
+    def __init__(self):
+        self.prompts = []
+
+    async def generate(self, prompt, **kwargs):
+        self.prompts.append(prompt)
+        if "Nouvelle question" in prompt:
+            if "Qui sont les Beatles ?" in prompt:
+                return "Qui sont les Beatles ?"
+            return "Qui sont les buteurs"
+        return "Reponse sourcee [1]."
+
+
+class RechercheTracee:
+    def __init__(self, resultats):
+        self.resultats = resultats
+        self.requetes = []
+
+    def search(self, query, max_results=5, recent=False):
+        self.requetes.append(query)
+        return self.resultats[:max_results]
+
+
+class LecteurParUrl:
+    def __init__(self, pages):
+        self.pages = pages
+
+    async def fetch(self, url):
+        return self.pages[url]
+
+
+@pytest.mark.asyncio
+async def test_production_barcelone_un_suivi_sans_sujet_est_ancre_deterministement():
+    """Reproduction du log Railway du 27/09/2026 a 00:15:32."""
+    provider = ProviderQuiPerdLeSujet()
+    recherche = RechercheTracee([])
+    agent = FreshInfoAgent(provider=provider, search_tool=recherche)
+    history = [
+        {
+            "role": "user",
+            "content": (
+                "Maintenant, quel a été le dernier match du FC Barcelone "
+                "et quel était le score exact ? Vérifie sur le web."
+            ),
+        },
+        {
+            "role": "assistant",
+            "content": "Les sources disponibles ne permettent pas de répondre.",
+        },
+    ]
+
+    await agent.run(
+        "Qui sont les buteurs",
+        {"history": history, "history_authoritative": True},
+    )
+
+    assert recherche.requetes
+    requete = recherche.requetes[0].casefold()
+    assert "barcelone" in requete
+    assert requete != "qui sont les buteurs"
+
+
+@pytest.mark.asyncio
+async def test_une_source_hockey_hors_sujet_est_eliminee_avant_la_synthese():
+    provider = ProviderQuiPerdLeSujet()
+    recherche = RechercheTracee([
+        {
+            "title": "Coupe de France de hockey",
+            "href": "https://hockey.test/coupe",
+            "body": "Jordane Fazende et Loic Chabert ont marque.",
+        },
+        {
+            "title": "FC Barcelone - dernier match",
+            "href": "https://football.test/barcelone",
+            "body": "FC Barcelone : compte rendu du dernier match.",
+        },
+    ])
+    lecteur = LecteurParUrl({
+        "https://hockey.test/coupe": {
+            "status": "FETCHED",
+            "url": "https://hockey.test/coupe",
+            "title": "Coupe de France de hockey",
+            "text": "Jordane Fazende et Loic Chabert ont marque en hockey.",
+            "truncated": False,
+        },
+        "https://football.test/barcelone": {
+            "status": "FETCHED",
+            "url": "https://football.test/barcelone",
+            "title": "FC Barcelone - dernier match",
+            "text": "Le FC Barcelone a dispute son dernier match. Buteurs verifies ici.",
+            "truncated": False,
+        },
+    })
+    agent = FreshInfoAgent(
+        provider=provider,
+        search_tool=recherche,
+        fetcher=lecteur,
+    )
+    history = [{
+        "role": "user",
+        "content": "Quel a été le dernier match du FC Barcelone et le score exact ?",
+    }]
+
+    resultat = await agent.run(
+        "Qui sont les buteurs ?",
+        {"history": history, "history_authoritative": True},
+    )
+
+    assert resultat["status"] == "success"
+    assert [s["url"] for s in resultat["sources"]] == [
+        "https://football.test/barcelone"
+    ]
+    prompt_synthese = provider.prompts[-1]
+    assert "FC Barcelone" in prompt_synthese
+    assert "Jordane Fazende" not in prompt_synthese
+
+
+@pytest.mark.asyncio
+async def test_si_toutes_les_sources_sont_hors_sujet_arena_refuse():
+    provider = ProviderQuiPerdLeSujet()
+    recherche = RechercheTracee([{
+        "title": "Hockey",
+        "href": "https://hockey.test/coupe",
+        "body": "Jordane Fazende et Loic Chabert.",
+    }])
+    lecteur = LecteurParUrl({
+        "https://hockey.test/coupe": {
+            "status": "FETCHED",
+            "url": "https://hockey.test/coupe",
+            "title": "Hockey",
+            "text": "Jordane Fazende et Loic Chabert ont marque.",
+            "truncated": False,
+        },
+    })
+    agent = FreshInfoAgent(
+        provider=provider,
+        search_tool=recherche,
+        fetcher=lecteur,
+    )
+
+    resultat = await agent.run(
+        "Qui sont les buteurs ?",
+        {
+            "history": [{
+                "role": "user",
+                "content": "Quel a été le dernier match du FC Barcelone ?",
+            }],
+            "history_authoritative": True,
+        },
+    )
+
+    assert resultat["status"] == "warning"
+    assert resultat["sources"] == []
+    assert "ne concernent pas le sujet" in resultat["response"]
+    # Un seul appel modele : la reformulation. Aucune synthese hors sujet.
+    assert len(provider.prompts) == 1
+
+
+@pytest.mark.asyncio
+async def test_question_courte_avec_sujet_explicit_ne_recupere_pas_l_ancien_sujet():
+    provider = ProviderQuiPerdLeSujet()
+    agent = FreshInfoAgent(provider=provider, search_tool=RechercheTracee([]))
+
+    question = await agent._reformuler_si_ellipse(
+        "Qui sont les Beatles ?",
+        {
+            "history": [{
+                "role": "user",
+                "content": "Parle-moi du FC Barcelone.",
+            }],
+            "history_authoritative": True,
+        },
+    )
+
+    assert question == "Qui sont les Beatles ?"
+    assert "barcelone" not in question.casefold()
+
+
+@pytest.mark.asyncio
+async def test_plusieurs_suivis_restent_sur_le_dernier_sujet_concret():
+    provider = ProviderQuiPerdLeSujet()
+    recherche = RechercheTracee([])
+    agent = FreshInfoAgent(provider=provider, search_tool=recherche)
+    history = [
+        {
+            "role": "user",
+            "content": "Quel a été le dernier match du FC Barcelone ?",
+        },
+        {
+            "role": "assistant",
+            "content": "Je vérifie le dernier match du FC Barcelone.",
+        },
+        {
+            "role": "user",
+            "content": "Qui sont les buteurs ?",
+        },
+        {
+            "role": "assistant",
+            "content": "Je vérifie les buteurs.",
+        },
+    ]
+
+    await agent.run(
+        "Et l'homme du match ?",
+        {"history": history, "history_authoritative": True},
+    )
+
+    assert recherche.requetes
+    requete = recherche.requetes[0].casefold()
+    assert "barcelone" in requete
+    assert "homme du match" in requete
