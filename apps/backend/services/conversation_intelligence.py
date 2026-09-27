@@ -31,8 +31,12 @@ ENTITY_STOPWORDS = {
 }
 REFERENCE = re.compile(
     r"\b(?:il|elle|ils|elles|ça|ca|ceci|cela|celui|celle|ceux|celles|this|that|it|he|she|they|"
-    r"premier|première|deuxième|second|seconde|autre|précédent|precedent|avant|earlier|"
-    r"continue(?:r|z)?|repren(?:ds|ez)|reprendre|poursuis|poursuivez|poursuivre|go on|keep going)\b",
+    r"premier|première|deuxième|second|seconde|autre|précédent|precedent|avant|earlier)\b",
+    re.IGNORECASE,
+)
+CONTINUATION_REQUEST = re.compile(
+    r"^\s*(?:continue(?:r|z)?|repren(?:ds|ez)|reprendre|poursuis|poursuivez|poursuivre|"
+    r"go on|keep going)\b",
     re.IGNORECASE,
 )
 RETURN = re.compile(
@@ -204,7 +208,9 @@ def understand(message: str, history: list[dict[str, str]], *, recent_window: in
     recent_scores = [(score, index, text) for score, index, text in scored_all if index >= recent_start]
     recent_best_score, _, _ = max(recent_scores, default=(0.0, -1, ""), key=lambda item: item[0])
     previous_topics = [" ".join(sorted(tokens(text))[:8]) for text in user_history if tokens(text)]
-    has_reference = bool(REFERENCE.search(message or ""))
+    has_reference = bool(
+        REFERENCE.search(message or "") or CONTINUATION_REQUEST.search(message or "")
+    )
     explicit_return = bool(RETURN.search(message or ""))
     question_scope = classify_question_scope(message, has_reference=has_reference)
 
