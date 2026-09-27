@@ -97,6 +97,20 @@ MOTS_DE_REMPLISSAGE = {
     "le", "des", "du", "en", "au", "aux", "et",
 }
 
+# Bruit conversationnel a retirer avant la passe texte d'une question recente.
+# Contrairement a MOTS_DE_REMPLISSAGE, on CONSERVE ici « dernier/recent » :
+# dans une recherche web classique ces mots portent justement la contrainte
+# temporelle que le fallback ne doit pas perdre.
+MOTS_BRUIT_REQUETE_CIBLEE = {
+    "a", "ai", "as", "avait", "au", "aux", "ce", "ces", "cet", "cette",
+    "comme", "dans", "de", "des", "dis", "donne", "du", "en", "est", "et",
+    "ete", "etait", "exact", "exacte", "faire", "il", "internet", "la", "le",
+    "les", "ma", "maintenant", "mes", "moi", "mon", "ne", "nous", "ou",
+    "par", "parle", "pas", "pour", "que", "quel", "quelle", "quelles",
+    "quels", "qui", "sa", "ses", "son", "sont", "sur", "ta", "tes", "ton",
+    "tu", "un", "une", "verifie", "vos", "votre", "vous", "web",
+}
+
 ACCENTS = str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc")
 
 
@@ -229,6 +243,31 @@ class WebSearchTool:
         return " ".join(gardes).strip()
 
     @staticmethod
+    def cibler_requete_recente(query: str) -> str:
+        """Compacte une question conversationnelle pour la passe texte.
+
+        Les moteurs news comprennent mal « Quel a ete... Verifie sur le web » et
+        le fallback text peut alors remonter une vieille page generale. On garde
+        le sujet + la contrainte temporelle. Pour un match, « resultats calendrier »
+        augmente les chances d'obtenir une page chronologique plutot qu'un article
+        isole sur un ancien match.
+        """
+        mots = re.findall(r"[\w'-]+", query, flags=re.UNICODE)
+        gardes = [
+            mot for mot in mots
+            if _sans_accent(mot.strip("'-")) not in MOTS_BRUIT_REQUETE_CIBLEE
+        ]
+        normalises = {_sans_accent(m.strip("'-")) for m in gardes}
+        if "match" in normalises and (
+            {"dernier", "derniere", "recent", "recente", "score"} & normalises
+        ):
+            if "resultat" not in normalises and "resultats" not in normalises:
+                gardes.append("resultats")
+            if "calendrier" not in normalises:
+                gardes.append("calendrier")
+        return " ".join(gardes).strip()
+
+    @staticmethod
     def _est_page_daccueil(href: str) -> bool:
         """Vrai pour `https://seneweb.com/` ou `https://senego.com`, faux pour un article.
 
@@ -311,6 +350,15 @@ class WebSearchTool:
             # rapport avec la question, et prenait la place de la passe
             # suivante — la seule qui reponde a « qui est le president du
             # Senegal ».
+
+            # Avant le fallback brut, une requete compacte conserve le sujet ET
+            # la contrainte « dernier/recent ». Mesure production 27/09/2026 :
+            # la phrase complete sur le dernier match du FC Barcelone tombait
+            # sur trois pages generales et Usman prenait un match du 9 septembre
+            # alors que des resultats du 19 existaient.
+            ciblee = self.cibler_requete_recente(query)
+            if il_en_manque() and ciblee and ciblee.casefold() != query.casefold():
+                ajouter(self._executer("text", ciblee, max_results))
 
         if il_en_manque():
             ajouter(self._executer("text", query, max_results))
