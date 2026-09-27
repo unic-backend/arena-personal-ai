@@ -1118,7 +1118,12 @@ class OrchestratorAgent(BaseAgent):
         # Monter une video a partir de ses propres fichiers. Teste AVANT
         # PLANIFIER_SCENE et FABRIQUER_VIDEO : « monte la video du chantier »
         # n est ni un prompt de generation, ni une demande de devis.
-        if any(k in text for k in MONTAGE) or DEMANDE_DE_MONTAGE.search(text):
+        # Une locution de la liste sans objet video, dans une phrase du metier,
+        # parle d'un montage de chantier : « fais le montage des rails de la
+        # cloison » partait au montage video (mesure du 26/09/2026, DEC-0149).
+        objet_video = re.search(r"\b(?:vid[eé]os?|clips?|rushes?|s[eé]quences?|extraits?)\b", text)
+        if DEMANDE_DE_MONTAGE.search(text) or (
+                any(k in text for k in MONTAGE) and (objet_video or not dit_le_metier)):
             return "MONTAGE"
 
         # Planifier une scene. Teste AVANT FABRIQUER_VIDEO : « prepare » est un
