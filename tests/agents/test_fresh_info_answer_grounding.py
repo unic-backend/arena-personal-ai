@@ -109,3 +109,66 @@ async def test_la_synthese_web_ne_consulte_aucun_collegue():
     assert "Tu fais partie d'une equipe" not in (synthese["system_prompt"] or "")
     assert "[[COLLEGUE" not in (synthese["system_prompt"] or "")
     assert appels == []
+
+
+# --- Les barrieres de pertinence reconnaissent une source dans une autre langue
+
+async def test_un_suivi_accepte_une_source_anglaise_du_bon_match():
+    """Mesure du 27/09/2026 sur les barrieres de #347/#349 : l'ancre francaise
+    « barcelone » et l'indice « séville » ne reconnaissaient pas une page qui
+    ecrit « Barcelona » et « Sevilla ». Le suivi « Qui sont les buteurs ? »
+    etait refuse comme hors sujet alors que la source etait la bonne."""
+
+    class _RechercheEn:
+        def search(self, query, max_results=5, recent=False):
+            return [{"title": "Sevilla 1-3 Barcelona", "href": "https://espn.test/m", "body": ""}]
+
+    class _LectureEn:
+        async def fetch(self, url):
+            return {"status": "FETCHED", "url": url, "title": "Sevilla 1-3 Barcelona",
+                    "text": "LaLiga. Sevilla 1-3 Barcelona. Goals: Y. Fofana 19', "
+                            "Raphinha 22', 52', 69'.", "truncated": False}
+
+    class _ModeleSuivi:
+        async def generate(self, prompt, system_prompt=None, **options):
+            if "Réécris" in prompt:
+                return "Qui sont les buteurs du dernier match du FC Barcelone ?"
+            return "Raphinha (22', 52', 69') et Y. Fofana (19') [1]."
+
+    agent = FreshInfoAgent(provider=_ModeleSuivi(), search_tool=_RechercheEn(),
+                           fetcher=_LectureEn())
+    historique = [
+        {"role": "user", "content": "Quel a été le dernier match du FC Barcelone ?"},
+        {"role": "assistant", "content": "Le FC Barcelone a gagné 3-1 à Séville [1]."},
+    ]
+
+    resultat = await agent.run("Qui sont les buteurs ?",
+                               context={"history": historique, "history_authoritative": True})
+
+    assert resultat["status"] == "success", resultat["response"]
+    assert resultat["response"].startswith("Raphinha")
+
+
+def test_une_ancre_ne_reconnait_pas_un_autre_mot():
+    from core.agent.verification_synthese import terme_present
+
+    assert terme_present("barcelone", "Sevilla 1-3 Barcelona")
+    assert terme_present("séville", "Sevilla 1-3 Barcelona")
+    assert not terme_present("barcelone", "Hockey : les Canadiens battent Boston")
+    assert not terme_present("real", "Realite virtuelle")
+    assert terme_present("3-1", "score 3-1") and not terme_present("3-1", "score 2-1")
+
+
+def test_la_fiche_de_match_d_une_page_anglaise_garde_ses_buteurs():
+    """Meme defaut dans l'extraction de #350 : les entites de la question
+    (« Séville », « Barcelone ») ne reperaient pas la fiche d'une page qui
+    ecrit « Sevilla » et « Barcelona » ; le classement ligne a ligne
+    supprimait alors la ligne du buteur, qui ne partage aucun mot."""
+    remplissage = "\n".join(f"Actualite du club numero {i} sans rapport." for i in range(40))
+    page = (f"{remplissage}\nSevilla\n1 - 3\nBarcelona\nY. Fofana (19')\n"
+            f"Raphinha (22', 52', 69')\n{remplissage}")
+
+    extrait = FreshInfoAgent.extraire_pertinent(
+        page, "Qui sont les buteurs du match Séville Barcelone ?", 400)
+
+    assert "Y. Fofana" in extrait and "Raphinha" in extrait

@@ -204,23 +204,33 @@ def _mots_des_sources(texte: str) -> set:
     return set(re.findall(r"[a-z0-9]+", normaliser(texte)))
 
 
+def _mot_connu(partie: str, mots_sources: set) -> bool:
+    if partie in mots_sources:
+        return True
+    prefixe = max(5, len(partie) - 2)
+    return len(partie) >= 5 and any(
+        len(mot) >= 5 and mot[:prefixe] == partie[:prefixe] for mot in mots_sources)
+
+
 def _nom_connu(nom: str, mots_sources: set) -> bool:
     """Le nom figure dans les sources — ou sa forme dans une autre langue :
     « Seville » pour « Sevilla », « Barcelone » pour « Barcelona » partagent
     tout sauf leur terminaison."""
     forme = normaliser(nom)
     parties = [p for p in re.findall(r"[a-z0-9]+", forme) if len(p) >= 3]
-    if not parties:
-        return True
-    for partie in parties:
-        if partie in mots_sources:
-            continue
-        prefixe = max(5, len(partie) - 2)
-        if len(partie) >= 5 and any(
-                len(mot) >= 5 and mot[:prefixe] == partie[:prefixe] for mot in mots_sources):
-            continue
+    return all(_mot_connu(partie, mots_sources) for partie in parties)
+
+
+def terme_present(terme: str, texte: str) -> bool:
+    """`terme` figure dans `texte`, accents et casse ignores, forme traduite
+    admise (« barcelone » dans une page qui ecrit « Barcelona »). Un terme de
+    moins de 5 lettres doit y figurer tel quel ; un score (« 3-1 ») aussi."""
+    forme = normaliser(terme).strip()
+    if not forme:
         return False
-    return True
+    if not re.fullmatch(r"[a-z0-9]+", forme):
+        return re.search(rf"(?<!\w){re.escape(forme)}(?!\w)", normaliser(texte)) is not None
+    return _mot_connu(forme, _mots_des_sources(texte))
 
 
 def elements_sans_source(reponse: str, sources: Iterable[str]) -> List[str]:

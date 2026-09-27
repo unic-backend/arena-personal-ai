@@ -11495,6 +11495,14 @@ restaient, en aval :
   figure pas est SIGNALE sous la reponse, jamais reecrit, et rendu dans
   `sans_source`.
 
+- **Erreur trouvee en verifiant #347, #349 et #350** : leurs barrieres
+  comparaient les ancres a la lettre. L'ancre francaise « barcelone » et
+  l'indice « seville » ne reconnaissaient pas une page anglaise qui ecrit
+  « Barcelona » et « Sevilla » : le suivi « Qui sont les buteurs ? » etait
+  refuse comme hors sujet, et l'extraction ne trouvait pas la fiche du match.
+  `verification_synthese.terme_present` (accents ignores, forme traduite
+  admise des 5 lettres) remplace la comparaison exacte aux deux endroits.
+
 **Test modifie** : `tests/core/test_consultation_collegues.py` ne compte plus
 ces trois agents parmi ceux dont le travail consulte un collegue ; le
 contraire est desormais verifie (`test_une_synthese_sur_donnees_ne_consulte_personne`,
