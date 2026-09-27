@@ -131,6 +131,16 @@ TERMES_CONTEXTE_RECHERCHE = frozenset({
     "date", "heure", "modele", "modèle", "sortie", "classement",
 })
 
+# Mots capitalises d'une reponse qui ne precisent pas l'evenement resolu.
+# Les autres noms propres et scores peuvent servir d'INDICES DE RECHERCHE au
+# tour suivant, mais jamais de faits : ils devront etre retrouves dans les
+# nouvelles sources avant de pouvoir alimenter la synthese.
+MOTS_HINT_ASSISTANT = frozenset({
+    "le", "la", "les", "un", "une", "selon", "source", "sources", "réponse",
+    "reponse", "dernier", "dernière", "derniere", "match", "liga", "ligue",
+    "champions", "championnat", "victoire", "score", "usman", "travail",
+})
+
 
 class FreshInfoAgent(BaseAgent):
     """Répond aux questions d'actualité en lisant réellement le web."""
@@ -413,6 +423,88 @@ class FreshInfoAgent(BaseAgent):
         _, ancres = cls._dernier_message_avec_ancre(historique, user_input)
         return ancres
 
+    @classmethod
+    def _indices_evenement_assistant(
+        cls, historique: List[Dict[str, Any]], ancres: List[str]
+    ) -> List[str]:
+        """Indices du dernier evenement resolu, jamais faits de confiance.
+
+        Le tour utilisateur precedent nomme souvent seulement le sujet
+        (« dernier match du FC Barcelone »). La reponse sourcee peut avoir resolu
+        l'evenement concret (« Seville, 3-1 »). Au suivi « qui sont les buteurs ? »,
+        ne pas reutiliser ces identifiants oblige le moteur a retrouver le match
+        depuis zero et lui fait remonter des pages generales.
+
+        On ne prend un indice que dans la derniere reponse assistant qui mentionne
+        encore une ancre utilisateur. L'indice sert uniquement a CHERCHER puis a
+        filtrer ; il doit etre confirme par la nouvelle source.
+        """
+        if not ancres:
+            return []
+
+        ancres_set = {a.casefold() for a in ancres}
+        for message in reversed(historique):
+            if message.get("role") != "assistant":
+                continue
+            contenu = str(message.get("content") or "").strip()
+            if not contenu:
+                continue
+            bas = contenu.casefold()
+            if not any(
+                re.search(rf"(?<!\w){re.escape(ancre)}(?!\w)", bas)
+                for ancre in ancres_set
+            ):
+                continue
+
+            indices: List[str] = []
+            vus = set()
+
+            # Un score aide la requete, mais le filtre dur preferera un nom
+            # propre s'il en existe car 3-1 peut apparaitre sur plusieurs matchs.
+            for score in re.findall(r"(?<!\d)\d{1,2}\s*[-–—:]\s*\d{1,2}(?!\d)", contenu):
+                normalise = re.sub(r"\s+", "", score).replace("–", "-").replace("—", "-")
+                if normalise not in vus:
+                    vus.add(normalise)
+                    indices.append(normalise)
+
+            for brut in re.findall(r"(?<!\w)[A-ZÀ-ÖØ-Þ][\wÀ-ÿ-]{2,}", contenu):
+                terme = brut.casefold().strip("_-")
+                if (
+                    terme in ancres_set
+                    or terme in MOTS_HINT_ASSISTANT
+                    or terme in MOTS_VIDES_ANCRAGE
+                    or terme in TERMES_SUIVI_GENERIQUES
+                    or terme in TERMES_CONTEXTE_RECHERCHE
+                ):
+                    continue
+                if terme not in vus:
+                    vus.add(terme)
+                    indices.append(terme)
+
+            return indices[:6]
+        return []
+
+    @staticmethod
+    def _enrichir_question_avec_indices(question: str, indices: List[str]) -> str:
+        """Ajoute les identifiants resolus que la reformulation a oublies."""
+        if not indices:
+            return question
+        bas = question.casefold()
+        absents = [
+            indice for indice in indices
+            if not re.search(rf"(?<!\w){re.escape(indice.casefold())}(?!\w)", bas)
+        ]
+        if not absents:
+            return question
+        base = question.strip().rstrip(" ?!.")
+        return f"{base} {' '.join(absents)}".strip()
+
+    @staticmethod
+    def _indices_pour_filtrage(indices: List[str]) -> List[str]:
+        """Un nom d'evenement est plus discriminant qu'un score seul."""
+        textuels = [i for i in indices if any(ch.isalpha() for ch in i)]
+        return textuels or indices
+
     @staticmethod
     def _source_mentionne_une_ancre(
         page: Dict[str, Any], ancres: List[str]
@@ -481,7 +573,13 @@ class FreshInfoAgent(BaseAgent):
     ) -> Dict[str, Any]:
         historique = self._historique_du_contexte(context)
         ancres_suivi = self._ancres_de_suivi(user_input, historique)
+        indices_evenement = self._indices_evenement_assistant(
+            historique, ancres_suivi
+        )
         question = await self._reformuler_si_ellipse(user_input, context)
+        question = self._enrichir_question_avec_indices(
+            question, indices_evenement
+        )
         if question != user_input:
             logger.info(
                 "FreshInfoAgent cherche : %s (reformulee depuis « %s »)",
@@ -517,14 +615,19 @@ class FreshInfoAgent(BaseAgent):
             }
 
         if ancres_suivi:
-            # Les resultats dont le titre/extrait mentionne deja le sujet passent
-            # devant. On ne jette encore rien : une page peut etre pertinente
-            # meme si son snippet ne contient pas l'entite. Le filtre dur vient
-            # apres lecture, sur le contenu reel.
+            # L'evenement resolu au tour precedent (opposant, version, lieu...)
+            # passe avant le sujet large. Rien n'est encore jete : le filtre dur
+            # travaille ensuite sur le contenu reel de la page.
+            indices_filtrage = self._indices_pour_filtrage(indices_evenement)
             resultats = sorted(
                 resultats,
-                key=lambda resultat: self._source_mentionne_une_ancre(
-                    resultat, ancres_suivi
+                key=lambda resultat: (
+                    self._source_mentionne_une_ancre(
+                        resultat, indices_filtrage
+                    ) if indices_filtrage else False,
+                    self._source_mentionne_une_ancre(
+                        resultat, ancres_suivi
+                    ),
                 ),
                 reverse=True,
             )
@@ -584,6 +687,37 @@ class FreshInfoAgent(BaseAgent):
                     ),
                 }
             lues = pertinentes
+
+            # Si le tour precedent a resolu un evenement concret, une nouvelle
+            # source doit aussi confirmer cet evenement avant la synthese.
+            # Exemple production : Barca -> Seville 1-3 -> « buteurs ? ».
+            # Une page sur une autre joueuse du Barca partage l'ancre
+            # « Barcelone » mais pas l'evenement « Seville » : elle est rejetee.
+            indices_filtrage = self._indices_pour_filtrage(indices_evenement)
+            if indices_filtrage:
+                meme_evenement = [
+                    page for page in lues
+                    if self._source_mentionne_une_ancre(
+                        page, indices_filtrage
+                    )
+                ]
+                if not meme_evenement:
+                    logger.warning(
+                        "Sources sur le bon sujet mais pas l'evenement resolu : %s",
+                        ", ".join(indices_filtrage),
+                    )
+                    return {
+                        "status": "warning",
+                        "agent": self.name,
+                        "query": question,
+                        "sources": [],
+                        "response": (
+                            "Les sources trouvees parlent du bon sujet, mais pas "
+                            "de l'evenement precis identifie au tour precedent. "
+                            "Je prefere ne pas melanger deux evenements."
+                        ),
+                    }
+                lues = meme_evenement
 
         part = self._repartir_le_budget(lues)
         prompt = GABARIT_SYNTHESE.format(
