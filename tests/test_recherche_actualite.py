@@ -122,6 +122,21 @@ class TestStrategieDeRecherche:
         assert "web" not in bas
         assert "quel" not in bas
 
+    def test_un_detail_de_match_ne_devient_pas_une_recherche_de_calendrier(self):
+        outil = WebSearchTool()
+        ciblee = outil.cibler_requete_recente(
+            "Qui a marqué les buts lors du dernier match du FC Barcelone ? "
+            "Séville 3-1"
+        )
+
+        bas = ciblee.casefold()
+        assert "barcelone" in bas
+        assert "séville" in bas
+        assert "3-1" in bas
+        assert "buts" in bas
+        assert "resultats" not in bas
+        assert "calendrier" not in bas
+
     def test_le_fallback_texte_utilise_d_abord_la_requete_ciblee_recente(self):
         appels = []
 
