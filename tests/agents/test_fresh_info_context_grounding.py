@@ -320,7 +320,7 @@ def _historique_barca_seville():
             "role": "assistant",
             "content": (
                 "Le dernier match du FC Barcelone était contre Séville. "
-                "Barcelone l'a emporté 3-1."
+                "Barcelone l'a emporté 3 à 1."
             ),
         },
     ]
