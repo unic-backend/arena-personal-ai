@@ -1,5 +1,6 @@
 """Calcul arithmetique borne et recherche HTTP sans execution arbitraire."""
 import ast
+import logging
 import math
 import operator
 from pathlib import Path
@@ -15,6 +16,8 @@ from apps.backend.services.tools.registry import Tool, ToolRegistry, ToolResult
 from core.knowledge.vault import KnowledgeVault
 from core.models.confidentialite import Confidentialite, classer
 from core.security.trust import TrustLevel, wrap
+
+logger = logging.getLogger("usman.backend.tools.builtin")
 
 
 class CalculateArgs(BaseModel):
@@ -89,8 +92,11 @@ class WebSearch:
                            if self._safe_url(str(item.get("url", "")))]
                 if sources:
                     return ToolResult(ok=True, data={"provider": "tavily", "sources": sources})
-            except (httpx.HTTPError, ValueError, TypeError, AttributeError):
-                pass  # DDG remains usable when Tavily times out or exhausts its quota
+            except (httpx.HTTPError, ValueError, TypeError, AttributeError) as exc:
+                logger.info(
+                    "Tavily indisponible (%s), repli vers DuckDuckGo Instant Answer.",
+                    type(exc).__name__,
+                )
         response = await self.client.get("https://api.duckduckgo.com/", params={
             "q": args.query, "format": "json", "no_html": 1, "no_redirect": 1,
         })
