@@ -111,6 +111,11 @@ MOTS_BRUIT_REQUETE_CIBLEE = {
     "tu", "un", "une", "verifie", "vos", "votre", "vous", "web",
 }
 
+TERMES_DETAIL_MATCH = {
+    "but", "buts", "buteur", "buteurs", "marque", "marquee", "marques",
+    "homme", "mvp", "joueur", "joueurs", "composition", "compo",
+}
+
 ACCENTS = str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc")
 
 
@@ -258,8 +263,11 @@ class WebSearchTool:
             if _sans_accent(mot.strip("'-")) not in MOTS_BRUIT_REQUETE_CIBLEE
         ]
         normalises = {_sans_accent(m.strip("'-")) for m in gardes}
-        if "match" in normalises and (
-            {"dernier", "derniere", "recent", "recente", "score"} & normalises
+        demande_detail_match = bool(TERMES_DETAIL_MATCH & normalises)
+        if (
+            "match" in normalises
+            and not demande_detail_match
+            and ({"dernier", "derniere", "recent", "recente", "score"} & normalises)
         ):
             if "resultat" not in normalises and "resultats" not in normalises:
                 gardes.append("resultats")
