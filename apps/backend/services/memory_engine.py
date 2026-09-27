@@ -183,21 +183,71 @@ class MemoryEngine:
         return memory.get_recent_history(session_key(user_id, conversation_id), self.settings.history_messages)
 
     @staticmethod
-    def _working_candidates(history: list[dict[str, str]], query: str) -> list[dict[str, Any]]:
-        query_folded = (query or "").casefold()
-        query_words = {word for word in query_folded.split() if len(word) >= 3}
+    def _working_candidates(
+        history: list[dict[str, str]],
+        query: str,
+        state: ConversationState | None = None,
+    ) -> list[dict[str, Any]]:
+        """Contexte de travail précis pour les renvois courts.
+
+        On ne fait plus de recherche par sous-chaîne brute : un mot-outil comme
+        « avec » ne doit jamais faire remonter un ancien tour hors sujet. Quand
+        la compréhension conversationnelle a résolu une référence (PDF, Qwen,
+        Mamadou...), ce tour gagne. Sinon seuls des tokens significatifs
+        identiques sont admis ; un repli sur le dernier tour utilisateur n'est
+        permis que pour une continuation déjà reconnue.
+        """
+        recent_users = [
+            item for item in history[-8:] if item.get("role") == "user"
+        ]
+        query_tokens = tokens(query)
+        reference = ""
+        if state is not None:
+            reference = str(state.references.get("recent_reference") or "")
+        reference_tokens = tokens(reference)
+
         result: list[dict[str, Any]] = []
-        for item in reversed(history[-8:]):
-            if item.get("role") != "user":
-                continue
-            content = str(item.get("content") or "")
-            folded = content.casefold()
-            if any(word in folded for word in query_words) or (query_folded and query_folded in folded):
-                result.append({
-                    "kind": "working_user_message", "content": content,
-                    "source": "working_context", "created": time.time(),
-                    "conversation_id": "current", "relevance": 1.0,
-                })
+        seen: set[str] = set()
+
+        def add(item: dict[str, str], relevance: float) -> None:
+            content = str(item.get("content") or "").strip()
+            if not content or content in seen:
+                return
+            seen.add(content)
+            result.append({
+                "kind": "working_user_message",
+                "content": content,
+                "source": "working_context",
+                "created": time.time(),
+                "conversation_id": "current",
+                "relevance": relevance,
+            })
+
+        if reference_tokens:
+            for item in reversed(recent_users):
+                content_tokens = tokens(str(item.get("content") or ""))
+                if reference_tokens <= content_tokens:
+                    add(item, 1.0)
+                    break
+
+        for item in reversed(recent_users):
+            content_tokens = tokens(str(item.get("content") or ""))
+            shared = query_tokens & content_tokens
+            if shared:
+                relevance = min(
+                    1.0,
+                    0.60 + (len(shared) / max(1, len(query_tokens))),
+                )
+                add(item, relevance)
+
+        if (
+            not result
+            and state is not None
+            and state.transition == "CONTINUATION"
+            and recent_users
+        ):
+            add(recent_users[-1], 0.75)
+
         return result[:5]
 
     def _lexical_candidates(self, user_id: str, query: str) -> list[dict[str, Any]]:
@@ -297,7 +347,7 @@ class MemoryEngine:
             result.warnings.append("semantic_memory_unavailable_using_sqlite")
         if not needs_long_term(query, history, state):
             started = time.perf_counter()
-            result.memories = self._working_candidates(history, query)
+            result.memories = self._working_candidates(history, query, state)
             timings["working_memory"] = (time.perf_counter() - started) * 1000
             if self.settings.memory_debug:
                 result.retrieval_debug.append({
