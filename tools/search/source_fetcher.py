@@ -39,8 +39,14 @@ TYPES_LISIBLES = ("text/html", "text/plain", "application/xhtml+xml")
 # Un en-tête honnête : le site sait qui le lit et peut refuser.
 AGENT_UTILISATEUR = "Usman-PersonalAI/1.0 (lecteur de sources, respecte robots.txt)"
 
-# Balises dont le contenu n'est pas du texte lisible.
-BALISES_IGNOREES = {"script", "style", "noscript", "template", "svg", "head"}
+# Balises dont le contenu n'est pas utile au contenu principal. Les gros
+# menus/encarts peuvent consommer la limite de 20 000 caracteres avant meme
+# l'article ou la fiche de match ; on les ignore donc comme le feraient les
+# lecteurs de contenu classiques.
+BALISES_IGNOREES = {
+    "script", "style", "noscript", "template", "svg", "head",
+    "nav", "aside", "footer", "form",
+}
 # Balises après lesquelles un saut de ligne a du sens.
 BALISES_BLOC = {
     "p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6",
