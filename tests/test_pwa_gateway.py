@@ -451,6 +451,54 @@ def test_les_pieces_jointes_restent_derriere_la_cle(client):
     assert client.post("/files").status_code == 401
 
 
+def test_un_xlsx_office_est_stocke_comme_binaire_pour_univer(
+    client, entetes, tmp_path, monkeypatch,
+):
+    racine = tmp_path / "univer"
+    monkeypatch.setattr(pwa_gateway, "UNIVER_WORKSPACE_DIR", racine)
+    monkeypatch.setattr(pwa_gateway.permissions, "is_allowed", lambda _nom: True)
+
+    res = client.post(
+        "/office/files",
+        headers=entetes,
+        files={
+            "file": (
+                "Budget Client.xlsx",
+                b"PK\\x03\\x04faux-xlsx-binaire",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    assert res.status_code == 200
+    corps = res.json()
+    chemin = Path(corps["path"])
+    assert corps["status"] == "success"
+    assert chemin.is_file()
+    assert chemin.read_bytes() == b"PK\\x03\\x04faux-xlsx-binaire"
+    assert chemin.parent == (racine / "imports").resolve()
+
+
+def test_la_voie_office_refuse_une_extension_non_editable(
+    client, entetes, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(pwa_gateway, "UNIVER_WORKSPACE_DIR", tmp_path / "univer")
+    monkeypatch.setattr(pwa_gateway.permissions, "is_allowed", lambda _nom: True)
+
+    res = client.post(
+        "/office/files",
+        headers=entetes,
+        files={"file": ("payload.exe", b"MZ", "application/octet-stream")},
+    )
+
+    assert res.status_code == 415
+    assert not (tmp_path / "univer" / "imports").exists()
+
+
+def test_la_voie_office_reste_derriere_la_cle(client):
+    assert client.post("/office/files").status_code == 401
+
+
 # --- Ce qui n'est pas applique n'est pas ignore en silence --------------------
 
 def test_les_champs_non_appliques_sont_journalises(client, entetes, fournisseur,
