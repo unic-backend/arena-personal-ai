@@ -168,7 +168,14 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "convertir", "organiser_inspecter", "organiser_planifier",
            "organiser_appliquer", "organiser_annuler",
            "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
-           "presentation_generer", "hf_modeles", "hf_modele",
+           "presentation_generer",
+           "office_creer", "office_importer", "office_statut",
+           "office_worktree_creer", "office_worktrees",
+           "office_unite_creer", "office_unites", "office_executer",
+           "office_inspecter", "office_pret", "office_reouvrir",
+           "office_fusionner", "office_abandonner", "office_exporter",
+           "office_pdf", "office_lint",
+           "hf_modeles", "hf_modele",
            "isoler", "session_publier", "nettoyer_worktree",
            "ordinateur_lister", "ordinateur_creer", "ordinateur_etat",
            "ordinateur_dormir", "ordinateur_reveiller", "ordinateur_executer",
@@ -190,6 +197,9 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
 ACTIONS_QUI_MODIFIENT = frozenset({
     "ecrire", "remplacer", "deplacer", "github_ecrire", "github_remplacer",
     "session_publier",
+    "office_creer", "office_importer", "office_worktree_creer",
+    "office_unite_creer", "office_executer", "office_pret", "office_reouvrir",
+    "office_fusionner", "office_abandonner", "office_exporter", "office_pdf",
 })
 
 #: Mutations directes qui ne doivent jamais etre suivies immediatement de
@@ -200,6 +210,7 @@ ACTIONS_QUI_MODIFIENT = frozenset({
 ACTIONS_A_VERIFIER = frozenset({
     "ecrire", "remplacer", "deplacer", "github_ecrire", "github_remplacer",
     "ordinateur_ecrire_fichier", "session_publier",
+    "office_importer", "office_unite_creer", "office_executer", "office_fusionner",
 })
 
 #: Actions capables d'apporter une preuve apres une mutation. Le prompt métier
@@ -213,6 +224,8 @@ ACTIONS_DE_VERIFICATION = frozenset({
     "github_lire", "github_diff", "etat_ci",
     "ordinateur_etat", "ordinateur_executer", "ordinateur_lire_fichier",
     "git_statut", "git_diff", "git_conflit_lire",
+    "office_statut", "office_worktrees", "office_unites",
+    "office_inspecter", "office_lint",
 })
 
 #: Le journal complet reste dans le stockage durable. Pour le MODELE, on borne
@@ -239,6 +252,9 @@ ACTIONS_QUI_ANALYSENT = frozenset({
     "analyser", "diagnostiquer", "etat_ci", "ci_diagnostiquer", "github_diff", "commentaires_pr", "convertir",
     "organiser_inspecter", "organiser_planifier",
     "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
+    "office_statut", "office_worktree_creer", "office_worktrees",
+    "office_unite_creer", "office_unites", "office_executer", "office_inspecter",
+    "office_exporter", "office_pdf", "office_lint",
     "isoler",
     "ordinateur_lister", "ordinateur_creer", "ordinateur_etat",
     "ordinateur_executer", "ordinateur_lire_fichier",
@@ -262,7 +278,8 @@ _CHAMP = re.compile(
     r"|SHA|PLAN_ID|CONFIRMER_SUPPRESSION|OPERATION|PAGES|DEGRES|FORMAT_PDFX|NOM|NUMERO|COMPUTER_ID|URL"
     r"|CIBLE|IDENTIFIANT|IDENTIFIANT_OPERATION|DISTANT|BRANCHE|AMEND|FORCE_AVEC_BAIL"
     r"|TETE_ATTENDUE|REBASE|SUR|COMMIT|DEPUIS|BASCULER|MESSAGE|INDEX|GARDER"
-    r"|INCLURE_NON_SUIVIS|ACTION_GUI|X|Y|TOUCHE|TOUCHES|DELTA)"
+    r"|INCLURE_NON_SUIVIS|ACTION_GUI|X|Y|TOUCHE|TOUCHES|DELTA"
+    r"|WORKTREE_ID|UNIT_ID|TYPE|WORKSHEET)"
     r"\s*:\s*(.+)$",
     re.IGNORECASE | re.MULTILINE)
 
@@ -428,6 +445,67 @@ ACTION: presentation_generer
 CONTENU:
 {"titre":"Projet","theme":"clair","slides":[{"titre":"Introduction","puces":["Objectif","Contexte"]}]}
 FIN
+
+ACTION: office_creer
+NOM: projet-client
+
+ACTION: office_importer
+SOURCE: media/incoming/devis.xlsx
+NOM: devis-client
+TYPE: sheet
+
+ACTION: office_worktree_creer
+CHEMIN: devis-client.univer
+NOM: correction-prix
+
+ACTION: office_unite_creer
+CHEMIN: projet-client.univer
+WORKTREE_ID: id rendu par office_worktree_creer
+TYPE: sheet
+NOM: Budget
+
+ACTION: office_executer
+CHEMIN: projet-client.univer
+WORKTREE_ID: id du brouillon
+UNIT_ID: id de l'Unit
+CONTENU:
+workbook.getActiveSheet().getRange("A1").setValue("UniC Plaquiste");
+return workbook.getActiveSheet().getRange("A1").getValue();
+FIN
+
+ACTION: office_inspecter
+CHEMIN: projet-client.univer
+WORKTREE_ID: id du brouillon
+UNIT_ID: id de l'Unit
+CIBLE: range
+WORKSHEET: name:Budget
+CONTENU:
+A1:H40
+FIN
+
+ACTION: office_lint
+CHEMIN: presentation.univer
+WORKTREE_ID: id du brouillon
+UNIT_ID: id de la Slide
+
+ACTION: office_pret
+CHEMIN: projet-client.univer
+WORKTREE_ID: id du brouillon
+
+ACTION: office_fusionner
+CHEMIN: projet-client.univer
+WORKTREE_ID: id revu et prêt
+
+ACTION: office_exporter
+CHEMIN: projet-client.univer
+UNIT_ID: id de l'Unit
+FORMAT: xlsx
+NOM: projet-client-final
+
+ACTION: office_pdf
+CHEMIN: rapport.univer
+UNIT_ID: id de l'Unit
+NOM: rapport-final
 
 ACTION: hf_modeles
 TEXTE: qwen coder
@@ -621,7 +699,18 @@ COMMENT TRAVAILLER
    exige en plus `CONFIRMER_SUPPRESSION: oui`, sans quoi elle est refusee.
    `organiser_annuler` defait un plan applique, sauf ses suppressions
    (jamais reversibles). N'invente jamais un identifiant de plan.
-9. `isoler` cree un dossier de travail SEPARE (un worktree git, sur sa propre
+9. Pour un document Office riche (Sheet/Doc/Slide/Base/Board), utilise la
+   famille `office_*` au lieu de fabriquer une seconde pile. Le chemin normal
+   est : créer/importer -> `office_worktree_creer` -> modifier dans CE
+   Worktree -> `office_inspecter` (et `office_lint` pour une Slide) ->
+   `office_pret`. `office_fusionner` ne peut pas partir sans confirmation :
+   le Worktree est précisément la zone de revue humaine. `office_executer`
+   exécute du JavaScript Facade de confiance et n'est PAS un bac à sable ;
+   il passe donc par EXECUTE_COMMANDS et une confirmation. Après une mutation,
+   relis le modèle réel avant de conclure. Les exports/PDF doivent exister et
+   être non vides ; le connecteur le vérifie lui-même.
+
+10. `isoler` cree un dossier de travail SEPARE (un worktree git, sur sa propre
    branche) sans toucher l'arbre principal — utile pour un correctif risque
    ou une tache parallele. Il rend le chemin du worktree ; passe ensuite ce
    chemin en DOSSIER: aux actions suivantes pour travailler VRAIMENT dedans.
@@ -629,7 +718,7 @@ COMMENT TRAVAILLER
    sur l'arbre principal si la tache ne le demande pas. `nettoyer_worktree`
    le retire une fois fini — il echoue si des modifications n'y sont pas
    commitees, et c'est voulu : rien n'ecrase un travail non sauvegarde.
-10. `ordinateur_*` donne un ORDINATEUR LINUX ISOLE ET PERSISTANT (Case),
+11. `ordinateur_*` donne un ORDINATEUR LINUX ISOLE ET PERSISTANT (Case),
    different de la machine du proprietaire — jamais un chemin oblige non
    plus, utile pour un test specifiquement Linux, un paquet a ne pas
    installer sur la vraie machine, un navigateur qui doit garder son
@@ -638,7 +727,7 @@ COMMENT TRAVAILLER
    actions suivantes. `ordinateur_detruire` demande une confirmation au
    proprietaire — irreversible, ne le retente pas en esperant un autre
    resultat.
-11. `git_statut` te dit vraiment ce qui a change (branche, fichiers
+12. `git_statut` te dit vraiment ce qui a change (branche, fichiers
    modifies/indexes/non suivis/en conflit) sans avoir a lire du texte —
    consulte-le AVANT de modifier davantage un depot dont tu ne connais pas
    l'etat. `git_diff` (CIBLE: travail|index|un commit, CHEMIN optionnel)
@@ -649,7 +738,7 @@ COMMENT TRAVAILLER
    ajoute depuis — jamais un fichier deja modifie par le proprietaire avant
    ton checkpoint, meme si tu l'as touche ensuite : ce fichier-la n'est
    jamais restaure, pour ne rien ecraser qui ne t'appartient pas.
-12. `pdf_fusionner` prend un fichier par ligne dans CONTENU, DANS L'ORDRE
+13. `pdf_fusionner` prend un fichier par ligne dans CONTENU, DANS L'ORDRE
    demande — c'est cet ordre qui range les documents dans le resultat.
    `FORMAT_PDFX: oui` ajoute le manifeste (recuperable ensuite par
    `pdf_demonter`) ; sans lui, c'est une simple concatenation de PDF.
@@ -657,7 +746,7 @@ COMMENT TRAVAILLER
    document = index 0) — jamais a partir de 1. OPERATION choisit entre
    `reordonner` (PAGES devient le nouvel ordre complet), `supprimer_pages`,
    `extraire_pages`, ou `pivoter_pages` (ajoute DEGRES, multiple de 90).
-13. `git_stager`/`git_desindexer` (CONTENU : un chemin par ligne, ou CHEMIN
+14. `git_stager`/`git_desindexer` (CONTENU : un chemin par ligne, ou CHEMIN
    pour un seul) avant `git_commettre` (CONTENU : le message). Un
    IDENTIFIANT_OPERATION repasse a l'identique NE REJOUE JAMAIS la meme
    mutation — utile apres une reponse perdue, jamais besoin de verifier "est-ce
@@ -762,12 +851,70 @@ REF: fix-exemple
 ACTION: commentaires_pr
 NUMERO: 123
 
+# Office local du serveur : indépendant du checkout Git.
+ACTION: office_creer
+NOM: projet-client
+
+ACTION: office_importer
+SOURCE: media/incoming/devis.xlsx
+NOM: devis-client
+TYPE: sheet
+
+ACTION: office_worktree_creer
+CHEMIN: devis-client.univer
+NOM: modification
+
+ACTION: office_unite_creer
+CHEMIN: projet-client.univer
+WORKTREE_ID: id du Worktree
+TYPE: sheet
+NOM: Budget
+
+ACTION: office_executer
+CHEMIN: projet-client.univer
+WORKTREE_ID: id du Worktree
+UNIT_ID: id de l'Unit
+CONTENU:
+workbook.getActiveSheet().getRange("A1").setValue("UniC Plaquiste");
+return workbook.getActiveSheet().getRange("A1").getValue();
+FIN
+
+ACTION: office_inspecter
+CHEMIN: projet-client.univer
+WORKTREE_ID: id du Worktree
+UNIT_ID: id de l'Unit
+CIBLE: range
+WORKSHEET: name:Budget
+CONTENU:
+A1:H40
+FIN
+
+ACTION: office_pret
+CHEMIN: projet-client.univer
+WORKTREE_ID: id du Worktree
+
+ACTION: office_fusionner
+CHEMIN: projet-client.univer
+WORKTREE_ID: id revu
+
+ACTION: office_exporter
+CHEMIN: projet-client.univer
+UNIT_ID: id de l'Unit
+FORMAT: xlsx
+NOM: projet-client-final
+
 ACTION: terminer
 CONTENU:
 ce que tu as verifie ou modifie, en francais simple
 FIN
 
 REGLES :
+- Les actions github_* servent au dépôt distant. Les actions office_* utilisent
+  le stockage local persistant data/univer du serveur et restent disponibles
+  même sans checkout Git.
+- Pour Office : créer/importer -> Worktree -> modifier -> inspecter/lint ->
+  ready. Fusionner le Worktree reste une décision confirmable ; execute lance
+  du JavaScript Facade de confiance et ne contourne jamais EXECUTE_COMMANDS.
 - github_lister/github_lire/github_chercher servent a explorer le depot distant.
 - github_diff compare la branche de travail a main : utilise-le avant une PR
   ou apres plusieurs ecritures pour verifier l'ensemble du changement.
@@ -883,7 +1030,11 @@ class DioumtoukayAgent(BaseAgent):
     #: Comment l'agent se presente au registre (DEC-0145) : lu par la
     #: decouverte, jamais recopie dans une liste centrale.
     identifiant = "atelier"
-    competences = ('fichiers de la machine', 'terminal', 'commande', 'depot git', 'action sur l ordinateur')
+    competences = (
+        'fichiers de la machine', 'terminal', 'commande', 'depot git',
+        'action sur l ordinateur', 'documents office', 'tableurs',
+        'presentations editables', 'worktrees office',
+    )
 
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
                  atelier: Optional[Atelier] = None,
@@ -1299,6 +1450,31 @@ class DioumtoukayAgent(BaseAgent):
         if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
             return Resultat(True, resultat.message,
                             sortie=self._detail_lisible(resultat.detail or {}))
+        return Resultat(False, resultat.message)
+
+    def _via_univer(self, capacite: str, **parametres: Any) -> Resultat:
+        """Pont unique vers l'Office local Univer, via le registre partagé.
+
+        Il n'existe volontairement aucun OfficeAgent parallèle : Dioumtoukay
+        découvre et appelle le connecteur comme les autres capacités machine.
+        Les confirmations `execute`/merge/discard restent dans le connecteur ;
+        ce pont ne possède aucun chemin pour les contourner.
+        """
+        if self.registre_connecteurs is None:
+            return Resultat(False, "Le registre de connecteurs n'est pas branche.")
+        connecteur = self.registre_connecteurs.obtenir("office_univer")
+        if connecteur is None:
+            return Resultat(False, "Le moteur Office Univer n'est pas branche.")
+        try:
+            resultat = connecteur.executer(capacite, **parametres)
+        except Exception as erreur:  # noqa: BLE001 — un connecteur ne casse pas la boucle
+            return Resultat(False, f"Office Univer impossible : {type(erreur).__name__}: {erreur}")
+        if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
+            return Resultat(
+                True,
+                resultat.message,
+                sortie=self._detail_lisible(resultat.detail or {}),
+            )
         return Resultat(False, resultat.message)
 
     def _via_case(self, capacite: str, confirmee: bool = False,
@@ -1783,6 +1959,87 @@ class DioumtoukayAgent(BaseAgent):
             if not action.contenu.strip():
                 return Resultat(False, "Il manque CONTENU — le plan JSON de la présentation.")
             return self._via_presentation(plan=action.contenu)
+        if action.nom == "office_creer":
+            return self._via_univer("creer", nom=champs.get("NOM", "document"))
+        if action.nom == "office_importer":
+            source = champs.get("SOURCE", "")
+            if not source:
+                return Resultat(False, "Il manque SOURCE — le fichier Office local à importer.")
+            return self._via_univer(
+                "importer", source=source, nom=champs.get("NOM", ""),
+                type=champs.get("TYPE", ""),
+                worktree=champs.get("WORKTREE_ID", ""),
+            )
+        if action.nom == "office_statut":
+            return self._via_univer(
+                "statut", fichier=champs.get("CHEMIN", ""),
+                worktree=champs.get("WORKTREE_ID", ""),
+            )
+        if action.nom == "office_worktree_creer":
+            return self._via_univer(
+                "worktree_creer", fichier=champs.get("CHEMIN", ""),
+                nom=champs.get("NOM", "arena"),
+            )
+        if action.nom == "office_worktrees":
+            return self._via_univer("worktrees", fichier=champs.get("CHEMIN", ""))
+        if action.nom == "office_unite_creer":
+            return self._via_univer(
+                "unite_creer", fichier=champs.get("CHEMIN", ""),
+                worktree=champs.get("WORKTREE_ID", ""),
+                type=champs.get("TYPE", ""), nom=champs.get("NOM", ""),
+            )
+        if action.nom == "office_unites":
+            return self._via_univer(
+                "unites", fichier=champs.get("CHEMIN", ""),
+                worktree=champs.get("WORKTREE_ID", ""),
+            )
+        if action.nom == "office_executer":
+            if not action.contenu.strip():
+                return Resultat(False, "Il manque CONTENU — le JavaScript Facade à exécuter.")
+            return self._via_univer(
+                "executer", fichier=champs.get("CHEMIN", ""),
+                worktree=champs.get("WORKTREE_ID", ""),
+                unit=champs.get("UNIT_ID", ""), code=action.contenu,
+            )
+        if action.nom == "office_inspecter":
+            selecteurs = [
+                ligne.strip() for ligne in action.contenu.splitlines() if ligne.strip()
+            ]
+            return self._via_univer(
+                "inspecter", fichier=champs.get("CHEMIN", ""),
+                worktree=champs.get("WORKTREE_ID", ""),
+                unit=champs.get("UNIT_ID", ""), cible=champs.get("CIBLE", ""),
+                worksheet=champs.get("WORKSHEET", ""), selecteurs=selecteurs,
+            )
+        if action.nom in {"office_pret", "office_reouvrir",
+                          "office_fusionner", "office_abandonner"}:
+            capacite_office = {
+                "office_pret": "pret", "office_reouvrir": "reouvrir",
+                "office_fusionner": "fusionner", "office_abandonner": "abandonner",
+            }[action.nom]
+            return self._via_univer(
+                capacite_office, fichier=champs.get("CHEMIN", ""),
+                worktree=champs.get("WORKTREE_ID", ""),
+            )
+        if action.nom == "office_exporter":
+            return self._via_univer(
+                "exporter", fichier=champs.get("CHEMIN", ""),
+                worktree=champs.get("WORKTREE_ID", ""),
+                unit=champs.get("UNIT_ID", ""), format=champs.get("FORMAT", ""),
+                nom=champs.get("NOM", ""),
+            )
+        if action.nom == "office_pdf":
+            return self._via_univer(
+                "imprimer_pdf", fichier=champs.get("CHEMIN", ""),
+                worktree=champs.get("WORKTREE_ID", ""),
+                unit=champs.get("UNIT_ID", ""), nom=champs.get("NOM", ""),
+            )
+        if action.nom == "office_lint":
+            return self._via_univer(
+                "lint_mise_en_page", fichier=champs.get("CHEMIN", ""),
+                worktree=champs.get("WORKTREE_ID", ""),
+                unit=champs.get("UNIT_ID", ""),
+            )
         if action.nom == "hf_modeles":
             recherche = champs.get("TEXTE", "")
             if not recherche:
@@ -1826,7 +2083,12 @@ class DioumtoukayAgent(BaseAgent):
         # Le mode d espace de travail est mesure UNE fois. Sur Railway, les
         # fichiers de /app sont une image de deploiement, pas un checkout Git.
         github_distant = self._workspace_github_distant()
-        reperes = self._reperes(user_input, github_distant=github_distant)
+        office_paths = [
+            str(p) for p in ((context or {}).get("office_paths") or []) if str(p).strip()
+        ]
+        reperes = self._reperes(
+            user_input, github_distant=github_distant, office_paths=office_paths
+        )
 
         # La methode d'un specialiste (`debugging`/`tests`/`architecture`...,
         # `core/specialistes/catalogue.py`) n'atteignait jamais Dioumtoukay :
@@ -2144,7 +2406,12 @@ class DioumtoukayAgent(BaseAgent):
 
     # --- Ce qu'il voit, et ce qu'il rend ---------------------------------------------
 
-    def _reperes(self, demande: str, github_distant: Optional[bool] = None) -> str:
+    def _reperes(
+        self,
+        demande: str,
+        github_distant: Optional[bool] = None,
+        office_paths: Optional[List[str]] = None,
+    ) -> str:
         """Où il est, et ce qu'il y a autour. Mesuré, jamais supposé.
 
         Sans ça, le premier tour partait à l'aveugle : le modèle dépensait deux
@@ -2160,6 +2427,13 @@ class DioumtoukayAgent(BaseAgent):
                 "Depot GitHub distant par defaut : "
                 f"{self.depot_github_defaut}. Les actions github_* travaillent "
                 "sur ce depot sans dependre du disque de cette machine."
+            )
+
+        if office_paths:
+            lignes.append(
+                "Fichiers Office joints à CE tour, déposés par le serveur et "
+                "utilisables comme SOURCE pour office_importer :\n"
+                + "\n".join(f"- {chemin}" for chemin in office_paths)
             )
 
         if github_distant is None:
