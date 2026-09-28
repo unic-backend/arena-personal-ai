@@ -230,6 +230,22 @@ RESEAUX = (
 #: « mon terminal », « mes fichiers », « mon depot ». Un mot generique comme
 #: « fichier » ou « commande » n y figure pas : il parlerait aussi bien d un
 #: fichier qu il vient de joindre.
+OBJETS_OFFICE = (
+    "tableur", "feuille de calcul", "spreadsheet", "excel",
+    ".xlsx", ".xls", ".xlsm", "word", ".docx", ".doc",
+    "powerpoint", ".pptx", ".ppt", ".univer",
+)
+VERBES_OFFICE = (
+    "crée", "cree", "créer", "creer", "fais", "fabrique",
+    "génère", "genere", "modifie", "modifier", "édite", "edite",
+    "éditer", "editer", "remplis", "remplir", "importe", "importer",
+    "exporte", "exporter", "convertis", "convertir", "ouvre", "ouvrir",
+    "lis ", "lire", "analyse", "analyser", "résume", "resume", "résumer",
+    "inspecte", "inspecter", "mets à jour", "mets a jour", "corrige",
+    "ajoute", "supprime",
+)
+
+
 ATELIER = (
     "dioumtoukay",
     "mon terminal", "dans le terminal", "en ligne de commande",
@@ -693,8 +709,9 @@ SWE_FIX         : corriger un bug dans un fichier existant.
 REPO_ENGINEERING: travailler sur plusieurs fichiers d'un dépôt à la fois.
 ATELIER         : agir vraiment sur la machine — ouvrir, ranger ou corriger SES
                   fichiers, lancer une commande dans SON terminal, travailler
-                  sur SON depot git. La difference avec REPO_ENGINEERING tient
-                  en un mot : ici on execute au lieu de proposer.
+                  sur SON depot git ; créer, lire ou modifier un document Office
+                  éditable (Excel/Word/PowerPoint). La différence avec
+                  REPO_ENGINEERING tient en un mot : ici on exécute au lieu de proposer.
 RAG_DOCS        : répondre à partir des documents de l'utilisateur.
 GRAPHRAG        : question sur les liens entre les documents.
 VISION          : comprendre une image, une photo, un plan ou une capture
@@ -886,6 +903,15 @@ class OrchestratorAgent(BaseAgent):
         texte = (user_input or "").lower()
         return any(phrase in texte for phrase in PHRASES_EXECUTIVE)
 
+    @staticmethod
+    def demande_office(user_input: str) -> bool:
+        """Route une ACTION Office, jamais une simple question sur Excel/Word."""
+        texte = (user_input or "").lower()
+        return (
+            any(objet in texte for objet in OBJETS_OFFICE)
+            and any(verbe in texte for verbe in VERBES_OFFICE)
+        )
+
     async def analyze_intent(self, user_input: str, espace: Optional[str] = None) -> str:
         """Détermine vers quel agent envoyer la demande.
 
@@ -918,6 +944,10 @@ class OrchestratorAgent(BaseAgent):
         if self.salutation_pure(user_input):
             logger.info("Salutation pure : CHAT, quel que soit l'espace")
             return "CHAT"
+
+        if self.demande_office(user_input):
+            logger.info("Action Office explicite -> ATELIER / Univer")
+            return "ATELIER"
 
         if self.demande_de_courrier(user_input):
             logger.info("Demande de courrier explicite -> EMAIL, avant le controle date")
@@ -1005,6 +1035,8 @@ class OrchestratorAgent(BaseAgent):
         # contiennent des mots — « bug », « projet », « commande » — qui les
         # enverraient ailleurs, vers un agent qui ne touche rien.
         if any(k in text for k in ATELIER):
+            return "ATELIER"
+        if OrchestratorAgent.demande_office(user_input):
             return "ATELIER"
 
         # Analyse de visages et conception d'interface. Testes tot, avant les
