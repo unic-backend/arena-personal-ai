@@ -304,3 +304,27 @@ def test_l_intention_a_une_voie_qui_autorise_le_reseau():
     from core.execution.voies import budget_de, voie_pour
 
     assert budget_de(voie_pour("EMAIL")).reseau_autorise is True
+
+
+@pytest.mark.asyncio
+async def test_un_montant_invente_dans_le_tri_est_signale():
+    """DEC-0162 : le tri etait rendu sans etre relu contre les messages."""
+    invente = "URGENT : Fast Group demande 25 parois pour 3 500 000 FCFA."
+    agent = EmailAgent(provider=ModeleDouble(invente), registre=FauxRegistre())
+
+    resultat = await agent.run("trie mon courrier", {})
+
+    assert resultat["response"].startswith(invente)
+    assert "Verification automatique" in resultat["response"]
+    assert "3500000" in resultat["sans_source"] and "25" in resultat["sans_source"]
+
+
+@pytest.mark.asyncio
+async def test_un_tri_fidele_reste_tel_quel():
+    fidele = "URGENT : Fast Group demande un devis pour 18 parois. SENELEC : facture du mois."
+    agent = EmailAgent(provider=ModeleDouble(fidele), registre=FauxRegistre())
+
+    resultat = await agent.run("trie mon courrier", {})
+
+    assert resultat["response"] == fidele
+    assert resultat["sans_source"] == []

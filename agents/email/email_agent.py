@@ -31,6 +31,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from core.agent.base_agent import BaseAgent
+from core.agent.verification_synthese import avertissement_sources, elements_sans_source
 from core.connectors.registre import RegistreConnecteurs
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
@@ -232,6 +233,15 @@ class EmailAgent(BaseAgent):
             # `_lire_la_boite`, jamais envoyes a un modele.
             return self._reponse_sans_modele(erreur, messages=boite["messages"])
 
+        # Le tri est relu contre les messages recus et sa consigne (ses
+        # etiquettes DEVIS, URGENT... y sont) : un expediteur, un
+        # montant ou une date qui n'y figure pas est signale, jamais reecrit
+        # (DEC-0162, meme mecanisme que la reponse web, DEC-0150).
+        sans_source = elements_sans_source(tri, [INSTRUCTION_TRI, prompt])
+        if sans_source:
+            logger.warning("Tri du courrier : elements sans source %s", sans_source)
+            tri = f"{tri}\n\n{avertissement_sources(sans_source)}"
+
         return {
             "status": "success",
             "agent": self.name,
@@ -240,6 +250,7 @@ class EmailAgent(BaseAgent):
             "messages": boite["messages"],
             "envoi": None,
             "response": tri,
+            "sans_source": sans_source,
         }
 
     def _reponse_sans_modele(self, erreur: Exception,

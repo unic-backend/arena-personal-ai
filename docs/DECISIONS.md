@@ -11760,3 +11760,111 @@ les roles executifs (DEC-0157).
 capitalises courants signales a tort ; l'avertissement est resume au-dela de
 dix elements. Un avertissement de trop, jamais un fait invente sans
 avertissement.
+
+## DEC-0159 — La synthese de tendances s'en tient aux resultats web et est relue
+
+**2026-09-28.**
+
+**Constat** (mesure sur le vrai moteur) : pour une demande d'idees de videos
+droles, `TrendAnalyzerAgent` recoit quatre pages TikTok « discover » presque
+vides. Sa consigne demandait « 3 tendances » sans exiger de source ni
+interdire l'ajout ; la synthese pouvait consulter un collegue (qui repond de
+memoire, voir DEC-0150) ; rien ne relisait le texte ; aucune adresse n'etait
+rendue. Le modele comblait le vide avec des tendances plausibles.
+
+**Decision** (`agents/trend_analyzer/trend_analyzer_agent.py`) :
+
+- resultats numerotes, et la consigne exige une citation par tendance,
+  interdit tout chiffre, nom, compte ou evenement absent, et autorise moins de
+  trois tendances ;
+- `rediger(consulter=False)` ;
+- relecture par `elements_sans_source` contre la consigne et la demande,
+  signalement par `avertissement_sources`, champ `sans_source` ;
+- les adresses consultees sont rendues dans `sources`.
+
+La recherche n'est PAS passee en `recent=True` : mesure faite, les passes
+d'actualite ne rendaient rien de plus sur ces requetes.
+
+**Ce que ca coute si c'est faux** : moins de tendances proposees quand les
+pages sont pauvres, et un avertissement de trop sur un nom reformule — jamais
+une tendance inventee sans avertissement.
+
+## DEC-0160 — Analyse de transcription, compte rendu de reunion et reponse sur une page sont relus
+
+**2026-09-28.**
+
+**Constat** (audit des synthese liees a des donnees, suite de DEC-0156 a
+0159) : dans `VideoAnalyzerAgent`, l'analyse d'une video ordinaire pouvait
+consulter un collegue — qui repond de sa memoire, pas de ce qui a ete dit — et
+ni elle ni le compte rendu de reunion n'etaient relus contre la transcription.
+`BrowserAgent.discuter_page` repondait « uniquement a partir de la page » sans
+que rien ne le verifie.
+
+**Decision** :
+
+- `agents/video_analyzer/video_analyzer_agent.py` : les deux analyses passent
+  par `rediger(consulter=False)` et par `_relire`, qui confronte le texte a sa
+  consigne (transcription comprise) avec `elements_sans_source` et signale ce
+  qui manque. Les metriques mesurees de la reunion sont ajoutees apres la
+  relecture, pas relues comme du texte du modele.
+- `agents/browser/browser_agent.py` : la reponse sur une page est relue
+  contre la consigne (page et question) ; champ `sans_source`.
+
+Rien n'est reecrit : le texte du modele reste tel quel, l'avertissement vient
+dessous.
+
+**Ce que ca coute si c'est faux** : une transcription Whisper qui ecrit mal
+un nom (« Mousa » pour « Moussa ») fait signaler le nom juste que le modele a
+corrige ; un avertissement de trop, jamais un nom invente sans avertissement.
+
+## DEC-0161 — La relecture des sous-titres est appliquee pour de vrai, ou n'est pas annoncee
+
+**2026-09-28.**
+
+**Constat** (lecture de `agents/subtitle/subtitle_agent.py`, reproduit par
+test) : en mode **segments** — le cas normal, Whisper rend des segments — la
+correction du modele etait **jetee** : seules les apostrophes etaient
+recollees, et « de vie du chantier » restait tel quel. En mode **mots**, elle
+n'etait appliquee que si le nombre de mots restait identique, donc jamais pour
+le cas vise (« de vie » -> « devis »). Dans les deux cas, la reponse annoncait
+« Sous-titres corriges » et `corrigee=True` : le meme mensonge que celui
+repare le 01/09/2026, par un autre chemin.
+
+**Decision** :
+
+- segments : les lignes sont envoyees numerotees ([1], [2]...) et chaque
+  ligne corrigee est reappliquee a son segment ;
+- mots : alignement `difflib` — un remplacement (« de vie » -> « devis »)
+  prend la duree des mots remplaces ; un mot **ajoute** par le modele n'entre
+  pas (il n'a pas ete prononce) ; un mot **retire** reste (il l'a ete) ;
+- toute proposition trop eloignee du texte entendu (`SIMILARITE_MINIMALE`,
+  0,6) n'est pas appliquee : c'est une reecriture, pas une correction ;
+- `corrigee` n'est vrai que si une correction a ete appliquee ; sinon le
+  message dit « SANS relecture » et pourquoi (modele muet, ou proposition
+  ecartee).
+
+**Ce que ca coute si c'est faux** : une vraie correction tres lourde d'une
+ligne courte (plusieurs mots mal entendus sur trois) passe sous le seuil et
+n'est pas appliquee ; les sous-titres gardent ce que Whisper a entendu, et le
+message le dit — jamais un texte que personne n'a prononce.
+
+## DEC-0162 — Le tri du courrier est relu contre les messages recus
+
+**2026-09-28.**
+
+**Constat** (audit des syntheses liees a des donnees) : `EmailAgent` fait trier
+et resumer les derniers messages par le modele, sous la consigne « Tu n'inventes
+rien. Un chiffre, un nom, une surface, une date qui ne sont pas ecrits dans le
+message n'existent pas ». Rien ne verifiait qu'elle etait tenue : un montant ou
+une quantite de trop dans le resume d'une demande de devis passait tel quel.
+
+**Decision** (`agents/email/email_agent.py`) : le tri est relu par
+`elements_sans_source` contre les messages recus ET la consigne du tri (ses
+etiquettes — DEVIS, FACTURE, urgent — y figurent ; sans elle, « URGENT » etait
+signale a tort, mesure par test). Ce qui manque est signale sous le tri et dans
+le champ `sans_source`, jamais reecrit. Le brouillon d'envoi n'est pas relu :
+c'est une redaction, et il passe deja par la confirmation du proprietaire.
+
+**Ce que ca coute si c'est faux** : un nom de client reformule (« Fast » pour
+« Fast Group ») peut etre signale a tort ; un avertissement de trop, jamais un
+montant invente sans avertissement.

@@ -2,11 +2,41 @@
 
 ## [Non publié]
 
+### Corrigé — 28/09/2026 — Les idées de vidéos tendance ne sont plus inventées
+
+Quand tu demandes des tendances ou des idées de vidéos, ARENA lisait des pages
+presque vides et devait quand même proposer trois tendances : il en inventait.
+Chaque tendance doit maintenant venir d'une page trouvée, citée par son
+numéro ; les liens te sont rendus, et un nom ou un chiffre qui ne vient
+d'aucune page est signalé (DEC-0159).
+
 ### Corrigé — 28/09/2026 — Un rapport de recherche signale ce que ses sources ne disent pas
 
 Le rapport de recherche approfondie avait pour consigne de ne rien ajouter aux
 sources, mais personne ne le vérifiait. Un chiffre ou un nom écrit de mémoire
 est maintenant signalé sous le rapport (DEC-0158).
+
+### Corrigé — 28/09/2026 — Analyse de vidéo, compte rendu et réponse sur une page signalent ce qui n'y était pas
+
+Le résumé d'une vidéo, le compte rendu d'une réunion enregistrée et la réponse
+à une question sur une page web pouvaient contenir un nom ou un chiffre qui
+n'était ni dans ce qui a été dit, ni dans la page. C'est maintenant signalé
+sous la réponse ; et l'analyse d'une vidéo ne demande plus l'avis d'un autre
+agent qui répondrait de mémoire (DEC-0160).
+
+### Corrigé — 28/09/2026 — « Sous-titres corrigés » : maintenant, ils le sont vraiment
+
+ARENA annonçait des sous-titres corrigés alors que la correction du modèle
+était jetée : « de vie du chantier » restait écrit tel quel. La correction est
+maintenant réellement appliquée (« de vie » devient « devis », au bon
+moment) ; un mot que personne n'a prononcé n'est jamais ajouté ; et si la
+correction s'éloigne trop de ce qui a été dit, elle n'est pas appliquée et le
+message le dit (DEC-0161).
+
+### Corrigé — 28/09/2026 — Le tri de ton courrier signale ce que les messages ne disent pas
+
+Quand ARENA trie et résume tes derniers e-mails, un montant, une quantité ou un
+nom qui n'est dans aucun message est maintenant signalé sous le résumé (DEC-0162).
 
 ### Corrigé — 28/09/2026 — Les conseils d'affaires signalent un montant inventé
 
