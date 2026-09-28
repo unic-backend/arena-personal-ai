@@ -8,7 +8,7 @@ parle. **C'est la seconde qui est retenue.**
 Le protocole, releve dans son code (`src/lib/activity/`) :
 
 - `POST /agent/stream` — corps JSON `{text, locale, history, attachments,
-  media_paths, connectors, run_id, conversation_id, persona, memories}`, reponse en
+  media_paths, office_paths, connectors, run_id, conversation_id, persona, memories}`, reponse en
   `text/event-stream`. `conversation_id` (stable, un par fil) porte la
   session memoire ; `run_id` (nouveau a chaque message) reste ce qu'il a
   toujours ete, un identifiant d'EXECUTION — les deux ne se confondent plus
@@ -30,6 +30,7 @@ import asyncio
 import json
 import logging
 import time
+from pathlib import Path
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import date
@@ -42,7 +43,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from agents.plaquiste.plaquiste_agent import MetierSuivi
-from apps.backend.config import AGENTS_SPECIALISES, DB_PATH
+from apps.backend.config import AGENTS_SPECIALISES, DB_PATH, UNIVER_WORKSPACE_DIR
 from apps.backend.prompts import prompt_avec_methode
 from apps.backend.routers.chat import (
     ChatRequest,
@@ -63,8 +64,10 @@ from apps.backend.runtime import (
     ollama_vision,
     orchestrator,
     pieces_jointes,
+    permissions,
     registre,
 )
+from apps.backend.pieces_jointes import nom_de_fichier_sur
 from apps.backend.security import limiter_debit, verify_api_key
 from core.actions.confirmation_parlee import (
     a_confirmer_par_phrase,
@@ -152,6 +155,10 @@ class DemandeAgent(BaseModel):
     # Chemins renvoyes par /api/upload pour les medias audio/video de CE tour.
     # Ils restent revalides sous MEDIA_DIR par dispatch_request avant lecture.
     media_paths: List[str] = Field(default_factory=list)
+    # Binaires Office explicitement joints à CE tour, conservés juste assez
+    # longtemps pour être importés par Univer. Contrairement à /files, leur
+    # binaire ne peut pas être effacé avant l'édition.
+    office_paths: List[str] = Field(default_factory=list)
     connectors: Any = None
     run_id: Optional[str] = None
     # Identite STABLE de la conversation (le `activeId` de son store cote
@@ -1236,6 +1243,7 @@ async def flux_agent(demande: DemandeAgent):
                                 attachments=demande.attachments,
                                 video_path=(demande.media_paths[0]
                                             if demande.media_paths else None),
+                                office_paths=list(demande.office_paths),
                                 # Structure encore intacte pour PLAQUISTE : `texte`
                                 # ci-dessus est deja le fil aplati (pour le modele
                                 # et les recherches par mots-cles existantes) ;
@@ -1512,6 +1520,79 @@ async def lire_borne(file: UploadFile, plafond: int) -> Optional[bytes]:
             return None
         blocs.append(bloc)
     return b"".join(blocs)
+
+
+EXTENSIONS_OFFICE_EDITABLES = frozenset({
+    ".xls", ".xlsx", ".xlsm", ".csv", ".tsv",
+    ".doc", ".docx",
+    ".ppt", ".pptx", ".pptm", ".ppsx", ".ppsm", ".potx",
+})
+
+
+def _destination_office_unique(nom_brut: str) -> Path:
+    """Réserve un nom sûr sous data/univer/imports, sans écraser un envoi."""
+    nom = nom_de_fichier_sur(nom_brut)
+    extension = Path(nom).suffix.lower()
+    if extension not in EXTENSIONS_OFFICE_EDITABLES:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Format Office non éditable par Univer : {extension or '(sans extension)'}.",
+        )
+    dossier = UNIVER_WORKSPACE_DIR / "imports"
+    dossier.mkdir(parents=True, exist_ok=True)
+    tige, suffixe = Path(nom).stem, Path(nom).suffix
+    for index in range(1000):
+        candidat = dossier / (nom if index == 0 else f"{tige}_{index}{suffixe}")
+        try:
+            with candidat.open("xb"):
+                pass
+        except FileExistsError:
+            continue
+        return candidat
+    raise HTTPException(status_code=507, detail="Impossible de réserver un nom Office libre.")
+
+
+@router.post("/office/files", dependencies=[Depends(verify_api_key)])
+async def envoyer_fichier_office(file: UploadFile = File(...)):
+    """Stocke le binaire Office réel pour l'import Univer du tour courant.
+
+    /files extrait du texte puis détruit volontairement le binaire. Cette voie
+    est différente : modifier un XLSX/DOCX/PPTX exige ses octets originaux.
+    Le fichier reste borné, sous data/univer/imports, puis le connecteur Univer
+    le supprime après un import réussi dans le conteneur .univer.
+    """
+    if not permissions.is_allowed("WRITE_FILES"):
+        raise HTTPException(status_code=403, detail="Écriture de fichiers non autorisée.")
+
+    destination = _destination_office_unique(file.filename or "sans-nom")
+    try:
+        contenu = await lire_borne(file, pieces_jointes.taille_max)
+        if contenu is None:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    "Fichier trop volumineux (maximum "
+                    f"{pieces_jointes.taille_max / 1024**2:.0f} Mo)."
+                ),
+            )
+        if not contenu:
+            raise HTTPException(status_code=400, detail="Fichier vide.")
+        destination.write_bytes(contenu)
+    except Exception:
+        # Le nom a déjà été réservé atomiquement. Toute sortie avant écriture
+        # complète doit enlever ce placeholder, y compris une lecture interrompue.
+        destination.unlink(missing_ok=True)
+        raise
+
+    logger.info("Fichier Office reçu pour Univer : %s (%d octets).",
+                destination.name, len(contenu))
+    return {
+        "status": "success",
+        "filename": destination.name,
+        "original_filename": nom_de_fichier_sur(file.filename or destination.name),
+        "path": str(destination),
+        "size_bytes": len(contenu),
+    }
 
 
 @router.post("/files", dependencies=[Depends(verify_api_key)])
