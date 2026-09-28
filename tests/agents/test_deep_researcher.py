@@ -125,3 +125,25 @@ async def test_la_synthese_ne_peut_citer_que_les_sources_recues(agent_avec_web):
     consigne = agent.provider.appels[1]["prompt"]
     assert "ne liste QUE ces sources-là" in consigne
     assert "N'ajoute aucun chiffre, nom ou fait" in consigne
+
+
+async def test_un_chiffre_du_rapport_absent_des_sources_est_signale(agent_avec_web):
+    """La consigne de #357 n'etait verifiee par rien (DEC-0158)."""
+    rapport = "Le marché sénégalais de l'IA pèse 450 millions [1], selon Gartner."
+    agent = agent_avec_web([source(1)], rapport=rapport)
+
+    res = await agent.run("IA au Sénégal")
+
+    assert res["response"].startswith(rapport), "le rapport n'est jamais reecrit"
+    assert "Verification automatique" in res["response"]
+    assert res["sans_source"] == ["Gartner", "450"]
+
+
+async def test_un_rapport_fidele_n_est_pas_signale(agent_avec_web):
+    rapport = "Contenu de la source 1 [1]. Le sujet IA au Sénégal est couvert par Source 1."
+    agent = agent_avec_web([source(1)], rapport=rapport)
+
+    res = await agent.run("IA au Sénégal")
+
+    assert res["response"] == rapport
+    assert res["sans_source"] == []
