@@ -33,6 +33,11 @@ moment) ; un mot que personne n'a prononcé n'est jamais ajouté ; et si la
 correction s'éloigne trop de ce qui a été dit, elle n'est pas appliquée et le
 message le dit (DEC-0161).
 
+### Corrigé — 28/09/2026 — Le tri de ton courrier signale ce que les messages ne disent pas
+
+Quand ARENA trie et résume tes derniers e-mails, un montant, une quantité ou un
+nom qui n'est dans aucun message est maintenant signalé sous le résumé (DEC-0162).
+
 ### Corrigé — 28/09/2026 — Les conseils d'affaires signalent un montant inventé
 
 Quand ARENA évalue un projet (marge, délais, risques), chaque rôle fait
