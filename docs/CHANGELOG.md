@@ -9,6 +9,14 @@ interroge des moteurs au hasard, et un moteur bloqué répond « rien » au lieu
 d'une erreur. ARENA le croyait. La dernière recherche est maintenant retentée
 quand elle revient vide : sur 12 essais mesurés, 12 réponses (DEC-0155).
 
+### Corrigé — 28/09/2026 — La météo, un cours, un score récent ne reçoivent plus de réponse de mémoire
+
+Quand le petit modèle qui trie tes questions ne répondait pas, « Quel temps
+fait-il à Dakar ? », « prix du bitcoin » ou « Qui a gagné la CAN 2025 ? »
+partaient dans la conversation simple : ARENA répondait de mémoire, avec des
+connaissances d'avant. Ces questions vont maintenant toujours chercher sur le
+web (DEC-0154).
+
 ### Corrigé — 28/09/2026 — La recherche web trouve la météo, l'année et la bonne page
 
 « Quel temps fait-il à Dakar ? » renvoyait des articles qui citaient Dakar sans
