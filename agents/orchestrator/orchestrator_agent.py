@@ -907,12 +907,16 @@ class OrchestratorAgent(BaseAgent):
 
     @staticmethod
     def demande_office(user_input: str) -> bool:
-        """Vrai pour une action concrète sur un document Office, pas son nom seul."""
+        """Vrai pour une action concrète sur un document Office, pas un sous-mot."""
         texte = (user_input or "").lower()
-        return (
-            any(objet in texte for objet in OBJETS_OFFICE)
-            and any(verbe in texte for verbe in VERBES_OFFICE)
+        objet = re.search(
+            r"(?:\\b(?:tableur|spreadsheet|excel|word|powerpoint)\\b"
+            r"|\\bfeuille\\s+de\\s+calcul\\b"
+            r"|[.](?:xlsx?|xlsm|docx?|pptx?)\\b"
+            r"|[.]univer\\b)",
+            texte,
         )
+        return bool(objet and _commence_un_mot(texte, VERBES_OFFICE))
 
     async def analyze_intent(self, user_input: str, espace: Optional[str] = None) -> str:
         """Détermine vers quel agent envoyer la demande.
