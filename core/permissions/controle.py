@@ -54,6 +54,11 @@ INTERRUPTEURS_OBLIGATOIRES = {
     ("email", "delete"): "DELETE",
     ("calendar", "delete"): "DELETE",
     ("website", "delete"): "DELETE",
+    # Univer `execute` lance du JavaScript de confiance (pas un sandbox) ;
+    # `destroy` jette un Worktree. Ces deux planchers ne sont pas
+    # abaissables par le YAML de politique.
+    ("office_univer", "execute"): "EXECUTE_COMMANDS",
+    ("office_univer", "destroy"): "DELETE",
 }
 
 
