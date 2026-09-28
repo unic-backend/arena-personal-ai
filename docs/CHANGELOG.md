@@ -11,6 +11,13 @@ maintenant parler de l'essentiel de ta question (la météo ET Dakar), l'année
 compte, et un fait stable se cherche d'abord sur le web plutôt que dans les
 actualités du jour (DEC-0153).
 
+### Corrigé — 28/09/2026 — La recherche approfondie n'écrit plus de rapport sans source
+
+Quand la recherche ne trouvait rien, ARENA rédigeait quand même un « rapport
+d'intelligence » complet, avec une liste de « sources consultées » — tout était
+inventé. Elle dit maintenant qu'elle n'a rien trouvé et quelles recherches
+elle a tentées ; et quand elle a des sources, chaque fait doit en citer une
+(DEC-0152).
 ### Corrigé — 28/09/2026 — La recherche web ne répond plus avec des pages hors sujet
 
 « Dernière version de Python » faisait lire un article sur GTA 6, « président

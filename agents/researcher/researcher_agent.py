@@ -109,6 +109,26 @@ class DeepResearcherAgent(BaseAgent):
             for i, s in enumerate(unique_sources)
         )
 
+        # Sans aucune donnee — ni page web, ni connaissance locale — il n'y a
+        # rien a synthetiser (DEC-0152). Mesure du 28/09/2026 : l'agent
+        # demandait quand meme au modele un « Rapport d'Intelligence a partir
+        # des donnees collectees », section « Sources consultees » comprise :
+        # tout y etait invente. Meme regle que `FreshInfoAgent` : pas de
+        # source, pas d'appel au modele.
+        if not unique_sources and not knowledge_hits:
+            return {
+                "status": "warning",
+                "agent": self.name,
+                "queries_used": queries,
+                "sources_count": 0,
+                "knowledge_sources_count": 0,
+                "response": (
+                    "Ma recherche n'a trouve aucune source, ni sur le web ni dans "
+                    "tes connaissances locales. Je ne redige pas de rapport sans "
+                    f"source. Recherches tentees : {', '.join(queries)}."
+                ),
+            }
+
         knowledge_text = "\n".join(
             f"[KV{i + 1}] {hit.title} ({hit.path}) sources={', '.join(hit.sources) or hit.path}\n"
             f"{wrap(hit.snippet, TrustLevel.RETRIEVED, f'knowledge_vault:{hit.path}').text}\n"
@@ -123,6 +143,10 @@ class DeepResearcherAgent(BaseAgent):
             "2. 💡 **Analyse Prise de Décision & Opportunités** (Points clés)\n"
             "3. 🇸🇳 **Impact & Stratégie Sénégal / Afrique / International**\n"
             "4. 🔗 **Sources Consultées**\n\n"
+            "Règles strictes : appuie chaque fait sur les données ci-dessous et cite-le "
+            "par son numéro ([1], [KV1]). « Sources Consultées » ne liste QUE ces "
+            "sources-là. N'ajoute aucun chiffre, nom ou fait que les données ne "
+            "contiennent pas ; si elles ne suffisent pas pour une partie, écris-le.\n\n"
             f"Sujet principal : {user_input}\n\n"
             f"Connaissances locales sourcees :\n{knowledge_text or '(aucune source locale pertinente)'}\n\n"
             f"Données Web :\n{sources_text}\n\n"
