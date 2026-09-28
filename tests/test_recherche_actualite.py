@@ -355,6 +355,48 @@ class TestReessaiSurTimeout:
         assert outil._executer("news", "q", 5, timelimit="d") == []
         assert moteur.appels == 1, "une recherche vide a été réessayée"
 
+    def test_un_vide_en_text_sans_filtre_est_reessaye_une_fois(self):
+        """Mesure du 28/09/2026 : `ddgs` tire ses moteurs au sort, et un moteur
+        bloque rend une liste vide. 3 recherches web sur 9 revenaient vides ;
+        le meme appel, relance aussitot, rendait cinq pages."""
+        moteur = MoteurQuiLeve([Exception("No results found.")], [_brut(date=None)])
+        outil = WebSearchTool()
+        outil._interroger = moteur
+
+        resultats = outil._executer("text", "population du senegal", 5)
+
+        assert moteur.appels == 2
+        assert len(resultats) == 1
+
+    def test_un_delai_puis_un_vide_laissent_un_dernier_essai_au_text(self):
+        """Mesure du 28/09/2026 : un delai TLS consommait l'unique reessai, le
+        second essai revenait vide — 4 recherches sur 12 sans rien."""
+        moteur = MoteurQuiLeve(
+            [Exception("Request timed out: ConnectTimeout('handshake')"), Exception("No results found.")],
+            [_brut(date=None)])
+        outil = WebSearchTool()
+        outil._interroger = moteur
+
+        assert len(outil._executer("text", "prix du bitcoin", 5)) == 1
+        assert moteur.appels == 3
+
+    def test_le_text_s_arrete_au_troisieme_essai(self):
+        moteur = MoteurQuiLeve([Exception("No results found.")] * 4)
+        outil = WebSearchTool()
+        outil._interroger = moteur
+
+        assert outil._executer("text", "q", 5) == []
+        assert moteur.appels == 3, "jamais de boucle"
+
+    def test_un_vide_en_text_filtre_n_est_pas_reessaye(self):
+        """Un filtre de date peut vraiment ne rien avoir : ce vide est une reponse."""
+        moteur = MoteurQuiLeve([Exception("No results found.")])
+        outil = WebSearchTool()
+        outil._interroger = moteur
+
+        assert outil._executer("text", "q", 5, timelimit="w") == []
+        assert moteur.appels == 1
+
     def test_une_erreur_definitive_n_est_pas_reessayee(self):
         """Un paramètre refusé se reproduira à l'identique."""
         moteur = MoteurQuiLeve([ValueError("unknown category 'videos'")])

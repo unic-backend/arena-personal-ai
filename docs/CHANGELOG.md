@@ -8,6 +8,27 @@ Le rapport de recherche approfondie avait pour consigne de ne rien ajouter aux
 sources, mais personne ne le vérifiait. Un chiffre ou un nom écrit de mémoire
 est maintenant signalé sous le rapport (DEC-0158).
 
+### Corrigé — 28/09/2026 — Les conseils d'affaires signalent un montant inventé
+
+Quand ARENA évalue un projet (marge, délais, risques), chaque rôle fait
+expliquer ses calculs par le modèle. Un montant qui n'était ni dans tes
+chiffres ni dans les calculs passait tel quel. Il est maintenant signalé sous
+l'explication (DEC-0157).
+
+### Corrigé — 28/09/2026 — L'analyse financière ne cite plus un cours de mémoire
+
+« Analyse le bitcoin » mesurait bien le prix, mais ne le donnait pas au modèle
+qui rédige l'explication : il pouvait écrire un cours de mémoire. Il reçoit
+maintenant le prix mesuré, et tout chiffre de son explication qui ne vient pas
+des données est signalé sous la réponse (DEC-0156).
+
+### Corrigé — 28/09/2026 — « Je n'ai rien trouvé » alors que le web avait la réponse
+
+Une recherche sur trois revenait vide sans raison : le service de recherche
+interroge des moteurs au hasard, et un moteur bloqué répond « rien » au lieu
+d'une erreur. ARENA le croyait. La dernière recherche est maintenant retentée
+quand elle revient vide : sur 12 essais mesurés, 12 réponses (DEC-0155).
+
 ### Corrigé — 28/09/2026 — La météo, un cours, un score récent ne reçoivent plus de réponse de mémoire
 
 Quand le petit modèle qui trie tes questions ne répondait pas, « Quel temps

@@ -20,6 +20,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from core.agent.base_agent import BaseAgent
+from core.agent.verification_synthese import avertissement_sources, elements_sans_source
 from core.connectors.market_data import TICKERS_CONNUS, identifiant_coingecko
 from core.connectors.registre import RegistreConnecteurs
 from core.finance import quant, risk
@@ -112,6 +113,7 @@ def _confiance(points_historique: int, a_des_preuves_marche: bool) -> str:
 PROMPT_INTERPRETATION = """Tu es l'agent Finance d'Usman. Voici une analyse deja calculee \
 (jamais par toi) sur {actif} :
 
+Prix actuel (mesure) : {prix}
 Tendance (calculee) : {tendance}
 Rendement sur la periode : {rendement}
 Volatilite : {volatilite}
@@ -206,7 +208,12 @@ class FinanceAgent(BaseAgent):
         if not preuves:
             limites.append("Aucune source d'actualite recente trouvee ou consultee.")
 
-        interpretation = await self._interpreter(actif, resultat_quant, resultat_risque, preuves)
+        # Le prix au comptant s'il a ete confirme, sinon le dernier point de
+        # l'historique : un chiffre MESURE, que le modele n'a plus a deviner.
+        prix_mesure = (resultat_prix.detail.get("prix", {}).get(actif, {}).get("usd")
+                       if resultat_prix.a_eu_lieu else None) or dernier_prix
+        interpretation, sans_source = await self._interpreter(
+            actif, resultat_quant, resultat_risque, preuves, prix_mesure)
 
         analyse = AnalyseFinanciere(
             actif=actif,
@@ -225,6 +232,7 @@ class FinanceAgent(BaseAgent):
             "status": "success", "agent": self.name,
             "response": interpretation or self._resume_sans_interpretation(analyse),
             "analyse_financiere": analyse.to_dict(),
+            "sans_source": sans_source,
         }
 
     async def _executer_ordre_simule(self, actif: str, ordre: Dict[str, Any]) -> Dict[str, Any]:
@@ -288,11 +296,20 @@ class FinanceAgent(BaseAgent):
         return preuves, sources
 
     async def _interpreter(
-        self, actif: str, q: quant.ResultatQuant, r: risk.ResultatRisque, preuves: List[Dict[str, str]],
-    ) -> Optional[str]:
+        self, actif: str, q: quant.ResultatQuant, r: risk.ResultatRisque,
+        preuves: List[Dict[str, str]], prix: Optional[float] = None,
+    ) -> tuple[Optional[str], List[str]]:
+        """L'interpretation du modele, et ce qu'elle cite sans l'avoir recu.
+
+        Mesure du 28/09/2026 : le prix, pourtant mesure, n'etait pas dans la
+        consigne, et rien ne relisait la reponse — un modele local qui voulait
+        citer un cours l'ecrivait de memoire, sans que rien ne le signale.
+        """
         contexte = "\n".join(f"- {p['titre']}" for p in preuves) or "(aucune)"
         prompt = PROMPT_INTERPRETATION.format(
-            actif=actif, tendance=q.tendance,
+            actif=actif,
+            prix=f"{prix:,.2f} USD".replace(",", " ") if prix is not None else "non disponible",
+            tendance=q.tendance,
             rendement=f"{q.rendement_total:+.2%}" if q.rendement_total is not None else "non calculable",
             volatilite=f"{q.volatilite:.2%}" if q.volatilite is not None else "non calculable",
             rsi=f"{q.rsi_14:.1f}" if q.rsi_14 is not None else "non calculable",
@@ -303,10 +320,18 @@ class FinanceAgent(BaseAgent):
         try:
             # « N'invente AUCUN chiffre » : un collegue en apporterait de sa
             # memoire, que personne n'a calcules (DEC-0150).
-            return (await self.rediger(prompt=prompt, consulter=False)).strip()
+            interpretation = (await self.rediger(prompt=prompt, consulter=False)).strip()
         except Exception as erreur:  # noqa: BLE001 — un modele indisponible ne doit pas priver des chiffres deja calcules
             logger.warning("Interpretation indisponible pour %s : %s", actif, erreur)
-            return None
+            return None, []
+
+        # Relue contre ce qu'elle a recu, comme la reponse web (DEC-0150) :
+        # signale, jamais reecrite.
+        sans_source = elements_sans_source(interpretation, [prompt])
+        if sans_source:
+            logger.warning("Interpretation %s : elements sans source %s", actif, sans_source)
+            interpretation = f"{interpretation}\n\n{avertissement_sources(sans_source)}"
+        return interpretation, sans_source
 
     @staticmethod
     def _resume_sans_interpretation(analyse: AnalyseFinanciere) -> str:
