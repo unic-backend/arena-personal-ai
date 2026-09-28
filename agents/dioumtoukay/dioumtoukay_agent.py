@@ -37,6 +37,7 @@ import shlex
 import time
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.actions.resultat import Statut
@@ -1470,12 +1471,18 @@ class DioumtoukayAgent(BaseAgent):
         except Exception as erreur:  # noqa: BLE001 — un connecteur ne casse pas la boucle
             return Resultat(False, f"Office Univer impossible : {type(erreur).__name__}: {erreur}")
         if resultat.statut in (Statut.SUCCES, Statut.PARTIEL, Statut.A_CONFIRMER):
+            detail = dict(resultat.detail or {})
             return Resultat(
                 True,
                 resultat.message,
-                sortie=self._detail_lisible(resultat.detail or {}),
+                sortie=self._detail_lisible(detail),
+                donnees={"statut": resultat.statut.value, **detail},
             )
-        return Resultat(False, resultat.message)
+        return Resultat(
+            False,
+            resultat.message,
+            donnees={"statut": resultat.statut.value, **dict(resultat.detail or {})},
+        )
 
     def _via_case(self, capacite: str, confirmee: bool = False,
                   **parametres: Any) -> Resultat:
@@ -2394,6 +2401,7 @@ class DioumtoukayAgent(BaseAgent):
             "moteur": self._moteur_utilise(),
             "actions": rendu,
             "fichiers_modifies": fichiers_tache,
+            "documents": self.documents_produits(rendu_tache),
             "response": self._rapport(
                 conclusion,
                 rendu,
@@ -2503,8 +2511,55 @@ class DioumtoukayAgent(BaseAgent):
 
         champs_mutation = mutation.get("champs") or {}
         champs_verif = verification.get("champs") or {}
-        cible = champs_mutation.get("CHEMIN") or champs_mutation.get("DESTINATION") or ""
+        donnees_mutation = mutation.get("donnees") or {}
+        cible = (
+            champs_mutation.get("CHEMIN")
+            or champs_mutation.get("DESTINATION")
+            or donnees_mutation.get("fichier")
+            or ""
+        )
         sortie = str(verification.get("sortie") or "")
+
+        if str(mutation.get("action") or "").startswith("office_"):
+            if action not in {
+                "office_statut", "office_worktrees", "office_unites",
+                "office_inspecter", "office_lint",
+            }:
+                return False
+            donnees_verif = verification.get("donnees") or {}
+            cible_verif = (
+                champs_verif.get("CHEMIN")
+                or donnees_verif.get("fichier")
+                or ""
+            )
+
+            def meme_fichier(gauche: Any, droite: Any) -> bool:
+                if not gauche or not droite:
+                    return False
+                a = Path(str(gauche))
+                b = Path(str(droite))
+                return (
+                    str(gauche) == str(droite)
+                    or a.name == b.name
+                )
+
+            if not meme_fichier(cible, cible_verif):
+                return False
+
+            mutation_nom = mutation.get("action")
+            if mutation_nom in {"office_unite_creer", "office_executer"}:
+                wt_mut = champs_mutation.get("WORKTREE_ID", "")
+                wt_ver = champs_verif.get("WORKTREE_ID", "")
+                if wt_mut and wt_ver != wt_mut:
+                    return False
+            if mutation_nom == "office_executer" and action in {
+                "office_inspecter", "office_lint",
+            }:
+                unit_mut = champs_mutation.get("UNIT_ID", "")
+                unit_ver = champs_verif.get("UNIT_ID", "")
+                if unit_mut and unit_ver != unit_mut:
+                    return False
+            return True
 
         # Une CI lue avec succes n'est positive que si son VERDICT est vert.
         if action == "etat_ci":
@@ -2574,6 +2629,8 @@ class DioumtoukayAgent(BaseAgent):
         non_verifiees: List[Dict[str, Any]] = []
         for index, mutation in enumerate(rendu):
             if not mutation.get("ok") or mutation.get("action") not in ACTIONS_A_VERIFIER:
+                continue
+            if (mutation.get("donnees") or {}).get("statut") == Statut.A_CONFIRMER.value:
                 continue
             verifiee = any(
                 cls._preuve_positive(mutation, acte)
@@ -2807,11 +2864,45 @@ class DioumtoukayAgent(BaseAgent):
         for acte in rendu:
             if not acte["ok"] or acte["action"] not in ACTIONS_QUI_MODIFIENT:
                 continue
+            donnees = acte.get("donnees") or {}
+            # Une action mise en attente n'a encore modifié aucun fichier.
+            if donnees.get("statut") == Statut.A_CONFIRMER.value:
+                continue
             champs = acte.get("champs") or {}
-            ou = champs.get("CHEMIN") or champs.get("DESTINATION")
+            ou = (
+                donnees.get("fichier")
+                if acte["action"].startswith("office_")
+                else None
+            ) or champs.get("CHEMIN") or champs.get("DESTINATION")
             if ou and ou not in touches:
-                touches.append(ou)
+                touches.append(str(ou))
         return touches
+
+    @staticmethod
+    def documents_produits(rendu: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Exports Office réellement créés et téléchargeables par la PWA."""
+        documents: List[Dict[str, Any]] = []
+        for acte in rendu:
+            if not acte.get("ok") or acte.get("action") not in {
+                "office_exporter", "office_pdf",
+            }:
+                continue
+            donnees = acte.get("donnees") or {}
+            if donnees.get("statut") not in {
+                Statut.SUCCES.value, Statut.PARTIEL.value,
+            }:
+                continue
+            url = str(donnees.get("url") or "").strip()
+            fichier = str(donnees.get("fichier") or "").strip()
+            if not url.startswith("/media/rendered/office/") or not fichier:
+                continue
+            documents.append({
+                "statut": "SUCCESS",
+                "url": url,
+                "message": str(acte.get("message") or "Document Office créé."),
+                "fichier": fichier,
+            })
+        return documents
 
     @staticmethod
     def _sortie_pour_rapport(acte: Dict[str, Any], limite: int = 6_000) -> str:
