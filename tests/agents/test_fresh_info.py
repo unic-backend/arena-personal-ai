@@ -83,9 +83,14 @@ def agent_factory(provider_factory):
 # --- Chemin nominal ------------------------------------------------------------
 
 async def test_la_reponse_est_accompagnee_de_ses_sources(agent_factory):
+    # Des sources qui parlent du sujet : depuis DEC-0151, une page qui ne
+    # nomme pas « Python » n'entre plus dans la synthese d'une question sur
+    # Python (`test_fresh_info_first_question_relevance.py`).
+    sur_python = [dict(resultat(n), body=f"Python : resume {n}") for n in (1, 2)]
     agent = agent_factory(
-        [resultat(1), resultat(2)],
-        {"https://exemple.test/1": page_lue(1), "https://exemple.test/2": page_lue(2)},
+        sur_python,
+        {"https://exemple.test/1": page_lue(1, texte="Python 3.14, page 1."),
+         "https://exemple.test/2": page_lue(2, texte="Python 3.14, page 2.")},
     )
 
     res = await agent.run("Quelle est la derniere version de Python ?")

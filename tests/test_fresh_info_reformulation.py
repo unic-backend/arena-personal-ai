@@ -84,7 +84,11 @@ class TestReformulationDesQuestionsElliptiques:
 
         resultat = await agent.run("Celle de 2026", context={"session_id": "pwa"})
 
-        assert agent.search_tool.requetes == ["Qui a gagné la Coupe du Monde 2026 ?"], (
+        # Chaque recherche porte la question reformulee. (Depuis DEC-0151, une
+        # seconde passe sans filtre de date peut suivre quand aucun resultat ne
+        # nomme le sujet — c'est le cas des resultats factices ici — et elle
+        # porte la MEME question.)
+        assert set(agent.search_tool.requetes) == {"Qui a gagné la Coupe du Monde 2026 ?"}, (
             "la recherche est partie sur la question brute, pas sur la version "
             "reformulee — c'est exactement le bug rapporte"
         )
@@ -99,8 +103,12 @@ class TestReformulationDesQuestionsElliptiques:
 
         await agent.run("une question autonome")
 
-        assert agent.search_tool.requetes == ["une question autonome"]
-        assert len(modele.prompts) == 1, "un appel de reformulation a eu lieu sans session"
+        assert set(agent.search_tool.requetes) == {"une question autonome"}
+        # Aucune invite de reformulation. (Compter les appels ne suffit plus :
+        # depuis DEC-0151, une source qui ne parle pas du sujet n'atteint plus
+        # la synthese, qui n'est donc pas appelee ici non plus.)
+        assert not any("Réécris cette question" in p for p in modele.prompts), (
+            "un appel de reformulation a eu lieu sans session")
 
     @pytest.mark.asyncio
     async def test_sans_historique_la_question_part_telle_quelle(self):

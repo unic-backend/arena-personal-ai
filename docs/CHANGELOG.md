@@ -2,6 +2,16 @@
 
 ## [Non publié]
 
+### Corrigé — 28/09/2026 — La recherche web ne répond plus avec des pages hors sujet
+
+« Dernière version de Python » faisait lire un article sur GTA 6, « président
+du Sénégal » un article sur la Guinée : l'IA répondait à côté ou inventait.
+Seules les pages qui parlent du sujet de ta question sont maintenant lues ; une
+bonne page refusée par le site (Wikipédia, par exemple) garde au moins son
+extrait ; et un calendrier arrive au modèle ligne par ligne au lieu d'une
+colonne « Barcelone | Barcelone… ». S'il n'y a rien sur le sujet, ARENA le dit
+au lieu d'improviser (DEC-0151).
+
 ### Corrigé — 27/09/2026 — Une réponse « vérifiée sur le web » signale ce qu'elle n'a pas lu
 
 La réponse à une question d'actualité pouvait encore contenir un nom ou un

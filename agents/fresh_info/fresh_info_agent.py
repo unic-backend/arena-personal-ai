@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import unicodedata
 from typing import Any, Dict, List, Optional
 
 from core.agent.base_agent import BaseAgent
@@ -153,6 +154,24 @@ MOTS_HINT_ASSISTANT = frozenset({
     "reponse", "dernier", "dernière", "derniere", "match", "liga", "ligue",
     "champions", "championnat", "victoire", "score", "usman", "travail",
 })
+
+
+#: Mots d'une question qui ne nomment pas son sujet (sans accents) : le temps,
+#: le genre de la demande, des verbes courants. Voir `_sujet_de_la_question`.
+MOTS_SANS_SUJET = frozenset({
+    "aujourd", "hui", "jour", "jours", "hier", "demain", "soir", "matin", "semaine",
+    "mois", "annee", "maintenant", "actuellement", "actualite", "actualites", "actu",
+    "actus", "info", "infos", "information", "informations", "nouvelle", "nouvelles",
+    "neuf", "quoi", "dernier", "derniere", "derniers", "dernieres", "recent",
+    "recente", "recents", "recentes", "coute", "coutent", "vaut", "valent", "donne",
+    "dit", "passe", "arrive", "gagne", "perdu", "joue", "heure", "temps", "prix",
+})
+#: « fait-il », « donne-moi », « est-ce » : un verbe et son pronom, pas un sujet.
+PRONOM_ACCOLE = re.compile(r"-(?:t-)?(?:il|elle|ils|elles|on|moi|toi|nous|vous|je|tu|ce|y|en|le|la|les|lui|leur)$")
+
+
+def _sans_accents(mot: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFKD", mot) if not unicodedata.combining(c))
 
 
 class FreshInfoAgent(BaseAgent):
@@ -363,6 +382,14 @@ class FreshInfoAgent(BaseAgent):
         if not mots:
             return texte[:taille].strip()
 
+        # Une page-tableau (calendrier, classement) arrive une cellule par ligne :
+        # « Barcelone », « Getafe », « 10/10 »... Classees une a une, les cellules
+        # qui repetent le sujet remplissaient tout le budget et le modele recevait
+        # « Barcelone | Barcelone | Barcelone » (mesure du 28/09/2026 sur la page
+        # calendrier de footmercato). Les cellules courtes consecutives sont
+        # regroupees en lignes de tableau avant d'etre classees.
+        paragraphes = cls._regrouper_les_cellules(paragraphes)
+
         scores = []
         for rang, paragraphe in enumerate(paragraphes):
             bas = paragraphe.lower()
@@ -386,6 +413,50 @@ class FreshInfoAgent(BaseAgent):
 
         retenus.sort()
         return "\n".join(p for _, p in retenus)[:taille].strip()
+
+    @classmethod
+    def _sujet_de_la_question(cls, question: str) -> List[str]:
+        """Les mots qui nomment le SUJET d'une question, pour la barriere de
+        pertinence d'une premiere question (DEC-0151).
+
+        Plus strict que `_termes_ancrage` : « aujourd'hui » coupe en
+        « aujourd » + « hui », « fait-il », « jour », « infos » y passaient.
+        Ces mots-la figurent dans n'importe quelle page du jour : ils
+        rendaient la barriere passoire, ou lui faisaient refuser une question
+        generique (« les dernieres infos ») faute d'un mot qu'aucune page ne
+        porte. Une question sans sujet propre n'a pas de barriere.
+        """
+        return [
+            terme for terme in cls._termes_ancrage(question)
+            if terme not in DEICTIQUES_SUIVI
+            and _sans_accents(terme) not in MOTS_SANS_SUJET
+            and not PRONOM_ACCOLE.search(terme)
+        ]
+
+    #: Une « cellule » : assez courte pour n'etre qu'un morceau de ligne.
+    CELLULE_MAX = 40
+    #: Une ligne de tableau regroupee ne depasse pas cette taille.
+    LIGNE_DE_TABLEAU_MAX = 200
+
+    @classmethod
+    def _regrouper_les_cellules(cls, paragraphes: List[str]) -> List[str]:
+        """Joint les paragraphes tres courts consecutifs (« a | b | c »)."""
+        regroupes: List[str] = []
+        courant: List[str] = []
+        for paragraphe in paragraphes:
+            if len(paragraphe) <= cls.CELLULE_MAX:
+                if courant and len(" | ".join(courant + [paragraphe])) > cls.LIGNE_DE_TABLEAU_MAX:
+                    regroupes.append(" | ".join(courant))
+                    courant = []
+                courant.append(paragraphe)
+                continue
+            if courant:
+                regroupes.append(" | ".join(courant))
+                courant = []
+            regroupes.append(paragraphe)
+        if courant:
+            regroupes.append(" | ".join(courant))
+        return regroupes
 
     def _formater_les_sources(self, lues: List[Dict[str, Any]], part: int, question: str = "") -> str:
         blocs = []
@@ -667,6 +738,20 @@ class FreshInfoAgent(BaseAgent):
                 return repliee
         return reformulee
 
+    async def _chercher(self, question: str, recent: bool) -> List[Dict[str, str]]:
+        """Recherche bornee dans le temps, hors de la boucle (`search` bloque)."""
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.search_tool.search, question,
+                    max_results=RESULTATS_RECHERCHE, recent=recent,
+                ),
+                timeout=DELAI_RECHERCHE_SECONDES,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"Recherche abandonnee apres {DELAI_RECHERCHE_SECONDES} s")
+            return []
+
     async def run(
         self, user_input: str, context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
@@ -689,17 +774,7 @@ class FreshInfoAgent(BaseAgent):
             logger.info("FreshInfoAgent cherche : %s", question)
         # `search` est bloquant : lance tel quel, il fige la boucle et donc tout
         # le serveur. Il part dans un fil d execution, avec un plafond.
-        try:
-            resultats = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.search_tool.search, question,
-                    max_results=RESULTATS_RECHERCHE, recent=True,
-                ),
-                timeout=DELAI_RECHERCHE_SECONDES,
-            )
-        except asyncio.TimeoutError:
-            logger.warning(f"Recherche abandonnee apres {DELAI_RECHERCHE_SECONDES} s")
-            resultats = []
+        resultats = await self._chercher(question, recent=True)
 
         if not resultats:
             return {
@@ -731,8 +806,57 @@ class FreshInfoAgent(BaseAgent):
                 reverse=True,
             )
 
+        # Premiere question (pas un suivi) : meme barriere de pertinence que pour
+        # un suivi, sur le sujet de la question elle-meme (DEC-0151). Mesure du
+        # 28/09/2026 sur le vrai moteur : « derniere version de Python » envoyait
+        # un article sur GTA 6 a la synthese, « president du Senegal » un article
+        # sur la Guinee, « quel temps a Dakar » un article sur l'IA. Le modele
+        # repondait alors a cote — ou inventait.
+        ancres_question = [] if ancres_suivi else self._sujet_de_la_question(question)
+        if ancres_question:
+            pertinents = [r for r in resultats
+                          if self._source_mentionne_une_ancre(r, ancres_question)]
+            if not pertinents:
+                # La passe « actualites du jour » remplit les resultats avec ce
+                # qui s'est publie aujourd'hui, pertinent ou non ; la passe web
+                # sans date — celle qui trouve python.org ou Wikipedia — n'a
+                # alors jamais lieu (mesure du 28/09/2026). Une seconde
+                # recherche, sans filtre de fraicheur, lui laisse sa chance.
+                logger.info("Aucun resultat du jour sur %s : recherche sans date.",
+                            ", ".join(ancres_question))
+                pertinents = [r for r in await self._chercher(question, recent=False)
+                              if self._source_mentionne_une_ancre(r, ancres_question)]
+            if not pertinents:
+                logger.warning("Aucun resultat ne parle de : %s", ", ".join(ancres_question))
+                return {
+                    "status": "warning",
+                    "agent": self.name,
+                    "query": question,
+                    "sources": [],
+                    "response": (
+                        "J'ai cherche, mais aucun resultat ne parle de "
+                        f"« {', '.join(ancres_question)} ». Je prefere le dire plutot "
+                        "que repondre avec des pages hors sujet."
+                    ),
+                }
+            resultats = pertinents
+
         pages = await self._lire_les_pages(resultats)
         lues = [p for p in pages if p["status"] == "FETCHED" and p["text"].strip()]
+        if ancres_question:
+            lues = [p for p in lues if self._source_mentionne_une_ancre(p, ancres_question)]
+
+        # Une page pertinente illisible (403, delai) garde son extrait de
+        # recherche : c'etait souvent la bonne source — Wikipedia refusee, un
+        # article hors sujet lisible, et c'est lui seul qui partait a la synthese.
+        if lues and ancres_question:
+            lues_urls = {p["url"] for p in lues}
+            candidats = [r for r in resultats if r.get("href")][: self.sources_max]
+            lues += [
+                secours for secours in self._sources_de_secours(
+                    [r for r in candidats if r["href"] not in lues_urls])
+                if self._source_mentionne_une_ancre(secours, ancres_question)
+            ]
 
         if not lues:
             # Les sites d actualite refusent souvent les robots : aucune page
