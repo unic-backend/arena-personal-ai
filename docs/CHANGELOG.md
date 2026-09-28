@@ -2,6 +2,15 @@
 
 ## [Non publié]
 
+### Corrigé — 28/09/2026 — La recherche web trouve la météo, l'année et la bonne page
+
+« Quel temps fait-il à Dakar ? » renvoyait des articles qui citaient Dakar sans
+parler de météo ; « Ballon d'or 2025 » pouvait tomber sur l'édition 2026 ;
+« population du Sénégal » ne ramenait que des articles du jour. Une page doit
+maintenant parler de l'essentiel de ta question (la météo ET Dakar), l'année
+compte, et un fait stable se cherche d'abord sur le web plutôt que dans les
+actualités du jour (DEC-0153).
+
 ### Corrigé — 28/09/2026 — La recherche web ne répond plus avec des pages hors sujet
 
 « Dernière version de Python » faisait lire un article sur GTA 6, « président

@@ -165,7 +165,33 @@ MOTS_SANS_SUJET = frozenset({
     "neuf", "quoi", "dernier", "derniere", "derniers", "dernieres", "recent",
     "recente", "recents", "recentes", "coute", "coutent", "vaut", "valent", "donne",
     "dit", "passe", "arrive", "gagne", "perdu", "joue", "heure", "temps", "prix",
+    "remporte", "remportee", "aura", "auront", "lieu", "prochain", "prochaine",
+    "prochains", "prochaines",
+    # L'issue d'un match, pas son sujet : la page ecrit « s'est impose »,
+    # « bat », « but de » — et la majorite stricte (DEC-0153) les exigerait.
+    "victoire", "victoires", "defaite", "defaites", "battu", "battue", "bat",
+    "marque", "marquee", "contre", "vainqueur", "gagnant", "gagnante",
 })
+#: Mots (sans accents) qui disent qu'une question porte sur l'ACTUALITE. Sans
+#: eux, « population du Senegal » ou « president du Senegal » partaient
+#: d'abord dans les actualites du jour et n'en ramenaient que des articles
+#: qui citent le pays en passant (mesure du 28/09/2026).
+MOTS_D_ACTUALITE = frozenset({
+    "aujourd", "hier", "demain", "soir", "semaine", "actuel", "actuelle",
+    "actuellement", "actualite", "actualites", "actu", "actus", "nouvelle",
+    "nouvelles", "news", "dernier", "derniere", "derniers", "dernieres", "recent",
+    "recente", "recents", "recentes", "maintenant", "moment", "live", "direct",
+    "meteo", "temps", "cours", "score", "resultat", "resultats",
+})
+#: Une annee ecrite dans la question fait partie de son sujet.
+#: Un mot du sujet ajoute par l'agent se reconnait sous ses autres formes :
+#: une page de meteo anglaise ecrit « weather », une francaise « prévisions ».
+FORMES_DU_SUJET = {
+    "météo": ("météo", "weather", "température", "temperature", "prévisions", "forecast"),
+}
+
+ANNEE = re.compile(r"\b(?:19|20)\d{2}\b")
+
 #: « fait-il », « donne-moi », « est-ce » : un verbe et son pronom, pas un sujet.
 PRONOM_ACCOLE = re.compile(r"-(?:t-)?(?:il|elle|ils|elles|on|moi|toi|nous|vous|je|tu|ce|y|en|le|la|les|lui|leur)$")
 
@@ -426,12 +452,30 @@ class FreshInfoAgent(BaseAgent):
         generique (« les dernieres infos ») faute d'un mot qu'aucune page ne
         porte. Une question sans sujet propre n'a pas de barriere.
         """
-        return [
+        sujet = [
             terme for terme in cls._termes_ancrage(question)
             if terme not in DEICTIQUES_SUIVI
             and _sans_accents(terme) not in MOTS_SANS_SUJET
             and not PRONOM_ACCOLE.search(terme)
         ]
+        # « Ballon d'or 2025 » : sans l'annee, les pages sur l'edition 2026
+        # passaient la barriere (mesure du 28/09/2026). Seulement quand la
+        # question a deja un sujet : « quoi de neuf en 2026 » n'en a pas.
+        if sujet:
+            sujet += [a for a in ANNEE.findall(question or "") if a not in sujet]
+            # « Quel temps fait-il a Dakar » : le sujet est la meteo de Dakar,
+            # pas Dakar — sinon tout article du site « dakar92 » passait
+            # (mesure du 28/09/2026).
+            mots = {_sans_accents(m) for m in re.findall(r"[\wÀ-ÿ]+", (question or "").casefold())}
+            if mots & {"meteo", "temperature", "pluie"} or {"temps", "fait"} <= mots:
+                sujet.append("météo")
+        return sujet
+
+    @staticmethod
+    def _porte_sur_l_actualite(question: str) -> bool:
+        """La question demande-t-elle du frais (DEC-0151) ?"""
+        mots = re.findall(r"[\wÀ-ÿ]+", (question or "").casefold())
+        return any(_sans_accents(mot) in MOTS_D_ACTUALITE for mot in mots)
 
     #: Une « cellule » : assez courte pour n'etre qu'un morceau de ligne.
     CELLULE_MAX = 40
@@ -689,6 +733,24 @@ class FreshInfoAgent(BaseAgent):
         # sinon la barriere refuse a tort une source anglaise du bon match.
         return any(terme_present(ancre, corpus) for ancre in ancres)
 
+    @classmethod
+    def _source_parle_du_sujet(cls, page: Dict[str, Any], sujet: List[str]) -> bool:
+        """La source nomme au moins la moitie des mots du sujet (DEC-0151).
+
+        Un seul mot ne suffit pas pour un sujet a plusieurs mots : mesure du
+        28/09/2026, « Ligue des champions » laissait passer un article sur le
+        Venezuela qui portait « Ligue » dans son menu, « population du
+        Senegal » des articles sur l'education au Senegal.
+        """
+        if not sujet:
+            return True
+        trouves = sum(
+            1 for terme in sujet
+            if cls._source_mentionne_une_ancre(page, list(FORMES_DU_SUJET.get(terme, (terme,)))))
+        # Majorite stricte : pour deux mots, les deux. Mesure du 28/09/2026,
+        # « meteo de Dakar » laissait passer tout article nommant Dakar.
+        return trouves > len(sujet) // 2
+
     async def _reformuler_si_ellipse(
         self, user_input: str, context: Optional[Dict[str, Any]]
     ) -> str:
@@ -774,7 +836,16 @@ class FreshInfoAgent(BaseAgent):
             logger.info("FreshInfoAgent cherche : %s", question)
         # `search` est bloquant : lance tel quel, il fige la boucle et donc tout
         # le serveur. Il part dans un fil d execution, avec un plafond.
-        resultats = await self._chercher(question, recent=True)
+        # Filtre de fraicheur seulement pour une question d'actualite : un fait
+        # stable (population, president, taux de change) se trouve sur une
+        # page de reference, pas dans les articles du jour.
+        recente = self._porte_sur_l_actualite(question) or bool(ancres_suivi)
+        resultats = await self._chercher(question, recent=recente)
+        if not resultats:
+            # Un moteur qui ne repond pas (delai, poignee de main TLS) vide une
+            # passe entiere ; l'autre mode interroge d'autres pages et d'autres
+            # moteurs (mesure du 28/09/2026 : une recherche sur deux vide).
+            resultats = await self._chercher(question, recent=not recente)
 
         if not resultats:
             return {
@@ -815,17 +886,19 @@ class FreshInfoAgent(BaseAgent):
         ancres_question = [] if ancres_suivi else self._sujet_de_la_question(question)
         if ancres_question:
             pertinents = [r for r in resultats
-                          if self._source_mentionne_une_ancre(r, ancres_question)]
+                          if self._source_parle_du_sujet(r, ancres_question)]
             if not pertinents:
                 # La passe « actualites du jour » remplit les resultats avec ce
                 # qui s'est publie aujourd'hui, pertinent ou non ; la passe web
                 # sans date — celle qui trouve python.org ou Wikipedia — n'a
                 # alors jamais lieu (mesure du 28/09/2026). Une seconde
-                # recherche, sans filtre de fraicheur, lui laisse sa chance.
-                logger.info("Aucun resultat du jour sur %s : recherche sans date.",
-                            ", ".join(ancres_question))
-                pertinents = [r for r in await self._chercher(question, recent=False)
-                              if self._source_mentionne_une_ancre(r, ancres_question)]
+                # recherche, dans l'autre mode (sans filtre de fraicheur apres
+                # les actualites, actualites apres le web), lui laisse sa chance.
+                logger.info("Aucun resultat sur %s : recherche %s.",
+                            ", ".join(ancres_question),
+                            "sans date" if recente else "dans les actualites")
+                pertinents = [r for r in await self._chercher(question, recent=not recente)
+                              if self._source_parle_du_sujet(r, ancres_question)]
             if not pertinents:
                 logger.warning("Aucun resultat ne parle de : %s", ", ".join(ancres_question))
                 return {
@@ -844,7 +917,7 @@ class FreshInfoAgent(BaseAgent):
         pages = await self._lire_les_pages(resultats)
         lues = [p for p in pages if p["status"] == "FETCHED" and p["text"].strip()]
         if ancres_question:
-            lues = [p for p in lues if self._source_mentionne_une_ancre(p, ancres_question)]
+            lues = [p for p in lues if self._source_parle_du_sujet(p, ancres_question)]
 
         # Une page pertinente illisible (403, delai) garde son extrait de
         # recherche : c'etait souvent la bonne source — Wikipedia refusee, un
@@ -855,7 +928,7 @@ class FreshInfoAgent(BaseAgent):
             lues += [
                 secours for secours in self._sources_de_secours(
                     [r for r in candidats if r["href"] not in lues_urls])
-                if self._source_mentionne_une_ancre(secours, ancres_question)
+                if self._source_parle_du_sujet(secours, ancres_question)
             ]
 
         if not lues:
