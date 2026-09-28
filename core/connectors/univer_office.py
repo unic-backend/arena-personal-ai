@@ -217,7 +217,7 @@ class ConnecteurUniverOffice(Connecteur):
                 mesure_le=_maintenant(),
             )
         version = (resultat.stdout or resultat.stderr or "").strip()
-        trouvee = re.search(r"(?<!\\d)(\\d+\\.\\d+\\.\\d+)(?!\\d)", version)
+        trouvee = re.search(r"(?<![0-9])([0-9]+[.][0-9]+[.][0-9]+)(?![0-9])", version)
         if trouvee is None or trouvee.group(1) != VERSION_ATTENDUE:
             return Sante(
                 etat=EtatSante.EN_PANNE,
