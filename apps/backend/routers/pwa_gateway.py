@@ -977,28 +977,31 @@ def _etat_du_moteur(nom_connecteur: str) -> Dict[str, Any]:
 
 
 def _documents_produits(resultat: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Les documents REELLEMENT ecrits pendant ce tour, avec leur adresse.
+    """Documents réellement créés et servis par une route locale protégée."""
+    trouves: List[Dict[str, Any]] = []
 
-    Depuis le 04/09/2026, le devis PDF ne passe plus par la confirmation
-    (`config/permissions_services.yaml`, demande du proprietaire) : il est
-    ecrit tout de suite. Le bouton de confirmation, qui portait jusqu'ici le
-    lien de telechargement, ne s'affiche donc plus — et sans ce champ le
-    fichier existerait sans qu'aucun ecran ne puisse l'ouvrir.
+    def ajouter(document: Any) -> None:
+        if not isinstance(document, dict):
+            return
+        url = str(document.get("url") or "").strip()
+        if document.get("statut") != "SUCCESS":
+            return
+        # La PWA ne reçoit jamais un lien arbitraire construit par un modèle :
+        # seuls les fichiers servis par ARENA sous /media/rendered sont exposés.
+        if not url.startswith("/media/rendered/"):
+            return
+        trouves.append({
+            "url": url,
+            "action": "produire",
+            "message": str(document.get("message") or ""),
+        })
 
-    Seul un document dont l'ecriture a REUSSI et qui porte une adresse entre
-    ici. Un `NEEDS_CONFIRMATION`, un `INCOMPLET` ou un echec n'a pas de
-    fichier a offrir : il n'en fabrique pas un.
-    """
-    document = resultat.get("document")
-    if not isinstance(document, dict):
-        return []
-    if document.get("statut") != "SUCCESS" or not document.get("url"):
-        return []
-    return [{
-        "url": document["url"],
-        "action": "produire",
-        "message": document.get("message") or "",
-    }]
+    ajouter(resultat.get("document"))
+    documents = resultat.get("documents")
+    if isinstance(documents, list):
+        for document in documents:
+            ajouter(document)
+    return trouves
 
 
 def _actions_en_attente() -> List[Dict[str, Any]]:
@@ -1069,6 +1072,27 @@ def _confirmer_par_la_phrase(texte: str) -> Optional[Dict[str, Any]]:
     resultat = file_attente.confirmer(action.identifiant)
     logger.info("Confirme a la voix : %s (%s)", action.identifiant, resultat.statut.value)
     return {"id": action.identifiant, "texte": resultat.message}
+
+
+def _nettoyer_staging_office(chemins: List[str]) -> None:
+    """Supprime uniquement les binaires temporaires de CE tour.
+
+    Une pièce importée avec succès a déjà été retirée par le connecteur.
+    Celle que le modèle n'a finalement pas utilisée ne doit pas dormir
+    indéfiniment dans data/univer/imports.
+    """
+    racine = (UNIVER_WORKSPACE_DIR / "imports").resolve()
+    for brut in chemins:
+        try:
+            chemin = Path(brut).resolve()
+            chemin.relative_to(racine)
+        except (ValueError, OSError):
+            logger.warning("Nettoyage Office ignoré hors staging : %r", brut)
+            continue
+        try:
+            chemin.unlink(missing_ok=True)
+        except OSError as erreur:
+            logger.warning("Staging Office non supprimé (%s) : %s", chemin.name, erreur)
 
 
 @router.post("/agent/stream", dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
@@ -1497,6 +1521,8 @@ async def flux_agent(demande: DemandeAgent):
                     session_id=session, role="assistant",
                     content=f"{debut}\n{coupure}" if debut else coupure)
             yield erreur(f"ARENA n'a pas pu terminer : {souci}")
+        finally:
+            _nettoyer_staging_office(demande.office_paths)
 
     return StreamingResponse(flux(), media_type="text/event-stream")
 
