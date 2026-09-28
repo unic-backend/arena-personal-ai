@@ -11739,6 +11739,37 @@ seul fournisseur.
 recalcule par le modele, un arrondi) est signale a tort ; le proprietaire voit
 un avertissement de trop, jamais un montant invente presente comme un constat.
 
+## DEC-0161 — La relecture des sous-titres est appliquee pour de vrai, ou n'est pas annoncee
+
+**2026-09-28.**
+
+**Constat** (lecture de `agents/subtitle/subtitle_agent.py`, reproduit par
+test) : en mode **segments** — le cas normal, Whisper rend des segments — la
+correction du modele etait **jetee** : seules les apostrophes etaient
+recollees, et « de vie du chantier » restait tel quel. En mode **mots**, elle
+n'etait appliquee que si le nombre de mots restait identique, donc jamais pour
+le cas vise (« de vie » -> « devis »). Dans les deux cas, la reponse annoncait
+« Sous-titres corriges » et `corrigee=True` : le meme mensonge que celui
+repare le 01/09/2026, par un autre chemin.
+
+**Decision** :
+
+- segments : les lignes sont envoyees numerotees ([1], [2]...) et chaque
+  ligne corrigee est reappliquee a son segment ;
+- mots : alignement `difflib` — un remplacement (« de vie » -> « devis »)
+  prend la duree des mots remplaces ; un mot **ajoute** par le modele n'entre
+  pas (il n'a pas ete prononce) ; un mot **retire** reste (il l'a ete) ;
+- toute proposition trop eloignee du texte entendu (`SIMILARITE_MINIMALE`,
+  0,6) n'est pas appliquee : c'est une reecriture, pas une correction ;
+- `corrigee` n'est vrai que si une correction a ete appliquee ; sinon le
+  message dit « SANS relecture » et pourquoi (modele muet, ou proposition
+  ecartee).
+
+**Ce que ca coute si c'est faux** : une vraie correction tres lourde d'une
+ligne courte (plusieurs mots mal entendus sur trois) passe sous le seuil et
+n'est pas appliquee ; les sous-titres gardent ce que Whisper a entendu, et le
+message le dit — jamais un texte que personne n'a prononce.
+
 ## DEC-0160 — Analyse de transcription, compte rendu de reunion et reponse sur une page sont relus
 
 **2026-09-28.**

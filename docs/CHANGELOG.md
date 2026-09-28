@@ -24,6 +24,15 @@ n'était ni dans ce qui a été dit, ni dans la page. C'est maintenant signalé
 sous la réponse ; et l'analyse d'une vidéo ne demande plus l'avis d'un autre
 agent qui répondrait de mémoire (DEC-0160).
 
+### Corrigé — 28/09/2026 — « Sous-titres corrigés » : maintenant, ils le sont vraiment
+
+ARENA annonçait des sous-titres corrigés alors que la correction du modèle
+était jetée : « de vie du chantier » restait écrit tel quel. La correction est
+maintenant réellement appliquée (« de vie » devient « devis », au bon
+moment) ; un mot que personne n'a prononcé n'est jamais ajouté ; et si la
+correction s'éloigne trop de ce qui a été dit, elle n'est pas appliquée et le
+message le dit (DEC-0161).
+
 ### Corrigé — 28/09/2026 — Les conseils d'affaires signalent un montant inventé
 
 Quand ARENA évalue un projet (marge, délais, risques), chaque rôle fait
