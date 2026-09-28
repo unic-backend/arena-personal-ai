@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from agents.orchestrator.orchestrator_agent import PHRASES_TABLE_RONDE
 from agents.plaquiste.plaquiste_agent import champs_demandes_au_tour_precedent
 from agents.video_analyzer.video_analyzer_agent import demande_de_suivi
-from apps.backend.config import AGENTS_SPECIALISES, MEDIA_DIR
+from apps.backend.config import AGENTS_SPECIALISES, MEDIA_DIR, UNIVER_WORKSPACE_DIR
 from apps.backend.prompts import prompt_avec_methode
 from apps.backend.reasoning_bridge import resoudre_profondement
 from apps.backend.runtime import (
@@ -83,6 +83,9 @@ class ChatRequest(BaseModel):
     video_path: Optional[str] = None
     region: Optional[str] = "Sénégal"
     attachments: List[str] = Field(default_factory=list)
+    # Chemins serveur issus UNIQUEMENT de /office/files. Ils sont encore
+    # revalidés sous data/univer/imports avant d'atteindre l'agent.
+    office_paths: List[str] = Field(default_factory=list)
     # Les deux champs suivants ne servent qu'a PLAQUISTE (chapitre metier,
     # capture deterministe du destinataire d'un devis — DEC a venir) :
     # `history` porte les tours precedents, structures ; `message_actuel`
@@ -143,6 +146,38 @@ def _veut_un_design_system(demande: str) -> bool:
     """Vrai si la demande reclame un systeme complet, pas une recherche."""
     texte = demande.lower()
     return any(forme in texte for forme in FORMES_DESIGN_SYSTEM)
+
+
+EXTENSIONS_OFFICE_JOINTES = frozenset({
+    ".xls", ".xlsx", ".xlsm", ".doc", ".docx",
+    ".ppt", ".pptx", ".pptm", ".ppsx", ".ppsm", ".potx",
+})
+
+
+def sources_office_jointes(chemins: List[str]) -> List[str]:
+    """Retourne seulement les binaires Office réellement déposés par la PWA."""
+    racine = (UNIVER_WORKSPACE_DIR / "imports").resolve()
+    resultats: List[str] = []
+    deja: set[str] = set()
+    for brut in chemins:
+        try:
+            chemin = Path(brut).resolve()
+            chemin.relative_to(racine)
+        except (ValueError, OSError):
+            logger.warning("Chemin Office joint refusé hors staging : %r", brut)
+            continue
+        if chemin.suffix.lower() not in EXTENSIONS_OFFICE_JOINTES:
+            logger.warning("Extension Office jointe refusée : %s", chemin.name)
+            continue
+        try:
+            valide = chemin.is_file() and chemin.stat().st_size > 0
+        except OSError:
+            valide = False
+        cle = str(chemin)
+        if valide and cle not in deja:
+            resultats.append(cle)
+            deja.add(cle)
+    return resultats
 
 
 def images_analysables(video_path: Optional[str] = None) -> List[str]:
@@ -992,6 +1027,7 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         # qui lit et propose sans jamais rien modifier. DEC-0038.
         result = await dioumtoukay_agent.run(request.prompt, context={
             "session_id": session_id,
+            "office_paths": sources_office_jointes(request.office_paths),
         })
     elif intent == "RAG_DOCS":
         # Ses documents restent hors de l index tant que personne ne les y met.
