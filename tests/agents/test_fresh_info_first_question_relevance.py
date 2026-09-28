@@ -116,7 +116,8 @@ import pytest  # noqa: E402
 
 
 @pytest.mark.parametrize("question, sujet", [
-    ("Quel temps fait-il à Dakar aujourd'hui ?", ["dakar"]),
+    # « météo » est ajoute par DEC-0153 : c'est le sujet, pas du temps qui passe.
+    ("Quel temps fait-il à Dakar aujourd'hui ?", ["dakar", "météo"]),
     ("Qui est le président du Sénégal ?", ["sénégal"]),
     ("Quel est le prix du bitcoin aujourd'hui ?", ["bitcoin"]),
     ("Combien coûte l'iPhone 17 ?", ["iphone"]),
@@ -168,3 +169,81 @@ async def test_sans_resultat_du_jour_sur_le_sujet_une_recherche_sans_date_suit()
 
     assert agent.search_tool.appels == [True, False]
     assert [s["url"] for s in resultat["sources"]] == ["https://exemple.test/2"]
+
+
+@pytest.mark.parametrize("question, sujet", [
+    # L'annee fait partie du sujet : sans elle, l'edition 2026 passait.
+    ("Qui a remporté le Ballon d'or 2025 ?", ["ballon", "2025"]),
+    ("Quand aura lieu la prochaine élection présidentielle au Sénégal ?",
+     ["présidentielle", "sénégal"]),
+    # La meteo de Dakar, pas Dakar : sinon le site « dakar92 » passait.
+    ("Quel temps fait-il à Dakar aujourd'hui ?", ["dakar", "météo"]),
+    # L'issue d'un match n'est pas son sujet : la page ecrit « s'est impose ».
+    ("derniere victoire du real", ["real"]),
+    ("Qui a marqué contre le Maroc ?", ["maroc"]),
+])
+def test_le_sujet_garde_l_annee_et_la_meteo(question, sujet):
+    assert FreshInfoAgent._sujet_de_la_question(question) == sujet
+
+
+@pytest.mark.parametrize("question, actualite", [
+    ("Quelle est la population du Sénégal ?", False),
+    ("Qui est le président du Sénégal ?", False),
+    ("Quel est le taux de change de l'euro en franc CFA ?", False),
+    ("Quel est le prix du bitcoin aujourd'hui ?", True),
+    ("Quelles sont les dernières nouvelles de Sadio Mané ?", True),
+    ("Quel temps fait-il à Dakar ?", True),
+])
+def test_seule_une_question_d_actualite_passe_d_abord_par_les_actualites(question, actualite):
+    assert FreshInfoAgent._porte_sur_l_actualite(question) is actualite
+
+
+class _RechercheSelonLeMode:
+    def __init__(self, avec_date, sans_date):
+        self.avec_date, self.sans_date = avec_date, sans_date
+        self.appels = []
+
+    def search(self, query, max_results=5, recent=False):
+        self.appels.append(recent)
+        return self.avec_date if recent else self.sans_date
+
+
+async def test_un_fait_stable_se_cherche_d_abord_sans_filtre_de_date():
+    """Mesure du 28/09/2026 : « population du Senegal » ne ramenait des
+    actualites du jour que des articles citant le pays en passant ; le web
+    sans date rend Wikipedia et l'ANSD."""
+    recherche = _RechercheSelonLeMode(
+        avec_date=[], sans_date=[_resultat(1, "Démographie du Sénégal", "population 18 millions")])
+    agent = FreshInfoAgent(provider=_Modele(), search_tool=recherche, fetcher=_Lecture(
+        {"https://exemple.test/1": _page(1, "Démographie du Sénégal", "Population du Sénégal : 18 millions.")}))
+
+    resultat = await agent.run("Quelle est la population du Sénégal ?")
+
+    assert recherche.appels == [False]
+    assert resultat["status"] == "success"
+
+
+async def test_un_mode_vide_laisse_sa_chance_a_l_autre():
+    """Une recherche sur deux revenait vide quand un moteur ne repondait pas
+    (delai, poignee de main TLS) : l'autre mode interroge d'autres moteurs."""
+    recherche = _RechercheSelonLeMode(
+        avec_date=[_resultat(1, "Démographie du Sénégal", "population 18 millions")], sans_date=[])
+    agent = FreshInfoAgent(provider=_Modele(), search_tool=recherche, fetcher=_Lecture(
+        {"https://exemple.test/1": _page(1, "Démographie du Sénégal", "Population du Sénégal : 18 millions.")}))
+
+    resultat = await agent.run("Quelle est la population du Sénégal ?")
+
+    assert recherche.appels == [False, True]
+    assert resultat["status"] == "success"
+
+
+@pytest.mark.parametrize("page, attendu", [
+    # Mesure du 28/09/2026 : trois articles nommant Dakar (management, art,
+    # JOJ) passaient pour « Quel temps fait-il a Dakar » — aucun meteo.
+    ({"title": "Dak'Art 92 : quand Dakar devenait le carrefour de l'art", "text": ""}, False),
+    ({"title": "Météo Dakar : prévisions à 10 jours", "text": ""}, True),
+    ({"title": "Dakar, Senegal Weather Forecast", "text": ""}, True),
+    ({"title": "Prévisions : 31 °C attendus", "text": "sans nommer la ville"}, False),
+])
+def test_un_sujet_a_deux_mots_les_demande_tous_les_deux(page, attendu):
+    assert FreshInfoAgent._source_parle_du_sujet(page, ["dakar", "météo"]) is attendu
