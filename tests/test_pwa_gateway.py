@@ -2046,3 +2046,45 @@ def test_un_media_joint_a_la_pwa_arrive_au_chemin_specialise(
         and charge.get("text") == "Compte rendu vérifié."
         for charge in charges
     )
+
+
+
+def test_documents_office_structures_deviennent_telechargeables():
+    resultat = {
+        "documents": [
+            {
+                "statut": "SUCCESS",
+                "url": "/media/rendered/office/budget-abc.xlsx",
+                "message": "Export XLSX créé.",
+            },
+            {
+                "statut": "SUCCESS",
+                "url": "https://exemple.test/fuite.xlsx",
+                "message": "Lien externe interdit.",
+            },
+        ]
+    }
+
+    documents = pwa_gateway._documents_produits(resultat)
+
+    assert documents == [{
+        "url": "/media/rendered/office/budget-abc.xlsx",
+        "action": "produire",
+        "message": "Export XLSX créé.",
+    }]
+
+
+def test_nettoyage_office_supprime_uniquement_le_staging(tmp_path, monkeypatch):
+    racine = tmp_path / "univer"
+    staging = racine / "imports"
+    staging.mkdir(parents=True)
+    temporaire = staging / "budget.xlsx"
+    temporaire.write_bytes(b"xlsx")
+    durable = tmp_path / "ne-pas-toucher.xlsx"
+    durable.write_bytes(b"xlsx")
+    monkeypatch.setattr(pwa_gateway, "UNIVER_WORKSPACE_DIR", racine)
+
+    pwa_gateway._nettoyer_staging_office([str(temporaire), str(durable)])
+
+    assert not temporaire.exists()
+    assert durable.exists()
