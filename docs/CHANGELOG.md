@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Corrigé — 28/09/2026 — L'analyse financière ne cite plus un cours de mémoire
+
+« Analyse le bitcoin » mesurait bien le prix, mais ne le donnait pas au modèle
+qui rédige l'explication : il pouvait écrire un cours de mémoire. Il reçoit
+maintenant le prix mesuré, et tout chiffre de son explication qui ne vient pas
+des données est signalé sous la réponse (DEC-0156).
+
 ### Corrigé — 28/09/2026 — La recherche web trouve la météo, l'année et la bonne page
 
 « Quel temps fait-il à Dakar ? » renvoyait des articles qui citaient Dakar sans

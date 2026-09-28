@@ -11635,3 +11635,27 @@ question sans source ; l'agent le dit au lieu d'improviser.
 mots du sujet est ecartee (une fiche meteo titree « Dakar » seul, sans
 « météo » ni « prévisions ») ; la reponse devient un refus ou une page voisine
 — jamais une invention.
+
+## DEC-0156 — L'interpretation financiere recoit le prix mesure et est relue contre ce qu'elle a recu
+
+**2026-09-28.**
+
+**Constat** (audit des chemins d'hallucination) : `FinanceAgent` mesure le prix
+(CoinGecko) mais ne le donnait pas au modele d'interpretation, qui ne recevait
+que tendance, rendement, volatilite, RSI et risque. Un « analyse le bitcoin »
+appelle naturellement un cours : un modele local l'ecrivait de memoire, malgre
+« N'invente AUCUN chiffre », et rien ne relisait la reponse — contrairement a
+la reponse web depuis DEC-0150.
+
+**Decision** (`agents/finance/finance_agent.py`) :
+
+- la consigne porte « Prix actuel (mesure) » : le prix au comptant confirme,
+  sinon le dernier point de l'historique, sinon « non disponible » ;
+- l'interpretation est relue par `elements_sans_source` contre la consigne
+  qu'elle a recue ; ce qui n'y figure pas est signale sous la reponse
+  (`avertissement_sources`) et dans le champ `sans_source` — jamais reecrit.
+
+**Ce que ca coute si c'est faux** : un chiffre juste mais reformule
+autrement que dans la consigne (un arrondi a la centaine, « 64 000 » pour
+64 390) est signale a tort ; le proprietaire voit un avertissement de trop,
+jamais un chiffre invente sans avertissement.
