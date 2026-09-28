@@ -1148,7 +1148,12 @@ async def flux_agent(demande: DemandeAgent):
             lecture = Etape("analysis", mots["lecture"])
             yield lecture.ouvrir()
             intention = await classer_la_demande(
-                demande.text, demande.history, session, espace=demande.espace)
+                demande.text,
+                demande.history,
+                session,
+                espace=demande.espace,
+                office_joint=bool(demande.office_paths),
+            )
             yield lecture.fermer(intention)
             voie = voie_pour(intention)
             # Ce que ce tour aura reellement coute. La cible vient de la voie ;
