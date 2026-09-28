@@ -32,6 +32,7 @@ def test_sonde_execute_reellement_le_binaire(tmp_path):
         dossier_rendus=tmp_path / "rendus",
         binaire=str(_fake_univer(tmp_path)),
         racines_import=[tmp_path],
+        mode_production=False,
     )
 
     sante = connecteur.sonder()
@@ -174,3 +175,38 @@ def test_politique_ne_laisse_pas_execute_et_merge_partir_sans_confirmation():
     assert office["execute"]["interrupteur"] == "EXECUTE_COMMANDS"
     assert office["merge"]["decision"] == "CONFIRMATION"
     assert office["destroy"]["decision"] == "CONFIRMATION"
+
+
+
+def test_production_refuse_le_runtime_developpement_sans_licence(
+    tmp_path, monkeypatch,
+):
+    monkeypatch.delenv("UNIVER_LICENSE", raising=False)
+    connecteur = ConnecteurUniverOffice(
+        dossier=tmp_path / "workspace",
+        binaire=str(_fake_univer(tmp_path)),
+        racines_import=[tmp_path],
+        mode_production=True,
+    )
+
+    sante = connecteur.sonder()
+
+    assert sante.etat.value == "NOT_CONFIGURED"
+    assert "licence" in (sante.ce_qui_manque or "").lower()
+
+
+def test_deux_exports_du_meme_nom_n_ecrasent_jamais_le_precedent(tmp_path):
+    connecteur = ConnecteurUniverOffice(
+        dossier=tmp_path / "workspace",
+        dossier_rendus=tmp_path / "rendus",
+        binaire=str(_fake_univer(tmp_path)),
+        racines_import=[tmp_path],
+        mode_production=False,
+    )
+
+    premier = connecteur._sortie("rapport", "xlsx")
+    second = connecteur._sortie("rapport", "xlsx")
+
+    assert premier != second
+    assert premier.parent == second.parent
+    assert premier.suffix == second.suffix == ".xlsx"
