@@ -828,3 +828,15 @@ class TestRoutageOfficeUniver:
 
         assert agent.demande_office("Qu'est-ce qu'Excel ?") is False
         assert agent._classer_par_mots_cles("Qu'est-ce qu'Excel ?") == "CHAT"
+
+
+    @pytest.mark.parametrize("phrase", [
+        "Crée une excellente interface web.",
+        "Analyse mon site WordPress.",
+    ])
+    def test_les_sous_mots_excel_et_word_ne_declenchent_pas_office(
+        self, fake_provider, phrase,
+    ):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+
+        assert agent.demande_office(phrase) is False
