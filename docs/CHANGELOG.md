@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Corrigé — 28/09/2026 — La météo, un cours, un score récent ne reçoivent plus de réponse de mémoire
+
+Quand le petit modèle qui trie tes questions ne répondait pas, « Quel temps
+fait-il à Dakar ? », « prix du bitcoin » ou « Qui a gagné la CAN 2025 ? »
+partaient dans la conversation simple : ARENA répondait de mémoire, avec des
+connaissances d'avant. Ces questions vont maintenant toujours chercher sur le
+web (DEC-0154).
+
 ### Corrigé — 28/09/2026 — La recherche approfondie n'écrit plus de rapport sans source
 
 Quand la recherche ne trouvait rien, ARENA rédigeait quand même un « rapport

@@ -636,7 +636,21 @@ FORMULATIONS_COURANTES = (
     "actualité", "actualite", "dernières nouvelles", "dernieres nouvelles",
     # Demande explicite de l'utilisateur : elle prime toujours
     "cherche sur le web", "cherche sur internet",
+    # Mesure du 28/09/2026, modele classeur muet : ces questions partaient en
+    # CHAT, donc en reponse de memoire — la meteo du jour, un cours, un buteur.
+    "quel temps fait", "météo", "meteo", "taux de change",
+    "prix du bitcoin", "cours du bitcoin", "qui a marqué", "qui a marque",
+    "infos du jour", "nouvelles du jour", "dernières infos", "dernieres infos",
+    "quand sort", "date de sortie", "prochaine élection", "prochaine election",
+    "classement de la ligue",
 )
+
+#: Une annee passee n'est un fait acquis que si le modele a pu l'apprendre.
+#: Les modeles locaux deployes ici ont ete entraines avant : « qui a gagne la
+#: CAN 2025 », demande en 2026, partait en reponse de memoire (28/09/2026).
+#: Une annee de cette fenetre ne declenche rien seule ; elle laisse juger les
+#: formulations, comme une question sans annee.
+ANNEES_PAS_ENCORE_ACQUISES = 2
 
 
 def _commence_un_mot(texte: str, mots) -> bool:
@@ -755,7 +769,9 @@ class OrchestratorAgent(BaseAgent):
         1. Une année **égale ou postérieure à l'année en cours** est citée. Aucun
            modèle déployé ne connaît l'issue de son propre futur.
         2. La question porte sur un état ou un résultat courant (« qui a gagné »,
-           « dernière version », « prix de ») **et** ne cite aucune année passée.
+           « dernière version », « prix de ») **et** ne cite aucune année
+           ancienne — une année des `ANNEES_PAS_ENCORE_ACQUISES` dernières
+           années n'est pas encore connue du modèle.
 
         La date vient de l'horloge, jamais du modèle. `aujourd_hui` n'existe que
         pour que les tests fixent une date au lieu de dépendre du jour où ils
@@ -768,8 +784,9 @@ class OrchestratorAgent(BaseAgent):
         if any(annee >= aujourd_hui.year for annee in annees):
             return True
 
-        if annees:  # une année est citée, et elle est passée : le fait est acquis
-            return False
+        recente = aujourd_hui.year - ANNEES_PAS_ENCORE_ACQUISES
+        if annees and all(annee < recente for annee in annees):
+            return False  # une annee ancienne est citee : le fait est acquis
 
         return any(formulation in texte for formulation in FORMULATIONS_COURANTES)
 
