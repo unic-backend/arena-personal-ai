@@ -66,6 +66,16 @@ interface UploadedMedia {
   size_bytes: number;
 }
 
+interface UploadedOffice extends UploadedMedia {
+  attachment?: UploadedAttachment;
+}
+
+const OFFICE_BINARY_RE = /\.(?:doc|docx|xls|xlsx|xlsm|ppt|pptx|pptm|ppsx|ppsm|potx)$/i;
+
+function isBinaryOfficeAttachment(name: string): boolean {
+  return OFFICE_BINARY_RE.test(name.trim());
+}
+
 function eventId(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -135,6 +145,7 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
       const fr = uiLocale() === 'fr';
       const uploaded: UploadedAttachment[] = [];
       const mediaPaths: string[] = [];
+      const officePaths: string[] = [];
       let preparedCount = 0;
       const attachments = request.attachments ?? [];
 
@@ -171,20 +182,35 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
           yield { type: 'activity', event: child };
 
           try {
-            const form = new FormData();
-            form.append('file', attachment.file, attachment.name);
             const isMedia = attachment.kind === 'audio' || attachment.kind === 'video';
-            if (!isMedia) form.append('kind', attachment.kind);
+            const isOffice = isBinaryOfficeAttachment(attachment.name);
 
-            // Les documents/images vont au dépôt de pièces jointes. Les médias
-            // vont au stockage média : /files ne sait volontairement pas lire
-            // audio/vidéo et les refusait avant même que Whisper puisse agir.
-            const upload = await fetch(`${base}${isMedia ? '/api/upload' : '/files'}`, {
-              method: 'POST',
-              headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
-              body: form,
-              signal,
-            });
+            const envoyer = async (route: string, inclureKind: boolean) => {
+              const form = new FormData();
+              form.append('file', attachment.file, attachment.name);
+              if (inclureKind) form.append('kind', attachment.kind);
+              return await fetch(`${base}${route}`, {
+                method: 'POST',
+                headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
+                body: form,
+                signal,
+              });
+            };
+
+            let upload = await envoyer(
+              isMedia ? '/api/upload' : isOffice ? '/office/files' : '/files',
+              !isMedia && !isOffice,
+            );
+
+            // Sans licence/runtime Univer ou si l'écriture locale est coupée,
+            // un DOCX/XLSX/PPTX reste LISIBLE : on retombe sur /files. On ne
+            // présente simplement pas la capacité d'édition.
+            let officeFallbackLecture = false;
+            if (isOffice && [403, 415, 503].includes(upload.status)) {
+              officeFallbackLecture = true;
+              upload = await envoyer('/files', true);
+            }
+
             if (!upload.ok) {
               const detail = await upload.text().catch(() => '');
               throw new Error(`${upload.status}${detail ? ` · ${detail.slice(0, 160)}` : ''}`);
@@ -202,6 +228,26 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
                   kind: attachment.kind,
                   path: result.path,
                   size: result.size_bytes,
+                },
+              });
+            } else if (isOffice && !officeFallbackLecture) {
+              const result = (await upload.json()) as UploadedOffice;
+              if (result.status !== 'success' || !result.path) {
+                throw new Error(
+                  fr ? 'Le document Office n\'a pas été conservé.' : 'The Office document was not preserved.',
+                );
+              }
+              officePaths.push(result.path);
+              if (result.attachment) uploaded.push(result.attachment);
+              child = finishEvent(child, 'completed', {
+                description: fr
+                  ? 'Document Office reçu, lisible et prêt à modifier'
+                  : 'Office document received, readable and ready to edit',
+                output: {
+                  kind: 'office',
+                  path: result.path,
+                  size: result.size_bytes,
+                  readable: result.attachment?.readable,
                 },
               });
             } else {
@@ -262,6 +308,7 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
             files: preparedCount,
             attachments: uploaded,
             mediaPaths,
+            officePaths,
           },
           progress: { done: preparedCount, total: attachments.length, unit: fr ? 'fichiers' : 'files' },
         });
@@ -278,6 +325,7 @@ export function makeRemoteTransport(cfg: RemoteConfig): AgentTransport {
         history: request.history ?? [],
         attachments: uploaded.map((value) => value.id),
         media_paths: mediaPaths,
+        office_paths: officePaths,
         connectors: await resolveActiveConnectors(),
         run_id: runId,
         // Identite STABLE du fil (le `activeId` du store), distincte de
