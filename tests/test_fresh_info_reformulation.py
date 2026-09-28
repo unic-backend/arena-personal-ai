@@ -100,7 +100,11 @@ class TestReformulationDesQuestionsElliptiques:
         await agent.run("une question autonome")
 
         assert agent.search_tool.requetes == ["une question autonome"]
-        assert len(modele.prompts) == 1, "un appel de reformulation a eu lieu sans session"
+        # Aucune invite de reformulation. (Compter les appels ne suffit plus :
+        # depuis DEC-0151, une source qui ne parle pas du sujet n'atteint plus
+        # la synthese, qui n'est donc pas appelee ici non plus.)
+        assert not any("Réécris cette question" in p for p in modele.prompts), (
+            "un appel de reformulation a eu lieu sans session")
 
     @pytest.mark.asyncio
     async def test_sans_historique_la_question_part_telle_quelle(self):

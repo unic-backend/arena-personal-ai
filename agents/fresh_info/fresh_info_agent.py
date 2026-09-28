@@ -363,6 +363,14 @@ class FreshInfoAgent(BaseAgent):
         if not mots:
             return texte[:taille].strip()
 
+        # Une page-tableau (calendrier, classement) arrive une cellule par ligne :
+        # « Barcelone », « Getafe », « 10/10 »... Classees une a une, les cellules
+        # qui repetent le sujet remplissaient tout le budget et le modele recevait
+        # « Barcelone | Barcelone | Barcelone » (mesure du 28/09/2026 sur la page
+        # calendrier de footmercato). Les cellules courtes consecutives sont
+        # regroupees en lignes de tableau avant d'etre classees.
+        paragraphes = cls._regrouper_les_cellules(paragraphes)
+
         scores = []
         for rang, paragraphe in enumerate(paragraphes):
             bas = paragraphe.lower()
@@ -386,6 +394,31 @@ class FreshInfoAgent(BaseAgent):
 
         retenus.sort()
         return "\n".join(p for _, p in retenus)[:taille].strip()
+
+    #: Une « cellule » : assez courte pour n'etre qu'un morceau de ligne.
+    CELLULE_MAX = 40
+    #: Une ligne de tableau regroupee ne depasse pas cette taille.
+    LIGNE_DE_TABLEAU_MAX = 200
+
+    @classmethod
+    def _regrouper_les_cellules(cls, paragraphes: List[str]) -> List[str]:
+        """Joint les paragraphes tres courts consecutifs (« a | b | c »)."""
+        regroupes: List[str] = []
+        courant: List[str] = []
+        for paragraphe in paragraphes:
+            if len(paragraphe) <= cls.CELLULE_MAX:
+                if courant and len(" | ".join(courant + [paragraphe])) > cls.LIGNE_DE_TABLEAU_MAX:
+                    regroupes.append(" | ".join(courant))
+                    courant = []
+                courant.append(paragraphe)
+                continue
+            if courant:
+                regroupes.append(" | ".join(courant))
+                courant = []
+            regroupes.append(paragraphe)
+        if courant:
+            regroupes.append(" | ".join(courant))
+        return regroupes
 
     def _formater_les_sources(self, lues: List[Dict[str, Any]], part: int, question: str = "") -> str:
         blocs = []
@@ -731,8 +764,48 @@ class FreshInfoAgent(BaseAgent):
                 reverse=True,
             )
 
+        # Premiere question (pas un suivi) : meme barriere de pertinence que pour
+        # un suivi, sur le sujet de la question elle-meme (DEC-0151). Mesure du
+        # 28/09/2026 sur le vrai moteur : « derniere version de Python » envoyait
+        # un article sur GTA 6 a la synthese, « president du Senegal » un article
+        # sur la Guinee, « quel temps a Dakar » un article sur l'IA. Le modele
+        # repondait alors a cote — ou inventait.
+        ancres_question = [] if ancres_suivi else [
+            a for a in self._termes_ancrage(question) if a not in DEICTIQUES_SUIVI]
+        if ancres_question:
+            pertinents = [r for r in resultats
+                          if self._source_mentionne_une_ancre(r, ancres_question)]
+            if not pertinents:
+                logger.warning("Aucun resultat ne parle de : %s", ", ".join(ancres_question))
+                return {
+                    "status": "warning",
+                    "agent": self.name,
+                    "query": question,
+                    "sources": [],
+                    "response": (
+                        "J'ai cherche, mais aucun resultat ne parle de "
+                        f"« {', '.join(ancres_question)} ». Je prefere le dire plutot "
+                        "que repondre avec des pages hors sujet."
+                    ),
+                }
+            resultats = pertinents
+
         pages = await self._lire_les_pages(resultats)
         lues = [p for p in pages if p["status"] == "FETCHED" and p["text"].strip()]
+        if ancres_question:
+            lues = [p for p in lues if self._source_mentionne_une_ancre(p, ancres_question)]
+
+        # Une page pertinente illisible (403, delai) garde son extrait de
+        # recherche : c'etait souvent la bonne source — Wikipedia refusee, un
+        # article hors sujet lisible, et c'est lui seul qui partait a la synthese.
+        if lues and ancres_question:
+            lues_urls = {p["url"] for p in lues}
+            candidats = [r for r in resultats if r.get("href")][: self.sources_max]
+            lues += [
+                secours for secours in self._sources_de_secours(
+                    [r for r in candidats if r["href"] not in lues_urls])
+                if self._source_mentionne_une_ancre(secours, ancres_question)
+            ]
 
         if not lues:
             # Les sites d actualite refusent souvent les robots : aucune page

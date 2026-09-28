@@ -11516,3 +11516,48 @@ et en comportement par `tests/agents/test_fresh_info_answer_grounding.py`).
 ou un calcul juste fait par le modele est signale « a ne pas tenir pour
 acquis » ; un nom propre ecrit en debut de phrase et qui est aussi un mot
 courant de la liste n'est pas controle.
+
+## DEC-0151 — Une premiere question web ne recoit que des sources qui parlent de son sujet
+
+**2026-09-28.**
+
+**Constat** (plainte du proprietaire : « il fait des recherches mais ne trouve
+rien, et parfois s'il trouve il dit n'importe quoi »). Mesure le 28/09/2026 sur
+le vrai moteur, chaine complete recherche -> lecture -> extraction, modele
+simule :
+
+- « derniere version de Python » : un article sur GTA 6 partait a la synthese ;
+- « president du Senegal » : un article sur la Guinee ; les deux pages
+  Wikipedia, pertinentes, refusees (403) et leurs extraits jetes ;
+- « quel temps a Dakar » : un article sur l'IA et « la fin des temps » ;
+- « dernier match du FC Barcelone » : la page calendrier arrivait au modele sous
+  la forme « Barcelone | Barcelone | Barcelone... ».
+
+La barriere de pertinence n'existait que pour les suivis (#347). Et l'extrait
+de recherche ne servait que si AUCUNE page n'etait lisible : une page hors
+sujet lisible suffisait a jeter l'extrait de la bonne.
+
+**Decision** (`agents/fresh_info/fresh_info_agent.py`) :
+
+- Pour une premiere question, les resultats dont ni le titre ni l'extrait ne
+  nomment le sujet (`_termes_ancrage`, forme traduite admise par
+  `terme_present`, demonstratifs exclus) ne sont pas lus ; une page lue qui ne
+  le nomme pas n'entre pas dans la synthese. S'il ne reste rien, l'agent le dit
+  sans appeler le modele.
+- Un resultat pertinent dont la page est illisible garde son extrait comme
+  source, a cote des pages lues.
+- L'extraction regroupe les cellules courtes consecutives (pages-tableaux) en
+  lignes avant de les classer.
+
+**Tests modifies** (fixtures, pas d'assertion affaiblie) :
+`tests/agents/test_fresh_info.py::test_la_reponse_est_accompagnee_de_ses_sources`
+utilisait des pages qui ne nomment pas Python pour une question sur Python —
+elles nomment Python desormais ; `tests/test_fresh_info_reformulation.py::
+test_sans_session_id_la_question_part_telle_quelle` comptait les appels au
+modele pour prouver l'absence de reformulation ; il verifie desormais
+directement qu'aucune invite de reformulation n'a ete envoyee.
+
+**Ce que ca coute si c'est faux** : une page qui repond sans jamais nommer le
+sujet (rare, mais possible : une page « Resultats » d'un club sans son nom)
+est ecartee ; la reponse devient alors « aucun resultat ne parle de X » au
+lieu d'une reponse — un refus, jamais une invention.
