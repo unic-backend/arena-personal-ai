@@ -31,6 +31,7 @@ donc sur ce qui s'est vraiment passé, jamais sur ce qu'il imaginait.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import shlex
@@ -168,7 +169,8 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
            "convertir", "organiser_inspecter", "organiser_planifier",
            "organiser_appliquer", "organiser_annuler",
            "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
-           "presentation_generer", "hf_modeles", "hf_modele",
+           "presentation_generer", "office_lire", "office_modifier",
+           "hf_modeles", "hf_modele",
            "isoler", "session_publier", "nettoyer_worktree",
            "ordinateur_lister", "ordinateur_creer", "ordinateur_etat",
            "ordinateur_dormir", "ordinateur_reveiller", "ordinateur_executer",
@@ -189,7 +191,7 @@ ACTIONS = ("lire", "chercher", "lister", "ecrire", "remplacer", "deplacer",
 #: se lisent pas pareil, et c'est la seconde phrase qui demande une vérification.
 ACTIONS_QUI_MODIFIENT = frozenset({
     "ecrire", "remplacer", "deplacer", "github_ecrire", "github_remplacer",
-    "session_publier",
+    "session_publier", "office_modifier",
 })
 
 #: Mutations directes qui ne doivent jamais etre suivies immediatement de
@@ -199,7 +201,7 @@ ACTIONS_QUI_MODIFIENT = frozenset({
 #: code que sur des fichiers ordinaires.
 ACTIONS_A_VERIFIER = frozenset({
     "ecrire", "remplacer", "deplacer", "github_ecrire", "github_remplacer",
-    "ordinateur_ecrire_fichier", "session_publier",
+    "ordinateur_ecrire_fichier", "session_publier", "office_modifier",
 })
 
 #: Actions capables d'apporter une preuve apres une mutation. Le prompt métier
@@ -212,7 +214,7 @@ ACTIONS_DE_VERIFICATION = frozenset({
     "lire", "lister", "executer",
     "github_lire", "github_diff", "etat_ci",
     "ordinateur_etat", "ordinateur_executer", "ordinateur_lire_fichier",
-    "git_statut", "git_diff", "git_conflit_lire",
+    "git_statut", "git_diff", "git_conflit_lire", "office_lire",
 })
 
 #: Le journal complet reste dans le stockage durable. Pour le MODELE, on borne
@@ -239,6 +241,7 @@ ACTIONS_QUI_ANALYSENT = frozenset({
     "analyser", "diagnostiquer", "etat_ci", "ci_diagnostiquer", "github_diff", "commentaires_pr", "convertir",
     "organiser_inspecter", "organiser_planifier",
     "pdf_fusionner", "pdf_demonter", "pdf_pages", "pdf_extraire_texte",
+    "office_lire", "office_modifier",
     "isoler",
     "ordinateur_lister", "ordinateur_creer", "ordinateur_etat",
     "ordinateur_executer", "ordinateur_lire_fichier",
@@ -253,8 +256,19 @@ ACTIONS_QUI_ANALYSENT = frozenset({
 #: listing complet juste dessous est du bruit. En cas de 429/coupure apres
 #: l'outil, cette preuve reste visible au lieu d'etre perdue.
 ACTIONS_PREUVES_DE_REPLI = frozenset({
-    "github_lister", "github_chercher", "lister", "chercher",
+    "github_lister", "github_chercher", "lister", "chercher", "office_lire",
 })
+
+OFFICE_LECTURES = frozenset({
+    "etat", "fichiers", "statut", "worktrees", "unites", "inspecter",
+    "ouvrir", "daemon_statut", "lint_mise_en_page",
+})
+OFFICE_MUTATIONS = frozenset({
+    "creer", "importer", "worktree_creer", "unite_creer", "executer",
+    "pret", "reouvrir", "fusionner", "abandonner", "exporter",
+    "imprimer_pdf", "daemon_arreter",
+})
+CONFIRMATION_REQUISE = "CONFIRMATION_REQUIRED"
 
 _ETIQUETTE = re.compile(r"^\s*ACTION\s*:\s*(\w+)", re.IGNORECASE | re.MULTILINE)
 _CHAMP = re.compile(
@@ -262,7 +276,8 @@ _CHAMP = re.compile(
     r"|SHA|PLAN_ID|CONFIRMER_SUPPRESSION|OPERATION|PAGES|DEGRES|FORMAT_PDFX|NOM|NUMERO|COMPUTER_ID|URL"
     r"|CIBLE|IDENTIFIANT|IDENTIFIANT_OPERATION|DISTANT|BRANCHE|AMEND|FORCE_AVEC_BAIL"
     r"|TETE_ATTENDUE|REBASE|SUR|COMMIT|DEPUIS|BASCULER|MESSAGE|INDEX|GARDER"
-    r"|INCLURE_NON_SUIVIS|ACTION_GUI|X|Y|TOUCHE|TOUCHES|DELTA)"
+    r"|INCLURE_NON_SUIVIS|ACTION_GUI|X|Y|TOUCHE|TOUCHES|DELTA"
+    r"|WORKTREE_ID|UNIT_ID|TYPE|WORKSHEET)"
     r"\s*:\s*(.+)$",
     re.IGNORECASE | re.MULTILINE)
 
@@ -883,7 +898,11 @@ class DioumtoukayAgent(BaseAgent):
     #: Comment l'agent se presente au registre (DEC-0145) : lu par la
     #: decouverte, jamais recopie dans une liste centrale.
     identifiant = "atelier"
-    competences = ('fichiers de la machine', 'terminal', 'commande', 'depot git', 'action sur l ordinateur')
+    competences = (
+        'fichiers de la machine', 'terminal', 'commande', 'depot git',
+        'action sur l ordinateur', 'documents office editables',
+        'tableurs', 'presentations editables', 'worktrees office',
+    )
 
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
                  atelier: Optional[Atelier] = None,
