@@ -11635,3 +11635,34 @@ question sans source ; l'agent le dit au lieu d'improviser.
 mots du sujet est ecartee (une fiche meteo titree « Dakar » seul, sans
 « météo » ni « prévisions ») ; la reponse devient un refus ou une page voisine
 — jamais une invention.
+
+## DEC-0154 — Une question du jour part sur le web meme quand le classeur ne repond pas
+
+**2026-09-28.**
+
+**Constat** (mesure, modele classeur muet — delai de chargement d'Ollama, par
+exemple) : « Quel temps fait-il a Dakar ? », « prix du bitcoin », « taux de
+change », « infos du jour », « Qui a marque pour le Senegal hier soir ? »,
+« Qui a gagne la CAN 2025 ? » etaient classees CHAT. Le chat repondait alors de
+memoire, avec un modele entraine avant — l'hallucination dont se plaint le
+proprietaire, par un autre chemin que la recherche web.
+
+Deux causes dans `exige_verification`
+(`agents/orchestrator/orchestrator_agent.py`) :
+
+- `FORMULATIONS_COURANTES` ignorait la meteo, les taux de change, les infos
+  du jour, les buteurs, les dates de sortie, la prochaine election, le
+  classement d'une ligue ;
+- toute annee passee etait un « fait acquis » : « CAN 2025 », demande en 2026,
+  l'etait donc, alors qu'aucun modele local deploye ici ne l'a appris.
+
+**Decision** : ces formulations sont ajoutees ; une annee des
+`ANNEES_PAS_ENCORE_ACQUISES` (2) dernieres annees ne clot plus la question —
+elle laisse juger les formulations, comme une question sans annee. Une annee
+recente seule ne declenche rien (« montage de mes videos de 2025 » reste hors
+web).
+
+**Ce que ca coute si c'est faux** : une question sur un fait de l'an dernier
+que le modele connaissait part sur le web — une recherche de trop, jamais une
+reponse inventee. Une formulation trop large (« quand sort ») peut envoyer sur
+le web une phrase qui n'en demandait pas.
