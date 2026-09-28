@@ -11716,3 +11716,24 @@ la reponse web depuis DEC-0150.
 autrement que dans la consigne (un arrondi a la centaine, « 64 000 » pour
 64 390) est signale a tort ; le proprietaire voit un avertissement de trop,
 jamais un chiffre invente sans avertissement.
+
+## DEC-0162 — Le tri du courrier est relu contre les messages recus
+
+**2026-09-28.**
+
+**Constat** (audit des syntheses liees a des donnees) : `EmailAgent` fait trier
+et resumer les derniers messages par le modele, sous la consigne « Tu n'inventes
+rien. Un chiffre, un nom, une surface, une date qui ne sont pas ecrits dans le
+message n'existent pas ». Rien ne verifiait qu'elle etait tenue : un montant ou
+une quantite de trop dans le resume d'une demande de devis passait tel quel.
+
+**Decision** (`agents/email/email_agent.py`) : le tri est relu par
+`elements_sans_source` contre les messages recus ET la consigne du tri (ses
+etiquettes — DEVIS, FACTURE, urgent — y figurent ; sans elle, « URGENT » etait
+signale a tort, mesure par test). Ce qui manque est signale sous le tri et dans
+le champ `sans_source`, jamais reecrit. Le brouillon d'envoi n'est pas relu :
+c'est une redaction, et il passe deja par la confirmation du proprietaire.
+
+**Ce que ca coute si c'est faux** : un nom de client reformule (« Fast » pour
+« Fast Group ») peut etre signale a tort ; un avertissement de trop, jamais un
+montant invente sans avertissement.

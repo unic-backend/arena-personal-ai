@@ -2,6 +2,11 @@
 
 ## [Non publié]
 
+### Corrigé — 28/09/2026 — Le tri de ton courrier signale ce que les messages ne disent pas
+
+Quand ARENA trie et résume tes derniers e-mails, un montant, une quantité ou un
+nom qui n'est dans aucun message est maintenant signalé sous le résumé (DEC-0162).
+
 ### Corrigé — 28/09/2026 — L'analyse financière ne cite plus un cours de mémoire
 
 « Analyse le bitcoin » mesurait bien le prix, mais ne le donnait pas au modèle
