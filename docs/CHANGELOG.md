@@ -7,6 +7,13 @@
 Quand ARENA trie et résume tes derniers e-mails, un montant, une quantité ou un
 nom qui n'est dans aucun message est maintenant signalé sous le résumé (DEC-0162).
 
+### Corrigé — 28/09/2026 — Les conseils d'affaires signalent un montant inventé
+
+Quand ARENA évalue un projet (marge, délais, risques), chaque rôle fait
+expliquer ses calculs par le modèle. Un montant qui n'était ni dans tes
+chiffres ni dans les calculs passait tel quel. Il est maintenant signalé sous
+l'explication (DEC-0157).
+
 ### Corrigé — 28/09/2026 — L'analyse financière ne cite plus un cours de mémoire
 
 « Analyse le bitcoin » mesurait bien le prix, mais ne le donnait pas au modèle
