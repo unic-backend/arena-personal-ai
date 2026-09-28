@@ -910,10 +910,10 @@ class OrchestratorAgent(BaseAgent):
         """Vrai pour une action concrète sur un document Office, pas un sous-mot."""
         texte = (user_input or "").lower()
         objet = re.search(
-            r"(?:\\b(?:tableur|spreadsheet|excel|word|powerpoint)\\b"
-            r"|\\bfeuille\\s+de\\s+calcul\\b"
-            r"|[.](?:xlsx?|xlsm|docx?|pptx?)\\b"
-            r"|[.]univer\\b)",
+            r"(?:\b(?:tableur|spreadsheet|excel|word|powerpoint)\b"
+            r"|\bfeuille\s+de\s+calcul\b"
+            r"|[.](?:xlsx?|xlsm|docx?|pptx?)\b"
+            r"|[.]univer\b)",
             texte,
         )
         return bool(objet and _commence_un_mot(texte, VERBES_OFFICE))
