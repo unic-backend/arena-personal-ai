@@ -140,6 +140,15 @@ jobs:
             --entrypoint apps/backend/entrypoint.sh arena:ci \
             python -m scripts.document_runtime_smoke
 
+      - name: Verify real Univer Office workflow in final image
+        # Aucun mock : create -> Worktree -> write -> inspect -> ready -> merge
+        # -> XLSX -> PDF -> Viewer -> daemon stop, sous le runtime livre.
+        run: |
+          docker run --rm \
+            -e APP_ENV=development \
+            --entrypoint apps/backend/entrypoint.sh arena:ci \
+            python -m scripts.univer_runtime_smoke
+
       - name: Verify the container starts with no volume at all
         # Panne reelle du premier deploiement (Railway, chapitre 5) : `data/`
         # est exclu de l'image par `.dockerignore` (monte en volume, jamais
