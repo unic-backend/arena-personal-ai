@@ -24,6 +24,7 @@ import os
 import re
 import shutil
 import subprocess
+import zipfile
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Sequence
 
@@ -346,6 +347,50 @@ class ConnecteurUniverOffice(Connecteur):
             if not candidat.exists():
                 return candidat
         raise OSError("Impossible de réserver un nom de sortie Office libre.")
+
+    @staticmethod
+    def _verifier_sortie(chemin: Path, format_cible: str) -> Optional[str]:
+        """`None` si l'artefact est structurellement lisible, raison sinon."""
+        if not chemin.is_file() or chemin.stat().st_size == 0:
+            return "Le fichier produit est absent ou vide."
+
+        ext = format_cible.lower().lstrip(".")
+        if ext == "pdf":
+            try:
+                if chemin.read_bytes()[:5] != b"%PDF-":
+                    return "Le rendu produit n'a pas de signature PDF valide."
+            except OSError as erreur:
+                return f"Le PDF produit est illisible : {erreur}"
+            return None
+
+        if ext in {"xlsx", "docx", "pptx"}:
+            attendu = {
+                "xlsx": "xl/workbook.xml",
+                "docx": "word/document.xml",
+                "pptx": "ppt/presentation.xml",
+            }[ext]
+            try:
+                if not zipfile.is_zipfile(chemin):
+                    return f"Le fichier {ext.upper()} produit n'est pas une archive Office valide."
+                with zipfile.ZipFile(chemin) as archive:
+                    noms = set(archive.namelist())
+                if "[Content_Types].xml" not in noms or attendu not in noms:
+                    return (
+                        f"Le fichier {ext.upper()} produit ne contient pas "
+                        "la structure Office attendue."
+                    )
+            except (OSError, zipfile.BadZipFile) as erreur:
+                return f"Le fichier {ext.upper()} produit est illisible : {erreur}"
+            return None
+
+        if ext in {"csv", "tsv"}:
+            try:
+                chemin.read_text(encoding="utf-8-sig")
+            except (OSError, UnicodeError) as erreur:
+                return f"Le fichier texte produit est illisible : {erreur}"
+            return None
+
+        return f"Format de sortie non vérifiable : {ext or '(vide)'}."
 
     def _lancer(
         self,
@@ -725,8 +770,10 @@ class ConnecteurUniverOffice(Connecteur):
                 if erreur:
                     sortie.unlink(missing_ok=True)
                     return echec(capacite.nom, self.nom, erreur)
-                if not sortie.is_file() or sortie.stat().st_size == 0:
-                    return echec(capacite.nom, self.nom, "L'export n'a produit aucun fichier réel.")
+                souci_sortie = self._verifier_sortie(sortie, format_cible)
+                if souci_sortie:
+                    sortie.unlink(missing_ok=True)
+                    return echec(capacite.nom, self.nom, souci_sortie)
                 return self._resultat_json(
                     capacite.nom, f"Export {format_cible.upper()} créé : {sortie.name}",
                     str(sortie), charge or {}, fichier=str(sortie),
@@ -748,8 +795,10 @@ class ConnecteurUniverOffice(Connecteur):
                 if erreur:
                     sortie.unlink(missing_ok=True)
                     return echec(capacite.nom, self.nom, erreur)
-                if not sortie.is_file() or sortie.stat().st_size == 0:
-                    return echec(capacite.nom, self.nom, "Le rendu PDF n'a produit aucun fichier réel.")
+                souci_sortie = self._verifier_sortie(sortie, "pdf")
+                if souci_sortie:
+                    sortie.unlink(missing_ok=True)
+                    return echec(capacite.nom, self.nom, souci_sortie)
                 return self._resultat_json(
                     capacite.nom, f"PDF Office créé : {sortie.name}",
                     str(sortie), charge or {}, fichier=str(sortie),
