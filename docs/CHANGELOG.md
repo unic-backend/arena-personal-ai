@@ -2,6 +2,12 @@
 
 ## [Non publié]
 
+### Corrigé — 28/09/2026 — Un rapport de recherche signale ce que ses sources ne disent pas
+
+Le rapport de recherche approfondie avait pour consigne de ne rien ajouter aux
+sources, mais personne ne le vérifiait. Un chiffre ou un nom écrit de mémoire
+est maintenant signalé sous le rapport (DEC-0158).
+
 ### Corrigé — 28/09/2026 — La météo, un cours, un score récent ne reçoivent plus de réponse de mémoire
 
 Quand le petit modèle qui trie tes questions ne répondait pas, « Quel temps

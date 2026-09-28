@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
+from core.agent.verification_synthese import avertissement_sources, elements_sans_source
 from core.knowledge.vault import KnowledgeVault
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
@@ -155,7 +156,15 @@ class DeepResearcherAgent(BaseAgent):
 
         # Un rapport « a partir des donnees web collectees » ne consulte aucun
         # collegue (DEC-0150) : sa reponse viendrait de SA memoire, pas du web.
-        synthesis = await self.rediger(prompt=synthesis_prompt, consulter=False)
+        synthesis = (await self.rediger(prompt=synthesis_prompt, consulter=False)).strip()
+
+        # Relu contre ce qu'il a recu, comme la reponse web (DEC-0150) : la
+        # consigne ne suffisait pas, rien ne verifiait qu'elle etait tenue.
+        # Ce qui manque est signale sous le rapport, jamais reecrit (DEC-0158).
+        sans_source = elements_sans_source(synthesis, [synthesis_prompt])
+        if sans_source:
+            logger.warning("Rapport de recherche : elements sans source %s", sans_source)
+            synthesis = f"{synthesis}\n\n{avertissement_sources(sans_source)}"
 
         return {
             "status": "success",
@@ -163,5 +172,6 @@ class DeepResearcherAgent(BaseAgent):
             "queries_used": queries,
             "sources_count": len(unique_sources),
             "knowledge_sources_count": len(knowledge_hits),
-            "response": synthesis.strip()
+            "response": synthesis,
+            "sans_source": sans_source,
         }
