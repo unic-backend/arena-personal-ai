@@ -305,6 +305,22 @@ services:
   presentation:
     document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
 
+  # Office riche local-first (Univer CLI, Apache-2.0).
+  #
+  # Les créations/imports/exports restent sur la machine et sous data/univer
+  # ou media/rendered/office : même régime que PDF/conversion. En revanche
+  # `execute` lance du JavaScript Facade de confiance ; l'amont précise
+  # explicitement que ce n'est PAS un bac à sable, donc le coupe-circuit
+  # EXECUTE_COMMANDS et une confirmation sont obligatoires. `merge` valide
+  # un brouillon Worktree dans le trunk : confirmation humaine, comme le
+  # modèle de revue d'Univer Workspace. `destroy` jette un brouillon.
+  office_univer:
+    read:        {decision: ALLOWED,      risque: LOW}
+    document:    {decision: ALLOWED,      risque: LOW,    interrupteur: WRITE_FILES}
+    execute:     {decision: CONFIRMATION, risque: HIGH,   interrupteur: EXECUTE_COMMANDS}
+    merge:       {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+    destroy:     {decision: CONFIRMATION, risque: HIGH,   interrupteur: WRITE_FILES}
+
   # Graphify : le graphe structurel du depot (DEC-0046). Interroger un graphe
   # deja construit ne touche a rien — meme lecture que `takeoff.read`.
   # Construire ecrit graphify-out/ (graph.json, graph.html, GRAPH_REPORT.md) :
