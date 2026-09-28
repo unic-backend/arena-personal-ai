@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Corrigé — 28/09/2026 — Les idées de vidéos tendance ne sont plus inventées
+
+Quand tu demandes des tendances ou des idées de vidéos, ARENA lisait des pages
+presque vides et devait quand même proposer trois tendances : il en inventait.
+Chaque tendance doit maintenant venir d'une page trouvée, citée par son
+numéro ; les liens te sont rendus, et un nom ou un chiffre qui ne vient
+d'aucune page est signalé (DEC-0159).
+
 ### Corrigé — 28/09/2026 — « Je n'ai rien trouvé » alors que le web avait la réponse
 
 Une recherche sur trois revenait vide sans raison : le service de recherche

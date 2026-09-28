@@ -11692,3 +11692,31 @@ une reponse (un filtre au jour peut vraiment ne rien avoir).
 attend deux essais de plus (quelques secondes) avant « rien trouve » ; la
 recherche entiere reste bornee par `DELAI_TOTAL_SECONDES`, verifie avant
 chaque passe.
+
+## DEC-0159 — La synthese de tendances s'en tient aux resultats web et est relue
+
+**2026-09-28.**
+
+**Constat** (mesure sur le vrai moteur) : pour une demande d'idees de videos
+droles, `TrendAnalyzerAgent` recoit quatre pages TikTok « discover » presque
+vides. Sa consigne demandait « 3 tendances » sans exiger de source ni
+interdire l'ajout ; la synthese pouvait consulter un collegue (qui repond de
+memoire, voir DEC-0150) ; rien ne relisait le texte ; aucune adresse n'etait
+rendue. Le modele comblait le vide avec des tendances plausibles.
+
+**Decision** (`agents/trend_analyzer/trend_analyzer_agent.py`) :
+
+- resultats numerotes, et la consigne exige une citation par tendance,
+  interdit tout chiffre, nom, compte ou evenement absent, et autorise moins de
+  trois tendances ;
+- `rediger(consulter=False)` ;
+- relecture par `elements_sans_source` contre la consigne et la demande,
+  signalement par `avertissement_sources`, champ `sans_source` ;
+- les adresses consultees sont rendues dans `sources`.
+
+La recherche n'est PAS passee en `recent=True` : mesure faite, les passes
+d'actualite ne rendaient rien de plus sur ces requetes.
+
+**Ce que ca coute si c'est faux** : moins de tendances proposees quand les
+pages sont pauvres, et un avertissement de trop sur un nom reformule — jamais
+une tendance inventee sans avertissement.
