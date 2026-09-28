@@ -920,7 +920,7 @@ DELAI_CACHE_ETAT_MOTEUR_SECONDES = 5.0
 _cache_etat_moteur: Dict[str, tuple[float, Dict[str, Any]]] = {}
 
 
-def _etat_du_moteur(nom_connecteur: str) -> Dict[str, Any]:
+async def _etat_du_moteur(nom_connecteur: str) -> Dict[str, Any]:
     """Le moteur qui executerait cette action repond-il, maintenant ?
 
     **Mesure du 03/09/2026.** Le proprietaire recoit un bouton « Confirmer »
@@ -958,7 +958,10 @@ def _etat_du_moteur(nom_connecteur: str) -> Dict[str, Any]:
             return dict(etat)
 
     try:
-        sante = registre.obtenir(nom_connecteur).sonder()
+        connecteur = registre.obtenir(nom_connecteur)
+        if connecteur is None:
+            raise LookupError(nom_connecteur)
+        sante = await asyncio.to_thread(connecteur.sonder)
     except Exception:  # noqa: BLE001 — ne pas savoir n'est pas un refus
         # Une mesure impossible n'est pas mémorisée : le prochain tour peut
         # retenter immédiatement au lieu de figer une incertitude.
@@ -1001,7 +1004,7 @@ def _documents_produits(resultat: Dict[str, Any]) -> List[Dict[str, Any]]:
     }]
 
 
-def _actions_en_attente() -> List[Dict[str, Any]]:
+async def _actions_en_attente() -> List[Dict[str, Any]]:
     """Ce qui attend un accord, en clair, pour l'interface.
 
     Volontairement maigre : de quoi afficher un bouton et dire ce qu'il
@@ -1031,7 +1034,7 @@ def _actions_en_attente() -> List[Dict[str, Any]]:
     etats: Dict[str, Dict[str, Any]] = {}
     for action in attendues:
         if action.connecteur not in etats:
-            etats[action.connecteur] = _etat_du_moteur(action.connecteur)
+            etats[action.connecteur] = await _etat_du_moteur(action.connecteur)
 
     return [
         {
@@ -1046,7 +1049,7 @@ def _actions_en_attente() -> List[Dict[str, Any]]:
     ]
 
 
-def _confirmer_par_la_phrase(texte: str) -> Optional[Dict[str, Any]]:
+async def _confirmer_par_la_phrase(texte: str) -> Optional[Dict[str, Any]]:
     """Confirme l'action en attente quand la phrase dit « oui », sinon None.
 
     Rend `None` des qu'un doute existe — phrase qui n'est pas un accord franc,
@@ -1066,7 +1069,7 @@ def _confirmer_par_la_phrase(texte: str) -> Optional[Dict[str, Any]]:
     if action is None:
         return None
 
-    resultat = file_attente.confirmer(action.identifiant)
+    resultat = await asyncio.to_thread(file_attente.confirmer, action.identifiant)
     logger.info("Confirme a la voix : %s (%s)", action.identifiant, resultat.statut.value)
     return {"id": action.identifiant, "texte": resultat.message}
 
@@ -1131,7 +1134,7 @@ async def flux_agent(demande: DemandeAgent):
             # `a_confirmer_par_phrase` ne rend jamais une action dont l'effet
             # quitte la machine (envoi, publication, suppression) : celles-la
             # gardent le bouton, qui nomme ce qu'il valide.
-            confirme = _confirmer_par_la_phrase(demande.text)
+            confirme = await _confirmer_par_la_phrase(demande.text)
             if confirme is not None:
                 memory.add_chat_message(session_id=session, role="user",
                                         content=demande.text)
@@ -1353,7 +1356,7 @@ async def flux_agent(demande: DemandeAgent):
                         # bouton dessus. Sans cela l'identifiant n'existait que
                         # dans le texte de la reponse, et rien ne pouvait le
                         # confirmer (defaut du 02/09/2026).
-                        "en_attente": _actions_en_attente(),
+                        "en_attente": await _actions_en_attente(),
                         # Ce qui vient d'etre ecrit et qu'il peut ouvrir tout de
                         # suite ??? un devis PDF, depuis qu'il ne passe plus par la
                         # confirmation (04/09/2026).
