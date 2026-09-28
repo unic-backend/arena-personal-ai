@@ -463,6 +463,24 @@ class ConnecteurUniverOffice(Connecteur):
                     fichiers=fichiers,
                 )
 
+            if capacite.nom == "daemon_statut":
+                charge, erreur = self._lancer(["daemon", "status"])
+                if erreur:
+                    return echec(capacite.nom, self.nom, erreur)
+                return self._resultat_json(
+                    capacite.nom, "État du runtime Univer mesuré.",
+                    "univer-daemon-status", charge or {},
+                )
+
+            if capacite.nom == "daemon_arreter":
+                charge, erreur = self._lancer(["daemon", "stop"], delai=30.0)
+                if erreur:
+                    return echec(capacite.nom, self.nom, erreur)
+                return self._resultat_json(
+                    capacite.nom, "Daemon Univer arrêté proprement.",
+                    "univer-daemon-stopped", charge or {},
+                )
+
             if capacite.nom == "creer":
                 nom = _slug(str(parametres.get("nom") or "document"))
                 fichier = self._fichier(f"{nom}.univer", doit_exister=False)
@@ -778,24 +796,6 @@ class ConnecteurUniverOffice(Connecteur):
                     ),
                     url, charge or {}, viewer_url=url,
                     local_only=est_loopback,
-                )
-
-            if capacite.nom == "daemon_statut":
-                charge, erreur = self._lancer(["daemon", "status"])
-                if erreur:
-                    return echec(capacite.nom, self.nom, erreur)
-                return self._resultat_json(
-                    capacite.nom, "État du runtime Univer mesuré.",
-                    "univer-daemon-status", charge or {},
-                )
-
-            if capacite.nom == "daemon_arreter":
-                charge, erreur = self._lancer(["daemon", "stop"], delai=30.0)
-                if erreur:
-                    return echec(capacite.nom, self.nom, erreur)
-                return self._resultat_json(
-                    capacite.nom, "Daemon Univer arrêté proprement.",
-                    "univer-daemon-stopped", charge or {},
                 )
 
             return echec(capacite.nom, self.nom, "Capacité Univer inconnue.")
