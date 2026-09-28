@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Corrigé — 28/09/2026 — La recherche approfondie n'écrit plus de rapport sans source
+
+Quand la recherche ne trouvait rien, ARENA rédigeait quand même un « rapport
+d'intelligence » complet, avec une liste de « sources consultées » — tout était
+inventé. Elle dit maintenant qu'elle n'a rien trouvé et quelles recherches
+elle a tentées ; et quand elle a des sources, chaque fait doit en citer une
+(DEC-0152).
+
 ### Corrigé — 27/09/2026 — Une réponse « vérifiée sur le web » signale ce qu'elle n'a pas lu
 
 La réponse à une question d'actualité pouvait encore contenir un nom ou un

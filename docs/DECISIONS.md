@@ -11516,3 +11516,23 @@ et en comportement par `tests/agents/test_fresh_info_answer_grounding.py`).
 ou un calcul juste fait par le modele est signale « a ne pas tenir pour
 acquis » ; un nom propre ecrit en debut de phrase et qui est aussi un mot
 courant de la liste n'est pas controle.
+
+## DEC-0152 — Sans aucune source, la recherche approfondie ne redige pas de rapport
+
+**2026-09-28.**
+
+**Constat** : `DeepResearcherAgent` appelait le modele pour un « Rapport
+d'Intelligence a partir des donnees web collectees » meme quand les trois
+recherches et le coffre de connaissances locales ne rendaient RIEN. Le rapport
+et sa section « Sources consultees » ne pouvaient alors qu'etre inventes. Et
+sa consigne ne demandait ni de citer, ni de s'en tenir aux donnees.
+
+**Decision** : zero page web et zero connaissance locale -> reponse
+`warning` qui le dit et nomme les recherches tentees, sans appel de synthese
+(meme regle que `FreshInfoAgent`). Avec des donnees, la consigne exige une
+citation par fait, une section « Sources consultees » limitee aux sources
+recues, et d'ecrire qu'une partie manque plutot que de la remplir.
+
+**Ce que ca coute si c'est faux** : une question a laquelle le modele aurait
+pu repondre de memoire recoit un refus quand le web ne rend rien — c'est le
+prix de ne pas presenter un souvenir comme un rapport source.
