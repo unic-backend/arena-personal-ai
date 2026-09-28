@@ -97,3 +97,31 @@ async def test_les_trois_requetes_tournent_en_parallele(provider_factory, monkey
     assert ecoule < DUREE * 2, (
         f"{ecoule:.2f} s pour trois recherches de {DUREE} s : "
         "elles n'ont pas tourne en parallele")
+
+
+async def test_sans_aucune_source_aucun_rapport_n_est_redige(agent_avec_web):
+    """DEC-0152 : zero page web et zero connaissance locale — le modele n'est
+    appele que pour le plan, jamais pour un « rapport » qui serait invente."""
+    agent = agent_avec_web([])
+
+    async def rien(*args, **kwargs):
+        return []
+
+    agent.knowledge_vault.hybrid_search = rien
+
+    res = await agent.run("Marché du cajou en Casamance")
+
+    assert res["status"] == "warning"
+    assert res["sources_count"] == 0
+    assert len(agent.provider.appels) == 1, "seul le plan de recherche a appele le modele"
+    assert "aucune source" in res["response"]
+
+
+async def test_la_synthese_ne_peut_citer_que_les_sources_recues(agent_avec_web):
+    agent = agent_avec_web([source(3)])
+
+    await agent.run("Sujet")
+
+    consigne = agent.provider.appels[1]["prompt"]
+    assert "ne liste QUE ces sources-là" in consigne
+    assert "N'ajoute aucun chiffre, nom ou fait" in consigne
