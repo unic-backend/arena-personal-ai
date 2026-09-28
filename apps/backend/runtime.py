@@ -98,6 +98,7 @@ from core.connectors.stockage_jetons import charger_tout as _charger_jetons_pers
 from core.connectors.txtai_search import ConnecteurTxtaiSearch
 from core.connectors.ui_generate import ConnecteurUiGenerate
 from core.connectors.ui_ux_pro_max import ConnecteurUiUxProMax
+from core.connectors.univer_office import ConnecteurUniverOffice
 from core.connectors.vectcut import ConnecteurVectCut
 from core.connectors.wan2gp import Wan2GPConnector
 from core.connectors.workflow_guide import ConnecteurWorkflowGuide
@@ -614,6 +615,13 @@ registre.declarer(
     "presentation",
     lambda: ConnecteurPresentation(acces=acces, journal=journal, file_attente=file_attente,
                                    crochets=crochets),
+)
+# Office riche local-first : moteur Univer CLI public, derrière LE MÊME registre
+# et Dioumtoukay. Aucun OfficeAgent parallèle, aucun serveur Workspace dupliqué.
+registre.declarer(
+    "office_univer",
+    lambda: ConnecteurUniverOffice(
+        acces=acces, journal=journal, file_attente=file_attente, crochets=crochets),
 )
 
 # Case (mission ARENA x CASE, DEC-0092) : un ordinateur Linux ISOLE et
