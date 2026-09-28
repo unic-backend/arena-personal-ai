@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import unicodedata
 from typing import Any, Dict, List, Optional
 
 from core.agent.base_agent import BaseAgent
@@ -153,6 +154,24 @@ MOTS_HINT_ASSISTANT = frozenset({
     "reponse", "dernier", "dernière", "derniere", "match", "liga", "ligue",
     "champions", "championnat", "victoire", "score", "usman", "travail",
 })
+
+
+#: Mots d'une question qui ne nomment pas son sujet (sans accents) : le temps,
+#: le genre de la demande, des verbes courants. Voir `_sujet_de_la_question`.
+MOTS_SANS_SUJET = frozenset({
+    "aujourd", "hui", "jour", "jours", "hier", "demain", "soir", "matin", "semaine",
+    "mois", "annee", "maintenant", "actuellement", "actualite", "actualites", "actu",
+    "actus", "info", "infos", "information", "informations", "nouvelle", "nouvelles",
+    "neuf", "quoi", "dernier", "derniere", "derniers", "dernieres", "recent",
+    "recente", "recents", "recentes", "coute", "coutent", "vaut", "valent", "donne",
+    "dit", "passe", "arrive", "gagne", "perdu", "joue", "heure", "temps", "prix",
+})
+#: « fait-il », « donne-moi », « est-ce » : un verbe et son pronom, pas un sujet.
+PRONOM_ACCOLE = re.compile(r"-(?:t-)?(?:il|elle|ils|elles|on|moi|toi|nous|vous|je|tu|ce|y|en|le|la|les|lui|leur)$")
+
+
+def _sans_accents(mot: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFKD", mot) if not unicodedata.combining(c))
 
 
 class FreshInfoAgent(BaseAgent):
@@ -394,6 +413,25 @@ class FreshInfoAgent(BaseAgent):
 
         retenus.sort()
         return "\n".join(p for _, p in retenus)[:taille].strip()
+
+    @classmethod
+    def _sujet_de_la_question(cls, question: str) -> List[str]:
+        """Les mots qui nomment le SUJET d'une question, pour la barriere de
+        pertinence d'une premiere question (DEC-0151).
+
+        Plus strict que `_termes_ancrage` : « aujourd'hui » coupe en
+        « aujourd » + « hui », « fait-il », « jour », « infos » y passaient.
+        Ces mots-la figurent dans n'importe quelle page du jour : ils
+        rendaient la barriere passoire, ou lui faisaient refuser une question
+        generique (« les dernieres infos ») faute d'un mot qu'aucune page ne
+        porte. Une question sans sujet propre n'a pas de barriere.
+        """
+        return [
+            terme for terme in cls._termes_ancrage(question)
+            if terme not in DEICTIQUES_SUIVI
+            and _sans_accents(terme) not in MOTS_SANS_SUJET
+            and not PRONOM_ACCOLE.search(terme)
+        ]
 
     #: Une « cellule » : assez courte pour n'etre qu'un morceau de ligne.
     CELLULE_MAX = 40
@@ -700,6 +738,20 @@ class FreshInfoAgent(BaseAgent):
                 return repliee
         return reformulee
 
+    async def _chercher(self, question: str, recent: bool) -> List[Dict[str, str]]:
+        """Recherche bornee dans le temps, hors de la boucle (`search` bloque)."""
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.search_tool.search, question,
+                    max_results=RESULTATS_RECHERCHE, recent=recent,
+                ),
+                timeout=DELAI_RECHERCHE_SECONDES,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"Recherche abandonnee apres {DELAI_RECHERCHE_SECONDES} s")
+            return []
+
     async def run(
         self, user_input: str, context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
@@ -722,17 +774,7 @@ class FreshInfoAgent(BaseAgent):
             logger.info("FreshInfoAgent cherche : %s", question)
         # `search` est bloquant : lance tel quel, il fige la boucle et donc tout
         # le serveur. Il part dans un fil d execution, avec un plafond.
-        try:
-            resultats = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.search_tool.search, question,
-                    max_results=RESULTATS_RECHERCHE, recent=True,
-                ),
-                timeout=DELAI_RECHERCHE_SECONDES,
-            )
-        except asyncio.TimeoutError:
-            logger.warning(f"Recherche abandonnee apres {DELAI_RECHERCHE_SECONDES} s")
-            resultats = []
+        resultats = await self._chercher(question, recent=True)
 
         if not resultats:
             return {
@@ -770,11 +812,20 @@ class FreshInfoAgent(BaseAgent):
         # un article sur GTA 6 a la synthese, « president du Senegal » un article
         # sur la Guinee, « quel temps a Dakar » un article sur l'IA. Le modele
         # repondait alors a cote — ou inventait.
-        ancres_question = [] if ancres_suivi else [
-            a for a in self._termes_ancrage(question) if a not in DEICTIQUES_SUIVI]
+        ancres_question = [] if ancres_suivi else self._sujet_de_la_question(question)
         if ancres_question:
             pertinents = [r for r in resultats
                           if self._source_mentionne_une_ancre(r, ancres_question)]
+            if not pertinents:
+                # La passe « actualites du jour » remplit les resultats avec ce
+                # qui s'est publie aujourd'hui, pertinent ou non ; la passe web
+                # sans date — celle qui trouve python.org ou Wikipedia — n'a
+                # alors jamais lieu (mesure du 28/09/2026). Une seconde
+                # recherche, sans filtre de fraicheur, lui laisse sa chance.
+                logger.info("Aucun resultat du jour sur %s : recherche sans date.",
+                            ", ".join(ancres_question))
+                pertinents = [r for r in await self._chercher(question, recent=False)
+                              if self._source_mentionne_une_ancre(r, ancres_question)]
             if not pertinents:
                 logger.warning("Aucun resultat ne parle de : %s", ", ".join(ancres_question))
                 return {

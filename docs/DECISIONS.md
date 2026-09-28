@@ -11544,6 +11544,15 @@ sujet lisible suffisait a jeter l'extrait de la bonne.
   `terme_present`, demonstratifs exclus) ne sont pas lus ; une page lue qui ne
   le nomme pas n'entre pas dans la synthese. S'il ne reste rien, l'agent le dit
   sans appeler le modele.
+- Le sujet d'une question (`_sujet_de_la_question`) ignore ce qui ne le
+  nomme pas : « aujourd'hui » (coupe en « aujourd » + « hui »), « fait-il »,
+  « jour », « infos »... Ces mots-la figurent dans toutes les pages du jour et
+  rendaient la barriere passoire. Une question sans sujet propre (« les
+  dernieres infos ») n'a pas de barriere.
+- Quand aucun resultat ne nomme le sujet, une seconde recherche part sans
+  filtre de fraicheur : la passe « actualites du jour » remplissait les cinq
+  resultats (GTA 6 pour une question sur Python) et la passe web sans date,
+  celle qui trouve python.org ou Wikipedia, n'avait jamais lieu.
 - Un resultat pertinent dont la page est illisible garde son extrait comme
   source, a cote des pages lues.
 - L'extraction regroupe les cellules courtes consecutives (pages-tableaux) en
@@ -11555,7 +11564,11 @@ utilisait des pages qui ne nomment pas Python pour une question sur Python —
 elles nomment Python desormais ; `tests/test_fresh_info_reformulation.py::
 test_sans_session_id_la_question_part_telle_quelle` comptait les appels au
 modele pour prouver l'absence de reformulation ; il verifie desormais
-directement qu'aucune invite de reformulation n'a ete envoyee.
+directement qu'aucune invite de reformulation n'a ete envoyee. Lui et
+`test_question_elliptique_est_completee_avec_lhistorique` comparaient la LISTE
+des requetes ; la seconde passe sans date reprend la MEME question, ils
+comparent donc l'ensemble des requetes (la question brute n'est toujours
+jamais cherchee).
 
 **Ce que ca coute si c'est faux** : une page qui repond sans jamais nommer le
 sujet (rare, mais possible : une page « Resultats » d'un club sans son nom)

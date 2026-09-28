@@ -110,3 +110,61 @@ def test_une_page_tableau_n_envoie_pas_une_colonne_de_noms_repetes():
 
     assert "Adversaire 0" in extrait and "10/10" in extrait
     assert "Barcelone\nBarcelone" not in extrait
+
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize("question, sujet", [
+    ("Quel temps fait-il à Dakar aujourd'hui ?", ["dakar"]),
+    ("Qui est le président du Sénégal ?", ["sénégal"]),
+    ("Quel est le prix du bitcoin aujourd'hui ?", ["bitcoin"]),
+    ("Combien coûte l'iPhone 17 ?", ["iphone"]),
+    ("Résultat du match Sénégal Égypte", ["sénégal", "égypte"]),
+    # Une question sans sujet propre n'a pas de barriere : elle ne doit pas
+    # etre refusee faute d'un mot que les pages du jour ne portent pas.
+    ("Quelles sont les actualités du jour ?", []),
+    ("Donne-moi les dernières infos", []),
+    ("C'est quoi les nouvelles aujourd'hui ?", []),
+])
+def test_le_sujet_d_une_question_ignore_le_temps_et_les_pronoms(question, sujet):
+    """« aujourd'hui » coupe en « aujourd » + « hui », « fait-il », « jour »
+    rendaient la barriere passoire — n'importe quelle page du jour les porte."""
+    assert FreshInfoAgent._sujet_de_la_question(question) == sujet
+
+
+async def test_une_question_generique_n_est_pas_refusee_par_la_barriere():
+    agent, modele = _agent(
+        [_resultat(1, "Sénégal : le budget 2027 adopté", "L'Assemblée a voté")],
+        {"https://exemple.test/1": _page(1, "Budget", "L'Assemblée nationale a voté le budget.")})
+
+    resultat = await agent.run("Quelles sont les actualités du jour ?")
+
+    assert resultat["status"] == "success"
+    assert modele.prompts, "la synthese a bien ete appelee"
+
+
+async def test_sans_resultat_du_jour_sur_le_sujet_une_recherche_sans_date_suit():
+    """Mesure du 28/09/2026 : la passe « actualites du jour » remplissait les
+    cinq resultats (GTA 6, Tesla...) et la passe web sans date, qui trouve
+    python.org, n'avait jamais lieu."""
+
+    class _RechercheEnDeuxTemps:
+        def __init__(self):
+            self.appels = []
+
+        def search(self, query, max_results=5, recent=False):
+            self.appels.append(recent)
+            if recent:
+                return [_resultat(1, "GTA 6 : Rockstar confie les secrets de Leonida")]
+            return [_resultat(2, "Download Python | Python.org", "Python 3.14.7")]
+
+    modele = _Modele()
+    agent = FreshInfoAgent(
+        provider=modele, search_tool=_RechercheEnDeuxTemps(),
+        fetcher=_Lecture({"https://exemple.test/2": _page(2, "Python", "Python 3.14.7")}))
+
+    resultat = await agent.run("Quelle est la dernière version de Python ?")
+
+    assert agent.search_tool.appels == [True, False]
+    assert [s["url"] for s in resultat["sources"]] == ["https://exemple.test/2"]
