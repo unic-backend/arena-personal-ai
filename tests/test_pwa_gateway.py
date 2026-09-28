@@ -2088,3 +2088,39 @@ def test_nettoyage_office_supprime_uniquement_le_staging(tmp_path, monkeypatch):
 
     assert not temporaire.exists()
     assert durable.exists()
+
+
+
+def test_un_office_joint_force_atelier_quand_le_texte_seul_serait_chat(
+    client, entetes, fournisseur, monkeypatch, tmp_path,
+):
+    fournisseur()
+    racine = tmp_path / "univer"
+    staging = racine / "imports"
+    staging.mkdir(parents=True)
+    source = staging / "budget.xlsx"
+    source.write_bytes(b"xlsx")
+    monkeypatch.setattr(pwa_gateway, "UNIVER_WORKSPACE_DIR", racine)
+
+    async def _chat(*_args, **_kwargs):
+        return "CHAT"
+
+    monkeypatch.setattr(pwa_gateway, "classer_la_demande", _chat)
+    appels = []
+
+    async def _resultat(requete, intent=None, **_options):
+        appels.append((intent, requete.office_paths))
+        return {"response": "Tableur lu.", "sources": []}
+
+    monkeypatch.setattr(pwa_gateway, "dispatch_request", _resultat)
+
+    reponse = demander(
+        client,
+        entetes,
+        text="Analyse ce fichier.",
+        office_paths=[str(source)],
+    )
+
+    assert appels == [("ATELIER", [str(source)])]
+    assert "Tableur lu." in reponse.text
+    assert not source.exists(), "le staging du tour doit etre nettoye après usage"
