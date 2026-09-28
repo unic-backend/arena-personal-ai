@@ -32,6 +32,7 @@ from typing import Any, Dict, Optional, Tuple
 from core.actions.journal import JournalDesActions
 from core.actions.resultat import Statut
 from core.agent.base_agent import BaseAgent
+from core.agent.verification_synthese import avertissement_sources, elements_sans_source
 from core.connectors.base import EtatSante
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.suivi_video import suivre_en_fond
@@ -413,6 +414,17 @@ class VideoAnalyzerAgent(BaseAgent):
 
     # --- Analyse d'un fichier ---------------------------------------------------
 
+    @staticmethod
+    def _relire(analyse: str, prompt: str) -> str:
+        """Signale sous l'analyse ce qu'elle cite sans l'avoir recu — un nom,
+        un chiffre absents de la transcription (DEC-0160). Jamais reecrite."""
+        analyse = (analyse or "").strip()
+        sans_source = elements_sans_source(analyse, [prompt])
+        if sans_source:
+            logger.warning("Analyse de transcription : elements sans source %s", sans_source)
+            analyse = f"{analyse}\n\n{avertissement_sources(sans_source)}"
+        return analyse
+
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         contexte = context or {}
         job_id = contexte.get("job_id")
@@ -525,9 +537,10 @@ class VideoAnalyzerAgent(BaseAgent):
             prompt = construire_prompt_reunion(full_text, meeting_metrics)
             # Une synthèse de réunion doit rester ancrée dans la transcription.
             # Un collègue LLM ajouterait une source non présente dans l'appel.
-            ai_analysis = await self.rediger(prompt=prompt, consulter=False)
+            ai_analysis = self._relire(
+                await self.rediger(prompt=prompt, consulter=False), prompt)
             ai_analysis = (
-                ai_analysis.strip()
+                ai_analysis
                 + "\n\n"
                 + formater_metriques_reunion(meeting_metrics)
             )
@@ -540,7 +553,10 @@ class VideoAnalyzerAgent(BaseAgent):
 
 Transcription: "{full_text}"
 Analyse:"""
-            ai_analysis = await self.rediger(prompt=prompt)
+            # Un resume de SA transcription : un collegue repondrait de sa
+            # memoire, pas de ce qui a ete dit (DEC-0150, DEC-0160).
+            ai_analysis = self._relire(
+                await self.rediger(prompt=prompt, consulter=False), prompt)
             analysis_kind = "audio_transcription_and_text_analysis"
 
         return {

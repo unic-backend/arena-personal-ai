@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Corrigé — 28/09/2026 — Analyse de vidéo, compte rendu et réponse sur une page signalent ce qui n'y était pas
+
+Le résumé d'une vidéo, le compte rendu d'une réunion enregistrée et la réponse
+à une question sur une page web pouvaient contenir un nom ou un chiffre qui
+n'était ni dans ce qui a été dit, ni dans la page. C'est maintenant signalé
+sous la réponse ; et l'analyse d'une vidéo ne demande plus l'avis d'un autre
+agent qui répondrait de mémoire (DEC-0160).
+
 ### Corrigé — 28/09/2026 — « Je n'ai rien trouvé » alors que le web avait la réponse
 
 Une recherche sur trois revenait vide sans raison : le service de recherche

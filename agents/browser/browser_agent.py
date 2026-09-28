@@ -2,6 +2,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from core.agent.base_agent import BaseAgent
+from core.agent.verification_synthese import avertissement_sources, elements_sans_source
 from core.connectors.registre import RegistreConnecteurs
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
@@ -68,7 +69,12 @@ class BrowserAgent(BaseAgent):
             f"URL_SOURCE: {page['url']}\nTITRE: {page['titre']}\n"
             f"QUESTION: {question}\nCONTEXTE_PAGE:\n{page['texte']}"
         )
-        reponse = await self.provider.generate(consigne)
+        reponse = (await self.provider.generate(consigne) or "").strip()
+        # Relue contre la page et la question, jamais reecrite (DEC-0160).
+        sans_source = elements_sans_source(reponse, [consigne])
+        if sans_source:
+            logger.warning("Reponse sur %s : elements sans source %s", page["url"], sans_source)
+            reponse = f"{reponse}\n\n{avertissement_sources(sans_source)}"
         return {
             "status": "success",
             "agent": self.name,
@@ -77,6 +83,7 @@ class BrowserAgent(BaseAgent):
             "truncated": page["tronque"],
             "provenance": page["provenance"],
             "response": reponse,
+            "sans_source": sans_source,
         }
 
     async def run(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
