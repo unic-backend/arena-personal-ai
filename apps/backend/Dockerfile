@@ -10,7 +10,7 @@
 # alors sur l'ancienne interface classique, en silence — exactement ce qui
 # s'est produit sur le premier deploiement en ligne (VOLET « ARENA en ligne »,
 # chapitre 5).
-FROM node:20-slim AS pwa-builder
+FROM node:20-bookworm-slim AS pwa-builder
 
 WORKDIR /pwa
 COPY apps/pwa/package.json apps/pwa/package-lock.json ./
@@ -18,8 +18,17 @@ RUN npm ci
 COPY apps/pwa/ ./
 RUN npm run build
 
-# --- Etape 2 : l'image de service --------------------------------------------
-FROM python:3.11-slim
+# --- Etape 2 : moteur Office Univer, version reproductible --------------------
+# Le paquet public requiert Node >=24. Le runtime de developpement embarque
+# n'est jamais confondu avec une licence de production par l'application.
+FROM node:24-bookworm-slim AS univer-runtime
+RUN npm install --global univer-cli@0.5.0 \
+    && univer --version
+
+# --- Etape 3 : l'image de service --------------------------------------------
+# Meme base Debian que l'etape Node : les binaires copies ne traversent pas
+# deux ABI systeme differentes.
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 ENV USMAN_CHROMA_PATH=/app/data/chroma_db
@@ -34,19 +43,33 @@ ENV USMAN_CHROMA_PATH=/app/data/chroma_db
 # Les paquets LibreOffice sont ciblés plutôt que le méta-paquet complet et
 # --no-install-recommends évite d'embarquer les composants sans usage.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg curl gosu nodejs npm \
+    ffmpeg curl gosu chromium \
     tesseract-ocr tesseract-ocr-fra \
     libreoffice-writer libreoffice-calc libreoffice-impress \
     libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 \
     fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
+# Node 24 et Univer CLI proviennent de l'etape epinglee ci-dessus. npm/npx/
+# univer sont des liens vers /usr/local/lib/node_modules, donc ce repertoire
+# voyage avec les executables.
+COPY --from=univer-runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=univer-runtime /usr/local/bin/npm /usr/local/bin/npm
+COPY --from=univer-runtime /usr/local/bin/npx /usr/local/bin/npx
+COPY --from=univer-runtime /usr/local/bin/univer /usr/local/bin/univer
+COPY --from=univer-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
+
+ENV UNIVER_RENDER_BROWSER=/usr/bin/chromium
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 # Moteur MIT specialise, version epinglee : utilise par /api/media/remove-gemini-watermark.
 # `sharp` est le decodeur/encodeur requis par le chemin CLI fichier.
 RUN npm install --global @pilio/gemini-watermark-remover@1.0.45 sharp@0.34.5 \
-    && gwr --help >/dev/null
+    && gwr --help >/dev/null \
+    && node --version | grep -E '^v24\\.' \
+    && univer --version \
+    && chromium --version
 
 COPY . .
 COPY --from=pwa-builder /pwa/dist ./apps/pwa/dist
