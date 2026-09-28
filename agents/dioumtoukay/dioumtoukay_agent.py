@@ -261,12 +261,12 @@ ACTIONS_PREUVES_DE_REPLI = frozenset({
 
 OFFICE_LECTURES = frozenset({
     "etat", "fichiers", "statut", "worktrees", "unites", "inspecter",
-    "ouvrir", "daemon_statut", "lint_mise_en_page",
+    "daemon_statut", "lint_mise_en_page",
 })
 OFFICE_MUTATIONS = frozenset({
     "creer", "importer", "worktree_creer", "unite_creer", "executer",
     "pret", "reouvrir", "fusionner", "abandonner", "exporter",
-    "imprimer_pdf", "daemon_arreter",
+    "imprimer_pdf", "ouvrir", "daemon_arreter",
 })
 CONFIRMATION_REQUISE = "CONFIRMATION_REQUIRED"
 
@@ -829,6 +829,75 @@ PROTOCOLE_QUALITE = """STANDARD DE TRAVAIL — VALABLE DANS TOUS LES DOMAINES
   metadonnees brutes sauf si elles servent vraiment a la decision.
 - N'annonce jamais « termine », « corrige », « vert » ou « fonctionne » sans
   preuve executee dans cette tache.
+
+OFFICE EDITABLE — UNE SEULE FAMILLE D'ACTIONS
+- `office_lire` accepte OPERATION parmi :
+  etat, fichiers, statut, worktrees, unites, inspecter, daemon_statut,
+  lint_mise_en_page.
+- `office_modifier` accepte OPERATION parmi :
+  creer, importer, worktree_creer, unite_creer, executer, pret, reouvrir,
+  fusionner, abandonner, exporter, imprimer_pdf, ouvrir, daemon_arreter.
+- Pour un fichier joint, SOURCE doit être l'un des chemins Office annoncés
+  dans les repères de CE tour. N'invente jamais un chemin.
+- Flux normal : importer/créer -> worktree_creer -> unite_creer si besoin ->
+  executer -> office_lire inspecter (et lint pour les slides) -> pret ->
+  ouvrir pour revue. Le propriétaire possède la décision de fusion.
+- `executer` lance du JavaScript Facade de confiance, PAS un bac à sable.
+  Il peut donc revenir EN ATTENTE DE CONFIRMATION. Dans ce cas, ARRÊTE la
+  tâche et rapporte l'identifiant ; ne prétends jamais que l'action a tourné.
+- `fusionner` et `abandonner` peuvent aussi attendre une confirmation.
+- Après toute modification Office qui n'est pas auto-vérifiée par le
+  connecteur, relis l'état réel avec `office_lire`.
+
+Exemples :
+
+ACTION: office_lire
+OPERATION: fichiers
+
+ACTION: office_modifier
+OPERATION: importer
+SOURCE: /chemin/serveur/annonce-dans-les-reperes.xlsx
+NOM: budget-client
+TYPE: sheet
+
+ACTION: office_modifier
+OPERATION: worktree_creer
+CHEMIN: budget-client.univer
+NOM: correction-prix
+
+ACTION: office_modifier
+OPERATION: executer
+CHEMIN: budget-client.univer
+WORKTREE_ID: identifiant-reel
+UNIT_ID: identifiant-reel
+CONTENU:
+const sheet = workbook.getActiveSheet();
+sheet.getRange("A1").setValue("UniC Plaquiste");
+return sheet.getRange("A1").getValue();
+FIN
+
+ACTION: office_lire
+OPERATION: inspecter
+CHEMIN: budget-client.univer
+WORKTREE_ID: identifiant-reel
+UNIT_ID: identifiant-reel
+CIBLE: range
+WORKSHEET: name:Budget
+CONTENU:
+A1:H40
+FIN
+
+ACTION: office_modifier
+OPERATION: pret
+CHEMIN: budget-client.univer
+WORKTREE_ID: identifiant-reel
+
+ACTION: office_modifier
+OPERATION: exporter
+CHEMIN: budget-client.univer
+UNIT_ID: identifiant-reel
+FORMAT: xlsx
+NOM: budget-client-final
 """
 
 @dataclass
@@ -1320,6 +1389,47 @@ class DioumtoukayAgent(BaseAgent):
                             sortie=self._detail_lisible(resultat.detail or {}))
         return Resultat(False, resultat.message)
 
+    async def _via_univer(self, capacite: str, **parametres: Any) -> Resultat:
+        """Appelle le connecteur Office sans bloquer la boucle FastAPI.
+
+        Le CLI est un sous-processus synchrone et certaines opérations (import,
+        rendu PDF, Viewer) peuvent durer. Elles partent donc dans un thread.
+        Un NEEDS_CONFIRMATION n'est JAMAIS converti en succès : la tâche se
+        suspend et la file d'attente reste l'unique chemin d'exécution.
+        """
+        if self.registre_connecteurs is None:
+            return Resultat(False, "Le registre de connecteurs n'est pas branché.")
+        connecteur = self.registre_connecteurs.obtenir("office_univer")
+        if connecteur is None:
+            return Resultat(False, "Le moteur Office Univer n'est pas branché.")
+        try:
+            resultat = await asyncio.to_thread(
+                connecteur.executer, capacite, **parametres
+            )
+        except Exception as erreur:  # noqa: BLE001 — un outil ne casse pas la boucle
+            return Resultat(
+                False,
+                f"Office Univer impossible : {type(erreur).__name__}: {erreur}",
+            )
+
+        detail = self._detail_lisible(resultat.detail or {})
+        if resultat.statut in (Statut.SUCCES, Statut.PARTIEL):
+            return Resultat(
+                True,
+                resultat.message,
+                sortie=detail,
+                donnees=resultat.detail or {},
+            )
+        if resultat.statut is Statut.A_CONFIRMER:
+            return Resultat(
+                False,
+                resultat.message,
+                sortie=detail,
+                erreur=CONFIRMATION_REQUISE,
+                donnees=resultat.detail or {},
+            )
+        return Resultat(False, resultat.message, sortie=detail)
+
     def _via_case(self, capacite: str, confirmee: bool = False,
                   **parametres: Any) -> Resultat:
         """Meme pont, vers le connecteur `case` (DEC-0092) — un ordinateur
@@ -1802,6 +1912,48 @@ class DioumtoukayAgent(BaseAgent):
             if not action.contenu.strip():
                 return Resultat(False, "Il manque CONTENU — le plan JSON de la présentation.")
             return self._via_presentation(plan=action.contenu)
+        if action.nom in {"office_lire", "office_modifier"}:
+            operation = champs.get("OPERATION", "").strip().lower()
+            autorisees = OFFICE_LECTURES if action.nom == "office_lire" else OFFICE_MUTATIONS
+            if operation not in autorisees:
+                return Resultat(
+                    False,
+                    f"OPERATION Office invalide pour {action.nom} : {operation or '(vide)'}. "
+                    f"Valeurs permises : {', '.join(sorted(autorisees))}.",
+                )
+
+            parametres_office: Dict[str, Any] = {}
+            correspondances = {
+                "CHEMIN": "fichier",
+                "SOURCE": "source",
+                "NOM": "nom",
+                "WORKTREE_ID": "worktree",
+                "UNIT_ID": "unit",
+                "TYPE": "type",
+                "FORMAT": "format",
+                "CIBLE": "cible",
+                "WORKSHEET": "worksheet",
+            }
+            for champ, nom_parametre in correspondances.items():
+                valeur = champs.get(champ, "").strip()
+                if valeur:
+                    parametres_office[nom_parametre] = valeur
+
+            if operation == "executer":
+                if not action.contenu.strip():
+                    return Resultat(False, "Il manque CONTENU — le JavaScript Facade.")
+                parametres_office["code"] = action.contenu
+            elif operation == "inspecter":
+                selecteurs = [
+                    ligne.strip()
+                    for ligne in action.contenu.splitlines()
+                    if ligne.strip()
+                ]
+                if selecteurs:
+                    parametres_office["selecteurs"] = selecteurs
+
+            return await self._via_univer(operation, **parametres_office)
+
         if action.nom == "hf_modeles":
             recherche = champs.get("TEXTE", "")
             if not recherche:
@@ -1845,7 +1997,16 @@ class DioumtoukayAgent(BaseAgent):
         # Le mode d espace de travail est mesure UNE fois. Sur Railway, les
         # fichiers de /app sont une image de deploiement, pas un checkout Git.
         github_distant = self._workspace_github_distant()
-        reperes = self._reperes(user_input, github_distant=github_distant)
+        office_paths = [
+            str(p)
+            for p in ((context or {}).get("office_paths") or [])
+            if str(p).strip()
+        ]
+        reperes = self._reperes(
+            user_input,
+            github_distant=github_distant,
+            office_paths=office_paths,
+        )
 
         # La methode d'un specialiste (`debugging`/`tests`/`architecture`...,
         # `core/specialistes/catalogue.py`) n'atteignait jamais Dioumtoukay :
@@ -2082,6 +2243,15 @@ class DioumtoukayAgent(BaseAgent):
                 duree_ms=duree_ms,
                 sortie=resultat.sortie or "")
 
+            if resultat.erreur == CONFIRMATION_REQUISE:
+                conclusion = (
+                    resultat.message
+                    + " L'action Office n'a PAS encore été exécutée. "
+                    "Confirme l'action en attente depuis l'interface ; après "
+                    "confirmation, la prochaine étape doit relire l'état réel."
+                )
+                break
+
             # Les actions de suivi sont comparees APRES execution : deux appels
             # identiques dont la sortie change sont du progres, pas une boucle.
             # On ne coupe que si l'action ET l'observation restent inchangees.
@@ -2163,7 +2333,12 @@ class DioumtoukayAgent(BaseAgent):
 
     # --- Ce qu'il voit, et ce qu'il rend ---------------------------------------------
 
-    def _reperes(self, demande: str, github_distant: Optional[bool] = None) -> str:
+    def _reperes(
+        self,
+        demande: str,
+        github_distant: Optional[bool] = None,
+        office_paths: Optional[List[str]] = None,
+    ) -> str:
         """Où il est, et ce qu'il y a autour. Mesuré, jamais supposé.
 
         Sans ça, le premier tour partait à l'aveugle : le modèle dépensait deux
@@ -2179,6 +2354,13 @@ class DioumtoukayAgent(BaseAgent):
                 "Depot GitHub distant par defaut : "
                 f"{self.depot_github_defaut}. Les actions github_* travaillent "
                 "sur ce depot sans dependre du disque de cette machine."
+            )
+
+        if office_paths:
+            lignes.append(
+                "Binaires Office joints à CE tour. Ce sont les SEULES valeurs "
+                "autorisées pour SOURCE d'un office_modifier/importer :\n"
+                + "\n".join(f"- {chemin}" for chemin in office_paths)
             )
 
         if github_distant is None:
