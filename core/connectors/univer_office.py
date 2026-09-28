@@ -26,8 +26,9 @@ import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Sequence
+from uuid import uuid4
 
-from apps.backend.config import BASE_DIR, MEDIA_DIR, RENDERED_DIR, UNIVER_WORKSPACE_DIR
+from apps.backend.config import APP_ENV, BASE_DIR, MEDIA_DIR, RENDERED_DIR, UNIVER_WORKSPACE_DIR
 from core.actions.resultat import ResultatAction, echec, non_configure, succes
 from core.connectors.base import Capacite, Connecteur, EtatSante, Sante, _maintenant
 
@@ -83,6 +84,7 @@ class ConnecteurUniverOffice(Connecteur):
         dossier_rendus: Optional[Path] = None,
         binaire: Optional[str] = None,
         racines_import: Optional[Sequence[Path]] = None,
+        mode_production: Optional[bool] = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -92,6 +94,9 @@ class ConnecteurUniverOffice(Connecteur):
             else RENDERED_DIR / "office"
         )
         self.binaire = (binaire or os.getenv("UNIVER_CLI_BIN", "").strip() or "univer")
+        self.mode_production = (
+            APP_ENV == "production" if mode_production is None else bool(mode_production)
+        )
         self.racines_import = tuple(
             Path(p) for p in (
                 racines_import
@@ -224,13 +229,24 @@ class ConnecteurUniverOffice(Connecteur):
             )
 
         licence_production = bool(os.getenv("UNIVER_LICENSE", "").strip())
+        if self.mode_production and not licence_production:
+            return Sante(
+                etat=EtatSante.NON_CONFIGURE,
+                message=(
+                    f"Univer CLI {VERSION_ATTENDUE} est installé, mais son runtime "
+                    "embarqué est une licence de développement localhost de 90 jours."
+                ),
+                ce_qui_manque=(
+                    "une licence runtime Univer explicitement autorisée pour la "
+                    "production, fournie via UNIVER_LICENSE"
+                ),
+                mesure_le=_maintenant(),
+            )
+
         licence = (
             "licence runtime fournie explicitement via UNIVER_LICENSE"
             if licence_production
-            else (
-                "runtime de développement localhost embarqué par Univer CLI "
-                "(90 jours, ce n'est pas une licence de production)"
-            )
+            else "runtime de développement localhost embarqué par Univer CLI (90 jours)"
         )
         return Sante(
             etat=EtatSante.OPERATIONNEL,
@@ -276,9 +292,15 @@ class ConnecteurUniverOffice(Connecteur):
         return candidat
 
     def _sortie(self, nom: str, extension: str) -> Path:
+        """Un nouveau chemin de sortie à chaque exécution.
+
+        Ne jamais viser un ancien export : si Univer échoue, le nettoyage de
+        l'essai courant ne doit pas supprimer un fichier valide créé hier.
+        """
         self.dossier_rendus.mkdir(parents=True, exist_ok=True)
         ext = extension.lower().lstrip(".")
-        return (self.dossier_rendus / f"{_slug(nom)}.{ext}").resolve()
+        jeton = uuid4().hex[:10]
+        return (self.dossier_rendus / f"{_slug(nom)}-{jeton}.{ext}").resolve()
 
     def _lancer(
         self,
@@ -371,6 +393,7 @@ class ConnecteurUniverOffice(Connecteur):
                         if os.getenv("UNIVER_LICENSE", "").strip()
                         else "bundled_development_90_day"
                     ),
+                    production_mode=self.mode_production,
                     production_license_verified=bool(
                         os.getenv("UNIVER_LICENSE", "").strip()
                     ),
