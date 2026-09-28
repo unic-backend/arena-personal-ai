@@ -38,7 +38,8 @@ export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 const DOCUMENT_EXTENSIONS = new Set([
   'txt', 'md', 'markdown', 'csv', 'json', 'xml', 'html', 'htm', 'yaml', 'yml',
-  'log', 'js', 'jsx', 'ts', 'tsx', 'py', 'css', 'sql', 'docx',
+  'log', 'js', 'jsx', 'ts', 'tsx', 'py', 'css', 'sql',
+  'doc', 'docx', 'xls', 'xlsx', 'xlsm', 'ppt', 'pptx', 'pptm', 'ppsx', 'ppsm', 'potx',
 ]);
 
 function extension(name: string) {
@@ -129,7 +130,15 @@ async function inspectDocument(file: File): Promise<{
 }> {
   const ext = extension(file.name);
   const binaryDocx = ext === 'docx' || file.type.includes('wordprocessingml');
-  if (binaryDocx) return { metadata: { format: 'DOCX' } };
+  const binaryOffice = new Set([
+    'doc', 'docx', 'xls', 'xlsx', 'xlsm', 'ppt', 'pptx', 'pptm', 'ppsx', 'ppsm', 'potx',
+  ]).has(ext)
+    || file.type.includes('wordprocessingml')
+    || file.type.includes('spreadsheetml')
+    || file.type.includes('presentationml');
+  if (binaryDocx || binaryOffice) {
+    return { metadata: { format: ext.toUpperCase() || 'OFFICE' } };
+  }
   const text = await file.text();
   return {
     metadata: {
