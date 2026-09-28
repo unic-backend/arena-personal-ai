@@ -38,7 +38,9 @@ export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 const DOCUMENT_EXTENSIONS = new Set([
   'txt', 'md', 'markdown', 'csv', 'json', 'xml', 'html', 'htm', 'yaml', 'yml',
-  'log', 'js', 'jsx', 'ts', 'tsx', 'py', 'css', 'sql', 'docx',
+  'log', 'js', 'jsx', 'ts', 'tsx', 'py', 'css', 'sql',
+  'doc', 'docx', 'xls', 'xlsx', 'xlsm',
+  'ppt', 'pptx', 'pptm', 'ppsx', 'ppsm', 'potx',
 ]);
 
 function extension(name: string) {
@@ -56,6 +58,11 @@ export function attachmentKind(file: Pick<File, 'name' | 'type'>): AttachmentKin
     file.type.includes('json') ||
     file.type.includes('xml') ||
     file.type.includes('wordprocessingml') ||
+    file.type.includes('spreadsheetml') ||
+    file.type.includes('presentationml') ||
+    file.type === 'application/msword' ||
+    file.type === 'application/vnd.ms-excel' ||
+    file.type === 'application/vnd.ms-powerpoint' ||
     DOCUMENT_EXTENSIONS.has(ext)
   ) return 'document';
   return null;
@@ -128,8 +135,19 @@ async function inspectDocument(file: File): Promise<{
   extractedText?: string;
 }> {
   const ext = extension(file.name);
-  const binaryDocx = ext === 'docx' || file.type.includes('wordprocessingml');
-  if (binaryDocx) return { metadata: { format: 'DOCX' } };
+  const binaryOffice = new Set([
+    'doc', 'docx', 'xls', 'xlsx', 'xlsm',
+    'ppt', 'pptx', 'pptm', 'ppsx', 'ppsm', 'potx',
+  ]).has(ext)
+    || file.type.includes('wordprocessingml')
+    || file.type.includes('spreadsheetml')
+    || file.type.includes('presentationml')
+    || file.type === 'application/msword'
+    || file.type === 'application/vnd.ms-excel'
+    || file.type === 'application/vnd.ms-powerpoint';
+  if (binaryOffice) {
+    return { metadata: { format: ext.toUpperCase() || 'OFFICE' } };
+  }
   const text = await file.text();
   return {
     metadata: {
