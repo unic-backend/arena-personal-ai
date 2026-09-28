@@ -2,6 +2,15 @@
 
 ## [Non publié]
 
+### Corrigé — 28/09/2026 — « Sous-titres corrigés » : maintenant, ils le sont vraiment
+
+ARENA annonçait des sous-titres corrigés alors que la correction du modèle
+était jetée : « de vie du chantier » restait écrit tel quel. La correction est
+maintenant réellement appliquée (« de vie » devient « devis », au bon
+moment) ; un mot que personne n'a prononcé n'est jamais ajouté ; et si la
+correction s'éloigne trop de ce qui a été dit, elle n'est pas appliquée et le
+message le dit (DEC-0161).
+
 ### Corrigé — 28/09/2026 — L'analyse financière ne cite plus un cours de mémoire
 
 « Analyse le bitcoin » mesurait bien le prix, mais ne le donnait pas au modèle

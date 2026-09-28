@@ -89,3 +89,72 @@ class TestIlN_AnnoncePasUneRelectureQuiN_aPasEuLieu:
 
         assert resultat["corrigee"] is True
         assert "corrigés" in resultat["response"]
+
+
+class TestLaCorrectionAnnonceeEstAppliquee:
+    """Mesure du 28/09/2026 : en mode segments, la correction du modele etait
+    jetee ; en mode mots, elle l'etait des que « de vie » devenait « devis ».
+    « corriges » etait annonce dans les deux cas."""
+
+    @pytest.mark.asyncio
+    async def test_un_segment_recoit_vraiment_la_correction(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        agent = SubtitleAgent(provider=ModeleDouble("devis du chantier"))
+
+        resultat = await agent.run("subs", context={
+            "video_name": "chantier",
+            "segments": [{"start": 0.0, "end": 2.0, "text": "de vie du chantier"}]})
+
+        from pathlib import Path
+        contenu = Path(resultat["ass_path"]).read_text(encoding="utf-8")
+        assert "devis" in contenu and "de vie" not in contenu
+
+    @pytest.mark.asyncio
+    async def test_chaque_segment_numerote_recoit_sa_ligne(self):
+        agent = SubtitleAgent(provider=ModeleDouble(
+            "[1] on signe le devis\n[2] la plaque est posée"))
+        segments = [{"start": 0.0, "end": 2.0, "text": "on signe le de vie"},
+                    {"start": 2.0, "end": 4.0, "text": "la plaqué est posée"}]
+
+        donnees, corrigee, _ = await agent.correct_words_contextually(segments)
+
+        assert corrigee is True
+        assert [s["text"] for s in donnees] == ["on signe le devis", "la plaque est posée"]
+
+    @pytest.mark.asyncio
+    async def test_une_reecriture_n_est_pas_appliquee_ni_annoncee(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        agent = SubtitleAgent(provider=ModeleDouble(
+            "Abonnez-vous pour plus de vidéos de rénovation !"))
+
+        resultat = await agent.run("subs", context={
+            "video_name": "chantier",
+            "segments": [{"start": 0.0, "end": 2.0, "text": "de vie du chantier"}]})
+
+        from pathlib import Path
+        contenu = Path(resultat["ass_path"]).read_text(encoding="utf-8")
+        assert resultat["corrigee"] is False
+        assert "SANS relecture" in resultat["response"] and "écartait" in resultat["response"]
+        assert "Abonnez" not in contenu
+
+    @pytest.mark.asyncio
+    async def test_en_mode_mots_de_vie_devient_devis_sur_la_duree_des_deux(self):
+        agent = SubtitleAgent(provider=ModeleDouble("devis du chantier"))
+        mots = [{"word": "de", "start": 0.0, "end": 0.5}, {"word": "vie", "start": 0.5, "end": 1.0},
+                {"word": "du", "start": 1.0, "end": 1.5}, {"word": "chantier", "start": 1.5, "end": 2.0}]
+
+        donnees, corrigee, _ = await agent.correct_words_contextually(mots)
+
+        assert corrigee is True
+        assert [(m["word"], m["start"], m["end"]) for m in donnees] == [
+            ("devis", 0.0, 1.0), ("du", 1.0, 1.5), ("chantier", 1.5, 2.0)]
+
+    @pytest.mark.asyncio
+    async def test_en_mode_mots_un_mot_ajoute_n_entre_pas(self):
+        agent = SubtitleAgent(provider=ModeleDouble("de vie du beau chantier"))
+        mots = [{"word": "de", "start": 0.0, "end": 0.5}, {"word": "vie", "start": 0.5, "end": 1.0},
+                {"word": "du", "start": 1.0, "end": 1.5}, {"word": "chantier", "start": 1.5, "end": 2.0}]
+
+        donnees, _, _ = await agent.correct_words_contextually(mots)
+
+        assert [m["word"] for m in donnees] == ["de", "vie", "du", "chantier"]
