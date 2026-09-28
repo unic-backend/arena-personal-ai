@@ -176,11 +176,13 @@ class ConnecteurUniverOffice(Connecteur):
                 nom="lint_mise_en_page", action="read",
                 description="Vérifie géométriquement la mise en page d'une Slide."),
             "ouvrir": Capacite(
-                nom="ouvrir", action="read",
+                nom="ouvrir", action="document",
                 description=(
-                    "Démarre/relit le Viewer local Univer et rend son URL de revue. "
-                    "Une URL loopback n'est pas annoncée comme accessible à distance."
-                )),
+                    "Démarre le Viewer local Univer et rend son URL de revue. "
+                    "Cette opération démarre un runtime local ; elle n'est donc "
+                    "pas déguisée en lecture pure."
+                ),
+                ecriture=True),
             "daemon_statut": Capacite(
                 nom="daemon_statut", action="read",
                 description="Lit l'état réel du daemon et de la Gateway Univer."),
