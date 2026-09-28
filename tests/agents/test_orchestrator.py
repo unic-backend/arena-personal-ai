@@ -794,3 +794,37 @@ class TestAiguillageDesReunionsEnregistrees:
         assert agent._classer_par_mots_cles(
             "Fais une réunion des agents pour débattre."
         ) == "EQUIPE"
+
+
+
+class TestRoutageOfficeUniver:
+    @pytest.mark.parametrize("phrase", [
+        "Crée-moi un tableur Excel pour suivre le chantier.",
+        "Modifie ce fichier XLSX et corrige les prix.",
+        "Crée une présentation PowerPoint éditable.",
+        "Ouvre ce document Word et résume-le.",
+        "Exporte ce tableur Excel en XLSX.",
+    ])
+    def test_le_repli_route_les_actions_office_vers_atelier(self, fake_provider, phrase):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+
+        assert agent._classer_par_mots_cles(phrase) == "ATELIER"
+
+    async def test_une_action_office_explicite_ne_depend_pas_du_modele(
+        self, provider_factory,
+    ):
+        provider = provider_factory("CHAT")
+        agent = OrchestratorAgent(provider=provider, memory=None)
+
+        resultat = await agent.analyze_intent(
+            "Crée un tableur Excel éditable pour mon devis."
+        )
+
+        assert resultat == "ATELIER"
+        assert provider.appels == []
+
+    def test_parler_d_excel_sans_action_ne_force_pas_atelier(self, fake_provider):
+        agent = OrchestratorAgent(provider=fake_provider, memory=None)
+
+        assert agent.demande_office("Qu'est-ce qu'Excel ?") is False
+        assert agent._classer_par_mots_cles("Qu'est-ce qu'Excel ?") == "CHAT"
