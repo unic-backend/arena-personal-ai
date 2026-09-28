@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from agents.orchestrator.orchestrator_agent import PHRASES_TABLE_RONDE
+from agents.orchestrator.orchestrator_agent import PHRASES_TABLE_RONDE, VERBES_OFFICE
 from agents.plaquiste.plaquiste_agent import champs_demandes_au_tour_precedent
 from agents.video_analyzer.video_analyzer_agent import demande_de_suivi
 from apps.backend.config import AGENTS_SPECIALISES, MEDIA_DIR, UNIVER_WORKSPACE_DIR
