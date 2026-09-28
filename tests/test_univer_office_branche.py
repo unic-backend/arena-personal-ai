@@ -3,7 +3,7 @@
 import pytest
 
 from agents.dioumtoukay.dioumtoukay_agent import DioumtoukayAgent, analyser_action
-from core.actions.resultat import succes
+from core.actions.resultat import a_confirmer, succes
 
 
 class FauxUniver:
@@ -88,3 +88,129 @@ async def test_action_office_executer_transporte_worktree_unit_et_code_sans_shel
             },
         )
     ]
+
+
+
+class FauxUniverExport:
+    def executer(self, capacite, **parametres):
+        if capacite == "exporter":
+            return succes(
+                action=capacite,
+                cible="univer_office",
+                message="Export XLSX créé.",
+                preuve="/tmp/rapport.xlsx",
+                fichier="/tmp/rapport.xlsx",
+                url="/media/rendered/office/rapport.xlsx",
+                taille_octets=1234,
+            )
+        raise AssertionError(capacite)
+
+
+class FauxUniverConfirmation:
+    def executer(self, capacite, **parametres):
+        return a_confirmer(
+            action=capacite,
+            cible="univer_office",
+            message="Confirmation requise.",
+            fichier=parametres.get("fichier", ""),
+        )
+
+
+def test_export_office_conserve_les_donnees_structurees_et_le_lien():
+    agent = _agent(FauxUniverExport())
+
+    resultat = agent._via_univer(
+        "exporter",
+        fichier="rapport.univer",
+        unit="unit-1",
+        format="xlsx",
+        nom="rapport",
+    )
+    acte = {
+        "action": "office_exporter",
+        "champs": {"CHEMIN": "rapport.univer"},
+        **resultat.to_dict(),
+    }
+
+    assert resultat.ok is True
+    assert resultat.donnees["url"] == "/media/rendered/office/rapport.xlsx"
+    assert DioumtoukayAgent.documents_produits([acte]) == [{
+        "statut": "SUCCESS",
+        "url": "/media/rendered/office/rapport.xlsx",
+        "message": "Export XLSX créé.",
+        "fichier": "/tmp/rapport.xlsx",
+    }]
+
+
+def test_action_en_attente_n_est_pas_comptee_comme_fichier_modifie():
+    agent = _agent(FauxUniverConfirmation())
+
+    resultat = agent._via_univer(
+        "executer",
+        fichier="budget.univer",
+        worktree="wt-1",
+        unit="unit-1",
+        code="return 1;",
+    )
+    acte = {
+        "action": "office_executer",
+        "champs": {"CHEMIN": "budget.univer"},
+        **resultat.to_dict(),
+    }
+
+    assert resultat.ok is True
+    assert resultat.donnees["statut"] == "NEEDS_CONFIRMATION"
+    assert DioumtoukayAgent.fichiers_touches([acte]) == []
+    assert DioumtoukayAgent._mutations_non_verifiees([acte]) == []
+
+
+def test_inspection_du_meme_worktree_valide_une_modification_office():
+    mutation = {
+        "ok": True,
+        "action": "office_executer",
+        "champs": {
+            "CHEMIN": "budget.univer",
+            "WORKTREE_ID": "wt-1",
+            "UNIT_ID": "unit-1",
+        },
+        "donnees": {"statut": "SUCCESS", "fichier": "/app/data/univer/budget.univer"},
+    }
+    verification = {
+        "ok": True,
+        "action": "office_inspecter",
+        "champs": {
+            "CHEMIN": "budget.univer",
+            "WORKTREE_ID": "wt-1",
+            "UNIT_ID": "unit-1",
+        },
+        "sortie": "A1: 135000",
+        "donnees": {"statut": "SUCCESS", "fichier": "/app/data/univer/budget.univer"},
+    }
+
+    assert DioumtoukayAgent._preuve_positive(mutation, verification) is True
+
+
+def test_inspection_d_un_autre_worktree_ne_valide_pas_la_modification():
+    mutation = {
+        "ok": True,
+        "action": "office_executer",
+        "champs": {
+            "CHEMIN": "budget.univer",
+            "WORKTREE_ID": "wt-1",
+            "UNIT_ID": "unit-1",
+        },
+        "donnees": {"statut": "SUCCESS", "fichier": "/app/data/univer/budget.univer"},
+    }
+    verification = {
+        "ok": True,
+        "action": "office_inspecter",
+        "champs": {
+            "CHEMIN": "budget.univer",
+            "WORKTREE_ID": "wt-2",
+            "UNIT_ID": "unit-1",
+        },
+        "sortie": "A1: ancien",
+        "donnees": {"statut": "SUCCESS", "fichier": "/app/data/univer/budget.univer"},
+    }
+
+    assert DioumtoukayAgent._preuve_positive(mutation, verification) is False
