@@ -8,6 +8,7 @@ Aucun test ici n'appelle Ollama : le fournisseur est un double.
 """
 import asyncio
 import json
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
