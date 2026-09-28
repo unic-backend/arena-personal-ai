@@ -192,3 +192,29 @@ class TestConsulterRessourcesHumaines:
         analyse = await consulter_ressources_humaines(entree)
         assert analyse.position == Position.NEUTRE
         assert analyse.inconnues
+
+
+@pytest.mark.asyncio
+class TestInterpretationExecutiveRelue:
+    """Mesure du 28/09/2026 : aucun des six roles ne relisait l'interpretation
+    du modele. Un chiffre invente devenait un constat de la synthese (DEC-0157)."""
+
+    async def _constats(self, reponse):
+        entree = ConsultationEntree(
+            question="Devons-nous accepter ce chantier a 10 000 000 FCFA ?",
+            contexte=CONTEXTE_VIDE, donnees={"scenario": SCENARIO_38},
+            provider=FauxProvider(reponse=reponse))
+        analyse = await consulter_finance(entree)
+        return [c.texte for c in analyse.constats]
+
+    async def test_un_chiffre_invente_est_signale_dans_le_constat(self):
+        inventee = "La marge est bonne, mais le transport coutera 900 000 FCFA de plus."
+        constats = await self._constats(inventee)
+        interpretation = next(t for t in constats if t.startswith(inventee))
+        assert "Verification automatique" in interpretation and "900000" in interpretation
+
+    async def test_une_lecture_fidele_n_est_pas_signalee(self):
+        fidele = ("Sur 10 000 000 FCFA de revenu, la marge brute est de 2 500 000 "
+                  "(25 %) apres 7 500 000 de couts.")
+        constats = await self._constats(fidele)
+        assert fidele in constats

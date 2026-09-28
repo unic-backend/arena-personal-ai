@@ -11,6 +11,13 @@ moment) ; un mot que personne n'a prononcé n'est jamais ajouté ; et si la
 correction s'éloigne trop de ce qui a été dit, elle n'est pas appliquée et le
 message le dit (DEC-0161).
 
+### Corrigé — 28/09/2026 — Les conseils d'affaires signalent un montant inventé
+
+Quand ARENA évalue un projet (marge, délais, risques), chaque rôle fait
+expliquer ses calculs par le modèle. Un montant qui n'était ni dans tes
+chiffres ni dans les calculs passait tel quel. Il est maintenant signalé sous
+l'explication (DEC-0157).
+
 ### Corrigé — 28/09/2026 — L'analyse financière ne cite plus un cours de mémoire
 
 « Analyse le bitcoin » mesurait bien le prix, mais ne le donnait pas au modèle
