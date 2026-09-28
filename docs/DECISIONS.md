@@ -11716,3 +11716,25 @@ la reponse web depuis DEC-0150.
 autrement que dans la consigne (un arrondi a la centaine, « 64 000 » pour
 64 390) est signale a tort ; le proprietaire voit un avertissement de trop,
 jamais un chiffre invente sans avertissement.
+
+## DEC-0157 — L'interpretation de chaque role executif est relue contre ce qu'elle a recu
+
+**2026-09-28.**
+
+**Constat** (audit des chemins d'hallucination, suite de DEC-0156) : les six
+roles de `core/executive/specialistes.py` (finance, operations, RH, risque,
+marche, approvisionnement) font interpreter par le modele des chiffres deja
+calcules — « N'invente AUCUN chiffre » — mais rien ne relisait le texte rendu.
+Un montant invente devenait un constat de la synthese executive, au meme rang
+que le calcul.
+
+**Decision** : la relecture vit dans `_interpreter`, le point unique par lequel
+passent les six roles. Le texte est confronte a la consigne ET a la question
+(les montants et la devise du proprietaire y sont) par `elements_sans_source` ;
+ce qui manque est signale sous le texte par `avertissement_sources`, jamais
+reecrit. `_interpreter` recoit desormais la `ConsultationEntree` plutot que le
+seul fournisseur.
+
+**Ce que ca coute si c'est faux** : un chiffre juste mais derive (un total
+recalcule par le modele, un arrondi) est signale a tort ; le proprietaire voit
+un avertissement de trop, jamais un montant invente presente comme un constat.
