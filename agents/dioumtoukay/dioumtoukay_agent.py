@@ -2532,9 +2532,14 @@ class DioumtoukayAgent(BaseAgent):
             }:
                 return False
             donnees_verif = verification.get("donnees") or {}
+            cible_office = (
+                donnees_mutation.get("fichier")
+                or champs_mutation.get("CHEMIN")
+                or ""
+            )
             cible_verif = (
-                champs_verif.get("CHEMIN")
-                or donnees_verif.get("fichier")
+                donnees_verif.get("fichier")
+                or champs_verif.get("CHEMIN")
                 or ""
             )
 
@@ -2543,12 +2548,11 @@ class DioumtoukayAgent(BaseAgent):
                     return False
                 a = Path(str(gauche))
                 b = Path(str(droite))
-                return (
-                    str(gauche) == str(droite)
-                    or a.name == b.name
-                )
+                if a.is_absolute() and b.is_absolute():
+                    return a.resolve() == b.resolve()
+                return str(gauche) == str(droite) or a.name == b.name
 
-            if not meme_fichier(cible, cible_verif):
+            if not meme_fichier(cible_office, cible_verif):
                 return False
 
             mutation_nom = mutation.get("action")
