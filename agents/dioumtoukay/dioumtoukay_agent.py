@@ -268,6 +268,12 @@ OFFICE_MUTATIONS = frozenset({
     "pret", "reouvrir", "fusionner", "abandonner", "exporter",
     "imprimer_pdf", "ouvrir", "daemon_arreter",
 })
+# Ces opérations reviennent avec une preuve que le connecteur vérifie lui-même :
+# artefact Office/PDF structurellement lisible, ou URL Viewer rendue par le
+# runtime. Les autres demandent encore une lecture Office APRES la mutation.
+OFFICE_MUTATIONS_AUTO_VERIFIEES = frozenset({
+    "exporter", "imprimer_pdf", "ouvrir",
+})
 CONFIRMATION_REQUISE = "CONFIRMATION_REQUIRED"
 
 _ETIQUETTE = re.compile(r"^\s*ACTION\s*:\s*(\w+)", re.IGNORECASE | re.MULTILINE)
@@ -2457,6 +2463,58 @@ class DioumtoukayAgent(BaseAgent):
                 )
             return False
 
+        if mutation.get("action") == "office_modifier":
+            if action != "office_lire":
+                return False
+            operation_mutation = str(champs_mutation.get("OPERATION") or "").lower()
+            operation_verif = str(champs_verif.get("OPERATION") or "").lower()
+            cible_office = str(champs_mutation.get("CHEMIN") or "").strip()
+            cible_verif = str(champs_verif.get("CHEMIN") or "").strip()
+
+            if operation_mutation in {"creer", "importer"}:
+                nom = str(champs_mutation.get("NOM") or "").strip()
+                if operation_verif == "fichiers":
+                    attendu = f"{nom}.univer" if nom else ""
+                    return not attendu or attendu in sortie
+                return (
+                    operation_verif in {"statut", "unites"}
+                    and bool(cible_verif)
+                    and (not nom or cible_verif.endswith(f"{nom}.univer"))
+                )
+
+            if operation_mutation == "executer":
+                return (
+                    operation_verif == "inspecter"
+                    and bool(cible_office)
+                    and cible_verif == cible_office
+                )
+
+            if operation_mutation == "worktree_creer":
+                return (
+                    operation_verif == "worktrees"
+                    and bool(cible_office)
+                    and cible_verif == cible_office
+                )
+
+            if operation_mutation == "unite_creer":
+                return (
+                    operation_verif == "unites"
+                    and bool(cible_office)
+                    and cible_verif == cible_office
+                )
+
+            if operation_mutation in {"pret", "reouvrir", "fusionner", "abandonner"}:
+                return (
+                    operation_verif in {"statut", "worktrees", "unites"}
+                    and bool(cible_office)
+                    and cible_verif == cible_office
+                )
+
+            if operation_mutation == "daemon_arreter":
+                return operation_verif == "daemon_statut"
+
+            return False
+
         if mutation.get("action") == "ordinateur_ecrire_fichier":
             if action == "ordinateur_lire_fichier":
                 return (
@@ -2501,6 +2559,12 @@ class DioumtoukayAgent(BaseAgent):
         non_verifiees: List[Dict[str, Any]] = []
         for index, mutation in enumerate(rendu):
             if not mutation.get("ok") or mutation.get("action") not in ACTIONS_A_VERIFIER:
+                continue
+            if (
+                mutation.get("action") == "office_modifier"
+                and str((mutation.get("champs") or {}).get("OPERATION") or "").lower()
+                in OFFICE_MUTATIONS_AUTO_VERIFIEES
+            ):
                 continue
             verifiee = any(
                 cls._preuve_positive(mutation, acte)
@@ -2736,6 +2800,13 @@ class DioumtoukayAgent(BaseAgent):
                 continue
             champs = acte.get("champs") or {}
             ou = champs.get("CHEMIN") or champs.get("DESTINATION")
+            if (
+                not ou
+                and acte.get("action") == "office_modifier"
+                and champs.get("OPERATION") in {"creer", "importer"}
+                and champs.get("NOM")
+            ):
+                ou = f"{champs['NOM']}.univer"
             if ou and ou not in touches:
                 touches.append(ou)
         return touches
