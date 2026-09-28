@@ -11739,6 +11739,28 @@ seul fournisseur.
 recalcule par le modele, un arrondi) est signale a tort ; le proprietaire voit
 un avertissement de trop, jamais un montant invente presente comme un constat.
 
+## DEC-0158 — Le rapport de recherche approfondie est relu contre ses sources
+
+**2026-09-28.**
+
+**Constat** : DEC-0152 a donne au rapport de `DeepResearcherAgent` des regles
+strictes (« cite chaque fait », « n'ajoute aucun chiffre, nom ou fait »), mais
+rien ne verifiait qu'elles etaient tenues. Un modele local qui ajoutait un
+chiffre ou un cabinet d'etudes de memoire passait tel quel, avec l'air d'un
+rapport source.
+
+**Decision** (`agents/researcher/researcher_agent.py`) : le rapport est relu par
+`elements_sans_source` contre la consigne de synthese, qui porte la question,
+les pages web et les connaissances locales ; ce qui n'y figure pas est signale
+sous le rapport (`avertissement_sources`) et dans le champ `sans_source`, jamais
+reecrit. Meme mecanisme que la reponse web (DEC-0150), la finance (DEC-0156) et
+les roles executifs (DEC-0157).
+
+**Ce que ca coute si c'est faux** : un rapport long peut porter des mots
+capitalises courants signales a tort ; l'avertissement est resume au-dela de
+dix elements. Un avertissement de trop, jamais un fait invente sans
+avertissement.
+
 ## DEC-0159 — La synthese de tendances s'en tient aux resultats web et est relue
 
 **2026-09-28.**
