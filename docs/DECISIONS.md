@@ -11594,6 +11594,48 @@ recues, et d'ecrire qu'une partie manque plutot que de la remplir.
 pu repondre de memoire recoit un refus quand le web ne rend rien — c'est le
 prix de ne pas presenter un souvenir comme un rapport source.
 
+## DEC-0153 — Le sujet d'une premiere question se lit en entier : majorite stricte, annee, meteo, et la bonne passe d'abord
+
+**2026-09-28.** Suite de DEC-0151, mesuree la meme nuit sur le vrai moteur.
+
+**Constat** : la barriere de DEC-0151 acceptait une page nommant UN mot du
+sujet. « Ligue des champions » laissait passer un article sur le Venezuela
+portant « Ligue » dans son menu ; « Quel temps fait-il a Dakar » trois articles
+nommant Dakar (management, Dak'Art 92, JOJ) et aucun site meteo ; « Ballon d'or
+2025 » l'edition 2026, l'annee n'etant pas dans le sujet. Et toute question
+passait d'abord par les actualites du jour : « population du Senegal » ne
+ramenait que des articles citant le pays en passant.
+
+**Decision** (`agents/fresh_info/fresh_info_agent.py`) :
+
+- `_source_parle_du_sujet` : une source doit nommer une **majorite stricte**
+  des mots du sujet (deux mots : les deux). Il remplace le « au moins un » a
+  chaque etape de la barriere de premiere question.
+- `_sujet_de_la_question` garde l'annee (« 2025 ») et ajoute « météo » a une
+  question de meteo ; `FORMES_DU_SUJET` lui fait reconnaitre « weather »,
+  « prévisions », « température »...
+- `_porte_sur_l_actualite` : seule une question d'actualite (aujourd'hui,
+  derniers, score, meteo...) cherche d'abord dans les actualites ; un fait
+  stable cherche d'abord sur le web sans date. Un mode vide (moteur muet)
+  laisse sa chance a l'autre.
+- Mots sans sujet ajoutes : « remporté », « aura », « lieu », « prochain(e)(s) »,
+  et l'issue d'un match (« victoire », « défaite », « marqué », « contre »,
+  « vainqueur »...) : la page ecrit « s'est impose », et la majorite stricte
+  refusait sinon « derniere victoire du Real » (test existant, rattrape par la
+  suite complete).
+
+**Mesure apres** : meteo de Dakar -> meteoart, meteocity, lachainemeteo ;
+Ligue des champions 2025 -> cinq pages Wikipedia de la competition ; Ballon
+d'or 2025 -> la page de l'edition 2025 ; population -> Worldometer, Wikipedia.
+
+**Limite** : un moteur qui ne repond pas dans les deux modes laisse encore la
+question sans source ; l'agent le dit au lieu d'improviser.
+
+**Ce que ca coute si c'est faux** : une bonne page qui ne nomme qu'un des deux
+mots du sujet est ecartee (une fiche meteo titree « Dakar » seul, sans
+« météo » ni « prévisions ») ; la reponse devient un refus ou une page voisine
+— jamais une invention.
+
 ## DEC-0155 — La passe web de dernier recours ne prend plus un moteur muet pour une absence de page
 
 **2026-09-28.**
