@@ -1173,6 +1173,13 @@ async def flux_agent(demande: DemandeAgent):
             yield lecture.ouvrir()
             intention = await classer_la_demande(
                 demande.text, demande.history, session, espace=demande.espace)
+            # Un binaire Office joint est une preuve plus précise que les mots
+            # vagues "analyse ce fichier". CHAT/RAG ne savent pas consommer ce
+            # staging binaire : ATELIER/Univer, lui, le fait réellement.
+            # Une intention explicite différente (EMAIL, SOCIAL, etc.) garde
+            # sa priorité et n'est jamais écrasée par la seule extension.
+            if demande.office_paths and intention in {"CHAT", "RAG_DOCS", "ATELIER"}:
+                intention = "ATELIER"
             yield lecture.fermer(intention)
             voie = voie_pour(intention)
             # Ce que ce tour aura reellement coute. La cible vient de la voie ;
