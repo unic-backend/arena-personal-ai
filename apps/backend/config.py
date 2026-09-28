@@ -71,6 +71,10 @@ JOURNAL_TRAVAUX_PATH = Path(
 # (core/agent/espace_de_travail.py, DEC-0146). Meme dossier `data/`.
 ESPACES_COLLABORATION_DIR = Path(
     os.getenv("USMAN_ESPACES_COLLABORATION") or BASE_DIR / "data" / "collaboration")
+# Espace Office local-first (Univer CLI) : les conteneurs .univer et leur
+# état de travail restent dans le volume data/, pas dans l'arbre du dépôt.
+UNIVER_WORKSPACE_DIR = Path(
+    os.getenv("USMAN_UNIVER_WORKSPACE_DIR") or BASE_DIR / "data" / "univer")
 
 # --- Environnement -------------------------------------------------------------
 # `APP_ENV` existait deja dans `.env.example`, sans qu'aucun code ne le lise.
