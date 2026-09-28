@@ -30,11 +30,11 @@ import asyncio
 import json
 import logging
 import time
-from pathlib import Path
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -44,6 +44,7 @@ from pydantic import BaseModel, Field
 
 from agents.plaquiste.plaquiste_agent import MetierSuivi
 from apps.backend.config import AGENTS_SPECIALISES, DB_PATH, UNIVER_WORKSPACE_DIR
+from apps.backend.pieces_jointes import nom_de_fichier_sur
 from apps.backend.prompts import prompt_avec_methode
 from apps.backend.routers.chat import (
     ChatRequest,
@@ -67,7 +68,6 @@ from apps.backend.runtime import (
     permissions,
     registre,
 )
-from apps.backend.pieces_jointes import nom_de_fichier_sur
 from apps.backend.security import limiter_debit, verify_api_key
 from core.actions.confirmation_parlee import (
     a_confirmer_par_phrase,
