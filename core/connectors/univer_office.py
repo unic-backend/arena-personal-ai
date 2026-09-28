@@ -116,6 +116,9 @@ class ConnecteurUniverOffice(Connecteur):
             "etat": Capacite(
                 nom="etat", action="read",
                 description="Mesure la version et la disponibilité réelle d'Univer CLI."),
+            "fichiers": Capacite(
+                nom="fichiers", action="read",
+                description="Liste les conteneurs .univer persistants de cette instance."),
             "creer": Capacite(
                 nom="creer", action="document",
                 description="Crée un conteneur Office local .univer vide.", ecriture=True),
@@ -436,6 +439,28 @@ class ConnecteurUniverOffice(Connecteur):
                     production_license_verified=bool(
                         os.getenv("UNIVER_LICENSE", "").strip()
                     ),
+                )
+
+            if capacite.nom == "fichiers":
+                self.dossier.mkdir(parents=True, exist_ok=True)
+                fichiers = []
+                for chemin in sorted(self.dossier.glob("*.univer")):
+                    try:
+                        stat = chemin.stat()
+                    except OSError:
+                        continue
+                    fichiers.append({
+                        "nom": chemin.name,
+                        "chemin": str(chemin.resolve()),
+                        "taille_octets": stat.st_size,
+                        "modifie_le": stat.st_mtime,
+                    })
+                return self._resultat_json(
+                    capacite.nom,
+                    f"{len(fichiers)} espace(s) Office trouvé(s).",
+                    f"{self.dossier}:office-files",
+                    {"fichiers": fichiers},
+                    fichiers=fichiers,
                 )
 
             if capacite.nom == "creer":
