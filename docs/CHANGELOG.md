@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Corrigé — 28/09/2026 — « Je n'ai rien trouvé » alors que le web avait la réponse
+
+Une recherche sur trois revenait vide sans raison : le service de recherche
+interroge des moteurs au hasard, et un moteur bloqué répond « rien » au lieu
+d'une erreur. ARENA le croyait. La dernière recherche est maintenant retentée
+quand elle revient vide : sur 12 essais mesurés, 12 réponses (DEC-0155).
+
 ### Corrigé — 28/09/2026 — La recherche approfondie n'écrit plus de rapport sans source
 
 Quand la recherche ne trouvait rien, ARENA rédigeait quand même un « rapport

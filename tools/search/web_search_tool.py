@@ -182,14 +182,24 @@ class WebSearchTool:
         Trois issues possibles a un echec, et une seule donne lieu a un reessai :
 
         - **aucun resultat** : ce n'est pas une panne, c'est une reponse. On
-          rend [] et l'appelant elargit ;
+          rend [] et l'appelant elargit — sauf en `text` sans filtre, ou le
+          vide vient des moteurs tires au sort : on reessaie ;
         - **panne passagere** (timeout, connexion perdue) : **un** reessai, puis
           on abandonne. Jamais de boucle ;
+
+        Le `text` sans filtre a trois essais au total, toutes causes
+        confondues ; les autres passes, deux.
         - **toute autre erreur** : on abandonne tout de suite, comme avant. La
           reessayer ne ferait que doubler l'attente pour le meme echec.
         """
+        # Le `text` sans filtre est la passe de dernier recours : sans elle,
+        # la reponse est « je n'ai rien trouve ». Elle a droit a un essai de
+        # plus, quelle que soit la cause du vide (voir plus bas).
+        dernier_recours = categorie == "text" and not timelimit
+        essais = 3 if dernier_recours else 2
         bruts = None
-        for tentative in (1, 2):
+        for tentative in range(1, essais + 1):
+            reste_un_essai = tentative < essais
             try:
                 bruts = self._interroger(categorie, query, max_results, timelimit)
                 break
@@ -198,6 +208,16 @@ class WebSearchTool:
                 # est une information sur la requete, le second sur le systeme. Les
                 # confondre a fait passer une requete trop etroite pour une panne.
                 if ABSENCE_DE_RESULTAT in str(erreur).lower():
+                    if dernier_recours and reste_un_essai:
+                        # Sans filtre, le web a presque toujours une page : ce
+                        # vide vient des moteurs tires au sort par `ddgs`, dont
+                        # un moteur bloque rend une liste vide sans erreur.
+                        # Mesure du 28/09/2026 : 3 recherches sur 9 vides, et
+                        # le meme appel, relance aussitot, rendait 5 pages ;
+                        # avec un seul reessai, un delai TLS suivi d'un vide
+                        # laissait encore 4 recherches sur 12 sans rien.
+                        logger.info("Aucun resultat en text pour %r : un reessai.", query[:60])
+                        continue
                     logger.info(
                         "Aucun resultat en %s%s pour %r : on elargit.",
                         categorie,
@@ -206,7 +226,7 @@ class WebSearchTool:
                     )
                     return []
 
-                if tentative == 1 and est_panne_passagere(erreur):
+                if reste_un_essai and est_panne_passagere(erreur):
                     logger.warning(
                         "Recherche %s interrompue (%s) : un reessai.", categorie, erreur
                     )

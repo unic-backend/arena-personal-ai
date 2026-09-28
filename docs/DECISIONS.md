@@ -11593,3 +11593,29 @@ recues, et d'ecrire qu'une partie manque plutot que de la remplir.
 **Ce que ca coute si c'est faux** : une question a laquelle le modele aurait
 pu repondre de memoire recoit un refus quand le web ne rend rien — c'est le
 prix de ne pas presenter un souvenir comme un rapport source.
+
+## DEC-0155 — La passe web de dernier recours ne prend plus un moteur muet pour une absence de page
+
+**2026-09-28.**
+
+**Constat** (mesure sur le vrai moteur, 3 questions x 3 appels, mode web) :
+3 recherches sur 9 revenaient « aucun resultat » en ~2,5 s, et le meme appel,
+relance aussitot, rendait cinq pages. `ddgs` tire ses moteurs au sort, et un
+moteur bloque rend une liste vide **sans erreur** : son « No results found »
+ne dit rien de la question. `WebSearchTool._executer` le prenait pour une
+reponse definitive — c'est le « il cherche mais ne trouve rien » du
+proprietaire. Avec un seul reessai, un delai TLS suivi d'un vide laissait
+encore 4 recherches sur 12 sans rien.
+
+**Decision** (`tools/search/web_search_tool.py`) : la passe `text` sans
+filtre de date — la derniere, celle apres laquelle la reponse est « rien
+trouve » — a **trois essais**, et un vide y est reessaye comme une panne
+passagere. Les passes `news` filtrees gardent deux essais et un vide y reste
+une reponse (un filtre au jour peut vraiment ne rien avoir).
+
+**Mesure apres** : 12 recherches sur 12 rendent cinq resultats.
+
+**Ce que ca coute si c'est faux** : une question qui n'a vraiment aucune page
+attend deux essais de plus (quelques secondes) avant « rien trouve » ; la
+recherche entiere reste bornee par `DELAI_TOTAL_SECONDES`, verifie avant
+chaque passe.
