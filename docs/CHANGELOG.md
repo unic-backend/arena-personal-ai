@@ -10,6 +10,20 @@ n'était ni dans ce qui a été dit, ni dans la page. C'est maintenant signalé
 sous la réponse ; et l'analyse d'une vidéo ne demande plus l'avis d'un autre
 agent qui répondrait de mémoire (DEC-0160).
 
+### Corrigé — 28/09/2026 — Les conseils d'affaires signalent un montant inventé
+
+Quand ARENA évalue un projet (marge, délais, risques), chaque rôle fait
+expliquer ses calculs par le modèle. Un montant qui n'était ni dans tes
+chiffres ni dans les calculs passait tel quel. Il est maintenant signalé sous
+l'explication (DEC-0157).
+
+### Corrigé — 28/09/2026 — L'analyse financière ne cite plus un cours de mémoire
+
+« Analyse le bitcoin » mesurait bien le prix, mais ne le donnait pas au modèle
+qui rédige l'explication : il pouvait écrire un cours de mémoire. Il reçoit
+maintenant le prix mesuré, et tout chiffre de son explication qui ne vient pas
+des données est signalé sous la réponse (DEC-0156).
+
 ### Corrigé — 28/09/2026 — « Je n'ai rien trouvé » alors que le web avait la réponse
 
 Une recherche sur trois revenait vide sans raison : le service de recherche
