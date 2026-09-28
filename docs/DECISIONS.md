@@ -11693,6 +11693,52 @@ attend deux essais de plus (quelques secondes) avant « rien trouve » ; la
 recherche entiere reste bornee par `DELAI_TOTAL_SECONDES`, verifie avant
 chaque passe.
 
+## DEC-0156 — L'interpretation financiere recoit le prix mesure et est relue contre ce qu'elle a recu
+
+**2026-09-28.**
+
+**Constat** (audit des chemins d'hallucination) : `FinanceAgent` mesure le prix
+(CoinGecko) mais ne le donnait pas au modele d'interpretation, qui ne recevait
+que tendance, rendement, volatilite, RSI et risque. Un « analyse le bitcoin »
+appelle naturellement un cours : un modele local l'ecrivait de memoire, malgre
+« N'invente AUCUN chiffre », et rien ne relisait la reponse — contrairement a
+la reponse web depuis DEC-0150.
+
+**Decision** (`agents/finance/finance_agent.py`) :
+
+- la consigne porte « Prix actuel (mesure) » : le prix au comptant confirme,
+  sinon le dernier point de l'historique, sinon « non disponible » ;
+- l'interpretation est relue par `elements_sans_source` contre la consigne
+  qu'elle a recue ; ce qui n'y figure pas est signale sous la reponse
+  (`avertissement_sources`) et dans le champ `sans_source` — jamais reecrit.
+
+**Ce que ca coute si c'est faux** : un chiffre juste mais reformule
+autrement que dans la consigne (un arrondi a la centaine, « 64 000 » pour
+64 390) est signale a tort ; le proprietaire voit un avertissement de trop,
+jamais un chiffre invente sans avertissement.
+
+## DEC-0157 — L'interpretation de chaque role executif est relue contre ce qu'elle a recu
+
+**2026-09-28.**
+
+**Constat** (audit des chemins d'hallucination, suite de DEC-0156) : les six
+roles de `core/executive/specialistes.py` (finance, operations, RH, risque,
+marche, approvisionnement) font interpreter par le modele des chiffres deja
+calcules — « N'invente AUCUN chiffre » — mais rien ne relisait le texte rendu.
+Un montant invente devenait un constat de la synthese executive, au meme rang
+que le calcul.
+
+**Decision** : la relecture vit dans `_interpreter`, le point unique par lequel
+passent les six roles. Le texte est confronte a la consigne ET a la question
+(les montants et la devise du proprietaire y sont) par `elements_sans_source` ;
+ce qui manque est signale sous le texte par `avertissement_sources`, jamais
+reecrit. `_interpreter` recoit desormais la `ConsultationEntree` plutot que le
+seul fournisseur.
+
+**Ce que ca coute si c'est faux** : un chiffre juste mais derive (un total
+recalcule par le modele, un arrondi) est signale a tort ; le proprietaire voit
+un avertissement de trop, jamais un montant invente presente comme un constat.
+
 ## DEC-0159 — La synthese de tendances s'en tient aux resultats web et est relue
 
 **2026-09-28.**

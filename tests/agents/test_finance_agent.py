@@ -317,3 +317,45 @@ class TestAucunOrdreReel:
         # Mot entier seulement : "designerait"/"consigner" contiennent "signer"
         # en sous-chaine sans avoir aucun rapport avec signer une transaction.
         assert re.search(r"\bsigner\b", contenu) is None
+
+
+class TestInterpretationRelue:
+    """Mesure du 28/09/2026 : le prix, pourtant mesure, n'etait pas dans la
+    consigne d'interpretation, et rien ne relisait la reponse. Un modele local
+    qui voulait citer un cours l'ecrivait de memoire (DEC-0156)."""
+
+    POINTS = [(i * 1000, 64000.0 + 10 * i) for i in range(40)]  # dernier : 64 390
+
+    def _agent(self, portefeuille, reponse):
+        provider = FauxProvider(reponse=reponse)
+        agent = FinanceAgent(provider=provider,
+                             registre=_registre(FauxConnecteurMarketData(points=self.POINTS)),
+                             portefeuille=portefeuille, recherche=FauxRecherche())
+        return agent, provider
+
+    @pytest.mark.asyncio
+    async def test_la_consigne_porte_le_prix_mesure(self, portefeuille):
+        agent, provider = self._agent(portefeuille, "Tendance calculee.")
+        await agent.run("analyse le bitcoin")
+        assert "Prix actuel (mesure) : 64 390.00 USD" in provider.prompts_recus[-1]
+
+    @pytest.mark.asyncio
+    async def test_un_cours_invente_est_signale_sans_reecrire(self, portefeuille):
+        inventee = "Le bitcoin cote 71 000 dollars et reste solide."
+        agent, _ = self._agent(portefeuille, inventee)
+
+        resultat = await agent.run("analyse le bitcoin")
+
+        assert resultat["response"].startswith(inventee)
+        assert "Verification automatique" in resultat["response"]
+        assert resultat["sans_source"] == ["71000"]
+
+    @pytest.mark.asyncio
+    async def test_une_lecture_fidele_reste_telle_quelle(self, portefeuille):
+        fidele = "Le bitcoin cote 64 390 dollars, un niveau mesure ce jour."
+        agent, _ = self._agent(portefeuille, fidele)
+
+        resultat = await agent.run("analyse le bitcoin")
+
+        assert resultat["response"] == fidele
+        assert resultat["sans_source"] == []
