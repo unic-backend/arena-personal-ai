@@ -767,6 +767,7 @@ async def classer_la_demande(
     session_id: str,
     espace: Optional[str] = None,
     a_classer: Optional[str] = None,
+    office_joint: bool = False,
 ) -> str:
     """Le SEUL classement d'une demande, pour toutes les surfaces.
 
@@ -790,10 +791,22 @@ async def classer_la_demande(
         espace: l'espace choisi dans la PWA, s'il y en a un.
         a_classer: le texte a donner au classeur quand il differe de `message`
             (le fil aplati de `dispatch_request`).
+        office_joint: vrai seulement quand le serveur a conservé un binaire
+            Office éditable pour CE tour.
     """
     attendue = intention_dune_reponse_attendue(historique, message, session_id)
     if attendue is not None:
         return attendue
+
+    # Le type réel de la pièce jointe complète la phrase. « modifie ce fichier »
+    # ne porte pas le mot Excel/Word/PowerPoint, mais avec un binaire Office
+    # validé à CE tour, le verbe d'action suffit pour atteindre l'atelier.
+    if (
+        office_joint
+        and any(verbe in (message or "").lower() for verbe in VERBES_OFFICE)
+    ):
+        return "ATELIER"
+
     # Une demande qui enchaine plusieurs metiers part vers son PREMIER agent
     # specialise : c'est `dispatch_request` qui fera travailler l'equipe. Sans
     # cela, la PWA classait parfois l'ensemble en conversation et n'appelait
@@ -850,8 +863,12 @@ async def dispatch_request(
     """
     if intent is None:
         intent = await classer_la_demande(
-            request.message_actuel or request.prompt, request.history,
-            request.session_id or "default", a_classer=request.prompt)
+            request.message_actuel or request.prompt,
+            request.history,
+            request.session_id or "default",
+            a_classer=request.prompt,
+            office_joint=bool(request.office_paths),
+        )
     session = request.session_id or "default"
     # Une reponse a une question d'ARENA ne se decoupe jamais : elle revient
     # entiere a l'agent qui l'a posee.
