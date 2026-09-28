@@ -11739,6 +11739,34 @@ seul fournisseur.
 recalcule par le modele, un arrondi) est signale a tort ; le proprietaire voit
 un avertissement de trop, jamais un montant invente presente comme un constat.
 
+## DEC-0160 — Analyse de transcription, compte rendu de reunion et reponse sur une page sont relus
+
+**2026-09-28.**
+
+**Constat** (audit des synthese liees a des donnees, suite de DEC-0156 a
+0159) : dans `VideoAnalyzerAgent`, l'analyse d'une video ordinaire pouvait
+consulter un collegue — qui repond de sa memoire, pas de ce qui a ete dit — et
+ni elle ni le compte rendu de reunion n'etaient relus contre la transcription.
+`BrowserAgent.discuter_page` repondait « uniquement a partir de la page » sans
+que rien ne le verifie.
+
+**Decision** :
+
+- `agents/video_analyzer/video_analyzer_agent.py` : les deux analyses passent
+  par `rediger(consulter=False)` et par `_relire`, qui confronte le texte a sa
+  consigne (transcription comprise) avec `elements_sans_source` et signale ce
+  qui manque. Les metriques mesurees de la reunion sont ajoutees apres la
+  relecture, pas relues comme du texte du modele.
+- `agents/browser/browser_agent.py` : la reponse sur une page est relue
+  contre la consigne (page et question) ; champ `sans_source`.
+
+Rien n'est reecrit : le texte du modele reste tel quel, l'avertissement vient
+dessous.
+
+**Ce que ca coute si c'est faux** : une transcription Whisper qui ecrit mal
+un nom (« Mousa » pour « Moussa ») fait signaler le nom juste que le modele a
+corrige ; un avertissement de trop, jamais un nom invente sans avertissement.
+
 ## DEC-0158 — Le rapport de recherche approfondie est relu contre ses sources
 
 **2026-09-28.**
