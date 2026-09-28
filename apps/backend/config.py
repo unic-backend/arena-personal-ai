@@ -71,6 +71,10 @@ JOURNAL_TRAVAUX_PATH = Path(
 # (core/agent/espace_de_travail.py, DEC-0146). Meme dossier `data/`.
 ESPACES_COLLABORATION_DIR = Path(
     os.getenv("USMAN_ESPACES_COLLABORATION") or BASE_DIR / "data" / "collaboration")
+# Espace Office local-first. Les .univer, Worktrees et staging restent dans le
+# volume data/ persistant, jamais dans le checkout Git ni dans /tmp.
+UNIVER_WORKSPACE_DIR = Path(
+    os.getenv("USMAN_UNIVER_WORKSPACE_DIR") or BASE_DIR / "data" / "univer")
 
 # --- Environnement -------------------------------------------------------------
 # `APP_ENV` existait deja dans `.env.example`, sans qu'aucun code ne le lise.
