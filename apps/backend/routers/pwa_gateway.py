@@ -8,7 +8,7 @@ parle. **C'est la seconde qui est retenue.**
 Le protocole, releve dans son code (`src/lib/activity/`) :
 
 - `POST /agent/stream` — corps JSON `{text, locale, history, attachments,
-  media_paths, connectors, run_id, conversation_id, persona, memories}`, reponse en
+  media_paths, office_paths, connectors, run_id, conversation_id, persona, memories}`, reponse en
   `text/event-stream`. `conversation_id` (stable, un par fil) porte la
   session memoire ; `run_id` (nouveau a chaque message) reste ce qu'il a
   toujours ete, un identifiant d'EXECUTION — les deux ne se confondent plus
@@ -34,6 +34,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -42,7 +43,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from agents.plaquiste.plaquiste_agent import MetierSuivi
-from apps.backend.config import AGENTS_SPECIALISES, DB_PATH
+from apps.backend.config import AGENTS_SPECIALISES, DB_PATH, UNIVER_WORKSPACE_DIR
 from apps.backend.prompts import prompt_avec_methode
 from apps.backend.routers.chat import (
     ChatRequest,
@@ -62,15 +63,18 @@ from apps.backend.runtime import (
     mesures_execution,
     ollama_vision,
     orchestrator,
+    permissions,
     pieces_jointes,
     registre,
 )
+from apps.backend.pieces_jointes import nom_de_fichier_sur
 from apps.backend.security import limiter_debit, verify_api_key
 from core.actions.confirmation_parlee import (
     a_confirmer_par_phrase,
     est_une_confirmation,
 )
 from core.connectors.base import EtatSante
+from core.connectors.univer_office import EXTENSIONS_IMPORT
 from core.execution.mesures import ETAT_INDISPONIBLE, ETAT_MESURE, Mesure, chronometrer
 from core.execution.voies import budget_de, voie_pour
 from core.knowledge.retrieval import normaliser
@@ -152,6 +156,9 @@ class DemandeAgent(BaseModel):
     # Chemins renvoyes par /api/upload pour les medias audio/video de CE tour.
     # Ils restent revalides sous MEDIA_DIR par dispatch_request avant lecture.
     media_paths: List[str] = Field(default_factory=list)
+    # Binaires Office du tour courant, persistés sous data/univer/imports.
+    # Ils sont revalidés dans chat.py avant d'atteindre Dioumtoukay.
+    office_paths: List[str] = Field(default_factory=list)
     connectors: Any = None
     run_id: Optional[str] = None
     # Identite STABLE de la conversation (le `activeId` de son store cote
@@ -1236,6 +1243,7 @@ async def flux_agent(demande: DemandeAgent):
                                 attachments=demande.attachments,
                                 video_path=(demande.media_paths[0]
                                             if demande.media_paths else None),
+                                office_paths=list(demande.office_paths),
                                 # Structure encore intacte pour PLAQUISTE : `texte`
                                 # ci-dessus est deja le fil aplati (pour le modele
                                 # et les recherches par mots-cles existantes) ;
@@ -1514,6 +1522,119 @@ async def lire_borne(file: UploadFile, plafond: int) -> Optional[bytes]:
     return b"".join(blocs)
 
 
+# Les formats texte CSV/TSV restent sur /files par défaut : ils sont utiles
+# au chat ordinaire. Les formats binaires Office, eux, doivent garder leurs
+# octets pour une édition réelle par Univer.
+EXTENSIONS_OFFICE_BINAIRES = frozenset(
+    ext for ext in EXTENSIONS_IMPORT if ext not in {".csv", ".tsv"}
+)
+STAGING_OFFICE_MAX_AGE = 24 * 60 * 60
+
+
+def _nettoyer_staging_office(maintenant: Optional[float] = None) -> None:
+    """Supprime uniquement les uploads Office jamais importés après 24 h."""
+    dossier = UNIVER_WORKSPACE_DIR / "imports"
+    if not dossier.is_dir():
+        return
+    limite = (maintenant if maintenant is not None else time.time()) - STAGING_OFFICE_MAX_AGE
+    for fichier in dossier.iterdir():
+        try:
+            if (
+                fichier.is_file()
+                and fichier.suffix.lower() in EXTENSIONS_OFFICE_BINAIRES
+                and fichier.stat().st_mtime < limite
+            ):
+                fichier.unlink(missing_ok=True)
+        except OSError as souci:
+            logger.warning("Nettoyage staging Office impossible pour %s : %s", fichier, souci)
+
+
+def _destination_office_unique(nom_brut: str) -> Path:
+    nom = nom_de_fichier_sur(nom_brut)
+    extension = Path(nom).suffix.lower()
+    if extension not in EXTENSIONS_OFFICE_BINAIRES:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Format Office éditable non accepté ici : {extension or '(sans extension)'}.",
+        )
+    dossier = UNIVER_WORKSPACE_DIR / "imports"
+    dossier.mkdir(parents=True, exist_ok=True)
+    tige, suffixe = Path(nom).stem, Path(nom).suffix
+    for index in range(10_000):
+        candidat = dossier / (nom if index == 0 else f"{tige}-{index}{suffixe}")
+        try:
+            with candidat.open("xb"):
+                pass
+            return candidat.resolve()
+        except FileExistsError:
+            continue
+    raise HTTPException(status_code=507, detail="Impossible de réserver un nom Office libre.")
+
+
+@router.post("/office/files", dependencies=[Depends(verify_api_key)])
+async def envoyer_fichier_office(file: UploadFile = File(...)):
+    """Conserve le binaire Office ET extrait son texte pour le chat.
+
+    /files détruit volontairement le binaire après extraction. C'est correct
+    pour lire un document, mais incompatible avec une vraie modification
+    XLSX/DOCX/PPTX. Ici les octets restent dans un staging borné jusqu'à leur
+    import dans .univer ; le connecteur les efface après import réussi.
+    """
+    if not permissions.is_allowed("WRITE_FILES"):
+        raise HTTPException(status_code=403, detail="Écriture de fichiers désactivée.")
+
+    connecteur = registre.obtenir("office_univer")
+    if connecteur is None:
+        raise HTTPException(status_code=503, detail="Moteur Office Univer absent.")
+    sante = await asyncio.to_thread(connecteur.sonder)
+    if sante.etat is not EtatSante.OPERATIONNEL:
+        raison = sante.ce_qui_manque or sante.message or sante.etat.value
+        raise HTTPException(status_code=503, detail=raison)
+
+    _nettoyer_staging_office()
+    destination = _destination_office_unique(file.filename or "sans-nom")
+    total = 0
+    try:
+        with destination.open("wb") as sortie:
+            while bloc := await file.read(TAILLE_BLOC_PIECE):
+                total += len(bloc)
+                if total > pieces_jointes.taille_max:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=(
+                            "Fichier trop volumineux (maximum "
+                            f"{pieces_jointes.taille_max / 1024**2:.0f} Mo)."
+                        ),
+                    )
+                sortie.write(bloc)
+        if total == 0:
+            raise HTTPException(status_code=400, detail="Fichier vide.")
+
+        # Maintient le contrat existant : les autres agents peuvent lire le
+        # texte extrait tandis que Dioumtoukay reçoit le binaire modifiable.
+        piece = pieces_jointes.deposer(
+            file.filename or destination.name,
+            destination.read_bytes(),
+        )
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+
+    logger.info("Binaire Office prêt pour Univer : %s (%d octets).", destination.name, total)
+    piece_dict = piece.to_dict()
+    piece_dict["type"] = file.content_type or ""
+    piece_dict["kind"] = "document"
+    piece_dict["extractedCharacters"] = piece_dict.pop("characters")
+    return {
+        "status": "success",
+        "filename": destination.name,
+        "original_filename": nom_de_fichier_sur(file.filename or destination.name),
+        "path": str(destination),
+        "size_bytes": total,
+        "attachment": piece_dict,
+    }
+
+
 @router.post("/files", dependencies=[Depends(verify_api_key)])
 async def envoyer_fichier(
     file: UploadFile = File(...),
@@ -1572,8 +1693,27 @@ async def capacites_disponibles() -> Dict[str, Any]:
     Une capacite indisponible porte **toujours** sa raison. « Indisponible »
     sans dire pourquoi renvoie chercher une panne sans la nommer.
     """
+    office_connecteur = registre.obtenir("office_univer")
+    office_sante = (
+        await asyncio.to_thread(office_connecteur.sonder)
+        if office_connecteur is not None
+        else None
+    )
     return {
         "video": await disponibilite_video(registre, ollama_vision, collaborateurs),
+        "office": (
+            {
+                "disponible": office_sante.etat is EtatSante.OPERATIONNEL,
+                "etat": office_sante.etat.value,
+                "raison": office_sante.ce_qui_manque or office_sante.message,
+            }
+            if office_sante is not None
+            else {
+                "disponible": False,
+                "etat": EtatSante.NON_CONFIGURE.value,
+                "raison": "Connecteur Office Univer absent.",
+            }
+        ),
         # DEC-0041 : trois backends d'une capacite Software Engineering
         # unifiee, jamais devines depuis le seul fait que le processus tourne.
         "software_engineering": await disponibilite_swe(
