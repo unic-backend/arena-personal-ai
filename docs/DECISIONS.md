@@ -11636,6 +11636,87 @@ mots du sujet est ecartee (une fiche meteo titree « Dakar » seul, sans
 « météo » ni « prévisions ») ; la reponse devient un refus ou une page voisine
 — jamais une invention.
 
+## DEC-0154 — Une question du jour part sur le web meme quand le classeur ne repond pas
+
+**2026-09-28.**
+
+**Constat** (mesure, modele classeur muet — delai de chargement d'Ollama, par
+exemple) : « Quel temps fait-il a Dakar ? », « prix du bitcoin », « taux de
+change », « infos du jour », « Qui a marque pour le Senegal hier soir ? »,
+« Qui a gagne la CAN 2025 ? » etaient classees CHAT. Le chat repondait alors de
+memoire, avec un modele entraine avant — l'hallucination dont se plaint le
+proprietaire, par un autre chemin que la recherche web.
+
+Deux causes dans `exige_verification`
+(`agents/orchestrator/orchestrator_agent.py`) :
+
+- `FORMULATIONS_COURANTES` ignorait la meteo, les taux de change, les infos
+  du jour, les buteurs, les dates de sortie, la prochaine election, le
+  classement d'une ligue ;
+- toute annee passee etait un « fait acquis » : « CAN 2025 », demande en 2026,
+  l'etait donc, alors qu'aucun modele local deploye ici ne l'a appris.
+
+**Decision** : ces formulations sont ajoutees ; une annee des
+`ANNEES_PAS_ENCORE_ACQUISES` (2) dernieres annees ne clot plus la question —
+elle laisse juger les formulations, comme une question sans annee. Une annee
+recente seule ne declenche rien (« montage de mes videos de 2025 » reste hors
+web).
+
+**Ce que ca coute si c'est faux** : une question sur un fait de l'an dernier
+que le modele connaissait part sur le web — une recherche de trop, jamais une
+reponse inventee. Une formulation trop large (« quand sort ») peut envoyer sur
+le web une phrase qui n'en demandait pas.
+
+## DEC-0155 — La passe web de dernier recours ne prend plus un moteur muet pour une absence de page
+
+**2026-09-28.**
+
+**Constat** (mesure sur le vrai moteur, 3 questions x 3 appels, mode web) :
+3 recherches sur 9 revenaient « aucun resultat » en ~2,5 s, et le meme appel,
+relance aussitot, rendait cinq pages. `ddgs` tire ses moteurs au sort, et un
+moteur bloque rend une liste vide **sans erreur** : son « No results found »
+ne dit rien de la question. `WebSearchTool._executer` le prenait pour une
+reponse definitive — c'est le « il cherche mais ne trouve rien » du
+proprietaire. Avec un seul reessai, un delai TLS suivi d'un vide laissait
+encore 4 recherches sur 12 sans rien.
+
+**Decision** (`tools/search/web_search_tool.py`) : la passe `text` sans
+filtre de date — la derniere, celle apres laquelle la reponse est « rien
+trouve » — a **trois essais**, et un vide y est reessaye comme une panne
+passagere. Les passes `news` filtrees gardent deux essais et un vide y reste
+une reponse (un filtre au jour peut vraiment ne rien avoir).
+
+**Mesure apres** : 12 recherches sur 12 rendent cinq resultats.
+
+**Ce que ca coute si c'est faux** : une question qui n'a vraiment aucune page
+attend deux essais de plus (quelques secondes) avant « rien trouve » ; la
+recherche entiere reste bornee par `DELAI_TOTAL_SECONDES`, verifie avant
+chaque passe.
+
+## DEC-0156 — L'interpretation financiere recoit le prix mesure et est relue contre ce qu'elle a recu
+
+**2026-09-28.**
+
+**Constat** (audit des chemins d'hallucination) : `FinanceAgent` mesure le prix
+(CoinGecko) mais ne le donnait pas au modele d'interpretation, qui ne recevait
+que tendance, rendement, volatilite, RSI et risque. Un « analyse le bitcoin »
+appelle naturellement un cours : un modele local l'ecrivait de memoire, malgre
+« N'invente AUCUN chiffre », et rien ne relisait la reponse — contrairement a
+la reponse web depuis DEC-0150.
+
+**Decision** (`agents/finance/finance_agent.py`) :
+
+- la consigne porte « Prix actuel (mesure) » : le prix au comptant confirme,
+  sinon le dernier point de l'historique, sinon « non disponible » ;
+- l'interpretation est relue par `elements_sans_source` contre la consigne
+  qu'elle a recue ; ce qui n'y figure pas est signale sous la reponse
+  (`avertissement_sources`) et dans le champ `sans_source` — jamais reecrit.
+
+**Ce que ca coute si c'est faux** : un chiffre juste mais reformule
+autrement que dans la consigne (un arrondi a la centaine, « 64 000 » pour
+64 390) est signale a tort ; le proprietaire voit un avertissement de trop,
+jamais un chiffre invente sans avertissement.
+
 ## DEC-0157 — L'interpretation de chaque role executif est relue contre ce qu'elle a recu
 
 **2026-09-28.**

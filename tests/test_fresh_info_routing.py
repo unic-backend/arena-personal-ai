@@ -442,3 +442,54 @@ class TestLApostropheTypographiqueNeDesarmePlusLaVerification:
         futur = datetime.date(2026, 9, 15)
         assert not OrchestratorAgent.exige_verification(
             "qui a gagne la coupe du monde 1998", aujourd_hui=futur)
+
+
+class TestQuestionsDuJourSansClasseur:
+    """Mesure du 28/09/2026, modele classeur muet : la meteo du jour, le cours
+    du bitcoin, le vainqueur de la CAN 2025 partaient en CHAT — une reponse de
+    memoire d'un modele entraine avant."""
+
+    AUJOURD_HUI = datetime.date(2026, 9, 28)
+
+    @pytest.mark.parametrize("question", [
+        "Quel temps fait-il à Dakar ?",
+        "météo à Thiès demain",
+        "Quel est le taux de change de l'euro en franc CFA ?",
+        "Quel est le prix du bitcoin ?",
+        "Qui a marqué pour le Sénégal hier soir ?",
+        "Quelles sont les infos du jour ?",
+        "Quand sort GTA 6 ?",
+        "Quand aura lieu la prochaine élection présidentielle au Sénégal ?",
+        "Classement de la Ligue 1",
+    ])
+    def test_ces_questions_partent_verifier(self, question):
+        assert OrchestratorAgent.exige_verification(question, self.AUJOURD_HUI) is True
+
+    @pytest.mark.parametrize("question", [
+        "Qui a gagné la CAN 2025 ?",
+        "Qui a remporté le Ballon d'or 2024 ?",
+    ])
+    def test_une_annee_recente_n_est_pas_encore_acquise(self, question):
+        assert OrchestratorAgent.exige_verification(question, self.AUJOURD_HUI) is True
+
+    @pytest.mark.parametrize("question", [
+        # Une annee recente seule ne suffit pas : il faut une formulation.
+        "raconte-moi une blague sur l'année 2025",
+        "fais un montage de mes vidéos de 2025",
+        "qui a gagné la coupe du monde 2018",
+        "calcule le devis pour 40 m2 de placo",
+    ])
+    def test_le_controle_ne_rafle_pas_le_reste(self, question):
+        assert OrchestratorAgent.exige_verification(question, self.AUJOURD_HUI) is False
+
+
+@pytest.mark.asyncio
+async def test_sans_classeur_la_meteo_ne_part_pas_en_reponse_de_memoire():
+    class ClasseurMuet:
+        async def generate(self, prompt, **kw):
+            raise RuntimeError("delai depasse")
+
+    orchestrateur = OrchestratorAgent(provider=ClasseurMuet())
+
+    assert await orchestrateur.analyze_intent("Quel temps fait-il à Dakar ?") == "FRESH_INFO"
+    assert await orchestrateur.analyze_intent("Qui a gagné la CAN 2025 ?") == "FRESH_INFO"
