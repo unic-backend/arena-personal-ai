@@ -982,26 +982,47 @@ async def _etat_du_moteur(nom_connecteur: str) -> Dict[str, Any]:
 def _documents_produits(resultat: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Les documents REELLEMENT ecrits pendant ce tour, avec leur adresse.
 
-    Depuis le 04/09/2026, le devis PDF ne passe plus par la confirmation
-    (`config/permissions_services.yaml`, demande du proprietaire) : il est
-    ecrit tout de suite. Le bouton de confirmation, qui portait jusqu'ici le
-    lien de telechargement, ne s'affiche donc plus — et sans ce champ le
-    fichier existerait sans qu'aucun ecran ne puisse l'ouvrir.
-
-    Seul un document dont l'ecriture a REUSSI et qui porte une adresse entre
-    ici. Un `NEEDS_CONFIRMATION`, un `INCOMPLET` ou un echec n'a pas de
-    fichier a offrir : il n'en fabrique pas un.
+    Le contrat historique `resultat["document"]` reste supporté. Dioumtoukay
+    peut aussi produire un XLSX/DOCX/PPTX/PDF via Univer : son URL vérifiée
+    voyage alors dans `actions[].donnees.url`. Un élément en attente de
+    confirmation n'entre jamais ici car son action n'est pas `ok`.
     """
+    documents: List[Dict[str, Any]] = []
+    vus: set[str] = set()
+
     document = resultat.get("document")
-    if not isinstance(document, dict):
-        return []
-    if document.get("statut") != "SUCCESS" or not document.get("url"):
-        return []
-    return [{
-        "url": document["url"],
-        "action": "produire",
-        "message": document.get("message") or "",
-    }]
+    if (
+        isinstance(document, dict)
+        and document.get("statut") == "SUCCESS"
+        and document.get("url")
+    ):
+        url = str(document["url"])
+        vus.add(url)
+        documents.append({
+            "url": url,
+            "action": "produire",
+            "message": document.get("message") or "",
+        })
+
+    for action in resultat.get("actions") or []:
+        if not isinstance(action, dict) or not action.get("ok"):
+            continue
+        if action.get("action") != "office_modifier":
+            continue
+        donnees = action.get("donnees")
+        if not isinstance(donnees, dict):
+            continue
+        url = str(donnees.get("url") or "").strip()
+        if not url or url in vus:
+            continue
+        vus.add(url)
+        documents.append({
+            "url": url,
+            "action": "produire",
+            "message": action.get("message") or "Document Office produit.",
+        })
+
+    return documents
 
 
 async def _actions_en_attente() -> List[Dict[str, Any]]:
