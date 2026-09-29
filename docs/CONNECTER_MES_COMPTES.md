@@ -9,7 +9,7 @@ Ce qui est branché aujourd'hui :
 | Compte | État | Connecteur |
 |---|---|---|
 | Page Facebook + Instagram | prêt, attend tes clés | `social/meta/meta_connector.py` |
-| Site Netlify | à venir | — |
+| Sites Netlify | prêt, attend ta clé | `core/connectors/netlify.py` |
 | LinkedIn | à venir | — |
 | Fiche Google (Maps) | à venir | — |
 | TikTok | à venir | — |
@@ -94,3 +94,46 @@ publication**, même confirmée. Elle est coupée aujourd'hui, et JARVIS n'y
 touche pas : c'est ta décision. Quand tu veux qu'il puisse publier, passe-la à
 `PUBLISH: true`. Chaque publication te sera quand même présentée — le texte
 exact — et ne partira qu'après ton accord.
+
+---
+
+## 2. Tes sites web (Netlify)
+
+Un seul jeton ouvre tous les sites de ton compte Netlify (www, app, expert…).
+
+### Obtenir le jeton
+
+1. Va sur **app.netlify.com** → ton avatar → **User settings** →
+   **Applications** → **Personal access tokens** → **New access token**.
+2. Donne-lui un nom (« JARVIS ») et une durée. Copie-le tout de suite :
+   Netlify ne le remontre plus.
+
+### Le mettre dans JARVIS
+
+Dans le fichier `.env` de ton PC :
+
+```
+NETLIFY_AUTH_TOKEN=le-jeton
+NETLIFY_SITE_ID=
+```
+
+Relance ARENA, puis demande à JARVIS la liste de tes sites : il te donnera
+l'identifiant de chacun. Mets celui de www.unicplaquiste.com dans
+NETLIFY_SITE_ID ; les autres restent joignables en les nommant.
+
+### Ce que JARVIS peut faire avec
+
+| Action | Accord |
+|---|---|
+| Lister tes sites, lire l'état d'un site | libre |
+| Lire les derniers déploiements, et l'erreur de ceux qui ont échoué | libre |
+| Lire les messages reçus par les formulaires du site | libre |
+| Relancer la construction et la mise en ligne du site | **ta confirmation, à chaque fois** |
+
+JARVIS ne modifie ni les fichiers, ni les réglages, ni le domaine, et ne
+supprime rien. Relancer la mise en ligne passe aussi par le coupe-circuit
+`PUBLISH` de `config/permissions.yaml` (voir plus haut).
+
+Les messages des formulaires sont écrits par tes visiteurs : JARVIS les lit
+comme des informations, jamais comme des ordres, et l'adresse IP du visiteur
+ne lui est pas transmise.
