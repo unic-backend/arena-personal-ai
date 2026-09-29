@@ -12117,3 +12117,24 @@ couple CSV : « transforme ce CSV en Excel » n'avait aucun moteur.
 **Ce que ca coute si c'est faux** : un CSV destine a un outil anglophone
 attend `,` et le point decimal ; celui-ci est ecrit pour Excel en francais.
 L'apostrophe devant « -2 % » se voit dans un editeur de texte.
+
+## DEC-0171 — « Fais-moi un CSV de ce tableau » : le premier tableau de la reponse
+
+**2026-09-29.** Suite de DEC-0169. Le CSV se convertissait depuis et vers
+Excel, mais une reponse ne pouvait pas en devenir un : `rediger` ne trouvait
+aucun moteur `md -> csv`, et la phrase « en csv » n'etait pas reconnue.
+
+**Decision** :
+
+- `tableurs.markdown_vers_csv`, declare dans la matrice : `rediger` le trouve
+  sans changement du connecteur.
+- **Le premier tableau** de la reponse est ecrit — un CSV n'en tient qu'un ;
+  la limite de qualite le dit. **Sans tableau, le moteur refuse** : un CSV
+  d'une colonne de phrases ne serait pas ce qui a ete demande.
+- Meme format que `xlsx -> csv` (`;`, virgule decimale, BOM) et memes
+  protections : un texte « =... » est neutralise, « 00221 » garde ses zeros.
+- « en csv », « un csv », « fichier csv », « .csv » rejoignent
+  `FORMATS_DEMANDES` ; « lis ce fichier csv » reste une lecture.
+
+**Ce que ca coute si c'est faux** : une reponse qui porte le tableau voulu en
+second ecrit le premier ; il faut le demander seul.

@@ -29,7 +29,7 @@ from itertools import chain, islice
 from pathlib import Path
 from typing import Iterator, List
 
-from core.production.conversion.bureautique import _nom_de_feuille, en_nombre
+from core.production.conversion.bureautique import _nom_de_feuille, en_nombre, lire_blocs, sans_emphase
 from core.production.conversion.moteurs import MoteurEchec
 
 #: Les separateurs essayes, dans l'ordre de preference en cas d'egalite : le
@@ -191,3 +191,29 @@ def xlsx_vers_csv(entree: Path, sortie: Path) -> None:
     with sortie.open("w", encoding="utf-8-sig", newline="") as fichier:
         csv.writer(fichier, delimiter=";", lineterminator="\r\n").writerows(lignes)
 
+
+def markdown_vers_csv(entree: Path, sortie: Path) -> None:
+    """Le premier tableau d'une reponse, en CSV (DEC-0171).
+
+    « Fais-moi un CSV de ce tableau » : le modele repond en markdown, et un
+    CSV ne tient qu'UN tableau. Le premier est ecrit ; s'il y en a d'autres,
+    la limite de qualite le dit. Sans aucun tableau, le moteur refuse — un
+    CSV d'une colonne de phrases ne serait pas ce qui a ete demande.
+
+    Meme format que `xlsx_vers_csv` : `;`, virgule decimale, UTF-8 avec BOM,
+    et un texte qui ressemble a une formule est neutralise.
+    """
+    blocs = lire_blocs(entree.read_text(encoding="utf-8", errors="replace"))
+    tableau = next((b for b in blocs if b.genre == "tableau" and b.lignes), None)
+    if tableau is None:
+        raise MoteurEchec("aucun tableau dans le texte : un CSV est un tableau")
+    lignes = []
+    for numero, ligne in enumerate(tableau.lignes):
+        cellules = []
+        for cellule in ligne:
+            nue = sans_emphase(cellule)
+            nombre = None if numero == 0 else en_nombre(nue)
+            cellules.append(_en_texte(nombre if nombre is not None else nue))
+        lignes.append(cellules)
+    with sortie.open("w", encoding="utf-8-sig", newline="") as fichier:
+        csv.writer(fichier, delimiter=";", lineterminator="\r\n").writerows(lignes)
