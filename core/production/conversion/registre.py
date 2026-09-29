@@ -22,6 +22,7 @@ from typing import Callable, Dict, List, Tuple
 from core.production.conversion import bureautique as b
 from core.production.conversion import extraction
 from core.production.conversion import moteurs as m
+from core.production.conversion import tableurs as t
 
 ConvertisseurFn = Callable[[Path, Path], None]
 DisponibiliteFn = Callable[[], Tuple[bool, str]]
@@ -137,6 +138,29 @@ _enregistrer(
         limites_qualite=(
             "Titres, paragraphes, listes, tableaux, gras et italique ; styles "
             "Word par defaut, sans image.")))
+
+# --- Tableurs : CSV <-> Excel (29/09/2026) -----------------------------------------
+# DEC-0169. Aucun couple CSV n'existait : « transforme ce CSV en Excel » n'avait
+# aucun moteur. Aucune formule ne traverse, dans aucun sens (injection CSV).
+_enregistrer(
+    ["csv"], ["xlsx"],
+    EntreeMoteur(
+        "openpyxl", t.csv_vers_xlsx, b.openpyxl_disponible, version="3.1.5",
+        limites_qualite=(
+            "Une feuille ; separateur et encodage (UTF-8 ou Windows-1252) "
+            "reconnus. Un code commencant par zero ou de plus de 15 chiffres "
+            "reste du texte ; un texte commencant par « = » n'est jamais une "
+            "formule.")))
+_enregistrer(
+    ["xlsx"], ["csv"],
+    EntreeMoteur(
+        "openpyxl", t.xlsx_vers_csv, b.openpyxl_disponible, version="3.1.5",
+        limites_qualite=(
+            "Seule la feuille active est ecrite. Format Excel francais : « ; », "
+            "virgule decimale, UTF-8 avec BOM. Une formule donne la valeur "
+            "qu'Excel a enregistree — vide si le classeur n'a jamais ete "
+            "ouvert dans un tableur. Un texte commencant par = + - @ est "
+            "precede d'une apostrophe.")))
 
 # --- Lecteur de documents : PDF / Word / Excel / PowerPoint -> texte (29/09/2026) --
 # DEC-0170. Le lecteur existait (`tools/documents/reader.py`, celui des pieces
