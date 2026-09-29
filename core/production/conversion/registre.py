@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Tuple
 
+from core.production.conversion import bureautique as b
 from core.production.conversion import moteurs as m
 
 ConvertisseurFn = Callable[[Path, Path], None]
@@ -106,6 +107,35 @@ _enregistrer(
             "Le CSS avancé (grid/flex, polices web) ne survit pas à l'import "
             "Writer : le texte, les titres et les tableaux passent, la mise "
             "en page fine non.")))
+
+# --- Bureautique native : Markdown -> Excel, PowerPoint, Word (29/09/2026) ---------
+# Les fichiers de bureau de la consigne JARVIS (DEC-0167), ecrits par des
+# bibliotheques deja installees pour LIRE ces formats — aucun binaire
+# systeme. Le Word natif passe AVANT LibreOffice : il marche sur une machine
+# sans LibreOffice, et le chemin HTML -> DOCX reste la pour une page fournie.
+_enregistrer(
+    ["md"], ["xlsx"],
+    EntreeMoteur(
+        "openpyxl", b.markdown_vers_xlsx, b.openpyxl_disponible, version="3.1.5",
+        limites_qualite=(
+            "Chaque tableau markdown devient une feuille, ses nombres des "
+            "nombres ; un texte sans tableau devient une colonne, une ligne "
+            "par ligne. Pas de formule ni de graphique.")))
+_enregistrer(
+    ["md"], ["pptx"],
+    EntreeMoteur(
+        "python-pptx", b.markdown_vers_pptx, b.python_pptx_disponible, version="1.0.2",
+        limites_qualite=(
+            "Une diapositive par titre, six puces au plus (au-dela, une "
+            "diapositive « suite ») ; theme par defaut, sans image ni "
+            "graphique.")))
+_enregistrer(
+    ["md"], ["docx"],
+    EntreeMoteur(
+        "python-docx", b.markdown_vers_docx, b.python_docx_disponible, version="1.2.0",
+        limites_qualite=(
+            "Titres, paragraphes, listes, tableaux, gras et italique ; styles "
+            "Word par defaut, sans image.")))
 
 # --- Pillow : images ---------------------------------------------------------------
 _FORMATS_IMAGE = ["png", "jpg", "jpeg", "webp", "bmp", "tiff", "gif"]
