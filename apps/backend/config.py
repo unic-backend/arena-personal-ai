@@ -311,4 +311,6 @@ AGENTS_SPECIALISES = frozenset({
     "EXECUTIVE", "VISAGE", "DESIGN_UI", "UI_GENERATE",
     # Table ronde / projet reparti entre agents (DEC-0146).
     "EQUIPE",
+    # Le briefing du matin de JARVIS (DEC-0166).
+    "BRIEFING",
 })

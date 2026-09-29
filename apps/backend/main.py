@@ -6,6 +6,7 @@ découpage — configuration, sécurité, prompts et logique métier mélangés.
 
     uvicorn apps.backend.main:app --host 127.0.0.1 --port 8000
 """
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -20,6 +21,7 @@ from apps.backend.config import ALLOWED_ORIGINS, BASE_DIR, OLLAMA_URL, RENDERED_
 from apps.backend.routers import (
     actions,
     autonomous_chat,
+    briefing,
     chat,
     connectors,
     contexte_unifie,
@@ -78,9 +80,12 @@ async def au_demarrage(_: FastAPI):
     reprendre_les_travaux_interrompus()
     autonomous_runtime = autonomous_chat.get_runtime()
     autonomous_runtime.start()
+    # Le briefing du matin de JARVIS (DEC-0166), compose seul a BRIEFING_HEURE.
+    briefing_matinal = asyncio.create_task(briefing.planifier_le_briefing())
     try:
         yield
     finally:
+        briefing_matinal.cancel()
         await autonomous_runtime.close()
         autonomous_chat.get_runtime.cache_clear()
 
@@ -332,6 +337,7 @@ app.include_router(chat.router)
 app.include_router(autonomous_chat.router)
 app.include_router(actions.router)
 app.include_router(gardien.router)
+app.include_router(briefing.router)
 app.include_router(pwa_gateway.router)
 app.include_router(conversations.router)
 app.include_router(connectors.router)
