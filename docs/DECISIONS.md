@@ -12701,3 +12701,34 @@ l'echec, mise en attente de l'accord du proprietaire.
 (nom du fichier) avant tout envoi, et refusee par le proprietaire ; une phrase
 mal reconnue retombe sur le classeur, comme avant.
 
+## DEC-0188 — Le telephone atteint enfin ses sites et sa fiche Google
+
+**2026-09-29.** Mesure dans la VRAIE PWA, taille telephone, contre un serveur
+ARENA local (Chromium, parcours scripte) : « mon site est en ligne ? » repondait
+« Aucun fournisseur n'a pu repondre… 127.0.0.1:11434 ne repond pas ». Le
+telephone passe par `/agent/stream` (`pwa_gateway.py`) : il classait bien la
+phrase en `SITE_WEB`, puis, `SITE_WEB` n'etant pas dans `AGENTS_SPECIALISES`
+(`apps/backend/config.py`), la confiait au modele de conversation au lieu de
+`dispatch_request`. Meme chose pour `FICHE_GOOGLE`. Les tests de DEC-0182 et
+DEC-0184 appelaient `_aiguiller` directement : ils ne passaient jamais par la
+porte du telephone.
+
+**Decision** :
+
+- `SITE_WEB` et `FICHE_GOOGLE` entrent dans `AGENTS_SPECIALISES`.
+- `test_chaque_intention_aiguillee_atteint_le_telephone`
+  (`tests/test_configuration_clients.py`) lit les branches de `_aiguiller` et
+  exige que chacune soit specialisee. La liste ecrite a la main
+  (`TestLesHuitIntentionsReconnectees`) n'avait pas vu les deux ajouts ; une
+  intention nouvelle oubliee fait maintenant echouer la suite. Mesure le
+  29/09/2026 : exactement ces deux-la manquaient, aucune autre.
+
+**Verifie dans la PWA apres correction** : « mon site est en ligne ? » →
+« Non configure : netlify n'est pas connecte. Il manque un jeton… » ; « mes avis
+Google » et « reponds a l'avis de Fatou : … » → ce qui manque a la connexion
+Google. « Publie ma derniere video sur TikTok » atteignait deja SocialAgent
+(SOCIAL etait specialise), qui demande d'abord sa voix.
+
+**Ce que ca coute si c'est faux** : rien de plus qu'avant — une intention
+specialisee passe par `dispatch_request`, qui rend l'etat reel du connecteur.
+

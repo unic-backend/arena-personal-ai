@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Corrigé — 29/09/2026 — Depuis le téléphone, « mon site » et « mes avis Google » marchent
+
+Testé dans la vraie application, en taille téléphone : ces deux demandes
+partaient au modèle de conversation au lieu d'aller à Netlify et à Google.
+Elles y vont maintenant, et un test empêche qu'une prochaine demande soit
+oubliée de la même façon (DEC-0188).
+
 ### Ajouté — 29/09/2026 — « Publie ma dernière vidéo sur TikTok »
 
 Dis « publie ma dernière vidéo sur TikTok » ou « mets ma dernière vidéo dans

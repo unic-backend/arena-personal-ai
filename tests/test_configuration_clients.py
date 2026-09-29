@@ -109,6 +109,35 @@ class TestRienN_estDevenuInatteignable:
         assert resultat["response"] == "liens trouvés"
 
 
+def test_chaque_intention_aiguillee_atteint_le_telephone():
+    """DEC-0188 : toute intention que `_aiguiller` sait traiter est specialisee.
+
+    La liste ci-dessous (huit intentions) etait ecrite a la main : elle n'a pas
+    vu SITE_WEB ni FICHE_GOOGLE, ajoutees apres elle. Le telephone classait
+    « mon site est en ligne ? » en SITE_WEB, puis le donnait au modele de
+    conversation. Ce test lit les branches de `_aiguiller` lui-meme : une
+    intention nouvelle oubliee dans `AGENTS_SPECIALISES` le fait echouer.
+    """
+    import ast
+    import inspect
+
+    source = inspect.getsource(routeur_chat._aiguiller)
+    traitees = set()
+    for noeud in ast.walk(ast.parse(source)):
+        if isinstance(noeud, ast.Compare) and isinstance(noeud.left, ast.Name) \
+                and noeud.left.id == "intent":
+            for comparee in noeud.comparators:
+                if isinstance(comparee, ast.Constant):
+                    traitees.add(comparee.value)
+                elif isinstance(comparee, (ast.Tuple, ast.Set, ast.List)):
+                    traitees |= {e.value for e in comparee.elts if isinstance(e, ast.Constant)}
+
+    assert len(traitees) > 20, "l'analyse de _aiguiller n'a rien trouve"
+    assert traitees - AGENTS_SPECIALISES == set(), (
+        "traitees par _aiguiller mais jamais atteintes depuis /agent/stream : "
+        f"{sorted(traitees - AGENTS_SPECIALISES)}")
+
+
 class TestLesHuitIntentionsReconnectees:
     """`dispatch_request` gérait déjà ces huit intentions — audit externe,
     commit f7f0478 : `AGENTS_SPECIALISES` les ignorait, donc `/agent/stream`,
