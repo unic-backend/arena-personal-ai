@@ -160,8 +160,12 @@ def test_un_texte_demesure_est_refuse(connecteur: ConnecteurFileConversion) -> N
 def test_un_format_sans_moteur_le_dit_sans_rien_ecrire(
     connecteur: ConnecteurFileConversion, tmp_path: Path,
 ) -> None:
-    """`NOT_IMPLEMENTED`, jamais un fichier plausible — et rien sur le disque."""
-    resultat = connecteur._rediger(TEXTE, "xlsx", "Devis")
+    """`NOT_IMPLEMENTED`, jamais un fichier plausible — et rien sur le disque.
+
+    L'exemple etait `xlsx` jusqu'au 29/09/2026 : il a desormais son moteur
+    (DEC-0167, `tests/core/test_bureautique.py`). La regle ne change pas, seul
+    l'exemple d'un format encore sans moteur."""
+    resultat = connecteur._rediger(TEXTE, "epub", "Devis")
 
     assert resultat.statut.value == "NOT_IMPLEMENTED"
     assert not list(tmp_path.rglob("*"))
@@ -218,8 +222,17 @@ def test_l_url_rendue_est_servie_par_la_route_des_medias(
         Path(resultat.preuve).unlink(missing_ok=True)
 
 
-def test_la_reponse_passe_meme_quand_le_document_echoue() -> None:
-    """Un échec d'écriture n'efface pas ce qui a été répondu — il s'ajoute."""
+def test_la_reponse_passe_meme_quand_le_document_echoue(monkeypatch) -> None:
+    """Un échec d'écriture n'efface pas ce qui a été répondu — il s'ajoute.
+
+    L'exemple etait « en excel », que plus rien n'ecrivait ; Excel s'ecrit
+    depuis le 29/09/2026 (DEC-0167). L'echec est donc provoque, pas suppose :
+    le connecteur refuse d'ecrire."""
+    from apps.backend.routers import chat as module_chat
+    from core.actions.resultat import echec
+
+    monkeypatch.setattr(module_chat.registre, "executer",
+                        lambda *a, **k: echec("rediger", "file_conversion", "disque plein"))
     reponse = asyncio.run(_joindre_document(
         "génère-moi ça en excel", {"response": TEXTE, "status": "success"}))
 

@@ -12018,3 +12018,41 @@ Calendar, Ollama). Ici, les rubriques sont testees avec des sources simulees.
 
 **Ce que ca coute si c'est faux** : un briefing compose a 7 h puis relu a 9 h
 porte des actualites de 7 h ; au-dela de 3 h il est recompose.
+
+## DEC-0167 — JARVIS livre de vrais fichiers Excel, PowerPoint et Word
+
+**2026-09-29.** Consigne JARVIS du proprietaire (DEC-0163) : « make me an
+Excel file », « create a presentation » — « the result must be an actual
+file, not merely text pretending to be a file ».
+
+**Constat** : `rediger` (`core/connectors/file_conversion.py`) repondait
+honnetement « aucun moteur ARENA n'ecrit un document .xlsx / .pptx », alors
+que `openpyxl` et `python-pptx` etaient deja installes pour LIRE ces formats
+(`tools/documents/reader.py`). Le Word dependait de LibreOffice (HTML ->
+DOCX), absent de beaucoup de machines.
+
+**Decision** : `core/production/conversion/bureautique.py`, trois moteurs
+Markdown -> Excel / PowerPoint / Word, declares dans la matrice
+(`registre.py`) comme les autres — `rediger` les trouve sans une ligne de
+plus dans le connecteur :
+
+- **Excel** : un tableau markdown = une feuille (nommee par le titre qui le
+  precede), en-tete en gras ; « 1 250,50 » devient 1250.5, « 5 000 FCFA »
+  reste du texte (convertir perdrait l'unite). Sans tableau : une colonne, une
+  ligne par bloc.
+- **PowerPoint** : couverture (titre `#` + texte d'introduction en
+  sous-titre), une diapositive par section, six puces au plus puis une
+  diapositive « (suite) ».
+- **Word** : titres, paragraphes, listes a puces et numerotees, tableaux,
+  gras et italique. Passe AVANT LibreOffice pour `md -> docx`.
+
+Formulations reconnues ajoutees : « un excel », « un tableur », « un
+powerpoint », « presentation powerpoint », « diaporama », « un word »,
+« document word ». Un test qui prenait Excel comme exemple de format SANS
+moteur prend desormais `epub` ; celui qui prenait Excel comme exemple
+d'ECRITURE en echec provoque desormais l'echec du connecteur — la regle
+testee ne change pas, seul l'exemple.
+
+**Ce que ca coute si c'est faux** : un markdown inhabituel (tableau sans ligne
+de separation, HTML brut) arrive en texte simple dans le fichier ; le fichier
+existe et se relit, sa mise en forme est pauvre.
