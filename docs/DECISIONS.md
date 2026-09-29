@@ -12341,13 +12341,13 @@ en PDF ») n'est pas reconnue et part vers la redaction ou la conversation.
 de la nuit, le menu affichait encore « Usman » au lieu de « JARVIS »
 (DEC-0163). Le code sur `main` etait juste ; l'interface servie ne l'etait
 pas. `scripts/lancer_arena.ps1` ne compilait la PWA que si
-`apps/pwa/dist/index.html` **manquait** — or un `git pull` n'efface pas
+la page compilee (apps/pwa/dist/index.html) **manquait** — or un `git pull` n'efface pas
 `dist/` (ignore par git) : l'ancienne compilation restait, le lanceur disait
 `[ok]` et le PC servait l'interface d'avant.
 
 **Decision** :
 
-- Le lanceur compare la date de `dist/index.html` a celle du fichier source
+- Le lanceur compare la date de la page compilee a celle du fichier source
   le plus recent (`src/`, `public/`, `index.html`, `package.json`,
   `package-lock.json`, `vite.config.ts`) et recompile des qu'une source est
   plus recente. `git pull` ecrit les fichiers modifies a l'heure du pull :
