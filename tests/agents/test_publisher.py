@@ -181,13 +181,22 @@ def test_le_connecteur_se_declare_non_configure(monkeypatch):
     assert sante.utilisable is False
 
 
+def _tiktok_refuse(message: str = "access_token is invalid"):
+    """Un faux TikTok qui refuse le jeton — jamais le vrai reseau (DEC-0185)."""
+    import httpx
+
+    return httpx.MockTransport(lambda requete: httpx.Response(
+        401, json={"error": {"code": "access_token_invalid", "message": message}}))
+
+
 def test_un_jeton_present_ne_vaut_pas_operationnel(monkeypatch):
-    """Avoir un jeton ne prouve pas qu'il marche : INCONNU, donc rien ne part."""
+    """Avoir un jeton ne prouve pas qu'il marche : TikTok est interroge, et
+    un refus rend le connecteur inutilisable (DEC-0185 : la sonde mesure)."""
     monkeypatch.setenv("TIKTOK_ACCESS_TOKEN", "un-jeton-quelconque")
 
-    sante = TikTokConnector().sante()
+    sante = TikTokConnector(transport=_tiktok_refuse()).sante()
 
-    assert sante.etat is EtatSante.INCONNU
+    assert sante.etat is EtatSante.EN_PANNE
     assert sante.utilisable is False
 
 
@@ -198,12 +207,15 @@ def test_le_connecteur_dit_ce_qu_il_faut_pour_le_brancher():
     assert "OAuth" in message
 
 
-def test_le_connecteur_ne_declare_qu_une_capacite():
+def test_seules_la_publication_et_le_brouillon_ecrivent():
+    """DEC-0185 : lire le compte et l'etat d'un envoi s'ajoutent ; ecrire reste
+    publier, et passe par la politique de publication."""
     capacites = TikTokConnector().capacites()
 
-    assert set(capacites) == {"publish_video"}
-    assert capacites["publish_video"].ecriture is True
-    assert capacites["publish_video"].action == "publish"
+    ecritures = {nom for nom, capacite in capacites.items() if capacite.ecriture}
+    assert ecritures == {"publish_video", "envoyer_brouillon"}
+    assert all(capacites[nom].action == "publish" for nom in ecritures)
+    assert set(capacites) == {"compte", "publish_video", "envoyer_brouillon", "statut_publication"}
 
 
 def test_le_connecteur_declare_son_quota():
@@ -213,8 +225,10 @@ def test_le_connecteur_declare_son_quota():
 
 def test_l_inventaire_du_connecteur_ne_montre_aucun_secret(monkeypatch):
     monkeypatch.setenv("TIKTOK_ACCESS_TOKEN", "ya29.SECRET-ABSOLU")
+    # TikTok renvoie le jeton dans son refus : il ne doit pas remonter.
+    connecteur = TikTokConnector(transport=_tiktok_refuse("bad token ya29.SECRET-ABSOLU"))
 
-    assert "ya29.SECRET-ABSOLU" not in str(TikTokConnector().to_dict())
+    assert "ya29.SECRET-ABSOLU" not in str(connecteur.to_dict())
 
 
 def test_le_mot_simulation_ne_revient_pas_dans_le_connecteur():

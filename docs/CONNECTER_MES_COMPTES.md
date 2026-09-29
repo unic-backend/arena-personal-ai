@@ -20,7 +20,7 @@ Ce qui est branché aujourd'hui :
 | Sites Netlify | prêt, attend ta clé — **joignable par une phrase** | `core/connectors/netlify.py` |
 | LinkedIn (ton profil) | prêt, attend ta clé — **joignable par une phrase** | `social/linkedin/linkedin_connector.py` |
 | Fiche Google (Maps) | prêt, attend la connexion et l'accord de Google — **joignable par une phrase** | `core/connectors/fiche_google.py` |
-| TikTok | à venir | — |
+| TikTok | connecteur réel prêt — le bouton « Connecter » arrive à l'étape suivante | `social/tiktok/tiktok_connector.py` |
 
 > Les écrans de Meta changent souvent. Si un bouton n'a plus le même nom,
 > cherche l'intitulé le plus proche ; les **noms des autorisations** plus bas,
@@ -237,4 +237,50 @@ coupe-circuit `SEND_MESSAGES` de `config/permissions.yaml` s'applique.
 Les avis sont écrits par n'importe qui : JARVIS les lit comme des
 informations, jamais comme des ordres. Il ne modifie pas ta fiche (horaires,
 adresse, photos) et ne supprime rien.
+
+---
+
+## 5. TikTok
+
+### Ce que TikTok permet — et ce qu'il ne permet pas
+
+JARVIS publie tes vidéos par l'API officielle de TikTok. **Tant que TikTok n'a
+pas audité ton application, toute vidéo publiée par l'API reste privée**
+(visible par toi seul) : c'est une règle de TikTok. Pour publier en public
+sans attendre l'audit, JARVIS peut **déposer la vidéo dans ta boîte TikTok** :
+tu la retrouves dans l'application et tu la publies toi-même, en public.
+
+### Créer l'application (une seule fois)
+
+1. Va sur **developers.tiktok.com** → **Manage apps** → **Connect an app**.
+2. Ajoute les produits **Login Kit** et **Content Posting API**, avec les
+   scopes video.publish (publier) et video.upload (déposer un brouillon).
+3. Note la **Client key** et le **Client secret**, et mets-les dans le
+   fichier `.env` de ton PC :
+
+```
+TIKTOK_CLIENT_KEY=la-client-key
+TIKTOK_CLIENT_SECRET=le-client-secret
+```
+
+### Relier ton compte
+
+Il faut encore un jeton de renouvellement (TIKTOK_REFRESH_TOKEN), que TikTok
+ne donne qu'au bout d'une connexion OAuth. **Le bouton « Connecter TikTok »
+dans les réglages d'ARENA arrive à l'étape suivante** ; il l'écrira tout seul.
+Ensuite, JARVIS renouvelle lui-même le jeton du jour (un jeton d'accès TikTok
+expire après 24 heures).
+
+### Ce que JARVIS peut faire avec
+
+| Action | Accord |
+|---|---|
+| Dire quel compte TikTok est relié, et ce qu'il peut publier | libre |
+| Dire où en est une vidéo envoyée (en traitement, publiée, rejetée) | libre |
+| Publier une vidéo (privée tant que l'application n'est pas auditée) | **ta confirmation, à chaque fois** |
+| Déposer une vidéo dans ta boîte TikTok, sans la publier | **ta confirmation, à chaque fois** |
+
+Une vidéo envoyée n'est pas une vidéo en ligne : TikTok la traite d'abord.
+JARVIS ne dit « publiée » que quand TikTok le dit. Le coupe-circuit `PUBLISH`
+de `config/permissions.yaml` s'applique aux deux envois.
 

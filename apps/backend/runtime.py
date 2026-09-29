@@ -34,6 +34,7 @@ from agents.video.production_agent import VideoProductionAgent
 from agents.video_analyzer.video_analyzer_agent import VideoAnalyzerAgent
 from agents.vision.vision_agent import VisionAgent
 from apps.backend.config import (
+    BASE_DIR,
     CLOUD_BUDGET_JOURNALIER,
     CLOUD_COUT_MAX_PAR_REQUETE,
     CLOUD_REQUETES_PAR_JOUR,
@@ -97,6 +98,7 @@ from core.connectors.presentation import ConnecteurPresentation
 from core.connectors.registre import RegistreConnecteurs
 from core.connectors.securite_chantier import ConnecteurSecuriteChantier
 from core.connectors.stockage_jetons import charger_tout as _charger_jetons_persistants
+from core.connectors.stockage_jetons import persister as _persister_jeton
 from core.connectors.txtai_search import ConnecteurTxtaiSearch
 from core.connectors.ui_generate import ConnecteurUiGenerate
 from core.connectors.ui_ux_pro_max import ConnecteurUiUxProMax
@@ -177,10 +179,17 @@ crochets = RegistreDeCrochets()
 disjoncteur = Disjoncteur()
 crochets.avant(disjoncteur.avant_execution)
 crochets.apres(disjoncteur.apres_execution)
+def _persister_jeton_tiktok(variable: str, valeur: str) -> None:
+    """TikTok peut changer le jeton de renouvellement (DEC-0185) : le nouveau va
+    dans le processus, la base et `.env` — sans `.env`, l'ancien l'emporterait
+    au prochain demarrage."""
+    _persister_jeton(str(DB_PATH), BASE_DIR / ".env", variable, valeur)
+
+
 registre.declarer(
     "tiktok",
     lambda: TikTokConnector(acces=acces, journal=journal, file_attente=file_attente,
-                            crochets=crochets),
+                            crochets=crochets, persister=_persister_jeton_tiktok),
 )
 # Facebook + Instagram, par la Graph API de Meta (DEC-0179). Lire est libre ;
 # publier et repondre passent par la confirmation et les coupe-circuits.

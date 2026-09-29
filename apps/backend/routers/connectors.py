@@ -110,44 +110,9 @@ def _purger_etats_expires() -> None:
 
 
 def _persister_refresh_token(variable: str, valeur: str) -> None:
-    """Ecrit le jeton dans le processus courant, dans `.env` si possible, ET
-    dans la base persistante — pour qu'il survive a un vrai redemarrage.
-
-    L'environnement du processus d'abord : le prochain appel Gmail marche
-    sans redemarrer le serveur. `.env` ensuite, en best-effort — sur une
-    plateforme hebergee (Railway et semblables), les variables vivent dans
-    son panneau et aucun fichier `.env` n'existe sur le disque : l'ecriture
-    fichier est alors sautee et journalisee, jamais une erreur qui casserait
-    la connexion pourtant reussie. La base SQLite enfin
-    (`stockage_jetons.py`) : c'est elle, et seulement elle, qui survit a un
-    redeploiement sur un hebergement sans fichier `.env` — trouve le
-    31/08/2026 quand un redeploiement a fait disparaitre un jeton qui
-    n'avait jamais vecu qu'en memoire.
-    """
-    os.environ[variable] = valeur
-    stockage_jetons.enregistrer(str(DB_PATH), variable, valeur)
-    chemin = BASE_DIR / ".env"
-    if not chemin.exists():
-        logger.info(
-            "%s mis a jour en memoire ; aucun fichier .env sur disque pour le "
-            "persister (plateforme hebergee ?).", variable)
-        return
-    try:
-        lignes = chemin.read_text(encoding="utf-8").splitlines()
-        prefixe = f"{variable}="
-        trouve = False
-        for i, ligne in enumerate(lignes):
-            if ligne.startswith(prefixe):
-                lignes[i] = f"{prefixe}{valeur}"
-                trouve = True
-                break
-        if not trouve:
-            lignes.append(f"{prefixe}{valeur}")
-        chemin.write_text("\n".join(lignes) + "\n", encoding="utf-8")
-    except OSError as erreur:
-        logger.warning(
-            "%s mis a jour en memoire mais pas persiste dans .env (%s) : il "
-            "faudra reconnecter apres un redemarrage.", variable, erreur)
+    """Le processus, la base persistante et `.env` : voir
+    `stockage_jetons.persister`, partage depuis DEC-0185 avec TikTok."""
+    stockage_jetons.persister(str(DB_PATH), BASE_DIR / ".env", variable, valeur)
 
 
 def _page(message: str, script: str = "") -> HTMLResponse:

@@ -12595,3 +12595,45 @@ rapporte le refus de Google, et c'est l'etat attendu.
 lecture, avec le message de Google ; une reponse visant le mauvais avis
 serait montree au proprietaire (auteur et texte) avant de partir.
 
+## DEC-0185 — TikTok parle enfin a TikTok : l'API Content Posting
+
+**2026-09-29.** Demande du proprietaire : « Oui fais TikTok maintenant ».
+`social/tiktok/tiktok_connector.py` declarait son absence de configuration
+depuis le 2026-08-27 (il avait auparavant annonce des publications qui
+n'avaient pas eu lieu). Trois PR : ce connecteur, puis le bouton de connexion
+OAuth, puis l'aiguillage.
+
+**Decision** :
+
+- Capacites : `compte` et `statut_publication` (lecture) ; `publish_video`
+  et `envoyer_brouillon` (`publish` : confirmation + coupe-circuit PUBLISH).
+  `publish_video` garde son nom : `PublisherAgent` et `SocialAgent`
+  l'appellent deja.
+- Publier : `creator_info` d'abord — le niveau de confidentialite
+  (`TIKTOK_PRIVACY_LEVEL`, `SELF_ONLY` par defaut) doit etre dans ce que
+  TikTok permet, sinon rien ne part. Une application non auditee n'a que
+  `SELF_ONLY`. Puis `video/init`, puis l'envoi du fichier en PUT, en un
+  morceau jusqu'a 64 Mo, sinon en morceaux de 10 Mo dont le dernier prend le
+  reste.
+- Un succes exige le `publish_id` ET l'envoi accepte ; il dit « envoyee,
+  pas encore en ligne » — `statut_publication` dit quand elle l'est, ou
+  pourquoi TikTok l'a rejetee.
+- `envoyer_brouillon` depose la video dans sa boite TikTok (`inbox`) : il la
+  publie depuis l'application, en public, meme sans audit. Il passe aussi par
+  PUBLISH : un fichier qui quitte la machine n'est pas une lecture.
+- Le jeton : un jeton d'acces TikTok dure 24 h. Le connecteur le tire de
+  `TIKTOK_REFRESH_TOKEN` et le garde jusqu'a peu avant son expiration. Si
+  TikTok rend un nouveau jeton de renouvellement, il est ecrit dans le
+  processus, la base et `.env` (`stockage_jetons.persister`, extrait de la
+  connexion Google pour ne pas l'ecrire deux fois) : sans `.env`, l'ancien
+  l'emporterait au redemarrage. Aucun secret ne sort dans un message.
+- La sonde MESURE (`creator_info`) au lieu de dire INCONNU : les tests qui
+  posaient un jeton recoivent un faux TikTok, jamais le vrai reseau.
+
+**Non mesure** : aucun appel reel a TikTok ; le proprietaire n'a pas encore
+de jeton. Le bouton de connexion est la PR suivante.
+
+**Ce que ca coute si c'est faux** : une regle d'envoi mal lue fait refuser la
+video par TikTok, avec son message — rien n'est annonce publie, et chaque
+envoi attend l'accord du proprietaire.
+
