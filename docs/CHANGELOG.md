@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — Demande un Excel, un PowerPoint ou un Word : tu reçois le fichier
+
+« Fais-moi un fichier Excel du devis », « crée un diaporama de ce projet »,
+« écris ce compte rendu dans un fichier Word » : JARVIS produit maintenant le
+vrai fichier, à télécharger depuis ton téléphone. Les tableaux deviennent des
+feuilles Excel avec de vrais nombres, les titres deviennent des diapositives.
+Avant, ARENA répondait qu'aucun moteur n'écrivait ces formats (DEC-0167).
+
 ### Ajouté — 29/09/2026 — Dis « Jarvis » pour le réveiller
 
 Touche le bouton oreille : JARVIS se met en veille et attend son nom. Dis

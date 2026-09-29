@@ -455,13 +455,16 @@ FORMATS_DEMANDES: Dict[str, str] = {
     "en word": "docx", "en docx": "docx", "fichier word": "docx",
     "en markdown": "md", "un fichier md": "md", ".md": "md",
     "en texte": "txt", "fichier texte": "txt", "en html": "html",
-    # Deux formats qu'ARENA ne sait PAS ecrire aujourd'hui, et qui sont ici
-    # exprès : reconnus, la demande recoit « .xlsx non produit : aucun moteur
-    # ARENA n'ecrit ce format » ; ignores, elle recevait une reponse normale
-    # sans un mot sur le fichier attendu. Un refus nomme vaut mieux qu'un
-    # silence — mesure le 20/09/2026, c'est ce silence qui a ete constate.
+    # Excel et PowerPoint : longtemps reconnus pour REFUSER nommement (« .xlsx
+    # non produit : aucun moteur ») plutot que de se taire (20/09/2026). Ils
+    # s'ecrivent depuis le 29/09/2026 (DEC-0167,
+    # core/production/conversion/bureautique.py).
     "en excel": "xlsx", "en xlsx": "xlsx", "fichier excel": "xlsx",
-    "en powerpoint": "pptx", "en pptx": "pptx",
+    "un excel": "xlsx", "tableau excel": "xlsx", "un tableur": "xlsx",
+    "en powerpoint": "pptx", "en pptx": "pptx", "un powerpoint": "pptx",
+    "présentation powerpoint": "pptx", "presentation powerpoint": "pptx",
+    "diaporama": "pptx",
+    "un word": "docx", "document word": "docx",
 }
 
 #: Les memes mots employes pour LIRE un document deja fourni. « resume-moi ce
