@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Usman - Personal AI",
-  "short_name": "Usman",
+  "name": "JARVIS - Personal AI",
+  "short_name": "JARVIS",
   "description": "A private, observable personal AI workbench with live tools, documents, voice and video.",
   "lang": "fr",
   "dir": "ltr",
@@ -37,7 +37,7 @@
     {
       "name": "New conversation",
       "short_name": "New chat",
-      "description": "Start a new conversation with Usman",
+      "description": "Start a new conversation with JARVIS",
       "url": "/?action=new",
       "icons": [{ "src": "/icons/usman.svg", "sizes": "any", "type": "image/svg+xml" }]
     }

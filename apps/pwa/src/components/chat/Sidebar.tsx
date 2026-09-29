@@ -265,7 +265,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       <div className="flex items-center gap-2.5 px-4 pb-3 pt-4">
         <Logo />
         <div className="min-w-0 flex-1">
-          <div className="font-serif text-[17px] leading-none text-zinc-100">Usman</div>
+          <div className="font-serif text-[17px] leading-none text-zinc-100">JARVIS</div>
         </div>
         {onClose && (
           <button
@@ -312,7 +312,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
           )}
         >
           <Sparkles size={19} className={capaciteActive === null ? 'text-accent-400' : 'text-zinc-500'} />
-          Usman
+          JARVIS
         </button>
         {CAPACITES.map((cap) => {
           const Icone = cap.icone;

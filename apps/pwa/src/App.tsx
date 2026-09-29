@@ -33,8 +33,8 @@ export default function App() {
   useEffect(() => {
     document.documentElement.lang = locale;
     document.title = locale === 'fr'
-      ? 'Usman — Atelier IA personnel'
-      : 'Usman — Personal AI Workbench';
+      ? 'JARVIS — Atelier IA personnel'
+      : 'JARVIS — Personal AI Workbench';
   }, [locale]);
 
   /* Revalide un backend distant mémorisé au lieu de croire un état périmé. */

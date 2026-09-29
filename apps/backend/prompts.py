@@ -16,11 +16,67 @@ seulement le modèle UniC Plaquiste ». Elle **remplace** sa demande du même jo
 de faire connaître sa présence en ligne partout ; l'agent métier la porte
 toujours (`agents/plaquiste/plaquiste_agent.py`, `composer_instruction`).
 """
+import logging
+import re
 from datetime import date
-from typing import Optional
+from pathlib import Path
+from typing import List, Optional
 
 from apps.backend.runtime import memory
 from core.specialistes.selection import bloc_de_methode, choisir
+
+logger = logging.getLogger("usman.backend.prompts")
+
+#: La consigne JARVIS du proprietaire (29/09/2026), gardee mot pour mot dans un
+#: fichier : c'est SON texte, pas une paraphrase du code.
+FICHIER_JARVIS = Path(__file__).resolve().parents[2] / "config" / "jarvis.md"
+
+
+def consigne_jarvis() -> str:
+    """Le texte de `config/jarvis.md`, ou une ligne de repli s'il manque.
+
+    Un fichier absent ne doit pas faire tomber le chat : JARVIS garde son nom
+    et ses regles, il perd seulement la consigne detaillee — et le journal le dit.
+    """
+    try:
+        texte = FICHIER_JARVIS.read_text(encoding="utf-8").strip()
+    except OSError as erreur:
+        logger.warning("Consigne JARVIS illisible (%s) : repli sur l'identite seule.", erreur)
+        return "You are JARVIS, the executive orchestrator of ARENA Personal AI."
+    # Les listes « 1. 2. 3. » de la consigne deviennent « (1) (2) (3) » : dans
+    # le prompt, « 1. » a « 7. » designent les sept regles de DISCIPLINE, et
+    # une seconde liste numerotee rendait « la regle 1 » ambigue — pour le
+    # modele comme pour tests/test_discipline_du_prompt.py. Le fichier du
+    # proprietaire, lui, reste mot pour mot.
+    return re.sub(r"^(\s*)(\d+)\.\s", r"\1(\2) ", texte, flags=re.MULTILINE)
+
+
+#: Les agents d'un metier, joignables dans leur espace, jamais annonces ici.
+MODULES_METIER = ("agents.plaquiste",)
+
+
+def capacites_branchees() -> List[str]:
+    """Les agents reellement inscrits dans le registre, une ligne chacun.
+
+    La consigne JARVIS enumere tout ce qu'un orchestrateur universel devrait
+    savoir faire — generation de PDF, de tableurs, de presentations… Ce qui
+    existe VRAIMENT sur cette installation vient d'ici, lu sur le registre
+    (DEC-0145), jamais d'une liste ecrite a la main. Sans elle, le modele
+    prendrait la liste de la consigne pour un inventaire.
+    """
+    from apps.backend.runtime import collaborateurs
+
+    lignes = []
+    for fiche in collaborateurs.fiches():
+        # Un agent metier n'entre pas dans l'instruction generale : seul son
+        # espace connait l'entreprise (decision du 02/09/2026, en tete de ce
+        # module). Reconnu par le nom de son module, sans l'importer.
+        if str(fiche.metadata.get("module", "")).startswith(MODULES_METIER):
+            continue
+        quoi = ", ".join(fiche.capabilities) or fiche.description
+        lignes.append(f"- {fiche.id} : {quoi}")
+    return lignes
+
 
 # Faits que le proprietaire peut enregistrer lui-meme en memoire longue. Rien
 # n'est ecrit en dur : une valeur absente n'apparait tout simplement pas.
@@ -78,7 +134,7 @@ DISCIPLINE = [
 
 
 def get_arena_system_prompt() -> str:
-    """Compose l'instruction systeme d'Usman.
+    """Compose l'instruction systeme de JARVIS.
 
     Aucun fait date n'est ecrit en dur ici. La version precedente affirmait
     « Annee actuelle : 2026 » et nommait deux responsables politiques : trois
@@ -93,12 +149,13 @@ def get_arena_system_prompt() -> str:
     # Le renommage du 2026-08-26 avait mis « Usman » ici aussi : l assistant et
     # son proprietaire portaient le meme nom, et a « qui suis-je » le modele
     # repondait « je suis Usman, votre IA ». Le proprietaire s appelle Ousmane ;
-    # l assistant s appelle Usman. Deux noms, deux roles.
+    # l assistant s appelle JARVIS depuis le 29/09/2026 (decision du
+    # proprietaire, DEC-0163). Deux noms, deux roles.
     owner_name = memory.get_fact("owner") or "Ousmane"
     aujourd_hui = date_du_jour()
 
     lignes = [
-        "Tu es Usman, une IA personnelle autonome.",
+        "Tu es JARVIS, l'orchestrateur d'ARENA, une IA personnelle autonome.",
         f"Ton interlocuteur s'appelle {owner_name}. C'est lui qui te parle.",
         f"Quand il demande « qui suis-je », il parle de {owner_name}, pas de toi.",
         f"Date du jour, lue sur la machine : {aujourd_hui.strftime('%d/%m/%Y')}.",
@@ -106,7 +163,7 @@ def get_arena_system_prompt() -> str:
         "Connaitre la date ne te donne aucune connaissance des evenements recents.",
         "Si la reponse a pu changer depuis ton entrainement — actualite, derniere",
         "version d'un logiciel, prix, resultat, qui occupe un poste — ne reponds pas",
-        "de memoire. Dis que tu n'en es pas sur : Usman sait aller verifier sur le web.",
+        "de memoire. Dis que tu n'en es pas sur : JARVIS sait aller verifier sur le web.",
         "N'invente jamais une date, un chiffre ou un nom que tu n'as pas verifie.",
     ]
 
@@ -121,6 +178,20 @@ def get_arena_system_prompt() -> str:
             f"Faits enregistres par {owner_name} en memoire longue "
             "(ils peuvent avoir change depuis : verifie si la question porte dessus) :",
             *enregistres,
+        ]
+
+    # La consigne du proprietaire, puis ce qui existe reellement, puis les
+    # regles : la discipline vient APRES, elle prime sur l'envie d'etre utile.
+    lignes += ["", consigne_jarvis()]
+    branchees = capacites_branchees()
+    if branchees:
+        lignes += [
+            "",
+            "CAPACITES REELLEMENT BRANCHEES SUR CETTE INSTALLATION (lues sur le",
+            "registre, pas supposees). Seules celles-ci existent ; une capacite",
+            "de la consigne ci-dessus qui n'y figure pas n'est PAS disponible :",
+            "dis-le au lieu de faire semblant.",
+            *branchees,
         ]
 
     lignes += DISCIPLINE

@@ -11868,3 +11868,41 @@ c'est une redaction, et il passe deja par la confirmation du proprietaire.
 **Ce que ca coute si c'est faux** : un nom de client reformule (« Fast » pour
 « Fast Group ») peut etre signale a tort ; un avertissement de trop, jamais un
 montant invente sans avertissement.
+
+## DEC-0163 — L'assistant s'appelle JARVIS, et sa consigne ne vaut pas inventaire
+
+**2026-09-29.** Decision du proprietaire : « Tu peux créer un jarvis dans mon
+ia », avec sa consigne complete (identite d'orchestrateur executif, routage,
+verification, delegation, confirmation avant toute action externe). Premiere
+etape d'un chantier en quatre : identite, conversation mains libres, mot de
+reveil, briefing du matin.
+
+**Decision** :
+
+- `config/jarvis.md` porte la consigne du proprietaire **mot pour mot** ;
+  `apps/backend/prompts.py` l'insere dans l'instruction systeme, qui ouvre
+  sur « Tu es JARVIS, l'orchestrateur d'ARENA ». Fichier absent : une ligne de
+  repli, le chat ne tombe pas.
+- La consigne enumere tout ce qu'un orchestrateur universel devrait savoir
+  faire, dont des generateurs (PDF, DOCX, tableur, presentation) qui
+  n'existent pas forcement ici. Elle est donc suivie de la liste des agents
+  **reellement inscrits** dans le registre (`collaborateurs`, DEC-0145), lue a
+  chaque appel, avec la regle : ce qui n'y figure pas n'est pas disponible.
+  Sans elle, le modele prendrait la liste de la consigne pour un inventaire.
+- Les agents metier (`agents.plaquiste`) ne sont pas listes : seul leur
+  espace connait l'entreprise (decision du 02/09/2026, deja tenue par test).
+- La discipline anti-invention (« COMMENT TU REPONDS ») reste APRES la
+  consigne : elle prime. Dans le prompt, les listes « 1. 2. 3. » de la
+  consigne s'ecrivent « (1) (2) (3) » : « 1. » a « 7. » y designent les sept
+  regles, et une seconde liste numerotee rendait « la regle 1 » ambigue (la
+  suite complete l'a montre : `tests/test_discipline_du_prompt.py`). Le
+  fichier du proprietaire reste mot pour mot.
+- Le nom visible passe a JARVIS dans la PWA (en-tete des reponses, barre
+  laterale, titre, manifeste, icone). Les identifiants internes (`usman.*`
+  des journaux, en-tete `X-Usman-Run-ID`) ne changent pas : invisibles, et les
+  renommer toucherait des clients existants.
+
+**Ce que ca coute si c'est faux** : l'instruction systeme passe d'environ
+4 000 a 11 000 caracteres ; un petit modele local a contexte court peut en
+perdre la fin (la discipline). Si c'est mesure, la consigne se resume — le
+fichier du proprietaire, lui, reste tel quel.

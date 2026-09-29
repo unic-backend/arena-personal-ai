@@ -203,7 +203,9 @@ class TestDeuxNomsDeuxRoles:
         monkeypatch.setattr(prompts.memory, "get_fact", lambda cle: None)
         texte = prompts.get_arena_system_prompt()
 
-        assert "Tu es Usman" in texte
+        # L'assistant s'appelle JARVIS depuis le 29/09/2026 (decision du
+        # proprietaire, DEC-0163) ; la regle testee — deux noms, deux roles — tient.
+        assert "Tu es JARVIS" in texte
         assert "Ousmane" in texte
         assert "l'IA autonome personnelle de Usman" not in texte
 
@@ -222,3 +224,46 @@ class TestDeuxNomsDeuxRoles:
         monkeypatch.setattr(prompts.memory, "get_fact",
                             lambda cle: "Fatou" if cle == "owner" else None)
         assert "Fatou" in prompts.get_arena_system_prompt()
+
+
+class TestJarvis:
+    """Decision du proprietaire, 29/09/2026 (DEC-0163) : l'assistant devient
+    JARVIS, avec SA consigne mot pour mot (`config/jarvis.md`)."""
+
+    def test_la_consigne_du_proprietaire_est_dans_le_prompt(self, sans_fait_enregistre):
+        prompt = prompts.get_arena_system_prompt()
+
+        assert "You are JARVIS, the universal executive orchestrator of ARENA" in prompt
+        assert 'Never confuse "the language model cannot do this directly"' in prompt
+        assert "require explicit user confirmation before consequential external actions" in prompt
+        # Ses listes gardent leur contenu, numerotees « (1) » : « 1. » a « 7. »
+        # restent les regles de discipline (tests/test_discipline_du_prompt.py).
+        assert "(1) Inspect the available tools." in prompt
+
+    def test_les_capacites_listees_sont_celles_du_registre(self, sans_fait_enregistre, monkeypatch):
+        """La consigne enumere des generateurs (PDF, tableur...) qui n'existent
+        peut-etre pas : le prompt dit ce qui est REELLEMENT branche."""
+        from apps.backend import runtime
+
+        prompt = prompts.get_arena_system_prompt()
+
+        for fiche in runtime.collaborateurs.fiches():
+            metier = fiche.metadata["module"].startswith(prompts.MODULES_METIER)
+            # Un agent metier reste dans SON espace (decision du 02/09/2026).
+            assert (f"- {fiche.id} :" in prompt) is not metier, fiche.id
+        assert "n'est PAS disponible" in prompt
+
+    def test_la_discipline_vient_apres_la_consigne(self, sans_fait_enregistre):
+        """Les regles anti-invention priment : elles suivent la consigne."""
+        prompt = prompts.get_arena_system_prompt()
+
+        assert prompt.index("JARVIS manages ARENA") < prompt.index("COMMENT TU REPONDS")
+
+    def test_sans_fichier_de_consigne_le_chat_ne_tombe_pas(self, sans_fait_enregistre, monkeypatch, tmp_path):
+        monkeypatch.setattr(prompts, "FICHIER_JARVIS", tmp_path / "absent.md")
+
+        prompt = prompts.get_arena_system_prompt()
+
+        assert "Tu es JARVIS" in prompt
+        assert "You are JARVIS, the executive orchestrator of ARENA" in prompt
+        assert "COMMENT TU REPONDS" in prompt

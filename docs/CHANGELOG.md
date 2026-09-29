@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — Ton IA s'appelle maintenant JARVIS
+
+ARENA répond désormais sous le nom de JARVIS, avec ta consigne complète :
+comprendre le vrai but, choisir le bon agent, vérifier, livrer un résultat
+fini, et toujours te demander avant un envoi, une publication ou un achat.
+JARVIS connaît la liste réelle de ce qu'il sait faire sur ta machine, et dit
+franchement ce qui manque au lieu de faire semblant (DEC-0163).
+
 ### Corrigé — 28/09/2026 — Les idées de vidéos tendance ne sont plus inventées
 
 Quand tu demandes des tendances ou des idées de vidéos, ARENA lisait des pages
