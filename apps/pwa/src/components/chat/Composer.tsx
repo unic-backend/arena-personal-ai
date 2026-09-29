@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  AlertCircle, ArrowUp, FileText, Headphones, Image as ImageIcon,
+  AlertCircle, ArrowUp, Ear, FileText, Headphones, Image as ImageIcon,
   Loader2, Mic, Paperclip, Radio, Square, Type, Video, X,
 } from 'lucide-react';
 import { useI18n } from '../../lib/i18n';
@@ -46,6 +46,9 @@ export function Composer({
   const { stop: stopSpeech, speak } = useSpeech();
   const conversation = useConversation();
   const conversationActive = conversation.phase !== 'arret';
+  /* En conversation proprement dite — la veille n'en est pas une : le bouton
+     casque y lance une conversation, il n'arrete rien. */
+  const enConversation = conversationActive && conversation.phase !== 'veille';
 
   /* Un mode qui s'arrete seul dit pourquoi : micro refuse, transcription en
      echec. Un arret muet ressemblerait a une panne de JARVIS. */
@@ -66,25 +69,56 @@ export function Composer({
   /* Mode mains libres (DEC-0164). La premiere phrase est dite ICI, dans le
      geste du doigt : sur telephone, la synthese vocale ne parle qu'apres un
      toucher — lancee plus tard par le pilote, elle resterait muette. */
+  const micIndisponible = () => {
+    if (micSupported) return false;
+    setDictationNotice(t('composer.micUnsupported'));
+    setTimeout(() => setDictationNotice(null), 5000);
+    return true;
+  };
+
   const basculerConversation = () => {
-    if (conversationActive) {
+    if (enConversation) {
+      // Retour en veille si elle est allumee, sinon arret.
       triggerHaptic('light');
       conversation.arreter();
       stopDictation();
       stopSpeech();
       return;
     }
-    if (!micSupported) {
-      setDictationNotice(t('composer.micUnsupported'));
-      setTimeout(() => setDictationNotice(null), 5000);
-      return;
-    }
+    if (micIndisponible()) return;
     triggerHaptic('medium');
     if (isListening) stopDictation();
     stopSpeech();
     preparerAudio();
     conversation.demarrer();
     speak('jarvis-annonce', t('conversation.annonce'), locale);
+  };
+
+  /* Veille « Jarvis » (DEC-0165). Meme raison que ci-dessus : la phrase dite
+     dans le geste debloque la voix pour tout ce qui suivra. */
+  const basculerVeille = () => {
+    if (conversation.reveil) {
+      triggerHaptic('light');
+      conversation.couper();
+      stopDictation();
+      stopSpeech();
+      return;
+    }
+    if (micIndisponible()) return;
+    triggerHaptic('medium');
+    if (isListening) stopDictation();
+    stopSpeech();
+    preparerAudio();
+    conversation.activerVeille();
+    speak('jarvis-veille', t('conversation.veilleActivee'), locale);
+  };
+
+  /* Le bouton de la barre d'etat eteint TOUT, veille comprise. */
+  const toutArreter = () => {
+    triggerHaptic('light');
+    conversation.couper();
+    stopDictation();
+    stopSpeech();
   };
 
   useEffect(() => {
@@ -312,15 +346,19 @@ export function Composer({
               >
                 <span className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse-dot rounded-full bg-accent-400" />
                 <span className="flex-1">
-                  {t(`conversation.${conversation.phase === 'ecoute' || conversation.phase === 'reflexion' ? conversation.phase : 'parole'}`)}
-                  <span className="ml-2 text-zinc-500">{t('conversation.astuce')}</span>
+                  {t(`conversation.${
+                    conversation.phase === 'ecoute' || conversation.phase === 'reflexion'
+                    || conversation.phase === 'veille' ? conversation.phase : 'parole'}`)}
+                  <span className="ml-2 text-zinc-500">
+                    {t(conversation.phase === 'veille' ? 'conversation.astuceVeille' : 'conversation.astuce')}
+                  </span>
                 </span>
                 <button
                   type="button"
-                  onClick={basculerConversation}
+                  onClick={toutArreter}
                   className="rounded px-1.5 py-0.5 text-accent-300 hover:bg-accent-500/20"
                 >
-                  {t('conversation.stop')}
+                  {t(conversation.reveil ? 'conversation.veilleStop' : 'conversation.stop')}
                 </button>
               </div>
             </motion.div>
@@ -403,18 +441,34 @@ export function Composer({
           <button
             type="button"
             onClick={basculerConversation}
-            disabled={running && !conversationActive}
-            title={conversationActive ? t('conversation.stop') : t('conversation.start')}
-            aria-label={conversationActive ? t('conversation.stop') : t('conversation.start')}
-            aria-pressed={conversationActive}
+            disabled={running && !enConversation}
+            title={enConversation ? t('conversation.stop') : t('conversation.start')}
+            aria-label={enConversation ? t('conversation.stop') : t('conversation.start')}
+            aria-pressed={enConversation}
             className={cn(
               'relative grid h-9 w-9 shrink-0 place-items-center rounded-xl transition active:scale-95 disabled:opacity-40',
-              conversationActive
+              enConversation
                 ? 'bg-accent-500 text-ink-950 shadow-[0_0_15px_var(--glow)]'
                 : 'text-zinc-500 hover:bg-white/5 hover:text-accent-300',
             )}
           >
-            <Headphones size={16} className={conversationActive ? 'animate-pulse' : undefined} />
+            <Headphones size={16} className={enConversation ? 'animate-pulse' : undefined} />
+          </button>
+          {/* Veille « Jarvis » : le micro attend son nom (DEC-0165) */}
+          <button
+            type="button"
+            onClick={basculerVeille}
+            title={conversation.reveil ? t('conversation.veilleStop') : t('conversation.veilleStart')}
+            aria-label={conversation.reveil ? t('conversation.veilleStop') : t('conversation.veilleStart')}
+            aria-pressed={conversation.reveil}
+            className={cn(
+              'relative grid h-9 w-9 shrink-0 place-items-center rounded-xl transition active:scale-95',
+              conversation.reveil
+                ? 'bg-accent-500/20 text-accent-300 ring-1 ring-accent-500/40'
+                : 'text-zinc-500 hover:bg-white/5 hover:text-accent-300',
+            )}
+          >
+            <Ear size={16} />
           </button>
           {/* Microphone Dictation Button */}
           <button

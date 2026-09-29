@@ -11943,3 +11943,43 @@ le typage et la construction. Le proprietaire est le premier a l'essayer.
 **Ce que ca coute si c'est faux** : un seuil de silence mal ajuste coupe une
 phrase trop tot (bruit faible) ou attend 30 s (bruit fort) ; le mode reste
 arretable a tout moment par le bouton ou « stop ».
+
+## DEC-0165 — Veille « Jarvis » : le micro attend son nom, et la voix reste sur la machine du proprietaire
+
+**2026-09-29.** Etape 3 du chantier JARVIS (DEC-0163, DEC-0164).
+
+**Decision** : une phase `veille` dans la conversation mains libres
+(`apps/pwa/src/lib/speech/conversation.ts`). En veille, chaque phrase
+entendue passe par la MEME chaine que la conversation — fin de parole au
+silence, transcription par Whisper sur la machine du proprietaire (sinon le
+navigateur) — et seules les phrases qui commencent par « Jarvis » (au plus un
+mot avant : « Dis Jarvis », « Ok Jarvis ») comptent :
+
+- « Jarvis » seul → « Oui ? », puis ecoute ;
+- « Jarvis, quel temps fait-il ? » → la question part directement ;
+- « J'ai vu Jarvis au cinema » → rien (le nom n'est pas en tete) ;
+- formes tolerees de la transcription : Djarvis, Jervis, Jarvi, « Jar vis ».
+
+Choisie plutot qu'un moteur de mot de reveil dedie : aucune dependance, aucune
+cle de licence, et la voix ne part pas chez un tiers quand le PC du
+proprietaire est branche (la reconnaissance du navigateur, repli sans PC,
+l'envoie a son fournisseur — c'est celle qui existait deja).
+
+- Une conversation finie (« stop », trois silences) retourne en veille ;
+  le bouton de la barre d'etat eteint tout. Un micro refuse eteint tout ; une
+  panne passagere est reessayee 5 fois, 2 s d'intervalle, puis tout s'eteint.
+- JARVIS ne s'ecoute jamais lui-meme : l'annonce de la veille et « A bientot »
+  passent par la phase `parole`, et le micro ne s'ouvre qu'une fois sa voix
+  eteinte (`apresParole`, `conclure`). Sans cela, « Veille activee. Dites
+  Jarvis. » le reveillait.
+- Ecran allume pendant la veille (Wake Lock) : un telephone qui se verrouille
+  coupe le micro du navigateur.
+
+**Limite connue** : un navigateur mobile coupe le micro quand l'appli passe en
+arriere-plan ; la veille ne fonctionne qu'ecran allume, appli ouverte. Chaque
+phrase entendue est transcrite par Whisper : sur une piece bruyante, le PC
+travaille en continu.
+
+**Ce que ca coute si c'est faux** : un faux reveil (Whisper qui entend
+« Jarvis ») envoie une question que personne n'a posee — elle est visible
+dans la conversation, et « stop » y met fin.

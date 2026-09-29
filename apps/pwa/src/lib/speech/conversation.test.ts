@@ -5,6 +5,7 @@ import type { ChatMessage } from '../store/chatStore';
 import {
   DetecteurDeFinDeParole,
   REGLAGES_PAR_DEFAUT,
+  detecterMotDeReveil,
   SILENCES_AVANT_ARRET,
   estOrdreDArret,
   niveauRms,
@@ -97,8 +98,32 @@ describe('la reponse a prononcer', () => {
   });
 });
 
+describe('le mot de reveil (DEC-0165)', () => {
+  it.each([
+    ['Jarvis', ''],
+    ['Jarvis, quel temps fait-il ?', 'quel temps fait-il ?'],
+    ['jarvis quelle heure est-il', 'quelle heure est-il'],
+    ['Dis Jarvis, lance la musique', 'lance la musique'],
+    ['Ok Jarvis', ''],
+    ['Djarvis, bonjour', 'bonjour'],
+    ['Jar vis, quelle date', 'quelle date'],
+    ['Jervis !', ''],
+  ])('« %s » le reveille, et la demande est « %s »', (phrase, reste) => {
+    expect(detecterMotDeReveil(phrase)).toEqual({ entendu: true, reste });
+  });
+
+  it.each([
+    "J'ai vu Jarvis au cinema hier",   // le nom, mais pas en tete : une conversation
+    'quel temps fait-il',
+    'Java est un langage',
+    '',
+  ])('« %s » ne le reveille pas', (phrase) => {
+    expect(detecterMotDeReveil(phrase).entendu).toBe(false);
+  });
+});
+
 describe("l'etat de la conversation", () => {
-  beforeEach(() => useConversation.getState().arreter());
+  beforeEach(() => useConversation.getState().couper());
 
   it(`s'arrete seul apres ${SILENCES_AVANT_ARRET} silences consecutifs`, () => {
     const etat = useConversation.getState();
@@ -119,6 +144,50 @@ describe("l'etat de la conversation", () => {
     etat.silence();
     etat.reflechir(4);
     expect(useConversation.getState()).toMatchObject({ phase: 'reflexion', silences: 0, depuis: 4 });
+  });
+
+  it("la veille parle d'abord, et n'ouvre le micro qu'apres — jamais pendant « Jarvis »", () => {
+    const etat = useConversation.getState();
+    etat.activerVeille();
+    expect(useConversation.getState()).toMatchObject({ phase: 'parole', reveil: true });
+    useConversation.getState().finDeParole();
+    expect(useConversation.getState().phase).toBe('veille');
+  });
+
+  it("avec la veille allumee, une conversation finie retourne en veille", () => {
+    const etat = useConversation.getState();
+    etat.activerVeille();
+    etat.finDeParole();
+    etat.parler();          // « Oui ? »
+    etat.finDeParole();
+    expect(useConversation.getState().phase).toBe('ecoute');
+    for (let i = 0; i < SILENCES_AVANT_ARRET; i += 1) useConversation.getState().silence();
+    expect(useConversation.getState()).toMatchObject({ phase: 'veille', reveil: true });
+  });
+
+  it('« stop » dit au revoir PUIS retourne en veille, ou s\'arrete sans veille', () => {
+    const etat = useConversation.getState();
+    etat.activerVeille();
+    etat.finDeParole();
+    etat.ecouter();
+    etat.conclure();
+    expect(useConversation.getState().phase).toBe('parole');
+    useConversation.getState().finDeParole();
+    expect(useConversation.getState().phase).toBe('veille');
+
+    useConversation.getState().couper();
+    useConversation.getState().demarrer();
+    useConversation.getState().finDeParole();
+    useConversation.getState().conclure();
+    useConversation.getState().finDeParole();
+    expect(useConversation.getState().phase).toBe('arret');
+  });
+
+  it('une erreur de micro eteint tout, veille comprise : pas de boucle muette', () => {
+    const etat = useConversation.getState();
+    etat.activerVeille();
+    etat.arreter('not-allowed');
+    expect(useConversation.getState()).toMatchObject({ phase: 'arret', reveil: false });
   });
 
   it('une fois arretee, rien ne la relance en douce', () => {
