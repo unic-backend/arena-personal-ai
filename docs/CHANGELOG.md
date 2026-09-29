@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Corrigé — 29/09/2026 — LibreOffice n'est plus annoncé s'il ne marche pas
+
+ARENA vérifiait seulement que LibreOffice était installé. Il fait maintenant
+une petite conversion d'essai : si LibreOffice est installé mais ne convertit
+rien, il est annoncé indisponible, avec la raison, et JARVIS passe directement
+aux moteurs de secours au lieu de tenter une conversion vouée à l'échec. Le
+résultat est gardé quelques minutes pour ne pas ralentir (DEC-0176).
+
 ### Ajouté — 29/09/2026 — PowerPoint en PDF, même sans LibreOffice
 
 « Fais un PDF de cette présentation » marche sur un PC sans LibreOffice : une

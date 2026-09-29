@@ -18,8 +18,10 @@ import logging
 import shutil
 import subprocess
 import tempfile
+import threading
+import time
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger("usman.production.conversion.moteurs")
 
@@ -61,11 +63,102 @@ _EXTENSIONS_OFFICE_SOURCE = frozenset({
 })
 
 
+#: Une conversion d'essai qui depasse ce delai compte comme un echec. Le
+#: premier demarrage de LibreOffice est lent (profil a creer) : large expres.
+DELAI_SONDE_SECONDES = 90.0
+
+#: Duree de validite d'une sonde. Une reussite vaut dix minutes ; un echec
+#: une seule, pour qu'un LibreOffice installe ou repare soit vu vite.
+VALIDITE_SONDE_OK = 600.0
+VALIDITE_SONDE_KO = 60.0
+
+_sondes_soffice: Dict[str, Tuple[float, bool, str]] = {}
+_verrou_sonde = threading.Lock()
+
+
+def _binaire_soffice() -> Optional[str]:
+    return shutil.which("soffice") or shutil.which("libreoffice")
+
+
+def _maintenant() -> float:
+    return time.monotonic()
+
+
+def oublier_sonde_soffice() -> None:
+    """Oublie les sondes gardees — la suivante reconvertit pour de vrai."""
+    with _verrou_sonde:
+        _sondes_soffice.clear()
+
+
+def _sonder_soffice(chemin: str) -> Tuple[bool, str]:
+    """Une vraie conversion d'essai : un texte d'une ligne -> PDF.
+
+    Mesure du 29/09/2026 : dans le conteneur de travail, `soffice` existe,
+    repond a `--version`, et rend 0 a une conversion **sans rien ecrire**
+    (« source file could not be loaded »). Verifier la presence du binaire
+    annoncait disponible un moteur qui ne convertit rien. Seul un fichier
+    produit, et qui commence comme un PDF, prouve qu'il marche.
+    """
+    with tempfile.TemporaryDirectory(prefix="arena-sonde-lo-") as travail:
+        travail_p = Path(travail)
+        entree = travail_p / "sonde.txt"
+        entree.write_text("ARENA : conversion d'essai.\n", encoding="utf-8")
+        sortie_dir = travail_p / "sortie"
+        sortie_dir.mkdir()
+        commande = [
+            chemin, "--headless", "--norestore",
+            f"-env:UserInstallation=file://{travail_p / 'profil'}",
+            "--convert-to", "pdf", "--outdir", str(sortie_dir), str(entree),
+        ]
+        try:
+            resultat = subprocess.run(
+                commande, capture_output=True, text=True, timeout=DELAI_SONDE_SECONDES)
+        except subprocess.TimeoutExpired:
+            return False, (f"LibreOffice présent ({chemin}) mais sa conversion d'essai "
+                           f"n'a pas abouti en {DELAI_SONDE_SECONDES:.0f} s")
+        except OSError as erreur:
+            return False, f"LibreOffice présent ({chemin}) mais ne se lance pas : {erreur}"
+        produit = sortie_dir / "sonde.pdf"
+        if produit.is_file() and produit.read_bytes()[:5] == b"%PDF-":
+            return True, f"{chemin} (conversion d'essai réussie)"
+        detail = (resultat.stderr or resultat.stdout or "aucune sortie").strip()
+        return False, (f"LibreOffice présent ({chemin}) mais sa conversion d'essai "
+                       f"n'a rien produit : {detail[:300]}")
+
+
 def soffice_disponible() -> Tuple[bool, str]:
-    chemin = shutil.which("soffice") or shutil.which("libreoffice")
+    """LibreOffice est-il utilisable, mesure par une vraie conversion ?
+
+    Le resultat est garde (`VALIDITE_SONDE_OK` / `_KO`) : la matrice interroge
+    cette sonde pour chaque couple LibreOffice, et le connecteur a chaque
+    conversion — relancer LibreOffice a chaque fois couterait des secondes.
+    """
+    chemin = _binaire_soffice()
     if not chemin:
         return False, "aucun binaire « soffice » ou « libreoffice » trouvé sur le PATH"
-    return True, chemin
+    with _verrou_sonde:
+        garde = _sondes_soffice.get(chemin)
+        if garde is not None:
+            instant, ok, info = garde
+            validite = VALIDITE_SONDE_OK if ok else VALIDITE_SONDE_KO
+            if _maintenant() - instant < validite:
+                return ok, info
+        ok, info = _sonder_soffice(chemin)
+        _sondes_soffice[chemin] = (_maintenant(), ok, info)
+    if not ok:
+        logger.warning("%s", info)
+    return ok, info
+
+
+def _chemin_soffice_verifie() -> str:
+    """Le binaire a lancer, apres la sonde. Leve `MoteurEchec` sinon."""
+    disponible, info = soffice_disponible()
+    if not disponible:
+        raise MoteurEchec(info)
+    chemin = _binaire_soffice()
+    if not chemin:
+        raise MoteurEchec("aucun binaire « soffice » ou « libreoffice » trouvé sur le PATH")
+    return chemin
 
 
 def convertir_office(entree: Path, sortie: Path, format_source: str) -> None:
@@ -76,9 +169,7 @@ def convertir_office(entree: Path, sortie: Path, format_source: str) -> None:
     le fichier produit vers `sortie` (déjà le nom final choisi par le
     connecteur — jamais celui de l'appelant).
     """
-    disponible, info = soffice_disponible()
-    if not disponible:
-        raise MoteurEchec(info)
+    info = _chemin_soffice_verifie()
 
     format_cible = sortie.suffix.lstrip(".").lower()
     with tempfile.TemporaryDirectory(prefix="arena-conv-lo-") as travail:
