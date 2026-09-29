@@ -12214,3 +12214,28 @@ par un Word -> PDF, et la validation sabotee, desormais atteinte).
 **Ce que ca coute si c'est faux** : les polices, marges, images, en-tetes et
 pieds de page du Word sont perdus ; la limite de qualite l'annonce avec le
 fichier.
+
+## DEC-0174 — Excel -> PDF sans LibreOffice : chaque feuille en tableau, rendue en paysage
+
+**2026-09-29.** Dernier des trois couples bureautiques qui dependaient du seul
+LibreOffice (apres DEC-0172 et DEC-0173). « Fais un PDF de ce tableau Excel »
+echouait sur une machine sans lui.
+
+**Decision** :
+
+- `tableurs.xlsx_vers_pdf`, declare **apres** LibreOffice, qui garde la mise
+  en forme du classeur. Chaque feuille **non vide** devient un titre et un
+  tableau ; les valeurs (jamais les formules) sont ecrites au format francais
+  (`_en_texte` : virgule decimale, JJ/MM/AAAA), les nombres alignes a droite ;
+  une premiere ligne sans nombre est un en-tete. Page A4 en paysage.
+- **Un seul rendu sur** : `word_pdf.rendre_pdf`, extrait du moteur Word ->
+  PDF — texte echappe, aucune ressource chargee. Un texte « =... » s'affiche
+  tel quel, sans l'apostrophe du CSV : un PDF n'execute rien.
+- **Au-dela de 5000 lignes, le moteur refuse** et conseille le CSV : un PDF de
+  cette taille n'est plus lisible et son rendu prendrait des minutes.
+  Tronquer en silence livrerait un document faux.
+- Un classeur sans aucune donnee fait echouer le moteur en le disant.
+
+**Ce que ca coute si c'est faux** : couleurs, largeurs de colonnes, cellules
+fusionnees, graphiques et images du classeur sont perdus ; la limite de
+qualite l'annonce avec le fichier.

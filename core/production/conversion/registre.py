@@ -96,6 +96,17 @@ _enregistrer(
 _enregistrer(
     ["xlsx", "ods"], ["pdf"],
     EntreeMoteur("libreoffice", _office_convertir, m.soffice_disponible))
+# Sans LibreOffice (29/09/2026, DEC-0174) : chaque feuille en tableau, rendue
+# par WeasyPrint. APRES LibreOffice, qui garde la mise en forme du classeur.
+_enregistrer(
+    ["xlsx"], ["pdf"],
+    EntreeMoteur(
+        "openpyxl+weasyprint", t.xlsx_vers_pdf, m.weasyprint_disponible,
+        limites_qualite=(
+            "Chaque feuille non vide devient un tableau (valeurs, pas formules, "
+            "au format francais), en paysage. Couleurs, largeurs, cellules "
+            "fusionnees, graphiques et images ne sont pas repris ; au-dela de "
+            "5000 lignes, le moteur refuse.")))
 _enregistrer(
     ["pdf"], ["docx"],
     EntreeMoteur(

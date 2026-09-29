@@ -217,3 +217,88 @@ def markdown_vers_csv(entree: Path, sortie: Path) -> None:
         lignes.append(cellules)
     with sortie.open("w", encoding="utf-8-sig", newline="") as fichier:
         csv.writer(fichier, delimiter=";", lineterminator="\r\n").writerows(lignes)
+
+
+# --- Excel -> PDF sans LibreOffice (DEC-0174) ----------------------------------------
+
+#: Au-dela, un PDF n'est plus lisible — et son rendu prendrait des minutes.
+#: Le moteur refuse et dit quoi faire, plutot que de tronquer en silence.
+LIGNES_PDF_MAX = 5000
+
+STYLE_TABLEUR = """
+@page { size: A4 landscape; margin: 12mm; }
+body { font-family: 'DejaVu Sans', Arial, sans-serif; font-size: 9pt; }
+h2 { font-size: 12pt; margin: 10pt 0 4pt; }
+table { border-collapse: collapse; }
+td, th { border: 1px solid #999; padding: 2pt 5pt; vertical-align: top; }
+th { background: #eee; text-align: left; }
+td.nombre { text-align: right; }
+"""
+
+
+def _affichee(valeur: object) -> str:
+    """Une case telle qu'un tableur francais l'affiche. Un texte reste le
+    texte, sans l'apostrophe du CSV : un PDF n'execute rien."""
+    if isinstance(valeur, str):
+        return valeur
+    return _en_texte(valeur)
+
+
+def _case(balise: str, valeur: object) -> str:
+    """Une case du tableau HTML, echappee ; un nombre s'aligne a droite."""
+    import html
+
+    nombre = isinstance(valeur, (int, float)) and not isinstance(valeur, bool)
+    classe = ' class="nombre"' if nombre else ""
+    return f"<{balise}{classe}>{html.escape(_affichee(valeur))}</{balise}>"
+
+
+def xlsx_vers_html(entree: Path) -> str:
+    """Chaque feuille non vide : son nom, puis son tableau. Tout est echappe."""
+    import html
+
+    from openpyxl import load_workbook
+
+    try:
+        classeur = load_workbook(str(entree), read_only=True, data_only=True)
+    except Exception as erreur:  # noqa: BLE001 — un classeur illisible est un echec du moteur
+        raise MoteurEchec(f"classeur illisible : {erreur}") from erreur
+    corps: List[str] = []
+    total = 0
+    try:
+        for feuille in classeur.worksheets:
+            lignes = []
+            for rangee in feuille.iter_rows(values_only=True):
+                valeurs = list(rangee)
+                while valeurs and valeurs[-1] in (None, ""):
+                    valeurs.pop()
+                if valeurs:
+                    lignes.append(valeurs)
+            if not lignes:
+                continue
+            total += len(lignes)
+            if total > LIGNES_PDF_MAX:
+                raise MoteurEchec(
+                    f"plus de {LIGNES_PDF_MAX} lignes : trop grand pour un PDF lisible "
+                    f"— convertis ce classeur en CSV")
+            largeur = max(len(v) for v in lignes)
+            en_tete = all(isinstance(v, str) or v is None for v in lignes[0]) and len(lignes) > 1
+            rangs = []
+            for numero, valeurs in enumerate(lignes):
+                valeurs = valeurs + [None] * (largeur - len(valeurs))
+                balise = "th" if en_tete and numero == 0 else "td"
+                cases = "".join(_case(balise, v) for v in valeurs)
+                rangs.append(f"<tr>{cases}</tr>")
+            corps.append(f"<h2>{html.escape(feuille.title)}</h2><table>{''.join(rangs)}</table>")
+    finally:
+        classeur.close()
+    if not corps:
+        raise MoteurEchec("le classeur ne contient aucune donnee")
+    return (f"<html><head><meta charset='utf-8'><style>{STYLE_TABLEUR}</style></head>"
+            f"<body>{''.join(corps)}</body></html>")
+
+
+def xlsx_vers_pdf(entree: Path, sortie: Path) -> None:
+    from core.production.conversion.word_pdf import rendre_pdf
+
+    rendre_pdf(xlsx_vers_html(entree), sortie)

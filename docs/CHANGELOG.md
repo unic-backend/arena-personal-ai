@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — Excel en PDF, même sans LibreOffice
+
+« Fais un PDF de ce tableau » marche sur un PC sans LibreOffice : chaque
+feuille devient un tableau lisible, en paysage, avec les montants et les dates
+au format français. Les couleurs, les graphiques et les cellules fusionnées ne
+sont pas repris, et c'est dit avec le fichier. Au-delà de 5000 lignes, JARVIS
+propose plutôt un CSV (DEC-0174).
+
 ### Ajouté — 29/09/2026 — Word en PDF, même sans LibreOffice
 
 « Fais un PDF de ce Word » marche sur un PC sans LibreOffice : titres,
