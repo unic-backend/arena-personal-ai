@@ -12522,3 +12522,34 @@ vers une autre intention (le classeur) — rien n'est ecrit par erreur, puisque
 la seule ecriture, republier, attend toujours son accord et le coupe-circuit
 PUBLISH.
 
+## DEC-0183 — Un connecteur LinkedIn, et « publie-la sur LinkedIn » l'atteint
+
+**2026-09-29.** Troisieme reseau du plan. SocialAgent repondait « LinkedIn
+n'est pas encore branche » (DEC-0181).
+
+**Decision** :
+
+- `social/linkedin/linkedin_connector.py`, service `social`, nom `linkedin`,
+  declare dans `apps/backend/runtime.py`. Il ne declare que ce qu'une
+  application LinkedIn ordinaire obtient : `profil` (lecture, `/v2/userinfo`)
+  et `publier` (`publish` : confirmation + coupe-circuit PUBLISH,
+  `POST /rest/posts`, auteur `urn:li:person:<sub>`). Lire ses posts, leurs
+  statistiques, ses commentaires, ou publier pour une page entreprise
+  demandent un examen de l'application par LinkedIn : ces capacites
+  n'existent pas plutot que de n'etre qu'un refus deguise.
+- Un succes porte l'identifiant que LinkedIn rend dans l'en-tete
+  `x-restli-id` ; sans lui, c'est un echec. Plus de 3000 caracteres, ou un
+  lien qui n'est pas en https, ne partent pas. Le jeton est retire de toute
+  erreur. La sonde de sante remesure toujours le membre au lieu de reprendre
+  celui d'avant : un jeton expire (60 jours) se voit.
+- SocialAgent : « publie-la sur LinkedIn » appelle `linkedin.publier`, avec le
+  premier lien https de la phrase comme article. Jamais un autre reseau a sa
+  place.
+
+**Non mesure** : aucun appel reel a LinkedIn (pas de jeton ici). La version
+d'API par defaut (`202509`) est reglable par `LINKEDIN_API_VERSION`.
+
+**Ce que ca coute si c'est faux** : une version d'API retiree ou un champ
+change fait refuser le post par LinkedIn, avec son message — rien ne part a
+la place, et chaque post attend l'accord du proprietaire.
+

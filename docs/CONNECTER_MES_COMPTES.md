@@ -10,14 +10,14 @@ Ce qui est branché aujourd'hui :
 > publication sur mon chantier et publie-la sur Facebook », « analyse mes
 > publications Instagram ». Tes sites aussi : « mon site est en ligne ? »,
 > « le dernier déploiement de mon site a marché ? », « les messages de mon
-> site », « republie mon site ». Mettre tes clés maintenant
+> site », « republie mon site ». Et LinkedIn : « publie-la sur LinkedIn ». Mettre tes clés maintenant
 > permet déjà de vérifier que la connexion marche (santé des connecteurs).
 
 | Compte | État | Connecteur |
 |---|---|---|
 | Page Facebook + Instagram | prêt, attend tes clés — **joignable par une phrase** | `social/meta/meta_connector.py` |
 | Sites Netlify | prêt, attend ta clé — **joignable par une phrase** | `core/connectors/netlify.py` |
-| LinkedIn | à venir | — |
+| LinkedIn (ton profil) | prêt, attend ta clé — **joignable par une phrase** | `social/linkedin/linkedin_connector.py` |
 | Fiche Google (Maps) | à venir | — |
 | TikTok | à venir | — |
 
@@ -144,3 +144,51 @@ supprime rien. Relancer la mise en ligne passe aussi par le coupe-circuit
 Les messages des formulaires sont écrits par tes visiteurs : JARVIS les lit
 comme des informations, jamais comme des ordres, et l'adresse IP du visiteur
 ne lui est pas transmise.
+
+---
+
+## 3. LinkedIn (ton profil)
+
+### Ce que LinkedIn permet — et ce qu'il ne permet pas
+
+Une application LinkedIn ordinaire peut **publier sur ton profil**. Lire tes
+posts, leurs statistiques ou leurs commentaires, et publier au nom d'une page
+entreprise, demandent une autorisation que LinkedIn n'accorde qu'après examen
+de l'application. JARVIS ne fait donc que publier sur ton profil, avec ton
+accord à chaque fois.
+
+### Obtenir le jeton
+
+1. Va sur **linkedin.com/developers** → **Create app**. LinkedIn demande de
+   relier l'application à une page entreprise (celle d'UniC Plaquiste, par
+   exemple).
+2. Onglet **Products** : ajoute **Sign In with LinkedIn using OpenID Connect**
+   et **Share on LinkedIn**.
+3. Onglet **Auth** → **OAuth 2.0 tools** (générateur de jeton) : coche
+   openid, profile et w_member_social, puis crée le jeton.
+4. Ce jeton **expire après 60 jours** : il faudra le refaire. Quand il a
+   expiré, la santé du connecteur le dit (refus 401 de LinkedIn).
+
+> Les écrans de LinkedIn changent aussi : cherche l'intitulé le plus proche.
+> Les noms des autorisations, eux, sont ceux que l'API demande.
+
+### Le mettre dans JARVIS
+
+Dans le fichier `.env` de ton PC :
+
+```
+LINKEDIN_ACCESS_TOKEN=le-jeton
+```
+
+### Ce que JARVIS peut faire avec
+
+| Action | Accord |
+|---|---|
+| Dire à quel compte LinkedIn il est relié | libre |
+| Publier un post sur ton profil (avec un lien si tu en donnes un) | **ta confirmation, à chaque fois** |
+
+« Écris une publication sur mon chantier et publie-la sur LinkedIn avec
+https://www.unicplaquiste.com » : JARVIS écrit le texte dans ta voix, le
+relit, puis te le montre avant tout envoi. Le coupe-circuit `PUBLISH` de
+`config/permissions.yaml` s'applique aussi.
+

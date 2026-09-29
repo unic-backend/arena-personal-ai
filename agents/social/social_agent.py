@@ -336,10 +336,12 @@ class SocialAgent(BaseAgent):
             resultat = self.registre.executer("meta", "publier_instagram",
                                               image_url=image.group(0), legende=texte)
         elif reseau == "linkedin":
-            execution.etape("linkedin : aucun connecteur")
-            return {"statut": "NOT_CONFIGURED",
-                    "message": ("LinkedIn n'est pas encore branche : le texte est pret, "
-                                "colle-le toi-meme pour l'instant.")}
+            # Un lien dans la phrase devient l'article du post (DEC-0183).
+            lien = ADRESSE_HTTPS.search(demande or "")
+            parametres = {"message": texte}
+            if lien:
+                parametres["lien"] = lien.group(0)
+            resultat = self.registre.executer("linkedin", "publier", **parametres)
         else:
             resultat = self.registre.executer("tiktok", "publish_video",
                                               legende=texte, chemin_video="")

@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — « Publie-la sur LinkedIn »
+
+JARVIS publie sur ton profil LinkedIn le texte qu'il a écrit dans ta voix —
+avec ton lien si tu en donnes un — après ton accord. LinkedIn ne laisse pas
+une application ordinaire lire tes statistiques : JARVIS ne fait pas semblant.
+Il faut ta clé LinkedIn (`docs/CONNECTER_MES_COMPTES.md`) (DEC-0183).
+
 ### Ajouté — 29/09/2026 — « Mon site est en ligne ? »
 
 Demande à JARVIS l'état de ton site, si le dernier déploiement a marché (et
