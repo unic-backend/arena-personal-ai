@@ -95,6 +95,18 @@ _enregistrer(
             "à la main — attendu d'un import PDF, mesuré le 08/09/2026 : le "
             "texte est réel et complet, sa mise en page ne se retouche pas "
             "facilement dans Word/LibreOffice après coup.")))
+# Sans LibreOffice (29/09/2026, DEC-0172) : le texte seul, dans un Word
+# modifiable. APRES LibreOffice, qui garde la mise en page quand il est la.
+_enregistrer(
+    ["pdf"], ["docx"],
+    EntreeMoteur(
+        "lecteur-documents", extraction.pdf_vers_docx, b.python_docx_disponible,
+        version="1.2.0",
+        limites_qualite=(
+            "Texte seul : ni mise en page, ni images, ni tableaux reconstruits "
+            "— une ligne du PDF devient un paragraphe, un saut de page separe "
+            "les pages. Une page scannee est lue par OCR et signalee, a "
+            "relire.")))
 
 # --- LibreOffice : HTML -> DOCX (20/09/2026) ---------------------------------------
 # Mesuré sur cette machine avant d'être déclaré : 5274 octets de DOCX réel,

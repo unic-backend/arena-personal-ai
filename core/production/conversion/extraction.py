@@ -43,3 +43,37 @@ def document_vers_texte(entree: Path, sortie: Path) -> None:
         else:
             morceaux.append(passage.texte)
     sortie.write_text("\n\n".join(morceaux) + "\n", encoding="utf-8")
+
+
+def pdf_vers_docx(entree: Path, sortie: Path) -> None:
+    """PDF -> Word sans LibreOffice : le texte du PDF, dans un Word modifiable
+    (DEC-0172).
+
+    `pdf -> docx` n'avait qu'un moteur, LibreOffice. Sur une machine qui ne
+    l'a pas — un PC Windows ordinaire — « convertis ce PDF en Word »
+    echouait. Ce moteur passe APRES LibreOffice, qui garde la mise en page
+    quand il est la.
+
+    Ce qu'il fait, sans pretendre plus : le texte que le lecteur a lu, une
+    ligne du PDF par paragraphe (recoller les lignes en phrases casserait
+    listes et tableaux sans le dire), un saut de page entre deux pages, et
+    une note en tete de toute page lue par OCR.
+    """
+    from docx import Document
+    from docx.enum.text import WD_BREAK
+
+    lu = lire_document(entree)
+    if not lu.lu:
+        raise MoteurEchec(f"document non lu ({lu.statut}) : {lu.raison}")
+    document = Document()
+    for numero, passage in enumerate(lu.passages):
+        if numero:
+            document.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+        if passage.via_ocr:
+            note = document.add_paragraph().add_run(
+                f"Page {passage.page} lue par reconnaissance de caracteres (OCR) : a relire.")
+            note.italic = True
+        for ligne in passage.texte.splitlines():
+            if ligne.strip():
+                document.add_paragraph(ligne.strip())
+    document.save(str(sortie))

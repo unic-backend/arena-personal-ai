@@ -12141,3 +12141,26 @@ provenance de chaque passage et l'OCR des pages scannees.
 **Ce que ca coute si c'est faux** : le lecteur plafonne a 50 Mo (le
 connecteur accepte 300 Mo) ; un PDF plus gros echoue avec cette raison au
 lieu d'etre lu.
+
+## DEC-0172 — PDF -> Word sans LibreOffice : le texte, dans un Word modifiable
+
+**2026-09-29.** `pdf -> docx` n'avait qu'un moteur, LibreOffice. Sur une
+machine qui ne l'a pas — un PC Windows ordinaire, probablement celui du
+proprietaire — « convertis ce PDF en Word » echouait en `NOT_CONFIGURED`.
+
+**Decision** :
+
+- `extraction.pdf_vers_docx`, declare **apres** LibreOffice pour le meme
+  couple : LibreOffice garde la mise en page quand il est installe ; sans
+  lui, le connecteur passe a ce moteur et le dit (`fallback_utilise`).
+- Il ecrit le texte que le lecteur de documents a lu (DEC-0170) — une seule
+  facon de lire un PDF dans ARENA — **une ligne du PDF par paragraphe**, un
+  saut de page entre deux pages, et une note en italique en tete de toute
+  page lue par OCR.
+- Un PDF que le lecteur n'a pas lu fait echouer le moteur avec sa raison :
+  jamais un Word vide rendu comme une reussite.
+
+**Ce que ca coute si c'est faux** : un paragraphe du PDF, coupe en lignes par
+la mise en page, arrive coupe en autant de paragraphes dans Word. Recoller
+les lignes en phrases aurait casse listes et tableaux sans le dire ; la
+limite de qualite l'annonce plutot.

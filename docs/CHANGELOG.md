@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — PDF en Word, même sans LibreOffice
+
+« Convertis ce PDF en Word » marche maintenant sur un PC sans LibreOffice :
+tu reçois un Word modifiable avec le texte du PDF, page par page. La mise en
+page, les images et les tableaux ne sont pas reconstruits, et c'est dit avec
+le fichier. Si LibreOffice est installé, il reste utilisé en premier : il
+garde la mise en page (DEC-0172).
+
 ### Ajouté — 29/09/2026 — Le texte d'un PDF, d'un Word, d'un Excel ou d'un PowerPoint
 
 « Sors-moi le texte de ce PDF » donne un vrai fichier .txt, page par page,
