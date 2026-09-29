@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — PowerPoint en PDF, même sans LibreOffice
+
+« Fais un PDF de cette présentation » marche sur un PC sans LibreOffice : une
+page par diapositive, avec les titres, les textes, les puces et les tableaux.
+Les images, les couleurs et les notes ne sont pas reprises, et c'est dit avec
+le fichier. Avec ceci, Word, Excel et PowerPoint se convertissent tous en PDF
+sans LibreOffice (DEC-0175).
+
 ### Ajouté — 29/09/2026 — Excel en PDF, même sans LibreOffice
 
 « Fais un PDF de ce tableau » marche sur un PC sans LibreOffice : chaque

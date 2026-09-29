@@ -22,6 +22,7 @@ from typing import Callable, Dict, List, Tuple
 from core.production.conversion import bureautique as b
 from core.production.conversion import extraction
 from core.production.conversion import moteurs as m
+from core.production.conversion import presentation_pdf as p
 from core.production.conversion import tableurs as t
 from core.production.conversion import word_pdf as w
 
@@ -93,6 +94,17 @@ _enregistrer(
 _enregistrer(
     ["pptx", "odp"], ["pdf"],
     EntreeMoteur("libreoffice", _office_convertir, m.soffice_disponible))
+# Sans LibreOffice (29/09/2026, DEC-0175) : une page par diapositive, texte et
+# tableaux. APRES LibreOffice, qui garde images, couleurs et disposition.
+_enregistrer(
+    ["pptx"], ["pdf"],
+    EntreeMoteur(
+        "python-pptx+weasyprint", p.pptx_vers_pdf, m.weasyprint_disponible,
+        limites_qualite=(
+            "Une page par diapositive, au format de la presentation : titres, "
+            "textes (niveaux de puce), tableaux, gras et italique. Images, "
+            "formes, couleurs, arriere-plans, disposition exacte et notes de "
+            "l'orateur ne sont pas repris.")))
 _enregistrer(
     ["xlsx", "ods"], ["pdf"],
     EntreeMoteur("libreoffice", _office_convertir, m.soffice_disponible))
