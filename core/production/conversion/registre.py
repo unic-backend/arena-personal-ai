@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Tuple
 
 from core.production.conversion import bureautique as b
+from core.production.conversion import extraction
 from core.production.conversion import moteurs as m
 from core.production.conversion import tableurs as t
 
@@ -169,6 +170,21 @@ _enregistrer(
             "qu'Excel a enregistree — vide si le classeur n'a jamais ete "
             "ouvert dans un tableur. Un texte commencant par = + - @ est "
             "precede d'une apostrophe.")))
+
+# --- Lecteur de documents : PDF / Word / Excel / PowerPoint -> texte (29/09/2026) --
+# DEC-0170. Le lecteur existait (`tools/documents/reader.py`, celui des pieces
+# jointes et du RAG), mais aucune conversion vers .txt : « sors-moi le texte de
+# ce PDF » n'avait pas de moteur. Chaque passage garde sa provenance, et une
+# page lue par OCR le dit.
+_enregistrer(
+    ["pdf", "docx", "xlsx", "pptx"], ["txt"],
+    EntreeMoteur(
+        "lecteur-documents", extraction.document_vers_texte, extraction.disponible,
+        limites_qualite=(
+            "Texte seul : la mise en page, les images et les graphiques sont "
+            "perdus ; un tableau devient des lignes « a | b | c ». Chaque page, "
+            "feuille ou diapositive est precedee de son origine ; une page "
+            "scannee est lue par OCR et marquee « (OCR) », a relire.")))
 
 # --- Pillow : images ---------------------------------------------------------------
 _FORMATS_IMAGE = ["png", "jpg", "jpeg", "webp", "bmp", "tiff", "gif"]
