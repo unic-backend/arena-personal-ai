@@ -105,7 +105,18 @@ INTENTIONS = {
     "FINANCE",
     "EXECUTIVE",
     "EQUIPE",
+    # Le briefing du matin de JARVIS (DEC-0166).
+    "BRIEFING",
 }
+
+#: Ce qui demande LE briefing du jour. Des locutions, pas le mot seul :
+#: « prepare un briefing pour mon equipe » est une redaction, pas le sien.
+PHRASES_DE_BRIEFING = (
+    "mon briefing", "le briefing", "briefing du jour", "briefing du matin",
+    "brief du jour", "brief du matin", "point du matin", "mon point du jour",
+    "résumé du matin", "resume du matin", "résumé de ma journée",
+    "resume de ma journee",
+)
 
 #: Ce qui demande de faire travailler PLUSIEURS agents ensemble (DEC-0146) :
 #: une table ronde, ou un projet a decouper et repartir. Des locutions
@@ -729,6 +740,8 @@ PREUVE_FORMELLE : vérifier ou écrire une preuve FORMELLE (Lean) — « vérifi
                   démonstration ordinaire reste DEEP_REASONING.
 EQUIPE          : faire travailler PLUSIEURS agents ensemble — une table ronde
                   entre agents, ou un projet a decouper et repartir entre eux.
+BRIEFING        : le briefing du jour du proprietaire — agenda, courrier, meteo
+                  et actualites reunis. Pas une simple question d'actualite.
 ARCHITECTURE_3D : dessiner ou modéliser un bâtiment en 3D — maison, murs,
                   plan 3D, scène 3D. Chiffrer une cloison reste PLAQUISTE ;
                   la tracer est ARCHITECTURE_3D.
@@ -789,6 +802,21 @@ class OrchestratorAgent(BaseAgent):
             return False  # une annee ancienne est citee : le fait est acquis
 
         return any(formulation in texte for formulation in FORMULATIONS_COURANTES)
+
+    @staticmethod
+    def demande_de_briefing(user_input: str) -> bool:
+        """Dit si la phrase demande LE briefing du jour (DEC-0166).
+
+        « briefing » seul — la phrase entiere, « Jarvis » et la ponctuation
+        retires — ou une locution de `PHRASES_DE_BRIEFING`. Evaluee en tout
+        premier : « mon briefing du jour » contient « du jour », que le
+        controle date enverrait sur une recherche web d'actualite.
+        """
+        texte = normaliser(user_input).strip()
+        seul = re.sub(r"[\s,.;:!?]+", " ", texte.replace("jarvis", "")).strip()
+        if seul in ("briefing", "brief", "le briefing", "mon briefing"):
+            return True
+        return any(phrase in texte for phrase in PHRASES_DE_BRIEFING)
 
     @staticmethod
     def question_personnelle(user_input: str) -> bool:
@@ -911,6 +939,10 @@ class OrchestratorAgent(BaseAgent):
         mots-cles — un repli moins fin, mais annonce dans les journaux plutot
         que silencieux.
         """
+        if self.demande_de_briefing(user_input):
+            logger.info("Demande du briefing du jour -> BRIEFING")
+            return "BRIEFING"
+
         if self.question_personnelle(user_input):
             logger.info("Question personnelle : reponse par la memoire, sans web ni classeur")
             return "CHAT"

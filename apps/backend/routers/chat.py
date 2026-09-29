@@ -650,6 +650,9 @@ CONTROLES_QUI_PRIMENT = (
     "question_personnelle", "salutation_pure",
     "demande_de_courrier", "demande_financiere",
     "demande_executive", "demande_d_equipe", "demande_la_date",
+    # Le briefing du matin (DEC-0166) : « Jarvis, mon briefing » n'est jamais
+    # la reponse a une question en attente.
+    "demande_de_briefing",
 )
 
 
@@ -1049,6 +1052,14 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         # (agents/finance/finance_agent.py). Jamais d'ordre reel : aucune
         # capacite d'ecriture n'existe sur le connecteur market_data.
         result = await finance_agent.run(request.prompt)
+    elif intent == "BRIEFING":
+        # Le briefing du matin (DEC-0166) : deja compose s'il est recent,
+        # sinon compose maintenant. Chaque rubrique dit son etat.
+        from apps.backend.routers.briefing import briefing_du_jour
+
+        briefing = await briefing_du_jour()
+        result = {"status": "success", "agent": "Briefing",
+                  "response": briefing.en_texte(), "briefing": briefing.en_dict()}
     elif intent == "EQUIPE":
         # Plusieurs agents sur une meme demande (DEC-0146) : table ronde ou
         # projet reparti. Les agents viennent du registre, par competence.

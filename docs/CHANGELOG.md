@@ -10,6 +10,14 @@ vrai fichier, à télécharger depuis ton téléphone. Les tableaux deviennent d
 feuilles Excel avec de vrais nombres, les titres deviennent des diapositives.
 Avant, ARENA répondait qu'aucun moteur n'écrivait ces formats (DEC-0167).
 
+### Ajouté — 29/09/2026 — Le briefing du matin de JARVIS
+
+Dis « Jarvis, mon briefing » : ton agenda du jour, ton courrier trié, la météo
+de ta ville et les actualités, réunis. Chaque matin à 7 h, il est préparé tout
+seul (réglable avec `BRIEFING_HEURE`). Une rubrique qui ne peut pas répondre le
+dit (« agenda non configuré », « ville inconnue ») au lieu d'inventer. Pour la
+météo, enregistre ta ville dans la mémoire : « ville : Dakar » (DEC-0166).
+
 ### Ajouté — 29/09/2026 — Dis « Jarvis » pour le réveiller
 
 Touche le bouton oreille : JARVIS se met en veille et attend son nom. Dis
