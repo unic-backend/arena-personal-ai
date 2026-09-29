@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — « Connecter TikTok » dans les réglages
+
+Réglages → Connecteurs → TikTok → Connecter : TikTok te demande ton accord, et
+ARENA garde la clé tout seul, sans que tu aies rien à copier. Il faut d'abord
+créer ton application TikTok et y enregistrer l'adresse de retour d'ARENA
+(`docs/CONNECTER_MES_COMPTES.md`) (DEC-0186).
+
 ### Ajouté — 29/09/2026 — TikTok publie vraiment
 
 Le connecteur TikTok parle maintenant à TikTok : il publie ta vidéo avec sa

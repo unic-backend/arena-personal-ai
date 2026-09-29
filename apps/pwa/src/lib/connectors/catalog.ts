@@ -19,7 +19,7 @@
    ───────────────────────────────────────────────────────────── */
 
 import type { LucideIcon } from 'lucide-react';
-import { Mail, MapPin } from 'lucide-react';
+import { Mail, MapPin, Video } from 'lucide-react';
 
 export type ConnectorAuth = 'oauth' | 'apikey';
 
@@ -58,6 +58,14 @@ export const CONNECTOR_CATALOG: ConnectorDef[] = [
     descriptionFr: 'Lire ta fiche Google Maps et tes avis — réponse seulement avec ta confirmation',
     scopes: ['read listing', 'read reviews', 'reply (confirmed)'],
     scopesFr: ['fiche', 'avis', 'réponse (confirmée)'],
+  },
+  {
+    // DEC-0186 : TikTok Login Kit, same /connectors/{id}/auth flow.
+    id: 'tiktok', name: 'TikTok', icon: Video, category: 'productivity', auth: 'oauth',
+    description: 'Post your videos or drop them in your TikTok inbox — only with your confirmation',
+    descriptionFr: 'Publier tes vidéos ou les déposer dans ta boîte TikTok — seulement avec ta confirmation',
+    scopes: ['account', 'post video (confirmed)', 'inbox draft (confirmed)'],
+    scopesFr: ['compte', 'publier une vidéo (confirmé)', 'brouillon dans la boîte (confirmé)'],
   },
 ];
 

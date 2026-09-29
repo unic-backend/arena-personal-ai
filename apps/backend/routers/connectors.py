@@ -8,9 +8,10 @@ montait aucun routeur `connectors`, et l'echange Google
 `refresh_token` deja obtenu ailleurs — jamais initier le consentement.
 Le clic ne faisait donc rien, sans le dire.
 
-**Seul Gmail est cable ici** (demande explicite du 31/08/2026 : Gmail
-d'abord, de bout en bout). Un fournisseur qui n'est pas dans
-`FOURNISSEURS_OAUTH` recoit une reponse honnete — jamais un faux succes.
+**Cables ici** : Gmail (demande explicite du 31/08/2026, de bout en bout),
+la fiche Google (DEC-0184, meme jeton) et TikTok (DEC-0186, Login Kit). Un
+fournisseur qui n'est pas dans `FOURNISSEURS_OAUTH` recoit une reponse
+honnete — jamais un faux succes.
 
 Trois regles :
 
@@ -63,6 +64,7 @@ from core.connectors.google_oauth import (
     identifiants,
     url_consentement,
 )
+from social.tiktok import oauth as oauth_tiktok
 
 logger = logging.getLogger("usman.backend.connectors")
 router = APIRouter(prefix="/connectors", tags=["connectors"])
@@ -89,7 +91,57 @@ FOURNISSEURS_OAUTH = {
         "portees": [PORTEE_FICHE],
         "variable_env": "GOOGLE_REFRESH_TOKEN",
     },
+    # TikTok (DEC-0186) : Login Kit pour le web. TikTok ne donne un jeton de
+    # renouvellement qu'au bout de ce consentement — aucun generateur.
+    "tiktok": {
+        "famille": "tiktok",
+        "portees": oauth_tiktok.PORTEES_TIKTOK,
+        "variable_env": "TIKTOK_REFRESH_TOKEN",
+    },
 }
+
+
+# --- Les gestes propres a chaque famille ----------------------------------------
+# Resolus a l'appel, jamais figes a l'import : un test remplace `identifiants`
+# ou `code_pour_jetons` de ce module, et le flux Google doit le voir.
+
+def _famille(config: Dict[str, object]) -> str:
+    return str(config.get("famille") or "google")
+
+
+def _nom_fournisseur(config: Dict[str, object]) -> str:
+    return "TikTok" if _famille(config) == "tiktok" else "Google"
+
+
+def _identifiants_de(config: Dict[str, object]) -> Tuple[str, str]:
+    if _famille(config) == "tiktok":
+        return oauth_tiktok.identifiants()
+    client_id, client_secret, _ = identifiants()
+    return client_id, client_secret
+
+
+def _ce_qui_manque(config: Dict[str, object], fournisseur: str) -> str:
+    if _famille(config) == "tiktok":
+        return ("TIKTOK_CLIENT_KEY et TIKTOK_CLIENT_SECRET absents de .env : cree "
+                "l'application sur developers.tiktok.com (Login Kit + Content Posting "
+                f"API, URI de redirection {_redirect_uri(fournisseur)}) avant de connecter.")
+    return ("GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET absents de .env : "
+            "cree l'app OAuth sur console.cloud.google.com (ecran de "
+            "consentement + identifiant « application web », URI de "
+            f"redirection {_redirect_uri(fournisseur)}) avant de connecter.")
+
+
+def _url_de(config: Dict[str, object], client_id: str, redirect: str, state: str) -> str:
+    if _famille(config) == "tiktok":
+        return oauth_tiktok.url_consentement(client_id, redirect, state, config["portees"])
+    return url_consentement(client_id, redirect, state, config["portees"])
+
+
+def _echanger_de(config: Dict[str, object], client_id: str, client_secret: str,
+                 code: str, redirect: str) -> Dict[str, object]:
+    if _famille(config) == "tiktok":
+        return oauth_tiktok.code_pour_jetons(client_id, client_secret, code, redirect)
+    return code_pour_jetons(client_id, client_secret, code, redirect)
 
 
 def _redirect_uri(fournisseur: str) -> str:
@@ -155,21 +207,15 @@ async def demarrer_oauth(fournisseur: str):
                     f"aujourd'hui : {', '.join(sorted(FOURNISSEURS_OAUTH)) or 'aucun'}."),
         )
 
-    client_id, client_secret, _ = identifiants()
+    client_id, client_secret = _identifiants_de(config)
     if not (client_id and client_secret):
-        raise HTTPException(
-            status_code=409,
-            detail=("GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET absents de .env : "
-                     "cree l'app OAuth sur console.cloud.google.com (ecran de "
-                     "consentement + identifiant « application web », URI de "
-                     f"redirection {_redirect_uri(fournisseur)}) avant de connecter."),
-        )
+        raise HTTPException(status_code=409, detail=_ce_qui_manque(config, fournisseur))
 
     _purger_etats_expires()
     state = secrets.token_urlsafe(32)
     _ETATS_EN_ATTENTE[state] = (fournisseur, time.monotonic() + DUREE_STATE_SECONDES)
 
-    url = url_consentement(client_id, _redirect_uri(fournisseur), state, config["portees"])
+    url = _url_de(config, client_id, _redirect_uri(fournisseur), state)
     return RedirectResponse(url, status_code=302)
 
 
@@ -182,16 +228,18 @@ async def recevoir_callback(
     state: Optional[str] = Query(None),
     error: Optional[str] = Query(None),
 ) -> HTMLResponse:
-    """Google revient ici avec `code`+`state`, ou `error` si le proprietaire refuse."""
-    if error:
-        return _page_erreur(f"Google a refuse : {error}")
-
+    """Le fournisseur revient ici avec `code`+`state`, ou `error` si le
+    proprietaire refuse."""
     config = FOURNISSEURS_OAUTH.get(fournisseur)
+    nom = _nom_fournisseur(config) if config else fournisseur
+    if error:
+        return _page_erreur(f"{nom} a refuse : {error}")
+
     if config is None:
         return _page_erreur(f"« {fournisseur} » n'a pas de flux OAuth cable.")
 
     if not code or not state:
-        return _page_erreur("Reponse incomplete de Google : rien a echanger.")
+        return _page_erreur(f"Reponse incomplete de {nom} : rien a echanger.")
 
     _purger_etats_expires()
     entree = _ETATS_EN_ATTENTE.pop(state, None)
@@ -200,21 +248,23 @@ async def recevoir_callback(
             "Lien de consentement expire ou deja utilise. Relance la "
             "connexion depuis ARENA.")
 
-    client_id, client_secret, _ = identifiants()
+    client_id, client_secret = _identifiants_de(config)
     if not (client_id and client_secret):
-        return _page_erreur("GOOGLE_CLIENT_ID/SECRET absents : impossible d'echanger le code.")
+        return _page_erreur(f"Identifiants {nom} absents : impossible d'echanger le code.")
 
     try:
-        jetons = code_pour_jetons(client_id, client_secret, code, _redirect_uri(fournisseur))
-    except Exception as erreur:  # noqa: BLE001 — un refus Google se rapporte, ne remonte pas
+        jetons = _echanger_de(config, client_id, client_secret, code, _redirect_uri(fournisseur))
+    except Exception as erreur:  # noqa: BLE001 — un refus du fournisseur se rapporte, ne remonte pas
         logger.info("Echange du code OAuth %s refuse : %s", fournisseur, type(erreur).__name__)
-        return _page_erreur("Google a refuse l'echange du code.")
+        return _page_erreur(f"{nom} a refuse l'echange du code.")
 
     refresh = jetons.get("refresh_token") if isinstance(jetons, dict) else None
     if not refresh:
         # `prompt=consent&access_type=offline` (deja force a l'etape /auth)
         # garantit normalement un refresh_token — ceci ne devrait arriver que
         # si Google change son comportement.
+        if _famille(config) == "tiktok":
+            return _page_erreur("TikTok n'a pas renvoye de jeton de renouvellement : relance la connexion.")
         return _page_erreur(
             "Google n'a pas renvoye de jeton de rafraichissement. Revoque "
             "l'acces sur myaccount.google.com/permissions puis reessaie.")

@@ -20,7 +20,7 @@ Ce qui est branché aujourd'hui :
 | Sites Netlify | prêt, attend ta clé — **joignable par une phrase** | `core/connectors/netlify.py` |
 | LinkedIn (ton profil) | prêt, attend ta clé — **joignable par une phrase** | `social/linkedin/linkedin_connector.py` |
 | Fiche Google (Maps) | prêt, attend la connexion et l'accord de Google — **joignable par une phrase** | `core/connectors/fiche_google.py` |
-| TikTok | connecteur réel prêt — le bouton « Connecter » arrive à l'étape suivante | `social/tiktok/tiktok_connector.py` |
+| TikTok | prêt, attend ton application et la connexion | `social/tiktok/tiktok_connector.py` |
 
 > Les écrans de Meta changent souvent. Si un bouton n'a plus le même nom,
 > cherche l'intitulé le plus proche ; les **noms des autorisations** plus bas,
@@ -265,11 +265,16 @@ TIKTOK_CLIENT_SECRET=le-client-secret
 
 ### Relier ton compte
 
-Il faut encore un jeton de renouvellement (TIKTOK_REFRESH_TOKEN), que TikTok
-ne donne qu'au bout d'une connexion OAuth. **Le bouton « Connecter TikTok »
-dans les réglages d'ARENA arrive à l'étape suivante** ; il l'écrira tout seul.
-Ensuite, JARVIS renouvelle lui-même le jeton du jour (un jeton d'accès TikTok
-expire après 24 heures).
+1. Dans ton application TikTok (onglet **Login Kit**), ajoute l'URI de
+   redirection : l'adresse publique d'ARENA suivie de
+   /connectors/tiktok/callback (celle de PUBLIC_BASE_URL dans `.env`).
+   TikTok n'accepte que des adresses en https.
+2. Dans ARENA : **Réglages → Connecteurs → TikTok → Connecter**. TikTok te
+   demande d'accepter ; ARENA garde le jeton de renouvellement tout seul,
+   jamais dans le navigateur.
+3. Ensuite, JARVIS renouvelle lui-même le jeton du jour (un jeton d'accès
+   TikTok expire après 24 heures), et garde le nouveau jeton de
+   renouvellement si TikTok le change.
 
 ### Ce que JARVIS peut faire avec
 

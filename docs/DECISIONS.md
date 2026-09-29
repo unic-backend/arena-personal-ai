@@ -12637,3 +12637,34 @@ de jeton. Le bouton de connexion est la PR suivante.
 video par TikTok, avec son message — rien n'est annonce publie, et chaque
 envoi attend l'accord du proprietaire.
 
+## DEC-0186 — « Connecter TikTok » : le consentement OAuth dans ARENA
+
+**2026-09-29.** Deuxieme PR de TikTok (DEC-0185). TikTok ne donne un jeton de
+renouvellement qu'au bout d'un consentement OAuth : sans ce bouton, le
+connecteur reel restait inatteignable pour le proprietaire.
+
+**Decision** :
+
+- `social/tiktok/oauth.py` : l'adresse du consentement (Login Kit web,
+  portees user.info.basic, video.publish, video.upload — separees par des
+  virgules, comme TikTok l'exige) et l'echange du code. TikTok peut repondre
+  200 avec une erreur dans le corps : l'absence de `refresh_token` est le
+  critere de l'echec, pas le code HTTP.
+- `apps/backend/routers/connectors.py` : le meme chemin que Gmail. Chaque
+  fournisseur porte sa `famille` (google par defaut, tiktok) ; les gestes
+  (identifiants, adresse, echange) sont resolus A L'APPEL, jamais figes a
+  l'import — les tests qui remplacent `identifiants` ou `code_pour_jetons`
+  du module Google restent valables tels quels. Les messages nomment le
+  fournisseur (« TikTok a refuse… »). Le jeton va dans `TIKTOK_REFRESH_TOKEN`,
+  par `stockage_jetons.persister` : processus, base, `.env`.
+- `TikTokConnector.invalider_sonde()` : juste apres la connexion, la mesure et
+  le jeton d'avant sont oublies.
+- La PWA montre la carte « TikTok » (`apps/pwa/src/lib/connectors/catalog.ts`).
+
+**Non mesure** : aucun consentement reel ; TikTok exige une URI de redirection
+en https, que le proprietaire enregistre dans son application.
+
+**Ce que ca coute si c'est faux** : un parametre de consentement mal lu fait
+afficher l'erreur de TikTok dans la fenetre de connexion — aucun jeton n'est
+stocke, rien n'est publie.
+
