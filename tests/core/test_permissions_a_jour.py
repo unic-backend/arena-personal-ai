@@ -19,6 +19,8 @@ qui manquait : « `recharger()` existe pour que le propriétaire puisse modifier
 ses règles sans redémarrer le serveur » — `recharger()` existait, était testée,
 et personne ne l'appelait.
 """
+import os
+
 import yaml
 
 from core.permissions.permission_manager import PermissionManager
@@ -58,6 +60,31 @@ class TestLaPolitiqueSuitSonFichier:
 
         assert politique.decider(
             "email", "send", "moi@exemple.sn").decision is Decision.REFUSE
+
+    def test_une_regle_durcie_est_appliquee_meme_si_la_date_ne_bouge_pas(self, tmp_path):
+        """`ALLOWED` -> `DENIED` : même date, même taille, même inode.
+
+        C'est le pire cas de ce fichier et il était invisible jusqu'au
+        29/09/2026 : la relecture se décidait sur la seule date de
+        modification, que deux écritures rapprochées laissent identique. Le
+        propriétaire interdisait, et ARENA continuait d'autoriser jusqu'au
+        redémarrage suivant. La date est figée ici pour que le test reproduise
+        la panne sur **tout** système de fichiers, pas seulement sur ceux dont
+        l'horodatage est grossier.
+        """
+        fichier = tmp_path / "permissions_services.yaml"
+        ecrire(fichier, {"services": {"email": {"read": {
+            "decision": "ALLOWED", "risque": "LOW"}}}})
+        politique = PolitiqueDePermissions(fichier)
+        assert politique.decider("email", "read").decision is Decision.AUTORISE
+        avant = os.stat(fichier)
+
+        ecrire(fichier, {"services": {"email": {"read": {
+            "decision": "DENIED", "risque": "HIGH"}}}})
+        os.utime(fichier, ns=(avant.st_atime_ns, avant.st_mtime_ns))
+
+        assert os.stat(fichier).st_mtime_ns == avant.st_mtime_ns
+        assert politique.decider("email", "read").decision is Decision.REFUSE
 
     def test_un_fichier_efface_refuse_tout(self, tmp_path):
         """Refuser est bruyant et se remarque ; autoriser par défaut ne se remarque pas."""

@@ -12757,3 +12757,59 @@ qui appelle « Ousmane ! » pres du telephone en veille le reveille — comme
 « Jarvis » dit en tete de phrase le faisait deja. La veille ecoute une phrase
 qui COMMENCE par le nom ; « j'ai appele Ousmane ce matin » ne reveille rien
 (teste).
+
+## DEC-0190 — Une relecture a chaud se decide sur le contenu, pas sur la date
+
+**2026-09-29.** Trouve par un diagnostic du depot, pas par une panne signalee :
+sept tests echouaient sur une machine dont le systeme de fichiers a un
+horodatage grossier, et ils disaient tous la meme chose.
+
+`core/fichier_suivi.py` — et les deux couches de permissions qui le
+reproduisaient a la main — decidaient d'une relecture en comparant la seule
+**date de modification**. Mesure directe, deux ecritures a la suite sur la
+machine de mesure :
+
+```
+ecriture 1 -> st_mtime_ns = 1790716950743122667
+ecriture 2 -> st_mtime_ns = 1790716950743122667   (identique)
+```
+
+La granularite de l'horodatage appartient au systeme de fichiers, pas a
+Python. Sous ext4 avec des ecritures espacees, elle ne se voit jamais : c'est
+pour ca que la CI ne pouvait pas attraper ce defaut, et pour ca qu'il a
+survecu depuis le 01/09/2026. Sur un partage reseau, un volume monte depuis
+Windows, ou un systeme a granularite seconde, elle se voit.
+
+Pire : meme en ajoutant taille et inode a la comparaison, les **deux** cas
+reels du depot passaient encore au travers. Remplacer `4500` par `5200` dans
+`config/metier.yaml`, ou `ALLOWED` par `DENIED` dans
+`config/permissions_services.yaml`, ne change ni la date, ni la taille, ni
+l'inode. Les deux changements qui comptent le plus ici — un prix et une
+interdiction — etaient exactement ceux qu'une comparaison de metadonnees ne
+peut pas voir.
+
+**Decision** : `empreinte_de()` compare `(st_mtime_ns, st_size, st_ino,
+blake2b(contenu))`. `date_de()` reste, pour afficher une date — plus pour
+decider d'une relecture. `PolitiqueDePermissions`, `PermissionManager` et
+`FichierSuivi` comparent tous les trois la meme empreinte.
+
+**Le cout mesure** : lire et hacher `config/metier.yaml` (8,5 Ko) coute 22 us,
+contre 7,9 ms pour le `yaml.safe_load` que ca evite — 360 fois moins cher que
+la relecture qu'on cherche a ne pas faire. La promesse du module tient donc :
+un fichier inchange ne voit pas son `lecteur` rappele. Au-dela de
+`PLAFOND_CONTENU` (4 Mio), le contenu n'est plus lu et la comparaison retombe
+sur les metadonnees ; ce module suit des fichiers de configuration, dont le
+plus gros du depot fait 27 Ko.
+
+**Ce que ca coute si c'est faux** : un `stat` + une lecture de quelques Ko a
+chaque appel de `actuel()` ou `decider()`, la ou il n'y avait qu'un `stat`.
+Negligeable devant le parse evite, et devant tout ce qu'une reponse d'ARENA
+fait par ailleurs. Si un jour ce module suit un fichier volumineux et
+sollicite, `PLAFOND_CONTENU` est la pour ca — mais alors la fenetre d'angle
+mort revient, et il faudra le savoir.
+
+**Preuve** : les sept tests qui echouaient passent. Sept nouveaux tests les
+tiennent, dont trois qui **figent la date** avec `os.utime` pour reproduire la
+panne sur n'importe quel systeme de fichiers au lieu d'en dependre. Verifie
+par mutation : ramener l'empreinte a la date seule refait echouer sept tests,
+dont les trois nouveaux.

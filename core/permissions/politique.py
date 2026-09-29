@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-from core.fichier_suivi import date_de
+from core.fichier_suivi import empreinte_de
 
 logger = logging.getLogger("usman.security.politique")
 
@@ -166,16 +166,23 @@ class PolitiqueDePermissions:
         self._services: Dict[str, Dict[str, Dict[str, Any]]] = {}
         self._comptes: Dict[str, Dict[str, Dict[str, Any]]] = {}
         self.recharger()
-        self._date = date_de(self.chemin)
+        self._empreinte = empreinte_de(self.chemin)
 
     def _relire_si_change(self) -> None:
-        """Relit la politique quand le fichier a change. Jamais sur une horloge."""
-        date = date_de(self.chemin)
-        if date != self._date:
+        """Relit la politique quand le fichier a change. Jamais sur une horloge.
+
+        La comparaison porte sur `empreinte_de()` — date, taille, inode — et
+        non sur la seule date : deux ecritures dans le meme tic d'horloge du
+        systeme de fichiers portent la meme date, et une regle **durcie**
+        n'etait alors jamais appliquee (mesure du 29/09/2026, detail dans
+        l'en-tete de `core/fichier_suivi.py`).
+        """
+        empreinte = empreinte_de(self.chemin)
+        if empreinte != self._empreinte:
             self.recharger()
-            self._date = date
+            self._empreinte = empreinte
             logger.info("Politique de permissions relue (%s).",
-                        "fichier absent" if date is None else "fichier modifie")
+                        "fichier absent" if empreinte is None else "fichier modifie")
 
     # --- Lecture du fichier ---------------------------------------------------
 

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import yaml
 
-from core.fichier_suivi import date_de
+from core.fichier_suivi import empreinte_de
 
 logger = logging.getLogger("usman.security.permissions")
 
@@ -26,10 +26,10 @@ class PermissionManager:
         self.config_path = Path(config_path).resolve()
         self.permissions = self.DEFAULT_PERMISSIONS.copy()
         self._load_config()
-        self._date = date_de(self.config_path)
+        self._empreinte = empreinte_de(self.config_path)
 
     def _relire_si_change(self):
-        """Relit le fichier quand sa date de modification a change.
+        """Relit le fichier quand son empreinte a change.
 
         Le fichier n'etait lu qu'a la construction, et cet objet est un
         singleton cree au demarrage du serveur : un booleen modifie dans
@@ -40,15 +40,20 @@ class PermissionManager:
         une cle retiree du fichier garderait la valeur qu'elle avait avant,
         au lieu de revenir a son defaut — et les trois defauts qui comptent
         (`EXECUTE_COMMANDS`, `PUBLISH`, `DELETE`) sont a `False`.
+
+        La comparaison porte sur `empreinte_de()` — date, taille, inode — et
+        non sur la seule date, qui ne bouge pas entre deux ecritures dans le
+        meme tic d'horloge du systeme de fichiers (mesure du 29/09/2026,
+        detail dans l'en-tete de `core/fichier_suivi.py`).
         """
-        date = date_de(self.config_path)
-        if date == self._date:
+        empreinte = empreinte_de(self.config_path)
+        if empreinte == self._empreinte:
             return
         self.permissions = self.DEFAULT_PERMISSIONS.copy()
         self._load_config()
-        self._date = date
+        self._empreinte = empreinte
         logger.info("Permissions relues (%s).",
-                    "fichier absent" if date is None else "fichier modifie")
+                    "fichier absent" if empreinte is None else "fichier modifie")
 
     def _load_config(self):
         if self.config_path.exists():
