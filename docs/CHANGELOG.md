@@ -2,6 +2,15 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — Word en PDF, même sans LibreOffice
+
+« Fais un PDF de ce Word » marche sur un PC sans LibreOffice : titres,
+paragraphes, listes, tableaux, gras et italique sont repris. Les polices, les
+images et les en-têtes ne le sont pas, et c'est dit avec le fichier. Un texte
+piégé dans le Word (une balise, un lien d'image) s'affiche tel quel, il n'est
+jamais exécuté. LibreOffice reste utilisé en premier quand il est installé
+(DEC-0173).
+
 ### Ajouté — 29/09/2026 — PDF en Word, même sans LibreOffice
 
 « Convertis ce PDF en Word » marche maintenant sur un PC sans LibreOffice :

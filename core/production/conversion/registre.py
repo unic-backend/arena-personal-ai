@@ -23,6 +23,7 @@ from core.production.conversion import bureautique as b
 from core.production.conversion import extraction
 from core.production.conversion import moteurs as m
 from core.production.conversion import tableurs as t
+from core.production.conversion import word_pdf as w
 
 ConvertisseurFn = Callable[[Path, Path], None]
 DisponibiliteFn = Callable[[], Tuple[bool, str]]
@@ -79,6 +80,16 @@ _enregistrer(
     ["docx", "odt", "rtf"], ["pdf"],
     EntreeMoteur("libreoffice", _office_convertir, m.soffice_disponible,
                  limites_qualite=""))
+# Sans LibreOffice (29/09/2026, DEC-0173) : la structure du Word, rendue par
+# WeasyPrint. APRES LibreOffice, qui garde la mise en page exacte.
+_enregistrer(
+    ["docx"], ["pdf"],
+    EntreeMoteur(
+        "python-docx+weasyprint", w.docx_vers_pdf, m.weasyprint_disponible,
+        limites_qualite=(
+            "Titres, paragraphes, listes, tableaux, gras, italique et souligne ; "
+            "les polices, marges, images, en-tetes et pieds de page du Word ne "
+            "sont pas repris.")))
 _enregistrer(
     ["pptx", "odp"], ["pdf"],
     EntreeMoteur("libreoffice", _office_convertir, m.soffice_disponible))

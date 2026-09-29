@@ -12185,3 +12185,32 @@ proprietaire — « convertis ce PDF en Word » echouait en `NOT_CONFIGURED`.
 la mise en page, arrive coupe en autant de paragraphes dans Word. Recoller
 les lignes en phrases aurait casse listes et tableaux sans le dire ; la
 limite de qualite l'annonce plutot.
+
+## DEC-0173 — Word -> PDF sans LibreOffice : la structure du document, rendue par WeasyPrint
+
+**2026-09-29.** Suite de DEC-0172, dans l'autre sens. `docx -> pdf` n'avait
+qu'un moteur, LibreOffice : « fais un PDF de ce Word » echouait sur une
+machine qui ne l'a pas — et dans ce conteneur, ou `soffice` existe mais ne
+demarre pas (« Failed to launch javaldx », mesure le 29/09/2026).
+
+**Decision** :
+
+- `core/production/conversion/word_pdf.py`, declare **apres** LibreOffice :
+  python-docx lit le document dans l'ordre (`iter_inner_content`) et en fait
+  une page HTML — titres (styles « Heading N », « Titre N », « Title »),
+  paragraphes, listes a puces et numerotees, tableaux, gras, italique,
+  souligne — que WeasyPrint, deja moteur de `rediger`, rend en PDF.
+- **Rien du document n'est interprete comme du code** : chaque texte passe
+  par `html.escape` (un Word qui contient « <img src=http://...> »
+  l'affiche, il ne le charge pas), et WeasyPrint recoit un recuperateur
+  d'URL qui refuse tout, reseau comme disque. Le HTML est genere
+  directement, sans passer par le markdown, qui laisse passer le HTML brut.
+- Un Word sans texte ou corrompu fait echouer le moteur en le disant.
+
+**Effet mesure** : deux tests qui echouaient dans ce conteneur faute de
+LibreOffice passent, pour la bonne raison (`test_pdf_vers_png`, qui commence
+par un Word -> PDF, et la validation sabotee, desormais atteinte).
+
+**Ce que ca coute si c'est faux** : les polices, marges, images, en-tetes et
+pieds de page du Word sont perdus ; la limite de qualite l'annonce avec le
+fichier.
