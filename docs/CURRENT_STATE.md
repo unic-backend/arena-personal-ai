@@ -39,6 +39,40 @@ persistance → réponse` fonctionne et est couvert par des tests bout-en-bout.
 `VIDEO_PROJET` du chat appellent le **même** `VideoProductionAgent`, qui
 délègue au **même** `core/execution/coordination.py`.
 
+### Documents et JARVIS (mesure le 29/09/2026 sur `main` a `c6fe088`)
+
+**Suite complete** : 7402 passes, 9 echecs, 59 ignores — les 9 sont des
+limites de cet environnement, pas du code : ffmpeg absent (7 tests audio et
+video) et LibreOffice present mais inoperant (2 tests qui exigent que ce soit
+lui qui convertisse ; voir plus bas). `ruff check .` et
+`scripts/silent_failure_gate.py` propres.
+
+**Matrice de conversion** (`matrice_disponibilite()`) : **167 couples declares,
+76 disponibles ici** ; les 91 autres sont tous audio ou video (ffmpeg absent).
+
+| Ce que JARVIS sait produire | Moteur | Sans LibreOffice ? |
+|---|---|---|
+| Excel, PowerPoint, Word depuis sa reponse | openpyxl, python-pptx, python-docx (DEC-0167) | oui |
+| CSV depuis le premier tableau de sa reponse | `csv` (DEC-0171) | oui |
+| CSV <-> Excel | openpyxl (DEC-0169) | oui |
+| Texte d'un PDF, Word, Excel, PowerPoint | lecteur de documents (DEC-0170) | oui |
+| Word, Excel, PowerPoint -> PDF | LibreOffice, **puis** repli WeasyPrint (DEC-0173 a DEC-0175) | oui, sans mise en page fine |
+| PDF -> Word | LibreOffice, **puis** repli texte seul (DEC-0172) | oui, texte seul |
+
+**Aucune formule ne traverse** une conversion (DEC-0169) : un texte « =... »
+reste un texte dans un classeur ecrit, et est neutralise dans un CSV.
+
+**LibreOffice ici : present, inoperant, et declare disponible.**
+`soffice --convert-to pdf` rend « source file could not be loaded » avec un
+code de sortie 0. La sonde `soffice_disponible` ne verifie que la presence du
+binaire ; le connecteur rattrape le cas (aucun fichier produit -> moteur
+suivant), mais `formats_disponibles` annonce LibreOffice disponible alors
+qu'il ne convertit rien sur cette machine.
+
+**JARVIS** (DEC-0163 a DEC-0166, DEC-0168) : identite et consigne du
+proprietaire, conversation mains libres, mot de reveil « Jarvis », briefing du
+matin (compose a `BRIEFING_HEURE`, affiche seul a l'ouverture de l'appli).
+
 ### Travaux de fond durables (nouveau, 20/09/2026)
 
 `core/execution/travaux.py` écrit son état (`data/travaux/file.json`, écriture
@@ -102,6 +136,9 @@ C'est la section qui compte le plus, et elle n'est pas courte.
 | Ollama | joignable seulement chez lui | `ollama serve` |
 | Anthropic (Claude Sonnet 5) | **ABSENT** | `ANTHROPIC_API_KEY` non posée |
 | Groq / DeepInfra | **ABSENT** | clés non posées dans cet environnement |
+| Briefing du matin | teste avec des sources simulees | Gmail, Google Calendar et Ollama sur son PC ; faits « ville » et « pays » en memoire |
+| Conversation mains libres, mot de reveil | teste sans navigateur | micro, haut-parleur et ecran allume sur son telephone |
+| Conversions sans LibreOffice | mesurees ici | un PC Windows reel (WeasyPrint y demande GTK) |
 
 **73 points du code rapportent explicitement `NOT_CONFIGURED`** au lieu de
 simuler un succès. C'est la règle qui tient : une capacité absente rapporte son
