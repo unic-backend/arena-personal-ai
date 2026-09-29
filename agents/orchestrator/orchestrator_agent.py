@@ -3,6 +3,7 @@ import logging
 import re
 from typing import Any, Dict, Optional
 
+from agents.social.social_agent import DEMANDE_D_ENVOI, reseau_demande
 from core.agent.base_agent import BaseAgent
 from core.context.projet import charger_contexte_projet
 from core.execution.voies import budget_de, voie_pour
@@ -859,6 +860,19 @@ class OrchestratorAgent(BaseAgent):
         return capacite_du_site(user_input) is not None
 
     @staticmethod
+    def demande_de_publication(user_input: str) -> bool:
+        """Dit si la phrase demande de PUBLIER sur un reseau qu'elle nomme (DEC-0187).
+
+        Un verbe d'envoi ET un reseau : « publie ma derniere video sur TikTok »,
+        « poste-la sur Facebook ». Jusque-la, seul le modele classeur envoyait
+        ces phrases a SocialAgent — les mots des reseaux n'etaient qu'un repli.
+        « Fais-moi une video pour TikTok » n'a pas de verbe d'envoi : elle
+        reste une demande de video.
+        """
+        return bool(DEMANDE_D_ENVOI.search(user_input or "")) and \
+            reseau_demande(user_input) is not None
+
+    @staticmethod
     def demande_de_fiche_google(user_input: str) -> bool:
         """Dit si la phrase porte sur SA fiche Google ou ses avis (DEC-0184).
 
@@ -1003,6 +1017,10 @@ class OrchestratorAgent(BaseAgent):
         if self.demande_de_fiche_google(user_input):
             logger.info("Question sur sa fiche Google -> FICHE_GOOGLE, avant le courrier")
             return "FICHE_GOOGLE"
+
+        if self.demande_de_publication(user_input):
+            logger.info("Publier sur un reseau nomme -> SOCIAL, sans attendre le classeur")
+            return "SOCIAL"
 
         if self.question_personnelle(user_input):
             logger.info("Question personnelle : reponse par la memoire, sans web ni classeur")

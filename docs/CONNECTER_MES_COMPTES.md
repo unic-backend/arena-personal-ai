@@ -11,7 +11,9 @@ Ce qui est branché aujourd'hui :
 > publications Instagram ». Tes sites aussi : « mon site est en ligne ? »,
 > « le dernier déploiement de mon site a marché ? », « les messages de mon
 > site », « republie mon site ». LinkedIn : « publie-la sur LinkedIn ». Ta
-> fiche Google : « mes avis Google », « réponds à l'avis de Fatou : merci ! ». Mettre tes clés maintenant
+> fiche Google : « mes avis Google », « réponds à l'avis de Fatou : merci ! ».
+> TikTok : « publie ma dernière vidéo sur TikTok », « mets ma dernière vidéo
+> dans ma boîte TikTok ». Mettre tes clés maintenant
 > permet déjà de vérifier que la connexion marche (santé des connecteurs).
 
 | Compte | État | Connecteur |
@@ -288,4 +290,13 @@ TIKTOK_CLIENT_SECRET=le-client-secret
 Une vidéo envoyée n'est pas une vidéo en ligne : TikTok la traite d'abord.
 JARVIS ne dit « publiée » que quand TikTok le dit. Le coupe-circuit `PUBLISH`
 de `config/permissions.yaml` s'applique aux deux envois.
+
+### Le dire à JARVIS
+
+- « Publie ma dernière vidéo sur TikTok » : JARVIS prend la vidéo la plus
+  récente qu'il a produite, écrit la légende dans ta voix, te montre le nom du
+  fichier et la légende, et attend ton accord.
+- « Mets ma dernière vidéo dans ma boîte TikTok » : la même vidéo, déposée en
+  brouillon dans ton application.
+- Sans « dernière vidéo », il ne devine pas laquelle : il te la demande.
 

@@ -801,6 +801,8 @@ CONTROLES_QUI_PRIMENT = (
     "demande_de_site",
     # « Mes avis Google ? » (DEC-0184) : sa fiche, jamais une reponse en attente.
     "demande_de_fiche_google",
+    # « Publie-la sur TikTok » (DEC-0187) : une publication, jamais une reponse.
+    "demande_de_publication",
 )
 
 

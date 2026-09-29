@@ -2,6 +2,15 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — « Publie ma dernière vidéo sur TikTok »
+
+Dis « publie ma dernière vidéo sur TikTok » ou « mets ma dernière vidéo dans
+ma boîte TikTok » : JARVIS prend la dernière vidéo qu'il a produite, écrit la
+légende dans ta voix et attend ton accord. Sans réseau nommé, il te demande
+lequel au lieu d'envoyer à TikTok un texte que TikTok ne publie pas. Et une
+demande de publication sur un réseau nommé est reconnue même si le modèle
+local se trompe de catégorie (DEC-0187).
+
 ### Ajouté — 29/09/2026 — « Connecter TikTok » dans les réglages
 
 Réglages → Connecteurs → TikTok → Connecter : TikTok te demande ton accord, et

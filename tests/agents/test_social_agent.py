@@ -64,9 +64,24 @@ def avec_voix(memoire):
     return memoire
 
 
-def agent(memoire=None, modele=None, registre=None, recherche=None):
+def agent(memoire=None, modele=None, registre=None, recherche=None, dossier_videos=None):
     return SocialAgent(provider=modele or ModeleDouble(), memoire_personnelle=memoire,
-                       registre=registre, recherche=recherche)
+                       registre=registre, recherche=recherche, dossier_videos=dossier_videos)
+
+
+@pytest.fixture
+def videos(tmp_path):
+    """Le dossier ou ARENA depose ses videos, avec deux rendus d'ages differents."""
+    import os
+
+    dossier = tmp_path / "rendered"
+    dossier.mkdir()
+    ancienne, recente = dossier / "ancienne.mp4", dossier / "chantier-almadies.mp4"
+    for fichier, age in ((ancienne, 1_000), (recente, 10)):
+        fichier.write_bytes(b"video")
+        os.utime(fichier, (1_700_000_000 - age, 1_700_000_000 - age))
+    (dossier / "vignette.png").write_bytes(b"png")
+    return dossier
 
 
 # --- Les deux tests qui portent l'intégration -------------------------------------
@@ -163,10 +178,10 @@ def test_relire_ne_demande_aucun_modele(avec_voix):
 
 # --- Publier est une confirmation ------------------------------------------------------
 
-async def test_publier_passe_par_le_connecteur_et_rien_ne_part(avec_voix):
+async def test_publier_passe_par_le_connecteur_et_rien_ne_part(avec_voix, videos):
     registre = RegistreDouble()
-    resultat = await agent(avec_voix, registre=registre).run(
-        "Ecris une publication sur mon chantier et publie-la")
+    resultat = await agent(avec_voix, registre=registre, dossier_videos=videos).run(
+        "Ecris une publication sur mon chantier et publie-la sur TikTok avec ma derniere video")
 
     assert registre.appels and registre.appels[0][1] == "publish_video"
     assert resultat["execution"]["statut"] == "EN_ATTENTE_APPROBATION"
@@ -180,12 +195,12 @@ async def test_sans_demande_d_envoi_rien_n_est_soumis(avec_voix):
     assert registre.appels == []
 
 
-async def test_un_coupe_circuit_ferme_refuse_et_le_brouillon_reste(avec_voix):
+async def test_un_coupe_circuit_ferme_refuse_et_le_brouillon_reste(avec_voix, videos):
     """Préparer sans envoyer est le travail utile : il n'est pas perdu."""
     registre = RegistreDouble(refuse(action="publish_video", cible="tiktok",
                                      permission="PUBLISH"))
-    resultat = await agent(avec_voix, registre=registre).run(
-        "Ecris une publication et publie-la")
+    resultat = await agent(avec_voix, registre=registre, dossier_videos=videos).run(
+        "Ecris une publication et publie-la sur TikTok avec ma derniere video")
 
     assert resultat["execution"]["brouillon"], "le brouillon doit rester"
     assert "Refuse" in resultat["response"] or "refus" in resultat["response"].lower()
@@ -449,3 +464,111 @@ async def test_un_compte_non_connecte_le_dit_au_lieu_d_analyser(avec_voix):
     assert "meta n'est pas connecte" in resultat["response"]
     assert "un jeton de page Meta" in resultat["response"]
     assert "J'aime" not in resultat["response"]
+
+
+# --- TikTok publie une video (DEC-0187) ----------------------------------------------
+
+async def test_sans_reseau_nomme_rien_n_est_soumis_et_l_agent_demande(avec_voix):
+    registre = RegistreDouble()
+    resultat = await agent(avec_voix, registre=registre).run(
+        "Ecris une publication sur mon chantier et publie-la")
+
+    assert registre.appels == [], "plus de TikTok par defaut : il ne publie pas de texte seul"
+    assert "Sur quel reseau ?" in resultat["response"]
+    assert resultat["execution"]["statut"] == "PRET" and resultat["execution"]["brouillon"]
+
+
+async def test_tiktok_publie_la_derniere_video_avec_le_texte_en_legende(avec_voix, videos):
+    registre = RegistreDouble()
+    await agent(avec_voix, registre=registre, dossier_videos=videos).run(
+        "Ecris une publication sur mon chantier et publie-la sur TikTok avec ma dernière vidéo")
+
+    assert registre.appels == [("tiktok", "publish_video", {
+        "fichier": str(videos / "chantier-almadies.mp4"), "legende": PUBLICATION.strip()})]
+
+
+async def test_tiktok_sans_video_designee_ne_met_rien_en_attente(avec_voix, videos):
+    registre = RegistreDouble()
+    resultat = await agent(avec_voix, registre=registre, dossier_videos=videos).run(
+        "Ecris une publication et publie-la sur TikTok")
+
+    assert registre.appels == []
+    assert "TikTok publie une video" in resultat["response"]
+
+
+async def test_sans_video_produite_tiktok_le_dit(avec_voix, tmp_path):
+    vide = tmp_path / "rendered"
+    vide.mkdir()
+    registre = RegistreDouble()
+    resultat = await agent(avec_voix, registre=registre, dossier_videos=vide).run(
+        "Ecris une publication et publie-la sur TikTok avec ma derniere video")
+
+    assert registre.appels == []
+    assert "TikTok publie une video" in resultat["response"]
+
+
+async def test_dans_ma_boite_tiktok_c_est_un_brouillon(avec_voix, videos):
+    registre = RegistreDouble()
+    await agent(avec_voix, registre=registre, dossier_videos=videos).run(
+        "Ecris une publication et mets-la dans ma boite TikTok avec ma derniere video")
+
+    assert registre.appels == [("tiktok", "envoyer_brouillon", {
+        "fichier": str(videos / "chantier-almadies.mp4")})]
+
+
+def test_la_derniere_video_est_la_plus_recente_et_jamais_une_image(videos):
+    assert agent(dossier_videos=videos).derniere_video() == videos / "chantier-almadies.mp4"
+    assert agent().derniere_video() is None, "sans dossier, rien n'est devine"
+
+
+@pytest.mark.parametrize("phrase", [
+    "publie ma dernière vidéo sur TikTok",
+    "poste ma dernière vidéo sur tiktok",
+    "mets ma dernière vidéo dans ma boîte TikTok",
+    "Ecris une publication sur mon chantier et publie-la sur Facebook",
+])
+async def test_publier_sur_un_reseau_nomme_ne_depend_pas_du_classeur(phrase, provider_factory):
+    """DEC-0187 : un modele classeur qui repond CHAT n'empeche plus la publication."""
+    from agents.orchestrator.orchestrator_agent import OrchestratorAgent
+
+    orchestrateur = OrchestratorAgent(provider=provider_factory("CHAT"), memory=None)
+
+    assert await orchestrateur.analyze_intent(phrase) == "SOCIAL"
+
+
+@pytest.mark.parametrize("phrase", [
+    "fais-moi une video pour tiktok",       # une video a produire, pas a publier
+    "regarde mon tiktok",                   # aucun verbe d'envoi
+    "publie-la",                            # aucun reseau nomme
+])
+def test_sans_verbe_d_envoi_et_reseau_ce_n_est_pas_une_publication(phrase):
+    from agents.orchestrator.orchestrator_agent import OrchestratorAgent
+
+    assert OrchestratorAgent.demande_de_publication(phrase) is False
+
+
+async def test_la_boite_tiktok_par_une_phrase_courte(avec_voix, videos):
+    registre = RegistreDouble()
+    await agent(avec_voix, registre=registre, dossier_videos=videos).run(
+        "mets ma dernière vidéo dans ma boîte TikTok")
+
+    assert registre.appels == [("tiktok", "envoyer_brouillon", {
+        "fichier": str(videos / "chantier-almadies.mp4")})]
+
+
+
+def test_la_plus_recente_gagne_quel_que_soit_l_ordre_du_dossier(tmp_path):
+    """L'ordre de lecture d'un dossier n'est pas garanti : chaque video est
+    tour a tour la plus recente, et c'est elle qui doit etre prise."""
+    import os
+
+    dossier = tmp_path / "rendered"
+    dossier.mkdir()
+    fichiers = [dossier / nom for nom in ("a.mp4", "b.mov", "c.webm")]
+    for fichier in fichiers:
+        fichier.write_bytes(b"video")
+    for recente in fichiers:
+        for fichier in fichiers:
+            age = 10 if fichier == recente else 1_000
+            os.utime(fichier, (1_700_000_000 - age, 1_700_000_000 - age))
+        assert agent(dossier_videos=dossier).derniere_video() == recente
