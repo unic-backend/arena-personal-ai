@@ -88,6 +88,7 @@ from core.connectors.market_data import ConnecteurMarketData
 from core.connectors.media_metadata import ConnecteurMediaMetadata
 from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.montage import ConnecteurMontage
+from core.connectors.netlify import NetlifyConnector
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
 from core.connectors.openviking import ConnecteurOpenViking
 from core.connectors.pdf import ConnecteurPdf
@@ -533,6 +534,13 @@ registre.declarer(
     "gmail",
     lambda: GmailConnector(acces=acces, journal=journal, file_attente=file_attente,
                            crochets=crochets),
+)
+# Netlify (DEC-0180) : les sites du proprietaire — etat, deploiements, messages
+# des formulaires ; republier attend son accord et le coupe-circuit PUBLISH.
+registre.declarer(
+    "netlify",
+    lambda: NetlifyConnector(acces=acces, journal=journal, file_attente=file_attente,
+                             crochets=crochets),
 )
 # GitHub (DEC-0041) : lecture de depot, recherche, branche, Pull Request en
 # brouillon, etat de CI, commentaires de revue. Le premier connecteur GitHub

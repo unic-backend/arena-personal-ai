@@ -2,9 +2,18 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — JARVIS se branche sur tes sites Netlify
+
+Le connecteur de JARVIS sait lister tes sites, dire si le dernier déploiement a réussi (et
+pourquoi il a échoué sinon) et lire les messages reçus par les formulaires de
+ton site. Relancer la mise en ligne attend ton accord. Il attend ta clé : la
+marche à suivre est dans `docs/CONNECTER_MES_COMPTES.md` (DEC-0180). Une
+phrase ne l'atteint pas encore : l'aiguillage de JARVIS vers tes comptes est
+la prochaine étape.
+
 ### Ajouté — 29/09/2026 — JARVIS se branche sur ta page Facebook et ton Instagram
 
-JARVIS peut lire ta page et ton compte Instagram (abonnés, dernières
+Le connecteur de JARVIS sait lire ta page et ton compte Instagram (abonnés, dernières
 publications, J'aime, commentaires), publier un post ou une photo et répondre
 à un commentaire — chaque publication et chaque réponse te sont montrées et
 attendent ton accord. Il attend tes clés : la marche à suivre est dans

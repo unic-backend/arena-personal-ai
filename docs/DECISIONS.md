@@ -12404,3 +12404,51 @@ sera la premiere mesure.
 **Ce que ca coute si c'est faux** : un champ renomme par Meta ou une version
 retiree rend une lecture `FAILED` avec le message exact de Meta — rien n'est
 publie par erreur, et `META_GRAPH_VERSION` se regle sans toucher au code.
+
+## DEC-0180 — Un connecteur Netlify pour les sites du proprietaire
+
+**2026-09-29.** Deuxieme connecteur du plan annonce apres DEC-0179 : le
+proprietaire veut que JARVIS « entre dans » ses sites web, heberges chez
+Netlify (reponse du jour : « Netlify »).
+
+**Decision** :
+
+- `core/connectors/netlify.py`, service `website` (deja declare dans
+  `config/permissions_services.yaml`), nom `netlify`, declare dans
+  `apps/backend/runtime.py`. Variables `NETLIFY_AUTH_TOKEN` et
+  `NETLIFY_SITE_ID` — les noms que la ligne de commande Netlify utilise deja.
+- **Inspecter** (autorise) : les sites du compte, l'etat d'un site, ses
+  derniers deploiements avec l'erreur de ceux qui ont echoue, les messages de
+  ses formulaires. Seuls les champs utiles sont gardes.
+- **Republier** (`publish` : confirmation + coupe-circuit PUBLISH) : relance
+  la construction depuis le depot. Le succes dit « demarree », jamais « en
+  ligne » : la construction peut encore echouer, et `deploiements` le dira.
+- Rien d'autre n'est declare : ni modifier les fichiers, ni les reglages, ni
+  le domaine, ni supprimer.
+- Un identifiant de site n'est jamais un chemin : seul un uuid ou un nom de
+  domaine passe (`MOTIF_SITE`), sinon « ../user » viserait une autre
+  ressource de l'API.
+- Les messages de formulaire sont ecrits par des visiteurs : leur texte pour
+  une invite voyage enveloppe `EXTERNAL` (`core/security/trust.py`), et
+  l'adresse IP et le navigateur du visiteur n'y entrent pas.
+
+**Trouve en l'ecrivant — Meta etait dormant sans que rien ne le dise** :
+`tests/test_connecteurs_dormants.py` ne reconnaissait comme propre module d'un
+connecteur que `core/connectors/<nom>.py`. Le connecteur `meta` vit dans
+`social/meta/` : sa propre ligne `nom = "meta"` comptait comme un appelant,
+et il est passe pour vivant a la fusion de DEC-0179 alors qu'aucune phrase ne
+l'atteint. Le test lit desormais le module sur la fabrique, et compte
+`registre.obtenir(...)` dans le runtime comme un vrai chemin (sans quoi
+`case`, remis a Dioumtoukay par injection, passait pour dormant). `meta` et
+`netlify` entrent dans `DORMANTS_CONNUS` avec leur raison : l'aiguillage de
+JARVIS vers eux est l'etape 4 du plan, et le test obligera a les en sortir.
+
+**Non mesure** : aucun appel reel a Netlify (pas de jeton ici) ; les 20 tests
+passent par un `httpx.MockTransport`. Relancer une construction suppose un
+site relie a un depot : un site depose a la main fera repondre une erreur a
+Netlify, rapportee telle quelle.
+
+**Ce que ca coute si c'est faux** : un champ renomme par Netlify vide une
+colonne du resultat ; une construction relancee a tort remplace le site en
+ligne par la derniere version du depot — c'est pourquoi elle attend l'accord
+du proprietaire et le coupe-circuit PUBLISH.

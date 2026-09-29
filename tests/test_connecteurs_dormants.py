@@ -25,6 +25,7 @@ entrer dans la liste, et un connecteur réveillé qu'on aurait oublié d'en
 sortir.
 """
 import ast
+import inspect
 from functools import lru_cache
 from pathlib import Path
 
@@ -48,6 +49,17 @@ DORMANTS_CONNUS = {
     # joignable depuis le vrai chat PWA et le chat autonome pour une
     # comparaison explicite. Il ne remplace toujours jamais le moteur par
     # defaut : DEC-0051 reste gardee par TestPasDeRoutageAutomatique.
+    #
+    # 29/09/2026 : deux entrees, mesurees par la correction de `_propre_module`.
+    # Le plan annonce au proprietaire branche les connecteurs d'abord, puis
+    # l'aiguillage de JARVIS vers eux (etape 4) : c'est cette etape qui les
+    # sortira d'ici, et `test_un_connecteur_reveille_sort_de_la_liste` l'y
+    # obligera.
+    "meta": ("Aucune phrase n'atteint encore Facebook ni Instagram : SocialAgent "
+             "soumet toujours ses publications a tiktok. L'aiguillage par reseau "
+             "est l'etape 4 du plan (DEC-0179)."),
+    "netlify": ("Aucun agent ni route n'interroge encore les sites Netlify : "
+                "l'aiguillage de JARVIS vers eux est l'etape 4 du plan (DEC-0180)."),
 }
 
 
@@ -143,7 +155,44 @@ def _noms_cites() -> dict:
                     and isinstance(noeud.value, ast.Constant)):
                 relever(noeud.value.value, relatif, noeud.lineno)
 
+    # 3. L'injection : `runtime.py` est neutre parce qu'il DECLARE chaque
+    #    connecteur, mais `connecteur_case=registre.obtenir("case")` y remet
+    #    le connecteur a un agent qui l'execute — un vrai chemin. Seul
+    #    `obtenir(...)` compte dans ce fichier, jamais `declarer(...)`
+    #    (mesure du 29/09/2026 : sans cette regle, `case`, appele par
+    #    Dioumtoukay, passait pour dormant).
+    runtime = RACINE / "apps/backend/runtime.py"
+    for noeud in ast.walk(ast.parse(runtime.read_text(encoding="utf-8"))):
+        if (isinstance(noeud, ast.Call) and isinstance(noeud.func, ast.Attribute)
+                and noeud.func.attr == "obtenir"):
+            for argument in noeud.args:
+                if isinstance(argument, ast.Constant):
+                    relever(argument.value, "apps/backend/runtime.py", noeud.lineno)
+
     return cites
+
+
+@lru_cache(maxsize=None)
+def _propre_module(nom: str) -> str:
+    """Le fichier de la classe que la fabrique construit, là où il est.
+
+    **Mesure du 29/09/2026** : ce test supposait `core/connectors/<nom>.py`.
+    Le connecteur `meta` vit dans `social/meta/meta_connector.py` : sa propre
+    ligne `nom = "meta"` comptait comme un appelant, et un connecteur
+    qu'aucune phrase n'atteignait passait pour vivant. Le module est lu sur la
+    fabrique elle-même, sans construire le connecteur.
+    """
+    from apps.backend.runtime import registre
+    from core.connectors.base import Connecteur
+
+    fabrique = registre._fabriques.get(nom)
+    code = getattr(fabrique, "__code__", None)
+    espace = getattr(fabrique, "__globals__", {})
+    for symbole in (code.co_names if code else ()):
+        objet = espace.get(symbole)
+        if inspect.isclass(objet) and issubclass(objet, Connecteur):
+            return Path(inspect.getsourcefile(objet)).resolve().relative_to(RACINE).as_posix()
+    return f"core/connectors/{nom}.py"
 
 
 def _appelants(nom: str):
@@ -152,7 +201,7 @@ def _appelants(nom: str):
     Son propre module ne compte pas : un connecteur qui se cite lui-même
     n'est appelé par personne.
     """
-    propre_module = f"core/connectors/{nom}.py"
+    propre_module = _propre_module(nom)
     return [endroit for relatif, endroit in _noms_cites().get(nom, [])
             if relatif != propre_module]
 
