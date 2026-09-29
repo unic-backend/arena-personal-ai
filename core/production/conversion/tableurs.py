@@ -48,7 +48,12 @@ def lire_texte(entree: Path) -> str:
     try:
         return brut.decode("utf-8-sig")
     except UnicodeDecodeError:
-        pass
+        # Pas de l'UTF-8 : on essaie l'encodage d'un vieil export, qui dit
+        # a son tour s'il echoue.
+        return _en_windows_1252(brut)
+
+
+def _en_windows_1252(brut: bytes) -> str:
     try:
         return brut.decode("cp1252")
     except UnicodeDecodeError as erreur:

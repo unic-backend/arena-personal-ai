@@ -81,6 +81,17 @@ def test_un_vieil_export_windows_1252_garde_ses_accents(connecteur, tmp_path):
     assert feuille["B1"].value == "Région"
 
 
+def test_un_encodage_illisible_echoue_en_le_disant(connecteur, tmp_path):
+    """0x81 n'existe ni en UTF-8 seul ni en Windows-1252 : rien n'est devine."""
+    source = tmp_path / "casse.csv"
+    source.write_bytes(b"Nom;Ville\r\nDiallo;\x81\x8d\r\n")
+
+    resultat = connecteur._convertir_un_fichier(str(source), "xlsx")
+
+    assert resultat.statut.value == "FAILED"
+    assert "encodage du CSV illisible" in resultat.message
+
+
 def test_un_csv_sans_en_tete_n_a_pas_de_ligne_en_gras(connecteur, tmp_path):
     from openpyxl import load_workbook
 
