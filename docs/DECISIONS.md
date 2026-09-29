@@ -12366,3 +12366,41 @@ le fait la ou PowerShell existe.
 **Ce que ca coute si c'est faux** : une date de fichier faussee (horloge du PC,
 copie qui preserve les dates) peut declencher une compilation inutile d'une
 minute, ou en manquer une — `cd apps\pwa ; npm run build` reste le recours.
+
+## DEC-0179 — Un connecteur Meta pour la page Facebook et le compte Instagram
+
+**2026-09-29.** Demande du proprietaire : JARVIS doit « entrer dans » ses
+reseaux, publier, analyser et repondre — « pas un simple question-reponse ».
+Premier pas du plan annonce (un connecteur par PR) : Meta, parce que Facebook
+et Instagram passent par la meme Graph API et le meme jeton de page.
+
+**Decision** :
+
+- `social/meta/meta_connector.py`, service `social`, nom `meta`, declare dans
+  `apps/backend/runtime.py`. Il suit le cadre de `core/connectors/base.py` :
+  permission d'abord, confirmation ensuite, preuve pour tout succes.
+- **Lire** (autorise) : page, compte Instagram, dernieres publications avec
+  leurs chiffres publics, commentaires d'une publication.
+- **Publier** (`publish` : confirmation + coupe-circuit PUBLISH) : un post
+  Facebook ; une photo Instagram en deux temps (conteneur, puis publication),
+  a partir d'une adresse https — exigence de l'API.
+- **Repondre** (`reply` : confirmation + SEND_MESSAGES) : `/replies` pour
+  Instagram, `/comments` pour Facebook.
+- Les commentaires sont ecrits par n'importe qui : leur texte pret pour une
+  invite voyage enveloppe `EXTERNAL` (`core/security/trust.py`), comme un
+  e-mail dans `core/connectors/gmail.py` — une donnee, jamais une consigne.
+- Un succes porte l'identifiant rendu par Meta (`facebook:…`, `instagram:…`) ;
+  sans identifiant, c'est un echec. Le jeton voyage dans la requete et est
+  retire de tout message d'erreur.
+- `PUBLISH: false` dans `config/permissions.yaml` reste tel quel : c'est le
+  choix du proprietaire, et le guide `docs/CONNECTER_MES_COMPTES.md` lui dit
+  comment le lever.
+
+**Non mesure** : aucun appel reel a Meta n'a ete fait (pas de jeton ici) ; les
+24 tests passent par un `httpx.MockTransport`. Les chemins et champs suivent
+la documentation publique de la Graph API ; le premier jeton du proprietaire
+sera la premiere mesure.
+
+**Ce que ca coute si c'est faux** : un champ renomme par Meta ou une version
+retiree rend une lecture `FAILED` avec le message exact de Meta — rien n'est
+publie par erreur, et `META_GRAPH_VERSION` se regle sans toucher au code.
