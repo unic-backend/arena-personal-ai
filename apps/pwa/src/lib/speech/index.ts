@@ -13,6 +13,7 @@
 import { create } from 'zustand';
 import { activeRemoteCfg, signalerSiPanne } from '../store/backendStore';
 import { adresseDuServeur } from '../activity/remoteTransport';
+import { DetecteurDeFinDeParole, niveauRms } from './conversation';
 
 /* ── Web Speech API Type Shims ── */
 interface SpeechRecognitionEventLike extends Event {
@@ -89,8 +90,66 @@ interface DictationState {
     lang: string,
     onResult: (finalText: string, interimText: string) => void,
     onError?: (errCode: string) => void,
+    options?: OptionsDictee,
   ): void;
   stopDictation(): void;
+}
+
+/** `finAutomatique` : la dictee s'arrete seule quand la personne se tait
+ *  (conversation mains libres, DEC-0164). Sans lui, rien ne change : on
+ *  arrete la dictee en touchant le bouton, comme avant. Personne n'a parle :
+ *  `onError('no-speech')`, et rien n'est envoye a Whisper. */
+export interface OptionsDictee {
+  finAutomatique?: boolean;
+}
+
+let contexteAudio: AudioContext | null = null;
+
+/** Prepare l'analyse du son PENDANT un toucher. Sur telephone (Safari
+ *  surtout), un contexte audio cree hors d'un geste reste suspendu : le
+ *  micro semblerait muet, et la fin de parole ne serait jamais detectee.
+ *  Cree une fois, puis reutilise a chaque phrase. */
+export function preparerAudio(): void {
+  const Contexte = window.AudioContext
+    || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Contexte) return;
+  if (!contexteAudio || contexteAudio.state === 'closed') contexteAudio = new Contexte();
+  void contexteAudio.resume().catch(() => undefined);
+}
+
+/** Suit le niveau du micro et arrete l'enregistrement a la fin de la phrase.
+ *  Rend la fonction qui libere l'analyse. */
+function surveillerLaFinDeParole(
+  stream: MediaStream,
+  recorder: MediaRecorder,
+  surRien: () => void,
+): () => void {
+  if (!contexteAudio) preparerAudio();
+  const contexte = contexteAudio;
+  if (!contexte) return () => undefined;
+  void contexte.resume().catch(() => undefined);
+  const analyse = contexte.createAnalyser();
+  analyse.fftSize = 2048;
+  const source = contexte.createMediaStreamSource(stream);
+  source.connect(analyse);
+  const echantillons = new Float32Array(analyse.fftSize);
+  const detecteur = new DetecteurDeFinDeParole();
+
+  const minuterie = window.setInterval(() => {
+    analyse.getFloatTimeDomainData(echantillons);
+    const verdict = detecteur.observer(niveauRms(echantillons), performance.now());
+    if ((verdict === 'fin' || verdict === 'rien') && recorder.state === 'recording') {
+      if (verdict === 'rien') surRien();
+      recorder.stop();
+    }
+  }, 100);
+
+  return () => {
+    window.clearInterval(minuterie);
+    // Le contexte reste ouvert pour la phrase suivante : le recreer hors
+    // d'un geste le laisserait suspendu (voir `preparerAudio`).
+    source.disconnect();
+  };
 }
 
 let activeRecognition: SpeechRecognitionLike | null = null;
@@ -107,6 +166,7 @@ async function demarrerDictationServeur(
   onResult: (finalText: string, interimText: string) => void,
   onError: ((errCode: string) => void) | undefined,
   set: (partial: Partial<DictationState>) => void,
+  options: OptionsDictee = {},
 ) {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -114,14 +174,24 @@ async function demarrerDictationServeur(
       .find((candidat) => MediaRecorder.isTypeSupported(candidat));
     const recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
     const morceaux: Blob[] = [];
+    let sansParole = false;
+    let liberer: () => void = () => undefined;
 
     recorder.ondataavailable = (ev) => {
       if (ev.data.size > 0) morceaux.push(ev.data);
     };
 
     recorder.onstop = () => {
+      liberer();
       stream.getTracks().forEach((piste) => piste.stop());
       activeRecorder = null;
+      if (sansParole) {
+        // Personne n'a parle : un silence envoye a Whisper reviendrait avec
+        // une phrase inventee (« Merci d'avoir regarde »), qui partirait.
+        set({ isListening: false, isTranscribing: false });
+        onError?.('no-speech');
+        return;
+      }
       set({ isListening: false, isTranscribing: true });
 
       void (async () => {
@@ -161,6 +231,9 @@ async function demarrerDictationServeur(
     activeRecorder = recorder;
     set({ isListening: true, isTranscribing: false, error: null, interimTranscript: '' });
     recorder.start();
+    if (options.finAutomatique) {
+      liberer = surveillerLaFinDeParole(stream, recorder, () => { sansParole = true; });
+    }
   } catch (err) {
     const code = err instanceof DOMException && err.name === 'NotAllowedError' ? 'not-allowed' : 'mic-failed';
     set({ error: code, isListening: false });
@@ -175,10 +248,10 @@ export const useDictation = create<DictationState>((set) => ({
   interimTranscript: '',
   error: null,
 
-  startDictation: (lang, onResult, onError) => {
+  startDictation: (lang, onResult, onError, options = {}) => {
     const cfg = activeRemoteCfg();
     if (cfg && isMediaRecorderSupported()) {
-      void demarrerDictationServeur(cfg, lang, onResult, onError, set);
+      void demarrerDictationServeur(cfg, lang, onResult, onError, set, options);
       return;
     }
 
@@ -203,7 +276,9 @@ export const useDictation = create<DictationState>((set) => ({
 
     try {
       const recognition = new SpeechRecClass();
-      recognition.continuous = true;
+      // Fin automatique : le navigateur clot lui-meme la phrase a la pause.
+      recognition.continuous = !options.finAutomatique;
+      let aEntenduUnePhrase = false;
       recognition.interimResults = true;
       recognition.lang = lang.startsWith('fr') ? 'fr-FR' : 'en-US';
       recognition.maxAlternatives = 1;
@@ -219,6 +294,7 @@ export const useDictation = create<DictationState>((set) => ({
         for (let i = ev.resultIndex; i < ev.results.length; ++i) {
           const res = ev.results[i];
           if (res.isFinal) {
+            aEntenduUnePhrase = true;
             finalChunk += res[0].transcript;
           } else {
             interimChunk += res[0].transcript;
@@ -232,7 +308,7 @@ export const useDictation = create<DictationState>((set) => ({
       recognition.onerror = (ev: SpeechRecognitionErrorEventLike) => {
         // 'no-speech' is non-fatal in continuous mode
         if (ev.error === 'no-speech') {
-          return;
+          return; // en fin automatique, `onend` le rapporte
         }
         set({ error: ev.error, isListening: false, interimTranscript: '' });
         onError?.(ev.error);
@@ -241,6 +317,7 @@ export const useDictation = create<DictationState>((set) => ({
       recognition.onend = () => {
         set({ isListening: false, interimTranscript: '' });
         activeRecognition = null;
+        if (options.finAutomatique && !aEntenduUnePhrase) onError?.('no-speech');
       };
 
       activeRecognition = recognition;

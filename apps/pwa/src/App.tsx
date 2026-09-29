@@ -8,6 +8,7 @@ import { useCommandPalette } from './lib/commands/commandStore';
 import { Sidebar, Logo } from './components/chat/Sidebar';
 import { ChatMessage } from './components/chat/ChatMessage';
 import { Composer } from './components/chat/Composer';
+import { PiloteConversation } from './components/chat/PiloteConversation';
 import { EmptyState } from './components/chat/EmptyState';
 import { EventLogDrawer } from './components/chat/EventLogDrawer';
 import { ConnectorsModal } from './components/chat/ConnectorsModal';
@@ -260,6 +261,7 @@ export default function App() {
         <div className="safe-b relative z-10 px-3 pt-1 sm:px-6">
           <div className="mx-auto w-full max-w-3xl">
             <Composer running={isRunning} onSend={(t) => send(t)} onStop={cancel} />
+            <PiloteConversation messages={messages} running={isRunning} send={(texte) => send(texte)} />
           </div>
         </div>
       </main>
