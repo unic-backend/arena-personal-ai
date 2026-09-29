@@ -12056,3 +12056,36 @@ testee ne change pas, seul l'exemple.
 **Ce que ca coute si c'est faux** : un markdown inhabituel (tableau sans ligne
 de separation, HTML brut) arrive en texte simple dans le fichier ; le fichier
 existe et se relit, sa mise en forme est pauvre.
+
+## DEC-0169 — CSV <-> Excel sans LibreOffice, et aucune formule ne traverse
+
+**2026-09-29.** La consigne JARVIS (DEC-0163) cite « file transformation » et
+« spreadsheet generation ». La matrice de conversion ne connaissait aucun
+couple CSV : « transforme ce CSV en Excel » n'avait aucun moteur.
+
+**Decision** :
+
+- `core/production/conversion/tableurs.py`, declare dans la matrice comme
+  tout moteur (`csv -> xlsx`, `xlsx -> csv`, openpyxl + module `csv`).
+- **CSV -> XLSX** : separateur (`;`, `,`, tabulation, `|`) et encodage (UTF-8,
+  ou Windows-1252 d'un vieil export) reconnus ; les nombres deviennent des
+  nombres (`en_nombre`) ; une premiere ligne sans nombre est un en-tete
+  (gras, figee). Ecriture en flux (`write_only`) : un CSV de 300 Mo ne se
+  charge pas en classeur complet. Au-dela de ce qu'une feuille Excel tient
+  (1 048 576 lignes, 16 384 colonnes), le moteur refuse au lieu de livrer un
+  classeur que le tableur tronquerait.
+- **XLSX -> CSV** : la feuille active, au format qu'un Excel francais rouvre
+  sans assistant (`;`, virgule decimale, UTF-8 avec BOM, dates JJ/MM/AAAA).
+  Une formule donne la valeur enregistree par le tableur, jamais la formule.
+- **Aucune formule ne traverse.** openpyxl fait d'un texte « =... » une
+  formule (mesure : `<f>1+1</f>`). `bureautique.ecrire_case` force le texte —
+  **ce defaut touchait aussi le moteur Markdown -> Excel livre le matin meme
+  (DEC-0167)**, corrige ici. Dans un CSV, un texte commencant par = + - @ est
+  precede d'une apostrophe (injection CSV).
+- `en_nombre` ne convertit plus un code a zero en tete (« 00221 ») ni plus de
+  15 chiffres (un tableur arrondirait un numero de compte) : les deux
+  restent du texte, dans le markdown comme dans le CSV.
+
+**Ce que ca coute si c'est faux** : un CSV destine a un outil anglophone
+attend `,` et le point decimal ; celui-ci est ecrit pour Excel en francais.
+L'apostrophe devant « -2 % » se voit dans un editeur de texte.

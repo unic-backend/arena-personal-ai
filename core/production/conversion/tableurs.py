@@ -1,0 +1,188 @@
+"""CSV <-> Excel : les tableaux qu'on s'echange, sans LibreOffice.
+
+La consigne JARVIS (DEC-0163) cite « file transformation » et « spreadsheet
+generation ». Jusqu'au 29/09/2026, la matrice de conversion ne connaissait
+aucun couple CSV : « transforme ce CSV en Excel » n'avait aucun moteur, alors
+qu'`openpyxl` est installe et que le module `csv` est dans Python.
+
+Deux moteurs (DEC-0169) :
+
+- **CSV -> XLSX.** Le separateur (`;` d'un Excel francais, `,`, tabulation,
+  `|`) et l'encodage (UTF-8, ou Windows-1252 d'un vieil export) sont
+  reconnus. Les nombres deviennent des nombres selon les regles d'`en_nombre`
+  (« 1 250,50 » -> 1250.5 ; « 00221 » reste un texte). Une premiere ligne
+  sans aucun nombre passe en gras : c'est un en-tete.
+- **XLSX -> CSV.** La feuille active, au format qu'un Excel francais rouvre
+  sans assistant : `;`, virgule decimale, UTF-8 avec BOM.
+
+**Aucune formule ne traverse, dans aucun sens.** Un texte commencant par
+« = » reste un texte dans le classeur (comme `bureautique.ecrire_case`) ; dans le CSV, un texte
+qui commence par `=`, `+`, `-` ou `@` est precede d'une apostrophe, ce qui
+empeche un tableur de l'executer a l'ouverture (injection CSV).
+"""
+from __future__ import annotations
+
+import csv
+import io
+from datetime import date, datetime, time
+from itertools import chain, islice
+from pathlib import Path
+from typing import Iterator, List
+
+from core.production.conversion.bureautique import _nom_de_feuille, en_nombre
+from core.production.conversion.moteurs import MoteurEchec
+
+#: Les separateurs essayes, dans l'ordre de preference en cas d'egalite : le
+#: point-virgule d'abord, parce qu'une virgule decimale ne le trahit jamais.
+SEPARATEURS = ";,\t|"
+
+#: Ce qu'un tableur interprete comme le debut d'une formule.
+DEBUTS_DE_FORMULE = ("=", "+", "-", "@", "\t", "\r")
+
+
+def lire_texte(entree: Path) -> str:
+    """Le contenu du CSV : UTF-8 (BOM compris) d'abord, Windows-1252 sinon —
+    l'encodage d'un export Excel francais ancien. Jamais de caractere avale
+    en silence : un octet que ni l'un ni l'autre ne lit fait echouer."""
+    brut = entree.read_bytes()
+    try:
+        return brut.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        pass
+    try:
+        return brut.decode("cp1252")
+    except UnicodeDecodeError as erreur:
+        raise MoteurEchec(f"encodage du CSV illisible (ni UTF-8 ni Windows-1252) : {erreur}") from erreur
+
+
+def separateur(texte: str) -> str:
+    """Le separateur de ce CSV. `csv.Sniffer` sur un extrait, et a defaut le
+    caractere le plus frequent de la premiere ligne."""
+    extrait = texte[:20000]
+    try:
+        return csv.Sniffer().sniff(extrait, delimiters=SEPARATEURS).delimiter
+    except csv.Error:
+        premiere = extrait.splitlines()[0] if extrait.splitlines() else ""
+        comptes = {s: premiere.count(s) for s in SEPARATEURS}
+        meilleur = max(SEPARATEURS, key=lambda s: comptes[s])
+        return meilleur if comptes[meilleur] else ","
+
+
+#: Ce qu'une feuille Excel peut tenir. Au-dela, le fichier serait tronque par
+#: le tableur a l'ouverture — on refuse plutot que de livrer un classeur faux.
+LIGNES_MAX = 1_048_576
+COLONNES_MAX = 16_384
+
+#: Les largeurs de colonne se mesurent sur ce debut de fichier : un CSV de
+#: plusieurs centaines de Mo ne se garde pas entier en memoire pour ca.
+LIGNES_POUR_LES_LARGEURS = 200
+
+
+def lire_lignes(texte: str) -> Iterator[List[str]]:
+    """Les lignes non vides du CSV, une par une."""
+    for ligne in csv.reader(io.StringIO(texte), delimiter=separateur(texte)):
+        if any(cellule.strip() for cellule in ligne):
+            yield ligne
+
+
+def csv_vers_xlsx(entree: Path, sortie: Path) -> None:
+    from openpyxl import Workbook
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
+
+    lignes = lire_lignes(lire_texte(entree))
+    debut = list(islice(lignes, LIGNES_POUR_LES_LARGEURS))
+    if not debut:
+        raise MoteurEchec("le CSV ne contient aucune ligne")
+    en_tete = all(en_nombre(cellule) is None for cellule in debut[0])
+
+    # Ecriture en flux (`write_only`) : la memoire ne grossit pas avec le fichier.
+    classeur = Workbook(write_only=True)
+    feuille = classeur.create_sheet(_nom_de_feuille(entree.stem, set()))
+    largeurs: dict = {}
+    for ligne in debut:
+        for colonne, cellule in enumerate(ligne, start=1):
+            largeurs[colonne] = max(largeurs.get(colonne, 0), len(cellule))
+    for colonne, largeur in largeurs.items():
+        if colonne <= COLONNES_MAX:
+            feuille.column_dimensions[get_column_letter(colonne)].width = min(max(10, largeur + 2), 60)
+    if en_tete:
+        feuille.freeze_panes = "A2"
+
+    ecrites = 0
+    try:
+        for ligne in chain(debut, lignes):
+            ecrites += 1
+            if ecrites > LIGNES_MAX:
+                raise MoteurEchec(f"plus de {LIGNES_MAX} lignes : une feuille Excel ne les tient pas")
+            if len(ligne) > COLONNES_MAX:
+                raise MoteurEchec(f"plus de {COLONNES_MAX} colonnes : une feuille Excel ne les tient pas")
+            titre = en_tete and ecrites == 1
+            cases = []
+            for cellule in ligne:
+                nombre = None if titre else en_nombre(cellule)
+                case = WriteOnlyCell(feuille, value=nombre if nombre is not None else cellule)
+                if nombre is None:
+                    # Un texte reste un texte : jamais une formule (voir `ecrire_case`).
+                    case.data_type = "s"
+                if titre:
+                    case.font = Font(bold=True)
+                cases.append(case)
+            feuille.append(cases)
+    except BaseException:
+        # Refermer le flux en cours d'ecriture : sans ca, openpyxl laisse un
+        # generateur ouvert qui leve a sa destruction (mesure le 29/09/2026).
+        feuille.close()
+        raise
+    classeur.save(str(sortie))
+
+
+def _en_texte(valeur: object) -> str:
+    """Une case du classeur, ecrite comme un Excel francais la relit."""
+    if valeur is None:
+        return ""
+    if isinstance(valeur, bool):
+        return "VRAI" if valeur else "FAUX"
+    if isinstance(valeur, (int, float)):
+        texte = repr(valeur) if isinstance(valeur, float) else str(valeur)
+        if texte.endswith(".0"):
+            texte = texte[:-2]
+        return texte.replace(".", ",")
+    if isinstance(valeur, datetime):
+        return valeur.strftime("%d/%m/%Y %H:%M") if valeur.time() != time(0) else valeur.strftime("%d/%m/%Y")
+    if isinstance(valeur, date):
+        return valeur.strftime("%d/%m/%Y")
+    texte = str(valeur)
+    if texte.startswith(DEBUTS_DE_FORMULE):
+        # Neutralise : l'apostrophe fait lire la case comme du texte.
+        return "'" + texte
+    return texte
+
+
+def xlsx_vers_csv(entree: Path, sortie: Path) -> None:
+    from openpyxl import load_workbook
+
+    try:
+        # `data_only` : la VALEUR d'une formule, telle qu'Excel l'a calculee
+        # et gardee — jamais la formule elle-meme.
+        classeur = load_workbook(str(entree), read_only=True, data_only=True)
+    except Exception as erreur:  # noqa: BLE001 — un classeur illisible est un echec du moteur
+        raise MoteurEchec(f"classeur illisible : {erreur}") from erreur
+    try:
+        feuille = classeur.active
+        lignes: List[List[str]] = []
+        for rangee in feuille.iter_rows(values_only=True):
+            cellules = [_en_texte(v) for v in rangee]
+            while cellules and not cellules[-1]:
+                cellules.pop()
+            lignes.append(cellules)
+    finally:
+        classeur.close()
+    while lignes and not lignes[-1]:
+        lignes.pop()
+    if not lignes:
+        raise MoteurEchec("la feuille active est vide")
+    with sortie.open("w", encoding="utf-8-sig", newline="") as fichier:
+        csv.writer(fichier, delimiter=";", lineterminator="\r\n").writerows(lignes)
+

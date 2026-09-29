@@ -2,6 +2,16 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — Du CSV à l'Excel, et retour
+
+« Transforme ce CSV en Excel » marche : le séparateur et les accents d'un
+export Excel français sont reconnus, les montants deviennent des nombres, les
+codes comme « 00221 » gardent leurs zéros. Dans l'autre sens, un Excel devient
+un CSV qu'Excel en français rouvre directement. Une cellule qui ressemble à une
+formule (« =... ») reste du texte : un fichier reçu ne peut rien exécuter à
+l'ouverture — la correction vaut aussi pour les Excel écrits par JARVIS
+(DEC-0169).
+
 ### Ajouté — 29/09/2026 — Demande un Excel, un PowerPoint ou un Word : tu reçois le fichier
 
 « Fais-moi un fichier Excel du devis », « crée un diaporama de ce projet »,
