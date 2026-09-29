@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — Le texte d'un PDF, d'un Word, d'un Excel ou d'un PowerPoint
+
+« Sors-moi le texte de ce PDF » donne un vrai fichier .txt, page par page,
+chaque partie précédée de son origine (page, feuille, diapositive). Une page
+scannée lue par reconnaissance de caractères est marquée « (OCR) » : à relire.
+Un document sans texte échoue en le disant, au lieu de livrer un fichier vide
+(DEC-0170).
+
 ### Ajouté — 29/09/2026 — Le briefing du matin t'attend à l'ouverture
 
 Ouvre l'application le matin : le briefing préparé à 7 h s'affiche seul sur

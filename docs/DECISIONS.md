@@ -12084,3 +12084,27 @@ ARENA te resume seul » n'etait vrai qu'a moitie.
 **Ce que ca coute si c'est faux** : un briefing ferme sur le telephone reste
 visible sur le PC (le « deja vu » est par appareil) ; il suffit de le fermer
 aussi la-bas.
+
+## DEC-0170 — PDF, Word, Excel, PowerPoint -> texte : le lecteur de documents, en fichier
+
+**2026-09-29.** « Sors-moi le texte de ce PDF » n'avait aucun moteur : la
+matrice ne menait nulle part vers `.txt`. Le lecteur, lui, existait
+(`tools/documents/reader.py`, celui des pieces jointes et du RAG), avec la
+provenance de chaque passage et l'OCR des pages scannees.
+
+**Decision** :
+
+- `core/production/conversion/extraction.py` ecrit ce que le lecteur a lu —
+  il ne relit rien lui-meme : une seule facon de lire un PDF dans ARENA.
+  Declare dans la matrice (`pdf`, `docx`, `xlsx`, `pptx` -> `txt`).
+- Un document en plusieurs parties (pages, feuilles, diapositives) est
+  ecrit partie par partie, chacune precedee de son origine
+  (`--- rapport.pdf, page 2 ---`). Une page lue par OCR porte « (OCR) »,
+  meme seule : un texte devine ne passe pas pour un texte encode.
+- Un document que le lecteur n'a pas lu (`VIDE`, `ECHEC`) fait echouer le
+  moteur avec la raison du lecteur — jamais un `.txt` vide rendu comme une
+  reussite.
+
+**Ce que ca coute si c'est faux** : le lecteur plafonne a 50 Mo (le
+connecteur accepte 300 Mo) ; un PDF plus gros echoue avec cette raison au
+lieu d'etre lu.
