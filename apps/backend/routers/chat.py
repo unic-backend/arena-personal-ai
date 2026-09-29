@@ -759,6 +759,9 @@ CONTROLES_QUI_PRIMENT = (
     # « Convertis ce PDF en Word » (DEC-0177) : un fichier envoye, jamais la
     # reponse a une question en attente.
     "demande_de_conversion",
+    # « Mon site est en ligne ? » (DEC-0182) : ses sites, jamais la reponse a
+    # une question en attente.
+    "demande_de_site",
 )
 
 

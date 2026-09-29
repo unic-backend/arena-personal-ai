@@ -12486,3 +12486,39 @@ manquant » meme avec un compte connecte.
 demande au mauvais connecteur — mais chaque publication passe par la
 confirmation du proprietaire, qui voit le texte et le reseau avant tout envoi.
 
+## DEC-0182 — « Mon site est en ligne ? » : une intention SITE_WEB, sans agent
+
+**2026-09-29.** Etape 4 du plan, pour Netlify. Le connecteur `netlify`
+(DEC-0180) n'etait atteint par aucune phrase. Aucun agent existant ne parle
+de ses sites : SocialAgent ecrit pour les reseaux, PlaquisteAgent fait des
+devis, BrowserAgent navigue sur le web des autres.
+
+**Decision** — la voie de DEC-0070 (architecture 3D) et de DEC-0177
+(conversion), pas un nouvel agent :
+
+- `core/site_web/demande.py` : `capacite_du_site()` lit la phrase sans
+  modele. Il faut une reference a SON site (« mon site », « mes sites »,
+  « netlify », « unicplaquiste.com ») et aucune demande de fabrication
+  (« cree », « ameliore », « modifie », « ajoute », « code »… partent
+  ailleurs : ce connecteur ne change pas un site). Puis, dans l'ordre :
+  republier (seule ecriture, et « remets mon site en ligne » contient
+  « en ligne »), messages des formulaires, deploiements, liste des sites,
+  etat du site.
+- `OrchestratorAgent.demande_de_site` rend `SITE_WEB` avant le courrier
+  (« les messages de mon site » ne sont pas ses e-mails) et avant le
+  controle date.
+- `chat._mon_site` appelle `registre.executer("netlify", capacite)` et
+  affiche ce que le connecteur a lu, ligne par ligne : un champ absent
+  s'affiche « ? », l'adresse IP d'un visiteur n'est jamais affichee.
+  Republier rend la confirmation du connecteur : rien ne part d'ici.
+- `SITE_WEB` a la voie `RECHERCHE` (`core/execution/voies.py`) : aucun
+  modele, mais l'API Netlify est sur le reseau, comme la lecture du courrier.
+  `demande_de_site` rejoint `CONTROLES_QUI_PRIMENT` : une phrase sur son site
+  n'est jamais la reponse a une question en attente.
+- `netlify` sort de `DORMANTS_CONNUS`, qui redevient vide.
+
+**Ce que ca coute si c'est faux** : une phrase sur son site mal reconnue part
+vers une autre intention (le classeur) — rien n'est ecrit par erreur, puisque
+la seule ecriture, republier, attend toujours son accord et le coupe-circuit
+PUBLISH.
+

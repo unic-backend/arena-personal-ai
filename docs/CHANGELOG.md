@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — « Mon site est en ligne ? »
+
+Demande à JARVIS l'état de ton site, si le dernier déploiement a marché (et
+l'erreur sinon), les messages reçus par ses formulaires, ou la liste de tes
+sites Netlify. « Republie mon site » attend ton accord. Il faut ta clé
+Netlify (`docs/CONNECTER_MES_COMPTES.md`) (DEC-0182).
+
 ### Ajouté — 29/09/2026 — « Publie-la sur Facebook », « analyse mes publications Instagram »
 
 Dis à JARVIS sur quel réseau publier : Facebook, ou Instagram avec l'adresse

@@ -154,6 +154,9 @@ VOIE_PAR_INTENTION: Dict[str, Voie] = {
     # n'est pas sur la machine, et RECHERCHE est la seule voie qui autorise a
     # en sortir. Lire cinq messages est aussi, reellement, plusieurs etapes.
     "EMAIL": Voie.RECHERCHE,
+    # Ses sites (DEC-0182) : aucun modele, mais l'API Netlify est dehors — le
+    # droit de sortir sur le reseau est celui de la lecture du courrier.
+    "SITE_WEB": Voie.RECHERCHE,
     "FRESH_INFO": Voie.RECHERCHE,
     "TREND_SEARCH": Voie.RECHERCHE,
     "DEEP_RESEARCH": Voie.RECHERCHE,

@@ -8,14 +8,15 @@ Ce qui est branché aujourd'hui :
 
 > **Facebook et Instagram répondent déjà à une phrase** : « écris une
 > publication sur mon chantier et publie-la sur Facebook », « analyse mes
-> publications Instagram ». Les sites Netlify, pas encore : c'est la
-> prochaine étape. Mettre tes clés maintenant
+> publications Instagram ». Tes sites aussi : « mon site est en ligne ? »,
+> « le dernier déploiement de mon site a marché ? », « les messages de mon
+> site », « republie mon site ». Mettre tes clés maintenant
 > permet déjà de vérifier que la connexion marche (santé des connecteurs).
 
 | Compte | État | Connecteur |
 |---|---|---|
 | Page Facebook + Instagram | prêt, attend tes clés — **joignable par une phrase** | `social/meta/meta_connector.py` |
-| Sites Netlify | prêt, attend ta clé | `core/connectors/netlify.py` |
+| Sites Netlify | prêt, attend ta clé — **joignable par une phrase** | `core/connectors/netlify.py` |
 | LinkedIn | à venir | — |
 | Fiche Google (Maps) | à venir | — |
 | TikTok | à venir | — |
