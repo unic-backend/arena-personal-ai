@@ -62,7 +62,7 @@ from core.agent import equipe
 from core.agent.collaboration import conduire_projet, tenir_table_ronde
 from core.agent.message import tache_racine
 from core.architecture.plan import executer as executer_architecture
-from core.context.ancrage import ancrer_question
+from core.context.ancrage import joindre_le_fil
 from core.context.recherche_unifiee import MOTS_MEMOIRE
 from core.executive import question_en_attente
 from core.fiche_google import demande as fiche_google
@@ -1064,15 +1064,24 @@ INTENTIONS_ANCREES = frozenset({
 })
 
 
-def _historique_pour_ancrage(request: ChatRequest, session_id: str) -> List[Dict[str, str]]:
-    """Relit le fil si l'appelant ne l'a pas fourni ; une panne reste locale."""
-    if request.history or request.history_authoritative:
-        return request.history
+def _demande_avec_fil(request: ChatRequest, session_id: str) -> str:
+    """Précède la demande du fil borné ; toute panne laisse la phrase nue."""
     try:
-        return memory.get_recent_history(session_id=session_id, limit=TOURS_RELUS_DEFAUT)
+        tours = request.history
+        if not tours and not request.history_authoritative:
+            tours = memory.get_recent_history(
+                session_id=session_id, limit=TOURS_RELUS_DEFAUT
+            )
+        proprietaire = memory.get_fact("owner") or "Ousmane"
+        return joindre_le_fil(
+            request.prompt,
+            tours,
+            proprietaire,
+            maximum=TOURS_RELUS_DEFAUT,
+        )
     except Exception as souci:  # noqa: BLE001 - l'aiguillage doit continuer
-        logger.warning("Fil indisponible pour l'ancrage : %s", souci)
-        return []
+        logger.warning("Fil indisponible pour le contexte : %s", souci)
+        return request.prompt
 
 
 async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
@@ -1080,14 +1089,12 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
     session_id = request.session_id or "default"
     logger.info(f"Intention détectée par Usman: {intent}")
 
-    # Seulement les agents qui recevaient jusqu'ici la phrase nue. La question
-    # reste inchangée si elle nomme déjà son sujet ; sinon le dernier sujet du
-    # propriétaire est posé à côté, sans modèle ni reformulation (DEC-0191).
+    # Seulement les agents qui recevaient jusqu'ici la phrase nue. Le fil est
+    # toujours posé avant la demande, borné et délimité ; aucun vocabulaire ne
+    # tente de deviner si elle est elliptique (DEC-0191).
     if intent in INTENTIONS_ANCREES:
         request = request.model_copy(update={
-            "prompt": ancrer_question(
-                request.prompt, _historique_pour_ancrage(request, session_id)
-            )
+            "prompt": _demande_avec_fil(request, session_id)
         })
 
     if intent == "DEEP_REASONING":
