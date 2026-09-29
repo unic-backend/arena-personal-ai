@@ -12432,6 +12432,17 @@ Netlify (reponse du jour : « Netlify »).
   une invite voyage enveloppe `EXTERNAL` (`core/security/trust.py`), et
   l'adresse IP et le navigateur du visiteur n'y entrent pas.
 
+**Trouve en l'ecrivant — Meta etait dormant sans que rien ne le dise** :
+`tests/test_connecteurs_dormants.py` ne reconnaissait comme propre module d'un
+connecteur que `core/connectors/<nom>.py`. Le connecteur `meta` vit dans
+`social/meta/` : sa propre ligne `nom = "meta"` comptait comme un appelant,
+et il est passe pour vivant a la fusion de DEC-0179 alors qu'aucune phrase ne
+l'atteint. Le test lit desormais le module sur la fabrique, et compte
+`registre.obtenir(...)` dans le runtime comme un vrai chemin (sans quoi
+`case`, remis a Dioumtoukay par injection, passait pour dormant). `meta` et
+`netlify` entrent dans `DORMANTS_CONNUS` avec leur raison : l'aiguillage de
+JARVIS vers eux est l'etape 4 du plan, et le test obligera a les en sortir.
+
 **Non mesure** : aucun appel reel a Netlify (pas de jeton ici) ; les 20 tests
 passent par un `httpx.MockTransport`. Relancer une construction suppose un
 site relie a un depot : un site depose a la main fera repondre une erreur a

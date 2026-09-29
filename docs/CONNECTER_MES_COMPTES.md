@@ -6,6 +6,11 @@ jamais dans le chat, jamais sur GitHub.** JARVIS ne te les demandera jamais.
 
 Ce qui est branché aujourd'hui :
 
+> **Pas encore par une phrase.** Les connecteurs ci-dessous sont prêts et
+> testés, mais JARVIS ne sait pas encore choisir le bon réseau quand tu lui
+> parles : cet aiguillage est la prochaine étape. Mettre tes clés maintenant
+> permet déjà de vérifier que la connexion marche (santé des connecteurs).
+
 | Compte | État | Connecteur |
 |---|---|---|
 | Page Facebook + Instagram | prêt, attend tes clés | `social/meta/meta_connector.py` |
