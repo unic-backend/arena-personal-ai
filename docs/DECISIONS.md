@@ -12814,31 +12814,37 @@ panne sur n'importe quel systeme de fichiers au lieu d'en dependre. Verifie
 par mutation : ramener l'empreinte a la date seule refait echouer sept tests,
 dont les trois nouveaux.
 
-## DEC-0191 — Une question elliptique garde le sujet du fil
+## DEC-0191 — Les agents reçoivent le fil, ils ne devinent pas le domaine
 
-**2026-09-29.** Le point d'aiguillage donnait le fil entier à seulement trois
-intentions sur trente-deux. Les autres agents recevaient la dernière phrase
-nue : après une discussion sur le football, « donne-moi un nom » pouvait donc
-être interprété dans un autre domaine. Ce défaut n'est pas celui de la mémoire
-longue : les barrières de `recuperation.py` et `semantique.py` refusent déjà un
-souvenir sans lien lexical, temporel ou sémantique avec la question.
+**2026-09-29, révisée après revue du propriétaire.** La première correction
+cherchait à reconnaître une question elliptique avec des mots vides et des
+termes génériques. C'était une mauvaise abstraction : ajouter « nom » réparait
+le football, mais pas « chiffre » après Bitcoin, « titre » après un livre ou
+« combien » après un chantier. Chaque domaine aurait demandé un mot de plus.
+La cause mesurée reste structurelle : ces agents ne recevaient pas la
+conversation. Aucune liste de vocabulaire ne peut remplacer le fil.
 
-**Décision** : `core/context/ancrage.py` reconnaît sans modèle une demande qui
-ne nomme aucun sujet, remonte au dernier tour **utilisateur** qui en nomme un,
-et place ses seuls mots significatifs dans un bloc séparé « Sujet du tour
-précédent ». Une question qui possède déjà son sujet reste strictement
-inchangée. Le pronom accolé de « donne-moi » est retiré avant l'analyse ; les
-liaisons telles que « alors » sont vides. Aucun mot n'est inventé et la
-question n'est jamais reformulée.
+**Décision** : pour `DEEP_RESEARCH`, `FINANCE`, `TREND_SEARCH`, `EXECUTIVE`,
+`BROWSER`, `RAG_DOCS`, `GRAPHRAG`, `DESIGN_UI`, `EQUIPE` et `UI_GENERATE`,
+`_aiguiller()` place **toujours** les tours récents avant la demande actuelle.
+Il réutilise `rendre_le_fil()` ; deux balises séparent le contexte, et la balise
+de la demande ordonne de répondre uniquement à celle-ci. La demande du
+propriétaire est recopiée strictement, jamais réécrite. Aucun modèle ne classe,
+ne résume ni ne complète le fil.
 
-L'ancrage est appliqué avant l'aiguillage uniquement à `DEEP_RESEARCH`,
-`FINANCE`, `TREND_SEARCH`, `EXECUTIVE`, `BROWSER`, `RAG_DOCS`, `GRAPHRAG`,
-`DESIGN_UI`, `EQUIPE` et `UI_GENERATE`. Les intentions de fichiers et les trois
-voies qui recevaient déjà le fil restent intactes. Si l'appelant n'envoie pas
-d'historique, le même journal court est relu ; une panne de ce journal laisse
-passer la question nue et ne bloque jamais la réponse.
+**Bornes mesurées, pas nouvelles préférences** : le nombre est
+`TOURS_RELUS_DEFAUT = 6`, déjà mesuré et utilisé par la voie conversationnelle
+de `chat.py`; le budget est `BUDGET_TOURS_ANTERIEURS = 4000`, la limite dure
+déjà mesurée pour le même fil dans `core/memory/conversation.py`. Les reprendre
+évite précisément deux mémoires différentes selon l'agent. Si l'une tranche,
+les tours les plus anciens partent d'abord et aucun trou n'est créé.
 
-**Preuve** : les tests mesurent le texte reçu par l'agent, couvrent football →
-« donne-moi un nom », le changement explicite vers le basket, la relecture du
-journal et sa panne. En supprimant le branchement dans `_aiguiller`, le test
-d'intégration échoue sur le texte reçu.
+Les intentions de fichiers et les trois voies qui recevaient déjà le fil
+restent intactes. Sans historique fourni, le journal court est relu. Une panne
+de lecture — y compris celle du nom du propriétaire — laisse passer la demande
+nue et ne bloque jamais la réponse.
+
+**Preuve** : les tests mesurent le texte reçu par l'agent pour le football,
+Bitcoin, un livre, un chantier et l'informatique. Ils tiennent aussi la demande
+actuelle explicite, les deux bornes, la suppression des vieux tours et la panne
+mémoire. Par mutation, supprimer le branchement fait échouer les cinq domaines.
