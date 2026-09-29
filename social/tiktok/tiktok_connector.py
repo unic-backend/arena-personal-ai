@@ -195,6 +195,11 @@ class TikTokConnector(Connecteur):
 
     # --- Sante ---------------------------------------------------------------------
 
+    def invalider_sonde(self) -> None:
+        """Juste apres une connexion : oublier la mesure et le jeton d'avant."""
+        self._sante, self._jeton = None, None
+        self._sante_mesuree_a = self._jeton_expire_a = 0.0
+
     def authentifier(self) -> bool:
         return self.sonder().etat == EtatSante.OPERATIONNEL
 

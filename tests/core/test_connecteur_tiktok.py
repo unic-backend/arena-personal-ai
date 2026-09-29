@@ -371,3 +371,15 @@ def test_un_200_portant_une_erreur_est_un_refus(configure, tmp_path):
 
     assert sante.etat == EtatSante.EN_PANNE
     assert "video.publish" in sante.message
+
+
+def test_apres_une_connexion_la_sonde_remesure(configure, tmp_path):
+    """DEC-0186 : le retour du consentement oublie la mesure et le jeton d'avant."""
+    connecteur, tiktok, _ = _connecteur(tmp_path)
+    connecteur.sonder()
+
+    connecteur.invalider_sonde()
+    connecteur.sonder()
+
+    assert len(tiktok.vers("creator_info")) == 2
+    assert len(tiktok.vers("/oauth/token/")) == 2, "le jeton d'avant n'est pas reutilise"
