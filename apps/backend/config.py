@@ -313,4 +313,6 @@ AGENTS_SPECIALISES = frozenset({
     "EQUIPE",
     # Le briefing du matin de JARVIS (DEC-0166).
     "BRIEFING",
+    # Une piece jointe convertie (DEC-0177).
+    "CONVERSION",
 })

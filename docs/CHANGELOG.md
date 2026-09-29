@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — Convertis un fichier envoyé depuis ton téléphone
+
+Joins un fichier (le trombone) et dis « convertis ce fichier en PDF », « ce
+PDF en Word », « cette présentation au format PDF » ou « ces documents en
+texte » : JARVIS te rend le fichier converti, prêt à ouvrir. Jusqu'à cinq
+fichiers à la fois ; chaque échec est dit avec sa raison. Le fichier envoyé
+n'est jamais gardé sur le disque (DEC-0177).
+
 ### Corrigé — 29/09/2026 — LibreOffice n'est plus annoncé s'il ne marche pas
 
 ARENA vérifiait seulement que LibreOffice était installé. Il fait maintenant

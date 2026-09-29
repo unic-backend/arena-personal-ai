@@ -982,16 +982,23 @@ def _documents_produits(resultat: Dict[str, Any]) -> List[Dict[str, Any]]:
     ici. Un `NEEDS_CONFIRMATION`, un `INCOMPLET` ou un echec n'a pas de
     fichier a offrir : il n'en fabrique pas un.
     """
-    document = resultat.get("document")
-    if not isinstance(document, dict):
-        return []
-    if document.get("statut") != "SUCCESS" or not document.get("url"):
-        return []
-    return [{
-        "url": document["url"],
-        "action": "produire",
-        "message": document.get("message") or "",
-    }]
+    # `documents` : plusieurs fichiers d'un meme tour (une conversion de
+    # plusieurs pieces jointes, DEC-0177). A defaut, le `document` unique.
+    documents = resultat.get("documents")
+    if not isinstance(documents, list) or not documents:
+        documents = [resultat.get("document")]
+    produits = []
+    for document in documents:
+        if not isinstance(document, dict):
+            continue
+        if document.get("statut") != "SUCCESS" or not document.get("url"):
+            continue
+        produits.append({
+            "url": document["url"],
+            "action": "produire",
+            "message": document.get("message") or "",
+        })
+    return produits
 
 
 def _actions_en_attente() -> List[Dict[str, Any]]:

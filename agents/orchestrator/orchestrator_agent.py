@@ -9,6 +9,7 @@ from core.execution.voies import budget_de, voie_pour
 from core.meetings.intelligence import est_demande_analyse_reunion
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
+from core.production.conversion.demande import format_de_conversion
 
 logger = logging.getLogger("usman.agent.orchestrator")
 
@@ -107,6 +108,8 @@ INTENTIONS = {
     "EQUIPE",
     # Le briefing du matin de JARVIS (DEC-0166).
     "BRIEFING",
+    # « Convertis ce fichier en Word » : une piece jointe convertie (DEC-0177).
+    "CONVERSION",
 }
 
 #: Ce qui demande LE briefing du jour. Des locutions, pas le mot seul :
@@ -742,6 +745,9 @@ EQUIPE          : faire travailler PLUSIEURS agents ensemble — une table ronde
                   entre agents, ou un projet a decouper et repartir entre eux.
 BRIEFING        : le briefing du jour du proprietaire — agenda, courrier, meteo
                   et actualites reunis. Pas une simple question d'actualite.
+CONVERSION      : convertir un FICHIER ENVOYE vers un autre format — « convertis
+                  ce PDF en Word », « mets cette presentation en PDF ». Ecrire
+                  la reponse dans un fichier n'en est pas une.
 ARCHITECTURE_3D : dessiner ou modéliser un bâtiment en 3D — maison, murs,
                   plan 3D, scène 3D. Chiffrer une cloison reste PLAQUISTE ;
                   la tracer est ARCHITECTURE_3D.
@@ -817,6 +823,18 @@ class OrchestratorAgent(BaseAgent):
         if seul in ("briefing", "brief", "le briefing", "mon briefing"):
             return True
         return any(phrase in texte for phrase in PHRASES_DE_BRIEFING)
+
+    @staticmethod
+    def demande_de_conversion(user_input: str) -> bool:
+        """Dit si la phrase demande de CONVERTIR un fichier fourni (DEC-0177).
+
+        Verbe de conversion, format cible et reference a un fichier : les
+        trois (`core/production/conversion/demande.py`). « Fais-moi un PDF de
+        ca » reste une redaction ; « convertis ce PDF en Word », une
+        conversion. Evaluee juste apres le briefing : « transforme ce fichier
+        en PDF aujourd'hui » ne doit pas partir en recherche d'actualite.
+        """
+        return format_de_conversion(user_input) is not None
 
     @staticmethod
     def question_personnelle(user_input: str) -> bool:
@@ -942,6 +960,10 @@ class OrchestratorAgent(BaseAgent):
         if self.demande_de_briefing(user_input):
             logger.info("Demande du briefing du jour -> BRIEFING")
             return "BRIEFING"
+
+        if self.demande_de_conversion(user_input):
+            logger.info("Conversion d'un fichier fourni -> CONVERSION")
+            return "CONVERSION"
 
         if self.question_personnelle(user_input):
             logger.info("Question personnelle : reponse par la memoire, sans web ni classeur")

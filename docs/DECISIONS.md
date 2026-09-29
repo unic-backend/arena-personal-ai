@@ -12296,3 +12296,41 @@ Word, Excel et PowerPoint -> PDF restent disponibles par leurs replis.
 **Ce que ca coute si c'est faux** : la premiere question sur les formats coute
 une conversion d'essai (1,5 s mesuree ici, davantage au premier demarrage de
 LibreOffice sur un PC) ; les suivantes, rien pendant la validite.
+
+## DEC-0177 — « Convertis ce fichier en Word » : une piece jointe convertie depuis le telephone
+
+**2026-09-29.** Tous les moteurs de conversion de la nuit (DEC-0169 a
+DEC-0176) etaient injoignables depuis la PWA pour un fichier envoye : la piece
+jointe etait lue puis effacee (regle de vie privee), seuls ses octets PDF ou
+image restaient, et « convertis ce PDF en Word » tombait dans la LECTURE
+(« ce pdf » est un marqueur de lecture de `format_de_document_demande`). La
+reponse du modele pouvait alors decrire une conversion qui n'avait jamais eu
+lieu.
+
+**Decision** :
+
+- `core/production/conversion/demande.py` : une conversion est demandee par
+  **trois** marques ensemble — un verbe (« convertis », « transforme »,
+  « mets », « passe », « exporte »), un format cible (« en Word », « au format
+  PDF », « vers Excel ») et **une reference a un fichier envoye** (« ce
+  fichier », « ce PDF », « la piece jointe », « ces documents »). « Fais-moi
+  un PDF de ca » et « transforme ta reponse en Word » restent des redactions.
+- Intention `CONVERSION`, controle deterministe evalue juste apres le
+  briefing (avant le controle date), ajoutee a `CONTROLES_QUI_PRIMENT`, voie
+  INSTANTANEE (aucun modele, aucun reseau).
+- `pieces_jointes` garde aussi les octets d'origine d'un document lu
+  (`contenu_base64`), **en memoire seulement**, pour la meme heure que son
+  texte ; jamais renvoyes a l'interface. Un fichier illisible ne garde rien.
+- `_convertir_les_pieces` (chat.py) : chaque piece de CE message est recrite
+  dans un dossier jetable, convertie par `file_conversion` — sa garde, sa
+  validation qui rouvre le fichier, ses replis — puis le dossier est efface.
+  Cinq pieces au plus par message, le reste est annonce. Chaque echec est
+  dit avec sa raison ; sans piece jointe, JARVIS demande le fichier.
+- Les fichiers produits arrivent par le canal que l'interface lit deja
+  (`document`) ; `_documents_produits` lit aussi `documents`, pour offrir
+  chaque fichier d'une conversion multiple.
+
+**Ce que ca coute si c'est faux** : une piece jointe occupe maintenant ses
+octets en memoire pendant une heure (25 Mo au plus chacune) en plus de son
+texte ; une phrase de conversion sans reference explicite au fichier (« mets-le
+en PDF ») n'est pas reconnue et part vers la redaction ou la conversation.
