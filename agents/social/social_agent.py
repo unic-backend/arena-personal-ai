@@ -34,6 +34,7 @@ souvenirs (`tools/social/voix.py`), leur matrice devient une combinatoire
 import logging
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from core.agent.base_agent import BaseAgent
@@ -119,7 +120,8 @@ CAPACITES: tuple = (
     # ce qui precede est une publication a ecrire.
     Capacite("social.post_writer", "Ecrire une publication", "redaction",
              ("publication", "publie", "poste", "post linkedin", "un post",
-              "sur linkedin", "sur instagram", "sur facebook", "reseaux sociaux"),
+              "sur linkedin", "sur instagram", "sur facebook", "reseaux sociaux",
+              "dans ma boite tiktok", "dans ma boîte tiktok"),
              permission="approbation"),
 )
 
@@ -131,6 +133,12 @@ RESEAUX: tuple = (
     ("linkedin", re.compile(r"\blinkedin\b", re.IGNORECASE)),
     ("tiktok", re.compile(r"\btik ?tok\b", re.IGNORECASE)),
 )
+
+#: « avec ma derniere video » : la plus recente produite par ARENA (DEC-0187).
+DERNIERE_VIDEO = re.compile(r"\b(derni[eè]re|ma)\s+vid[ée]o\b", re.IGNORECASE)
+#: « mets-la dans ma boite TikTok » : un brouillon, pas une publication.
+BROUILLON_TIKTOK = re.compile(r"\b(brouillon|bo[iî]te|inbox)\b", re.IGNORECASE)
+EXTENSIONS_VIDEO = (".mp4", ".mov", ".webm")
 
 #: Une adresse d'image publique, seule chose qu'Instagram sait publier.
 ADRESSE_HTTPS = re.compile(r"https://[^\s<>\"')]+")
@@ -145,8 +153,10 @@ def reseau_demande(texte: str) -> Optional[str]:
 
 
 #: Ce qui, dans la phrase, demande d'ENVOYER et non de preparer.
-DEMANDE_D_ENVOI = re.compile(r"\b(publie[- ]?(le|la)?|envoie[- ]?(le|la)?|"
-                             r"mets[- ]?(le|la)\s+en\s+ligne)\b", re.IGNORECASE)
+DEMANDE_D_ENVOI = re.compile(r"\b(publie[- ]?(le|la)?|envoie[- ]?(le|la)?|poste[- ]?(le|la)?|"
+                             r"mets[- ]?(le|la)\s+en\s+ligne|"
+                             # DEC-0187 : le brouillon TikTok est aussi un envoi.
+                             r"mets\b[^.]{0,40}\bdans\s+ma\s+bo[iî]te)\b", re.IGNORECASE)
 
 INSTRUCTION_PUBLICATION = """Tu ecris une publication pour les reseaux sociaux, au nom du proprietaire.
 
@@ -225,7 +235,8 @@ class SocialAgent(BaseAgent):
     def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
                  memoire_personnelle: Optional[MemoirePersonnelle] = None,
                  registre: Optional[RegistreConnecteurs] = None,
-                 recherche: Optional[Callable[..., Any]] = None):
+                 recherche: Optional[Callable[..., Any]] = None,
+                 dossier_videos: Optional[Path] = None):
         super().__init__(
             name="SocialAgent",
             description="Redaction, relecture et preparation de ses publications.",
@@ -237,6 +248,9 @@ class SocialAgent(BaseAgent):
         # La recherche web, si elle est branchee. Sans elle, la recherche de
         # niche se declare indisponible au lieu d'inventer des tendances.
         self.recherche = recherche
+        # Ou ARENA depose les videos qu'il produit : TikTok publie une video,
+        # et c'est ici que « ma derniere video » se trouve (DEC-0187).
+        self.dossier_videos = dossier_videos
 
     # --- Sa voix -----------------------------------------------------------------
 
@@ -314,7 +328,8 @@ class SocialAgent(BaseAgent):
 
         Le connecteur et la politique decident : `action="publish"` est une
         confirmation, et le coupe-circuit PUBLISH peut la refuser tout court.
-        Sans reseau nomme, c'est TikTok, comme avant DEC-0181.
+        Sans reseau nomme, rien n'est soumis : l'agent demande lequel
+        (DEC-0187). Avant, c'etait TikTok — qui ne publie pas de texte seul.
         """
         if self.registre is None:
             execution.etape("aucun connecteur de publication branche")
@@ -342,11 +357,38 @@ class SocialAgent(BaseAgent):
             if lien:
                 parametres["lien"] = lien.group(0)
             resultat = self.registre.executer("linkedin", "publier", **parametres)
+        elif reseau == "tiktok":
+            video = self.derniere_video() if DERNIERE_VIDEO.search(demande or "") else None
+            if video is None:
+                execution.etape("tiktok : aucune video designee")
+                return {"statut": "MANQUE_CONTEXTE",
+                        "message": ("TikTok publie une video, pas un texte seul : dis "
+                                    "« avec ma derniere video » et je prends la plus "
+                                    "recente que j'ai produite, avec ce texte en legende.")}
+            if BROUILLON_TIKTOK.search(demande or ""):
+                resultat = self.registre.executer("tiktok", "envoyer_brouillon", fichier=str(video))
+            else:
+                resultat = self.registre.executer("tiktok", "publish_video",
+                                                  fichier=str(video), legende=texte)
         else:
-            resultat = self.registre.executer("tiktok", "publish_video",
-                                              legende=texte, chemin_video="")
+            execution.etape("aucun reseau nomme")
+            return {"statut": "MANQUE_CONTEXTE",
+                    "message": ("Sur quel reseau ? Facebook, Instagram, LinkedIn ou TikTok : "
+                                "le texte est pret, dis-moi ou le publier.")}
         execution.etape(f"envoi soumis : {resultat.statut.value}")
         return {"statut": resultat.statut.value, "message": resultat.message}
+
+    def derniere_video(self) -> Optional[Path]:
+        """La video la plus recente qu'ARENA a produite, ou None.
+
+        Rien n'est devine au-dela : un dossier absent ou vide rend None, et le
+        nom du fichier choisi est montre avant la confirmation.
+        """
+        if self.dossier_videos is None or not Path(self.dossier_videos).is_dir():
+            return None
+        videos = [f for f in Path(self.dossier_videos).iterdir()
+                  if f.is_file() and f.suffix.lower() in EXTENSIONS_VIDEO]
+        return max(videos, key=lambda f: f.stat().st_mtime) if videos else None
 
     async def proposer_accroches(self, sujet: str) -> Dict[str, Any]:
         """Six crochets, relus un par un."""

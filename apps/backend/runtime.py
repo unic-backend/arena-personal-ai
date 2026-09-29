@@ -49,6 +49,7 @@ from apps.backend.config import (
     MODELE_RAPIDE,
     MODELE_VISION,
     OLLAMA_URL,
+    RENDERED_DIR,
 )
 from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.actions.attente import FileDAttente
@@ -843,7 +844,7 @@ email_agent = EmailAgent(provider=fast_provider, memory=memory, registre=registr
 # absente, la capacite se declare indisponible au lieu d'inventer des tendances.
 social_agent = SocialAgent(provider=deep_provider, memory=memory,
                            memoire_personnelle=memoire_personnelle,
-                           registre=registre)
+                           registre=registre, dossier_videos=RENDERED_DIR)
 # Metier UniC Plaquiste : redaction soignee, donc le modele profond.
 # `provider_vision` : le meme `ollama_vision` que VisionAgent (DEC-0019) —
 # un second avis, visuel, sur les ouvertures d'un plan (DEC-0022), jamais

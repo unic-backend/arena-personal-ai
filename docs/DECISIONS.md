@@ -12668,3 +12668,36 @@ en https, que le proprietaire enregistre dans son application.
 afficher l'erreur de TikTok dans la fenetre de connexion — aucun jeton n'est
 stocke, rien n'est publie.
 
+## DEC-0187 — « Publie ma derniere video sur TikTok » : une video, et jamais un defaut
+
+**2026-09-29.** Troisieme PR de TikTok. SocialAgent soumettait toute
+publication sans reseau nomme a `tiktok.publish_video`, avec du texte seul et
+un parametre (`chemin_video`) que le connecteur ne lit pas : une action vouee a
+l'echec, mise en attente de l'accord du proprietaire.
+
+**Decision** :
+
+- TikTok publie une VIDEO. « avec ma derniere video » designe la plus recente
+  qu'ARENA a produite (`RENDERED_DIR`, injecte dans SocialAgent par
+  `runtime.py` ; seuls .mp4, .mov, .webm ; la plus recente par date, quel que
+  soit l'ordre du dossier). Son nom est montre avant la confirmation
+  (`resultat_attendu`). Sans video designee ou produite, rien n'est soumis :
+  l'agent demande.
+- « dans ma boite TikTok » → `envoyer_brouillon` ; « mets … dans ma boite » et
+  « poste » deviennent des demandes d'envoi.
+- **Sans reseau nomme, plus de TikTok par defaut** : l'agent demande lequel.
+  Deux anciens tests reposaient sur ce defaut ; ils nomment maintenant TikTok
+  et une video, et gardent leurs assertions.
+- **Correction d'une affirmation de DEC-0181** : les mots des reseaux
+  (`RESEAUX`, orchestrateur) ne sont qu'un REPLI quand le modele classeur
+  echoue ; c'est le modele qui envoyait ces phrases a SocialAgent. Mesure : un
+  classeur qui repond CHAT gardait « publie-la sur Facebook » en CHAT.
+  `OrchestratorAgent.demande_de_publication` (un verbe d'envoi ET un reseau
+  nomme) rend maintenant `SOCIAL` avant le classeur, comme `SITE_WEB` et
+  `FICHE_GOOGLE` ; il rejoint `CONTROLES_QUI_PRIMENT`. « Fais-moi une video
+  pour TikTok », sans verbe d'envoi, reste une demande de video.
+
+**Ce que ca coute si c'est faux** : une mauvaise video designee serait montree
+(nom du fichier) avant tout envoi, et refusee par le proprietaire ; une phrase
+mal reconnue retombe sur le classeur, comme avant.
+
