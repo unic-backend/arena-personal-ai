@@ -122,6 +122,20 @@ def test_auth_redirige_vers_google_avec_un_state(client, entetes, monkeypatch):
     assert len(routeur._ETATS_EN_ATTENTE) == 1
 
 
+def test_la_fiche_google_ajoute_sa_portee_sans_retirer_le_courrier(client, entetes, monkeypatch):
+    """DEC-0184 : meme jeton que Gmail — la portee s'ajoute, elle ne remplace pas."""
+    from urllib.parse import parse_qs, urlparse
+
+    monkeypatch.setattr(routeur, "identifiants", _identifiants_presents)
+    r = client.get("/connectors/fiche_google/auth", headers=entetes, follow_redirects=False)
+
+    assert r.status_code == 302
+    requete = parse_qs(urlparse(r.headers["location"]).query)
+    assert requete["scope"] == ["https://www.googleapis.com/auth/business.manage"]
+    assert requete["include_granted_scopes"] == ["true"]
+    assert requete["redirect_uri"][0].endswith("/connectors/fiche_google/callback")
+
+
 def test_auth_accepte_la_cle_en_parametre_pour_window_open(client, monkeypatch):
     """Une fenetre ouverte par `window.open()` ne pose jamais d'en-tete."""
     monkeypatch.setattr(routeur, "identifiants", _identifiants_presents)

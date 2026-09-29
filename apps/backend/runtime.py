@@ -68,6 +68,7 @@ from core.connectors.csm import ConnecteurCsm
 from core.connectors.devis import DevisConnector
 from core.connectors.drift import ConnecteurDrift
 from core.connectors.faceplugin import ConnecteurFaceplugin
+from core.connectors.fiche_google import FicheGoogleConnector
 from core.connectors.file_conversion import ConnecteurFileConversion
 from core.connectors.file_organization import ConnecteurFileOrganization
 from core.connectors.formbricks import ConnecteurFormbricks
@@ -542,6 +543,13 @@ registre.declarer(
     "gmail",
     lambda: GmailConnector(acces=acces, journal=journal, file_attente=file_attente,
                            crochets=crochets),
+)
+# Fiche Google (DEC-0184) : la fiche Maps et ses avis, par le meme identifiant
+# Google que le courrier ; repondre a un avis passe par sa confirmation.
+registre.declarer(
+    "fiche_google",
+    lambda: FicheGoogleConnector(acces=acces, journal=journal, file_attente=file_attente,
+                                 crochets=crochets),
 )
 # Netlify (DEC-0180) : les sites du proprietaire — etat, deploiements, messages
 # des formulaires ; republier attend son accord et le coupe-circuit PUBLISH.

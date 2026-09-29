@@ -55,6 +55,7 @@ from apps.backend.runtime import registre
 from apps.backend.security import limiter_debit, verify_api_key, verify_media_access
 from core.connectors import stockage_jetons
 from core.connectors.base import EtatSante
+from core.connectors.fiche_google import PORTEE_FICHE
 from core.connectors.google_oauth import (
     PORTEE_GMAIL_ENVOI,
     PORTEE_GMAIL_LECTURE,
@@ -79,6 +80,13 @@ _ETATS_EN_ATTENTE: Dict[str, Tuple[str, float]] = {}
 FOURNISSEURS_OAUTH = {
     "gmail": {
         "portees": [PORTEE_GMAIL_LECTURE, PORTEE_GMAIL_ENVOI],
+        "variable_env": "GOOGLE_REFRESH_TOKEN",
+    },
+    # La fiche Google (DEC-0184) : le MEME jeton que le courrier. Le
+    # consentement demande `include_granted_scopes` (google_oauth.py) : le
+    # nouveau jeton garde les portees deja accordees, le courrier continue.
+    "fiche_google": {
+        "portees": [PORTEE_FICHE],
         "variable_env": "GOOGLE_REFRESH_TOKEN",
     },
 }

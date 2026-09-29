@@ -157,6 +157,8 @@ VOIE_PAR_INTENTION: Dict[str, Voie] = {
     # Ses sites (DEC-0182) : aucun modele, mais l'API Netlify est dehors — le
     # droit de sortir sur le reseau est celui de la lecture du courrier.
     "SITE_WEB": Voie.RECHERCHE,
+    # Sa fiche Google (DEC-0184) : aucun modele, l'API Google est dehors.
+    "FICHE_GOOGLE": Voie.RECHERCHE,
     "FRESH_INFO": Voie.RECHERCHE,
     "TREND_SEARCH": Voie.RECHERCHE,
     "DEEP_RESEARCH": Voie.RECHERCHE,

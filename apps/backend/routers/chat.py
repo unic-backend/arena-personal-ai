@@ -64,6 +64,7 @@ from core.agent.message import tache_racine
 from core.architecture.plan import executer as executer_architecture
 from core.context.recherche_unifiee import MOTS_MEMOIRE
 from core.executive import question_en_attente
+from core.fiche_google import demande as fiche_google
 from core.memory.conversation import rendre_le_fil
 from core.observabilite.fil import tache
 from core.production.conversion.demande import format_de_conversion
@@ -186,6 +187,42 @@ def _mon_site(prompt: str) -> Dict[str, Any]:
     if issue.statut.value == "SUCCESS":
         reponse["response"] = rendre(capacite, issue.message, issue.detail.get("donnees"))
     reponse["capacite"] = capacite
+    return reponse
+
+
+def _ma_fiche_google(prompt: str) -> Dict[str, Any]:
+    """Ce que la phrase demande a sa fiche Google, et ce que Google a rendu.
+
+    Repondre lit d'abord les avis pour trouver celui qui est vise, puis soumet
+    la reponse : elle attend la confirmation du proprietaire, rien ne part ici.
+    """
+    demande = fiche_google.lire_demande(prompt)
+    if demande is None:
+        return {"status": "error", "response": (
+            "Je n'ai pas compris ce que tu veux de ta fiche Google : ses infos, "
+            "tes avis, ou repondre a un avis (« reponds a l'avis de Fatou : merci ! ») ?")}
+    if demande.capacite != "repondre":
+        issue = registre.executer("fiche_google", demande.capacite, **demande.parametres)
+        reponse = _issue_en_reponse(issue)
+        if issue.statut.value == "SUCCESS":
+            reponse["response"] = fiche_google.rendre(
+                demande.capacite, issue.message, issue.detail.get("donnees"))
+        return reponse
+
+    lus = registre.executer("fiche_google", "avis", limite=50)
+    if lus.statut.value != "SUCCESS":
+        return _issue_en_reponse(lus)
+    vises = fiche_google.choisir_avis(lus.detail.get("donnees") or [], demande.auteur)
+    if len(vises) != 1:
+        qui = f"de « {demande.auteur} »" if demande.auteur else "sans reponse"
+        return {"status": "error", "response": (
+            f"Aucun avis {qui} parmi les derniers." if not vises else
+            f"{len(vises)} avis {qui} : precise le nom complet pour que je vise le bon.")}
+    avis = vises[0]
+    issue = registre.executer("fiche_google", "repondre_avis",
+                              avis_id=avis.get("id"), message=demande.message)
+    reponse = _issue_en_reponse(issue)
+    reponse["avis_vise"] = {"auteur": avis.get("auteur"), "commentaire": avis.get("commentaire")}
     return reponse
 
 
@@ -762,6 +799,8 @@ CONTROLES_QUI_PRIMENT = (
     # « Mon site est en ligne ? » (DEC-0182) : ses sites, jamais la reponse a
     # une question en attente.
     "demande_de_site",
+    # « Mes avis Google ? » (DEC-0184) : sa fiche, jamais une reponse en attente.
+    "demande_de_fiche_google",
 )
 
 
@@ -1169,6 +1208,10 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         briefing = await briefing_du_jour()
         result = {"status": "success", "agent": "Briefing",
                   "response": briefing.en_texte(), "briefing": briefing.en_dict()}
+    elif intent == "FICHE_GOOGLE":
+        # Sa fiche Google (DEC-0184) : lire, ou repondre a un avis — toujours
+        # par la confirmation du connecteur. Aucun agent, aucun modele.
+        result = _ma_fiche_google(request.prompt)
     elif intent == "SITE_WEB":
         # Ses sites Netlify (DEC-0182) : la phrase devient une capacite du
         # connecteur — aucun agent, aucun modele, comme DEC-0070 et DEC-0177.

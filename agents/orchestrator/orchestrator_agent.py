@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 from core.agent.base_agent import BaseAgent
 from core.context.projet import charger_contexte_projet
 from core.execution.voies import budget_de, voie_pour
+from core.fiche_google.demande import lire_demande as demande_fiche_google
 from core.meetings.intelligence import est_demande_analyse_reunion
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
@@ -113,6 +114,8 @@ INTENTIONS = {
     "CONVERSION",
     # « Mon site est en ligne ? » : ses sites Netlify, lus par le connecteur (DEC-0182).
     "SITE_WEB",
+    # « Mes avis Google ? » : sa fiche Google et ses avis (DEC-0184).
+    "FICHE_GOOGLE",
 }
 
 #: Ce qui demande LE briefing du jour. Des locutions, pas le mot seul :
@@ -754,6 +757,9 @@ CONVERSION      : convertir un FICHIER ENVOYE vers un autre format — « conver
 SITE_WEB        : SES sites web tels qu'ils sont en ligne — etat, deploiements,
                   messages recus par ses formulaires, republier. Creer ou
                   modifier un site est du code ou du design, pas SITE_WEB.
+FICHE_GOOGLE    : SA fiche Google (Maps) — ses informations, ses avis clients,
+                  ou repondre a un avis. Donner son avis sur un sujet n'en est
+                  pas une.
 ARCHITECTURE_3D : dessiner ou modéliser un bâtiment en 3D — maison, murs,
                   plan 3D, scène 3D. Chiffrer une cloison reste PLAQUISTE ;
                   la tracer est ARCHITECTURE_3D.
@@ -851,6 +857,15 @@ class OrchestratorAgent(BaseAgent):
         aujourd'hui ? » ne se cherche pas sur le web.
         """
         return capacite_du_site(user_input) is not None
+
+    @staticmethod
+    def demande_de_fiche_google(user_input: str) -> bool:
+        """Dit si la phrase porte sur SA fiche Google ou ses avis (DEC-0184).
+
+        Avant le courrier : « reponds a l'avis de Fatou : merci » n'est pas un
+        e-mail a ecrire.
+        """
+        return demande_fiche_google(user_input) is not None
 
     @staticmethod
     def question_personnelle(user_input: str) -> bool:
@@ -984,6 +999,10 @@ class OrchestratorAgent(BaseAgent):
         if self.demande_de_site(user_input):
             logger.info("Question sur ses sites -> SITE_WEB, avant le courrier et la date")
             return "SITE_WEB"
+
+        if self.demande_de_fiche_google(user_input):
+            logger.info("Question sur sa fiche Google -> FICHE_GOOGLE, avant le courrier")
+            return "FICHE_GOOGLE"
 
         if self.question_personnelle(user_input):
             logger.info("Question personnelle : reponse par la memoire, sans web ni classeur")

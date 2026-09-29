@@ -10,7 +10,8 @@ Ce qui est branché aujourd'hui :
 > publication sur mon chantier et publie-la sur Facebook », « analyse mes
 > publications Instagram ». Tes sites aussi : « mon site est en ligne ? »,
 > « le dernier déploiement de mon site a marché ? », « les messages de mon
-> site », « republie mon site ». Et LinkedIn : « publie-la sur LinkedIn ». Mettre tes clés maintenant
+> site », « republie mon site ». LinkedIn : « publie-la sur LinkedIn ». Ta
+> fiche Google : « mes avis Google », « réponds à l'avis de Fatou : merci ! ». Mettre tes clés maintenant
 > permet déjà de vérifier que la connexion marche (santé des connecteurs).
 
 | Compte | État | Connecteur |
@@ -18,7 +19,7 @@ Ce qui est branché aujourd'hui :
 | Page Facebook + Instagram | prêt, attend tes clés — **joignable par une phrase** | `social/meta/meta_connector.py` |
 | Sites Netlify | prêt, attend ta clé — **joignable par une phrase** | `core/connectors/netlify.py` |
 | LinkedIn (ton profil) | prêt, attend ta clé — **joignable par une phrase** | `social/linkedin/linkedin_connector.py` |
-| Fiche Google (Maps) | à venir | — |
+| Fiche Google (Maps) | prêt, attend la connexion et l'accord de Google — **joignable par une phrase** | `core/connectors/fiche_google.py` |
 | TikTok | à venir | — |
 
 > Les écrans de Meta changent souvent. Si un bouton n'a plus le même nom,
@@ -191,4 +192,49 @@ LINKEDIN_ACCESS_TOKEN=le-jeton
 https://www.unicplaquiste.com » : JARVIS écrit le texte dans ta voix, le
 relit, puis te le montre avant tout envoi. Le coupe-circuit `PUBLISH` de
 `config/permissions.yaml` s'applique aussi.
+
+---
+
+## 4. Ta fiche Google (Maps)
+
+### Ce qu'il faut savoir d'abord
+
+JARVIS utilise **le même compte Google que ton courrier** : pas de nouvelle
+clé à copier. Mais **Google n'ouvre les API de fiche d'établissement qu'après
+avoir examiné ton projet**. Tant qu'il n'a pas dit oui, JARVIS te répondra le
+refus de Google (souvent « quota » à zéro) : ce n'est pas une panne.
+
+### Les étapes
+
+1. Sur **console.cloud.google.com**, dans le projet de ton identifiant Google
+   (celui de Gmail) : **API et services → Bibliothèque**, active
+   « My Business Account Management API », « My Business Business
+   Information API » et « Google My Business API ».
+2. Demande l'accès aux **API Business Profile** à Google (formulaire de
+   demande d'accès, lié depuis la documentation « Business Profile APIs »).
+   Attends leur accord.
+3. Dans l'écran de consentement OAuth du projet, ajoute la portée
+   business.manage.
+4. Dans ARENA : **Réglages → Connecteurs → Google Business Profile →
+   Connecter**. Google te demande d'accepter la nouvelle autorisation ; ton
+   courrier reste connecté.
+
+> Les noms des écrans Google changent : cherche l'intitulé le plus proche.
+
+### Ce que JARVIS peut faire avec
+
+| Action | Accord |
+|---|---|
+| Lire ta fiche (nom, adresse, site) | libre |
+| Lire tes avis, avec ta note et leur nombre tels que Google les calcule | libre |
+| Répondre publiquement à un avis | **ta confirmation, à chaque fois** |
+
+« Réponds à l'avis de Fatou : merci pour ta confiance ! » : JARVIS retrouve
+l'avis, te montre la réponse exacte et attend ton accord. Si deux clients ont
+le même prénom, il te demande le nom complet au lieu de choisir. Le
+coupe-circuit `SEND_MESSAGES` de `config/permissions.yaml` s'applique.
+
+Les avis sont écrits par n'importe qui : JARVIS les lit comme des
+informations, jamais comme des ordres. Il ne modifie pas ta fiche (horaires,
+adresse, photos) et ne supprime rien.
 
