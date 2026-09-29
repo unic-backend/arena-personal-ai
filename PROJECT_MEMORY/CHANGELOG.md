@@ -1,3 +1,28 @@
+## 2026-09-29 — la relecture à chaud voyait passer un prix et une interdiction
+
+Diagnostic du dépôt (`docs/audits/diagnostic_2026-09-29.md`). Sept tests
+échouaient, tous sur le même mécanisme : `core/fichier_suivi.py` décidait
+d'une relecture sur la **seule date de modification**, que deux écritures
+rapprochées laissent identique — la granularité de l'horodatage appartient au
+système de fichiers, pas à Python. Sous ext4 ça ne se voit jamais, donc la CI
+ne pouvait pas l'attraper ; sur un volume Windows ou un partage réseau, si.
+
+Ce qui passait au travers : `4500` → `5200` dans `config/metier.yaml`, et
+`ALLOWED` → `DENIED` dans `config/permissions_services.yaml`. Ni la date, ni
+la taille, ni l'inode ne changent — **un mauvais prix sur un devis, et une
+règle durcie jamais appliquée**.
+
+`empreinte_de()` compare désormais date + taille + inode + hachage du contenu
+(22 µs, contre 7,9 ms pour le parse YAML évité). `PolitiqueDePermissions`,
+`PermissionManager` et `FichierSuivi` partagent la même empreinte. Voir
+DEC-0190.
+
+Preuve : 7 tests réparés, 7 ajoutés (dont 3 qui figent la date avec `os.utime`
+pour ne plus dépendre du système de fichiers), vérifiés par mutation. Suite :
+7580 passés (7566 avant), `ruff check .` propre.
+
+---
+
 ## 2026-09-22 — sonde de santé des actions en attente
 
 `faceplugin.sonder()` coûte ~3 s car il lance son SDK en sous-processus.
