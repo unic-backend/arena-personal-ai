@@ -10,6 +10,7 @@ from core.meetings.intelligence import est_demande_analyse_reunion
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from core.production.conversion.demande import format_de_conversion
+from core.site_web.demande import capacite_du_site
 
 logger = logging.getLogger("usman.agent.orchestrator")
 
@@ -110,6 +111,8 @@ INTENTIONS = {
     "BRIEFING",
     # « Convertis ce fichier en Word » : une piece jointe convertie (DEC-0177).
     "CONVERSION",
+    # « Mon site est en ligne ? » : ses sites Netlify, lus par le connecteur (DEC-0182).
+    "SITE_WEB",
 }
 
 #: Ce qui demande LE briefing du jour. Des locutions, pas le mot seul :
@@ -748,6 +751,9 @@ BRIEFING        : le briefing du jour du proprietaire — agenda, courrier, mete
 CONVERSION      : convertir un FICHIER ENVOYE vers un autre format — « convertis
                   ce PDF en Word », « mets cette presentation en PDF ». Ecrire
                   la reponse dans un fichier n'en est pas une.
+SITE_WEB        : SES sites web tels qu'ils sont en ligne — etat, deploiements,
+                  messages recus par ses formulaires, republier. Creer ou
+                  modifier un site est du code ou du design, pas SITE_WEB.
 ARCHITECTURE_3D : dessiner ou modéliser un bâtiment en 3D — maison, murs,
                   plan 3D, scène 3D. Chiffrer une cloison reste PLAQUISTE ;
                   la tracer est ARCHITECTURE_3D.
@@ -835,6 +841,16 @@ class OrchestratorAgent(BaseAgent):
         en PDF aujourd'hui » ne doit pas partir en recherche d'actualite.
         """
         return format_de_conversion(user_input) is not None
+
+    @staticmethod
+    def demande_de_site(user_input: str) -> bool:
+        """Dit si la phrase porte sur SES sites en ligne (DEC-0182).
+
+        Evaluee avant le courrier : « les messages de mon site » ne sont pas
+        ses e-mails ; et avant le controle date : « mon site est en ligne
+        aujourd'hui ? » ne se cherche pas sur le web.
+        """
+        return capacite_du_site(user_input) is not None
 
     @staticmethod
     def question_personnelle(user_input: str) -> bool:
@@ -964,6 +980,10 @@ class OrchestratorAgent(BaseAgent):
         if self.demande_de_conversion(user_input):
             logger.info("Conversion d'un fichier fourni -> CONVERSION")
             return "CONVERSION"
+
+        if self.demande_de_site(user_input):
+            logger.info("Question sur ses sites -> SITE_WEB, avant le courrier et la date")
+            return "SITE_WEB"
 
         if self.question_personnelle(user_input):
             logger.info("Question personnelle : reponse par la memoire, sans web ni classeur")

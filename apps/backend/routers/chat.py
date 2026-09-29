@@ -67,6 +67,7 @@ from core.executive import question_en_attente
 from core.memory.conversation import rendre_le_fil
 from core.observabilite.fil import tache
 from core.production.conversion.demande import format_de_conversion
+from core.site_web.demande import capacite_du_site, rendre
 from tools.documents.indexer import (
     DOSSIER_DOCUMENTS,
     FICHIER_INVENTAIRE,
@@ -168,6 +169,24 @@ def _issue_en_reponse(issue: Any) -> Dict[str, Any]:
         "statut_connecteur": issue.statut.value,
         "detail": issue.detail or {},
     }
+
+
+def _mon_site(prompt: str) -> Dict[str, Any]:
+    """La capacite Netlify que la phrase demande, et ce qu'elle a vraiment lu.
+
+    Republier passe par la confirmation du connecteur : ici, rien ne part.
+    """
+    capacite = capacite_du_site(prompt)
+    if capacite is None:
+        return {"status": "error", "response": (
+            "Je n'ai pas compris ce que tu veux savoir de ton site : son etat, ses "
+            "deploiements, les messages de ses formulaires, ou le republier ?")}
+    issue = registre.executer("netlify", capacite)
+    reponse = _issue_en_reponse(issue)
+    if issue.statut.value == "SUCCESS":
+        reponse["response"] = rendre(capacite, issue.message, issue.detail.get("donnees"))
+    reponse["capacite"] = capacite
+    return reponse
 
 
 def _contexte_openviking(prompt: str, session_id: str) -> Optional[str]:
@@ -740,6 +759,9 @@ CONTROLES_QUI_PRIMENT = (
     # « Convertis ce PDF en Word » (DEC-0177) : un fichier envoye, jamais la
     # reponse a une question en attente.
     "demande_de_conversion",
+    # « Mon site est en ligne ? » (DEC-0182) : ses sites, jamais la reponse a
+    # une question en attente.
+    "demande_de_site",
 )
 
 
@@ -1147,6 +1169,10 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         briefing = await briefing_du_jour()
         result = {"status": "success", "agent": "Briefing",
                   "response": briefing.en_texte(), "briefing": briefing.en_dict()}
+    elif intent == "SITE_WEB":
+        # Ses sites Netlify (DEC-0182) : la phrase devient une capacite du
+        # connecteur — aucun agent, aucun modele, comme DEC-0070 et DEC-0177.
+        result = _mon_site(request.prompt)
     elif intent == "CONVERSION":
         # Une piece jointe convertie (DEC-0177) : le fichier envoye, par le
         # connecteur de conversion — jamais la reponse du modele.
