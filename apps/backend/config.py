@@ -315,4 +315,8 @@ AGENTS_SPECIALISES = frozenset({
     "BRIEFING",
     # Une piece jointe convertie (DEC-0177).
     "CONVERSION",
+    # Ses sites Netlify (DEC-0182) et sa fiche Google (DEC-0184). Absents
+    # d'ici jusqu'au 29/09/2026 : le telephone les classait bien, puis les
+    # confiait au modele de conversation — mesure dans la vraie PWA (DEC-0188).
+    "SITE_WEB", "FICHE_GOOGLE",
 })
