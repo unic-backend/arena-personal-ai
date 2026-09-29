@@ -14,6 +14,7 @@ import { capaciteActive, useCapacite } from '../../lib/capacites';
 import { salutationAuHasard } from '../../lib/salutations';
 import { useVideoProject } from '../../lib/store/videoProjectStore';
 import { Logo } from './Sidebar';
+import { BriefingDuJour } from './BriefingDuJour';
 
 export function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
   const { t, locale } = useI18n();
@@ -65,6 +66,8 @@ export function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
       >
         {phrase}
       </motion.h1>
+
+      <BriefingDuJour />
 
       {capacite && (
         <motion.div
