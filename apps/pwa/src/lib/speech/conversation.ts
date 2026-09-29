@@ -17,14 +17,14 @@ import { create } from 'zustand';
 
 import type { ChatMessage } from '../store/chatStore';
 
-/** `veille` : le micro attend « Jarvis » (DEC-0165) ; les autres phrases
+/** `veille` : le micro attend « Usman » ou « Jarvis » (DEC-0165, DEC-0189) ; les autres phrases
  *  sont ignorees. */
 export type PhaseConversation = 'arret' | 'veille' | 'ecoute' | 'reflexion' | 'parole';
 
 /** Ce que l'on dit pour sortir du mode — la phrase ENTIERE, pas un mot
  *  contenu : « arrete la video a 10 secondes » est une demande, pas un ordre
  *  d'arret. */
-const ORDRE_D_ARRET = /^(stop|stoppe|arr[eê]te(z|s)?|arr[eê]te toi|termin[ée]|fin|au revoir|c'?est tout|merci jarvis|jarvis stop|stop jarvis)$/;
+const ORDRE_D_ARRET = /^(stop|stoppe|arr[eê]te(z|s)?|arr[eê]te toi|termin[ée]|fin|au revoir|c'?est tout|merci jarvis|jarvis stop|stop jarvis|merci usman|usman stop|stop usman)$/;
 
 export function estOrdreDArret(texte: string): boolean {
   const phrase = texte
@@ -130,9 +130,21 @@ export const SILENCES_AVANT_ARRET = 3;
    (Whisper sur la machine du proprietaire, sinon le navigateur) : seules
    celles qui COMMENCENT par « Jarvis » (au plus un mot avant : « Dis
    Jarvis », « Ok Jarvis ») sont prises. « J'ai vu Jarvis au cinema » ne
-   reveille personne. */
+   reveille personne.
 
-const FORMES_DU_NOM = /^(?:dj|j)[ae]r?[vw][iy](?:s|ss|ce|se|z)?$/;
+   DEC-0189 — demande du proprietaire : « si je dis hey Usman il declenche ».
+   « Usman » reveille aussi, sous les formes qu'une transcription francaise
+   en donne (« Ousmane », « Osman », « Housmane »…). « Jarvis » reste
+   accepte : rien n'a demande de le retirer. */
+
+const FORMES_DU_NOM = /^(?:(?:dj|j)[ae]r?[vw][iy](?:s|ss|ce|se|z)?|h?(?:ou|u|o)s{1,2}m[ae]n{1,2}e?)$/;
+
+/** Le nom coupe en deux par la transcription : « Jar vis », « Ous mane ». */
+function nomCoupe(premier: string, second: string): boolean {
+  if (premier === 'jar') return /^vi[sc]?e?$/.test(second);
+  if (/^h?(?:ou|u|o)s{1,2}$/.test(premier)) return /^m[ae]n{1,2}e?$/.test(second);
+  return false;
+}
 
 function normaliserMot(mot: string): string {
   return mot
@@ -147,8 +159,8 @@ export function detecterMotDeReveil(texte: string): { entendu: boolean; reste: s
   const normalises = mots.map(normaliserMot);
   for (let i = 0; i < Math.min(2, normalises.length); i += 1) {
     const seul = FORMES_DU_NOM.test(normalises[i]);
-    // « Jar vis » : la transcription coupe parfois le nom en deux.
-    const coupe = normalises[i] === 'jar' && /^vi[sc]?e?$/.test(normalises[i + 1] ?? '');
+    // « Jar vis », « Ous mane » : la transcription coupe parfois le nom en deux.
+    const coupe = nomCoupe(normalises[i], normalises[i + 1] ?? '');
     if (seul || coupe) {
       const reste = mots.slice(i + (coupe ? 2 : 1)).join(' ').replace(/^[\s,.;:!?-]+/, '');
       return { entendu: true, reste };
