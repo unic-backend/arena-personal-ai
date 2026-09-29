@@ -12056,3 +12056,31 @@ testee ne change pas, seul l'exemple.
 **Ce que ca coute si c'est faux** : un markdown inhabituel (tableau sans ligne
 de separation, HTML brut) arrive en texte simple dans le fichier ; le fichier
 existe et se relit, sa mise en forme est pauvre.
+
+## DEC-0168 — Le briefing du matin s'affiche seul a l'ouverture de l'application
+
+**2026-09-29.** Suite de DEC-0166. Le serveur composait le briefing a
+`BRIEFING_HEURE`, mais personne ne le voyait sans le demander : « chaque matin,
+ARENA te resume seul » n'etait vrai qu'a moitie.
+
+**Decision** :
+
+- `GET /api/briefing?seulement_pret=true` rend le briefing compose AUJOURD'HUI,
+  ou `{"pret": false}` — **sans jamais en composer un**. Ouvrir l'ecran ne doit
+  pas lancer quatre recherches. Pas de limite de 3 h ici : celui de 7 h reste
+  le briefing du jour a midi, son heure de composition affichee avec lui. Pas
+  de nouvelle route : un parametre de la route existante (cle + limiteur).
+- La PWA (`lib/briefing`, `BriefingDuJour.tsx` sur l'ecran d'accueil) le
+  demande quand le serveur repond, l'affiche rubrique par rubrique avec l'etat
+  de chacune (« non configure », « indisponible », « information manquante »),
+  propose de l'ecouter, et une fois ferme ne le remontre pas avant le
+  lendemain (`localStorage`, par jour).
+- Une reponse de forme inattendue n'affiche rien : jamais un briefing a moitie
+  lu. Un serveur injoignable n'affiche rien non plus, mais previent le panneau
+  (regle de panne du 04/09/2026, gardee par `regle-de-panne.test.ts`).
+
+**Non mesure** : l'affichage sur le telephone du proprietaire.
+
+**Ce que ca coute si c'est faux** : un briefing ferme sur le telephone reste
+visible sur le PC (le « deja vu » est par appareil) ; il suffit de le fermer
+aussi la-bas.

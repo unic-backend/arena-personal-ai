@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — Le briefing du matin t'attend à l'ouverture
+
+Ouvre l'application le matin : le briefing préparé à 7 h s'affiche seul sur
+l'écran d'accueil, rubrique par rubrique, avec un bouton « Écouter ». Ferme-le
+et il ne revient pas avant le lendemain. Ouvrir l'écran ne relance aucune
+recherche : seul le briefing déjà prêt s'affiche (DEC-0168).
+
 ### Ajouté — 29/09/2026 — Demande un Excel, un PowerPoint ou un Word : tu reçois le fichier
 
 « Fais-moi un fichier Excel du devis », « crée un diaporama de ce projet »,

@@ -210,6 +210,37 @@ async def test_un_briefing_recent_est_rendu_sans_recomposer(monkeypatch):
     assert len(appels) == 1
 
 
+async def test_l_application_ne_declenche_jamais_de_composition(monkeypatch):
+    """A l'ouverture, l'application demande seulement s'il y a un briefing :
+    rien n'est compose pour lui repondre (DEC-0168)."""
+    from apps.backend.routers import briefing as route
+
+    async def composer(sources, maintenant, delai=0):
+        raise AssertionError("ne doit pas composer")
+
+    monkeypatch.setattr(route, "composer_briefing", composer)
+    monkeypatch.setattr(route, "_dernier", None)
+
+    assert await route.lire_briefing(seulement_pret=True) == {"pret": False}
+
+
+async def test_le_briefing_du_matin_reste_celui_du_jour(monkeypatch):
+    from apps.backend.routers import briefing as route
+
+    aujourd_hui = datetime.now().replace(hour=0, minute=1)
+    hier = route.Briefing(jour=date(2020, 1, 1), compose_a=datetime(2020, 1, 1, 7))
+    monkeypatch.setattr(route, "_dernier", hier)
+    assert await route.lire_briefing(seulement_pret=True) == {"pret": False}
+
+    du_jour = route.Briefing(jour=aujourd_hui.date(), compose_a=aujourd_hui,
+                             rubriques=[Rubrique("Agenda", OK, "Rien.")])
+    monkeypatch.setattr(route, "_dernier", du_jour)
+    reponse = await route.lire_briefing(seulement_pret=True)
+    assert reponse["pret"] is True
+    assert reponse["rubriques"] == [{"titre": "Agenda", "etat": OK, "texte": "Rien."}]
+    assert reponse["texte"].startswith("**Briefing du ")
+
+
 @pytest.mark.parametrize("valeur, attendu", [
     ("07:00", time(7, 0)), ("6:30", time(6, 30)), ("off", None), ("", None), ("sept heures", None),
 ])
