@@ -17,7 +17,9 @@ import { create } from 'zustand';
 
 import type { ChatMessage } from '../store/chatStore';
 
-export type PhaseConversation = 'arret' | 'ecoute' | 'reflexion' | 'parole';
+/** `veille` : le micro attend « Jarvis » (DEC-0165) ; les autres phrases
+ *  sont ignorees. */
+export type PhaseConversation = 'arret' | 'veille' | 'ecoute' | 'reflexion' | 'parole';
 
 /** Ce que l'on dit pour sortir du mode — la phrase ENTIERE, pas un mot
  *  contenu : « arrete la video a 10 secondes » est une demande, pas un ordre
@@ -123,17 +125,67 @@ export function reponseAPrononcer(
  *  videait la batterie du telephone sans que personne ne parle. */
 export const SILENCES_AVANT_ARRET = 3;
 
+/* ── Le mot de reveil (DEC-0165) ─────────────────────────────
+   En veille, chaque phrase entendue passe par la meme transcription
+   (Whisper sur la machine du proprietaire, sinon le navigateur) : seules
+   celles qui COMMENCENT par « Jarvis » (au plus un mot avant : « Dis
+   Jarvis », « Ok Jarvis ») sont prises. « J'ai vu Jarvis au cinema » ne
+   reveille personne. */
+
+const FORMES_DU_NOM = /^(?:dj|j)[ae]r?[vw][iy](?:s|ss|ce|se|z)?$/;
+
+function normaliserMot(mot: string): string {
+  return mot
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z']/g, '');
+}
+
+export function detecterMotDeReveil(texte: string): { entendu: boolean; reste: string } {
+  const mots = texte.trim().split(/\s+/).filter(Boolean);
+  const normalises = mots.map(normaliserMot);
+  for (let i = 0; i < Math.min(2, normalises.length); i += 1) {
+    const seul = FORMES_DU_NOM.test(normalises[i]);
+    // « Jar vis » : la transcription coupe parfois le nom en deux.
+    const coupe = normalises[i] === 'jar' && /^vi[sc]?e?$/.test(normalises[i + 1] ?? '');
+    if (seul || coupe) {
+      const reste = mots.slice(i + (coupe ? 2 : 1)).join(' ').replace(/^[\s,.;:!?-]+/, '');
+      return { entendu: true, reste };
+    }
+  }
+  return { entendu: false, reste: '' };
+}
+
 interface EtatConversation {
   phase: PhaseConversation;
+  /** La veille est allumee : une conversation terminee y retourne au lieu
+   *  de tout eteindre. */
+  reveil: boolean;
   silences: number;
+  /** Ou aller quand JARVIS a fini de parler. Apres l'annonce de la veille :
+   *  en veille — jamais ouvrir le micro PENDANT qu'il dit « Jarvis », il se
+   *  reveillerait lui-meme. */
+  apresParole: 'ecoute' | 'veille' | 'arret';
   /** Pourquoi le mode s'est arrete tout seul (micro refuse, transcription
    *  en echec) — affiche, jamais avale. */
   erreur: string | null;
   /** Nombre de messages au moment de l'envoi : la reponse attendue vient apres. */
   depuis: number;
   demarrer(): void;
+  /** Fin de la conversation : retour en veille si elle est allumee. Avec une
+   *  erreur (micro refuse…), TOUT s'arrete : une veille qui echoue en boucle
+   *  viderait la batterie sans rien entendre. */
   arreter(erreur?: string): void;
+  /** Tout eteindre, veille comprise. */
+  couper(): void;
+  activerVeille(): void;
   ecouter(): void;
+  /** JARVIS a fini de parler : ecoute, ou veille apres l'annonce de la veille. */
+  finDeParole(): void;
+  /** « Stop » : JARVIS dit au revoir, PUIS retourne en veille ou s'arrete —
+   *  le micro de la veille ne s'ouvre qu'une fois sa voix eteinte. */
+  conclure(): void;
   reflechir(depuis: number): void;
   parler(): void;
   silence(): void;
@@ -141,20 +193,42 @@ interface EtatConversation {
 
 export const useConversation = create<EtatConversation>((set, get) => ({
   phase: 'arret',
+  reveil: false,
   silences: 0,
+  apresParole: 'ecoute',
   erreur: null,
   depuis: 0,
-  demarrer: () => set({ phase: 'parole', silences: 0, erreur: null }),
-  arreter: (erreur) => set({ phase: 'arret', silences: 0, erreur: erreur ?? null }),
+  demarrer: () => set({ phase: 'parole', apresParole: 'ecoute', silences: 0, erreur: null }),
+  arreter: (erreur) => {
+    if (erreur) {
+      set({ phase: 'arret', reveil: false, silences: 0, erreur });
+      return;
+    }
+    set({ phase: get().reveil ? 'veille' : 'arret', silences: 0, erreur: null });
+  },
+  couper: () => set({ phase: 'arret', reveil: false, silences: 0, erreur: null }),
+  activerVeille: () => set({
+    phase: 'parole', apresParole: 'veille', reveil: true, silences: 0, erreur: null,
+  }),
   ecouter: () => {
     if (get().phase !== 'arret') set({ phase: 'ecoute' });
   },
+  finDeParole: () => {
+    if (get().phase === 'parole') set({ phase: get().apresParole });
+  },
+  conclure: () => set({
+    phase: 'parole', apresParole: get().reveil ? 'veille' : 'arret', silences: 0,
+  }),
   reflechir: (depuis) => set({ phase: 'reflexion', depuis, silences: 0 }),
   parler: () => {
-    if (get().phase !== 'arret') set({ phase: 'parole' });
+    if (get().phase !== 'arret') set({ phase: 'parole', apresParole: 'ecoute' });
   },
   silence: () => {
     const silences = get().silences + 1;
-    set(silences >= SILENCES_AVANT_ARRET ? { phase: 'arret', silences: 0 } : { silences });
+    if (silences < SILENCES_AVANT_ARRET) {
+      set({ silences });
+      return;
+    }
+    set({ phase: get().reveil ? 'veille' : 'arret', silences: 0 });
   },
 }));

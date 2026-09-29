@@ -10,6 +10,14 @@ seul (réglable avec `BRIEFING_HEURE`). Une rubrique qui ne peut pas répondre l
 dit (« agenda non configuré », « ville inconnue ») au lieu d'inventer. Pour la
 météo, enregistre ta ville dans la mémoire : « ville : Dakar » (DEC-0166).
 
+### Ajouté — 29/09/2026 — Dis « Jarvis » pour le réveiller
+
+Touche le bouton oreille : JARVIS se met en veille et attend son nom. Dis
+« Jarvis » et il répond « Oui ? », ou pose directement ta question :
+« Jarvis, quel temps fait-il ? ». Après la conversation, il retourne en veille.
+L'écran reste allumé pendant la veille (sinon le téléphone coupe le micro), et
+ta voix est transcrite par ton PC, pas par un service extérieur (DEC-0165).
+
 ### Ajouté — 29/09/2026 — Parle à JARVIS sans toucher l'écran
 
 Touche le bouton casque : JARVIS dit « Je vous écoute », tu parles, il
