@@ -62,6 +62,7 @@ from core.agent import equipe
 from core.agent.collaboration import conduire_projet, tenir_table_ronde
 from core.agent.message import tache_racine
 from core.architecture.plan import executer as executer_architecture
+from core.context.ancrage import ancrer_question
 from core.context.recherche_unifiee import MOTS_MEMOIRE
 from core.executive import question_en_attente
 from core.fiche_google import demande as fiche_google
@@ -1057,10 +1058,37 @@ async def _travail_d_equipe(texte: str, session_id: str) -> Dict[str, Any]:
         return {"status": "error", "agent": "Equipe", "response": str(erreur)}
 
 
+INTENTIONS_ANCREES = frozenset({
+    "DEEP_RESEARCH", "FINANCE", "TREND_SEARCH", "EXECUTIVE", "BROWSER",
+    "RAG_DOCS", "GRAPHRAG", "DESIGN_UI", "EQUIPE", "UI_GENERATE",
+})
+
+
+def _historique_pour_ancrage(request: ChatRequest, session_id: str) -> List[Dict[str, str]]:
+    """Relit le fil si l'appelant ne l'a pas fourni ; une panne reste locale."""
+    if request.history or request.history_authoritative:
+        return request.history
+    try:
+        return memory.get_recent_history(session_id=session_id, limit=TOURS_RELUS_DEFAUT)
+    except Exception as souci:  # noqa: BLE001 - l'aiguillage doit continuer
+        logger.warning("Fil indisponible pour l'ancrage : %s", souci)
+        return []
+
+
 async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
     """Le corps de l'aiguillage. `intent` est toujours connu ici."""
     session_id = request.session_id or "default"
     logger.info(f"Intention détectée par Usman: {intent}")
+
+    # Seulement les agents qui recevaient jusqu'ici la phrase nue. La question
+    # reste inchangée si elle nomme déjà son sujet ; sinon le dernier sujet du
+    # propriétaire est posé à côté, sans modèle ni reformulation (DEC-0191).
+    if intent in INTENTIONS_ANCREES:
+        request = request.model_copy(update={
+            "prompt": ancrer_question(
+                request.prompt, _historique_pour_ancrage(request, session_id)
+            )
+        })
 
     if intent == "DEEP_REASONING":
         # Le pont `resoudre_profondement` choisit la profondeur selon la

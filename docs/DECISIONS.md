@@ -12813,3 +12813,32 @@ tiennent, dont trois qui **figent la date** avec `os.utime` pour reproduire la
 panne sur n'importe quel systeme de fichiers au lieu d'en dependre. Verifie
 par mutation : ramener l'empreinte a la date seule refait echouer sept tests,
 dont les trois nouveaux.
+
+## DEC-0191 — Une question elliptique garde le sujet du fil
+
+**2026-09-29.** Le point d'aiguillage donnait le fil entier à seulement trois
+intentions sur trente-deux. Les autres agents recevaient la dernière phrase
+nue : après une discussion sur le football, « donne-moi un nom » pouvait donc
+être interprété dans un autre domaine. Ce défaut n'est pas celui de la mémoire
+longue : les barrières de `recuperation.py` et `semantique.py` refusent déjà un
+souvenir sans lien lexical, temporel ou sémantique avec la question.
+
+**Décision** : `core/context/ancrage.py` reconnaît sans modèle une demande qui
+ne nomme aucun sujet, remonte au dernier tour **utilisateur** qui en nomme un,
+et place ses seuls mots significatifs dans un bloc séparé « Sujet du tour
+précédent ». Une question qui possède déjà son sujet reste strictement
+inchangée. Le pronom accolé de « donne-moi » est retiré avant l'analyse ; les
+liaisons telles que « alors » sont vides. Aucun mot n'est inventé et la
+question n'est jamais reformulée.
+
+L'ancrage est appliqué avant l'aiguillage uniquement à `DEEP_RESEARCH`,
+`FINANCE`, `TREND_SEARCH`, `EXECUTIVE`, `BROWSER`, `RAG_DOCS`, `GRAPHRAG`,
+`DESIGN_UI`, `EQUIPE` et `UI_GENERATE`. Les intentions de fichiers et les trois
+voies qui recevaient déjà le fil restent intactes. Si l'appelant n'envoie pas
+d'historique, le même journal court est relu ; une panne de ce journal laisse
+passer la question nue et ne bloque jamais la réponse.
+
+**Preuve** : les tests mesurent le texte reçu par l'agent, couvrent football →
+« donne-moi un nom », le changement explicite vers le basket, la relecture du
+journal et sa panne. En supprimant le branchement dans `_aiguiller`, le test
+d'intégration échoue sur le texte reçu.

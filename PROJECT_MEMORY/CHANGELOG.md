@@ -1,3 +1,19 @@
+## 2026-09-29 — les questions elliptiques gardent le sujet du fil
+
+Après un échange sur le football, « donne-moi un nom » arrivait nue à 29
+intentions sur 32. `core/context/ancrage.py` rattache désormais, sans modèle,
+les dix intentions concernées au dernier sujet écrit par le propriétaire, dans
+un bloc séparé. Une demande qui nomme déjà son sujet reste intacte ; les voies
+de fichiers et celles qui avaient déjà le fil ne changent pas. Le journal court
+est relu en l'absence d'historique et sa panne n'interrompt pas la réponse.
+Voir DEC-0191.
+
+Preuve : 25 tests ciblés et documentaires passent ; mutation du branchement
+confirmée par l'échec du test qui mesure le texte reçu par l'agent. `ruff check
+.` propre.
+
+---
+
 ## 2026-09-29 — la relecture à chaud voyait passer un prix et une interdiction
 
 Diagnostic du dépôt (`docs/audits/diagnostic_2026-09-29.md`). Sept tests
