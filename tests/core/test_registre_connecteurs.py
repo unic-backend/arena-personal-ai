@@ -248,4 +248,6 @@ def test_la_plateforme_rend_un_inventaire_lisible():
     inventaire = {c["nom"]: c for c in runtime.registre.inventaire()}
 
     assert inventaire["tiktok"]["sante"]["etat"] in {"NOT_CONFIGURED", "UNKNOWN"}
-    assert [c["nom"] for c in inventaire["tiktok"]["capacites"]] == ["publish_video"]
+    # DEC-0185 : lire le compte et l'etat d'un envoi, publier, deposer un brouillon.
+    assert [c["nom"] for c in inventaire["tiktok"]["capacites"]] == [
+        "compte", "publish_video", "envoyer_brouillon", "statut_publication"]

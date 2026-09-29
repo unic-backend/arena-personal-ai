@@ -29,6 +29,7 @@ demarrage, `apps/backend/runtime.py` recharge ce qui y est enregistre dans
    creee, doit demarrer comme n'importe quel autre premier lancement.
 """
 import logging
+import os
 import sqlite3
 import time
 from contextlib import closing
@@ -81,3 +82,38 @@ def charger_tout(db_path: str) -> Dict[str, str]:
             "Jetons persistants illisibles (%s) : demarre comme si aucun "
             "n'etait enregistre.", erreur)
         return {}
+
+
+def persister(db_path: str, chemin_env: Path, variable: str, valeur: str) -> None:
+    """Le jeton partout ou il doit survivre : le processus, la base, et `.env`.
+
+    Le processus d'abord : le prochain appel marche sans redemarrer. La base
+    ensuite : c'est elle, et seulement elle, qui survit a un redeploiement sur
+    un hebergement sans fichier `.env`. `.env` enfin, en best-effort : sans
+    lui, un fichier qui garderait l'ANCIENNE valeur l'emporterait au prochain
+    demarrage (`runtime.py` ne recharge la base que pour ce que l'environnement
+    n'a pas) — ce qui compte pour un jeton que le fournisseur change, comme
+    celui de TikTok (DEC-0185).
+    """
+    os.environ[variable] = valeur
+    enregistrer(db_path, variable, valeur)
+    if not chemin_env.exists():
+        logger.info(
+            "%s mis a jour en memoire ; aucun fichier .env sur disque pour le "
+            "persister (plateforme hebergee ?).", variable)
+        return
+    try:
+        lignes = chemin_env.read_text(encoding="utf-8").splitlines()
+        prefixe = f"{variable}="
+        for i, ligne in enumerate(lignes):
+            if ligne.startswith(prefixe):
+                lignes[i] = f"{prefixe}{valeur}"
+                break
+        else:
+            lignes.append(f"{prefixe}{valeur}")
+        chemin_env.write_text("\n".join(lignes) + "\n", encoding="utf-8")
+    except OSError as erreur:
+        logger.warning(
+            "%s mis a jour en memoire mais pas persiste dans .env (%s) : il "
+            "faudra reconnecter apres un redemarrage.", variable, erreur)
+

@@ -2,6 +2,15 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — TikTok publie vraiment
+
+Le connecteur TikTok parle maintenant à TikTok : il publie ta vidéo avec sa
+légende, ou la dépose dans ta boîte TikTok pour que tu la publies toi-même,
+toujours après ton accord, et il te dit où elle en est. Tant que TikTok n'a
+pas audité ton application, une vidéo publiée par l'API reste privée. Le
+bouton « Connecter TikTok » arrive à l'étape suivante
+(`docs/CONNECTER_MES_COMPTES.md`) (DEC-0185).
+
 ### Ajouté — 29/09/2026 — « Mes avis Google », « réponds à l'avis de Fatou »
 
 JARVIS lit ta fiche Google Maps et tes avis — ta note et leur nombre tels que
