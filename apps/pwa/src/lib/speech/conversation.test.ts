@@ -22,7 +22,7 @@ function message(partiel: Partial<ChatMessage>): ChatMessage {
 }
 
 describe("l'ordre d'arret", () => {
-  it.each(['Stop', 'stop.', 'Arrête', 'arrete !', "c'est tout", 'C’est tout', 'Merci Jarvis', 'au revoir'])(
+  it.each(['Stop', 'stop.', 'Arrête', 'arrete !', "c'est tout", 'C’est tout', 'Merci Jarvis', 'au revoir', 'Merci Usman', 'Stop Usman'])(
     '« %s » arrete le mode', (phrase) => {
       expect(estOrdreDArret(phrase)).toBe(true);
     });
@@ -108,12 +108,23 @@ describe('le mot de reveil (DEC-0165)', () => {
     ['Djarvis, bonjour', 'bonjour'],
     ['Jar vis, quelle date', 'quelle date'],
     ['Jervis !', ''],
+    // DEC-0189 : « hey Usman », et les formes qu'une transcription francaise en donne
+    ['Hey Usman, lis mes mails', 'lis mes mails'],
+    ['Usman', ''],
+    ['Ok Usman quelle heure est-il', 'quelle heure est-il'],
+    ['Ousmane, mon briefing', 'mon briefing'],
+    ['Hé Ousmane !', ''],
+    ['Osman, bonjour', 'bonjour'],
+    ['Ous mane, quelle date', 'quelle date'],
   ])('« %s » le reveille, et la demande est « %s »', (phrase, reste) => {
     expect(detecterMotDeReveil(phrase)).toEqual({ entendu: true, reste });
   });
 
   it.each([
     "J'ai vu Jarvis au cinema hier",   // le nom, mais pas en tete : une conversation
+    "J'ai appele Ousmane ce matin",
+    'Oui, mais demain',
+    'Usine de Thiès',
     'quel temps fait-il',
     'Java est un langage',
     '',

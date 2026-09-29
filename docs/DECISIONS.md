@@ -12732,3 +12732,28 @@ Google. « Publie ma derniere video sur TikTok » atteignait deja SocialAgent
 **Ce que ca coute si c'est faux** : rien de plus qu'avant — une intention
 specialisee passe par `dispatch_request`, qui rend l'etat reel du connecteur.
 
+
+## DEC-0189 — « Hey Usman » reveille le micro, « Jarvis » aussi
+
+**2026-09-29.** Demande du proprietaire : « si je dis hey usman il declenche ».
+Question posee avant d'ecrire : reveil seul, renommage complet, ou les deux ?
+Reponse : **reveil « Usman » seulement** ; le reste de l'application ne change
+pas.
+
+**Decision** :
+
+- `detecterMotDeReveil` (`apps/pwa/src/lib/speech/conversation.ts`) accepte
+  « Usman » en tete de phrase, avec au plus un mot avant (« Hey », « Ok »,
+  « Hé »), sous les formes qu'une transcription francaise en donne :
+  « Ousmane », « Usmane », « Osman », « Housmane », et coupe en deux
+  (« Ous mane »). « Jarvis » reste accepte : rien n'a demande de le retirer.
+- « Merci Usman », « Stop Usman », « Usman stop » arretent le mode, comme
+  leurs equivalents « Jarvis ».
+- Les textes de la veille disent « Usman » (« En veille — dites « Usman » »,
+  et la phrase prononcee a l'activation). Aucun autre texte n'est touche.
+
+**Ce que ca coute si c'est faux** : « Ousmane » est un prenom courant. Quelqu'un
+qui appelle « Ousmane ! » pres du telephone en veille le reveille — comme
+« Jarvis » dit en tete de phrase le faisait deja. La veille ecoute une phrase
+qui COMMENCE par le nom ; « j'ai appele Ousmane ce matin » ne reveille rien
+(teste).

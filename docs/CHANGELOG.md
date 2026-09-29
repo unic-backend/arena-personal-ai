@@ -2,6 +2,12 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — « Hey Usman » réveille le micro
+
+En veille, dis « Hey Usman », « Ok Usman » ou simplement « Usman, … » :
+le micro se réveille, même si le téléphone l'écrit « Ousmane ». « Jarvis »
+marche toujours, et « Merci Usman » arrête la conversation (DEC-0189).
+
 ### Corrigé — 29/09/2026 — Depuis le téléphone, « mon site » et « mes avis Google » marchent
 
 Testé dans la vraie application, en taille téléphone : ces deux demandes
