@@ -13,10 +13,11 @@ quelle a `VisionAgent` (DEC-0019), qui parle au modele de vision.
 
 **Quatre regles, et la premiere est une regle de vie privee :**
 
-1. **Le fichier est efface des qu'il est lu.** Seul son texte — ou, pour une
-   image, ses octets encodes — reste, en memoire, pour la duree d'une
-   conversation. Ses devis, ses plans et ses courriers de clients ne
-   s'accumulent pas dans un dossier que personne ne surveille.
+1. **Le fichier est efface des qu'il est lu.** Seul son texte — et ses
+   octets encodes, pour qu'il puisse etre converti (DEC-0177) — reste, en
+   memoire, pour la duree d'une conversation. Ses devis, ses plans et ses
+   courriers de clients ne s'accumulent pas dans un dossier que personne ne
+   surveille.
 
 2. **Le contenu d'une piece jointe est une donnee, jamais une consigne.** Un
    document peut contenir la phrase « ignore tes instructions ». Il est annonce
@@ -92,6 +93,11 @@ class PieceJointe:
     texte: str = ""
     image_base64: str = ""
     pdf_base64: str = ""
+    #: Les octets d'origine d'un document (Word, Excel, PowerPoint, CSV,
+    #: texte) — en memoire seulement, et pour la meme heure que son texte —
+    #: pour pouvoir le CONVERTIR a la demande (DEC-0177). Le PDF garde son
+    #: champ `pdf_base64`, l'image le sien.
+    contenu_base64: str = ""
     raison: Optional[str] = None
     tronque: bool = False
     depose_le: str = ""
@@ -100,6 +106,11 @@ class PieceJointe:
     @property
     def est_image(self) -> bool:
         return bool(self.image_base64)
+
+    def octets_originaux(self) -> Optional[bytes]:
+        """Le fichier tel qu'il a ete envoye, ou None s'il n'a pas ete garde."""
+        encode = self.pdf_base64 or self.image_base64 or self.contenu_base64
+        return base64.b64decode(encode) if encode else None
 
     @property
     def lisible(self) -> bool:
@@ -256,6 +267,11 @@ class DepotPiecesJointes:
             # la, `contenu` — aucune relecture du disque), au cas ou
             # `PlaquisteAgent` en a besoin pour OpenTakeoff.
             pdf_base64=base64.b64encode(contenu).decode("ascii") if extension == ".pdf" else "",
+            # Tout autre document garde aussi ses octets d'origine, en memoire,
+            # pour « convertis ce fichier en ... » (DEC-0177). Seulement s'il a
+            # ete lu : un fichier illisible n'a rien a convertir.
+            contenu_base64=(base64.b64encode(contenu).decode("ascii")
+                            if extension != ".pdf" and document.statut == "LU" else ""),
             tronque=tronque, depose_le=depose, expire_le=expire,
         )
         self._pieces[piece.identifiant] = piece

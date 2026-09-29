@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import re
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -40,6 +41,7 @@ from apps.backend.runtime import (
     memory,
     montage_agent,
     orchestrator,
+    pieces_jointes,
     plaquiste_agent,
     publisher_agent,
     registre,
@@ -64,6 +66,7 @@ from core.context.recherche_unifiee import MOTS_MEMOIRE
 from core.executive import question_en_attente
 from core.memory.conversation import rendre_le_fil
 from core.observabilite.fil import tache
+from core.production.conversion.demande import format_de_conversion
 from tools.documents.indexer import (
     DOSSIER_DOCUMENTS,
     FICHIER_INVENTAIRE,
@@ -632,6 +635,85 @@ async def _joindre_document(
 
 
 
+#: Au-dela, une seule demande convertirait un dossier entier depuis un
+#: telephone : le connecteur a un chemin de lot pour ca.
+PIECES_CONVERTIES_MAX = 5
+
+
+def _convertir_une_piece(identifiant: str, format_cible: str) -> Dict[str, Any]:
+    """Une piece jointe -> un fichier converti, par `file_conversion`.
+
+    Le fichier d'origine n'existe plus sur le disque (regle de vie privee de
+    `pieces_jointes`) : ses octets, gardes en memoire, sont recrits dans un
+    dossier jetable le temps de la conversion, puis effaces — reussite ou
+    non. La conversion passe par le connecteur, donc par sa garde de
+    securite, sa validation qui rouvre le fichier et ses replis.
+    """
+    piece = pieces_jointes.lire(identifiant)
+    if piece is None:
+        return {"ok": False, "nom": identifiant,
+                "raison": "le fichier n'est plus disponible (plus d'une heure ?) : renvoie-le"}
+    octets = piece.octets_originaux()
+    if not octets:
+        return {"ok": False, "nom": piece.nom,
+                "raison": piece.raison or "son contenu d'origine n'a pas ete garde"}
+    with tempfile.TemporaryDirectory(prefix="arena-piece-conv-") as dossier:
+        source = Path(dossier) / piece.nom
+        source.write_bytes(octets)
+        resultat = registre.executer(
+            "file_conversion", "convertir", entree=str(source), format_cible=format_cible)
+    corps = resultat.to_dict() if hasattr(resultat, "to_dict") else dict(resultat or {})
+    detail = corps.get("detail") or {}
+    if corps.get("status") != "SUCCESS" or not detail.get("url"):
+        return {"ok": False, "nom": piece.nom,
+                "raison": corps.get("response") or "conversion impossible"}
+    nom_sortie = Path(str(corps.get("preuve") or "")).name
+    return {"ok": True, "nom": piece.nom, "url": detail["url"], "sortie": nom_sortie,
+            "limites": detail.get("limites_qualite") or "",
+            "octets": detail.get("taille_apres_octets")}
+
+
+async def _convertir_les_pieces(demande: str, identifiants: List[str]) -> Dict[str, Any]:
+    """« Convertis ce fichier en Word » (DEC-0177) : chaque piece jointe de
+    CE message, convertie ; chaque echec dit, jamais passe sous silence."""
+    format_cible = format_de_conversion(demande)
+    if format_cible is None:
+        return {"status": "error", "agent": "Conversion",
+                "response": "Dis-moi en quel format convertir le fichier : "
+                            "« convertis ce fichier en PDF », « en Word », « en Excel »…"}
+    if not identifiants:
+        return {"status": "error", "agent": "Conversion",
+                "response": "Joins le fichier a convertir (le trombone), puis redemande : "
+                            "je ne convertis que ce que tu m'envoies."}
+    resultats = [await asyncio.to_thread(_convertir_une_piece, ident, format_cible)
+                 for ident in identifiants[:PIECES_CONVERTIES_MAX]]
+    reussis = [r for r in resultats if r["ok"]]
+    lignes = [f"- « {r['nom']} » -> {r['sortie']}" for r in reussis]
+    lignes += [f"- « {r['nom']} » : non converti — {r['raison']}" for r in resultats if not r["ok"]]
+    if len(identifiants) > PIECES_CONVERTIES_MAX:
+        lignes.append(f"- {len(identifiants) - PIECES_CONVERTIES_MAX} autre(s) fichier(s) non "
+                      f"traite(s) : {PIECES_CONVERTIES_MAX} au plus par message.")
+    limites = sorted({r["limites"] for r in reussis if r["limites"]})
+    texte = (f"Conversion en .{format_cible} — {len(reussis)} sur {len(resultats)} :\n"
+             + "\n".join(lignes))
+    if limites:
+        texte += "\n\n*A savoir : " + " ".join(limites) + "*"
+    documents = [{"statut": "SUCCESS", "url": r["url"], "nom": r["sortie"],
+                  "format": format_cible, "octets": r["octets"],
+                  "message": f"Document « {r['sortie']} » ({format_cible.upper()})"}
+                 for r in reussis]
+    return {
+        "status": "success" if reussis else "error",
+        "agent": "Conversion",
+        "response": texte,
+        # Le premier dans `document` — le canal que l'interface lit deja (et
+        # qui empeche `_joindre_document` d'en fabriquer un autre) ; tous
+        # dans `documents`.
+        "document": documents[0] if documents else {"statut": "FAILED", "url": None},
+        "documents": documents,
+    }
+
+
 #: Les controles deterministes de l'orchestrateur qui l'emportent MEME sur
 #: une question restee en attente. « Bonjour », « combien de mails ? »,
 #: « analyse le bitcoin » : le proprietaire a manifestement change de sujet,
@@ -655,6 +737,9 @@ CONTROLES_QUI_PRIMENT = (
     # Le briefing du matin (DEC-0166) : « Jarvis, mon briefing » n'est jamais
     # la reponse a une question en attente.
     "demande_de_briefing",
+    # « Convertis ce PDF en Word » (DEC-0177) : un fichier envoye, jamais la
+    # reponse a une question en attente.
+    "demande_de_conversion",
 )
 
 
@@ -1062,6 +1147,10 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         briefing = await briefing_du_jour()
         result = {"status": "success", "agent": "Briefing",
                   "response": briefing.en_texte(), "briefing": briefing.en_dict()}
+    elif intent == "CONVERSION":
+        # Une piece jointe convertie (DEC-0177) : le fichier envoye, par le
+        # connecteur de conversion — jamais la reponse du modele.
+        result = await _convertir_les_pieces(request.prompt, request.attachments)
     elif intent == "EQUIPE":
         # Plusieurs agents sur une meme demande (DEC-0146) : table ronde ou
         # projet reparti. Les agents viennent du registre, par competence.
