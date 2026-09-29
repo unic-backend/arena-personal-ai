@@ -6,14 +6,15 @@ jamais dans le chat, jamais sur GitHub.** JARVIS ne te les demandera jamais.
 
 Ce qui est branché aujourd'hui :
 
-> **Pas encore par une phrase.** Les connecteurs ci-dessous sont prêts et
-> testés, mais JARVIS ne sait pas encore choisir le bon réseau quand tu lui
-> parles : cet aiguillage est la prochaine étape. Mettre tes clés maintenant
+> **Facebook et Instagram répondent déjà à une phrase** : « écris une
+> publication sur mon chantier et publie-la sur Facebook », « analyse mes
+> publications Instagram ». Les sites Netlify, pas encore : c'est la
+> prochaine étape. Mettre tes clés maintenant
 > permet déjà de vérifier que la connexion marche (santé des connecteurs).
 
 | Compte | État | Connecteur |
 |---|---|---|
-| Page Facebook + Instagram | prêt, attend tes clés | `social/meta/meta_connector.py` |
+| Page Facebook + Instagram | prêt, attend tes clés — **joignable par une phrase** | `social/meta/meta_connector.py` |
 | Sites Netlify | prêt, attend ta clé | `core/connectors/netlify.py` |
 | LinkedIn | à venir | — |
 | Fiche Google (Maps) | à venir | — |

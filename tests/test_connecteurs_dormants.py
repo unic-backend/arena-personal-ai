@@ -54,10 +54,8 @@ DORMANTS_CONNUS = {
     # Le plan annonce au proprietaire branche les connecteurs d'abord, puis
     # l'aiguillage de JARVIS vers eux (etape 4) : c'est cette etape qui les
     # sortira d'ici, et `test_un_connecteur_reveille_sort_de_la_liste` l'y
-    # obligera.
-    "meta": ("Aucune phrase n'atteint encore Facebook ni Instagram : SocialAgent "
-             "soumet toujours ses publications a tiktok. L'aiguillage par reseau "
-             "est l'etape 4 du plan (DEC-0179)."),
+    # obligera. `meta` en est sorti le jour meme : SocialAgent publie sur
+    # Facebook et Instagram et lit leurs chiffres (DEC-0181).
     "netlify": ("Aucun agent ni route n'interroge encore les sites Netlify : "
                 "l'aiguillage de JARVIS vers eux est l'etape 4 du plan (DEC-0180)."),
 }
