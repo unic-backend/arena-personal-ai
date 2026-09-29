@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — « Mes avis Google », « réponds à l'avis de Fatou »
+
+JARVIS lit ta fiche Google Maps et tes avis — ta note et leur nombre tels que
+Google les calcule — et répond à un avis quand tu le lui dis, après ton
+accord. Même compte Google que ton courrier : Réglages → Connecteurs →
+Google Business Profile. Google doit d'abord ouvrir ses API à ton projet
+(`docs/CONNECTER_MES_COMPTES.md`) (DEC-0184).
+
 ### Ajouté — 29/09/2026 — « Publie-la sur LinkedIn »
 
 JARVIS publie sur ton profil LinkedIn le texte qu'il a écrit dans ta voix —

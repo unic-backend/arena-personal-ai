@@ -13,10 +13,13 @@
    31/08/2026) : real OAuth against apps/backend/routers/connectors.py,
    which drives core/connectors/gmail.py (already complete: list,
    search, read, send — send locked behind confirmation).
+   29/09/2026 (DEC-0184) : Google Business Profile joins it — the same
+   OAuth flow and Google account, driving core/connectors/fiche_google.py
+   (listing, reviews; replying locked behind confirmation).
    ───────────────────────────────────────────────────────────── */
 
 import type { LucideIcon } from 'lucide-react';
-import { Mail } from 'lucide-react';
+import { Mail, MapPin } from 'lucide-react';
 
 export type ConnectorAuth = 'oauth' | 'apikey';
 
@@ -46,6 +49,15 @@ export const CONNECTOR_CATALOG: ConnectorDef[] = [
     descriptionFr: 'Lire, rechercher — brouillon et envoi seulement avec ta confirmation',
     scopes: ['read mail', 'search', 'send (confirmed)'],
     scopesFr: ['lecture', 'recherche', 'envoi (confirmé)'],
+  },
+  {
+    // DEC-0184 : same Google account as Gmail, one more scope (business.manage).
+    id: 'fiche_google', name: 'Google Business Profile', icon: MapPin, category: 'productivity',
+    auth: 'oauth',
+    description: 'Read your Google Maps listing and reviews — reply only with your confirmation',
+    descriptionFr: 'Lire ta fiche Google Maps et tes avis — réponse seulement avec ta confirmation',
+    scopes: ['read listing', 'read reviews', 'reply (confirmed)'],
+    scopesFr: ['fiche', 'avis', 'réponse (confirmée)'],
   },
 ];
 

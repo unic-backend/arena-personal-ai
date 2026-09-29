@@ -12553,3 +12553,45 @@ d'API par defaut (`202509`) est reglable par `LINKEDIN_API_VERSION`.
 change fait refuser le post par LinkedIn, avec son message — rien ne part a
 la place, et chaque post attend l'accord du proprietaire.
 
+## DEC-0184 — La fiche Google : ses avis, et y repondre par une phrase
+
+**2026-09-29.** Dernier compte du plan (reponse du proprietaire : « ma fiche
+entreprise »). Le service `business_profile` etait declare dans
+`config/permissions_services.yaml` sans aucun connecteur.
+
+**Decision** :
+
+- `core/connectors/fiche_google.py`, service `business_profile`, nom
+  `fiche_google`. Il reutilise `google_oauth.JetonGoogle` : **le meme jeton
+  que le courrier**, avec la portee `business.manage` en plus.
+  - `fiche` (lecture) : nom, adresse, site.
+  - `avis` (lecture) : la note moyenne et le nombre d'avis sont **ceux que
+    Google calcule** (`averageRating`, `totalReviewCount`) — jamais une
+    moyenne des seuls avis lus. Le texte des avis voyage enveloppe
+    `EXTERNAL`, auteur compris.
+  - `repondre_avis` (`reply` : confirmation + coupe-circuit SEND_MESSAGES) :
+    `PUT .../reviews/{id}/reply`. Un succes exige le `updateTime` rendu par
+    Google ; un identifiant d'avis contenant « / » est refuse.
+  - Rien ne modifie la fiche, rien ne supprime.
+- La connexion : `fiche_google` rejoint `FOURNISSEURS_OAUTH`
+  (`apps/backend/routers/connectors.py`) avec la seule portee
+  `business.manage`, et le meme `GOOGLE_REFRESH_TOKEN`. Le consentement
+  demande `include_granted_scopes` : le nouveau jeton garde les portees du
+  courrier. La PWA montre la carte « Google Business Profile »
+  (`apps/pwa/src/lib/connectors/catalog.ts`).
+- La phrase : `core/fiche_google/demande.py` et l'intention `FICHE_GOOGLE`,
+  comme `SITE_WEB` (DEC-0182) — aucun agent, aucun modele, voie `RECHERCHE`,
+  controle prioritaire sur une question en attente. Il faut une reference a
+  SA fiche (« ma fiche », « mes avis », « avis google »…) : « la note de
+  Google en bourse » n'en est pas une. « Reponds a l'avis de Fatou : … »
+  lit les avis, vise celui de Fatou, et soumet la reponse telle qu'elle a
+  ete dite ; deux auteurs possibles ne sont jamais departages a sa place.
+
+**Non mesure** : aucun appel reel a Google. **Google n'ouvre les API Business
+Profile qu'apres examen du projet** : tant que ce n'est pas fait, le connecteur
+rapporte le refus de Google, et c'est l'etat attendu.
+
+**Ce que ca coute si c'est faux** : un chemin d'API change fait refuser la
+lecture, avec le message de Google ; une reponse visant le mauvais avis
+serait montree au proprietaire (auteur et texte) avant de partir.
+
