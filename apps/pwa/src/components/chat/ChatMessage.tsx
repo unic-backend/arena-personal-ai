@@ -583,7 +583,7 @@ export const ChatMessage = memo(function ChatMessage({
             </circle>
           </svg>
         </span>
-        <span className="text-ui-meta font-medium tracking-wide text-zinc-500">Usman</span>
+        <span className="text-ui-meta font-medium tracking-wide text-zinc-500">JARVIS</span>
         {msg.meta?.durationMs !== undefined && msg.status === 'done' && (
           <span className="font-mono text-ui-meta text-zinc-700">{formatDuration(msg.meta.durationMs)}</span>
         )}
