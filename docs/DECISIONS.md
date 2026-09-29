@@ -12239,3 +12239,28 @@ echouait sur une machine sans lui.
 **Ce que ca coute si c'est faux** : couleurs, largeurs de colonnes, cellules
 fusionnees, graphiques et images du classeur sont perdus ; la limite de
 qualite l'annonce avec le fichier.
+
+## DEC-0175 — PowerPoint -> PDF sans LibreOffice : une page par diapositive
+
+**2026-09-29.** Dernier couple bureautique qui dependait du seul LibreOffice
+(DEC-0172 a DEC-0174 ont traite les trois autres). Avec lui, un PC sans
+LibreOffice convertit Word, Excel et PowerPoint en PDF, et PDF en Word.
+
+**Decision** :
+
+- `core/production/conversion/presentation_pdf.py`, declare **apres**
+  LibreOffice. python-pptx lit chaque diapositive : son titre d'abord, puis
+  ses zones de texte (niveau de puce -> retrait, gras, italique) et ses
+  tableaux. Une section par diapositive, donc **une page par diapositive**,
+  au format de la presentation (16:9 ou 4:3, lu en EMU).
+- **Une diapositive sans texte garde sa page**, marquee « (diapositive sans
+  texte) » : sans elle, la page 5 du PDF ne serait plus la diapositive 5.
+- Meme rendu sur que Word et Excel (`word_pdf.rendre_pdf`) : texte echappe,
+  aucune ressource chargee.
+- Une presentation sans aucun texte, ou corrompue, fait echouer le moteur
+  en le disant.
+
+**Ce que ca coute si c'est faux** : images, formes, couleurs, arriere-plans,
+disposition exacte et notes de l'orateur sont perdus — une presentation
+surtout visuelle donne un PDF pauvre. La limite de qualite le dit avec le
+fichier ; LibreOffice, quand il est installe, garde tout cela.
