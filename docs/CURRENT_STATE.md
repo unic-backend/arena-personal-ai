@@ -48,7 +48,9 @@ lui qui convertisse ; voir plus bas). `ruff check .` et
 `scripts/silent_failure_gate.py` propres.
 
 **Matrice de conversion** (`matrice_disponibilite()`) : **167 couples declares,
-76 disponibles ici** ; les 91 autres sont tous audio ou video (ffmpeg absent).
+71 disponibles ici** — remesure apres DEC-0176. Les 96 autres : 91 audio ou
+video (ffmpeg absent) et 5 que seul LibreOffice sait faire (ODT, RTF, ODS, ODP
+-> PDF ; HTML -> Word).
 
 | Ce que JARVIS sait produire | Moteur | Sans LibreOffice ? |
 |---|---|---|
@@ -62,12 +64,11 @@ lui qui convertisse ; voir plus bas). `ruff check .` et
 **Aucune formule ne traverse** une conversion (DEC-0169) : un texte « =... »
 reste un texte dans un classeur ecrit, et est neutralise dans un CSV.
 
-**LibreOffice ici : present, inoperant, et declare disponible.**
-`soffice --convert-to pdf` rend « source file could not be loaded » avec un
-code de sortie 0. La sonde `soffice_disponible` ne verifie que la presence du
-binaire ; le connecteur rattrape le cas (aucun fichier produit -> moteur
-suivant), mais `formats_disponibles` annonce LibreOffice disponible alors
-qu'il ne convertit rien sur cette machine.
+**LibreOffice ici : present, inoperant — et desormais declare indisponible**
+(DEC-0176). `soffice --convert-to pdf` rend « source file could not be
+loaded » avec un code de sortie 0. La sonde fait maintenant une vraie
+conversion d'essai et rapporte cette raison ; `formats_disponibles` ne
+l'annonce plus disponible sur cette machine.
 
 **JARVIS** (DEC-0163 a DEC-0166, DEC-0168) : identite et consigne du
 proprietaire, conversation mains libres, mot de reveil « Jarvis », briefing du

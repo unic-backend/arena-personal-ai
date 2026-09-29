@@ -12264,3 +12264,35 @@ LibreOffice convertit Word, Excel et PowerPoint en PDF, et PDF en Word.
 disposition exacte et notes de l'orateur sont perdus — une presentation
 surtout visuelle donne un PDF pauvre. La limite de qualite le dit avec le
 fichier ; LibreOffice, quand il est installe, garde tout cela.
+
+## DEC-0176 — LibreOffice est declare disponible s'il convertit, pas s'il existe
+
+**2026-09-29.** Demande du proprietaire, apres la mesure consignee dans
+`docs/CURRENT_STATE.md` : dans le conteneur de travail, `soffice` existe,
+repond a `--version`, et rend 0 a une conversion **sans rien ecrire**
+(« source file could not be loaded »). La sonde `soffice_disponible` ne
+regardait que le PATH : la matrice annoncait LibreOffice disponible pour cinq
+couples qu'aucun moteur ne savait faire ici.
+
+**Decision** :
+
+- `soffice_disponible` fait une **vraie conversion d'essai** — un texte d'une
+  ligne vers PDF, avec la meme commande et un profil jetable, comme
+  `convertir_office`. Seul un fichier produit **qui commence par `%PDF-`**
+  prouve que LibreOffice marche ; sinon la raison mesuree (sortie de
+  LibreOffice, delai depasse, lancement impossible) est rendue.
+- **Le resultat est garde** : 10 minutes pour une reussite, 1 minute pour un
+  echec — la matrice interroge la sonde pour chaque couple LibreOffice et le
+  connecteur a chaque conversion ; un LibreOffice installe ou repare est vu
+  dans la minute. Un verrou evite deux sondes simultanees.
+- `convertir_office` passe par la meme sonde : un LibreOffice qui ne convertit
+  pas est refuse avant la conversion, avec la raison mesuree.
+
+**Effet mesure ici** : 71 couples disponibles sur 167 au lieu de 76 — les 5
+couples dont LibreOffice est le seul moteur (ODT, RTF, ODS, ODP -> PDF ;
+HTML -> Word) sont annonces indisponibles, ce qui est vrai sur cette machine.
+Word, Excel et PowerPoint -> PDF restent disponibles par leurs replis.
+
+**Ce que ca coute si c'est faux** : la premiere question sur les formats coute
+une conversion d'essai (1,5 s mesuree ici, davantage au premier demarrage de
+LibreOffice sur un PC) ; les suivantes, rien pendant la validite.
