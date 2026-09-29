@@ -316,3 +316,133 @@ def test_l_intention_a_une_voie():
     from core.execution.voies import voie_pour
 
     assert voie_pour("SOCIAL").value in ("DEEP", "LIGHT")
+
+
+# --- Le reseau nomme choisit le connecteur (DEC-0181) ---------------------------------
+
+from agents.social.social_agent import reseau_demande  # noqa: E402
+from core.actions.resultat import non_configure, succes  # noqa: E402
+
+
+@pytest.mark.parametrize("phrase,reseau", [
+    ("publie-la sur Instagram", "instagram"),
+    ("mets ça sur insta", "instagram"),
+    ("publie-le sur facebook", "facebook"),
+    ("un post LinkedIn", "linkedin"),
+    ("sur tik tok", "tiktok"),
+    ("installe le plafond et publie-le", None),   # « installe » n'est pas « insta »
+    ("publie-la", None),
+])
+def test_le_reseau_nomme_est_reconnu(phrase, reseau):
+    assert reseau_demande(phrase) == reseau
+
+
+async def test_facebook_passe_par_meta(avec_voix):
+    registre = RegistreDouble(a_confirmer(action="publier_facebook", cible="meta",
+                                          message="Pret. Rien n'est parti."))
+    resultat = await agent(avec_voix, registre=registre).run(
+        "Ecris une publication sur mon chantier et publie-la sur Facebook")
+
+    assert registre.appels == [("meta", "publier_facebook", {"message": PUBLICATION.strip()})]
+    assert resultat["execution"]["statut"] == "EN_ATTENTE_APPROBATION"
+
+
+async def test_instagram_part_avec_l_image_donnee(avec_voix):
+    registre = RegistreDouble(a_confirmer(action="publier_instagram", cible="meta",
+                                          message="Pret. Rien n'est parti."))
+    await agent(avec_voix, registre=registre).run(
+        "Ecris une publication et publie-la sur Instagram avec https://cdn.test/plafond.jpg")
+
+    connecteur, capacite, parametres = registre.appels[0]
+    assert (connecteur, capacite) == ("meta", "publier_instagram")
+    assert parametres["image_url"] == "https://cdn.test/plafond.jpg"
+    assert parametres["legende"] == PUBLICATION.strip()
+
+
+async def test_instagram_sans_image_ne_met_rien_en_attente(avec_voix):
+    registre = RegistreDouble()
+    resultat = await agent(avec_voix, registre=registre).run(
+        "Ecris une publication et publie-la sur Instagram")
+
+    assert registre.appels == [], "une action qui ne peut pas partir n'attend pas son accord"
+    assert "adresse https://" in resultat["response"]
+    assert resultat["execution"]["statut"] == "PRET"
+    assert resultat["execution"]["brouillon"], "le brouillon reste"
+
+
+async def test_linkedin_n_est_pas_envoye_a_un_autre_reseau(avec_voix):
+    registre = RegistreDouble()
+    resultat = await agent(avec_voix, registre=registre).run(
+        "Ecris une publication et publie-la sur LinkedIn")
+
+    assert registre.appels == []
+    assert "LinkedIn n'est pas encore branche" in resultat["response"]
+
+
+async def test_un_refus_n_est_pas_annonce_en_attente(avec_voix):
+    registre = RegistreDouble(refuse(action="publier_facebook", cible="meta", permission="PUBLISH"))
+    resultat = await agent(avec_voix, registre=registre).run(
+        "Ecris une publication et publie-la sur Facebook")
+
+    assert resultat["execution"]["statut"] == "PRET"
+
+
+class RegistreMeta:
+    """Rend un resultat par capacite, et note les appels."""
+
+    def __init__(self, resultats):
+        self.resultats = resultats
+        self.appels = []
+
+    def executer(self, connecteur, capacite, **parametres):
+        self.appels.append((connecteur, capacite))
+        return self.resultats[capacite]
+
+
+MEDIAS = [
+    {"id": "1", "caption": "Faux plafond Almadies\nsuite", "like_count": 40, "comments_count": 3,
+     "permalink": "https://instagram.test/p/1"},
+    {"id": "2", "caption": "Cloison BA13", "like_count": 12, "comments_count": 1},
+]
+
+
+async def test_l_analyse_compte_les_vrais_chiffres_d_instagram(avec_voix):
+    registre = RegistreMeta({"instagram_publications": succes(
+        "instagram_publications", "meta", "lu", preuve="meta:GET:/9/media", donnees=MEDIAS)})
+    modele = ModeleDouble()
+
+    resultat = await agent(avec_voix, modele, registre=registre).run(
+        "Analyse mes publications Instagram")
+
+    assert registre.appels == [("meta", "instagram_publications")]
+    assert modele.prompts == [], "des sommes, aucun modele"
+    assert "2 publication(s), 52 J'aime, 4 commentaire(s)" in resultat["response"]
+    assert "« Faux plafond Almadies »" in resultat["response"]
+    assert resultat["execution"]["statut"] == "PRET"
+
+
+async def test_sans_reseau_nomme_l_analyse_lit_les_deux(avec_voix):
+    registre = RegistreMeta({
+        "instagram_publications": succes("instagram_publications", "meta", "lu",
+                                         preuve="p", donnees=MEDIAS),
+        "page_publications": succes("page_publications", "meta", "lu", preuve="p",
+                                    donnees=[{"id": "f1", "created_time": "2026-09-28"}]),
+    })
+    resultat = await agent(avec_voix, registre=registre).run("Analyse mes publications recentes")
+
+    assert [c for _, c in registre.appels] == ["instagram_publications", "page_publications"]
+    assert "Facebook : 1 publication(s)" in resultat["response"]
+    assert "reactions ne sont pas lues" in resultat["response"], "rien d'invente"
+
+
+async def test_un_compte_non_connecte_le_dit_au_lieu_d_analyser(avec_voix):
+    pas_la = non_configure(action="instagram_publications", cible="meta",
+                           ce_qui_manque="un jeton de page Meta")
+    registre = RegistreMeta({"instagram_publications": pas_la, "page_publications": pas_la})
+
+    resultat = await agent(avec_voix, registre=registre).run("Analyse mes publications recentes")
+
+    assert resultat["execution"]["statut"] == "INDISPONIBLE"
+    assert "meta n'est pas connecte" in resultat["response"]
+    assert "un jeton de page Meta" in resultat["response"]
+    assert "J'aime" not in resultat["response"]

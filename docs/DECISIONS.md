@@ -12452,3 +12452,37 @@ Netlify, rapportee telle quelle.
 colonne du resultat ; une construction relancee a tort remplace le site en
 ligne par la derniere version du depot — c'est pourquoi elle attend l'accord
 du proprietaire et le coupe-circuit PUBLISH.
+
+## DEC-0181 — JARVIS publie sur le reseau nomme, et lit les vrais chiffres
+
+**2026-09-29.** Etape 4 du plan, pour Meta. `tests/test_connecteurs_dormants.py`
+(corrige par DEC-0180) venait de mesurer que le connecteur `meta` (DEC-0179)
+n'etait atteint par aucune phrase : SocialAgent soumettait toute publication
+a TikTok, et « analyse mes publications » repondait « compte connecte
+manquant » meme avec un compte connecte.
+
+**Decision** (`agents/social/social_agent.py`) :
+
+- `reseau_demande()` lit le reseau nomme dans la phrase (Instagram, insta,
+  Facebook, fb, LinkedIn, TikTok — en mots entiers : « installe » n'est pas
+  « insta »).
+- « publie-la sur Facebook » → `meta.publier_facebook`. « … sur Instagram
+  avec https://… » → `meta.publier_instagram`, l'image en adresse. Sans
+  adresse d'image, **rien n'est mis en attente** : une action qui ne peut pas
+  partir n'attend pas l'accord du proprietaire ; le brouillon reste et
+  l'agent demande l'adresse. LinkedIn : dit non branche, n'est jamais envoye
+  a un autre reseau. Sans reseau nomme : TikTok, comme avant.
+- « Analyse mes publications (Instagram/Facebook) » lit le compte par `meta`
+  et ADDITIONNE : nombre, J'aime, commentaires, la plus aimee. Aucun modele.
+  Facebook ne rend pas ses reactions avec ces champs : c'est dit, rien n'est
+  invente. Un compte non connecte rend le message du connecteur, jamais une
+  analyse. Sans registre, la capacite reste `CONFIGURATION_REQUISE`.
+- L'execution ne se dit « en attente d'approbation » que si une action
+  attend vraiment l'accord (`NEEDS_CONFIRMATION`) ; un refus ou un reseau non
+  branche laissent un brouillon PRET.
+- `meta` sort de `DORMANTS_CONNUS`.
+
+**Ce que ca coute si c'est faux** : un reseau mal reconnu enverrait la
+demande au mauvais connecteur — mais chaque publication passe par la
+confirmation du proprietaire, qui voit le texte et le reseau avant tout envoi.
+

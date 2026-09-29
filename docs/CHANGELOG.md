@@ -2,6 +2,15 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — « Publie-la sur Facebook », « analyse mes publications Instagram »
+
+Dis à JARVIS sur quel réseau publier : Facebook, ou Instagram avec l'adresse
+de ta photo. Il prépare l'envoi et attend ton accord. « Analyse mes
+publications » lit tes vrais chiffres Instagram (J'aime, commentaires, ta
+publication la plus aimée) et tes derniers posts Facebook — il compte, il
+n'invente rien. Il faut tes clés Meta (`docs/CONNECTER_MES_COMPTES.md`)
+(DEC-0181).
+
 ### Ajouté — 29/09/2026 — JARVIS se branche sur tes sites Netlify
 
 Le connecteur de JARVIS sait lister tes sites, dire si le dernier déploiement a réussi (et

@@ -123,6 +123,27 @@ CAPACITES: tuple = (
              permission="approbation"),
 )
 
+#: Le reseau nomme dans la phrase (DEC-0181). L'ordre compte : « insta » est
+#: cherche comme un mot, pour ne pas prendre « installe » pour Instagram.
+RESEAUX: tuple = (
+    ("instagram", re.compile(r"\b(instagram|insta|ig)\b", re.IGNORECASE)),
+    ("facebook", re.compile(r"\b(facebook|fb)\b", re.IGNORECASE)),
+    ("linkedin", re.compile(r"\blinkedin\b", re.IGNORECASE)),
+    ("tiktok", re.compile(r"\btik ?tok\b", re.IGNORECASE)),
+)
+
+#: Une adresse d'image publique, seule chose qu'Instagram sait publier.
+ADRESSE_HTTPS = re.compile(r"https://[^\s<>\"')]+")
+
+
+def reseau_demande(texte: str) -> Optional[str]:
+    """Le reseau que la phrase nomme, ou `None` si elle n'en nomme aucun."""
+    for nom, motif in RESEAUX:
+        if motif.search(texte or ""):
+            return nom
+    return None
+
+
 #: Ce qui, dans la phrase, demande d'ENVOYER et non de preparer.
 DEMANDE_D_ENVOI = re.compile(r"\b(publie[- ]?(le|la)?|envoie[- ]?(le|la)?|"
                              r"mets[- ]?(le|la)\s+en\s+ligne)\b", re.IGNORECASE)
@@ -254,7 +275,8 @@ class SocialAgent(BaseAgent):
 
     # --- Les capacites ----------------------------------------------------------------
 
-    async def ecrire_publication(self, sujet: str, envoyer: bool = False) -> Dict[str, Any]:
+    async def ecrire_publication(self, sujet: str, envoyer: bool = False,
+                                 reseau: Optional[str] = None) -> Dict[str, Any]:
         """Ecrit une publication, la RELIT, et s'arrete avant d'envoyer."""
         execution = Execution("social.post_writer")
         voix = self.voix()
@@ -274,27 +296,53 @@ class SocialAgent(BaseAgent):
         execution.detail["controle"] = controle.to_dict()
         execution.detail["brouillon"] = brouillon
 
-        envoi = self._proposer_l_envoi(brouillon, execution) if envoyer else None
-        execution.statut = "EN_ATTENTE_APPROBATION" if envoi else "PRET"
+        envoi = self._proposer_l_envoi(brouillon, execution, reseau, sujet) if envoyer else None
+        # « En attente d'approbation » seulement si une action attend vraiment
+        # son accord : un refus ou un reseau non branche laissent un brouillon
+        # PRET, rien d'autre.
+        execution.statut = ("EN_ATTENTE_APPROBATION"
+                            if envoi and envoi["statut"] == "NEEDS_CONFIRMATION" else "PRET")
 
         reponse = f"{brouillon}\n\n{controle.rendre()}"
         if envoi:
             reponse += f"\n\n{envoi['message']}"
         return self._rendre(execution, reponse)
 
-    def _proposer_l_envoi(self, texte: str, execution: Execution) -> Dict[str, Any]:
-        """Soumet la publication. **Rien ne part ici.**
+    def _proposer_l_envoi(self, texte: str, execution: Execution,
+                          reseau: Optional[str] = None, demande: str = "") -> Dict[str, Any]:
+        """Soumet la publication au reseau nomme. **Rien ne part ici.**
 
         Le connecteur et la politique decident : `action="publish"` est une
         confirmation, et le coupe-circuit PUBLISH peut la refuser tout court.
+        Sans reseau nomme, c'est TikTok, comme avant DEC-0181.
         """
         if self.registre is None:
             execution.etape("aucun connecteur de publication branche")
             return {"statut": "NOT_CONFIGURED",
                     "message": ("Je peux preparer la publication, pas l'envoyer : "
                                 "aucun reseau n'est branche sur cet agent.")}
-        resultat = self.registre.executer("tiktok", "publish_video",
-                                          legende=texte, chemin_video="")
+        if reseau == "facebook":
+            resultat = self.registre.executer("meta", "publier_facebook", message=texte)
+        elif reseau == "instagram":
+            image = ADRESSE_HTTPS.search(demande or "")
+            if image is None:
+                # Rien n'est mis en attente : une action qui ne peut pas
+                # partir ne doit pas attendre son accord.
+                execution.etape("instagram : aucune adresse d'image")
+                return {"statut": "MANQUE_CONTEXTE",
+                        "message": ("Instagram publie une photo, pas un texte seul : "
+                                    "donne-moi l'adresse https:// de l'image et je "
+                                    "prepare l'envoi avec ce texte en legende.")}
+            resultat = self.registre.executer("meta", "publier_instagram",
+                                              image_url=image.group(0), legende=texte)
+        elif reseau == "linkedin":
+            execution.etape("linkedin : aucun connecteur")
+            return {"statut": "NOT_CONFIGURED",
+                    "message": ("LinkedIn n'est pas encore branche : le texte est pret, "
+                                "colle-le toi-meme pour l'instant.")}
+        else:
+            resultat = self.registre.executer("tiktok", "publish_video",
+                                              legende=texte, chemin_video="")
         execution.etape(f"envoi soumis : {resultat.statut.value}")
         return {"statut": resultat.statut.value, "message": resultat.message}
 
@@ -403,6 +451,54 @@ class SocialAgent(BaseAgent):
         execution.detail["sources"] = resultats
         return self._rendre(execution, str(resultats), statut="PRET")
 
+    def analyser_publications(self, demande: str) -> Dict[str, Any]:
+        """Ses dernieres publications, lues sur le compte, et COMPTEES.
+
+        Aucun modele : les chiffres viennent de Meta et sont additionnes ici.
+        Un compte non connecte le dit, avec ce qui manque — jamais une analyse
+        de publications qu'on n'a pas lues.
+        """
+        execution = Execution("social.analytics")
+        reseau = reseau_demande(demande)
+        cibles = {"instagram": ["instagram"], "facebook": ["facebook"]}.get(
+            reseau, ["instagram", "facebook"])
+        lignes: List[str] = []
+        lues = 0
+        for cible in cibles:
+            capacite = "instagram_publications" if cible == "instagram" else "page_publications"
+            resultat = self.registre.executer("meta", capacite, limite=10)
+            execution.etape(f"{cible} : {resultat.statut.value}")
+            if resultat.statut.value != "SUCCESS":
+                lignes.append(f"{cible.capitalize()} : {resultat.message}")
+                continue
+            publications = [p for p in (resultat.detail.get("donnees") or []) if isinstance(p, dict)]
+            lues += 1
+            execution.detail[cible] = publications
+            lignes.append(self._resumer(cible, publications))
+        if reseau in ("linkedin", "tiktok"):
+            lignes.insert(0, f"{reseau.capitalize()} : je ne sais pas encore lire ce compte.")
+        execution.statut = "PRET" if lues else "INDISPONIBLE"
+        return self._rendre(execution, "\n".join(lignes))
+
+    @staticmethod
+    def _resumer(reseau: str, publications: List[Dict[str, Any]]) -> str:
+        """Des sommes, pas des impressions."""
+        if not publications:
+            return f"{reseau.capitalize()} : aucune publication lue."
+        if reseau == "facebook":
+            # Ces champs ne portent pas les reactions : on ne les invente pas.
+            derniere = publications[0].get("created_time") or "?"
+            return (f"Facebook : {len(publications)} publication(s) lue(s), la plus "
+                    f"recente le {derniere}. Les reactions ne sont pas lues ici.")
+        jaime = sum(int(p.get("like_count") or 0) for p in publications)
+        commentaires = sum(int(p.get("comments_count") or 0) for p in publications)
+        meilleure = max(publications, key=lambda p: int(p.get("like_count") or 0))
+        legende = str(meilleure.get("caption") or "sans legende").splitlines()[0][:60]
+        return (f"Instagram : {len(publications)} publication(s), {jaime} J'aime, "
+                f"{commentaires} commentaire(s). La plus aimee "
+                f"({int(meilleure.get('like_count') or 0)} J'aime) : « {legende} » "
+                f"{meilleure.get('permalink') or ''}".rstrip())
+
     def indisponible(self, capacite: Capacite) -> Dict[str, Any]:
         """Une capacite dont les dependances manquent. On dit lesquelles."""
         execution = Execution(capacite.nom)
@@ -442,6 +538,10 @@ class SocialAgent(BaseAgent):
             return await self.rechercher_la_niche(user_input)
         if capacite.nom == "social.post_writer":
             return await self.ecrire_publication(
-                user_input, envoyer=bool(DEMANDE_D_ENVOI.search(user_input)))
-        # Analytics, visuel, reels : leurs dependances ne sont pas ici.
+                user_input, envoyer=bool(DEMANDE_D_ENVOI.search(user_input)),
+                reseau=reseau_demande(user_input))
+        if capacite.nom == "social.analytics" and self.registre is not None:
+            return self.analyser_publications(user_input)
+        # Visuel, reels — et l'analyse sans registre : leurs dependances ne
+        # sont pas ici.
         return self.indisponible(capacite)
