@@ -12142,6 +12142,27 @@ provenance de chaque passage et l'OCR des pages scannees.
 connecteur accepte 300 Mo) ; un PDF plus gros echoue avec cette raison au
 lieu d'etre lu.
 
+## DEC-0171 — « Fais-moi un CSV de ce tableau » : le premier tableau de la reponse
+
+**2026-09-29.** Suite de DEC-0169. Le CSV se convertissait depuis et vers
+Excel, mais une reponse ne pouvait pas en devenir un : `rediger` ne trouvait
+aucun moteur `md -> csv`, et la phrase « en csv » n'etait pas reconnue.
+
+**Decision** :
+
+- `tableurs.markdown_vers_csv`, declare dans la matrice : `rediger` le trouve
+  sans changement du connecteur.
+- **Le premier tableau** de la reponse est ecrit — un CSV n'en tient qu'un ;
+  la limite de qualite le dit. **Sans tableau, le moteur refuse** : un CSV
+  d'une colonne de phrases ne serait pas ce qui a ete demande.
+- Meme format que `xlsx -> csv` (`;`, virgule decimale, BOM) et memes
+  protections : un texte « =... » est neutralise, « 00221 » garde ses zeros.
+- « en csv », « un csv », « fichier csv », « .csv » rejoignent
+  `FORMATS_DEMANDES` ; « lis ce fichier csv » reste une lecture.
+
+**Ce que ca coute si c'est faux** : une reponse qui porte le tableau voulu en
+second ecrit le premier ; il faut le demander seul.
+
 ## DEC-0172 — PDF -> Word sans LibreOffice : le texte, dans un Word modifiable
 
 **2026-09-29.** `pdf -> docx` n'avait qu'un moteur, LibreOffice. Sur une

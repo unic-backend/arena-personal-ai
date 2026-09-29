@@ -10,6 +10,12 @@ page, les images et les tableaux ne sont pas reconstruits, et c'est dit avec
 le fichier. Si LibreOffice est installé, il reste utilisé en premier : il
 garde la mise en page (DEC-0172).
 
+### Ajouté — 29/09/2026 — « Fais-moi un CSV de ce tableau »
+
+Demande un tableau « en csv » : JARVIS écrit le premier tableau de sa réponse
+dans un fichier CSV qu'Excel en français ouvre directement. Sans tableau dans
+la réponse, il le dit au lieu de livrer un fichier vide de sens (DEC-0171).
+
 ### Ajouté — 29/09/2026 — Le texte d'un PDF, d'un Word, d'un Excel ou d'un PowerPoint
 
 « Sors-moi le texte de ce PDF » donne un vrai fichier .txt, page par page,

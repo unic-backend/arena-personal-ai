@@ -150,6 +150,15 @@ _enregistrer(
         limites_qualite=(
             "Titres, paragraphes, listes, tableaux, gras et italique ; styles "
             "Word par defaut, sans image.")))
+# Markdown -> CSV (DEC-0171) : le premier tableau de la reponse.
+_enregistrer(
+    ["md"], ["csv"],
+    EntreeMoteur(
+        "csv", t.markdown_vers_csv, lambda: (True, "module csv de Python"),
+        limites_qualite=(
+            "Seul le premier tableau de la reponse est ecrit ; un texte sans "
+            "tableau est refuse. Format Excel francais : « ; », virgule "
+            "decimale, UTF-8 avec BOM.")))
 
 # --- Tableurs : CSV <-> Excel (29/09/2026) -----------------------------------------
 # DEC-0169. Aucun couple CSV n'existait : « transforme ce CSV en Excel » n'avait

@@ -190,3 +190,56 @@ def test_le_markdown_vers_excel_n_ecrit_plus_de_formule(tmp_path):
     case = load_workbook(tmp_path / "t.xlsx").active["B2"]
 
     assert case.data_type == "s" and case.value.startswith("=WEBSERVICE")
+
+
+# --- Markdown -> CSV (DEC-0171) ----------------------------------------------------
+
+REPONSE_AVEC_TABLEAUX = """# Ventes de septembre
+
+| Client | Montant | Note |
+|---|---|---|
+| **Diallo** | 1 250,50 | =HYPERLINK("http://x.test") |
+| Ndiaye | 40 | code 00221 |
+
+## Autre tableau
+
+| Ne | doit pas sortir |
+|---|---|
+| x | y |
+"""
+
+
+def test_une_reponse_devient_le_csv_de_son_premier_tableau(connecteur):
+    resultat = connecteur._rediger(REPONSE_AVEC_TABLEAUX, "csv", "Ventes")
+    assert resultat.statut.value == "SUCCESS", resultat.message
+    brut = Path(resultat.preuve).read_bytes()
+
+    assert Path(resultat.preuve).suffix == ".csv" and brut.startswith(b"\xef\xbb\xbf")
+    lignes = list(csv.reader(brut.decode("utf-8-sig").splitlines(), delimiter=";"))
+    assert lignes == [
+        ["Client", "Montant", "Note"],
+        ["Diallo", "1250,5", "'=HYPERLINK(\"http://x.test\")"],
+        ["Ndiaye", "40", "code 00221"],
+    ]
+
+
+def test_une_reponse_sans_tableau_ne_donne_pas_de_csv(connecteur):
+    resultat = connecteur._rediger("Pas de tableau ici, juste une phrase.", "csv", "Rien")
+
+    assert resultat.statut.value == "FAILED"
+    assert "aucun tableau" in resultat.message
+
+
+@pytest.mark.parametrize("phrase", [
+    "fais-moi un csv de ce tableau", "exporte les ventes en csv", "génère un fichier csv",
+])
+def test_ces_demandes_produisent_un_csv(phrase):
+    from apps.backend.routers.chat import format_de_document_demande
+
+    assert format_de_document_demande(phrase) == "csv"
+
+
+def test_lire_un_csv_fourni_n_en_fabrique_pas_un():
+    from apps.backend.routers.chat import format_de_document_demande
+
+    assert format_de_document_demande("lis ce fichier csv") is None
