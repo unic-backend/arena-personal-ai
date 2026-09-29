@@ -11983,3 +11983,38 @@ travaille en continu.
 **Ce que ca coute si c'est faux** : un faux reveil (Whisper qui entend
 « Jarvis ») envoie une question que personne n'a posee — elle est visible
 dans la conversation, et « stop » y met fin.
+
+## DEC-0166 — Le briefing du matin : quatre rubriques reunies, chacune avec son etat
+
+**2026-09-29.** Etape 4 du chantier JARVIS (DEC-0163 a DEC-0165).
+
+**Decision** :
+
+- `core/briefing/briefing.py` assemble des rubriques et ne cherche rien lui-
+  meme. Chaque rubrique porte un etat : `OK`, `NON_CONFIGURE` (l'agenda sans
+  identifiants Google), `INDISPONIBLE` (en echec, muet, ou sans source),
+  `INCONNU` (la ville manque pour la meteo). Un agenda non branche ne se lit
+  jamais « aucun rendez-vous » ; seule une lecture REUSSIE et vide le dit.
+- Toutes les rubriques partent en meme temps, 90 s chacune : une recherche
+  web lente n'empeche pas l'agenda et le courrier d'arriver.
+- `apps/backend/routers/briefing.py` les branche sur l'existant : agenda
+  (connecteur Google Calendar, journee locale), agent courrier (tri, avec sa
+  relecture DEC-0162), recherche web (meteo de la ville et actualites du pays
+  enregistres en memoire — faits « ville » et « pays » ; sans ville, la meteo
+  dit ce qui manque au lieu de chercher au hasard). Les reponses des agents
+  sont gardees telles quelles, avertissements de verification compris.
+- **Chaque matin, seul** : a `BRIEFING_HEURE` (07:00 par defaut, `off` pour
+  couper), le serveur compose et garde le briefing ; demande dans les 3 h, il
+  est rendu tout de suite. Une heure illisible coupe le briefing automatique
+  et le journalise, jamais « minuit ».
+- Intention `BRIEFING` (« Jarvis, mon briefing », « point du matin »),
+  controle deterministe evalue EN PREMIER : « mon briefing du jour » contient
+  « du jour », que le controle date enverrait sur une recherche d'actualite.
+  « Prepare un briefing pour mon equipe » reste une redaction. Route
+  `GET /api/briefing` (cle + limiteur), voie RECHERCHE.
+
+**Non mesure** : un briefing reel sur la machine du proprietaire (Gmail,
+Calendar, Ollama). Ici, les rubriques sont testees avec des sources simulees.
+
+**Ce que ca coute si c'est faux** : un briefing compose a 7 h puis relu a 9 h
+porte des actualites de 7 h ; au-dela de 3 h il est recompose.
