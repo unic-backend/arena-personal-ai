@@ -12334,3 +12334,35 @@ lieu.
 octets en memoire pendant une heure (25 Mo au plus chacune) en plus de son
 texte ; une phrase de conversion sans reference explicite au fichier (« mets-le
 en PDF ») n'est pas reconnue et part vers la redaction ou la conversation.
+
+## DEC-0178 — Le lanceur recompile une interface perimee, pas seulement une interface absente
+
+**2026-09-29.** Mesure du proprietaire, sur son telephone : apres le travail
+de la nuit, le menu affichait encore « Usman » au lieu de « JARVIS »
+(DEC-0163). Le code sur `main` etait juste ; l'interface servie ne l'etait
+pas. `scripts/lancer_arena.ps1` ne compilait la PWA que si
+`apps/pwa/dist/index.html` **manquait** — or un `git pull` n'efface pas
+`dist/` (ignore par git) : l'ancienne compilation restait, le lanceur disait
+`[ok]` et le PC servait l'interface d'avant.
+
+**Decision** :
+
+- Le lanceur compare la date de `dist/index.html` a celle du fichier source
+  le plus recent (`src/`, `public/`, `index.html`, `package.json`,
+  `package-lock.json`, `vite.config.ts`) et recompile des qu'une source est
+  plus recente. `git pull` ecrit les fichiers modifies a l'heure du pull :
+  ils sont donc plus recents que l'ancienne compilation.
+- **Une recompilation n'est reussie que si le fichier a ete RECRIT** : quand
+  la compilation echoue, l'ancien `index.html` existe encore, et `Test-Path`
+  seul l'aurait annoncee reussie. L'echec dit alors « une version PERIMEE
+  sera servie ».
+- Le telephone n'a rien a faire : son service worker demande la page au
+  reseau d'abord (`sw.js`) et ne sert le cache que hors ligne.
+
+**Non mesure** : le script n'a pas ete analyse par PowerShell dans cet
+environnement (aucun interpreteur) ; `test_powershell_accepte_vraiment_le_fichier`
+le fait la ou PowerShell existe.
+
+**Ce que ca coute si c'est faux** : une date de fichier faussee (horloge du PC,
+copie qui preserve les dates) peut declencher une compilation inutile d'une
+minute, ou en manquer une — `cd apps\pwa ; npm run build` reste le recours.

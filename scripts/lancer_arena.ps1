@@ -57,28 +57,58 @@ if (-not $cloudflared) {
 # --- 2 bis. L'interface -------------------------------------------------------
 #
 # **Le serveur sert l'ANCIENNE interface en silence quand la nouvelle n'est
-# pas compilee.** `apps/pwa/dist/` est ignore par git (Vite le regenere), donc
-# il n'existe jamais apres un clone ou un `git pull` : `interface_servie()`
-# retombe sur `apps/frontend/index.html` sans le dire.
+# pas compilee.** `apps/pwa/dist/` est ignore par git (Vite le regenere) :
+# apres un clone, il n'existe pas, et `interface_servie()` retombe sur
+# `apps/frontend/index.html` sans le dire.
 #
 # Mesure du 03/09/2026 : le proprietaire branche son telephone sur son PC,
 # voit son ancienne interface et l'espace Dioumtoukay disparu, et croit que
 # du travail a ete perdu. Rien ne l'etait - un fichier de compilation
 # manquait, et personne ne le disait.
+#
+# **Et une compilation PERIMEE est servie tout aussi silencieusement.**
+# Mesure du 29/09/2026 : apres `git pull`, son telephone affichait toujours
+# "Usman" au lieu de "JARVIS". Un `git pull` n'efface pas `dist/` (ignore
+# par git) : l'ancienne compilation existait, donc ce bloc disait `[ok]` et ne
+# recompilait rien. L'interface est maintenant recompilee des qu'un fichier
+# source est plus recent qu'elle.
+$pwa = Join-Path $racine "apps\pwa"
 $dist = Join-Path $racine "apps\pwa\dist\index.html"
-if (Test-Path $dist) {
-    Write-Host "  [ok] interface : la nouvelle (PWA)" -ForegroundColor Green
+$sourcesPwa = @()
+foreach ($dossier in @("src", "public")) {
+    $chemin = Join-Path $pwa $dossier
+    if (Test-Path $chemin) { $sourcesPwa += Get-ChildItem -Path $chemin -Recurse -File }
+}
+foreach ($nom in @("index.html", "package.json", "package-lock.json", "vite.config.ts")) {
+    $chemin = Join-Path $pwa $nom
+    if (Test-Path $chemin) { $sourcesPwa += Get-Item $chemin }
+}
+$plusRecente = $sourcesPwa | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$compileeLe = $null
+if (Test-Path $dist) { $compileeLe = (Get-Item $dist).LastWriteTime }
+$aJour = ($compileeLe -ne $null) -and (($plusRecente -eq $null) -or ($plusRecente.LastWriteTime -le $compileeLe))
+
+if ($aJour) {
+    Write-Host "  [ok] interface : la nouvelle (PWA), a jour" -ForegroundColor Green
 } else {
     $npm = Get-Command npm -ErrorAction SilentlyContinue
     if (-not $npm) {
-        Write-Host "  [X] interface : l'ANCIENNE sera servie." -ForegroundColor Yellow
-        Write-Host "      La nouvelle n'est pas compilee et npm est introuvable."
-        Write-Host "      Sans elle : pas d'espace Dioumtoukay, pas de projet video."
+        if ($compileeLe -ne $null) {
+            Write-Host "  [X] interface : une version PERIMEE sera servie." -ForegroundColor Yellow
+            Write-Host "      Des fichiers ont change depuis sa compilation et npm est introuvable."
+        } else {
+            Write-Host "  [X] interface : l'ANCIENNE sera servie." -ForegroundColor Yellow
+            Write-Host "      La nouvelle n'est pas compilee et npm est introuvable."
+            Write-Host "      Sans elle : pas d'espace Dioumtoukay, pas de projet video."
+        }
         Write-Host "      Installe Node : winget install OpenJS.NodeJS.LTS"
         Write-Host "      puis relance ce script."
     } else {
-        Write-Host "  [..] interface : compilation de la nouvelle (une fois)..." -ForegroundColor Cyan
-        $pwa = Join-Path $racine "apps\pwa"
+        if ($compileeLe -ne $null) {
+            Write-Host "  [..] interface : recompilation (fichiers plus recents que l'interface servie)..." -ForegroundColor Cyan
+        } else {
+            Write-Host "  [..] interface : compilation de la nouvelle (une fois)..." -ForegroundColor Cyan
+        }
         Push-Location $pwa
         $prefNpm = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
@@ -89,8 +119,14 @@ if (Test-Path $dist) {
             $ErrorActionPreference = $prefNpm
             Pop-Location
         }
-        if (Test-Path $dist) {
+        # Reussie seulement si le fichier a ete RECRIT : l'ancien existe encore
+        # quand la compilation echoue, et `Test-Path` seul dirait `[ok]`.
+        $recrite = (Test-Path $dist) -and (($compileeLe -eq $null) -or ((Get-Item $dist).LastWriteTime -gt $compileeLe))
+        if ($recrite) {
             Write-Host "  [ok] interface : la nouvelle (PWA), compilee a l'instant" -ForegroundColor Green
+        } elseif ($compileeLe -ne $null) {
+            Write-Host "  [X] interface : la compilation a echoue, une version PERIMEE sera servie." -ForegroundColor Yellow
+            Write-Host "      Pour voir l'erreur : cd apps\pwa ; npm run build"
         } else {
             Write-Host "  [X] interface : la compilation a echoue, l'ANCIENNE sera servie." -ForegroundColor Yellow
             Write-Host "      Pour voir l'erreur : cd apps\pwa ; npm run build"

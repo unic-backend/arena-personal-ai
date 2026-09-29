@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Corrigé — 29/09/2026 — Le téléphone garde plus l'ancienne interface après une mise à jour
+
+Après un `git pull`, le lanceur gardait l'ancienne interface compilée : ton
+téléphone affichait encore « Usman ». Il la recompile maintenant dès que le
+code est plus récent qu'elle, et dit clairement si la compilation échoue
+(DEC-0178).
+
 ### Ajouté — 29/09/2026 — Convertis un fichier envoyé depuis ton téléphone
 
 Joins un fichier (le trombone) et dis « convertis ce fichier en PDF », « ce
