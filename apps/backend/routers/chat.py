@@ -465,6 +465,8 @@ FORMATS_DEMANDES: Dict[str, str] = {
     "présentation powerpoint": "pptx", "presentation powerpoint": "pptx",
     "diaporama": "pptx",
     "un word": "docx", "document word": "docx",
+    # Un tableau a ouvrir ailleurs (DEC-0171, tableurs.markdown_vers_csv).
+    "en csv": "csv", "un csv": "csv", "fichier csv": "csv", ".csv": "csv",
 }
 
 #: Les memes mots employes pour LIRE un document deja fourni. « resume-moi ce
