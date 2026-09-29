@@ -97,6 +97,18 @@ async def briefing_du_jour(forcer: bool = False) -> Briefing:
     return _dernier
 
 
+def briefing_deja_compose() -> Optional[Briefing]:
+    """Le briefing compose AUJOURD'HUI, s'il existe — sans jamais en composer.
+
+    C'est ce que l'application interroge a l'ouverture (DEC-0168) : elle ne
+    doit pas declencher quatre recherches parce qu'on a ouvert l'ecran. Pas de
+    limite de trois heures ici : celui de 7 h reste le briefing du jour a midi,
+    et son heure de composition s'affiche avec lui."""
+    if _dernier is not None and _dernier.jour == datetime.now().date():
+        return _dernier
+    return None
+
+
 def secondes_avant(heure: time, maintenant: datetime) -> float:
     """Jusqu'a la prochaine occurrence de `heure` — demain si elle est passee."""
     cible = datetime.combine(maintenant.date(), heure)
@@ -127,7 +139,15 @@ async def planifier_le_briefing() -> None:
 
 @router.get("/api/briefing",
             dependencies=[Depends(verify_api_key), Depends(limiter_debit)])
-async def lire_briefing(forcer: bool = False) -> Dict[str, Any]:
-    """Le briefing du jour, en texte et par rubrique."""
-    briefing = await briefing_du_jour(forcer=forcer)
-    return {"texte": briefing.en_texte(), **briefing.en_dict()}
+async def lire_briefing(forcer: bool = False, seulement_pret: bool = False) -> Dict[str, Any]:
+    """Le briefing du jour, en texte et par rubrique.
+
+    `seulement_pret` rend celui deja compose aujourd'hui, ou `{"pret": false}` :
+    rien n'est compose pour repondre a cette question."""
+    if seulement_pret:
+        briefing = briefing_deja_compose()
+        if briefing is None:
+            return {"pret": False}
+    else:
+        briefing = await briefing_du_jour(forcer=forcer)
+    return {"pret": True, "texte": briefing.en_texte(), **briefing.en_dict()}

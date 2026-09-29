@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — Le briefing du matin t'attend à l'ouverture
+
+Ouvre l'application le matin : le briefing préparé à 7 h s'affiche seul sur
+l'écran d'accueil, rubrique par rubrique, avec un bouton « Écouter ». Ferme-le
+et il ne revient pas avant le lendemain. Ouvrir l'écran ne relance aucune
+recherche : seul le briefing déjà prêt s'affiche (DEC-0168).
+
 ### Ajouté — 29/09/2026 — Le briefing du matin de JARVIS
 
 Dis « Jarvis, mon briefing » : ton agenda du jour, ton courrier trié, la météo
