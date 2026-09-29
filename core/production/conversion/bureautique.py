@@ -159,6 +159,14 @@ def en_nombre(cellule: str) -> Optional[float]:
     if not brut or not _NOMBRE.match(brut):
         return None
     compact = re.sub(r"[   ]", "", brut)
+    # Un code qui commence par zero (« 00221 », « 0612 ») est un identifiant :
+    # en nombre, il perdrait ses zeros. « 0,5 » reste un nombre.
+    if re.match(r"^[-+]?0\d", compact):
+        return None
+    # Au-dela de 15 chiffres, un tableur arrondit (« 1234567890123456789 »
+    # devient « ...800 ») : un numero de compte reste du texte.
+    if sum(caractere.isdigit() for caractere in compact) > 15:
+        return None
     if "," in compact:
         # Ecriture francaise : le point (s'il y en a) separe les milliers.
         compact = compact.replace(".", "").replace(",", ".")
@@ -179,6 +187,21 @@ def openpyxl_disponible() -> Tuple[bool, str]:
     except ImportError as erreur:
         return False, f"openpyxl n'est pas installé : {erreur}"
     return True, "openpyxl installé"
+
+
+def ecrire_case(feuille, rangee: int, colonne: int, valeur):
+    """Ecrit une valeur dans une case — un texte reste TOUJOURS un texte.
+
+    openpyxl fait d'une chaine qui commence par « = » une formule (mesure le
+    29/09/2026 : « =1+1 » est ecrit `<f>1+1</f>`). Un tableau venu d'un
+    modele ou d'un CSV fourni ne doit jamais glisser une formule dans le
+    classeur — `=HYPERLINK(...)` ou `=WEBSERVICE(...)` s'executeraient a
+    l'ouverture. Ce qui etait du texte s'affiche tel quel.
+    """
+    case = feuille.cell(row=rangee, column=colonne, value=valeur)
+    if isinstance(valeur, str):
+        case.data_type = "s"
+    return case
 
 
 def _nom_de_feuille(base: str, pris: set) -> str:
@@ -212,8 +235,8 @@ def markdown_vers_xlsx(entree: Path, sortie: Path) -> None:
         for numero, ligne in enumerate(bloc.lignes, start=1):
             for colonne, cellule in enumerate(ligne, start=1):
                 nombre = None if numero == 1 else en_nombre(cellule)
-                case = feuille.cell(row=numero, column=colonne,
-                                    value=nombre if nombre is not None else sans_emphase(cellule))
+                case = ecrire_case(feuille, numero, colonne,
+                                   nombre if nombre is not None else sans_emphase(cellule))
                 if numero == 1:
                     case.font = Font(bold=True)
         for colonne in feuille.columns:
@@ -229,7 +252,7 @@ def markdown_vers_xlsx(entree: Path, sortie: Path) -> None:
             valeur = sans_emphase(bloc.texte)
             if not valeur:
                 continue
-            case = feuille.cell(row=rangee, column=1, value=valeur)
+            case = ecrire_case(feuille, rangee, 1, valeur)
             if bloc.genre == "titre":
                 case.font = Font(bold=True)
             rangee += 1
