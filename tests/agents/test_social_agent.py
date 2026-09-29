@@ -370,13 +370,16 @@ async def test_instagram_sans_image_ne_met_rien_en_attente(avec_voix):
     assert resultat["execution"]["brouillon"], "le brouillon reste"
 
 
-async def test_linkedin_n_est_pas_envoye_a_un_autre_reseau(avec_voix):
-    registre = RegistreDouble()
+async def test_linkedin_passe_par_son_connecteur_avec_le_lien_donne(avec_voix):
+    """DEC-0183 : LinkedIn a son connecteur. Jamais un autre reseau a sa place."""
+    registre = RegistreDouble(a_confirmer(action="publier", cible="linkedin",
+                                          message="Pret. Rien n'est parti."))
     resultat = await agent(avec_voix, registre=registre).run(
-        "Ecris une publication et publie-la sur LinkedIn")
+        "Ecris une publication et publie-la sur LinkedIn avec https://www.unicplaquiste.com")
 
-    assert registre.appels == []
-    assert "LinkedIn n'est pas encore branche" in resultat["response"]
+    assert registre.appels == [("linkedin", "publier", {
+        "message": PUBLICATION.strip(), "lien": "https://www.unicplaquiste.com"})]
+    assert resultat["execution"]["statut"] == "EN_ATTENTE_APPROBATION"
 
 
 async def test_un_refus_n_est_pas_annonce_en_attente(avec_voix):

@@ -129,6 +129,7 @@ from core.permissions.permission_manager import PermissionManager
 from core.permissions.politique import PolitiqueDePermissions
 from core.production.journal_projet import JournalProjets
 from core.reasoning.reasoning_engine import ReasoningEngine
+from social.linkedin.linkedin_connector import LinkedInConnector
 from social.meta.meta_connector import MetaConnector
 from social.tiktok.tiktok_connector import TikTokConnector
 from tools.atelier import Atelier
@@ -186,6 +187,13 @@ registre.declarer(
     "meta",
     lambda: MetaConnector(acces=acces, journal=journal, file_attente=file_attente,
                           crochets=crochets),
+)
+# LinkedIn (DEC-0183) : publier sur son profil, rien d'autre — le reste de
+# l'API demande un examen de l'application par LinkedIn.
+registre.declarer(
+    "linkedin",
+    lambda: LinkedInConnector(acces=acces, journal=journal, file_attente=file_attente,
+                              crochets=crochets),
 )
 # Donnees de marche (CoinGecko, lecture seule, sans cle) : intelligence
 # financiere, DEC a venir. Aucune capacite d'ecriture n'est declaree — voir
