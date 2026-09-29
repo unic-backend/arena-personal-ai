@@ -130,11 +130,16 @@ def _refuser_toute_url(url: str, *args, **kwargs):
     raise ValueError(f"ressource refusee pendant le rendu : {url}")
 
 
-def docx_vers_pdf(entree: Path, sortie: Path) -> None:
+def rendre_pdf(page: str, sortie: Path) -> None:
+    """Une page HTML deja echappee -> PDF, sans charger aucune ressource.
+    Partage avec le tableur -> PDF (DEC-0174) : une seule facon sure de rendre."""
     import weasyprint
 
-    page = docx_vers_html(entree)
     try:
         weasyprint.HTML(string=page, url_fetcher=_refuser_toute_url).write_pdf(str(sortie))
     except Exception as erreur:  # noqa: BLE001 — un rendu invalide leve des types varies
         raise MoteurEchec(f"rendu PDF impossible : {erreur}") from erreur
+
+
+def docx_vers_pdf(entree: Path, sortie: Path) -> None:
+    rendre_pdf(docx_vers_html(entree), sortie)
