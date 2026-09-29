@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Ajouté — 29/09/2026 — Parle à JARVIS sans toucher l'écran
+
+Touche le bouton casque : JARVIS dit « Je vous écoute », tu parles, il
+s'arrête d'écouter quand tu te tais, répond à voix haute, puis réécoute tout
+seul. Dis « stop » (ou « c'est tout », « merci Jarvis ») pour arrêter ; après
+trois silences, il s'arrête seul pour ménager la batterie (DEC-0164).
+
 ### Ajouté — 29/09/2026 — Ton IA s'appelle maintenant JARVIS
 
 ARENA répond désormais sous le nom de JARVIS, avec ta consigne complète :

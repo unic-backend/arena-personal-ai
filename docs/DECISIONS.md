@@ -11906,3 +11906,40 @@ reveil, briefing du matin.
 4 000 a 11 000 caracteres ; un petit modele local a contexte court peut en
 perdre la fin (la discipline). Si c'est mesure, la consigne se resume — le
 fichier du proprietaire, lui, reste tel quel.
+
+## DEC-0164 — Conversation mains libres : parler, entendre, reparler, sans toucher l'ecran
+
+**2026-09-29.** Etape 2 du chantier JARVIS (DEC-0163), demandee par le
+proprietaire depuis son telephone.
+
+**Decision** : aucune nouvelle brique vocale — le mode ENCHAINE la dictee
+existante (Whisper via `/api/speech/transcribe`, sinon le navigateur) et la
+lecture a voix haute existante (`speechSynthesis`) :
+
+  ecoute → (silence) → envoi → reflexion → parole → ecoute …
+
+- `apps/pwa/src/lib/speech/conversation.ts` : la logique pure, testee sans
+  navigateur — detection de fin de parole sur le niveau RMS du micro (1,5 s de
+  silence apres la parole ; personne en 8 s → rien ; 30 s maximum), ordre
+  d'arret sur la phrase ENTIERE (« stop », « arrete », « c'est tout »,
+  « merci Jarvis » — pas « arrete la video a 10 s »), choix de la reponse a
+  lire (terminee, posterieure a la question ; une erreur se lit aussi).
+- `startDictation(..., { finAutomatique: true })` : la dictee s'arrete seule.
+  Sans l'option, rien ne change. Un silence n'est jamais envoye a Whisper (il
+  y inventerait une phrase, qui partirait).
+- `components/chat/PiloteConversation.tsx` enchaine les phases ; le bouton
+  casque du Composer entre et sort du mode, avec une barre d'etat
+  (« JARVIS vous ecoute / reflechit / parle ») et un bouton Arreter.
+- Sur telephone, la voix et l'analyse du son ne demarrent qu'apres un
+  toucher : « Je vous ecoute. » est dit et le contexte audio est prepare DANS
+  le geste du bouton, puis reutilises.
+- Trois silences de suite arretent le mode (batterie) ; un micro refuse ou
+  une transcription en echec l'arretent aussi, avec un message.
+
+**Non mesure** : le fonctionnement sur un vrai telephone. Aucun navigateur
+mobile ne tourne ici ; la logique est testee, l'enchainement ne l'est que par
+le typage et la construction. Le proprietaire est le premier a l'essayer.
+
+**Ce que ca coute si c'est faux** : un seuil de silence mal ajuste coupe une
+phrase trop tot (bruit faible) ou attend 30 s (bruit fort) ; le mode reste
+arretable a tout moment par le bouton ou « stop ».

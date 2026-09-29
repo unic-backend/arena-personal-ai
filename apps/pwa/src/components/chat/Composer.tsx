@@ -8,7 +8,8 @@ import { useI18n } from '../../lib/i18n';
 import { useChat } from '../../lib/store/chatStore';
 import { AttachmentKind } from '../../lib/attachments';
 import { fmtBytes, fmtTime } from '../../lib/agent/video';
-import { useDictation, useSpeech } from '../../lib/speech';
+import { preparerAudio, useDictation, useSpeech } from '../../lib/speech';
+import { useConversation } from '../../lib/speech/conversation';
 import { triggerHaptic } from '../../lib/theme';
 import { applyTextFormat, FormatAction, TextFormattingBar } from './TextFormattingBar';
 import { cn } from '../../utils/cn';
@@ -42,7 +43,49 @@ export function Composer({
   const {
     isListening, isSupported: micSupported, isTranscribing, interimTranscript, startDictation, stopDictation,
   } = useDictation();
-  const { stop: stopSpeech } = useSpeech();
+  const { stop: stopSpeech, speak } = useSpeech();
+  const conversation = useConversation();
+  const conversationActive = conversation.phase !== 'arret';
+
+  /* Un mode qui s'arrete seul dit pourquoi : micro refuse, transcription en
+     echec. Un arret muet ressemblerait a une panne de JARVIS. */
+  const erreurConversation = conversation.erreur;
+  useEffect(() => {
+    if (!erreurConversation) return;
+    setDictationNotice(
+      erreurConversation === 'not-allowed' || erreurConversation === 'permission-denied'
+        ? t('composer.micDenied')
+        : erreurConversation === 'transcription-failed'
+          ? t('composer.micTranscriptionFailed')
+          : t('composer.micUnsupported'),
+    );
+    const minuterie = setTimeout(() => setDictationNotice(null), 5000);
+    return () => clearTimeout(minuterie);
+  }, [erreurConversation, t]);
+
+  /* Mode mains libres (DEC-0164). La premiere phrase est dite ICI, dans le
+     geste du doigt : sur telephone, la synthese vocale ne parle qu'apres un
+     toucher — lancee plus tard par le pilote, elle resterait muette. */
+  const basculerConversation = () => {
+    if (conversationActive) {
+      triggerHaptic('light');
+      conversation.arreter();
+      stopDictation();
+      stopSpeech();
+      return;
+    }
+    if (!micSupported) {
+      setDictationNotice(t('composer.micUnsupported'));
+      setTimeout(() => setDictationNotice(null), 5000);
+      return;
+    }
+    triggerHaptic('medium');
+    if (isListening) stopDictation();
+    stopSpeech();
+    preparerAudio();
+    conversation.demarrer();
+    speak('jarvis-annonce', t('conversation.annonce'), locale);
+  };
 
   useEffect(() => {
     const el = ref.current;
@@ -253,6 +296,37 @@ export function Composer({
           )}
         </AnimatePresence>
 
+        {/* Etat de la conversation mains libres : ce que fait JARVIS, et comment en sortir */}
+        <AnimatePresence initial={false}>
+          {conversationActive && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="overflow-hidden"
+            >
+              <div
+                role="status"
+                className="flex items-center gap-2 border-b border-accent-500/20 bg-accent-500/[0.08] px-3.5 py-2 text-ui-meta text-accent-200"
+              >
+                <span className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse-dot rounded-full bg-accent-400" />
+                <span className="flex-1">
+                  {t(`conversation.${conversation.phase === 'ecoute' || conversation.phase === 'reflexion' ? conversation.phase : 'parole'}`)}
+                  <span className="ml-2 text-zinc-500">{t('conversation.astuce')}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={basculerConversation}
+                  className="rounded px-1.5 py-0.5 text-accent-300 hover:bg-accent-500/20"
+                >
+                  {t('conversation.stop')}
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Notice for mic permission / unsupported browser */}
         <AnimatePresence initial={false}>
           {dictationNotice && (
@@ -324,6 +398,23 @@ export function Composer({
             )}
           >
             <Type size={15} />
+          </button>
+          {/* Conversation mains libres avec JARVIS */}
+          <button
+            type="button"
+            onClick={basculerConversation}
+            disabled={running && !conversationActive}
+            title={conversationActive ? t('conversation.stop') : t('conversation.start')}
+            aria-label={conversationActive ? t('conversation.stop') : t('conversation.start')}
+            aria-pressed={conversationActive}
+            className={cn(
+              'relative grid h-9 w-9 shrink-0 place-items-center rounded-xl transition active:scale-95 disabled:opacity-40',
+              conversationActive
+                ? 'bg-accent-500 text-ink-950 shadow-[0_0_15px_var(--glow)]'
+                : 'text-zinc-500 hover:bg-white/5 hover:text-accent-300',
+            )}
+          >
+            <Headphones size={16} className={conversationActive ? 'animate-pulse' : undefined} />
           </button>
           {/* Microphone Dictation Button */}
           <button
