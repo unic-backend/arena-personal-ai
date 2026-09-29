@@ -38,7 +38,8 @@ git pull origin main
 ```
 
 Puis relance `.\Lancer_ARENA.bat`. Le lanceur reconstruit l'interface tout seul
-si elle manque.
+si elle manque **ou si elle est plus ancienne que le code** (29/09/2026 : sans
+ça, le téléphone gardait l'ancienne interface après un `git pull`).
 
 ---
 

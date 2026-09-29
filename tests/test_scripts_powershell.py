@@ -311,3 +311,24 @@ def test_la_re_annonce_envoie_vraiment_ce_quil_faut():
         "sans la cle, le serveur permanent refuse et la re-annonce ne sert a rien")
     assert premiere["corps"]["adresse"] == "https://tunnel-du-jour.test"
     assert premiere["corps"]["machine"] == "PC-DE-TEST"
+
+
+def test_le_lanceur_recompile_une_interface_perimee():
+    """Mesure du 29/09/2026 : apres `git pull`, le telephone affichait encore
+    l'ancienne interface (« Usman » au lieu de « JARVIS »). Le lanceur ne
+    recompilait que si `dist/` MANQUAIT — or un `git pull` ne l'efface pas.
+
+    Garde de texte (comme les autres de ce fichier) : elle verifie que le
+    lanceur compare la date de l'interface a celle des sources, et qu'il juge
+    une recompilation reussie sur un fichier RECRIT, pas sur un fichier present.
+    L'analyse par PowerShell lui-meme est `test_powershell_accepte_vraiment_le_fichier`.
+    """
+    texte = (RACINE / "scripts" / "lancer_arena.ps1").read_text(encoding="utf-8")
+    bloc = texte[texte.index("# --- 2 bis."):]
+
+    a_jour = next(ligne for ligne in bloc.splitlines() if ligne.startswith("$aJour ="))
+    assert "$plusRecente.LastWriteTime -le $compileeLe" in a_jour, \
+        "« a jour » ne compare pas la date de l'interface a celle des sources"
+    assert '"src", "public"' in bloc, "les sources de l'interface ne sont pas regardees"
+    assert "$recrite" in bloc and "-gt $compileeLe" in bloc, \
+        "une recompilation ratee serait annoncee reussie (l'ancien fichier existe encore)"
