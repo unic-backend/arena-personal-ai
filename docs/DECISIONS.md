@@ -12163,6 +12163,29 @@ aucun moteur `md -> csv`, et la phrase « en csv » n'etait pas reconnue.
 **Ce que ca coute si c'est faux** : une reponse qui porte le tableau voulu en
 second ecrit le premier ; il faut le demander seul.
 
+## DEC-0172 — PDF -> Word sans LibreOffice : le texte, dans un Word modifiable
+
+**2026-09-29.** `pdf -> docx` n'avait qu'un moteur, LibreOffice. Sur une
+machine qui ne l'a pas — un PC Windows ordinaire, probablement celui du
+proprietaire — « convertis ce PDF en Word » echouait en `NOT_CONFIGURED`.
+
+**Decision** :
+
+- `extraction.pdf_vers_docx`, declare **apres** LibreOffice pour le meme
+  couple : LibreOffice garde la mise en page quand il est installe ; sans
+  lui, le connecteur passe a ce moteur et le dit (`fallback_utilise`).
+- Il ecrit le texte que le lecteur de documents a lu (DEC-0170) — une seule
+  facon de lire un PDF dans ARENA — **une ligne du PDF par paragraphe**, un
+  saut de page entre deux pages, et une note en italique en tete de toute
+  page lue par OCR.
+- Un PDF que le lecteur n'a pas lu fait echouer le moteur avec sa raison :
+  jamais un Word vide rendu comme une reussite.
+
+**Ce que ca coute si c'est faux** : un paragraphe du PDF, coupe en lignes par
+la mise en page, arrive coupe en autant de paragraphes dans Word. Recoller
+les lignes en phrases aurait casse listes et tableaux sans le dire ; la
+limite de qualite l'annonce plutot.
+
 ## DEC-0173 — Word -> PDF sans LibreOffice : la structure du document, rendue par WeasyPrint
 
 **2026-09-29.** Suite de DEC-0172, dans l'autre sens. `docx -> pdf` n'avait

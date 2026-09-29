@@ -117,3 +117,85 @@ def test_une_page_lue_par_ocr_le_dit_meme_seule(monkeypatch, tmp_path):
 
     assert (tmp_path / "scan.txt").read_text(encoding="utf-8") == \
         "--- scan.pdf, page 1 (OCR) ---\nDevis 2026-118\n"
+
+
+# --- PDF -> Word sans LibreOffice (DEC-0172) --------------------------------------
+
+def _pdf_deux_pages(tmp_path: Path) -> Path:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    chemin = tmp_path / "contrat.pdf"
+    page = canvas.Canvas(str(chemin), pagesize=A4)
+    page.drawString(72, 750, "Article 1 : objet du contrat.")
+    page.drawString(72, 730, "- pose de cloisons BA13")
+    page.showPage()
+    page.drawString(72, 750, "Article 2 : prix.")
+    page.save()
+    return chemin
+
+
+def test_sans_libreoffice_un_pdf_devient_un_word_modifiable(tmp_path):
+    """La machine sans LibreOffice (un PC Windows ordinaire) : le moteur de
+    repli ecrit le texte, une ligne par paragraphe, une page par page."""
+    from dataclasses import replace
+
+    from docx import Document
+
+    from core.production.conversion import registre
+
+    originales = registre.MATRICE[("pdf", "docx")]
+    registre.MATRICE[("pdf", "docx")] = [
+        replace(e, disponible=lambda: (False, "LibreOffice absent")) if e.moteur_id == "libreoffice" else e
+        for e in originales
+    ]
+    try:
+        resultat = ConnecteurFileConversion(dossier=tmp_path / "sorties")._convertir_un_fichier(
+            str(_pdf_deux_pages(tmp_path)), "docx")
+    finally:
+        registre.MATRICE[("pdf", "docx")] = originales
+
+    assert resultat.statut.value == "SUCCESS", resultat.message
+    assert resultat.detail["moteur"] == "lecteur-documents"
+    assert "Texte seul" in resultat.detail["limites_qualite"]
+    document = Document(resultat.preuve)
+    textes = [p.text for p in document.paragraphs if p.text]
+    assert textes == ["Article 1 : objet du contrat.", "- pose de cloisons BA13", "Article 2 : prix."]
+    sauts = sum(1 for p in document.paragraphs for r in p.runs if 'w:br w:type="page"' in r._r.xml)
+    assert sauts == 1, "un saut de page entre les deux pages"
+
+
+def test_libreoffice_garde_la_priorite_quand_il_est_la():
+    assert [m.moteur_id for m in moteurs_pour("pdf", "docx")] == ["libreoffice", "lecteur-documents"]
+
+
+def test_une_page_ocr_est_signalee_dans_le_word(monkeypatch, tmp_path):
+    from docx import Document
+
+    from core.production.conversion import extraction
+    from tools.documents.reader import Document as Lu
+    from tools.documents.reader import Passage
+
+    monkeypatch.setattr(extraction, "lire_document", lambda _: Lu(
+        chemin=tmp_path / "scan.pdf", statut="LU",
+        passages=[Passage(texte="Devis 2026-118", fichier="scan.pdf", page=1, via_ocr=True)]))
+
+    extraction.pdf_vers_docx(tmp_path / "scan.pdf", tmp_path / "scan.docx")
+    paragraphes = Document(tmp_path / "scan.docx").paragraphs
+
+    assert "lue par reconnaissance de caracteres (OCR)" in paragraphes[0].text
+    assert paragraphes[0].runs[0].italic
+    assert paragraphes[1].text == "Devis 2026-118"
+
+
+def test_un_pdf_illisible_ne_donne_pas_de_word(monkeypatch, tmp_path):
+    from core.production.conversion import extraction
+    from core.production.conversion.moteurs import MoteurEchec
+    from tools.documents.reader import Document as Lu
+
+    monkeypatch.setattr(extraction, "lire_document", lambda _: Lu(
+        chemin=tmp_path / "vide.pdf", statut="VIDE", raison="aucun texte extractible"))
+
+    with pytest.raises(MoteurEchec, match="aucun texte extractible"):
+        extraction.pdf_vers_docx(tmp_path / "vide.pdf", tmp_path / "vide.docx")
+    assert not (tmp_path / "vide.docx").exists()
