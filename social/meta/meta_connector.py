@@ -33,6 +33,7 @@ import httpx
 
 from core.actions.resultat import ResultatAction, echec, succes
 from core.connectors.base import Capacite, Connecteur, EtatSante, Sante, _maintenant
+from core.security.trust import TrustLevel, wrap
 
 logger = logging.getLogger("usman.social.meta")
 
@@ -52,6 +53,21 @@ CE_QUI_MANQUE = (
 DELAI_SECONDES = 20.0
 DUREE_SONDE_SECONDES = 60.0
 PUBLICATIONS_MAX = 25
+
+
+def texte_des_commentaires(publication: str, commentaires: Any) -> str:
+    """Les commentaires, auteur compris, dans une enveloppe `EXTERNAL`.
+
+    L'auteur entre DANS l'enveloppe : un nom d'utilisateur se choisit aussi
+    librement qu'un commentaire.
+    """
+    lignes = []
+    for commentaire in commentaires if isinstance(commentaires, list) else []:
+        auteur = commentaire.get("username") or (commentaire.get("from") or {}).get("name") or "inconnu"
+        texte = commentaire.get("text") or commentaire.get("message") or ""
+        lignes.append(f"{auteur} : {texte}")
+    contenu = "\n".join(lignes) or "(aucun commentaire)"
+    return wrap(contenu, TrustLevel.EXTERNAL, f"commentaires meta {publication}").text
 
 
 class MetaConnector(Connecteur):
@@ -249,9 +265,14 @@ class MetaConnector(Connecteur):
         publication = str(parametres.get("publication_id") or "").strip()
         if not publication:
             return echec(capacite.nom, self.nom, "Quelle publication ? (publication_id manquant)")
-        return self._lecture(capacite, f"/{publication}/comments",
-                             "id,text,message,username,from,timestamp,created_time",
-                             "Commentaires lus.", limit=self._limite(parametres))
+        resultat = self._lecture(capacite, f"/{publication}/comments",
+                                 "id,text,message,username,from,timestamp,created_time",
+                                 "Commentaires lus.", limit=self._limite(parametres))
+        if resultat.statut.value == "SUCCESS":
+            # N'importe qui peut commenter : le texte pret pour une invite
+            # voyage a part, ENVELOPPE comme une donnee etrangere (voir gmail).
+            resultat.detail["texte"] = texte_des_commentaires(publication, resultat.detail["donnees"])
+        return resultat
 
     def _publier_facebook(self, capacite: Capacite, **parametres: Any) -> ResultatAction:
         message = str(parametres.get("message") or "").strip()

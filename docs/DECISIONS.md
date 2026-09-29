@@ -12386,6 +12386,9 @@ et Instagram passent par la meme Graph API et le meme jeton de page.
   a partir d'une adresse https — exigence de l'API.
 - **Repondre** (`reply` : confirmation + SEND_MESSAGES) : `/replies` pour
   Instagram, `/comments` pour Facebook.
+- Les commentaires sont ecrits par n'importe qui : leur texte pret pour une
+  invite voyage enveloppe `EXTERNAL` (`core/security/trust.py`), comme un
+  e-mail dans `core/connectors/gmail.py` — une donnee, jamais une consigne.
 - Un succes porte l'identifiant rendu par Meta (`facebook:…`, `instagram:…`) ;
   sans identifiant, c'est un echec. Le jeton voyage dans la requete et est
   retire de tout message d'erreur.
@@ -12394,7 +12397,7 @@ et Instagram passent par la meme Graph API et le meme jeton de page.
   comment le lever.
 
 **Non mesure** : aucun appel reel a Meta n'a ete fait (pas de jeton ici) ; les
-23 tests passent par un `httpx.MockTransport`. Les chemins et champs suivent
+24 tests passent par un `httpx.MockTransport`. Les chemins et champs suivent
 la documentation publique de la Graph API ; le premier jeton du proprietaire
 sera la premiere mesure.
 
