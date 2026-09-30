@@ -45,7 +45,7 @@ Le script d'installation :
 1. Clone le dépôt officiel `https://github.com/BIT-DataLab/Edit-Banana.git` (commit épinglé `88c6e288ef8329606114eb91924559c5d1838d2e`) ;
 2. Crée un environnement virtuel isolé `.venv` dans ce dossier ;
 3. Installe les dépendances nécessaires (PyTorch, torchvision, OCR, etc.) sans toucher à l'environnement d'ARENA ;
-4. Initialise la configuration `config/config.yaml`.
+4. Initialise la configuration YAML (`config.yaml` dans le dossier externe).
 
 Après l'installation, placez le fichier de checkpoint SAM3 (`sam3.pt`) dans le dossier `models/` du checkout externe, ou configurez son chemin.
 

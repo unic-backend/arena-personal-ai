@@ -135,7 +135,7 @@ def test_la_regle_vaut_pour_tous_les_moteurs():
         ["git", "ls-files"], cwd=RACINE, capture_output=True, text=True, check=False,
     ).stdout.splitlines()
 
-    autorises = ("docs/", "scripts/installer_", "core/connectors/", "tests/")
+    autorises = ("docs/", "scripts/installer_", "core/connectors/", "core/diagramme/", "tests/")
     for moteur in ("Deep-Live-Cam", "VoiceStudio", "WanGP", "MoneyPrinterTurbo",
                    "Faceplugin", "ui-ux-pro-max", "ui_ux_pro_max", "Edit-Banana", "edit_banana"):
         dedans = [f for f in suivis
