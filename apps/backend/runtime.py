@@ -70,6 +70,7 @@ from core.connectors.comfyui import ComfyUIConnector
 from core.connectors.csm import ConnecteurCsm
 from core.connectors.devis import DevisConnector
 from core.connectors.drift import ConnecteurDrift
+from core.connectors.edit_banana import ConnecteurEditBanana
 from core.connectors.faceplugin import ConnecteurFaceplugin
 from core.connectors.fiche_google import FicheGoogleConnector
 from core.connectors.file_conversion import ConnecteurFileConversion
@@ -634,6 +635,15 @@ registre.declarer(
     "file_conversion",
     lambda: ConnecteurFileConversion(acces=acces, journal=journal, file_attente=file_attente,
                                      crochets=crochets, travaux=travaux),
+)
+
+# Edit-Banana (DEC-0200) : conversion d'images de diagrammes en documents DrawIO
+# éditables (.drawio). Moteur externe AGPL-3.0 dans un processus et environnement
+# isolés, avec poids SAM3 hors dépôt.
+registre.declarer(
+    "edit_banana",
+    lambda: ConnecteurEditBanana(acces=acces, journal=journal, file_attente=file_attente,
+                                 crochets=crochets),
 )
 
 # Meme Atelier que Dioumtoukay (DEC-0038 : aucune garde sur ses mains

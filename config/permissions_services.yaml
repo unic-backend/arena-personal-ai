@@ -280,6 +280,14 @@ services:
     document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
     lecture:     {decision: ALLOWED,      risque: LOW}
 
+  # Edit-Banana (DEC-0200) : conversion de schémas statiques vers DrawIO (.drawio).
+  # Même logique que file_conversion / devis : le document DrawIO XML reste local,
+  # écrit sous media/rendered/diagrams/ et relu avant succès — ALLOWED sous WRITE_FILES,
+  # pas de confirmation préalable, rien de destructif.
+  edit_banana:
+    document:    {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+    lecture:     {decision: ALLOWED,      risque: LOW}
+
   # Classement de fichiers (DEC-0075, mission « AI File Sorter ») : inspecter
   # un dossier et proposer/valider un plan sont de pures lectures — rien ne
   # bouge. Appliquer (ou annuler) deplace/copie/supprime reellement des

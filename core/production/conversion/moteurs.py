@@ -413,3 +413,29 @@ def extraire_zip(archive: Path, dossier_cible: Path) -> List[Path]:
         zf.extractall(dossier_cible)
         return [dossier_cible / info.filename for info in zf.infolist()
                 if not info.filename.endswith("/")]
+
+
+# --- Edit-Banana : Image -> DrawIO (.drawio) -----------------------------------
+
+def edit_banana_disponible() -> Tuple[bool, str]:
+    """Sonde l'état opérationnel du moteur externe Edit-Banana."""
+    from apps.backend.runtime import registre
+    sante = registre.sante("edit_banana")
+    return sante.utilisable, sante.message or ("Edit-Banana disponible" if sante.utilisable else "non configuré")
+
+
+def convertir_diagramme_drawio(entree: Path, sortie: Path) -> None:
+    """Convertit une image de schéma/diagramme en document DrawIO via le connecteur Edit-Banana."""
+    import shutil
+
+    from apps.backend.runtime import registre
+
+    resultat = registre.executer(
+        "edit_banana", "diagram_to_drawio", entree=str(entree), nom_source=entree.name
+    )
+    if not resultat.a_eu_lieu:
+        raise MoteurEchec(resultat.message)
+    if resultat.preuve and Path(resultat.preuve).resolve() != sortie.resolve():
+        sortie.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(resultat.preuve, sortie)
+

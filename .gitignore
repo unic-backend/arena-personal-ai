@@ -180,5 +180,20 @@ data/preuves/
 # toutes les ecritures de Pascal echouent. Voir `docs/COMMANDES_PC.md`.
 tools/architecture/pascal/
 
+# --- Edit-Banana : moteur externe de diagrammes DrawIO, hors du depot (DEC-0200) ----
+#
+# Le depot officiel d'Edit-Banana porte une licence **AGPL-3.0** (dans son
+# fichier LICENSE). La licence d'ARENA est proprietaire (« All rights reserved »).
+# Faire entrer son code source ferait d'ARENA une oeuvre derivee sous AGPL-3.0.
+# Meme frontiere que VoiceStudio (DEC-0027) et Xaar Kaname (DEC-0039) :
+# un processus isole externe.
+#
+# De plus, Edit-Banana embarque SAM3 (avec ses conditions de licence et d'acces
+# aux checkpoints) et un environnement Python lourd (torch, torchvision, OCR).
+#
+# Ce que le depot porte : le connecteur `core/connectors/edit_banana.py`,
+# l'adaptateur `core/diagramme/edit_banana.py`, ses tests et son installeur.
+tools/diagrams/edit_banana/
+
 # Memoire vectorielle personnelle du chat autonome
 chroma_db/

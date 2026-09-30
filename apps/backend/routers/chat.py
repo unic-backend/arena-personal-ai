@@ -758,8 +758,23 @@ async def _convertir_les_pieces(demande: str, identifiants: List[str]) -> Dict[s
              + "\n".join(lignes))
     if limites:
         texte += "\n\n*A savoir : " + " ".join(limites) + "*"
+    mimes = {
+        "drawio": "application/x-drawio",
+        "pdf": "application/pdf",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "webp": "image/webp",
+        "txt": "text/plain",
+        "md": "text/markdown",
+        "csv": "text/csv",
+    }
+    type_mime = mimes.get(format_cible, f"application/{format_cible}")
     documents = [{"statut": "SUCCESS", "url": r["url"], "nom": r["sortie"],
                   "format": format_cible, "octets": r["octets"],
+                  "type": type_mime,
                   "message": f"Document « {r['sortie']} » ({format_cible.upper()})"}
                  for r in reussis]
     return {

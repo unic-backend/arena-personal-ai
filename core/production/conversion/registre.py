@@ -268,6 +268,20 @@ _enregistrer(_FORMATS_VIDEO, _FORMATS_AUDIO,
              EntreeMoteur("ffmpeg", m.convertir_audio_video, m.ffmpeg_disponible,
                           limites_qualite="Extrait la piste audio ; toute image est perdue."))
 
+# --- Edit-Banana : Image -> DrawIO -------------------------------------------------
+_enregistrer(
+    _FORMATS_IMAGE, ["drawio"],
+    EntreeMoteur(
+        "edit-banana", m.convertir_diagramme_drawio, m.edit_banana_disponible,
+        version="88c6e28",
+        limites_qualite=(
+            "Reconstruction de schémas par SAM3 et OCR : les formes vectorisées et "
+            "textes détectés sont modifiables dans DrawIO. Les diagrammes complexes ou "
+            "manuscrits peuvent nécessiter des ajustements manuels."
+        ),
+    ),
+)
+
 
 def moteurs_pour(format_source: str, format_cible: str) -> List[EntreeMoteur]:
     """Les moteurs déclarés pour ce couple, dans l'ordre. Liste vide si aucun."""

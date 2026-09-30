@@ -365,6 +365,8 @@ VISION = (
     "extrait le tableau de cette image", "cette capture d'ecran",
     "cette capture d'écran", "ce screenshot", "analyse ce plan de construction",
     "analyse ce dessin", "analyse ce schema", "analyse ce schéma",
+    "analyse ce diagramme", "que montre ce diagramme", "que montre ce schema", "que montre ce schéma",
+    "what does this diagram mean", "what does this image mean", "describe this diagram", "describe this image",
     "decris cette image", "décris cette image", "decris cette photo",
     "décris cette photo", "analyse ce document scanne", "analyse ce document scanné",
     # Metadonnees techniques d'une photo (mission EXIF & Media Metadata,
@@ -773,8 +775,8 @@ EQUIPE          : faire travailler PLUSIEURS agents ensemble — une table ronde
 BRIEFING        : le briefing du jour du proprietaire — agenda, courrier, meteo
                   et actualites reunis. Pas une simple question d'actualite.
 CONVERSION      : convertir un FICHIER ENVOYE vers un autre format — « convertis
-                  ce PDF en Word », « mets cette presentation en PDF ». Ecrire
-                  la reponse dans un fichier n'en est pas une.
+                  ce PDF en Word », « transforme cette image en DrawIO éditable »,
+                  « rends ce schéma éditable ». Ecrire la reponse dans un fichier n'en est pas une.
 SITE_WEB        : SES sites web tels qu'ils sont en ligne — etat, deploiements,
                   messages recus par ses formulaires, republier. Creer ou
                   modifier un site est du code ou du design, pas SITE_WEB.
@@ -1137,6 +1139,10 @@ class OrchestratorAgent(BaseAgent):
         # enverraient ailleurs, vers un agent qui ne touche rien.
         if any(k in text for k in ATELIER):
             return "ATELIER"
+
+        # Conversion explicite d'un fichier fourni (dont DrawIO / diagrammes éditables).
+        if OrchestratorAgent.demande_de_conversion(user_input):
+            return "CONVERSION"
 
         # Une transformation d'image explicite gagne avant les familles
         # generiques (notamment « codeformer », qui commence par « code »).
