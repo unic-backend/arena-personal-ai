@@ -13695,3 +13695,85 @@ exécuter.
 
 **Réversible.** Un seul fichier CI, aucun code. Si GitHub corrige ses miroirs,
 les deux premiers gestes restent inoffensifs et le troisième reste utile.
+
+---
+
+## DEC-0207 — Agent Orchestrator : référence architecturale, jamais un deuxième runtime
+
+**2026-09-30.** Demande : évaluer le dépôt courant
+`Untrivial-ai/agent-orchestrator` contre le système d’orchestration et
+d’ingénierie d’ARENA, puis choisir entre dépendance runtime, intégration
+développeur optionnelle, référence architecturale ou aucun usage.
+
+### Décision
+
+**Option C — référence architecturale seulement.**
+
+Rien de l’amont ne devient une dépendance ou un composant ARENA : ni code, ni
+sous-module, ni daemon, ni frontend Electron, ni binaire, ni schéma SQLite, ni
+agent CLI, ni clé, ni configuration, ni télémétrie. Le test
+`tests/test_agent_orchestrator_reste_une_reference.py` tient cette frontière.
+
+### Ce qui a été constaté dans le code, pas déduit de la page d’accueil
+
+AO au commit `daeff885b57685b4690ececb25d4fc330b69783d` est un produit entier :
+- daemon Go long vivant, API loopback, SQLite/CDC/SSE, `session_manager`,
+  lifecycle/reaper et stockage qui possèdent leurs propres projets/sessions;
+- application Electron/React, CLI, terminal PTY/tmux/ConPTY, navigateur,
+  mobile et chemins cloud;
+- plus de trente adaptateurs de coding-agent, chacun avec ses propres
+  processus et credentials;
+- worktrees, observer SCM/PR/CI/revue, plans de workers et tableau Kanban.
+
+ARENA possède déjà les primitives qui justifieraient autrement un petit
+adaptateur : routeur et équipes, spécialistes lecture seule, Dioumtoukay qui
+agit, `Coordination`/`JournalDeReprise`, `Atelier.isoler()`/verrous/Git
+idempotent, connecteur GitHub (PR brouillon confirmée, CI, diagnostic, revue),
+mémoire et frontière de confiance. AO ne peut donc pas les compléter sans les
+dupliquer. Ses trois différences réelles — flotte de TTY persistants,
+observateur SCM continu et dashboard — sont un autre produit, sans besoin
+utilisateur mesuré.
+
+### Télémétrie : blocage indépendant pour tout runtime ARENA
+
+AO documente et son source confirme que les releases desktop empaquetées
+activent PostHog distant par défaut : renderer Electron direct et daemon lancé
+avec `AO_TELEMETRY_EVENTS=on` / `AO_TELEMETRY_REMOTE=posthog`. Les événements
+comprennent notamment le propriétaire GitHub du remote (`github_org`) et le
+compte GitHub authentifié au démarrage de session (`github_actor`), plus un
+identifiant d’installation pseudonyme, métadonnées appareil et géographie
+approximative dérivée de l’IP. Le superviseur empaqueté configure également un
+DSN Sentry daemon par défaut.
+
+AO déclare ne pas envoyer intentionnellement code, prompts, terminal ou diffs,
+et son allowlist/rédaction est réelle. Cela ne rend pas les données d’identité,
+IP et métadonnées absentes. C’est incompatible avec la règle ARENA « aucune
+télémétrie externe par défaut ».
+
+Un utilisateur AO peut configurer séparément
+`AO_TELEMETRY_RENDERER=off`, `AO_TELEMETRY_EVENTS=off`,
+`AO_TELEMETRY_REMOTE=off` et `AO_SENTRY_DSN=""`; aucun essai réseau de ce
+montage empaqueté n’a été exécuté ici, donc son absence complète de trafic est
+**UNKNOWN — non mesuré**. Cette configuration externe ne justifie pas de faire
+d’AO une dépendance d’ARENA.
+
+### Ce qui peut être repris, sans importer AO
+
+Les idées de rollback de spawn, propriété explicite d’un workspace,
+réconciliation après redémarrage, observation SCM robuste et nettoyage prudent
+de worktree restent des références de conception. Si un besoin futur est
+prouvé, il doit être réalisé comme le plus petit adaptateur **ARENA**, sous les
+interfaces existantes et avec ARENA seule source de vérité — jamais en lançant
+AO, jamais en doublant ses états ou sa surface GitHub.
+
+Tout contenu de dépôt, sortie d’agent, PR, commentaire de revue ou log CI reste
+des données non fiables; il ne peut pas devenir une instruction. Aucun main,
+branche ou worktree d’autrui ne doit être modifié, détruit ou fusionné par cette
+décision.
+
+### Licence et documentation
+
+AO est Apache-2.0. Aucun de ses fichiers ou dépendances n’est utilisé, donc
+aucune notice tierce ni dépendance n’est ajoutée. Le détail reproductible,
+comparaison, exclusions, sécurité, télémétrie, dépendances et limitations sont
+dans `docs/audits/agent_orchestrator_audit.md`.

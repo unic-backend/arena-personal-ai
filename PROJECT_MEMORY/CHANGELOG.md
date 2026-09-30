@@ -1,3 +1,30 @@
+## 2026-09-30 — Agent Orchestrator audité : référence architecturale, jamais runtime ARENA
+
+`Untrivial-ai/agent-orchestrator` (commit audité `daeff885…`, Apache-2.0) est
+un produit complet Go/Electron : daemon, SQLite/CDC, sessions et PTY persistants,
+worktrees, plus de trente harnesses d'agents, observateur SCM/PR/CI/revue,
+Kanban et options cloud. **Option C retenue** : aucune dépendance, aucun daemon,
+frontend, sous-module, adaptateur, clé ou télémétrie AO n'entre dans ARENA.
+
+Le besoin déjà démontré reste couvert localement par Dioumtoukay/Atelier,
+`Coordination`/`JournalDeReprise`, équipes/espaces de travail, Git sûr et le
+connecteur GitHub. Les écarts AO (flotte de TTY, observateur continu, dashboard)
+sont un autre produit, sans besoin utilisateur mesuré — pas une capacité à
+copier. Tout contenu externe (PR, CI, revue, sortie d'agent) reste non fiable.
+
+La télémétrie est un blocage indépendant : les releases AO envoient PostHog par
+défaut depuis Electron et son daemon, dont propriétaire de remote GitHub,
+utilisateur GitHub authentifié, identifiant pseudonyme, métadonnées appareil et
+localisation grossière dérivée de l'IP; Sentry daemon est aussi configuré en
+release. AO offre des variables d'opt-out, mais l'absence complète de trafic
+avec elles est `UNKNOWN — non mesuré`; ARENA ne dépend donc pas de ce montage.
+
+La frontière est tenue par `tests/test_agent_orchestrator_reste_une_reference.py`
+(absence de dépendance/import/checkout AO + worktree ARENA réellement isolé).
+Voir DEC-0207 et `docs/audits/agent_orchestrator_audit.md`.
+
+---
+
 ## 2026-09-30 — Basic Memory audité, puis refusé : ARENA a déjà cette mémoire
 
 Demande : auditer `basicmachines-co/basic-memory` et n'intégrer que si l'audit
