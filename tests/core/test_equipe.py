@@ -43,6 +43,58 @@ def test_une_demande_simple_reste_entiere(phrase):
     assert decouper(phrase) == [phrase.strip(" ,;.")]
 
 
+# --- Enchainements anglais : connecteurs, jamais de liste de verbes ----------------
+
+@pytest.mark.parametrize("phrase, morceaux", [
+    ("analyze this plan and then make the quote",
+     ["analyze this plan", "make the quote"]),
+    ("measure this plan, then email it to khady@exemple.com",
+     ["measure this plan", "email it to khady@exemple.com"]),
+    ("summarize this PDF afterwards send it",
+     ["summarize this PDF", "send it"]),
+    ("translate the quote, after that, print it",
+     ["translate the quote", "print it"]),
+    ("check the stock, and after that update the site",
+     ["check the stock", "update the site"]),
+    ("read the plan, next, file it",
+     ["read the plan", "file it"]),
+])
+def test_un_enchainement_anglais_explicite_se_decoupe(phrase, morceaux):
+    """Mesure du 30/09/2026 : chacune de ces demandes arrivait au classifieur
+    EN UNE SEULE PIECE — un seul agent, et la seconde partie perdue. Ce sont
+    des connecteurs (« then », « afterwards »…), jamais des verbes : la
+    coupure « and » + verbe exige une liste de verbes que ce module n'a pas."""
+    assert decouper(phrase) == morceaux
+
+
+@pytest.mark.parametrize("phrase", [
+    "measure the doors and windows of the ground floor",   # « and » seul ne coupe jamais
+    "after that wall comes the corridor",                  # connector SANS ponctuation = du plan
+    "open the next door schedule",                         # « the next door » : une piece, pas une etape
+    "strengthen the beam on the south elevation",          # « then » colle dans un mot
+    "compare the steel and the timber options",            # une comparaison est UNE demande
+])
+def test_une_demande_anglaise_simple_reste_entiere(phrase):
+    assert decouper(phrase) == [phrase.strip(" ,;.")]
+
+
+def test_une_demande_anglaise_sans_connecteur_reste_entiere():
+    """La limite choisie, figee pour ne pas etre oubliee : « and » suivi d'un
+    verbe anglais ne coupe PAS. Le jour ou ce cas doit decouper, il faudra une
+    detection grammaticale reelle, pas une liste de verbes ecrite a la main."""
+    phrase = "analyze this plan and send it by email"
+    assert decouper(phrase) == [phrase]
+
+
+async def test_une_equipe_anglaise_est_planifiee():
+    classer = _classeur({"analyze": "VISION", "make": "PLAQUISTE"})
+
+    plan = await planifier("analyze this photo of the site and then make the quote", classer)
+
+    assert [e.intention for e in plan] == ["VISION", "PLAQUISTE"]
+    assert classer.appels == ["analyze this photo of the site", "make the quote"]
+
+
 def _classeur(table):
     appels = []
 

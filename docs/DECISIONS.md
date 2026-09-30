@@ -13072,3 +13072,58 @@ service externe change seul ; c'est annonce par la nature mesuree du bloc et
 borne par l'expiration. Reduire la duree repaierait les sondes lentes pendant
 la conversation. Les changements faits par ARENA elle-meme n'ont pas cette
 latence grace a l'invalidation explicite.
+
+## DEC-0194 — PDF/plans anglais : OCR sur les langues reellement installees, enchainements anglais sans liste de verbes
+
+Trois defauts mesures sur les vrais fichiers du 30/09/2026 (vrai binaire
+tesseract 5.5.2, vrais packs, vrais PDF fabriques) :
+
+1. **Une langue d'OCR passee en dur perdait les scans sans le dire.**
+   `tools/documents/reader.py` demandait `fra` au moteur. Sur une machine ou
+   seul `eng` est installe, `image_to_string` recouvre l'echec du binaire et
+   le `except` de `_ocr_page` rendait une chaine vide : le scan anglais
+   ressortait `VIDE`, aux allures de page blanche. `langues_ocr()` pose
+   maintenant la question au binaire (`get_languages`), **une fois par
+   processus**, et ne demande que les packs reellement installes : `fra+eng`
+   quand les deux sont la, l'un quand l'autre manque, None sinon — et la
+   raison `VIDE` d'un PDF nomme alors ce qui manque au lieu de laisser croire
+   a un scan illisible.
+
+2. **Une couche texte native illisible perdait la page en silence.** Un
+   `extract_text()` qui levait envoyait la page au `continue` suivant. Elle
+   est maintenant tentee par l'OCR, comme un scan, et n'est perdue qu'au bout
+   de cet essai — jamais non plus au prix du document entier.
+
+3. **Une demande multi-etapes anglaise arrivait en une seule piece.**
+   `core/agent/equipe.py` ne coupait que sur des connecteurs francais et sur
+   « et » + verbe francais : « analyze this plan and then make the quote »
+   partait entiere chez un seul agent, la seconde partie perdue. Le decoupage
+   reconnait maintenant les connecteurs anglais — `then`, `and then`,
+   `afterwards`, et `after that`/`next` **avec leur ponctuation** (« after
+   that wall », « the next door » sont des morceaux de plan, pas des etapes).
+   **Pas de coupure « and » + verbe anglais :** elle exigerait une liste de
+   verbes ecrite a la main, que ce module ne maintient pas — limite assumee,
+   figee par `test_une_demande_anglaise_sans_connecteur_reste_entiere`. Le
+   risque d'une coupure abusive reste borne : une equipe n'est formee que si
+   chaque morceau est classe chez un specialiste, sinon la demande suit son
+   cours ordinaire avec son texte d'origine, entier.
+
+**Cout mesure et cache.** La detection des packs coute un appel au binaire,
+paye une fois par processus : la seconde question est lue dans le cache
+(test qui compte les appels). Aucun rendu OCR n'est tente quand aucun pack
+n'est installe (test qui compte les appels moteur, zero).
+
+**Preuve.** Mesure avant/apres sur les memes fixtures reelles (natif
+anglais/francais, scan anglais/francais, machine simulee avec `eng` seul puis
+aucun des deux packs) ; tests d'integration anglais/francais/bilingue avec le
+vrai moteur (`-m integration`) ; cinq mutations — langue `fra` en dur, garde
+« aucun pack » retiree, `continue` silencieux restaure, connecteurs anglais
+retires, garde de ponctuation retiree — chacune tombe sur les tests prevus,
+restauree apres coup. Les tests de decoupage francais sont inchanges et
+passent sous la mutation anglaise ciblee : l'existant ne bouge pas.
+
+**Ce que ca coute si c'est faux.** Demander les deux langues a celui qui n'en
+a qu'une serait le meme defaut en moins visible ; le filtrage par les packs
+reellement installes est donc verifie des deux cotes. Etendre le decoupage a
+« and » + verbe couperait aussi « the doors and windows » : le refus est
+documente par un test de garde, pas par une note.

@@ -1,3 +1,17 @@
+## 2026-09-30 — PDF et plans anglais : OCR réel, enchaînements anglais
+
+L'OCR ne demande plus `fra` en dur : `langues_ocr()` interroge le binaire et
+ne demande que les packs installés (`fra+eng` quand les deux sont là) — mesure
+du jour : sur un poste avec seul `eng`, un scan anglais ressortait `VIDE` sans
+aucune erreur visible ; il est lu, et un poste sans aucun des deux packs voit
+la raison nommer ce qui manque. Une couche texte native illisible est tentée
+par l'OCR au lieu d'être perdue en silence. Les connecteurs d'enchaînement
+anglais (`then`, `afterwards`, `after that`/`next` ponctués) découpent, sans
+aucune liste de verbes — « and » + verbe reste une demande entière par choix.
+Voir DEC-0194. Cinq mutations, chacune rattrapée par les tests prévus.
+
+---
+
 ## 2026-09-30 — les capacités du prompt ont maintenant un état mesuré
 
 La section MISSION n'énumère plus de capacités à la main. Chaque prompt compose
