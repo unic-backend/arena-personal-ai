@@ -27,6 +27,7 @@ from core.agent.verification_synthese import (
     elements_sans_source,
     terme_present,
 )
+from core.memory.conversation import NOM_ASSISTANT
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from core.security.trust import TrustLevel, wrap
@@ -99,9 +100,17 @@ QUESTION : {question}
 
 RÉPONSE (avec les numéros de source) :"""
 
+# ATTENTION, frontiere posee le 29/09/2026 (DEC-0191) : les quatre ensembles
+# qui suivent ne servent QU'A la barriere de pertinence des SOURCES
+# (DEC-0151/0153) — quelle page repond a la question. Aucun d'eux ne decide
+# plus si une question a besoin de la conversation : cette decision-la ne se
+# prend plus par vocabulaire, elle se prend en donnant le fil (voir
+# `_question_du_tour` et `core/context/fil_pour_agents.py`). Y ajouter un mot
+# pour reparer un suivi rate serait revenir a la methode abandonnee.
+
 # Mots qui n'identifient pas un sujet. Ils servent a distinguer une vraie
-# entite ("Barcelone", "Python", "Bitcoin") d'un suivi sans sujet
-# ("Qui sont les buteurs ?", "Quel etait le score ?").
+# entite ("Barcelone", "Python", "Bitcoin") d'une question sans sujet propre
+# ("Quelles sont les actualites du jour ?").
 MOTS_VIDES_ANCRAGE = frozenset({
     "a", "ai", "au", "aux", "avec", "avait", "ce", "ces", "cet", "cette",
     "comme", "dans", "de", "des", "du", "elle", "elles", "en", "entre", "est",
@@ -116,45 +125,20 @@ MOTS_VIDES_ANCRAGE = frozenset({
     "quand", "combien", "lequel", "laquelle", "lesquels", "lesquelles",
 })
 
-TERMES_SUIVI_GENERIQUES = frozenset({
-    "buteur", "buteurs", "score", "scores", "resultat", "résultat", "resultats",
-    "résultats", "gagnant", "gagnants", "gagne", "gagné", "gagner", "vainqueur",
-    "vainqueurs", "homme", "match", "joueur", "joueurs", "statistique",
-    "statistiques", "stats", "classement", "composition", "compo", "details",
-    "détails", "autre", "autres", "deuxieme", "deuxième", "premier", "première",
-    "apres", "après",
-})
-
 DEICTIQUES_SUIVI = frozenset({
     "cela", "ça", "celui", "celle", "ceux", "celles", "cette", "ces", "lui",
     "elle", "eux", "elles",
 })
 
+#: Ce qu'une page porte de toute facon quand elle parle du sujet : l'exiger
+#: d'elle ne prouve rien. Barriere de SOURCES seulement (voir l'avertissement
+#: en tete de section).
 TERMES_CONTEXTE_RECHERCHE = frozenset({
     "dernier", "derniere", "dernière", "match", "score", "version", "prix",
     "cours", "resultat", "résultat", "meteo", "météo", "temps", "president",
     "président", "election", "élection", "finale", "coupe", "championnat",
     "date", "heure", "modele", "modèle", "sortie", "classement",
 })
-
-TERMES_DETAIL_EVENEMENT = frozenset({
-    "but", "buts", "buteur", "buteurs", "marque", "marqué", "marquee", "marquée",
-    "homme", "mvp", "composition", "compo", "score", "scores",
-})
-MOTS_LIAISON_EVENEMENT = frozenset({
-    "contre", "lors", "pendant", "entre", "avec", "apres", "après",
-})
-
-# Mots capitalises d'une reponse qui ne precisent pas l'evenement resolu.
-# Les autres noms propres et scores peuvent servir d'INDICES DE RECHERCHE au
-# tour suivant, mais jamais de faits : ils devront etre retrouves dans les
-# nouvelles sources avant de pouvoir alimenter la synthese.
-MOTS_HINT_ASSISTANT = frozenset({
-    "le", "la", "les", "un", "une", "selon", "source", "sources", "réponse",
-    "reponse", "dernier", "dernière", "derniere", "match", "liga", "ligue",
-    "champions", "championnat", "victoire", "score", "usman", "travail",
-})
-
 
 #: Mots d'une question qui ne nomment pas son sujet (sans accents) : le temps,
 #: le genre de la demande, des verbes courants. Voir `_sujet_de_la_question`.
@@ -321,18 +305,13 @@ class FreshInfoAgent(BaseAgent):
         On repere donc les deux entites de l'evenement dans la premiere fiche
         compacte, puis on garde le bloc qui suit dans le budget.
         """
-        tokens = {
-            t.casefold().strip("'’_-") for t in cls._tokens(question)
-            if t.strip("'’_-")
-        }
-        if not (tokens & TERMES_DETAIL_EVENEMENT):
-            return ""
-
-        ancres = [
-            a for a in cls._termes_ancrage(question)
-            if a not in TERMES_DETAIL_EVENEMENT
-            and a not in MOTS_LIAISON_EVENEMENT
-        ]
+        # Les deux entites de l'evenement, prises a l'orthographe et non a un
+        # lexique sportif : l'ancienne paire de listes (TERMES_DETAIL_EVENEMENT,
+        # MOTS_LIAISON_EVENEMENT) disait « but », « compo », « mvp » et ne
+        # valait que pour le football (DEC-0191). Ce qui garde ce chemin sur
+        # de vraies fiches d'evenement, c'est le signal structurel exige plus
+        # bas : un score ou une minute de jeu.
+        ancres = cls._entites_nommees(question)
         # Deux entites independantes sont necessaires pour eviter de prendre une
         # zone generale sur un seul club/personne comme si c'etait l'evenement.
         if len(ancres) < 2:
@@ -452,7 +431,16 @@ class FreshInfoAgent(BaseAgent):
         generique (« les dernieres infos ») faute d'un mot qu'aucune page ne
         porte. Une question sans sujet propre n'a pas de barriere.
         """
-        sujet = [
+        # Quand la question NOMME au moins deux choses, ce sont elles, son
+        # sujet — les noms communs qui les entourent disent ce qu'on demande
+        # a leur propos. Mesure : la fiche LaLiga reelle de la PR #350
+        # (« Sevilla 1-3 Barcelona / Raphinha (22') ») nomme les deux clubs
+        # et jamais le mot « buteurs » ; exiger ce mot-la de la page faisait
+        # refuser la seule source qui repondait. Cette regle-ci ne connait
+        # aucun domaine : avant, c'etait la liste de football
+        # `TERMES_SUIVI_GENERIQUES` qui ecartait « buteurs » (DEC-0191).
+        nommees = cls._entites_nommees(question)
+        sujet = nommees if len(nommees) >= 2 else [
             terme for terme in cls._termes_ancrage(question)
             if terme not in DEICTIQUES_SUIVI
             and _sans_accents(terme) not in MOTS_SANS_SUJET
@@ -530,7 +518,7 @@ class FreshInfoAgent(BaseAgent):
             terme = brut.casefold().strip("'’_-")
             if not terme or terme.isdigit() or terme in MOTS_VIDES_ANCRAGE:
                 continue
-            if terme in TERMES_SUIVI_GENERIQUES or terme in TERMES_CONTEXTE_RECHERCHE:
+            if terme in TERMES_CONTEXTE_RECHERCHE:
                 continue
             # Les acronymes courts (OM, UK...) comptent seulement s'ils etaient
             # ecrits en capitales. Les mots ordinaires de deux lettres non.
@@ -542,25 +530,48 @@ class FreshInfoAgent(BaseAgent):
         return termes
 
     @classmethod
-    def _question_de_suivi_sans_ancre(cls, texte: str) -> bool:
-        """Vrai quand la phrase depend clairement d'un sujet precedent."""
-        bruts = cls._tokens(texte)
-        tokens = [t.casefold().strip("'’_-") for t in bruts if t.strip("'’_-")]
-        if not tokens:
-            return False
-        # Un sujet concret dans la phrase du jour prime toujours sur le fil
-        # precedent. « Et le score de Barça ? » ne doit pas etre rattache a
-        # l'equipe dont on parlait juste avant.
-        if cls._termes_ancrage(texte):
-            return False
-        if tokens[0] == "et" or any(t in DEICTIQUES_SUIVI for t in tokens):
-            return True
+    def _entites_nommees(cls, texte: str) -> List[str]:
+        """Ce que la phrase NOMME : noms propres et sigles, rien d'autre.
 
-        contenus = [
-            t for t in tokens
-            if t not in MOTS_VIDES_ANCRAGE and len(t) >= 3
-        ]
-        return bool(contenus) and all(t in TERMES_SUIVI_GENERIQUES for t in contenus)
+        Remplace l'ancienne liste `TERMES_SUIVI_GENERIQUES` (« buteur »,
+        « score », « vainqueur »...), qui pretendait reconnaitre une question
+        elliptique en la comparant a du vocabulaire de football. Cette liste
+        ne pouvait pas finir : il aurait fallu y ajouter « chiffre » pour la
+        finance, « titre » pour un livre, « combien » pour un chantier, et un
+        mot de plus a chaque domaine (DEC-0191).
+
+        Le signal retenu n'appartient a aucun domaine : c'est
+        l'**orthographe**. « Barcelone », « Bitcoin », « FC » nomment un
+        sujet ; « les buteurs », « un chiffre », « combien » n'en nomment
+        aucun, quel que soit le metier dont on parle. Une majuscule de debut
+        de phrase ne compte pas — elle vient de la ponctuation, pas du nom —
+        et un nombre non plus : « Celle de 2006 ? » reste elliptique.
+
+        Ce n'est qu'un filet : ce qui porte la conversation, c'est le fil
+        entier donne au modele juste apres.
+        """
+        entites: List[str] = []
+        vus = set()
+        texte = texte or ""
+        fin_precedente = 0
+        premier = True
+        for trouve in re.finditer(r"[\wÀ-ÿ-]+", texte):
+            brut = trouve.group(0)
+            separateur = texte[fin_precedente:trouve.start()]
+            debut_de_phrase = premier or bool(re.search(r"[.!?…\n]", separateur))
+            premier = False
+            fin_precedente = trouve.end()
+            terme = brut.casefold().strip("'’_-")
+            if not terme or terme.isdigit():
+                continue
+            sigle = len(brut) >= 2 and brut.isupper()
+            nom_propre = brut[:1].isupper() and not debut_de_phrase
+            if not (sigle or nom_propre):
+                continue
+            if terme not in vus:
+                vus.add(terme)
+                entites.append(terme)
+        return entites
 
     def _historique_du_contexte(
         self, context: Optional[Dict[str, Any]]
@@ -585,11 +596,13 @@ class FreshInfoAgent(BaseAgent):
     def _dernier_message_avec_ancre(
         cls, historique: List[Dict[str, Any]], user_input: str
     ) -> tuple[str, List[str]]:
-        """Dernier tour utilisateur qui nomme vraiment un sujet.
+        """Dernier tour utilisateur qui NOMME un sujet.
 
         On saute les suivis eux-memes. Ainsi une chaine
         « Barcelone -> buteurs ? -> homme du match ? » reste rattachee a
-        Barcelone au troisieme tour au lieu de s'ancrer sur « buteurs ».
+        Barcelone au troisieme tour au lieu de s'ancrer sur « buteurs » :
+        « les buteurs » ne nomme rien, et cela se voit a l'orthographe, sans
+        avoir a connaitre le football.
         """
         courant = cls._normaliser_phrase(user_input)
         for message in reversed(historique):
@@ -598,7 +611,7 @@ class FreshInfoAgent(BaseAgent):
             contenu = str(message.get("content") or "").strip()
             if not contenu or cls._normaliser_phrase(contenu) == courant:
                 continue
-            ancres = cls._termes_ancrage(contenu)
+            ancres = cls._entites_nommees(contenu)
             if ancres:
                 return contenu, ancres
         return "", []
@@ -607,24 +620,20 @@ class FreshInfoAgent(BaseAgent):
     def _requete_de_suivi(
         cls, precedent: str, user_input: str, ancres: List[str]
     ) -> str:
-        """Construit un filet deterministe si le modele perd le sujet."""
+        """Filet deterministe quand le modele perd le sujet : ce que le tour
+        precedent NOMMAIT, puis la demande du proprietaire telle quelle.
+
+        Aucun mot de domaine n'est ajoute au passage : seuls les noms deja
+        ecrits par le proprietaire reviennent, dans leur ordre d'origine.
+        """
         utiles: List[str] = []
         ancres_set = set(ancres)
         for brut in cls._tokens(precedent):
             terme = brut.casefold().strip("'’_-")
-            if terme in ancres_set or terme in TERMES_CONTEXTE_RECHERCHE:
+            if terme in ancres_set:
                 utiles.append(brut)
         prefixe = " ".join(utiles[:12]).strip()
         return f"{prefixe} — {user_input.strip()}" if prefixe else user_input
-
-    @classmethod
-    def _ancres_de_suivi(
-        cls, user_input: str, historique: List[Dict[str, Any]]
-    ) -> List[str]:
-        if not cls._question_de_suivi_sans_ancre(user_input):
-            return []
-        _, ancres = cls._dernier_message_avec_ancre(historique, user_input)
-        return ancres
 
     @classmethod
     def _indices_evenement_assistant(
@@ -681,15 +690,13 @@ class FreshInfoAgent(BaseAgent):
                     vus.add(normalise)
                     indices.append(normalise)
 
-            for brut in re.findall(r"(?<!\w)[A-ZÀ-ÖØ-Þ][\wÀ-ÿ-]{2,}", contenu):
-                terme = brut.casefold().strip("_-")
-                if (
-                    terme in ancres_set
-                    or terme in MOTS_HINT_ASSISTANT
-                    or terme in MOTS_VIDES_ANCRAGE
-                    or terme in TERMES_SUIVI_GENERIQUES
-                    or terme in TERMES_CONTEXTE_RECHERCHE
-                ):
+            # Les noms que la reponse a ajoutes. Une majuscule de debut de
+            # phrase (« Le dernier match... », « Selon la source... ») n'en
+            # est pas un : c'est la ponctuation qui l'impose. Ce controle-la
+            # remplace l'ancienne liste `MOTS_HINT_ASSISTANT`, qui listait
+            # « ligue », « championnat », « victoire » — encore du football.
+            for terme in cls._entites_nommees(contenu):
+                if terme in ancres_set or terme == NOM_ASSISTANT.casefold():
                     continue
                 if terme not in vus:
                     vus.add(terme)
@@ -754,23 +761,36 @@ class FreshInfoAgent(BaseAgent):
     async def _reformuler_si_ellipse(
         self, user_input: str, context: Optional[Dict[str, Any]]
     ) -> str:
-        """Complete une question elliptique avec le sujet d'un echange precedent.
-
-        Le modele peut reformuler, mais il n'a plus le droit de perdre un sujet
-        deterministe. Si une question de suivi sans ancre reste sans l'entite du
-        tour precedent, une requete contextuelle est construite sans modele.
-        """
-        historique = self._historique_du_contexte(context)
-        if not historique:
-            return user_input
-
-        precedent, ancres_precedentes = self._dernier_message_avec_ancre(
-            historique, user_input
+        """La question envoyee au moteur de recherche, fil compris."""
+        question, _ = await self._question_du_tour(
+            user_input, self._historique_du_contexte(context)
         )
-        ancres = (
-            ancres_precedentes
-            if self._question_de_suivi_sans_ancre(user_input)
-            else []
+        return question
+
+    async def _question_du_tour(
+        self, user_input: str, historique: List[Dict[str, Any]]
+    ) -> tuple[str, List[str]]:
+        """La question a chercher, et le sujet herite du fil s'il y en a un.
+
+        Le fil ENTIER part au modele, toujours : c'est lui qui sait de quoi
+        « qui sont les buteurs ? » parle. Rien ici ne compare la question a
+        du vocabulaire (DEC-0191) ; ce qui est verifie apres coup, c'est le
+        TRAVAIL DU MODELE, pas le domaine de la question :
+
+        1. la question nomme deja un sujet -> on garde sa reformulation ;
+        2. sa reformulation reprend un nom du tour precedent -> le modele a
+           resolu l'ellipse, ce sujet-la sera aussi la barriere de sources ;
+        3. sa reformulation nomme autre chose -> c'est un nouveau sujet, le
+           fil ne doit pas le recouvrir ;
+        4. elle ne nomme rien du tout -> le modele n'a rien resolu : le filet
+           deterministe rattache la demande, telle quelle, aux noms du tour
+           precedent.
+        """
+        if not historique:
+            return user_input, []
+
+        precedent, ancres = self._dernier_message_avec_ancre(
+            historique, user_input
         )
 
         lignes = "\n".join(
@@ -788,17 +808,24 @@ class FreshInfoAgent(BaseAgent):
             reformulee = user_input
 
         reformulee = reformulee or user_input
-        if ancres:
-            bas = reformulee.casefold()
-            if not any(ancre in bas for ancre in ancres):
-                repliee = self._requete_de_suivi(precedent, user_input, ancres)
-                logger.warning(
-                    "Reformulation sans ancre (%s) : requete rattachee au fil -> %s",
-                    ", ".join(ancres),
-                    repliee,
-                )
-                return repliee
-        return reformulee
+        if self._entites_nommees(user_input) or not ancres:
+            return reformulee, []
+
+        bas = reformulee.casefold()
+        if any(ancre in bas for ancre in ancres):
+            return reformulee, ancres
+        if self._entites_nommees(reformulee):
+            # Le modele, qui a lu tout le fil, a nomme un autre sujet : c'est
+            # une nouvelle question, pas un suivi.
+            return reformulee, []
+
+        repliee = self._requete_de_suivi(precedent, user_input, ancres)
+        logger.warning(
+            "Reformulation sans ancre (%s) : requete rattachee au fil -> %s",
+            ", ".join(ancres),
+            repliee,
+        )
+        return repliee, ancres
 
     async def _chercher(self, question: str, recent: bool) -> List[Dict[str, str]]:
         """Recherche bornee dans le temps, hors de la boucle (`search` bloque)."""
@@ -818,11 +845,12 @@ class FreshInfoAgent(BaseAgent):
         self, user_input: str, context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         historique = self._historique_du_contexte(context)
-        ancres_suivi = self._ancres_de_suivi(user_input, historique)
+        question, ancres_suivi = await self._question_du_tour(
+            user_input, historique
+        )
         indices_evenement = self._indices_evenement_assistant(
             historique, ancres_suivi
         )
-        question = await self._reformuler_si_ellipse(user_input, context)
         question = self._enrichir_question_avec_indices(
             question, indices_evenement
         )

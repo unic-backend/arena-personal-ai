@@ -1,3 +1,38 @@
+## 2026-09-29 — dix agents reçoivent enfin la conversation, sans liste de mots
+
+« Donne-moi un nom » après un échange sur une finale : l'agent répondait à
+côté. La correction de la veille reconnaissait ces questions avec une liste de
+mots de football (`TERMES_SUIVI_GENERIQUES`). Elle n'aurait jamais fini — il
+aurait fallu « chiffre » pour le Bitcoin, « titre » pour un livre, « combien »
+pour un chantier, un mot de plus à chaque domaine. **La cause mesurée était
+ailleurs : 29 intentions sur 32 ne recevaient jamais le fil.**
+
+Dix intentions (`BROWSER`, `DEEP_RESEARCH`, `DESIGN_UI`, `EQUIPE`,
+`EXECUTIVE`, `FINANCE`, `GRAPHRAG`, `RAG_DOCS`, `TREND_SEARCH`, `UI_GENERATE`)
+reçoivent maintenant **toujours** les six derniers tours, rendus par le
+`rendre_le_fil()` déjà utilisé par les trois voies qui ne dérivaient pas,
+dans un bloc balisé qui dit que c'est du contexte et que la demande actuelle
+est la seule à traiter. Aucun modèle, aucun vocabulaire, et la demande du
+propriétaire est recopiée mot pour mot. Deux bornes : six tours et 4 000
+caractères, les plus vieux coupés d'abord (`python scripts/mesurer_le_fil.py`
+— bloc médian 495 car., le budget ne mord qu'au-delà de ~666 car. par tour ;
+les 10 cas de référence récente du jeu d'or tiennent dans six messages).
+
+Dans FRESH_INFO, quatre listes de mots de domaine sont supprimées
+(`TERMES_SUIVI_GENERIQUES`, `MOTS_HINT_ASSISTANT`, `TERMES_DETAIL_EVENEMENT`,
+`MOTS_LIAISON_EVENEMENT`) : le filet déterministe ne regarde plus que ce que
+la phrase **nomme** (orthographe) et le travail du modèle. Ce qui reste de
+vocabulaire ne sert plus qu'à la barrière de pertinence des sources
+(DEC-0151/0153) ; un test interdit désormais au chemin du contexte d'y
+toucher. Fichiers, trois voies existantes et panne mémoire : inchangés.
+
+Preuve : 53 tests, un par domaine (football, monnaie, édition, chantier,
+cuisine) mesurant le texte reçu par l'agent. Sept mutations vérifiées, dont la
+suppression du branchement (cinq domaines tombent) et le retour d'une liste de
+mots. `ruff check .` propre. Voir DEC-0191.
+
+---
+
 ## 2026-09-29 — la relecture à chaud voyait passer un prix et une interdiction
 
 Diagnostic du dépôt (`docs/audits/diagnostic_2026-09-29.md`). Sept tests
