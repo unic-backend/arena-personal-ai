@@ -13380,3 +13380,58 @@ sur 158+ langages, typage Hybrid LSP, traversée BFS d'appels, requêtes Cypher)
    en cas d'absence du binaire.
 5. **Isolation de la mémoire** : les données du graphe de code appartiennent au contexte projet
    et ne sont jamais injectées dans la mémoire personnelle de l'utilisateur (`core/memory/personnelle.py`).
+
+## DEC-0202 — Netronome : conscience réseau mesurée, moteur GPL-2.0 externe et optionnel
+
+**Contexte.** ARENA savait diagnostiquer son *code* (`core/guardian/diagnostics.py` :
+pytest + Ruff + orphelins) et sa *machine* (`scripts/doctor.py`). Elle ne savait
+rien de son *réseau* : aucune mesure de latence, de débit, de perte de paquets,
+de santé DNS ou de connectivité. Le `core/execution/disjoncteur.py` réagit à des
+échecs consécutifs réels mais ne dit pas *pourquoi* : impossible de distinguer un
+problème de modèle d'un problème de fournisseur, d'un problème de réseau ou
+d'infrastructure locale. Le projet externe audité — **autobrr/netronome**
+(anciennement décrit « Metronome » ; vérifié sur le dépôt courant), Go + React,
+**GPL-2.0-or-later** — mesure exactement ce qui manquait : débit (Speedtest.net,
+iperf3, LibreSpeed), traceroute, perte de paquets, santé DNS, supervision
+serveur/agent, ordonnancement, notifications, le tout derrière une API HTTP.
+
+**Décision.**
+1. **À côté, jamais dedans (DEC-0008).** Netronome tourne comme service séparé
+   (son binaire, sa base, sa configuration). **Aucune ligne n'entre dans ce
+   dépôt.** C'est une contrainte de droit, pas une convention : la GPL-2.0 se
+   propagerait à ce dépôt public sous « tous droits réservés » si le source
+   entrait. Parler à un programme séparé par le réseau n'est pas en dériver
+   (agrégation, GPL v2 §2). `tests/test_moteurs_externes_restent_dehors.py` tient
+   la règle pour les moteurs vendus ; ici il n'y a rien à vendre puisque
+   Netronome est un binaire installé par le propriétaire.
+2. **Connecteur `core/connectors/netronome.py`** (service `network`) : deux
+   capacités seulement — `etat` (lecture bon marché de la santé déjà mesurée) et
+   `mesurer_debit` (test de débit réel, coûteux, `action="measure"` →
+   CONFIRMATION dans `config/permissions_services.yaml`). Le traceroute vers un
+   hôte libre n'est **pas** exposé : il ouvrirait un scan interne pilotable par
+   une entrée non fiable.
+3. **Adaptateur remplaçable `core/reseau/sante_reseau.py`.** Le reste d'ARENA ne
+   connaît jamais Netronome : il demande `evaluer_sante_reseau()`, qui choisit
+   Netronome quand il répond et **retombe sur une sonde native** (connectivité
+   TCP + résolution DNS, bibliothèque standard seule) sinon. C'est la définition
+   d'une dépendance optionnelle : ARENA fonctionne sans Netronome.
+4. **Sept statuts honnêtes.** `NOT_CONFIGURED`, `UNAVAILABLE`, `TIMEOUT`,
+   `FAILED`, `PARTIAL`, `SUCCESS`, `UNKNOWN`. Un débit non mesuré vaut `None`,
+   jamais `0`. La sonde native n'invente jamais les mesures que seul Netronome
+   sait prendre (débit, perte, gigue restent `None`).
+5. **Surface minimale.** Une route en lecture `GET /api/reseau/sante` (même clé
+   et même limiteur que `/api/observability` et `/api/gardien/rapport`). Aucun
+   test de débit sur le chemin d'une conversation ; le test coûteux passe par la
+   confirmation du connecteur. Aucune dashboard, aucune dépendance Python
+   ajoutée : `httpx` est déjà présent.
+
+**Ce que ça coûte si c'est faux.** Un test de débit consomme de la bande
+passante réelle et occupe la ligne : d'où la confirmation et le plafond
+(`MESURES_PAR_MINUTE`). Une fuite d'adresse interne : d'où l'absence de
+persistance et de traceroute libre. Une propagation GPL : d'où la frontière
+process/API et l'absence totale de code Netronome dans le dépôt.
+
+**Non mesuré.** Aucune comparaison de performance (« plus fiable », « plus
+rapide ») n'est revendiquée : `UNKNOWN — non mesuré`. Les tests d'intégration
+contre un vrai Netronome exigent son binaire lancé ; ils sont `BLOCKED` tant
+qu'il n'est pas installé sur la machine du propriétaire.

@@ -1,5 +1,25 @@
 # Third-party notices
 
+## Netronome network intelligence (optional external service)
+
+ARENA can query an operator-installed instance of **Netronome** through its
+public HTTP API to obtain measured network health (throughput, latency, packet
+loss, DNS). No Netronome source code, binary, or asset is vendored, copied, or
+distributed in this repository.
+
+- Upstream: https://github.com/autobrr/netronome
+- Copyright: autobrr contributors
+- License: **GNU General Public License v2.0 or later (GPL-2.0-or-later)**
+
+ARENA's integration is an independently implemented HTTP API adapter
+(`core/connectors/netronome.py`, `core/reseau/sante_reseau.py`). ARENA and
+Netronome run as separate programs communicating over the network; this is mere
+aggregation (GPL v2 §2) and does not make ARENA a derivative work. Because this
+repository is published under an all-rights-reserved `LICENSE`, Netronome's
+GPL-licensed source is deliberately kept out of it — copying it in would place
+the copied portions under the GPL. The upstream project and its `LICENSE` remain
+the authoritative references for Netronome itself.
+
 ## Agnes Video Generator
 
 ARENA's Agnes provider interoperates with the public REST API of **Agnes Video Generator**.

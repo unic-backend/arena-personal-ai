@@ -95,6 +95,7 @@ from core.connectors.media_metadata import ConnecteurMediaMetadata
 from core.connectors.moneyprinter import MoneyPrinterConnector
 from core.connectors.montage import ConnecteurMontage
 from core.connectors.netlify import NetlifyConnector
+from core.connectors.netronome import NetronomeConnector
 from core.connectors.opentakeoff import ConnecteurOpenTakeoff
 from core.connectors.openviking import ConnecteurOpenViking
 from core.connectors.pdf import ConnecteurPdf
@@ -437,6 +438,17 @@ registre.declarer(
     "agent_reach",
     lambda: ConnecteurAgentReach(acces=acces, journal=journal, file_attente=file_attente,
                                  crochets=crochets),
+)
+# Sante reseau mesuree : Netronome (autobrr/netronome, GPL-2.0), service separe
+# lance par le proprietaire (DEC-0202), jamais dans ce depot — sa licence GPL se
+# propagerait a ce depot public. ARENA lui parle par son API HTTP. Non configure
+# tant qu'il n'est pas lance : la sonde le mesure. L'aiguillage ARENA passe par
+# l'adaptateur core/reseau/sante_reseau.py, qui retombe sur une sonde native
+# quand Netronome est absent.
+registre.declarer(
+    "netronome",
+    lambda: NetronomeConnector(acces=acces, journal=journal, file_attente=file_attente,
+                               crochets=crochets),
 )
 registre.declarer(
     "browser",

@@ -17,6 +17,7 @@
 | **LightRAG** | bibliothèque + Ollama | pas de recherche dans ses documents |
 | **CoinGecko** | API publique `api.coingecko.com`, sans clé | pas de prix ni d'historique de marché — `FINANCE` répond `NON_CONFIGURE` (DEC-0078) |
 | **Codebase-Memory MCP** | processus binaire natif (`codebase-memory-mcp`), lancé/arrêté par ARENA via MCP stdio (`USMAN_CODEBASE_MEMORY_BIN`) | repli automatique sur gitingest et l'arborescence (`NOT_CONFIGURED`) |
+| **Netronome** (optionnel, DEC-0202) | binaire autobrr/netronome lancé par le propriétaire, API HTTP `127.0.0.1:7575` (`NETRONOME_URL`) | repli automatique sur la sonde réseau native d'ARENA (`core/reseau/sante_reseau.py`) ; débit/perte/gigue `None` |
 
 ## Externes — paquets
 
@@ -32,6 +33,7 @@ fichier). La CI installe le sous-ensemble hors ligne — voir `.github/workflows
 | `GOOGLE_CLIENT_ID` / `_SECRET` / `_REFRESH_TOKEN` | pas de courrier, pas d'agenda (anciens noms `GMAIL_*` acceptés) |
 | `MONEYPRINTER_URL` / `_API_KEY` | défaut local ; la clé n'est utile que s'il en a mis une |
 | `OPENTAKEOFF_MCP_DIR` / `_NODE_BIN` | pas de métré de plan PDF (`NOT_CONFIGURED`) |
+| `NETRONOME_URL` / `NETRONOME_SESSION` | défaut local `127.0.0.1:7575` ; sans Netronome lancé, repli sur la sonde réseau native (DEC-0202) |
 | `AGENDA_HEURE_DEBUT` / `_FIN` | défaut 8 h – 18 h |
 | `OLLAMA_BASE_URL`, `DEFAULT_LOCAL_MODEL`, `CODER_LOCAL_MODEL` | défauts locaux |
 | `ALLOW_UNSAFE_EXEC` | **laisser vide** : sans elle, ARENA refuse d'exécuter hors bac à sable |
