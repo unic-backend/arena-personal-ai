@@ -15,6 +15,12 @@ jobs:
   lint-and-test:
     name: Lint and offline test suite
     runs-on: ubuntu-latest
+    # Borne mesurée (30/09/2026) : l'étape apt ci-dessous a pris 1 min 16 s,
+    # 4 min 14 s, 18 min 51 s puis 30 min 16 s sur quatre exécutions du même
+    # jour — une lenteur de miroir, pas un déterminisme. 40 min laisse passer
+    # toute exécution saine (chemin normal < 25 min) et fait échouer en clair
+    # une exécution wedged au lieu de l'attendre six heures.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,11 +43,28 @@ jobs:
         # marker means "external SERVICE" — Ollama/Docker/network/Chromium —
         # not "a local library"). Their absence here, not in the code, is what
         # turned 39 real conversion tests into failures on the audited commit.
+        #
+        # Les cinq packages LibreOffice sont nommés, pas le métapaquet
+        # `libreoffice` : writer (docx/html/txt), calc (xlsx), impress (pptx),
+        # draw (filtre `draw_pdf_import`, obligatoire à l'entrée PDF,
+        # core/production/conversion/moteurs.py) et core — math/gnome/base ne
+        # servent à rien ici. Chaque octet non téléchargé est un octet qui ne
+        # peut pas caler. Mesures du 30/09/2026 sur cette étape : 1 min 16 s,
+        # 4 min 14 s, 18 min 51 s, 30 min 16 s — la variance est le miroir, et
+        # les options Acquire ci-dessous font retenter au lieu d'attendre en
+        # silence un miroir qui ne répond plus.
         run: |
-          sudo apt-get update -q
+          sudo apt-get update -q \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30
           sudo apt-get install -y --no-install-recommends \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30 \
             libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 \
-            libreoffice ffmpeg tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng \
+            libreoffice-core libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-draw \
+            ffmpeg tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng \
             fonts-dejavu-core
 
       - name: Install test dependencies
