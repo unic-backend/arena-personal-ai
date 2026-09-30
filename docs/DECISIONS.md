@@ -13072,3 +13072,77 @@ service externe change seul ; c'est annonce par la nature mesuree du bloc et
 borne par l'expiration. Reduire la duree repaierait les sondes lentes pendant
 la conversation. Les changements faits par ARENA elle-meme n'ont pas cette
 latence grace a l'invalidation explicite.
+
+## DEC-0194 — Le journal de routage : la date, la phrase, l'intention, les agents appeles
+
+**2026-09-30.** Troisieme chantier « la consigne dit la verite », annonce des
+DEC-0192 et DEC-0193 : « la disponibilite reelle des capacites et le journal
+de routage sont deux chantiers separes. »
+
+**Constat.** `dispatch_request()` (`apps/backend/routers/chat.py`) est deja le
+point unique ou une demande devient le travail d'un agent — sa docstring le
+dit depuis le 13/09/2026 pour le type de tache, et c'est la meme raison qui
+vaut ici : les cinq appelants passent tous par cette fonction. Mais l'intention
+retenue et les agents reellement appeles ne vivaient que dans des variables
+locales, le temps de la requete. Un « pourquoi ma phrase d'hier est-elle
+partie chez PLAQUISTE ? » n'avait aucune reponse le lendemain — seul le type de
+tache atterrissait dans `StatistiquesRoutage` (`core/models/routeur.py`), pour
+mesurer un cout, pas pour dire qui a travaille sur quelle phrase.
+
+**Decision.** `core/observabilite/routage.py`, meme patron que
+`core/actions/journal.py` et `core/observabilite/plans.py` : SQLite, meme
+fichier (`data/database/memory.db`), table distincte (`journal_routage`).
+Une ligne par passage dans `dispatch_request`, avec sept champs — identifiant,
+horodatage UTC, la phrase du proprietaire mot pour mot (`message_actuel` ou
+`prompt`, la meme donnee que celle qui nomme deja la tache racine), l'intention
+retenue, les agents reellement appeles dans l'ordre ou ils ont tourne, les
+etapes d'une chaine quand il y en a une, et l'identifiant de la demande HTTP
+(`core/observabilite/fil.py`) pour la relier aux actions et au plan qu'elle a
+pu declencher.
+
+`AppelRoute.depuis_dispatch()` est le seul chemin de construction : il lit ce
+que `dispatch_request` vient de decider, jamais ce qu'un appelant pretendrait.
+Pour une demande simple, l'unique agent est `reponse["agent"]`. Pour une
+chaine, les agents et les etapes viennent du champ `equipe` que
+`core/agent/equipe.py::executer()` avait DEJA construit (DEC-0143) — une liste
+ordonnee de `{intention, agent, status}`, qui s'arrete a la premiere etape en
+echec. **Aucun decoupage n'est refait ici** : ce module ne relit jamais la
+phrase pour deviner une chaine, il recopie le resultat d'un decoupage qui a
+deja eu lieu ailleurs, a un seul endroit (regle 1 d'`equipe.py`).
+
+L'ecriture a lieu une seule fois dans `dispatch_request`, juste apres que
+`reponse` et `intent` sont figes (le meme `intent` que l'appelant recoit),
+avant `consigner_le_tour` — comme le type de tache, la poser ailleurs la
+manquerait pour l'un des cinq appelants.
+
+**Ce qui ne change pas.** Aucun classeur, aucun decoupeur, aucun agent
+n'est modifie. `equipe.planifier()` et `equipe.executer()` restent les seuls
+endroits qui decident si une demande est une chaine ; ce chantier n'y ajoute
+rien. Une ecriture qui echoue n'empeche jamais la reponse de partir — meme
+discipline que les deux journaux voisins.
+
+**Lecture.** `python scripts/lire_journal_routage.py` (option `--limite`,
+`--requete`) : une ligne par passage, la phrase entre guillemets, l'intention,
+les agents dans l'ordre, et le compte d'etapes pour une chaine.
+
+**Preuve.** `tests/core/test_journal_routage.py` teste le module seul : une
+demande simple n'enregistre qu'un agent, une reponse sans agent n'en invente
+aucun, une chaine enregistre exactement les etapes que `equipe.executer()` a
+rendues, une chaine arretee par un echec n'enregistre que ce qui a tourne, une
+ecriture qui echoue rend `False` sans lever. `tests/test_journal_de_routage_dispatch.py`
+passe par le vrai `dispatch_request` (meme methode que
+`tests/test_agents_travaillent_ensemble.py`) : une demande simple, un `intent`
+deja classe, une chaine reelle, une chaine interrompue par un echec, une
+reponse a une question en attente (qui ne se decoupe jamais), deux demandes
+successives, et une panne d'ecriture qui n'empeche pas la reponse. Verifie par
+mutation : retirer l'appel `journal_routage.enregistrer()` dans
+`dispatch_request` fait echouer six des sept tests d'integration ; faire
+tomber l'extraction du champ `equipe` dans `depuis_dispatch()` fait echouer
+exactement les quatre tests qui portent sur une chaine.
+
+**Ce que ca coute si c'est faux.** Une ligne de routage sans intention ou sans
+agent resterait un journal muet sur l'essentiel — les tests dedies l'interdisent.
+Une panne d'ecriture (disque plein) prive le journal d'une ligne sans priver le
+proprietaire de sa reponse : c'est le choix deja fait pour les actions et les
+plans, et le casser ici ferait de ce chantier un point de fragilite nouveau
+plutot qu'un simple journal de lecture.

@@ -37,6 +37,7 @@ from apps.backend.runtime import (
     formel_agent,
     fresh_agent,
     graphrag_tool,
+    journal_routage,
     lightrag_tool,
     memory,
     montage_agent,
@@ -68,6 +69,7 @@ from core.executive import question_en_attente
 from core.fiche_google import demande as fiche_google
 from core.memory.conversation import rendre_le_fil
 from core.observabilite.fil import tache
+from core.observabilite.routage import AppelRoute
 from core.production.conversion.demande import format_de_conversion
 from core.site_web.demande import capacite_du_site, rendre
 from tools.documents.indexer import (
@@ -969,6 +971,17 @@ async def dispatch_request(
     `consigner_le_tour=False` : l'appelant ecrit lui-meme le tour dans le fil
     (la PWA, qui consigne aussi ses echecs et la memoire longue). Sans cette
     option, chaque tour d'agent specialise du telephone etait ecrit DEUX fois.
+
+    **C'est aussi ici, et seulement ici, que le routage est journalise
+    durablement** (chantier « journal de routage », annonce par DEC-0192 et
+    DEC-0193). Meme raison que pour le type de tache : les cinq appelants
+    passent tous par cette fonction, la journaliser ailleurs la manquerait
+    pour l'un d'eux. La ligne ecrite reprend EXACTEMENT ce que cette fonction
+    vient de decider — la phrase du proprietaire, l'intention retenue, les
+    agents reellement appeles et, pour une chaine, les etapes que
+    `equipe.executer()` a deja executees (`AppelRoute.depuis_dispatch`).
+    Aucun decoupage n'est refait ici : une chaine reste celle que `plan`
+    portait deja plus haut.
     """
     if intent is None:
         intent = await classer_la_demande(
@@ -991,6 +1004,8 @@ async def dispatch_request(
         else:
             with tache(intent):
                 reponse = await _aiguiller(request, intent)
+    journal_routage.enregistrer(AppelRoute.depuis_dispatch(
+        request.message_actuel or request.prompt, intent, reponse))
     if consigner_le_tour:
         _consigner_le_tour(request, reponse)
     # Ce tour a-t-il laisse une question sans reponse ? Si oui, le prochain
