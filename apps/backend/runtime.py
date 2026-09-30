@@ -128,6 +128,7 @@ from core.models.routeur import RouteurModeles
 from core.models.statistiques import StatistiquesRoutage
 from core.models.usage import CompteurUsage
 from core.observabilite.plans import JournalDesPlans
+from core.observabilite.routage import JournalDeRoutage
 from core.permissions.controle import ControleAcces
 from core.permissions.permission_manager import PermissionManager
 from core.permissions.politique import PolitiqueDePermissions
@@ -800,6 +801,11 @@ finance_agent = FinanceAgent(provider=deep_provider, memory=memory, registre=reg
 #: memoire et le journal des actions, table distincte. C'est ce qui relie une
 #: demande HTTP a la raison pour laquelle son plan s'est arrete.
 journal_des_plans = JournalDesPlans(db_path=str(DB_PATH))
+#: Ou chaque passage par `dispatch_request` est enregistre — la date, la
+#: phrase, l'intention retenue et les agents reellement appeles (chantier
+#: « journal de routage », annonce separement par DEC-0192/DEC-0193). Meme
+#: fichier SQLite, table distincte, meme discipline.
+journal_routage = JournalDeRoutage(db_path=str(DB_PATH))
 
 executive_agent = ExecutiveAgent(
     provider=deep_provider, memory=memory,

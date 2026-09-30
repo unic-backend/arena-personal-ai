@@ -12,6 +12,20 @@ Voir DEC-0194. Cinq mutations, chacune rattrapée par les tests prévus.
 
 ---
 
+## 2026-09-30 — le journal de routage : date, phrase, intention, agents appelés
+
+`dispatch_request` (point unique de routage, DEC-0143/DEC-0145) enregistre
+maintenant chaque passage dans `journal_routage` (SQLite, `core/observabilite/
+routage.py`) : l'horodatage, la phrase exacte, l'intention retenue, les agents
+réellement appelés, et pour une chaîne courte les étapes réellement exécutées
+— recopiées telles quelles depuis `equipe.executer()`, aucun nouveau
+découpage. Lecture par `python scripts/lire_journal_routage.py`. Chantier
+annoncé par DEC-0192/DEC-0193 (« la disponibilité réelle des capacités et le
+journal de routage sont deux chantiers séparés »). Voir DEC-0195.
+
+
+---
+
 ## 2026-09-30 — les capacités du prompt ont maintenant un état mesuré
 
 La section MISSION n'énumère plus de capacités à la main. Chaque prompt compose
