@@ -225,3 +225,25 @@ filigrane par elle-même — vérifié directement dans le code source de
 aucune occurrence de « watermark » ni « silentcipher » au 10/09/2026) —
 et la mission qui a motivé cette intégration exige que le filigrane de
 Sesame ne soit jamais silencieusement retiré.
+
+---
+
+## Edit-Banana — conversion d'images de schémas en DrawIO éditable
+
+ARENA sait transformer des images de diagrammes statiques en documents DrawIO (.drawio)
+en pilotant **Edit-Banana** dans un sous-processus externe isolé (`core/connectors/edit_banana.py`,
+`core/diagramme/edit_banana.py`).
+
+- Projet : Edit-Banana — https://github.com/BIT-DataLab/Edit-Banana
+- Licence : **GNU AGPL-3.0** (dans le fichier `LICENSE` officiel du dépôt au commit `88c6e288` ;
+  le README mentionne Apache 2.0 mais le fichier LICENSE fait foi).
+- Version épinglée : commit `88c6e288ef8329606114eb91924559c5d1838d2e`.
+
+**Aucune ligne d'Edit-Banana ni de SAM3 n'est copiée dans ce dépôt.**
+La licence AGPL-3.0 et la licence propriétaire d'ARENA imposent une isolation stricte :
+Edit-Banana s'exécute dans un environnement Python externe dédié (`tools/diagrams/edit_banana/`
+ou chemin personnalisé). ARENA ne fournit qu'un adaptateur, un connecteur, ses tests et
+son installeur `scripts/installer_edit_banana.py`.
+
+Les dépendances de modèles (notamment le checkpoint SAM3) sont soumises à leurs conditions
+d'accès officielles propres et ne sont ni téléchargées ni distribuées par ARENA.

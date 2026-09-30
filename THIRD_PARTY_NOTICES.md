@@ -29,3 +29,16 @@ The external checkout also contains/uses BasicSR (Apache-2.0), FaceXLib
 license files in the operator-installed upstream checkout are authoritative.
 ARENA's installer preserves that checkout and its notices rather than copying
 those projects into this repository.
+
+## Edit-Banana editable diagram conversion (optional external engine)
+
+ARENA can invoke an operator-installed checkout of **Edit-Banana** through its
+command-line interface in an isolated subprocess. No Edit-Banana source code,
+libraries, or model weights are vendored or copied into this repository.
+
+- Upstream: https://github.com/BIT-DataLab/Edit-Banana
+- Pinned integration revision: `88c6e288ef8329606114eb91924559c5d1838d2e`
+- Copyright: BIT-DataLab / Beijing Institute of Technology contributors
+- License: GNU Affero General Public License v3.0 (GNU AGPL-3.0 in the upstream `LICENSE` file; note that the upstream README describes the project as Apache-2.0, but the authoritative `LICENSE` file is AGPL-3.0).
+- External engine isolation: Edit-Banana operates in a separate external Python environment outside of ARENA's repository.
+- Segment Anything Model 3 (SAM3): SAM3 is an external dependency of Edit-Banana subject to its own Meta/SAM3 license and gated checkpoint access requirements. No SAM3 weights are bundled or distributed.

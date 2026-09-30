@@ -73,6 +73,15 @@ MOTEURS = {
         "lean/lib/lean/library/Init/Prelude.olean",
         "lean/bin/lake",
     ),
+    # Edit-Banana (DEC-0200) : **AGPL-3.0**, et `LICENSE` d'ARENA dit
+    # « All rights reserved ». Faire entrer son code ferait d'ARENA une
+    # oeuvre derivee AGPL-3.0. De plus, il embarque SAM3 et PyTorch.
+    "tools/diagrams/edit_banana": (
+        "Edit-Banana/.venv/lib/python3.11/site-packages/torch/_C.so",
+        "Edit-Banana/models/sam3.pt",
+        "Edit-Banana/main.py",
+        "Edit-Banana/output/diagram.drawio",
+    ),
 }
 
 
@@ -126,9 +135,9 @@ def test_la_regle_vaut_pour_tous_les_moteurs():
         ["git", "ls-files"], cwd=RACINE, capture_output=True, text=True, check=False,
     ).stdout.splitlines()
 
-    autorises = ("docs/", "scripts/installer_", "core/connectors/", "tests/")
+    autorises = ("docs/", "scripts/installer_", "core/connectors/", "core/diagramme/", "tests/")
     for moteur in ("Deep-Live-Cam", "VoiceStudio", "WanGP", "MoneyPrinterTurbo",
-                   "Faceplugin", "ui-ux-pro-max", "ui_ux_pro_max"):
+                   "Faceplugin", "ui-ux-pro-max", "ui_ux_pro_max", "Edit-Banana", "edit_banana"):
         dedans = [f for f in suivis
                   if moteur.lower() in f.lower() and not f.startswith(autorises)]
         assert dedans == [], f"du source de {moteur} est versionne : {dedans}"
@@ -139,6 +148,7 @@ def test_la_regle_vaut_pour_tous_les_moteurs():
     ("tools/vision/faceplugin", "licence"),
     ("tools/design/ui_ux_pro_max", "convention"),
     ("tools/formel", "convention"),
+    ("tools/diagrams/edit_banana", "agpl"),
 ])
 def test_chaque_regle_porte_sa_raison(dossier, mot):
     """Une règle d'ignore sans sa raison se fait retirer par le prochain qui

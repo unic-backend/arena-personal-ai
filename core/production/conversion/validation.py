@@ -117,6 +117,14 @@ def _zip(sortie: Path) -> Optional[str]:
     return None
 
 
+def _drawio(sortie: Path) -> Optional[str]:
+    from core.diagramme.edit_banana import valider_fichier_drawio
+    valide, raison = valider_fichier_drawio(sortie)
+    if not valide:
+        return f"DrawIO XML invalide après écriture : {raison}"
+    return None
+
+
 FAMILLES_AUDIO_VIDEO = frozenset({
     "mp3", "wav", "flac", "aac", "ogg", "m4a",
     "mp4", "mkv", "mov", "avi", "webm",
@@ -128,6 +136,7 @@ _VERIFICATEURS = {
     "pptx": _pptx,
     "xlsx": _xlsx,
     "zip": _zip,
+    "drawio": _drawio,
     **{ext: _image for ext in FAMILLES_IMAGE},
     **{ext: _audio_video for ext in FAMILLES_AUDIO_VIDEO},
 }

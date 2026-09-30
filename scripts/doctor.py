@@ -667,6 +667,17 @@ def verifier_architecture_3d() -> Verification:
         "Installer Bun puis le backend (voir docs/COMMANDES_PC.md).")
 
 
+def verifier_edit_banana() -> Verification:
+    """Le moteur Edit-Banana (AGPL-3.0), interroge pour de vrai (DEC-0200).
+
+    Il vit HORS du depot : moteur sous AGPL-3.0 avec SAM3 et PyTorch.
+    """
+    return _ligne_connecteur(
+        "Diagrammes éditables (Edit-Banana)", "core.connectors.edit_banana",
+        "ConnecteurEditBanana",
+        "python scripts/installer_edit_banana.py <destination> --accept-agpl-license")
+
+
 def verifier_gardien() -> Verification:
     """La memoire de maintenance du gardien (DEC-0014) — ce qu'elle contient
     deja, jamais « aucun probleme » invente si aucun cycle n'a encore tourne.
@@ -922,6 +933,7 @@ def diagnostiquer() -> Rapport:
         mesurer("Xaar Kaname (visage)", verifier_xaar_kaname),
         mesurer("Visages (Faceplugin)", verifier_faceplugin),
         mesurer("Design (UI/UX Pro Max)", verifier_ui_ux_pro_max),
+        mesurer("Diagrammes éditables (Edit-Banana)", verifier_edit_banana),
         mesurer("Preuve formelle (Lean)", verifier_lean),
         mesurer("Architecture 3D", verifier_architecture_3d),
         mesurer("Gardien (maintenance)", verifier_gardien),

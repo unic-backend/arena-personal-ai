@@ -13329,3 +13329,26 @@ C'est le deuxieme risque que cette decision refuse.
 volontairement absente (DEC-0194) ; la limite de trois etapes de la chaine
 courte reste a trois. Ces deux points se decideront sur le journal de routage
 reel, pas sur un exemple.
+
+---
+
+## DEC-0200 — Edit-Banana : conversion de diagrammes en DrawIO éditable, moteur AGPL-3.0 externe
+
+**Contexte.** ARENA intègre la capacité de transformer une image de diagramme,
+schéma d'architecture ou flowchart statique en document DrawIO modifiable (.drawio).
+Le projet externe audité (Edit-Banana, BIT-DataLab/Edit-Banana) utilise SAM3 et
+des dépendances lourdes (PyTorch, OCR, etc.) et porte une licence **GNU AGPL-3.0**
+dans son fichier `LICENSE` officiel (bien que son README mentionne Apache-2.0).
+
+**Décision.**
+1. **Respect absolu de la licence** : le fichier `LICENSE` (AGPL-3.0) fait foi.
+   Aucun code source ni modèle SAM3 n'entre dans le dépôt ARENA.
+2. **Processus externe isolé** : Edit-Banana s'exécute dans un processus séparé,
+   dans son propre environnement Python sous `tools/diagrams/edit_banana/`
+   ou un chemin externe configuré via `USMAN_EDIT_BANANA_ROOT`.
+3. **Architecture connecteur unifiée** : `core/connectors/edit_banana.py`
+   déclare la capacité `diagram_to_drawio` (service `edit_banana`), reliée au
+   système de conversion existant (`file_conversion` / `core/production/conversion/`).
+4. **Validation de sortie rigoureuse** : le document DrawIO XML produit est
+   validé (non-vide, XML parsable, balises canoniques mxfile/diagram/mxGraphModel)
+   avant d'émettre le statut `SUCCESS` et de publier l'artefact sous `media/rendered/`.
