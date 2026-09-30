@@ -179,3 +179,32 @@ async def test_l_ecriture_du_journal_n_empeche_pas_la_reponse(
         consigner_le_tour=False)
 
     assert "Devis DV-7 pret." in rendu["response"]
+
+
+async def test_une_chaine_trop_longue_journalise_l_escalade_vers_le_projet(
+        monkeypatch, journal):
+    """DEC-0197 : quatre etapes explicites partent au projet, et le journal
+    garde l'intention REELLEMENT retenue — « EQUIPE », pas le metier du
+    premier morceau. C'est ce qui rend l'escalade verifiable apres coup."""
+    phrase = ("lis ce PDF puis résume-le puis fais un tableur "
+              "puis envoie-le par mail à khady@exemple.com")
+
+    async def classer(texte, espace=None):
+        return "PLAQUISTE"
+
+    async def aiguiller(request, intention):
+        return {"status": "success", "agent": "Projet(PLAQUISTE)",
+                "response": "**Projet reparti** — mené par PLAQUISTE",
+                "intent": intention}
+
+    monkeypatch.setattr(module_chat.orchestrator, "analyze_intent", classer)
+    monkeypatch.setattr(module_chat, "_aiguiller", aiguiller)
+
+    await module_chat.dispatch_request(
+        module_chat.ChatRequest(prompt=phrase, session_id=f"s-{uuid4()}"),
+        consigner_le_tour=False)
+
+    ligne = journal.dernieres()[0]
+    assert ligne.phrase == phrase
+    assert ligne.intention == "EQUIPE"
+    assert ligne.agents == ["Projet(PLAQUISTE)"]

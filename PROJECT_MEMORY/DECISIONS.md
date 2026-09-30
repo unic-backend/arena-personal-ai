@@ -41,9 +41,10 @@ d'ouvrir le document entier quand on cherche juste « a-t-on déjà tranché ça
 | **DEC-0131** | **Dormants : txtai devient joignable explicitement** | `DORMANTS_CONNUS` vide ; PWA + chat autonome peuvent comparer txtai au retrieval hybride ; aucun routage automatique |
 | **DEC-0190** | **une relecture à chaud se décide sur le contenu, pas sur la date** | `core/fichier_suivi.empreinte_de()` compare date + taille + inode + hachage ; `date_de()` n'est plus qu'un affichage. Un prix ou une interdiction modifiés sont vus au prochain appel, quel que soit le système de fichiers |
 | **DEC-0196** | **DISCIPLINE ferme absolument le prompt JARVIS** | style, mathématiques et méthode restent entiers mais passent avant ; la règle 7 est exactement la fin du prompt |
+| **DEC-0197** | **au-dela de la chaîne courte, la demande part au projet** | plus de 3 étapes explicites ⇒ intention `EQUIPE` (DEC-0146) au lieu d'un agent unique silencieux ; la limite de 3 reste, aucun second découpeur, aucun appel au modèle pour le décider |
 
 > **Cet index est en retard sur `docs/DECISIONS.md`** (à jour le 30/09/2026 :
-> DEC-0196). Les entrées DEC-0132 à DEC-0189 et DEC-0191 à DEC-0195 existent dans le document, pas
+> DEC-0197). Les entrées DEC-0132 à DEC-0189 et DEC-0191 à DEC-0195 existent dans le document, pas
 > ici. Mesure : `grep -c '^## DEC-' docs/DECISIONS.md`.
 
 ## Décisions de travail (hors ADR, mais qui gouvernent autant)
