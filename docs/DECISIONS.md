@@ -13652,3 +13652,46 @@ d'ARENA lui-même.
 **nommée** qu'ARENA ne sait pas rendre et que le cours implémente, démontrée
 sur un cas réel du propriétaire ; ou l'arrivée d'un serveur MCP intégré dont
 la surface utile exige `resources/*` / `prompts/*`.
+
+## DEC-0206 — l'étape apt de la CI bornée : cinq mesures du même jour, 1 min 16 s à 30 min 16 s
+
+**Contexte.** 30/09/2026, constat du propriétaire (« l'install native fait
+25 min sans rien »). Mesure sur les quatre exécutions de l'étape
+« Install native tools required by the offline suite » ce jour-là, mêmes
+packages, mêmes runners :
+
+| Run | Durée de l'étape apt |
+|---|---|
+| fusion PR #413 (15:32) | 1 min 16 s |
+| branche PR #414 (15:46) | 18 min 51 s |
+| fusion PR #414 (16:14) | 4 min 14 s |
+| PR #415 (17:06) | **30 min 16 s** |
+
+La commande et le contenu téléchargé n'avaient pas changé entre les quatre :
+la variance est celle du miroir apt des runners, pas du dépôt. Aucune borne ne
+voyait une exécution wedged comme un échec : le timeout par défaut d'un job
+GitHub est de **six heures**.
+
+**Décision, trois gestes, un seul fichier (`ci.yml`, job `lint-and-test`) :**
+
+1. Le métapaquet `libreoffice` est remplacé par ses cinq composants réellement
+   utilisés — `core`, `writer` (docx/html/txt), `calc` (xlsx), `impress`
+   (pptx), `draw` (filtre `draw_pdf_import`, requis à l'entrée PDF, mesuré
+   dans `core/production/conversion/moteurs.py`). `math`, `gnome`, `base`
+   n'entrent plus : chaque octet non téléchargé est un octet qui ne cale
+   pas.
+2. `Acquire::Retries=3` + timeouts HTTP(S) 30 s sur `update` et `install` : un
+   miroir qui ne répond plus retente au lieu d'attendre en silence.
+3. `timeout-minutes: 40` sur le job : toute exécution saine passe (chemin
+   normal < 25 min) ; une exécution wedged échoue en clair à 40 min au lieu
+   d'être attendue six heures.
+
+**Ce que ça coûte si c'est faux.** Si le miroir reste lent de façon
+persistante, la CI reste dans la borne 40 min et **échoue visiblement** — la
+fusion se fait alors en connaissance, pas par habitude qu'une CI muette finit
+par devenir verte. Aucun test n'est affaibli : les cinq composants couvrent
+toutes les conversions exercées, et la suite complète continue de les
+exécuter.
+
+**Réversible.** Un seul fichier CI, aucun code. Si GitHub corrige ses miroirs,
+les deux premiers gestes restent inoffensifs et le troisième reste utile.
