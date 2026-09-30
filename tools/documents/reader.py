@@ -112,9 +112,62 @@ def _lire_texte_simple(chemin: Path) -> List[Passage]:
     return [Passage(texte=contenu, fichier=chemin.name)] if contenu else []
 
 
-#: Langue passee a tesseract. ARENA n'a qu'un seul public (UniC Plaquiste,
-#: Senegal) : pas de configurabilite qu'aucune tache n'a demandee.
-LANGUE_OCR = "fra"
+#: Les langues qu'ARENA demande a tesseract quand elles sont INSTALLEES sur
+#: la machine. Ses devis sont francais, ses plans souvent anglais ; tesseract
+#: combine `fra+eng` et lit les deux sans qu'on devine la langue de la page —
+#: c'est sa fonction documentee, pas une astuce. L'ordre dicte la chaine
+#: resultante (`fra+eng`), elle est figee par test.
+LANGUES_VOULUES_OCR = ("fra", "eng")
+
+_langues_ocr_detectees: Optional[str] = None
+_detection_faite = False
+
+
+def _detecter_langues_ocr() -> Optional[str]:
+    """La chaine `lang` couvrant fra/eng, reduite aux packs reellement
+    installes, ou None si ni l'un ni l'autre ne l'est.
+
+    Mesure du 30/09/2026, vrai binaire tesseract 5.5.2 : passer `fra` en dur
+    a une machine ou seul `eng` est installe ne leve aucune erreur visible —
+    `image_to_string` recouvre l'echec du binaire et le `except` de
+    `_ocr_page` rendait une chaine vide : le scan anglais disparaissait sans
+    laisser d'etat (`VIDE`, comme une page blanche). `get_languages` pose la
+    question au binaire lui-meme ; binaire absent ou packs manquants, la
+    reponse est None et l'OCR n'est pas tente du tout.
+    """
+    try:
+        import pytesseract
+    except ImportError:
+        return None
+    try:
+        installees = set(pytesseract.get_languages(config=""))
+    except Exception as e:  # noqa: BLE001 — binaire absent ou sortie inconnue : un etat, pas un crash
+        logger.debug(f"Langues tesseract illisibles : {e}")
+        return None
+    voulues = [langue for langue in LANGUES_VOULUES_OCR if langue in installees]
+    return "+".join(voulues) if voulues else None
+
+
+def langues_ocr() -> Optional[str]:
+    """Les langues d'OCR utilisables, detectees une seule fois par processus.
+
+    Les packs ne changent pas pendant une lecture, et la question coute un
+    appel au binaire : on ne la repose pas page par page.
+    """
+    global _langues_ocr_detectees, _detection_faite
+    if not _detection_faite:
+        _langues_ocr_detectees = _detecter_langues_ocr()
+        _detection_faite = True
+    return _langues_ocr_detectees
+
+
+def _oublier_langues_ocr() -> None:
+    """Oublie la detection — pour les tests, et le jour ou un pack est
+    installe en pleine session."""
+    global _langues_ocr_detectees, _detection_faite
+    _langues_ocr_detectees = None
+    _detection_faite = False
+
 
 #: 300 DPI : la resolution standard pour une reconnaissance fiable. Mesure du
 #: 30/08/2026 : en dessous (scale=2.0, ~144 DPI), le texte d'une page A4
@@ -127,10 +180,14 @@ def _ocr_page(chemin: Path, index: int) -> str:
     """Le texte d'une page sans couche texte, lu par reconnaissance optique.
 
     Rend une chaine vide si l'OCR n'est pas disponible (`pypdfium2`/
-    `pytesseract` non installes, ou le binaire `tesseract` absent de la
-    machine) ou n'a rien trouve — jamais une exception qui ferait perdre tout
-    le document pour une seule page.
+    `pytesseract` non installes, binaire `tesseract` absent, ou aucun des
+    packs `fra`/`eng` installe) ou n'a rien trouve — jamais une exception qui
+    ferait perdre tout le document pour une seule page.
     """
+    langues = langues_ocr()
+    if langues is None:
+        logger.debug(f"OCR non tente sur {chemin.name} : ni le pack fra ni le pack eng installe.")
+        return ""
     try:
         import pypdfium2 as pdfium
         import pytesseract
@@ -141,7 +198,7 @@ def _ocr_page(chemin: Path, index: int) -> str:
         document = pdfium.PdfDocument(str(chemin))
         page = document[index]
         image = page.render(scale=ECHELLE_RENDU_OCR).to_pil()
-        return pytesseract.image_to_string(image, lang=LANGUE_OCR)
+        return pytesseract.image_to_string(image, lang=langues)
     except Exception as e:  # noqa: BLE001 — tesseract absent, page corrompue : un etat, pas un crash
         logger.debug(f"OCR impossible sur la page {index + 1} de {chemin.name} : {e}")
         return ""
@@ -181,8 +238,14 @@ def _lire_pdf(chemin: Path) -> List[Passage]:
             try:
                 contenu = _nettoyer(page.extract_text() or "")
             except Exception as e:
-                # Une page illisible ne doit pas faire perdre tout le document.
-                logger.debug(f"Page {numero} illisible dans {chemin.name} : {e}")
+                # Une couche texte illisible ne faisait perdre la page qu'en
+                # silence : elle est tentee par l'OCR, comme un scan. Ce n'est
+                # qu'au bout de cet essai qu'elle est laissee de cote — et une
+                # page perdue ne fait toujours pas perdre tout le document.
+                logger.debug(f"Couche texte illisible a la page {numero} de {chemin.name}, OCR tente : {e}")
+                contenu = _nettoyer(_ocr_page(chemin, numero - 1))
+                if contenu:
+                    passages.append(Passage(texte=contenu, fichier=chemin.name, page=numero, via_ocr=True))
                 continue
             via_ocr = False
             if not contenu:
@@ -295,7 +358,11 @@ def lire_document(chemin: Path | str, taille_max: int = TAILLE_MAX_OCTETS) -> Do
         return _echec(chemin, "ECHEC", f"{type(e).__name__}: {e}")
 
     if not passages:
-        return _echec(chemin, "VIDE", "aucun texte extractible (document scanne ?)")
+        raison = "aucun texte extractible (document scanne ?)"
+        if extension == ".pdf" and langues_ocr() is None:
+            raison += (" ; OCR non tente : ni le pack tesseract 'fra' ni le pack 'eng' "
+                       "n'est installe sur cette machine")
+        return _echec(chemin, "VIDE", raison)
 
     logger.info(f"Document lu : {chemin.name} ({len(passages)} passage(s))")
     return Document(chemin=chemin, statut="LU", passages=passages)

@@ -5,6 +5,8 @@ dans le test : un lecteur de PDF vérifié sur une chaîne de caractères ne pro
 rien.
 """
 import shutil
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,6 +19,15 @@ pytest.importorskip("openpyxl", reason="openpyxl n'est pas installe.")
 pytest.importorskip("pptx", reason="python-pptx n'est pas installe.")
 pytest.importorskip("pypdfium2", reason="pypdfium2 n'est pas installe.")
 pytest.importorskip("pytesseract", reason="pytesseract n'est pas installe.")
+
+
+@pytest.fixture(autouse=True)
+def langues_oubliees():
+    """La detection des packs OCR est memoisee pour le processus : elle ne
+    doit pas fuiter d'un test a l'autre."""
+    reader._oublier_langues_ocr()
+    yield
+    reader._oublier_langues_ocr()
 
 
 def fabriquer_pdf(pages: list[str]) -> bytes:
@@ -85,6 +96,51 @@ def plan_scanne_pdf(tmp_path):
     image.save(image_chemin)
 
     chemin = tmp_path / "plan_scanne.pdf"
+    c = canvas.Canvas(str(chemin), pagesize=A4)
+    c.drawImage(str(image_chemin), 0, 0, width=A4[0], height=A4[1])
+    c.save()
+    return chemin
+
+
+@pytest.fixture
+def quote_scannee_en_pdf(tmp_path):
+    """Un plan/devis ANGLAIS scanne : meme fabrication que `plan_scanne_pdf`,
+    other langue, autre preuve — les deux doivent etre lus, pas devines."""
+    from PIL import Image, ImageDraw, ImageFont
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    image = Image.new("RGB", (2480, 3508), "white")
+    dessin = ImageDraw.Draw(image)
+    police = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 64)
+    dessin.text((150, 300), "Quotation number 2026-155 Site Yoff Almadies", font=police, fill="black")
+    dessin.text((150, 460), "Total excl. tax 450000 FCFA delivery 15 days", font=police, fill="black")
+    image_chemin = tmp_path / "page_scan_en.png"
+    image.save(image_chemin)
+
+    chemin = tmp_path / "quote_scannee_en.pdf"
+    c = canvas.Canvas(str(chemin), pagesize=A4)
+    c.drawImage(str(image_chemin), 0, 0, width=A4[0], height=A4[1])
+    c.save()
+    return chemin
+
+
+@pytest.fixture
+def scan_bilingue_pdf(tmp_path):
+    """Une page qui MELANGE les deux langues : personne ne doit choisir a sa place."""
+    from PIL import Image, ImageDraw, ImageFont
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    image = Image.new("RGB", (2480, 3508), "white")
+    dessin = ImageDraw.Draw(image)
+    police = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 64)
+    dessin.text((150, 300), "Quotation number 2026-155 drywall partition", font=police, fill="black")
+    dessin.text((150, 460), "Devis cloison BA13 total 450000 FCFA", font=police, fill="black")
+    image_chemin = tmp_path / "page_scan_bilingue.png"
+    image.save(image_chemin)
+
+    chemin = tmp_path / "scan_bilingue.pdf"
     c = canvas.Canvas(str(chemin), pagesize=A4)
     c.drawImage(str(image_chemin), 0, 0, width=A4[0], height=A4[1])
     c.save()
@@ -191,6 +247,72 @@ def test_un_pdf_corrompu_ne_fait_pas_tomber_la_lecture(tmp_path):
     assert document.raison
 
 
+def test_un_pdf_natif_en_anglais_est_lu_page_par_page(monkeypatch, tmp_path):
+    """Une quotation ou un plan avec couche texte native : la langue n'a pas a
+    etre detectee, et l'OCR ne doit jamais etre appele (mesure du 30/09/2026 :
+    il coutait le rendu d'une page entiere pour rien)."""
+    def _echoue_si_appele(chemin, index):
+        raise AssertionError("l'OCR a ete appele sur une page au texte natif")
+    monkeypatch.setattr(reader, "_ocr_page", _echoue_si_appele)
+    chemin = tmp_path / "quotation_en.pdf"
+    chemin.write_bytes(fabriquer_pdf([
+        "Quotation number 2026-155 drywall partition BA13",
+        "Total excl. tax 450000 FCFA delivery 15 days",
+    ]))
+
+    document = lire_document(chemin)
+
+    assert document.lu
+    assert [p.page for p in document.passages] == [1, 2]
+    assert "Quotation" in document.passages[0].texte
+    assert "450000" in document.passages[1].texte
+    assert all(not p.via_ocr for p in document.passages)
+
+
+def test_une_couche_texte_cassee_est_tentee_par_ocr_pas_perdue(monkeypatch, devis_pdf):
+    """Mesure du 30/09/2026 : une page dont `extract_text()` leve etait
+    abandonnee en silence. Elle passe maintenant par l'OCR comme un scan —
+    l'essayer ne coute rien contre une page perdue."""
+    import pypdf
+
+    def _couche_cassee(self):
+        raise RuntimeError("cartographie de fontes illisible")
+
+    monkeypatch.setattr(pypdf._page.PageObject, "extract_text", _couche_cassee)
+    monkeypatch.setattr(reader, "_ocr_page", lambda chemin, index: f"Texte OCR page {index + 1}")
+
+    document = lire_document(devis_pdf)
+
+    assert document.lu
+    assert [p.page for p in document.passages] == [1, 2]
+    assert all(p.via_ocr for p in document.passages)
+
+
+def test_une_couche_cassee_et_sans_ocr_reste_perdue_mais_le_document_survit(monkeypatch, tmp_path):
+    """Le garde-fou d'origine tient : si l'OCR ne rend rien non plus, la page
+    est laissee de cote et le document entier n'est jamais perdu pour elle."""
+    import pypdf
+
+    chemin = tmp_path / "mixte.pdf"
+    chemin.write_bytes(fabriquer_pdf(["Devis numero 2026-118", ""]))
+    appels = 0
+
+    def _cassee_la_premiere_fois(self):
+        nonlocal appels
+        appels += 1
+        if appels == 1:
+            raise RuntimeError("page 1 cassee")
+        return "Page deux lisible"
+
+    monkeypatch.setattr(pypdf._page.PageObject, "extract_text", _cassee_la_premiere_fois)
+    monkeypatch.setattr(reader, "_ocr_page", lambda chemin, index: "")
+
+    document = lire_document(chemin)
+
+    assert document.lu
+    assert "Page deux lisible" in document.texte
+
+
 # --- OCR (PDF scanné) -----------------------------------------------------------
 
 @pytest.fixture
@@ -211,6 +333,52 @@ def test_une_page_scannee_est_lue_par_ocr(tesseract_disponible, plan_scanne_pdf)
     assert document.passages[0].via_ocr is True
     assert document.passages[0].source == "plan_scanne.pdf, page 1 (OCR)"
     assert document.resume()["passages_ocr"] == 1
+
+
+@pytest.fixture
+def tesseract_fra_et_eng():
+    """Le vrai binaire ET les deux packs — la condition exacte de la correction."""
+    if shutil.which("tesseract") is None:
+        pytest.skip("le binaire tesseract n'est pas installe sur cette machine.")
+    import pytesseract
+
+    try:
+        installees = set(pytesseract.get_languages(config=""))
+    except Exception:
+        pytest.skip("les langues tesseract sont illisibles sur cette machine.")
+    if not {"fra", "eng"} <= installees:
+        pytest.skip(f"packs fra/eng absents (installes : {sorted(installees)}).")
+
+
+@pytest.mark.integration
+def test_une_page_scannee_en_anglais_est_lue_par_ocr(tesseract_fra_et_eng, quote_scannee_en_pdf):
+    """Bout en bout, vrai moteur, vrais packs, texte anglais.
+
+    Mesure du 30/09/2026 avec le vrai tesseract 5.5.2 : ce scan ressortait
+    `VIDE` des que le poste n'avait pas le pack `fra` — la langue etait passee
+    en dur. Les chiffres (numero de devis, montant) sont les plus fiables sous
+    la police grossiere des fixtures."""
+    document = lire_document(quote_scannee_en_pdf)
+
+    assert document.lu
+    assert "2026-155" in document.texte
+    assert "450000" in document.texte
+    assert document.passages[0].via_ocr is True
+    assert document.passages[0].source == "quote_scannee_en.pdf, page 1 (OCR)"
+
+
+@pytest.mark.integration
+def test_une_page_scannee_bilingue_est_lue_sans_choisir_une_langue(tesseract_fra_et_eng, scan_bilingue_pdf):
+    """`fra+eng` passe au moteur : les lignes anglaises ET francaises sortent.
+
+    C'est le cas qui condamne un choix de langue par page : un vrai dossier
+    melange les deux sans jamais l'annoncer."""
+    document = lire_document(scan_bilingue_pdf)
+
+    assert document.lu
+    assert "2026-155" in document.texte
+    assert "450000" in document.texte
+    assert reader.langues_ocr() == "fra+eng"
 
 
 def test_une_page_sans_texte_appelle_l_ocr(monkeypatch, tmp_path):
@@ -247,6 +415,89 @@ def test_ocr_qui_ne_trouve_rien_reste_vide(monkeypatch, tmp_path):
     document = lire_document(chemin)
 
     assert document.statut == "VIDE"
+
+
+# --- Langues d'OCR : seules les langues REELLEMENT installees sont demandees --------
+
+def _faux_pytesseract(installees, image_to_string=None):
+    return SimpleNamespace(
+        get_languages=lambda config="": list(installees),
+        image_to_string=image_to_string or (lambda image, lang=None: ""),
+    )
+
+
+@pytest.mark.parametrize("installees, attendu", [
+    (["fra", "eng", "deu", "osd"], "fra+eng"),   # les deux, combinees, dans l'ordre voulu
+    (["eng", "osd"], "eng"),                     # machine anglaise : le vrai defaut du 30/09/2026
+    (["fra"], "fra"),                            # machine francaise : le comportement d'avant
+    (["eng", "fra"], "fra+eng"),                 # l'ordre d'installation ne compte pas
+    (["deu", "spa"], None),                      # ni fra ni eng : ne rien demander
+    ([], None),
+])
+def test_les_langues_ocr_sont_celles_reellement_installees(monkeypatch, installees, attendu):
+    monkeypatch.setitem(sys.modules, "pytesseract", _faux_pytesseract(installees))
+
+    assert reader.langues_ocr() == attendu
+
+
+def test_la_langue_demandee_a_tesseract_est_la_chaine_detectee(monkeypatch, quote_scannee_en_pdf):
+    """Le coeur du correctif : `fra+eng` est bien PASSE au moteur, pas suppute."""
+    appels = []
+
+    def _moteur(image, lang=None):
+        appels.append(lang)
+        return "Quotation number 2026-155"
+
+    monkeypatch.setitem(sys.modules, "pytesseract", _faux_pytesseract(["fra", "eng"], _moteur))
+
+    document = lire_document(quote_scannee_en_pdf)
+
+    assert appels == ["fra+eng"]
+    assert document.lu
+    assert document.passages[0].via_ocr is True
+
+
+def test_sans_pack_fra_ni_eng_l_ocr_n_est_pas_tente_et_le_document_en_est_informe(
+        monkeypatch, quote_scannee_en_pdf):
+    """Mesure du 30/09/2026 : `fra` demande en dur sur un poste anglais faisait
+    disparaitre le scan (VIDE aux allures de page blanche). Ici : pas d'appel,
+    et la raison nomme ce qui manque au lieu de laisser croire au scan illisible."""
+    appeles = []
+    faux = _faux_pytesseract(["deu"], lambda image, lang=None: appeles.append(lang) or "")
+    monkeypatch.setitem(sys.modules, "pytesseract", faux)
+
+    document = lire_document(quote_scannee_en_pdf)
+
+    assert appeles == [], "aucun rendu, aucun appel moteur : rien a demander sans pack"
+    assert document.statut == "VIDE"
+    assert "fra" in document.raison and "eng" in document.raison, document.raison
+
+
+def test_le_binaire_illistible_rend_none_sans_crash(monkeypatch):
+    """`get_languages` peut lever (binaire absent, version inconnue) : un etat, jamais un crash."""
+    def _casse(config=""):
+        raise RuntimeError("tesseract n'est pas installe ou pas dans le PATH")
+
+    monkeypatch.setitem(sys.modules, "pytesseract",
+                        SimpleNamespace(get_languages=_casse, image_to_string=lambda *a, **k: ""))
+
+    assert reader.langues_ocr() is None
+
+
+def test_la_detection_des_langues_est_mise_en_cache(monkeypatch):
+    """Une question au binaire par processus, pas une par page scannée."""
+    appels = []
+
+    def _compte(config=""):
+        appels.append(1)
+        return ["fra", "eng"]
+
+    monkeypatch.setitem(sys.modules, "pytesseract",
+                        SimpleNamespace(get_languages=_compte, image_to_string=lambda *a, **k: ""))
+
+    assert reader.langues_ocr() == "fra+eng"
+    assert reader.langues_ocr() == "fra+eng"
+    assert len(appels) == 1
 
 
 # --- Word ----------------------------------------------------------------------

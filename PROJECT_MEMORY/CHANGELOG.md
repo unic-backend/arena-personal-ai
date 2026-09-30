@@ -1,3 +1,17 @@
+## 2026-09-30 — PDF et plans anglais : OCR réel, enchaînements anglais
+
+L'OCR ne demande plus `fra` en dur : `langues_ocr()` interroge le binaire et
+ne demande que les packs installés (`fra+eng` quand les deux sont là) — mesure
+du jour : sur un poste avec seul `eng`, un scan anglais ressortait `VIDE` sans
+aucune erreur visible ; il est lu, et un poste sans aucun des deux packs voit
+la raison nommer ce qui manque. Une couche texte native illisible est tentée
+par l'OCR au lieu d'être perdue en silence. Les connecteurs d'enchaînement
+anglais (`then`, `afterwards`, `after that`/`next` ponctués) découpent, sans
+aucune liste de verbes — « and » + verbe reste une demande entière par choix.
+Voir DEC-0194. Cinq mutations, chacune rattrapée par les tests prévus.
+
+---
+
 ## 2026-09-30 — le journal de routage : date, phrase, intention, agents appelés
 
 `dispatch_request` (point unique de routage, DEC-0143/DEC-0145) enregistre
@@ -7,7 +21,8 @@ réellement appelés, et pour une chaîne courte les étapes réellement exécut
 — recopiées telles quelles depuis `equipe.executer()`, aucun nouveau
 découpage. Lecture par `python scripts/lire_journal_routage.py`. Chantier
 annoncé par DEC-0192/DEC-0193 (« la disponibilité réelle des capacités et le
-journal de routage sont deux chantiers séparés »). Voir DEC-0194.
+journal de routage sont deux chantiers séparés »). Voir DEC-0195.
+
 
 ---
 

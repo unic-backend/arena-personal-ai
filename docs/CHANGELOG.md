@@ -9,7 +9,7 @@ la date, la phrase exacte, l'intention retenue et les agents réellement
 appelés ; pour une chaîne courte, les étapes réellement exécutées — pas
 celles qui restaient planifiées après un échec. Aucun nouveau découpage :
 le journal relit ce que `core/agent/equipe.py` avait déjà exécuté et rendu.
-Lecture avec `python scripts/lire_journal_routage.py` (DEC-0194).
+Lecture avec `python scripts/lire_journal_routage.py` (DEC-0195).
 
 ### Corrigé — 30/09/2026 — Une capacité en panne ne se présente plus comme disponible
 

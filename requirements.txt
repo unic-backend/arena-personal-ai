@@ -40,7 +40,9 @@ openpyxl==3.1.5           # tools/documents/reader.py — lecture des .xlsx
 python-pptx==1.0.2        # tools/documents/reader.py — lecture des .pptx
 pypdfium2==5.13.0         # tools/documents/reader.py — rendu d'une page PDF en image, pour l'OCR
 pytesseract==0.3.13       # tools/documents/reader.py — OCR d'un PDF scanne. Exige le binaire
-                          # tesseract (+ tesseract-ocr-fra) installe a part sur la machine.
+                          # tesseract et les packs langue installes a part sur la machine
+                          # (tesseract-ocr-fra et/ou tesseract-ocr-eng ; seuls les packs
+                          # reellement installes sont demandes, DEC-0194).
 psutil==7.2.2             # core/production/materiel.py — RAM systeme reelle (totale/
                           # disponible), portable Windows/Linux. Introspection systeme
                           # pure, aucun poids ML : ne rapproche pas ARENA de torch/
