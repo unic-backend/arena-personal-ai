@@ -1,3 +1,14 @@
+## 2026-09-30 — la consigne JARVIS décrit le routeur qui tourne
+
+`config/jarvis.md` n'attribue plus au modèle le classement, le plan et le
+routage que le code effectue. Elle décrit DEC-0143 (deux ou trois étapes
+explicites), DEC-0144 (consultation d'un collègue) et DEC-0146 (`EQUIPE`),
+retire la chaîne PDF → Excel → e-mail non garantie et interdit de présenter
+une étape demandée comme exécutée. Aucun mécanisme de routage n'a changé.
+Voir DEC-0192.
+
+---
+
 ## 2026-09-29 — dix agents reçoivent enfin la conversation, sans liste de mots
 
 « Donne-moi un nom » après un échange sur une finale : l'agent répondait à

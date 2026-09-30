@@ -11879,7 +11879,8 @@ reveil, briefing du matin.
 
 **Decision** :
 
-- `config/jarvis.md` porte la consigne du proprietaire **mot pour mot** ;
+- `config/jarvis.md` porte la consigne originale du proprietaire **mot pour
+  mot**, sous reserve de la levee explicite du 30/09/2026 ci-dessous ;
   `apps/backend/prompts.py` l'insere dans l'instruction systeme, qui ouvre
   sur « Tu es JARVIS, l'orchestrateur d'ARENA ». Fichier absent : une ligne de
   repli, le chat ne tombe pas.
@@ -11906,6 +11907,13 @@ reveil, briefing du matin.
 4 000 a 11 000 caracteres ; un petit modele local a contexte court peut en
 perdre la fin (la discipline). Si c'est mesure, la consigne se resume — le
 fichier du proprietaire, lui, reste tel quel.
+
+**Levee explicite du 30/09/2026.** Le proprietaire, auteur de la consigne,
+leve la garantie « mot pour mot » pour les sections qui decrivent le
+fonctionnement : `INTENT ROUTING`, `EXECUTE`, l'exemple de chaine et les
+phrases de delegation qui attribuent le routage au modele. Son identite, sa
+mission, ses valeurs et sa discipline restent intactes. La nouvelle autorite
+sur ces sections est le code mesure, consigne dans DEC-0192.
 
 ## DEC-0164 — Conversation mains libres : parler, entendre, reparler, sans toucher l'ecran
 
@@ -12930,3 +12938,65 @@ fait tomber cinq autres ; sauter par-dessus un tour trop gros, avaler la
 panne, retirer les balises, rogner la demande d'un point d'interrogation —
 chacune est attrapee. Et remettre une liste de mots dans la decision fait
 echouer le test qui l'interdit.
+
+## DEC-0192 — La consigne de JARVIS decrit le routage execute par le code
+
+**2026-09-30.** Decision du proprietaire, apres mesure du chantier « la
+consigne dit la verite ».
+
+**Constat.** Le defaut suppose au depart (« une intention, donc un seul agent »)
+n'etait plus celui du depot. Depuis DEC-0143, `dispatch_request()` appelle
+`equipe.planifier()` puis `equipe.executer()` : une demande explicitement
+enchainee peut faire travailler deux ou trois agents, dans l'ordre, avec le
+resultat precedent transmis comme donnee et un arret visible au premier echec.
+DEC-0144 permet en plus la consultation d'un collegue ; DEC-0146 porte les
+projets et tables rondes par l'intention `EQUIPE`.
+
+La consigne racontait pourtant une autre architecture : le modele devait
+`CLASSIFY -> PLAN -> ROUTE -> EXECUTE`, puis son exemple affirmait une chaine
+PDF -> analyse -> extraction -> tableur -> courrier -> envoi. Mesure avec le
+vrai decoupeur : l'exemple anglais forme **un seul morceau** ; sa traduction
+francaise avec des virgules en forme deux ; une variante explicite en quatre
+« puis » forme quatre morceaux et depasse `MAXIMUM_ETAPES = 3`, donc aucun
+plan court n'est execute. Le modele pouvait ainsi raconter le plan demande
+comme un travail accompli sans que ce plan ait existe.
+
+**Decision.** Les sections fonctionnelles de `config/jarvis.md` disent
+maintenant :
+
+- le code d'ARENA choisit une intention initiale avant la reponse du modele ;
+- une demande simple execute une branche ;
+- seul un resultat portant des etapes libellees prouve qu'une chaine courte de
+  deux ou trois specialistes a ete executee (DEC-0143) ;
+- les projets plus longs passent par `EQUIPE`, `conduire_projet` ou
+  `tenir_table_ronde` (DEC-0146) ;
+- une etape demandee, planifiee ou imaginee ne se presente jamais comme faite ;
+  si une seule partie a tourne, JARVIS nomme cette partie et ce qui ne l'a pas
+  ete ;
+- la delegation appartient aux mecanismes du code (chaine courte, collegue,
+  projet, table ronde), jamais a une narration libre du modele.
+
+L'exemple de chaine non garantie est retire. La creation d'artefact attribue
+elle aussi la selection au code et exige de rapporter la capacite manquante.
+L'identite, la mission, les valeurs, la confirmation des actions externes et
+la discipline de JARVIS ne changent pas. DEC-0163 enregistre explicitement la
+levee de sa garantie « mot pour mot » pour ces seules descriptions du
+fonctionnement.
+
+**Ce qui ne change pas.** Aucun routeur, classeur, agent, registre, mot-cle ou
+mecanisme d'equipe n'est modifie. En particulier, cette decision n'allonge pas
+`VERBES_D_ACTION` : ajouter un mot a chaque demande ratee serait corriger les
+exemples, pas la racine. La disponibilite reelle des capacites et le journal
+de routage sont deux chantiers separes.
+
+**Preuve.** Les tests exigent que la consigne attribue le routage au code,
+nomme l'intention initiale et `EQUIPE`, garde la limite de trois et ne contienne
+plus les promesses retirees (`JARVIS should orchestrate`, `PDF Reader`,
+`Spreadsheet Generator`, plan interne ou collecte fictive). Par mutation,
+remettre `JARVIS should orchestrate:` fait echouer le test dedie.
+
+**Ce que ca coute si c'est faux.** La chaine DEC-0143 repose encore sur un
+decoupage lexical et trois etapes maximum. Une formulation non reconnue reste
+une demande simple ; la consigne l'annonce desormais sans pretendre que tous
+les enchainements seront detectes. Elargir ce moteur exige une mesure des
+phrases reelles, pas une nouvelle liste speculative.
