@@ -256,6 +256,19 @@ class TestLectureDuResultatReel:
         assert Path(resultat.preuve).is_file()
         assert not source.exists(), "la copie de la source doit etre liberee"
 
+    def test_une_copie_de_source_non_liberee_est_dite_jamais_tue(self, atelier, tmp_path):
+        """Le menage qui echoue ne perd pas les shorts — mais il ne se tait pas."""
+        travail = tmp_path / "shorts-abcd1234"
+        travail.mkdir(parents=True)
+        source = travail / "src.mp4"
+        source.write_bytes(b"\x00" * 64)
+        brut = self._brut(travail, ecrire=2)
+        with patch.object(Path, "unlink", side_effect=OSError("disque en lecture seule")):
+            resultat = atelier._rendre(brut, travail, "9:16", source)
+        assert resultat.statut is Statut.SUCCES, "deux shorts reels restent un succes"
+        assert resultat.detail["source_liberee"] is False
+        assert any("source" in e for e in resultat.detail["erreurs"])
+
     def test_un_extrait_annonce_sans_fichier_nest_pas_credite(self, atelier, tmp_path):
         travail = tmp_path / "shorts-abcd1234"
         travail.mkdir(parents=True)

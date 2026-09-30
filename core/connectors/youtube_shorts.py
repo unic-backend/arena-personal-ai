@@ -436,11 +436,17 @@ class ConnecteurYoutubeShorts(Connecteur):
                          + (f" Cause : {erreurs[0]}" if erreurs else "")),
                 erreurs=erreurs)
 
-        # La source copiee a servi ; elle n'a pas a rester en double.
+        # La source copiee a servi ; elle n'a pas a rester en double. Un
+        # echec de suppression ne perd pas les shorts deja produits — mais il
+        # est DIT : un doublon de video qui s'accumule en silence dans
+        # media/rendered est exactement ce que personne ne remarque.
+        source_liberee = True
         try:
             source.unlink(missing_ok=True)
-        except OSError:
-            pass
+        except OSError as erreur:
+            source_liberee = False
+            logger.warning("Copie de la source non supprimee (%s) : %s", source, erreur)
+            erreurs.append(f"copie de la source non supprimee : {erreur}")
 
         return succes(
             action="generate_shorts", cible=self.nom,
@@ -451,6 +457,7 @@ class ConnecteurYoutubeShorts(Connecteur):
             candidats=len(brut.get("highlights") or []),
             dossier=str(travail),
             mode="local",
+            source_liberee=source_liberee,
             erreurs=erreurs,
         )
 
