@@ -16,7 +16,12 @@ vingt-cinq agents ; un seul, la production video, s'en servait.
 **Trois regles :**
 
 1. **Le decoupage est deterministe.** Il ne coupe que sur un enchainement
-   explicite (« puis », « ensuite », « et » suivi d'un verbe d'action) :
+   explicite : un connecteur (« puis », « ensuite » ; en anglais « then »,
+   « afterwards », « after that » ponctue, « next, »), ou « et » suivi d'un
+   verbe d'action — en francais seulement. **Pas de « and » + verbe anglais :**
+   il faudrait une liste de verbes a maintenir, et ce module n'en maintient
+   pas. Un enchainement anglais SANS connecteur (« analyze this plan and
+   send it ») reste donc UN morceau : limite assumee, figee par un test.
    « une cloison et un plafond » reste une seule demande. Aucun modele n'est
    interroge tant que la phrase n'a pas au moins deux morceaux — une demande
    ordinaire ne coute rien de plus qu'avant.
@@ -58,8 +63,17 @@ VERBES_D_ACTION = (
     r"mets|ajoute|sous-titre|compare|comparer|v[ée]rifie|v[ée]rifier"
 )
 
+#: Les connecteurs d'enchainement reconnus. En francais comme en anglais, ce
+#: sont des MOTS D'ORDRE, jamais des verbes (voir le point 1 de l'en-tete) :
+#: « then » et « afterwards » n'ont pas de sens adjectival qui rendrait la
+#: coupure hasardeuse ; « after that » et « next » en ont un (« after that
+#: wall », « the next door » — des morceaux de plan) et ne coupent donc
+#: QU'AVEC leur ponctuation, celle qui en fait grammaticalement un connecteur.
 _DECOUPE = re.compile(
-    r"\s*,?\s*\b(?:et\s+ensuite|et\s+puis|et\s+apr[eè]s|apr[eè]s\s+[çc]a|puis|ensuite)\b\s*,?\s*"
+    r"\s*,?\s*\b(?:et\s+ensuite|et\s+puis|et\s+apr[eè]s|apr[eè]s\s+[çc]a|puis|ensuite|"
+    r"and\s+then|then|afterwards)\b\s*,?\s*"
+    r"|(?<=[,;.!?])\s*(?:and\s+)?after\s+that\b\s*,?\s*"
+    r"|\s*,\s*next\s*,\s*"
     rf"|\s+et\s+(?=(?:{VERBES_D_ACTION})\b)",
     re.IGNORECASE,
 )
