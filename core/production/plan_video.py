@@ -48,10 +48,20 @@ from core.production.etat_projet import EtapeProjet
 #: refuse deliberement d'exposer le mode `pipeline` propre a Agnes, meme
 #: raisonnement que krillin_* pour la meme raison). Reste une ECRITURE
 #: derriere confirmation, exactement comme wangp/moneyprinter/hidream_image.
+#: « youtube_shorts » (audit du 30/09/2026) decoupe une video longue DEJA
+#: FOURNIE en N extraits verticaux CLASSES (score, hook, raison) avec un
+#: recadrage qui suit les visages — jamais une generation de novo, jamais une
+#: seconde transcription (elle est exigee en parametre, produite par l'etape
+#: `transcription` d'ARENA, meme regle que `krillin_subtitle`). Le moteur
+#: amont (MIT) vit hors du depot et est appele par sous-processus ; son mode
+#: `api`, qui televerserait la video chez un tiers, n'est pas atteignable.
+#: `agents/clip_selector` (un seul extrait, cadre au centre) reste en place :
+#: cette capacite ne le remplace pas, elle couvre le cas multi-extraits.
 CAPACITES_VIDEO: Tuple[str, ...] = (
     "vision", "transcription", "wangp", "moneyprinter", "narration", "xaar_kaname", "montage",
     "krillin_subtitle", "krillin_tts", "krillin_render_horizontal", "krillin_render_vertical",
-    "krillin_cover", "drift", "vectcut", "hidream_image", "agnes", "hyperframes_render", "specialiste",
+    "krillin_cover", "drift", "vectcut", "hidream_image", "agnes", "hyperframes_render",
+    "youtube_shorts", "specialiste",
 )
 
 
@@ -245,6 +255,13 @@ Contrats de parametres :
   parametres.sous_titres = chemins DEJA confirmes (memes raisons que
   krillin_tts).
 - krillin_cover : parametres.prompt = texte du prompt d'image.
+- youtube_shorts : parametres.reference = index de la reference video longue
+  (fichier local — une URL exige parametres.autoriser_telechargement = true et
+  reste refusee si la transcription est locale), parametres.transcript_srt =
+  chemin d'un SRT DEJA produit par ARENA (obligatoire : aucune seconde
+  transcription), parametres.nombre_clips (1 a 10, defaut 3),
+  parametres.format = "9:16" / "1:1" / "4:5". Rend N shorts verticaux classes
+  par potentiel viral ; passe par confirmation.
 - drift : parametres.demande = texte de la demande de montage/edition
   (ex: "coupe les silences", "ajoute une transition entre les deux clips"),
   parametres.references = liste d'indices de references a ouvrir dans Drift.

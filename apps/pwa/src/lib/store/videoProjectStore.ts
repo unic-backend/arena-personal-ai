@@ -36,6 +36,7 @@ export const CAPACITES_VIDEO = [
   'hidream_image',
   'agnes',
   'hyperframes_render',
+  'youtube_shorts',
   'specialiste',
 ] as const;
 

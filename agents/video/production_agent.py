@@ -703,6 +703,8 @@ class VideoProductionAgent(BaseAgent):
                 return await self._appeler_agnes(parametres)
             if capacite == "hyperframes_render":
                 return await self._appeler_hyperframes(parametres, references)
+            if capacite == "youtube_shorts":
+                return await self._appeler_youtube_shorts(parametres, references)
             if capacite == "specialiste":
                 nom = str(parametres.get("nom") or "").strip()
                 requete = str(parametres.get("requete") or "").strip()
@@ -1019,6 +1021,36 @@ class VideoProductionAgent(BaseAgent):
         if refus:
             traduit["message"] = traduit.get("message", "") + "\nEcarte : " + " ".join(refus)
         return traduit
+
+    async def _appeler_youtube_shorts(self, parametres: Dict[str, Any],
+                                      references: List[str]) -> Dict[str, Any]:
+        """Video longue -> N shorts verticaux classes, par le registre.
+
+        La video est designee par INDEX de reference, jamais par un chemin
+        ecrit par le modele (meme discipline que partout ici). La
+        transcription, elle, est un chemin deja produit par ARENA : le
+        connecteur refuse l'appel sans elle, et refuse le mode `api` du
+        moteur amont quoi qu'on lui passe.
+        """
+        if self.registre is None:
+            raise RuntimeError("aucun registre de connecteurs branche")
+        video = self._reference(parametres, references)
+        if not video:
+            raise RuntimeError("youtube_shorts : aucune reference video fournie")
+        appel: Dict[str, Any] = {
+            "video": video,
+            "transcript_srt": parametres.get("transcript_srt"),
+            "nombre_clips": parametres.get("nombre_clips", 3),
+            "format": parametres.get("format", "9:16"),
+        }
+        if parametres.get("langue"):
+            appel["langue"] = parametres["langue"]
+        if parametres.get("autoriser_telechargement"):
+            appel["autoriser_telechargement"] = True
+        resultat = self.registre.executer("youtube_shorts", "generate_shorts", **appel)
+        if inspect.isawaitable(resultat):
+            resultat = await resultat
+        return self._verifie(_depuis_resultat_action(resultat), "youtube_shorts")
 
     async def _appeler_vectcut(self, parametres: Dict[str, Any]) -> Dict[str, Any]:
         """Exécute un outil VectCutAPI par le registre et ses permissions."""

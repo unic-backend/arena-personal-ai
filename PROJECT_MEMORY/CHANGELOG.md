@@ -1,3 +1,16 @@
+## 2026-09-30 — AI Youtube Shorts Generator : audité, approuvé derrière un adaptateur
+
+Demande : intégrer `SamurAIGPT/AI-Youtube-Shorts-Generator` **après audit**,
+jamais par installation aveugle. Amont cloné et exécuté (dépôt renommé
+`Anil-matcha/...`, commit épinglé `a57bb93`, MIT, 1 281 lignes).
+**Approuvé derrière un adaptateur**, sous quatre conditions mesurées :
+mode `api` (téléversement chez MuAPI) inatteignable, transcription fournie par
+ARENA (aucun second Whisper), aucun téléchargement implicite, environnement du
+sous-processus construit (aucun secret ARENA). Bout en bout réel : deux MP4
+404×720 avec audio, vérifiés sur disque. Moteur hors du dépôt (DEC-0039),
+aucune dépendance ajoutée à `requirements.txt`. DEC-0207,
+`docs/audits/ai_youtube_shorts_audit_2026-09-30.md`.
+
 ## 2026-09-30 — Basic Memory audité, puis refusé : ARENA a déjà cette mémoire
 
 Demande : auditer `basicmachines-co/basic-memory` et n'intégrer que si l'audit

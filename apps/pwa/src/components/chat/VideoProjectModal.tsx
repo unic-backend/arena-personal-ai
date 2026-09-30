@@ -42,6 +42,7 @@ const ICONE_CAPACITE: Record<CapaciteVideo, typeof Eye> = {
   hidream_image: ImagePlus,
   agnes: Clapperboard,
   hyperframes_render: Video,
+  youtube_shorts: Scissors,
   specialiste: Users,
 };
 
@@ -64,6 +65,7 @@ function labelCapacite(c: CapaciteVideo, fr: boolean): string {
     hidream_image: ['Image haute qualité (HiDream-I1)', 'High-quality image (HiDream-I1)'],
     agnes: ['Génération vidéo (Agnes)', 'Video generation (Agnes)'],
     hyperframes_render: ['Vidéo de lancement (Hyperframes)', 'Launch video (Hyperframes)'],
+    youtube_shorts: ['Shorts classés (vidéo longue)', 'Ranked shorts (long video)'],
     specialiste: ['Collaboration agents', 'Agent collaboration'],
   };
   return fr ? labels[c][0] : labels[c][1];

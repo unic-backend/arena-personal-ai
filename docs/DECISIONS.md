@@ -13695,3 +13695,47 @@ exécuter.
 
 **Réversible.** Un seul fichier CI, aucun code. Si GitHub corrige ses miroirs,
 les deux premiers gestes restent inoffensifs et le troisième reste utile.
+
+
+## DEC-0207 — AI Youtube Shorts Generator : audité, approuvé derrière un adaptateur, mode `api` interdit
+
+**Demande.** Intégrer `SamurAIGPT/AI-Youtube-Shorts-Generator` comme capacité
+`youtube_shorts`, après audit — jamais par installation aveugle.
+
+**Ce que l'audit a trouvé, en clonant et en exécutant** (dépôt renommé
+`Anil-matcha/...`, commit `a57bb93`, MIT, 1 281 lignes) :
+
+1. Le mode par défaut du moteur (`--mode api`) **téléverse la vidéo du
+   propriétaire chez MuAPI**, un service tiers payant. Ce mode n'est pas
+   branché, et le connecteur écrit `--mode local` en dur : `mode="api"` passé
+   en paramètre est ignoré, avec un test qui le mesure.
+2. Son mode local recharge **un second Whisper** alors qu'ARENA transcrit déjà
+   (même faute que KrillinAI, DEC-0049). Son cache SRT, lu dans son source,
+   permet de lui **fournir** la transcription d'ARENA : `transcript_srt` est
+   donc obligatoire, et la ligne `reusing cached transcript` de l'exécution
+   réelle prouve qu'aucun modèle Whisper n'est chargé.
+3. `opencv-python>=4.8.0` n'a **pas de borne haute**. `pip` installe 5.0.0, où
+   `cv2.CascadeClassifier` n'existe plus : tous les extraits échouent. Mesuré,
+   pas déduit — et la sonde de santé interroge l'interpréteur du moteur pour
+   le dire au lieu de le supposer.
+4. Le paquet `opencv-python` (non *headless*) échoue à l'import sans serveur
+   graphique (`libGL.so.1`).
+
+**Décision : APPROVED_WITH_ADAPTER.** Le delta réel face à
+`agents/clip_selector` (un extrait, cadrage centre, aucun classement) est
+mesurable : N extraits **classés** (score, hook, raison, dédoublonnage) et un
+recadrage qui **suit les visages**. `clip_selector` reste en place, inchangé :
+rien n'est remplacé.
+
+**Ce qui a réellement tourné** (30/09/2026) : vidéo ffmpeg 1280×720 / 12 s,
+transcription SRT fournie, endpoint compatible OpenAI local → deux MP4
+404×720 avec audio, aux durées demandées, vérifiés à `ffprobe`, puis le même
+parcours **à travers le connecteur ARENA** (santé OPERATIONAL mesurée,
+révision installée confrontée à la révision épinglée, deux clips crédités,
+source copiée libérée, fichiers intermédiaires nettoyés).
+
+**Ce que ça coûte si c'est faux.** Le moteur reste hors du dépôt et hors du
+`requirements.txt` : le retrait est la suppression d'un fichier connecteur,
+d'une déclaration dans `runtime.py`, d'une entrée de permissions, d'une
+capacité du graphe vidéo, d'un manifeste, de tests et d'un document. Aucune
+dépendance à désinstaller, aucune capacité existante à restaurer.

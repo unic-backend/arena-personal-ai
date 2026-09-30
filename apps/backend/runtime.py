@@ -111,6 +111,7 @@ from core.connectors.vectcut import ConnecteurVectCut
 from core.connectors.wan2gp import Wan2GPConnector
 from core.connectors.workflow_guide import ConnecteurWorkflowGuide
 from core.connectors.xaar_kaname import XaarKanameConnector
+from core.connectors.youtube_shorts import ConnecteurYoutubeShorts
 from core.conversations.depot import DepotConversations
 from core.execution.disjoncteur import Disjoncteur
 from core.execution.hooks import RegistreDeCrochets
@@ -540,6 +541,19 @@ registre.declarer(
     "vectcut",
     lambda: ConnecteurVectCut(acces=acces, journal=journal, file_attente=file_attente,
                               crochets=crochets),
+)
+# Video longue -> N shorts verticaux CLASSES (score de viralite, hook, raison)
+# avec recadrage qui suit les visages : le delta reel face a
+# `agents/clip_selector`, qui rend un seul extrait cadre au centre et reste en
+# place. Moteur MIT (Anil-matcha/AI-Youtube-Shorts-Generator) installe A COTE
+# d'ARENA et appele par sous-processus — jamais importe, jamais versionne
+# (DEC-0039). Mode `local` uniquement : le mode `api` enverrait la video du
+# proprietaire a MuAPI, un tiers payant. Transcription fournie par ARENA :
+# aucun second Whisper. Voir core/connectors/youtube_shorts.py.
+registre.declarer(
+    "youtube_shorts",
+    lambda: ConnecteurYoutubeShorts(acces=acces, journal=journal, file_attente=file_attente,
+                                    crochets=crochets),
 )
 # Hyperframes: moteur de validation/rendu pour compositions video de lancement.
 # Sa sonde execute le doctor reel; un environnement incomplet reste NON_CONFIGURE.
