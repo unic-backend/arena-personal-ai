@@ -123,6 +123,30 @@ qui entre.
 n'est pas une exigence. Ce qui est utile mais non demandé s'écrit
 `SUGGESTION — NON IMPLÉMENTÉE`.
 
+**Un exemple du propriétaire n'est jamais la maladie.** Il en fait partie, et
+il est là pour te faire comprendre **comment le défaut se déroule**. Quand il
+dit « je parle football et il me répond un basketteur », le football n'est pas
+le défaut : la même panne l'attend en économie, en cuisine, sur un chantier.
+
+Alors, dans cet ordre, et jamais autrement :
+
+1. **Vérifier.** Mesurer avant de toucher, et écarter les hypothèses par la
+   mesure — pas par l'intuition.
+2. **Regarder la racine.** Est-elle mal construite ?
+3. **Si oui, corriger depuis la racine. Si non, améliorer — c'est-à-dire
+   transformer.**
+
+Réparer l'exemple, c'est soigner le bras d'un corps paralysé et annoncer la
+guérison. Mesuré le 29/09/2026 : la dérive de conversation a d'abord été
+« corrigée » en ajoutant le mot « nom » à une liste de vocabulaire de
+football. La racine — **29 intentions sur 32 ne recevaient jamais la
+conversation** — figurait pourtant dans le diagnostic qui accompagnait ce
+correctif. Il a fallu que le propriétaire le dise pour qu'elle soit traitée
+(DEC-0191).
+
+Le signe qui ne trompe pas : **si le correctif oblige à rallonger une liste
+quand le sujet change, ce n'est pas un correctif.**
+
 ---
 
 ## Ce que la machine de l'assistant ne peut pas faire

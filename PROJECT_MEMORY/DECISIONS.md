@@ -54,3 +54,4 @@ d'ouvrir le document entier quand on cherche juste « a-t-on déjà tranché ça
 | toute garantie déclarée doit avoir été **sabotée** une fois | `CLAUDE.md` |
 | une capacité absente se rapporte (`NOT_CONFIGURED`), ne se simule pas | `CLAUDE.md` |
 | le dépôt est **public** — privé du 28/08 au 06/09/2026, repassé public depuis | `docs/CURRENT_TASK.md` ; `private: false` remesuré le 12/09/2026 |
+| un exemple du propriétaire n'est pas la maladie : vérifier, chercher la racine, corriger depuis la racine — sinon transformer | `CLAUDE.md` (posée le 29/09/2026) |
