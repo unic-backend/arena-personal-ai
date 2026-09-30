@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Corrigé — 30/09/2026 — JARVIS ne raconte plus une chaîne qui n'a pas tourné
+
+Le code, pas le modèle, choisit l'intention et les agents. La consigne décrit
+maintenant les chaînes courtes réellement exécutées, les projets `EQUIPE` et
+leur limite ; si une seule partie de ta demande a tourné, JARVIS doit la nommer
+au lieu de raconter toutes les étapes demandées. L'exemple PDF → Excel → e-mail
+qui promettait plus que le moteur est retiré (DEC-0192).
+
 ### Ajouté — 29/09/2026 — « Hey Usman » réveille le micro
 
 En veille, dis « Hey Usman », « Ok Usman » ou simplement « Usman, … » :

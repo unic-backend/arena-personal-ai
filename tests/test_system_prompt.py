@@ -227,8 +227,8 @@ class TestDeuxNomsDeuxRoles:
 
 
 class TestJarvis:
-    """Decision du proprietaire, 29/09/2026 (DEC-0163) : l'assistant devient
-    JARVIS, avec SA consigne mot pour mot (`config/jarvis.md`)."""
+    """DEC-0163/0192 : l'identite JARVIS reste celle du proprietaire ; les
+    sections fonctionnelles de `config/jarvis.md` decrivent le code reel."""
 
     def test_la_consigne_du_proprietaire_est_dans_le_prompt(self, sans_fait_enregistre):
         prompt = prompts.get_arena_system_prompt()
@@ -252,6 +252,38 @@ class TestJarvis:
             # Un agent metier reste dans SON espace (decision du 02/09/2026).
             assert (f"- {fiche.id} :" in prompt) is not metier, fiche.id
         assert "n'est PAS disponible" in prompt
+
+    def test_les_sections_fonctionnelles_disent_qui_route(self):
+        """Le modele ne s'attribue plus le plan que `dispatch_request` execute."""
+        consigne = prompts.FICHIER_JARVIS.read_text(encoding="utf-8")
+
+        assert "ARENA application code routes requests" in consigne
+        assert "selects one initial intent" in consigne
+        assert "through the EQUIPE intent" in consigne
+        assert "only one part of a larger request ran" in consigne
+
+    def test_la_consigne_ne_promet_plus_la_chaine_qui_na_pas_ete_executee(self):
+        """DEC-0192 : une chaine demandee n'est jamais racontee comme executee."""
+        consigne = prompts.FICHIER_JARVIS.read_text(encoding="utf-8")
+        promesses_retirees = (
+            "internally create an ordered execution plan",
+            "Select the best available:",
+            "JARVIS should orchestrate:",
+            "PDF Reader",
+            "Spreadsheet Generator",
+            "collects the result",
+        )
+
+        for promesse in promesses_retirees:
+            assert promesse not in consigne, f"la consigne promet encore : {promesse}"
+
+    def test_la_limite_de_la_chaine_decrite_est_celle_du_code(self):
+        """Changer la limite du moteur oblige a remettre sa consigne a jour."""
+        from core.agent.equipe import MAXIMUM_ETAPES
+
+        consigne = prompts.FICHIER_JARVIS.read_text(encoding="utf-8")
+        assert MAXIMUM_ETAPES == 3
+        assert "two or three specialist steps" in consigne
 
     def test_la_discipline_vient_apres_la_consigne(self, sans_fait_enregistre):
         """Les regles anti-invention priment : elles suivent la consigne."""
