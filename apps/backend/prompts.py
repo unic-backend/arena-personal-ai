@@ -18,17 +18,20 @@ toujours (`agents/plaquiste/plaquiste_agent.py`, `composer_instruction`).
 """
 import logging
 import re
+import threading
+import time
 from datetime import date
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from apps.backend.runtime import memory
 from core.specialistes.selection import bloc_de_methode, choisir
 
 logger = logging.getLogger("usman.backend.prompts")
 
-#: La consigne JARVIS du proprietaire (29/09/2026), gardee mot pour mot dans un
-#: fichier : c'est SON texte, pas une paraphrase du code.
+#: La consigne JARVIS du proprietaire (29/09/2026). Son identite, sa mission,
+#: ses valeurs et sa discipline restent les siennes ; les sections qui
+#: decrivent le fonctionnement suivent le code mesure (DEC-0163/0192).
 FICHIER_JARVIS = Path(__file__).resolve().parents[2] / "config" / "jarvis.md"
 
 
@@ -46,8 +49,8 @@ def consigne_jarvis() -> str:
     # Les listes « 1. 2. 3. » de la consigne deviennent « (1) (2) (3) » : dans
     # le prompt, « 1. » a « 7. » designent les sept regles de DISCIPLINE, et
     # une seconde liste numerotee rendait « la regle 1 » ambigue — pour le
-    # modele comme pour tests/test_discipline_du_prompt.py. Le fichier du
-    # proprietaire, lui, reste mot pour mot.
+    # modele comme pour tests/test_discipline_du_prompt.py. Cette transformation
+    # ne change pas le fichier source.
     return re.sub(r"^(\s*)(\d+)\.\s", r"\1(\2) ", texte, flags=re.MULTILINE)
 
 
@@ -58,11 +61,9 @@ MODULES_METIER = ("agents.plaquiste",)
 def capacites_branchees() -> List[str]:
     """Les agents reellement inscrits dans le registre, une ligne chacun.
 
-    La consigne JARVIS enumere tout ce qu'un orchestrateur universel devrait
-    savoir faire — generation de PDF, de tableurs, de presentations… Ce qui
-    existe VRAIMENT sur cette installation vient d'ici, lu sur le registre
-    (DEC-0145), jamais d'une liste ecrite a la main. Sans elle, le modele
-    prendrait la liste de la consigne pour un inventaire.
+    La presence vient du registre vivant (DEC-0145), jamais d'une liste ecrite
+    dans le prompt. Elle ne vaut pas disponibilite : l'etat mesure par
+    `doctor.py` est compose juste a cote.
     """
     from apps.backend.runtime import collaborateurs
 
@@ -76,6 +77,82 @@ def capacites_branchees() -> List[str]:
         quoi = ", ".join(fiche.capabilities) or fiche.description
         lignes.append(f"- {fiche.id} : {quoi}")
     return lignes
+
+
+#: `doctor.py` a pris 0,53 a 0,86 s sur la machine d'audit du 30/09/2026.
+#: Certaines sondes d'un moteur INSTALLE peuvent attendre bien davantage
+#: (`DELAI_SONDE`, voire le demarrage d'un service). Une mesure par requete
+#: ralentirait donc chaque phrase. Cinq minutes bornent cette dette a une
+#: mesure pour plusieurs tours (0,08 s/tour amortie a un tour par minute sur
+#: la machine d'audit), tout en rendant un service rallume visible sans
+#: redemarrer ARENA. Une configuration changee par ARENA invalide sans attendre.
+DUREE_CACHE_DIAGNOSTIC = 300.0
+_CACHE_DIAGNOSTIC: Optional[tuple[float, List[str]]] = None
+_VERROU_DIAGNOSTIC = threading.Lock()
+
+
+def _lire_diagnostic():
+    """Appelle la source canonique sans la recopier dans le backend."""
+    from scripts.doctor import diagnostiquer
+
+    return diagnostiquer()
+
+
+def _etat_pour_le_modele(etat: str) -> str:
+    """Forme stable et compacte : le nom des etats, jamais une capacite."""
+    normalise = str(etat or "INCONNU").strip().upper().replace(" ", "_")
+    if normalise == "OK":
+        return "DISPONIBLE"
+    if normalise == "NON_CONFIGURE":
+        return "NOT_CONFIGURED"
+    return normalise
+
+
+def invalider_cache_diagnostic() -> None:
+    """Force la prochaine composition a remesurer la machine.
+
+    L'expiration temporelle couvre un service lance ou arrete. Cette porte
+    explicite couvre une configuration changee par ARENA elle-meme (OAuth,
+    tests, future interface de reglage) sans attendre l'expiration.
+    """
+    global _CACHE_DIAGNOSTIC
+    with _VERROU_DIAGNOSTIC:
+        _CACHE_DIAGNOSTIC = None
+
+
+def etats_capacites_mesurees(
+    horloge: Callable[[], float] = time.monotonic,
+) -> List[str]:
+    """Les mesures de `doctor.py`, mises en cache et rendues au modele.
+
+    Une panne globale du diagnostic se dit `INCONNU` : elle ne transforme
+    jamais une absence de mesure en disponibilite. Noms et etats viennent des
+    `Verification` elles-memes ; aucune capacite n'est nommee ici a la main.
+    """
+    global _CACHE_DIAGNOSTIC
+    maintenant = horloge()
+    with _VERROU_DIAGNOSTIC:
+        if _CACHE_DIAGNOSTIC is not None:
+            mesuree_a, lignes = _CACHE_DIAGNOSTIC
+            if maintenant - mesuree_a < DUREE_CACHE_DIAGNOSTIC:
+                return list(lignes)
+        try:
+            rapport = _lire_diagnostic()
+            # Nom + etat suffisent a la decision du modele. Les details et
+            # remedes restent dans `python scripts/doctor.py` : les recopier
+            # ici ajoutait plusieurs milliers de caracteres a chaque requete.
+            lignes = [
+                f"- {verification.nom} : {_etat_pour_le_modele(verification.etat)}"
+                for verification in rapport.verifications
+            ]
+        except Exception as erreur:  # noqa: BLE001 — le prompt doit toujours partir
+            logger.warning("Diagnostic des capacites illisible : %s", type(erreur).__name__)
+            lignes = [
+                "- Diagnostic des capacites : INCONNU — la mesure a echoue "
+                f"({type(erreur).__name__})"
+            ]
+        _CACHE_DIAGNOSTIC = (maintenant, lignes)
+        return list(lignes)
 
 
 # Faits que le proprietaire peut enregistrer lui-meme en memoire longue. Rien
@@ -180,19 +257,30 @@ def get_arena_system_prompt() -> str:
             *enregistres,
         ]
 
-    # La consigne du proprietaire, puis ce qui existe reellement, puis les
+    # La consigne du proprietaire, puis les DEUX mesures qui font foi, puis les
     # regles : la discipline vient APRES, elle prime sur l'envie d'etre utile.
+    # Le registre dit ce qui existe ; doctor.py dit ce qui fonctionne. Confondre
+    # les deux faisait annoncer « email » quand Gmail etait NON_CONFIGURE.
     lignes += ["", consigne_jarvis()]
     branchees = capacites_branchees()
-    if branchees:
-        lignes += [
-            "",
-            "CAPACITES REELLEMENT BRANCHEES SUR CETTE INSTALLATION (lues sur le",
-            "registre, pas supposees). Seules celles-ci existent ; une capacite",
-            "de la consigne ci-dessus qui n'y figure pas n'est PAS disponible :",
-            "dis-le au lieu de faire semblant.",
-            *branchees,
-        ]
+    mesurees = etats_capacites_mesurees()
+    lignes += [
+        "",
+        "CAPACITES DE CETTE INSTALLATION — COMPOSEES A CHAQUE APPEL, JAMAIS",
+        "RECOPIEES DANS LA CONSIGNE.",
+        "",
+        "AGENTS ENREGISTRES (presence dans le registre, pas preuve que leurs",
+        "outils repondent) :",
+        *(branchees or ["- aucun agent enregistre"]),
+        "",
+        "ETAT MESURE DE LA MACHINE (source : scripts/doctor.py ; une panne reste",
+        "visible avec son etat, elle ne disparait pas de la liste) :",
+        *mesurees,
+        "",
+        "Une capacite est utilisable seulement si son agent existe ET si les",
+        "mesures dont elle depend sont DISPONIBLE. NOT_CONFIGURED, ABSENT,",
+        "EN_PANNE et INCONNU ne sont jamais des disponibilites.",
+    ]
 
     lignes += DISCIPLINE
 

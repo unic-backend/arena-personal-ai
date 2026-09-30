@@ -250,6 +250,21 @@ def test_callback_invalide_la_sonde_en_cache_avant_d_afficher_le_compte(
     assert routeur.registre.connecteur.invalide is True
 
 
+def test_un_jeton_change_invalide_le_diagnostic_du_prompt(monkeypatch):
+    """Le modele ne garde pas cinq minutes l'ancien etat apres OAuth."""
+    from apps.backend import prompts
+
+    invalidations = []
+    monkeypatch.setattr(routeur.stockage_jetons, "persister", lambda *a, **k: None)
+    monkeypatch.setattr(
+        prompts, "invalider_cache_diagnostic", lambda: invalidations.append(True),
+    )
+
+    routeur._persister_refresh_token("GOOGLE_REFRESH_TOKEN", "nouveau")
+
+    assert invalidations == [True]
+
+
 def test_callback_google_refuse_l_echange(client, monkeypatch):
     monkeypatch.setattr(routeur, "identifiants", _identifiants_presents)
 
