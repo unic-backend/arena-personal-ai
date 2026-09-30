@@ -448,6 +448,9 @@ class FFmpegTool:
         if resultat.returncode != 0:
             erreur = resultat.stderr.decode("utf-8", errors="ignore").strip()
             return False, erreur.splitlines()[-1] if erreur else "ffmpeg a echoue sans message"
+        fichier_sortie = Path(sortie)
+        if not fichier_sortie.is_file() or fichier_sortie.stat().st_size == 0:
+            return False, "ffmpeg a rendu 0 mais n'a ecrit aucun fichier reel"
         meta = self.probe(sortie)
         return (True, "") if meta["ok"] else (False, "ffmpeg a produit un media invalide")
 
