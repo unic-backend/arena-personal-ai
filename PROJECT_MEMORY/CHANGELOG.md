@@ -1,3 +1,38 @@
+## 2026-09-30 — Basic Memory audité, puis refusé : ARENA a déjà cette mémoire
+
+Demande : auditer `basicmachines-co/basic-memory` et n'intégrer que si l'audit
+prouve un gain concret. Amont cloné et lu (commit `88c3990c` du 29/09/2026,
+128 338 lignes de Python, 567 fichiers de test — le projet est actif).
+**Refusé, sur trois blocages indépendants et mesurés :**
+
+1. **AGPL-3.0-or-later** contre le `LICENSE` « tous droits réservés » d'un dépôt
+   PUBLIC — même règle que DEC-0200 et DEC-0202. Mesuré en plus sur les 46
+   dépendances directes : `unidecode` est GPL-2.0-or-later, `psycopg` est
+   LGPL-3.0-only. Le processus séparé serait la seule forme envisageable, mais
+   l'AGPL §13 vise l'interaction par le réseau et ARENA *est* un service réseau.
+   C'est une question de droit : elle revient au propriétaire.
+2. **`requires-python = ">=3.12"`** alors qu'ARENA tourne en 3.11 (CI et
+   Dockerfile). `pip install --dry-run basic-memory` sous 3.11.2 :
+   « No matching distribution found » — **toutes** les versions publiées.
+3. **Ce serait une seconde mémoire, pas une meilleure** — le seul blocage qui
+   resterait si les deux autres tombaient. Markdown, wikiliens, graphe,
+   BM25+RRF+dense, projets, six outils MCP de mémoire : tout existe
+   (DEC-0090, DEC-0130). Mesuré le jour même : ingestion Markdown, graphe
+   (3 nœuds / 1 arête / 1 lien cassé vu), BM25, repli étiqueté sans Ollama,
+   lint, isolation de projet réelle. Et ARENA fait quatre choses que l'amont ne
+   fait pas : chiffrement au repos, refus d'écrire un secret, frontière de
+   confiance, séparation FAIT / INFERENCE.
+
+**Aucun code d'ARENA n'est modifié.** Le refus est tenu par
+`tests/test_basic_memory_reste_dehors.py` (15 tests) : la moitié mesure qu'aucune
+dépendance ni import n'est entré, l'autre moitié **exécute** les capacités sur
+lesquelles le refus repose — si l'une disparaît, la décision se rouvre au lieu
+de rester vraie par inertie. Onze sabotages passés, chacun rattrapé.
+Aucune performance n'est revendiquée : `UNKNOWN — non mesuré`. Voir DEC-0203 et
+`docs/audits/basic_memory_audit.md`.
+
+---
+
 ## 2026-09-30 — Une chaîne de plus de trois étapes part au projet, au lieu de tomber
 
 Audit d'après-fusion des quatre chantiers « la consigne dit la vérité » : les
