@@ -327,5 +327,7 @@ ni suivie ni une dépendance d’ARENA.
 
 Le résultat complet n’est donc pas présenté comme vert. Le travail ciblé passe,
 mais la suite complète reste rouge tant que les binaires CI requis ne sont pas
-installés dans ce bac à sable. Aucun résultat de performance AO/ARENA n’est
-revendiqué.
+installés dans ce bac à sable. Une tentative d’installation des paquets natifs
+exactement nommés par la CI a aussi été exécutée avec `sudo apt-get`, mais les
+miroirs `deb.debian.org` étaient injoignables et aucun cache de paquets ne
+contenait les binaires. Aucun résultat de performance AO/ARENA n’est revendiqué.
