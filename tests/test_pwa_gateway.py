@@ -7,11 +7,13 @@ relance la requete jusqu'a trois fois si le flux se ferme sans `done` ni
 Aucun test ici n'appelle Ollama : le fournisseur est un double.
 """
 import asyncio
+import io
 import json
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from apps.backend import main
 from apps.backend import security as securite
@@ -25,6 +27,9 @@ from apps.backend.routers.pwa_gateway import (
 )
 
 CLE_DE_TEST = "cle-de-test"
+_TAMPON_IMAGE = io.BytesIO()
+Image.new("RGB", (16, 16), "navy").save(_TAMPON_IMAGE, format="PNG")
+OCTETS_IMAGE_VALIDE = _TAMPON_IMAGE.getvalue()
 
 
 class FauxFournisseur:
@@ -554,7 +559,7 @@ def test_les_pieces_jointes_atteignent_un_agent_specialise(
     """Avant ce correctif : un agent specialise recevait un `ChatRequest` sans
     `attachments` — une image jointe n'atteignait jamais VisionAgent."""
     fournisseur()
-    piece = depot.deposer("chantier.jpg", b"\x89PNG\r\n\x1a\nfaux-png")
+    piece = depot.deposer("chantier.jpg", OCTETS_IMAGE_VALIDE)
 
     async def _vision(_demande, espace=None):
         return "VISION"
@@ -1374,7 +1379,7 @@ def test_une_image_jointe_est_annoncee_pas_videe_dans_le_texte(
 ):
     """Avant DEC-0019 : `piece.lisible` valait vrai pour une image sans texte,
     et le bloc entrait vide dans le prompt — ni utile, ni honnete."""
-    piece = depot.deposer("chantier.jpg", b"\x89PNG\r\n\x1a\nfaux-png")
+    piece = depot.deposer("chantier.jpg", OCTETS_IMAGE_VALIDE)
     faux = fournisseur()
 
     demander(client, entetes, attachments=[piece.identifiant])

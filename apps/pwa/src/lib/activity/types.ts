@@ -109,6 +109,8 @@ export interface DocumentProduit {
   url: string;
   action: string;
   message: string;
+  /** Type mesure par le producteur. Absent sur les anciens documents. */
+  type?: string;
 }
 
 export interface MessageMeta {

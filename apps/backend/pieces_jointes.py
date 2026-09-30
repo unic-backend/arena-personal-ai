@@ -31,6 +31,7 @@ quelle a `VisionAgent` (DEC-0019), qui parle au modele de vision.
    jointe d'hier ne doit pas revenir dans la conversation d'aujourd'hui.
 """
 import base64
+import io
 import logging
 import os
 import tempfile
@@ -39,6 +40,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+from PIL import Image, UnidentifiedImageError
 
 from tools.documents.reader import EXTENSIONS_LISIBLES, lire_document
 
@@ -51,6 +54,14 @@ TAILLE_MAX_OCTETS = int(os.getenv("USMAN_MAX_FILE_MB", "25")) * 1024 * 1024
 # octets sont encodes directement en memoire, comme le texte l'est pour un
 # document — la meme regle de vie privee, appliquee au meme endroit.
 EXTENSIONS_IMAGE = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+FORMATS_IMAGE = {"JPEG", "PNG", "WEBP", "GIF"}
+try:
+    PIXELS_MAX_IMAGE = max(1, int(os.getenv("USMAN_MAX_IMAGE_PIXELS", "40000000")))
+    COTE_MAX_IMAGE = max(1, int(os.getenv("USMAN_MAX_IMAGE_SIDE", "10000")))
+except ValueError:
+    logger.warning("Plafond d'image invalide : valeurs sures par defaut utilisees.")
+    PIXELS_MAX_IMAGE = 40_000_000
+    COTE_MAX_IMAGE = 10_000
 
 # Duree de vie du texte extrait. Assez pour une conversation, pas pour la
 # journee : une piece jointe d'hier n'a rien a faire dans la question d'aujourd'hui.
@@ -178,8 +189,31 @@ class DepotPiecesJointes:
         return piece
 
     def _deposer_image(self, nom_sur: str, contenu: bytes) -> PieceJointe:
-        """Une image ne touche jamais le disque : ses octets sont encodes en
-        memoire, directement — aucun lecteur externe n'en a besoin."""
+        """Valide le contenu reel avant de le garder en memoire.
+
+        L'extension et le MIME sont des declarations du navigateur. Pillow
+        decode l'en-tete, les dimensions puis le fichier complet ; les plafonds
+        empechent une image compressee minuscule d'allouer une surface enorme.
+        """
+        try:
+            with Image.open(io.BytesIO(contenu)) as image:
+                largeur, hauteur = image.size
+                format_image = (image.format or "").upper()
+                if format_image not in FORMATS_IMAGE:
+                    raise ValueError(f"format image non autorise : {format_image or 'inconnu'}")
+                if largeur <= 0 or hauteur <= 0:
+                    raise ValueError("dimensions invalides")
+                if largeur > COTE_MAX_IMAGE or hauteur > COTE_MAX_IMAGE:
+                    raise ValueError(f"dimensions {largeur}x{hauteur}, maximum {COTE_MAX_IMAGE} px par cote")
+                if largeur * hauteur > PIXELS_MAX_IMAGE:
+                    raise ValueError(f"{largeur * hauteur} pixels, maximum {PIXELS_MAX_IMAGE}")
+                image.verify()
+        except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as erreur:
+            return self._refus(
+                nom_sur, len(contenu), "ECHEC",
+                f"image corrompue, invalide ou trop grande : {erreur}",
+            )
+
         depose, expire = self._horodatages()
         piece = PieceJointe(
             identifiant=uuid.uuid4().hex, nom=nom_sur, octets=len(contenu),

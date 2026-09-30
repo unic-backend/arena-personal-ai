@@ -19,6 +19,7 @@ from agents.executive.executive_agent import ExecutiveAgent
 from agents.finance.finance_agent import FinanceAgent
 from agents.formel.formel_agent import FormelAgent
 from agents.fresh_info.fresh_info_agent import FreshInfoAgent
+from agents.image_restoration.image_restoration_agent import ImageRestorationAgent
 from agents.montage.montage_agent import MontageAgent
 from agents.orchestrator.orchestrator_agent import OrchestratorAgent
 from agents.plaquiste.plaquiste_agent import PlaquisteAgent
@@ -134,6 +135,7 @@ from core.permissions.permission_manager import PermissionManager
 from core.permissions.politique import PolitiqueDePermissions
 from core.production.journal_projet import JournalProjets
 from core.reasoning.reasoning_engine import ReasoningEngine
+from core.restoration.codeformer import ConfigurationCodeFormer, ServiceCodeFormer
 from social.linkedin.linkedin_connector import LinkedInConnector
 from social.meta.meta_connector import MetaConnector
 from social.tiktok.tiktok_connector import TikTokConnector
@@ -604,6 +606,11 @@ index_semantique = IndexSemantique()
 # Pieces jointes : le fichier est lu puis efface, seul son texte reste en
 # memoire le temps d'une conversation.
 pieces_jointes = DepotPiecesJointes()
+# CodeFormer est un moteur optionnel externe : cette construction ne l'importe,
+# ne le lance et ne telecharge aucun poids. Son etat n'est mesure qu'a l'appel.
+codeformer_service = ServiceCodeFormer(
+    ConfigurationCodeFormer.depuis_environnement(RENDERED_DIR / "restorations")
+)
 lightrag_tool = LightRAGTool()
 graphrag_tool = GraphRAGTool()
 
@@ -761,6 +768,8 @@ video_agent = VideoAnalyzerAgent(provider=deep_provider, memory=memory,
                                  registre=registre, travaux=travaux, journal=journal)
 vision_agent = VisionAgent(provider=ollama_vision, memory=memory, pieces_jointes=pieces_jointes,
                           registre=registre)
+image_restoration_agent = ImageRestorationAgent(
+    service=codeformer_service, pieces_jointes=pieces_jointes)
 # Montage : la phrase du proprietaire devient un plan d operations validees
 # (`core/montage/planificateur.py`), jamais un pilotage direct de la timeline.
 # Le modele profond, parce que produire un JSON structure et coherent est une

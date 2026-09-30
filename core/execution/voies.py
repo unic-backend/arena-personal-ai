@@ -113,6 +113,9 @@ VOIE_PAR_INTENTION: Dict[str, Voie] = {
     "VIDEO_ANALYSIS": Voie.PROFONDE,
     "VIDEO_PROJET": Voie.PROFONDE,
     "VISION": Voie.PROFONDE,
+    # Restauration locale lourde : aucun reseau, mais un processus GPU/CPU qui
+    # peut durer. Elle reste distincte de VISION, qui comprend sans transformer.
+    "IMAGE_RESTORATION": Voie.PROFONDE,
     # Un plan de montage est un JSON structure a produire d un coup et
     # relu : plusieurs passes sur la machine, jamais un aller dehors.
     "MONTAGE": Voie.PROFONDE,

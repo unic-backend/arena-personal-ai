@@ -296,7 +296,7 @@ AGENTS_SPECIALISES = frozenset({
     "DEEP_REASONING", "DEEP_RESEARCH", "FRESH_INFO",
     "TREND_SEARCH", "CODE_EXECUTION", "VIDEO_ANALYSIS", "STUDIO",
     "BROWSER", "SWE_FIX", "REPO_ENGINEERING", "RAG_DOCS", "GRAPHRAG",
-    "PLAQUISTE", "EMAIL", "SOCIAL", "VISION", "MONTAGE", "AUDIO",
+    "PLAQUISTE", "EMAIL", "SOCIAL", "VISION", "IMAGE_RESTORATION", "MONTAGE", "AUDIO",
     "ATELIER",
     # Ces huit intentions sont pleinement gerees par `dispatch_request`
     # (apps/backend/routers/chat.py) depuis leurs missions respectives

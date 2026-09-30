@@ -3,8 +3,11 @@
 Rien n'appelle Ollama : le fournisseur est le double du socle
 (`tests/conftest.py`), le depot de pieces jointes est reel mais jetable.
 """
+import io
+
 import httpx
 import pytest
+from PIL import Image
 
 from agents.vision.vision_agent import (
     QUESTION_PAR_DEFAUT,
@@ -15,7 +18,9 @@ from agents.vision.vision_agent import (
 from apps.backend.pieces_jointes import DepotPiecesJointes
 from core.actions.resultat import echec, non_configure, succes
 
-OCTETS_IMAGE = b"\x89PNG\r\n\x1a\n" + b"faux-png-mais-suffit-pour-le-test"
+_tampon_image = io.BytesIO()
+Image.new("RGB", (16, 16), "navy").save(_tampon_image, format="PNG")
+OCTETS_IMAGE = _tampon_image.getvalue()
 
 
 @pytest.fixture

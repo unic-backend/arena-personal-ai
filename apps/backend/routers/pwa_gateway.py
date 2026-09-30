@@ -997,6 +997,7 @@ def _documents_produits(resultat: Dict[str, Any]) -> List[Dict[str, Any]]:
             "url": document["url"],
             "action": "produire",
             "message": document.get("message") or "",
+            "type": document.get("type") or "",
         })
     return produits
 
