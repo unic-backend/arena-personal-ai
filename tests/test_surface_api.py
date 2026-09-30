@@ -131,6 +131,10 @@ SURFACE_ATTENDUE = {
     # Dictee vocale reelle (Faster-Whisper), a la place de la reconnaissance
     # gratuite et sans wolof du navigateur — demande le 02/09/2026.
     "/api/speech/transcribe": (["POST"], ["verify_api_key", "limiter_debit"]),
+    # Sante reseau mesuree (DEC-0202) : lit l'etat via l'adaptateur
+    # core/reseau/sante_reseau.py (Netronome optionnel, sonde native en repli).
+    # Lecture seule, aucun test de debit lance ici.
+    "/api/reseau/sante": (["GET"], ["verify_api_key", "limiter_debit"]),
     # Personnages ARENA Video (DEC-0084, mission ARENA x AGENT HEROES) :
     # identite persistante + pipeline WanGP -> Xaar Kaname, confine au
     # workspace Video.

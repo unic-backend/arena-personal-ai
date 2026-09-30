@@ -61,6 +61,16 @@ services:
   market_data:
     read:        {decision: ALLOWED,      risque: LOW}
 
+  # Sante reseau (core/connectors/netronome.py, Netronome en local, DEC-0202).
+  # Lire l'etat deja mesure est bon marche et sans effet -> ALLOWED. Lancer un
+  # vrai test de debit consomme de la bande passante reelle et occupe la ligne
+  # plusieurs dizaines de secondes -> CONFIRMATION, comme toute action couteuse.
+  # Aucune cible reseau libre n'est exposee : `measure` vise les serveurs deja
+  # configures dans Netronome, jamais un hote arbitraire.
+  network:
+    read:        {decision: ALLOWED,      risque: LOW}
+    measure:     {decision: CONFIRMATION, risque: MEDIUM}
+
   website:
     inspect:     {decision: ALLOWED,      risque: LOW}
     analyze:     {decision: ALLOWED,      risque: LOW}

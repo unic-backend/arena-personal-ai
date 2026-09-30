@@ -36,6 +36,7 @@ from apps.backend.routers import (
     openai_gateway,
     personnages,
     pwa_gateway,
+    reseau,
     speech,
     video_production,
 )
@@ -350,3 +351,4 @@ app.include_router(memory.router)
 app.include_router(hermes_evolution.router)
 app.include_router(contexte_unifie.router)
 app.include_router(speech.router)
+app.include_router(reseau.router)
