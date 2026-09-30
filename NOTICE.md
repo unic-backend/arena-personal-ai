@@ -261,3 +261,25 @@ ARENA sait interroger le graphe de connaissances structurel d'un dépôt logicie
 **Aucune ligne de code C ni binaire n'est copiée dans ce dépôt.**
 L'intégration est un connecteur natif ARENA utilisant le transport MCP stdio existant (`core/mcp/stdio_transport.py`), avec dégradation gracieuse vers `gitingest` et les outils ACI locaux. Le binaire s'exécute localement dans un processus isolé et stocke ses index dans sa propre base SQLite. Toutes les données extraites sont enveloppées sous la frontière de confiance (`core/security/trust.py`).
 
+## AI Youtube Shorts Generator — vidéo longue vers shorts classés
+
+Dépôt : <https://github.com/Anil-matcha/AI-Youtube-Shorts-Generator> (l'ancien
+nom `SamurAIGPT/AI-Youtube-Shorts-Generator` redirige vers celui-ci), commit
+épinglé **`a57bb938ba50bf9654c2d5ca2af1295163454349`**, licence **MIT**.
+
+**Aucune ligne de ce dépôt n'est présente ici.** La licence MIT l'aurait
+pourtant permis — comme pour Pascal Editor (DEC-0070) et UI/UX Pro Max, la
+frontière est de **convention** : une seule règle pour tous les moteurs
+externes (`tests/test_moteurs_externes_restent_dehors.py`). Le moteur
+s'installe à côté d'ARENA, dans son propre environnement virtuel, et n'est
+joint que par sous-processus : ses dépendances (`opencv`, `yt-dlp`,
+`faster-whisper`, `openai`, `google-genai`) n'entrent pas dans le
+`requirements.txt` d'ARENA, où `openai` et `faster-whisper` sont déjà épinglés
+pour d'autres raisons.
+
+`core/connectors/youtube_shorts.py` est du code **original d'ARENA**, écrit
+contre la ligne de commande publique du moteur (`main.py --mode local`) et
+contre le contrat de son `--output-json`, tous deux exécutés réellement
+pendant l'audit (`docs/audits/ai_youtube_shorts_audit_2026-09-30.md`). Le mode
+`--mode api`, qui téléverserait la vidéo du propriétaire chez MuAPI, n'est pas
+atteignable depuis ARENA.

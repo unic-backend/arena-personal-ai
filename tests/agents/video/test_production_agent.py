@@ -1105,3 +1105,51 @@ class TestReplyImageBackend:
 
         assert resultat["status"] == "success"
         assert [a["connecteur"] for a in registre.appels] == ["hidream", "comfyui"]
+
+
+class TestYoutubeShorts:
+    """La capacite `youtube_shorts` est-elle REELLEMENT atteignable par un plan ?
+
+    Un connecteur enregistre qu'aucun chemin d'execution n'atteint est mort
+    (`tests/test_connecteurs_dormants.py`). Ces deux tests mesurent le chemin
+    complet : plan du modele -> graphe valide -> registre -> connecteur.
+    """
+
+    async def test_un_plan_atteint_le_connecteur_avec_la_reference_et_le_srt(self, tmp_path):
+        video = tmp_path / "longue.mp4"
+        video.write_bytes(b"video")
+        srt = tmp_path / "longue.srt"
+        srt.write_text("1\n00:00:00,000 --> 00:00:02,000\nUn.\n", encoding="utf-8")
+
+        modele = ModeleDouble([
+            '[{"id": "shorts", "capacite": "youtube_shorts", "parametres": '
+            f'{{"reference": 0, "transcript_srt": "{srt}", "nombre_clips": 2}}}}]'
+        ])
+        registre = RegistreXaarDouble(reponse={
+            "statut": "SUCCESS", "message": "2 shorts", "preuve": str(tmp_path / "short_01.mp4")})
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+
+        resultat = await agent.run("fais-moi des shorts",
+                                   context={"references": [str(video)]})
+
+        assert resultat["status"] == "success"
+        appel = registre.appels[0]
+        assert appel["connecteur"] == "youtube_shorts"
+        assert appel["capacite"] == "generate_shorts"
+        # La video est designee par INDEX ; le modele n'ecrit aucun chemin.
+        assert appel["parametres"]["video"] == str(video)
+        assert appel["parametres"]["transcript_srt"] == str(srt)
+        assert appel["parametres"]["nombre_clips"] == 2
+        # Rien n'autorise un telechargement tant que personne ne l'a demande.
+        assert "autoriser_telechargement" not in appel["parametres"]
+
+    async def test_sans_reference_video_aucun_appel_nest_emis(self, tmp_path):
+        modele = ModeleDouble([
+            '[{"id": "shorts", "capacite": "youtube_shorts", "parametres": {}}]'
+        ])
+        registre = RegistreXaarDouble()
+        agent = VideoProductionAgent(provider=modele, registre=registre)
+
+        await agent.run("fais-moi des shorts", context={"references": []})
+
+        assert registre.appels == []

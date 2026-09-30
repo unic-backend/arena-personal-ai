@@ -41,6 +41,10 @@ PAR_CONNECTEUR: Dict[str, str] = {
     "hidream_image": "hidream",
     "agnes": "agnes",
     "hyperframes_render": "hyperframes",
+    # Sonde reelle : elle interroge l'interpreteur du moteur (OpenCV et
+    # CascadeClassifier) avant de dire OPERATIONNEL — voir
+    # core/connectors/youtube_shorts.py.
+    "youtube_shorts": "youtube_shorts",
 }
 
 

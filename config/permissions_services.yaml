@@ -357,6 +357,17 @@ services:
   krillinai:
     generate:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
 
+  # Video longue -> N shorts verticaux classes (core/connectors/youtube_shorts.py).
+  # `generate` : meme traitement que krillinai/wangp/moneyprinter — une
+  # generation occupe la machine plusieurs minutes (recadrage image par image
+  # qui suit les visages) et appelle un LLM, donc CONFIRMATION, risque MEDIUM,
+  # coupe-circuit WRITE_FILES. `read` : `inspecter_moteur` ne fait que rendre
+  # la revision installee face a la revision auditee — aucune ecriture, aucun
+  # media, rien a confirmer.
+  youtube_shorts:
+    generate:    {decision: CONFIRMATION, risque: MEDIUM, interrupteur: WRITE_FILES}
+    read:        {decision: ALLOWED, risque: LOW}
+
   # Generation d'interface (DEC-0050) : la technique d'OpenUI (prompt ->
   # HTML/React/Svelte/Web-Component), jamais son serveur. Meme logique que
   # workflow_guide/devis : le fichier reste local, relu avant d'etre
