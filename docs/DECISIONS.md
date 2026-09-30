@@ -12813,3 +12813,120 @@ tiennent, dont trois qui **figent la date** avec `os.utime` pour reproduire la
 panne sur n'importe quel systeme de fichiers au lieu d'en dependre. Verifie
 par mutation : ramener l'empreinte a la date seule refait echouer sept tests,
 dont les trois nouveaux.
+
+## DEC-0191 — Les agents recoivent la conversation ; ils ne devinent plus le domaine
+
+**2026-09-29.** Le proprietaire pose une question de suivi — « donne-moi un
+nom » apres un echange sur une finale de coupe du monde — et l'agent repond a
+cote : il n'a jamais recu l'echange. Une premiere correction, ecrite le meme
+jour, reconnaissait ces questions en les comparant a une liste de mots
+generiques (`TERMES_SUIVI_GENERIQUES` : « buteur », « score », « vainqueur »,
+« match »...). Elle reparait le football.
+
+**Pourquoi cette liste est abandonnee.** Elle ne pouvait pas finir. Il aurait
+fallu y ajouter « chiffre » apres une question sur le Bitcoin, « titre » pour
+un livre, « combien » pour un chantier, « pour six personnes » pour une
+recette — un mot de plus a chaque domaine, pour toujours, et un defaut
+reintroduit a chaque domaine oublie. C'etait aussi soigner un membre sur un
+corps paralyse : la cause mesuree n'a rien de lexical — **29 intentions sur
+32 ne recevaient jamais la conversation**. La liste ne faisait que deviner ce
+que le fil aurait dit si on le lui avait donne. Trois intentions le recevaient
+deja et ne derivent pas : `DEEP_REASONING` (`_fil_de_la_session()`),
+`FRESH_INFO` (`session_id`/`history`), `PLAQUISTE` (`historique`). Le modele a
+suivre etait donc dans le depot.
+
+**Decision.** `_aiguiller()` (`apps/backend/routers/chat.py`) joint
+**toujours** les derniers tours de la conversation devant la demande, pour les
+dix intentions qui ne recevaient que la derniere phrase : `BROWSER`,
+`DEEP_RESEARCH`, `DESIGN_UI`, `EQUIPE`, `EXECUTIVE`, `FINANCE`, `GRAPHRAG`,
+`RAG_DOCS`, `TREND_SEARCH`, `UI_GENERATE`. Rien ne lit la demande pour decider
+si elle en a besoin. La composition est mecanique
+(`core/context/fil_pour_agents.py`) : aucun modele, aucun classement, aucun
+vocabulaire. Le fil est rendu par `rendre_le_fil()` — la meme fonction que les
+deux autres voies, pour que ARENA n'ait pas deux memoires — et pose entre
+trois balises qui disent a l'agent que **c'est du contexte**, qu'il ne doit
+pas y repondre, et que la demande qui suit est la seule a traiter. Sans cette
+consigne, un modele qui lit deux questions repond volontiers a la premiere.
+**La demande du proprietaire est recopiee mot pour mot**, en derniere
+position : ni resumee, ni completee, ni reformulee.
+
+**Les deux bornes, et la mesure qui les fixe** (`python
+scripts/mesurer_le_fil.py`, 29/09/2026) :
+
+```
+corpus de conversation du depot : 55 conversations, 355 tours
+  tour : mediane 25 car., p95 41 car., max 53 car.
+  bloc de six tours : mediane 495 car., max 539 car.   (budget 4 000)
+le budget passe devant le compteur des que le tour moyen depasse ~666 car.
+  six tours de 666 car. -> 5 gardes, le plus ancien part le premier
+jeu d'or permanent, cas de reference :
+  coreference (10 cas) : sujet a 3 tours = 6 messages -> 10/10 tiennent
+  long_conversation_coreference (10 cas) : sujet a 9 tours = 18 messages -> 0/10
+composition : 5 us par bloc, aucun appel modele
+```
+
+- **Nombre de tours : 6** (`TOURS_RELUS_DEFAUT`). C'est deja la fenetre des
+  deux autres voies de `chat.py` : un second chiffre donnerait deux memoires a
+  ARENA selon l'agent qui repond. La mesure le confirme sur le jeu d'or
+  permanent : les dix cas de reference « recente » placent le sujet a trois
+  tours, soit exactement six messages, et tiennent tous. Les dix cas
+  `long_conversation_coreference` le placent a dix-huit messages : ils ne
+  relevent pas de ce bloc mais de la memoire longue, qui existe pour ca
+  (`core/memory/recuperation.py`). Elargir le bloc jusqu'a eux couterait
+  quatre fois la fenetre pour un cas que la memoire traite deja.
+- **Budget : 4 000 caracteres** (`BUDGET_TOURS_ANTERIEURS`), la limite deja
+  mesuree pour le **meme** fil dans `core/memory/conversation.py`. Sur les
+  conversations du depot, le bloc pese 495 caracteres en mediane : c'est le
+  compteur de tours qui borne, et le budget ne sert que contre les tours longs
+  — une reponse sourcee de FRESH_INFO peut a elle seule peser plusieurs
+  milliers de caracteres. Au-dela, **les plus anciens partent d'abord**, et on
+  s'arrete au premier tour trop gros : un fil troue se lit comme un fil
+  continu, et le modele en deduit des enchainements qui n'ont jamais eu lieu.
+  Le cout compte le rendu reel, prefixe de nom compris.
+
+**Ce qui ne change pas.** Les intentions qui travaillent sur des fichiers
+(`VISION`, `AUDIO`, `MONTAGE`, `VIDEO_PROJET`, `VIDEO_ANALYSIS`, `CONVERSION`,
+`VISAGE`) recoivent toujours la phrase nue : leur sujet est le fichier joint.
+Les trois qui recevaient deja le fil gardent leur chemin. Les controles
+deterministes lisent toujours SA phrase du jour et jamais le bloc : sans cela,
+un « indexe mes documents » prononce hier relancerait une indexation
+aujourd'hui. Et **une panne de memoire ne bloque jamais la reponse** : journal
+illisible ou nom du proprietaire introuvable, la demande part seule.
+
+**Dans FRESH_INFO, la meme methode remplace les memes listes.** L'agent
+recevait deja le fil ; ce qui restait lexical, c'etait son filet
+deterministe. `TERMES_SUIVI_GENERIQUES`, `MOTS_HINT_ASSISTANT`,
+`TERMES_DETAIL_EVENEMENT` et `MOTS_LIAISON_EVENEMENT` sont supprimees. Le
+signal retenu n'appartient a aucun metier : **l'orthographe** — ce que la
+phrase NOMME (`_entites_nommees`, majuscule hors debut de phrase, sigle ;
+jamais un nombre, pour que « Celle de 2006 ? » reste elliptique). Le fil
+entier part au modele, puis on verifie son travail, pas le domaine de la
+question : reformulation qui reprend un nom du tour precedent -> l'ellipse est
+resolue ; reformulation qui nomme autre chose -> nouveau sujet, le fil ne le
+recouvre pas ; reformulation qui ne nomme rien -> le filet rattache la demande,
+telle quelle, aux noms du tour precedent.
+
+**Ce qui reste, et pourquoi.** Quatre ensembles de mots subsistent dans
+`fresh_info_agent.py` (`MOTS_VIDES_ANCRAGE`, `TERMES_CONTEXTE_RECHERCHE`,
+`MOTS_SANS_SUJET`, `MOTS_D_ACTUALITE`, plus `FORMES_DU_SUJET`). Ils ne
+decident plus rien du contexte : ils servent uniquement a la barriere de
+pertinence des SOURCES (DEC-0151/0153) — quelle page repond a la question,
+mesure le 28/09/2026 sur le vrai moteur. Un avertissement en tete de section
+le dit, et un test le tient : les fonctions du chemin de contexte n'ont plus
+le droit de lire un seul de ces ensembles. Les enlever de la barriere serait
+une autre decision, avec ses propres mesures — pas un effet de bord de
+celle-ci.
+
+**Preuve.** Cinq domaines sans un mot commun mesurent le texte **recu par
+l'agent** : football (« donne-moi un nom »), monnaie (« donne-moi un
+chiffre »), edition (« un titre »), chantier (« combien »), cuisine (« et pour
+six personnes ? »). S'y ajoutent : une demande qui nomme son propre sujet
+reste repondue pour elle-meme, la demande n'est jamais reecrite, le budget
+coupe bien les vieux tours, six tours au plus sont relus, l'historique de
+l'interface fait foi, la panne de memoire laisse passer, les intentions sur
+fichiers et les trois voies existantes sont inchangees. Verifie par mutation :
+supprimer le branchement fait tomber les cinq domaines ; retirer le budget en
+fait tomber cinq autres ; sauter par-dessus un tour trop gros, avaler la
+panne, retirer les balises, rogner la demande d'un point d'interrogation —
+chacune est attrapee. Et remettre une liste de mots dans la decision fait
+echouer le test qui l'interdit.

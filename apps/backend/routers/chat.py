@@ -62,6 +62,7 @@ from core.agent import equipe
 from core.agent.collaboration import conduire_projet, tenir_table_ronde
 from core.agent.message import tache_racine
 from core.architecture.plan import executer as executer_architecture
+from core.context.fil_pour_agents import demande_avec_le_fil
 from core.context.recherche_unifiee import MOTS_MEMOIRE
 from core.executive import question_en_attente
 from core.fiche_google import demande as fiche_google
@@ -1030,15 +1031,67 @@ def _fil_de_la_session(request: ChatRequest, session_id: str) -> str:
     return rendre_le_fil(tours, proprietaire)
 
 
-async def _travail_d_equipe(texte: str, session_id: str) -> Dict[str, Any]:
+#: Les dix intentions qui ne recevaient que la derniere phrase (DEC-0191).
+#:
+#: Ce sont celles qui RAISONNENT ou CHERCHENT a partir d'un texte : la demande
+#: est tout ce qu'elles ont, et sans le fil « donne-moi un nom » ne veut rien
+#: dire. Les intentions qui travaillent sur des FICHIERS (VISION, AUDIO,
+#: MONTAGE, VIDEO_PROJET, VIDEO_ANALYSIS, CONVERSION, VISAGE) n'y sont pas :
+#: leur sujet est le fichier joint, pas la conversation. Les trois qui
+#: recoivent deja le fil non plus (DEEP_REASONING par `_fil_de_la_session`,
+#: FRESH_INFO par `session_id`/`history`, PLAQUISTE par `historique`).
+#:
+#: Cette liste nomme des INTENTIONS, jamais des mots de domaine : elle ne
+#: grossit pas quand la conversation passe du football au chantier.
+INTENTIONS_QUI_RECOIVENT_LE_FIL = frozenset({
+    "BROWSER", "DEEP_RESEARCH", "DESIGN_UI", "EQUIPE", "EXECUTIVE",
+    "FINANCE", "GRAPHRAG", "RAG_DOCS", "TREND_SEARCH", "UI_GENERATE",
+})
+
+
+def _demande_avec_son_fil(request: ChatRequest, session_id: str) -> str:
+    """La demande du proprietaire, precedee du fil borne de la conversation.
+
+    Aucun modele, aucune liste de mots, aucune reecriture : la demande sort
+    d'ici mot pour mot, en fin de bloc (`core/context/fil_pour_agents.py`).
+
+    La memoire ne bloque jamais la reponse : si le journal est illisible — ou
+    si le nom du proprietaire l'est — l'agent recoit la phrase nue, comme
+    avant ce correctif, et repond.
+    """
+    try:
+        tours = request.history
+        if not tours and not request.history_authoritative:
+            # Un `history` vide ET autoritatif veut dire « aucun tour
+            # precedent » (la PWA a deja reconstruit le fil) : relire le
+            # journal serveur y remettrait de vieux tours d'une autre
+            # conversation.
+            tours = memory.get_recent_history(session_id=session_id,
+                                              limit=TOURS_RELUS_DEFAUT)
+        proprietaire = memory.get_fact("owner") or "Ousmane"
+        return demande_avec_le_fil(request.prompt, tours, proprietaire,
+                                   maximum=TOURS_RELUS_DEFAUT)
+    except Exception as souci:  # noqa: BLE001 - la memoire ne bloque pas
+        logger.warning("Fil illisible, la demande part seule : %s", souci)
+        return request.prompt
+
+
+async def _travail_d_equipe(texte: str, session_id: str,
+                            demande: Optional[str] = None) -> Dict[str, Any]:
     """Table ronde si la phrase la demande, sinon projet decoupe et reparti.
 
     Le compte rendu nomme ce que chaque agent a fait : le proprietaire voit
     qui a travaille, pas seulement la synthese.
+
+    `texte` est SA phrase, `demande` la meme phrase precedee du fil. La forme
+    de la reunion se decide sur sa phrase a lui — sinon un « table ronde »
+    prononce trois tours plus tot en reconvoquerait une aujourd'hui — mais
+    c'est bien le texte avec le fil qui part aux agents.
     """
+    travail = demande if demande is not None else texte
     try:
         if any(phrase in texte.lower() for phrase in PHRASES_TABLE_RONDE):
-            table = await tenir_table_ronde(collaborateurs, texte, project_id=session_id)
+            table = await tenir_table_ronde(collaborateurs, travail, project_id=session_id)
             invites = "".join(f"\n- {i['agent']} invite par {i['par']} ({i['competence']})"
                               for i in table.invites)
             entete = (f"**Table ronde** — coordonnee par {table.lead}, "
@@ -1046,7 +1099,7 @@ async def _travail_d_equipe(texte: str, session_id: str) -> Dict[str, Any]:
                       + (f"\nInvites en cours de route :{invites}" if invites else ""))
             return {"status": "success", "agent": f"TableRonde({table.lead})",
                     "response": f"{entete}\n\n{table.synthese}", "equipe": table.en_dict()}
-        rendu = await conduire_projet(collaborateurs, texte, project_id=session_id)
+        rendu = await conduire_projet(collaborateurs, travail, project_id=session_id)
         lignes = "\n".join(f"{i + 1}. {t['objectif']} -> {t['agent'] or 'aucun agent'} ({t['etat']})"
                             for i, t in enumerate(rendu["sous_taches"]))
         return {"status": "success", "agent": f"Projet({rendu['lead']})",
@@ -1061,6 +1114,18 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
     """Le corps de l'aiguillage. `intent` est toujours connu ici."""
     session_id = request.session_id or "default"
     logger.info(f"Intention détectée par Usman: {intent}")
+
+    # Le fil, TOUJOURS, pour les dix intentions qui ne recevaient que la
+    # phrase nue (DEC-0191). Rien ici ne lit la demande pour decider si elle
+    # en a besoin : c'est justement la methode abandonnee. Compose une seule
+    # fois, avant l'aiguillage, parce que plusieurs branches s'en servent.
+    #
+    # `request.prompt` reste intact a cote : les controles deterministes qui
+    # suivent (indexation, design system, table ronde) portent sur SA phrase
+    # du jour, jamais sur le fil — sans quoi une phrase d'hier rallumerait
+    # une indexation aujourd'hui.
+    demande = (_demande_avec_son_fil(request, session_id)
+               if intent in INTENTIONS_QUI_RECOIVENT_LE_FIL else request.prompt)
 
     if intent == "DEEP_REASONING":
         # Le pont `resoudre_profondement` choisit la profondeur selon la
@@ -1123,7 +1188,7 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
             "message_actuel": request.message_actuel,
         })
     elif intent == "BROWSER":
-        result = await browser_agent.run(request.prompt)
+        result = await browser_agent.run(demande)
     elif intent == "ARCHITECTURE_3D":
         # DEC-0070 : **aucun agent ici**, et c'est voulu. La mission interdit
         # d'en creer un quand la capacite se suffit : la phrase devient un
@@ -1156,13 +1221,13 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         if demande_d_indexation(request.prompt):
             result = await indexer_ses_documents()
         else:
-            reponse_docs = lightrag_tool.query(request.prompt, mode="hybrid")
+            reponse_docs = lightrag_tool.query(demande, mode="hybrid")
             # Un moteur documentaire absent rend une phrase d'erreur, pas une
             # reponse : l'annoncer sans statut la faisait lire comme un resultat.
             result = {"response": reponse_docs, "agent": "LightRAG",
                       "status": "error" if lightrag_echec(reponse_docs) else "success"}
     elif intent == "GRAPHRAG":
-        result = graphrag_tool.query_global(request.prompt)
+        result = graphrag_tool.query_global(demande)
     elif intent == "VISION":
         result = await vision_agent.run(request.prompt, context={"attachments": request.attachments})
     elif intent == "AUDIO":
@@ -1192,16 +1257,16 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         result = await video_production_agent.run(
             request.prompt, context={"references": medias_montables(request.video_path)})
     elif intent == "DEEP_RESEARCH":
-        result = await researcher_agent.run(request.prompt)
+        result = await researcher_agent.run(demande)
     elif intent == "CODE_EXECUTION":
         result = await coder_agent.run(request.prompt)
     elif intent == "TREND_SEARCH":
-        result = await trend_agent.run(request.prompt, context={"region": request.region})
+        result = await trend_agent.run(demande, context={"region": request.region})
     elif intent == "FINANCE":
         # Donnees reelles -> calcul deterministe -> risque -> interpretation
         # (agents/finance/finance_agent.py). Jamais d'ordre reel : aucune
         # capacite d'ecriture n'existe sur le connecteur market_data.
-        result = await finance_agent.run(request.prompt)
+        result = await finance_agent.run(demande)
     elif intent == "BRIEFING":
         # Le briefing du matin (DEC-0166) : deja compose s'il est recent,
         # sinon compose maintenant. Chaque rubrique dit son etat.
@@ -1225,13 +1290,13 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
     elif intent == "EQUIPE":
         # Plusieurs agents sur une meme demande (DEC-0146) : table ronde ou
         # projet reparti. Les agents viennent du registre, par competence.
-        result = await _travail_d_equipe(request.prompt, session_id)
+        result = await _travail_d_equipe(request.prompt, session_id, demande)
     elif intent == "EXECUTIVE":
         # Executive Intelligence (mission ARENA x OPENEXECUTIVE, DEC-0086) :
         # coordonne les specialistes existants d'ARENA, jamais un second
         # agent-plateforme. Recommande seulement — aucune action consequente
         # n'est executee ici (core/executive/moteur.py).
-        result = await executive_agent.run(request.prompt)
+        result = await executive_agent.run(demande)
     elif intent == "VISAGE":
         # Analyse de visages par le SDK Faceplugin, via le registre — jamais
         # en direct : c'est le registre qui applique la permission, et deux de
@@ -1246,12 +1311,12 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         # Intelligence de design (UI/UX Pro Max). Lecture pure : la demande
         # EST la requete, il n'y a aucun fichier a designer ni rien a ecrire.
         capacite = "design_system" if _veut_un_design_system(request.prompt) else "chercher"
-        issue = registre.executer("ui_ux_pro_max", capacite, requete=request.prompt)
+        issue = registre.executer("ui_ux_pro_max", capacite, requete=demande)
         result = _issue_en_reponse(issue)
     elif intent == "UI_GENERATE":
         # Generer une interface EN CODE, distinct de DESIGN_UI (decider a
         # quoi ca doit ressembler, sans rien ecrire) — DEC-0050.
-        result = await ui_agent.run(request.prompt)
+        result = await ui_agent.run(demande)
     elif intent == "VIDEO_ANALYSIS":
         # « ou en est ma video ? » ne parle d aucun fichier. Reclamer un chemin
         # ici renvoyait une erreur a une question parfaitement claire.

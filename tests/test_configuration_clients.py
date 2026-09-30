@@ -215,7 +215,11 @@ class TestLesHuitIntentionsReconnectees:
 
         resultat = await dispatch_request(
             ChatRequest(prompt="analyse le risque de ce portefeuille"), intent="FINANCE")
-        assert appels == ["analyse le risque de ce portefeuille"]
+        # Depuis DEC-0191, FINANCE recoit le fil AVANT la demande. Ce qui est
+        # verifie ici reste le meme contrat : SA demande arrive a l'agent,
+        # mot pour mot, et c'est la derniere chose qu'il lit.
+        assert len(appels) == 1
+        assert appels[0].endswith("analyse le risque de ce portefeuille")
         assert resultat["response"] == "Analyse de risque rendue."
 
     @pytest.mark.asyncio
@@ -229,7 +233,8 @@ class TestLesHuitIntentionsReconnectees:
 
         resultat = await dispatch_request(
             ChatRequest(prompt="resume l'etat du chantier"), intent="EXECUTIVE")
-        assert appels == ["resume l'etat du chantier"]
+        assert len(appels) == 1
+        assert appels[0].endswith("resume l'etat du chantier")  # DEC-0191
         assert resultat["response"] == "Synthese executive rendue."
 
     @pytest.mark.asyncio
@@ -261,7 +266,7 @@ class TestLesHuitIntentionsReconnectees:
         resultat = await dispatch_request(
             ChatRequest(prompt="propose une palette de couleurs"), intent="DESIGN_UI")
         assert appels[0][0] == "ui_ux_pro_max"
-        assert appels[0][2] == "propose une palette de couleurs"
+        assert appels[0][2].endswith("propose une palette de couleurs")  # DEC-0191
         assert resultat["response"] == "Palette proposee."
         assert resultat["status"] == "success"
 
@@ -276,7 +281,8 @@ class TestLesHuitIntentionsReconnectees:
 
         resultat = await dispatch_request(
             ChatRequest(prompt="genere un formulaire de contact"), intent="UI_GENERATE")
-        assert appels == ["genere un formulaire de contact"]
+        assert len(appels) == 1
+        assert appels[0].endswith("genere un formulaire de contact")  # DEC-0191
         assert resultat["response"] == "Interface generee en code."
 
 
