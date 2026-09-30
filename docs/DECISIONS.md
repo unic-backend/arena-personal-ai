@@ -13000,3 +13000,75 @@ decoupage lexical et trois etapes maximum. Une formulation non reconnue reste
 une demande simple ; la consigne l'annonce desormais sans pretendre que tous
 les enchainements seront detectes. Elargir ce moteur exige une mesure des
 phrases reelles, pas une nouvelle liste speculative.
+
+## DEC-0193 — Une capacite enregistree garde l'etat mesure par doctor dans le prompt
+
+**2026-09-30.** Deuxieme chantier « la consigne dit la verite », apres
+DEC-0192.
+
+**Constat.** `capacites_branchees()` composait deja les agents depuis le
+registre de DEC-0145, mais une fiche du registre porte structurellement
+`availability="disponible"` des qu'un agent est construit. Ce champ mesure la
+presence du code, pas son fonctionnement. Sur la machine d'audit, le prompt
+annoncait **27 agents enregistres** pendant que `scripts/doctor.py` mesurait
+**30 lignes**, dont **21 capacites indisponibles** : Gmail sans identifiants,
+Lean absent, ffmpeg absent, VoiceStudio non configure, etc. L'agent email
+existait donc dans le prompt sans que l'etat `NON CONFIGURE` de Gmail y arrive.
+
+La section `MISSION` de `config/jarvis.md` ajoutait une seconde erreur : une
+liste de capacites ecrite a la main. Ajouter ou retirer une capacite obligeait
+a modifier le registre ET la consigne, exactement la divergence que DEC-0145
+avait supprimee pour les agents.
+
+**Decision.** La section des capacites est composee a chaque appel depuis deux
+sources, sans aucun nom de capacite dans le code de composition :
+
+- `collaborateurs.fiches()` dit quels agents existent et ce qu'ils declarent ;
+- `scripts.doctor.py::diagnostiquer()` dit l'etat mesure de la machine.
+
+Le prompt distingue explicitement **presence** et **disponibilite**. Chaque
+verification de doctor arrive sous la forme compacte `nom : etat` : `OK`
+devient `DISPONIBLE`, le `NON CONFIGURE` canonique devient
+`NOT_CONFIGURED`, et `ABSENT`, `EN_PANNE`, `INCONNU` restent distincts. Une
+panne ne disparait jamais de la liste. Les details et commandes de reparation
+restent dans `python scripts/doctor.py` : les recopier dans chaque requete
+ajoutait plusieurs milliers de caracteres sans changer la decision du modele.
+
+La liste manuelle de `config/jarvis.md::MISSION` est retiree. La consigne dit
+que le bloc genere au runtime est la seule autorite ; ses exemples ne sont
+jamais un inventaire installe. La regle « ce qui n'est pas dans le registre
+n'existe pas » reste entiere, completee par « enregistre ne veut pas dire en
+etat de fonctionner ».
+
+**Cout mesure et cache.** Trois executions directes de doctor avant correction
+ont pris **0,86 s, 0,76 s et 0,53 s** sur la machine d'audit. Dans le chemin du
+prompt apres branchement : **0,42 s** au premier appel, **0,003 s** au second.
+Certaines sondes d'un moteur installe peuvent attendre davantage ; le lancer a
+chaque phrase n'est donc pas acceptable.
+
+Le rapport est garde **300 secondes** sous verrou : a un tour par minute, le
+cout mesure s'amortit a environ 0,08 s par tour au lieu de 0,42. L'expiration
+remesure les services lances ou arretes. `invalider_cache_diagnostic()` force
+une mesure au prochain appel ; la connexion ou deconnexion OAuth l'appelle
+juste apres avoir change le jeton, sans attendre les cinq minutes. Une panne
+globale du diagnostic rend `INCONNU`, jamais `DISPONIBLE`.
+
+Apres composition compacte, le prompt mesure **12 463 caracteres**, **316
+lignes**, dont 27 agents et 30 etats doctor. La discipline commence au
+caractere 10 712. Sa position finale et le compte exact en tokens restent le
+chantier separe deja identifie ; aucun tokenizer du modele reel n'est present
+sur la machine d'audit.
+
+**Preuve.** Un test injecte Gmail `NON CONFIGURE` dans le rapport et exige
+`Courrier (Gmail) : NOT_CONFIGURED` dans le prompt reel. Un autre interdit
+toute puce de capacite dans la section MISSION et nomme cinq anciennes lignes
+retirees. Les tests du cache prouvent : une seule sonde dans la fenetre,
+remesure a l'expiration, remesure apres invalidation explicite ; celui d'OAuth
+prouve que changer un jeton emprunte cette porte. Par mutation,
+remettre `- PDF generation` dans MISSION fait echouer le test dedie.
+
+**Ce que ca coute si c'est faux.** L'etat peut dater de cinq minutes si un
+service externe change seul ; c'est annonce par la nature mesuree du bloc et
+borne par l'expiration. Reduire la duree repaierait les sondes lentes pendant
+la conversation. Les changements faits par ARENA elle-meme n'ont pas cette
+latence grace a l'invalidation explicite.

@@ -1,3 +1,13 @@
+## 2026-09-30 — les capacités du prompt ont maintenant un état mesuré
+
+La section MISSION n'énumère plus de capacités à la main. Chaque prompt compose
+les 27 agents du registre avec les 30 mesures de `scripts/doctor.py` ; une
+capacité non configurée reste visible comme `NOT_CONFIGURED`. Doctor prenait
+0,53 à 0,86 s : son rapport est gardé cinq minutes, avec expiration et
+invalidation immédiate après OAuth. Voir DEC-0193.
+
+---
+
 ## 2026-09-30 — la consigne JARVIS décrit le routeur qui tourne
 
 `config/jarvis.md` n'attribue plus au modèle le classement, le plan et le

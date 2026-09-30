@@ -2,6 +2,15 @@
 
 ## [Non publié]
 
+### Corrigé — 30/09/2026 — Une capacité en panne ne se présente plus comme disponible
+
+La liste des capacités n'est plus écrite dans la consigne : les agents viennent
+du registre, et leur état réel vient du diagnostic de la machine. JARVIS voit
+désormais `DISPONIBLE`, `NOT_CONFIGURED`, `ABSENT` ou `EN_PANNE` au lieu de
+prendre « agent enregistré » pour « outil en état de fonctionner ». Le
+diagnostic lent est gardé cinq minutes et invalidé immédiatement après une
+connexion ou déconnexion de compte (DEC-0193).
+
 ### Corrigé — 30/09/2026 — JARVIS ne raconte plus une chaîne qui n'a pas tourné
 
 Le code, pas le modèle, choisit l'intention et les agents. La consigne décrit

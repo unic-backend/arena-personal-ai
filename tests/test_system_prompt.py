@@ -5,6 +5,7 @@ premier ministre du Sénégal. Une valeur figée devient fausse sans que rien ne
 signale, et un modèle la répète avec l'assurance d'un fait vérifié.
 """
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +19,22 @@ AFFIRMATIONS_RETIREES = [
     "Année actuelle",
     "Annee actuelle",
 ]
+
+
+@pytest.fixture(autouse=True)
+def diagnostic_hors_ligne(monkeypatch):
+    """Ces tests mesurent le prompt, jamais la machine qui lance pytest."""
+    verification = SimpleNamespace(
+        nom="Diagnostic de test", etat="OK", detail="mesure injectee",
+    )
+    monkeypatch.setattr(
+        prompts,
+        "_lire_diagnostic",
+        lambda: SimpleNamespace(verifications=[verification]),
+    )
+    prompts.invalider_cache_diagnostic()
+    yield
+    prompts.invalider_cache_diagnostic()
 
 
 @pytest.fixture
@@ -241,17 +258,89 @@ class TestJarvis:
         assert "(1) Inspect the available tools." in prompt
 
     def test_les_capacites_listees_sont_celles_du_registre(self, sans_fait_enregistre, monkeypatch):
-        """La consigne enumere des generateurs (PDF, tableur...) qui n'existent
-        peut-etre pas : le prompt dit ce qui est REELLEMENT branche."""
+        """Le registre dit ce qui existe ; aucune seconde liste ne le copie."""
         from apps.backend import runtime
 
+        monkeypatch.setattr(
+            prompts, "_lire_diagnostic",
+            lambda: SimpleNamespace(verifications=[]),
+        )
+        prompts.invalider_cache_diagnostic()
         prompt = prompts.get_arena_system_prompt()
 
         for fiche in runtime.collaborateurs.fiches():
             metier = fiche.metadata["module"].startswith(prompts.MODULES_METIER)
             # Un agent metier reste dans SON espace (decision du 02/09/2026).
             assert (f"- {fiche.id} :" in prompt) is not metier, fiche.id
-        assert "n'est PAS disponible" in prompt
+        assert "presence dans le registre, pas preuve" in prompt
+
+    def test_une_capacite_non_configuree_arrive_au_modele_avec_son_etat(
+        self, sans_fait_enregistre, monkeypatch,
+    ):
+        """Le registre seul annonçait email même sans identifiants Gmail."""
+        verification = SimpleNamespace(
+            nom="Courrier (Gmail)",
+            etat="NON CONFIGURE",
+            detail="GOOGLE_REFRESH_TOKEN absente : ARENA ne lit pas ton courrier",
+        )
+        monkeypatch.setattr(
+            prompts, "_lire_diagnostic",
+            lambda: SimpleNamespace(verifications=[verification]),
+        )
+        prompts.invalider_cache_diagnostic()
+
+        prompt = prompts.get_arena_system_prompt()
+
+        assert "Courrier (Gmail) : NOT_CONFIGURED" in prompt
+        assert "GOOGLE_REFRESH_TOKEN absente" not in prompt, (
+            "le remede detaille gonfle chaque requete ; il reste dans doctor.py")
+
+    def test_aucune_liste_de_capacites_n_est_ecrite_dans_la_consigne(self):
+        """Ajouter une capacité au registre ne doit jamais demander ce fichier."""
+        consigne = prompts.FICHIER_JARVIS.read_text(encoding="utf-8")
+        mission = consigne.split("MISSION", 1)[1].split("INTENT ROUTING", 1)[0]
+
+        assert not any(ligne.startswith("- ") for ligne in mission.splitlines())
+        for ancienne_capacite in (
+            "conversation and reasoning",
+            "email reading, drafting, replying and organization",
+            "PDF generation",
+            "spreadsheet generation",
+            "multi-step workflows",
+        ):
+            assert ancienne_capacite not in consigne
+
+    def test_le_diagnostic_est_mis_en_cache_puis_expire(self, monkeypatch):
+        appels = []
+        verification = SimpleNamespace(nom="OCR", etat="ABSENT", detail="tesseract absent")
+
+        def mesurer():
+            appels.append(True)
+            return SimpleNamespace(verifications=[verification])
+
+        monkeypatch.setattr(prompts, "_lire_diagnostic", mesurer)
+        prompts.invalider_cache_diagnostic()
+
+        assert "ABSENT" in prompts.etats_capacites_mesurees(horloge=lambda: 10.0)[0]
+        prompts.etats_capacites_mesurees(horloge=lambda: 10.0 + prompts.DUREE_CACHE_DIAGNOSTIC - 1)
+        assert len(appels) == 1, "le diagnostic lent a ete relance dans sa fenetre de cache"
+
+        prompts.etats_capacites_mesurees(horloge=lambda: 10.0 + prompts.DUREE_CACHE_DIAGNOSTIC)
+        assert len(appels) == 2, "un cache expire doit remesurer la machine"
+
+    def test_le_cache_s_invalide_explicitement(self, monkeypatch):
+        appels = []
+        monkeypatch.setattr(
+            prompts,
+            "_lire_diagnostic",
+            lambda: appels.append(True) or SimpleNamespace(verifications=[]),
+        )
+        prompts.invalider_cache_diagnostic()
+        prompts.etats_capacites_mesurees(horloge=lambda: 1.0)
+        prompts.invalider_cache_diagnostic()
+        prompts.etats_capacites_mesurees(horloge=lambda: 2.0)
+
+        assert len(appels) == 2
 
     def test_les_sections_fonctionnelles_disent_qui_route(self):
         """Le modele ne s'attribue plus le plan que `dispatch_request` execute."""

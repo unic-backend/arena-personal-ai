@@ -162,9 +162,13 @@ def _purger_etats_expires() -> None:
 
 
 def _persister_refresh_token(variable: str, valeur: str) -> None:
-    """Le processus, la base persistante et `.env` : voir
-    `stockage_jetons.persister`, partage depuis DEC-0185 avec TikTok."""
+    """Persiste le jeton et invalide toute mesure prise avant ce changement."""
     stockage_jetons.persister(str(DB_PATH), BASE_DIR / ".env", variable, valeur)
+    # Import local : `prompts` importe le runtime, qui importe ce routeur. Au
+    # moment d'un callback HTTP, le runtime est entier et la boucle n'existe plus.
+    from apps.backend.prompts import invalider_cache_diagnostic
+
+    invalider_cache_diagnostic()
 
 
 def _page(message: str, script: str = "") -> HTMLResponse:
