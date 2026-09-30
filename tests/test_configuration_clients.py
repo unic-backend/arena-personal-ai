@@ -212,6 +212,11 @@ class TestLesHuitIntentionsReconnectees:
             appels.append(prompt)
             return {"response": "Analyse de risque rendue.", "agent": "FinanceAgent"}
         monkeypatch.setattr(routeur_chat.finance_agent, "run", _finance)
+        # FINANCE joint desormais le fil quand il y en a un (DEC-0191) : sans
+        # session dediee, ce test partagerait le journal reel avec les autres
+        # de ce fichier. Isole ici, comme test_ancrage_aiguillage.py le fait
+        # pour la composition elle-meme.
+        monkeypatch.setattr(routeur_chat.memory, "get_recent_history", lambda **_: [])
 
         resultat = await dispatch_request(
             ChatRequest(prompt="analyse le risque de ce portefeuille"), intent="FINANCE")
@@ -226,6 +231,8 @@ class TestLesHuitIntentionsReconnectees:
             appels.append(prompt)
             return {"response": "Synthese executive rendue.", "agent": "ExecutiveAgent"}
         monkeypatch.setattr(routeur_chat.executive_agent, "run", _exec)
+        # Meme isolement que ci-dessus : EXECUTIVE joint le fil lui aussi.
+        monkeypatch.setattr(routeur_chat.memory, "get_recent_history", lambda **_: [])
 
         resultat = await dispatch_request(
             ChatRequest(prompt="resume l'etat du chantier"), intent="EXECUTIVE")
@@ -257,6 +264,9 @@ class TestLesHuitIntentionsReconnectees:
                                   cible=nom_service, message="Palette proposee.",
                                   preuve="ok")
         monkeypatch.setattr(routeur_chat.registre, "executer", _executer)
+        # DESIGN_UI joint desormais le fil lui aussi (DEC-0191) ; isole du
+        # journal reel partage par les autres tests de ce fichier.
+        monkeypatch.setattr(routeur_chat.memory, "get_recent_history", lambda **_: [])
 
         resultat = await dispatch_request(
             ChatRequest(prompt="propose une palette de couleurs"), intent="DESIGN_UI")
@@ -273,6 +283,9 @@ class TestLesHuitIntentionsReconnectees:
             appels.append(prompt)
             return {"response": "Interface generee en code.", "agent": "UIAgent"}
         monkeypatch.setattr(routeur_chat.ui_agent, "run", _ui)
+        # UI_GENERATE joint desormais le fil lui aussi (DEC-0191) ; isole du
+        # journal reel partage par les autres tests de ce fichier.
+        monkeypatch.setattr(routeur_chat.memory, "get_recent_history", lambda **_: [])
 
         resultat = await dispatch_request(
             ChatRequest(prompt="genere un formulaire de contact"), intent="UI_GENERATE")

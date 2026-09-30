@@ -8,8 +8,20 @@ par `rendre_le_fil()`, sous le budget dur existant de 4 000 caractères, dans un
 bloc délimité avant la demande actuelle intacte. Les plus vieux tours partent
 d'abord ; une panne mémoire laisse passer la phrase nue. Voir DEC-0191.
 
-Preuve : tests par domaine sur le texte réellement reçu, bornes et panne ; la
-mutation du branchement fait échouer les cinq domaines. `ruff check .` propre.
+La suite complète (pas seulement les tests neufs) a trouvé un deuxième
+défaut : `RAG_DOCS` et `DESIGN_UI` décident leur branche par des mots lus dans
+`request.prompt`, qui porte maintenant le fil — un vieux « indexe mes
+documents » ou « un design system » réapparaissait dans le contexte et
+faisait basculer une question sans rapport. `_aiguiller()` garde désormais
+`demande_brute` (la phrase seule) pour ces deux décisions ; seul l'appel à
+l'agent reçoit le fil.
+
+Preuve : tests par domaine sur le texte réellement reçu, bornes, panne, et les
+deux décisions de routage qui ne doivent jamais lire le fil ; la mutation du
+branchement fait échouer les cinq domaines, et recopier `request.prompt` à la
+place de `demande_brute` fait échouer les deux tests dédiés. Suite complète
+rejouée : mêmes 51 échecs qu'avant ce correctif, tous préexistants
+(environnement), aucun de plus. `ruff check .` propre.
 
 ---
 

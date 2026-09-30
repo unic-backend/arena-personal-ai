@@ -1089,6 +1089,17 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
     session_id = request.session_id or "default"
     logger.info(f"Intention détectée par Usman: {intent}")
 
+    # La demande telle qu'ecrite par le proprietaire, AVANT tout ajout de fil.
+    # Les decisions internes de cet aiguillage (quelle branche prendre a
+    # l'interieur d'une intention) se font toujours sur elle : le fil est un
+    # contexte pour l'agent, jamais une entree pour le routage d'ARENA. Sans
+    # cette distinction, un mot dit trois tours plus tot (« indexe mes
+    # documents », « un design system ») reapparaissait dans le bloc de
+    # contexte et faisait basculer une question sans rapport sur la mauvaise
+    # branche (regression trouvee par tests/tools/test_indexation_branchee.py
+    # et tests/test_configuration_clients.py en suite complete).
+    demande_brute = request.prompt
+
     # Seulement les agents qui recevaient jusqu'ici la phrase nue. Le fil est
     # toujours posé avant la demande, borné et délimité ; aucun vocabulaire ne
     # tente de deviner si elle est elliptique (DEC-0191).
@@ -1188,7 +1199,11 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         # Ses documents restent hors de l index tant que personne ne les y met.
         # Jusqu ici, aucune phrase ne declenchait l indexation : le moteur ne
         # pouvait repondre que sur ce qui n avait jamais ete indexe.
-        if demande_d_indexation(request.prompt):
+        #
+        # Verifie sur `demande_brute`, jamais sur `request.prompt` : ce
+        # dernier porte desormais le fil, et « indexe mes documents » dit
+        # trois tours plus tot y reapparaitrait a chaque question suivante.
+        if demande_d_indexation(demande_brute):
             result = await indexer_ses_documents()
         else:
             reponse_docs = lightrag_tool.query(request.prompt, mode="hybrid")
@@ -1280,7 +1295,11 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
     elif intent == "DESIGN_UI":
         # Intelligence de design (UI/UX Pro Max). Lecture pure : la demande
         # EST la requete, il n'y a aucun fichier a designer ni rien a ecrire.
-        capacite = "design_system" if _veut_un_design_system(request.prompt) else "chercher"
+        #
+        # Meme regle que RAG_DOCS : la capacite se decide sur `demande_brute`,
+        # jamais sur le fil, sinon « un design system » dit plus tot dans la
+        # conversation ferait basculer une question sans rapport.
+        capacite = "design_system" if _veut_un_design_system(demande_brute) else "chercher"
         issue = registre.executer("ui_ux_pro_max", capacite, requete=request.prompt)
         result = _issue_en_reponse(issue)
     elif intent == "UI_GENERATE":

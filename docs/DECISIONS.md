@@ -12844,7 +12844,29 @@ restent intactes. Sans historique fourni, le journal court est relu. Une panne
 de lecture — y compris celle du nom du propriétaire — laisse passer la demande
 nue et ne bloque jamais la réponse.
 
+**Un deuxième défaut trouvé en rejouant la suite complète, pas seulement les
+tests neufs** : `RAG_DOCS` choisit d'indexer ou d'interroger selon des mots
+dans la phrase (`demande_d_indexation`), et `DESIGN_UI` choisit sa capacité de
+la même façon (`_veut_un_design_system`). Ces deux décisions lisaient
+`request.prompt` — qui porte maintenant le fil. Un mot dit trois tours plus
+tôt (« indexe mes documents », « un design system ») réapparaissait dans le
+bloc de contexte et faisait basculer une question sans rapport sur la mauvaise
+branche : le fil, censé être un contexte pour l'agent, devenait une entrée
+pour le routage d'ARENA lui-même — l'inverse de la règle 4. `_aiguiller()`
+garde donc `demande_brute` (la phrase du propriétaire, avant tout ajout de
+fil) et l'utilise pour ces deux décisions ; seul l'appel à l'agent ou au
+connecteur reçoit le fil. Trouvé parce que la suite complète a tourné, pas
+seulement `tests/core/test_ancrage.py` et `tests/test_ancrage_aiguillage.py` :
+`tests/tools/test_indexation_branchee.py` et quatre tests de
+`tests/test_configuration_clients.py` échouaient dessus.
+
 **Preuve** : les tests mesurent le texte reçu par l'agent pour le football,
 Bitcoin, un livre, un chantier et l'informatique. Ils tiennent aussi la demande
-actuelle explicite, les deux bornes, la suppression des vieux tours et la panne
-mémoire. Par mutation, supprimer le branchement fait échouer les cinq domaines.
+actuelle explicite, les deux bornes, la suppression des vieux tours, la panne
+mémoire, et les deux décisions de routage (`RAG_DOCS`, `DESIGN_UI`) qui ne
+doivent jamais lire le fil. Par mutation, supprimer le branchement fait
+échouer les cinq domaines ; recopier `request.prompt` à la place de
+`demande_brute` dans ces deux décisions fait échouer les deux tests dédiés.
+Suite complète rejouée : mêmes 51 échecs qu'avant ce correctif, tous
+préexistants et liés à l'environnement (LibreOffice, ffmpeg absents), aucun de
+plus. `ruff check .` propre.
