@@ -13256,3 +13256,76 @@ precede `COMMENT TU REPONDS`.
 **Ce que ca coute si c'est faux.** Toute composition future apres la regle 7
 redonnerait le dernier mot a une instruction locale. Le test porte donc sur les
 derniers caracteres, pas seulement sur la presence ou l'ordre relatif du bloc.
+
+## DEC-0197 — Au-dela de la chaine courte, la demande part au projet ; elle ne disparait pas
+
+**2026-09-30.** Audit d'apres-fusion des quatre chantiers « la consigne dit la
+verite » (DEC-0192, DEC-0193, DEC-0195, DEC-0196). Les quatre sont en place et
+tiennent leurs mesures. Cet audit a trouve un defaut qu'ils laissaient
+derriere eux, un cran plus loin dans le meme mecanisme.
+
+**Constat, mesure sur le main fusionne (25f1e2c).** Le decoupage deterministe
+de DEC-0143 voit les etapes, mais `planifier()` jette le plan des qu'il
+depasse `MAXIMUM_ETAPES = 3` :
+
+    « lis ce PDF puis resume-le puis fais un tableur puis envoie-le par mail »
+    -> decouper()  = 4 morceaux
+    -> planifier() = []
+    -> UN seul agent (PLAQUISTE) execute, et rien ne le signale
+
+Le proprietaire recevait donc la reponse d'un seul metier a une demande qui en
+nommait quatre — exactement le defaut que DEC-0143 devait fermer, deplace
+au-dessus de sa limite. Ni la reponse, ni le journal de routage (DEC-0195) ne
+disaient qu'une escalade avait ete refusee : le journal enregistrait
+fidelement l'agent unique, parce que c'etait bien lui qui avait tourne.
+
+**Decision.** La limite de trois etapes reste celle de la chaine courte — elle
+n'est pas relevee, et aucun second decoupeur n'est ecrit. Quand le decoupage
+rend PLUS d'etapes que la chaine courte n'en execute, la demande entiere part
+a l'intention `EQUIPE`, le mecanisme de projet et de table ronde deja en place
+(DEC-0146), qui choisit un responsable et repartit le travail. Le choix se
+fait sur le decoupage deterministe seul : `equipe.depasse_la_chaine_courte()`
+ne consulte aucun modele et ne classe aucun morceau.
+
+Deux points d'escalade, parce que les appelants ne classent pas tous de la
+meme facon : `classer_la_demande()` (la PWA classe avant d'appeler) et
+`dispatch_request()` (le passage oblige des cinq appelants). Une reponse a une
+question posee par ARENA n'escalade jamais : elle revient entiere a l'agent
+qui l'a posee, meme si elle enchaine des « puis ».
+
+**Mesure avant/apres.** Meme script, memes phrases, vrai `dispatch_request` ;
+seuls le classeur et les agents sont remplaces. « Agents appeles » est ce que
+l'aiguillage a reellement recu.
+
+| Demande | Morceaux | Avant (25f1e2c) | Apres |
+|---|---:|---|---|
+| lis ce PDF puis resume-le puis fais un tableur puis envoie-le par mail | 4 | `[PLAQUISTE]` | `[EQUIPE]` |
+| cherche le prix puis fais le devis puis imprime-le puis envoie-le puis range-le | 5 | `[PLAQUISTE]` | `[EQUIPE]` |
+| read the plan, then measure it, then make the quote, then email it | 4 | `[PLAQUISTE]` | `[EQUIPE]` |
+| fais un devis de 30 m2 et envoie-le par mail | 2 | `[PLAQUISTE, EMAIL]` | `[PLAQUISTE, EMAIL]` |
+| fais-moi un devis de 30 m2 de cloison | 1 | `[PLAQUISTE]` | `[PLAQUISTE]` |
+
+Les deux dernieres lignes sont la garantie de non-regression : la chaine
+courte et la demande simple ne changent pas de chemin, et une demande
+ordinaire ne coute toujours aucun appel au classeur.
+
+**Preuve.** Quatre mutations, chacune rattrapee puis restauree : retirer
+l'escalade de `dispatch_request` (`test_une_chaine_trop_longue_escalade_meme_si_l_appelant_a_deja_classe`) ;
+la retirer du classement (`test_le_classement_dune_chaine_trop_longue_rend_equipe`) ;
+rendre `depasse_la_chaine_courte()` toujours faux (8 tests) ; retirer la
+phrase correspondante de `config/jarvis.md`
+(`test_la_consigne_dit_ce_que_devient_une_chaine_trop_longue`).
+`test_une_chaine_trop_longue_arrive_au_mecanisme_de_projet` n'echange pas
+`_aiguiller` : il prouve que le vrai aiguillage conduit bien au mecanisme de
+projet avec la demande ENTIERE.
+
+**Ce que ca coute si c'est faux.** Si l'escalade part trop tot, une demande
+bavarde qui enchaine quatre « puis » devient un projet : plus lent, mais
+visible et rapporte. Si elle ne part pas, on revient au silence — un agent
+unique repond pour quatre, et seul le proprietaire s'en apercoit, plus tard.
+C'est le deuxieme risque que cette decision refuse.
+
+**Ce qui n'est PAS decide ici.** La coupure anglaise « and » + verbe reste
+volontairement absente (DEC-0194) ; la limite de trois etapes de la chaine
+courte reste a trois. Ces deux points se decideront sur le journal de routage
+reel, pas sur un exemple.

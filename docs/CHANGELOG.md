@@ -2,6 +2,17 @@
 
 ## [Non publié]
 
+### Corrigé — 30/09/2026 — Une demande de plus de trois étapes ne part plus chez un seul agent
+
+« lis ce PDF puis résume-le puis fais un tableur puis envoie-le par mail » se
+découpait bien en quatre étapes, puis le plan était jeté : un seul agent
+répondait, sans que rien ne le dise. Au-delà de la chaîne courte, la demande
+entière part maintenant à l'intention `EQUIPE`, le mécanisme de projet qui
+choisit un responsable et répartit le travail. La limite de trois étapes de la
+chaîne courte ne bouge pas, aucun second découpeur n'est écrit, et la décision
+ne coûte aucun appel au modèle. Une réponse à une question posée par ARENA
+n'escalade jamais (DEC-0197).
+
 ### Ajouté — 30/09/2026 — Le journal de routage : ce que chaque demande a réellement déclenché
 
 `dispatch_request` enregistre maintenant durablement, pour chaque demande,

@@ -925,6 +925,13 @@ async def classer_la_demande(
     plan = await equipe.planifier(message, _classer_un_morceau)
     if plan:
         return plan[0].intention
+    # Plus d'etapes que la chaine courte n'en execute : c'est un projet, pas
+    # une demande simple (DEC-0197). Sans cette ligne, le classeur voyait la
+    # phrase ENTIERE et rendait l'intention de son premier metier : un seul
+    # agent repondait a une demande qui en nommait quatre, sans que rien ne le
+    # signale — le meme defaut que DEC-0143 ferme pour deux ou trois etapes.
+    if equipe.depasse_la_chaine_courte(message):
+        return "EQUIPE"
     texte = message if a_classer is None else a_classer
     if espace:
         return await orchestrator.analyze_intent(texte, espace=espace)
@@ -982,6 +989,13 @@ async def dispatch_request(
     `equipe.executer()` a deja executees (`AppelRoute.depuis_dispatch`).
     Aucun decoupage n'est refait ici : une chaine reste celle que `plan`
     portait deja plus haut.
+
+    **Une chaine trop longue n'est jamais abandonnee en silence** (DEC-0197).
+    Quand l'enchainement explicite compte plus d'etapes que la chaine courte
+    n'en execute, `plan` est vide : la demande partait alors chez UN agent,
+    sans que rien ne le dise. Elle part desormais a l'intention EQUIPE, qui
+    choisit un responsable et repartit le travail (DEC-0146). Le journal de
+    routage garde l'intention reellement retenue.
     """
     if intent is None:
         intent = await classer_la_demande(
@@ -990,9 +1004,19 @@ async def dispatch_request(
     session = request.session_id or "default"
     # Une reponse a une question d'ARENA ne se decoupe jamais : elle revient
     # entiere a l'agent qui l'a posee.
-    plan = ([] if question_en_attente.en_attente(session) is not None
-            else await equipe.planifier(request.message_actuel or request.prompt,
-                                        _classer_un_morceau))
+    demande_posee = request.message_actuel or request.prompt
+    une_reponse_attendue = question_en_attente.en_attente(session) is not None
+    plan = ([] if une_reponse_attendue
+            else await equipe.planifier(demande_posee, _classer_un_morceau))
+    # Le plan est vide ET la demande enchaine plus d'etapes que la chaine
+    # courte n'en execute : elle part au projet (DEC-0197). La verification
+    # est refaite ici parce que les cinq appelants n'ont pas tous classe par
+    # `classer_la_demande` — passer a cote la ferait retomber chez un agent
+    # unique, silencieusement. Une reponse a une question d'ARENA n'escalade
+    # jamais : elle revient entiere a l'agent qui l'a posee.
+    if (not plan and not une_reponse_attendue
+            and equipe.depasse_la_chaine_courte(demande_posee)):
+        intent = "EQUIPE"
     # UNE tache racine par demande (DEC-0145) : toutes les delegations entre
     # agents faites pour elle — a toute profondeur, en parallele — partagent
     # son identifiant, son projet (la session) et son budget.

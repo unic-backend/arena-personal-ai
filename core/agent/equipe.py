@@ -35,6 +35,25 @@ vingt-cinq agents ; un seul, la production video, s'en servait.
 3. **Une etape qui echoue arrete l'equipe, et le dit.** L'etape suivante
    aurait travaille sur rien ; mieux vaut rendre ce qui est fait et nommer ce
    qui ne l'est pas.
+
+4. **Au-dela de la chaine courte, la demande CHANGE de mecanisme — elle ne
+   disparait pas.** Mesure du 30/09/2026, apres la fusion des quatre chantiers
+   « la consigne dit la verite » :
+
+       « Lis ce PDF puis resume-le puis fais un tableur puis envoie-le par
+         mail »
+       -> decouper() = 4 morceaux
+       -> planifier() = []          (au-dessus de MAXIMUM_ETAPES)
+       -> UN seul agent executait, et RIEN ne le signalait
+
+   Le decoupage voyait les quatre etapes, puis le plan etait jete : le
+   proprietaire recevait la reponse d'un seul agent pour une demande qui en
+   nommait quatre — exactement le defaut que DEC-0143 devait fermer, deplace
+   d'un cran. `depasse_la_chaine_courte()` rend ce cas nommable, et
+   `apps/backend/routers/chat.py` le confie desormais a l'intention EQUIPE
+   (DEC-0146), le mecanisme deja prevu pour les projets. Aucun second
+   decoupeur n'est ecrit ici : c'est le meme `decouper()`, lu une fois de
+   plus.
 """
 from __future__ import annotations
 
@@ -48,8 +67,9 @@ from core.security.trust import TrustLevel, wrap
 
 logger = logging.getLogger("usman.agent.equipe")
 
-#: Au-dela, ce n'est plus une demande, c'est un projet : il a son agent
-#: (VIDEO_PROJET) ou il merite d'etre demande en plusieurs fois.
+#: Au-dela, ce n'est plus une demande, c'est un projet : il part a l'intention
+#: EQUIPE (DEC-0146), qui choisit un responsable et repartit le travail. Cette
+#: constante borne la chaine courte, elle ne jette plus la demande (point 4).
 MAXIMUM_ETAPES = 3
 
 #: Les verbes d'action qui, apres « et », ouvrent une NOUVELLE demande.
@@ -99,6 +119,21 @@ def decouper(texte: str) -> List[str]:
     return [m for m in morceaux if m]
 
 
+def depasse_la_chaine_courte(texte: str) -> bool:
+    """Vrai quand l'enchainement explicite compte PLUS d'etapes que la chaine
+    courte n'en execute (point 4 de l'en-tete).
+
+    Le seul lecteur de cette fonction est `dispatch_request`, qui envoie alors
+    la demande entiere a l'intention EQUIPE au lieu de la laisser partir chez
+    un agent unique sans rien dire. Aucun modele n'est appele ici : c'est le
+    decoupage deterministe, compte.
+
+    Une demande ordinaire (« fais un devis de 30 m2 ») rend 1 morceau et n'est
+    donc jamais concernee.
+    """
+    return len(decouper(texte)) > MAXIMUM_ETAPES
+
+
 #: Les derniers plans calcules, par phrase. La PWA classe AVANT d'appeler
 #: `dispatch_request`, qui planifie a son tour : sans ce souvenir, chaque
 #: morceau serait classe deux fois — deux appels au modele pour rien.
@@ -114,7 +149,14 @@ async def planifier(texte: str, classer: Classeur) -> List[Etape]:
     morceaux consecutifs pour le meme agent sont une seule demande pour lui.
     """
     morceaux = decouper(texte)
-    if len(morceaux) < 2 or len(morceaux) > MAXIMUM_ETAPES:
+    if len(morceaux) > MAXIMUM_ETAPES:
+        # Pas une chaine courte : un projet. `dispatch_request` le voit par
+        # `depasse_la_chaine_courte()` et l'envoie a EQUIPE — cette trace dit
+        # pourquoi le plan est vide, ce que le journal ne montrait pas.
+        logger.info("Enchainement de %d etapes : au-dela de la chaine courte, "
+                    "la demande part au projet (EQUIPE).", len(morceaux))
+        return []
+    if len(morceaux) < 2:
         return []
     cle = texte.strip()
     if cle in _PLANS:

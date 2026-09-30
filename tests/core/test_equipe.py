@@ -188,3 +188,42 @@ async def test_le_document_d_une_etape_remonte():
     rendu = await executer([Etape("devis", "PLAQUISTE"), Etape("envoie", "EMAIL")], aiguiller)
 
     assert rendu["document"] == {"chemin": "/media/devis.pdf"}
+
+
+# --- Au-dela de la chaine courte : un projet, jamais un abandon (DEC-0197) --------
+
+@pytest.mark.parametrize("phrase, morceaux", [
+    ("Lis ce PDF puis résume-le puis fais un tableur puis envoie-le par mail", 4),
+    ("cherche le prix puis fais le devis puis imprime-le puis envoie-le puis range-le", 5),
+    ("read the plan, then measure it, then make the quote, then email it", 4),
+])
+def test_un_enchainement_plus_long_que_la_chaine_courte_est_nomme(phrase, morceaux):
+    """**Le defaut mesure le 30/09/2026.** `decouper` voyait les quatre etapes,
+    `planifier` jetait le plan, et un seul agent repondait sans que rien ne le
+    signale. Le cas doit d'abord etre NOMMABLE pour cesser d'etre silencieux."""
+    assert len(decouper(phrase)) == morceaux
+    assert equipe.depasse_la_chaine_courte(phrase) is True
+
+
+@pytest.mark.parametrize("phrase", [
+    "fais un devis de 30 m2 de cloison",
+    "fais un devis et envoie-le par mail à k@x.sn",
+    "cherche le prix puis fais le devis puis envoie-le par mail",
+    "",
+])
+def test_une_demande_dans_les_clous_ne_depasse_pas(phrase):
+    """Une, deux ou trois etapes restent la chaine courte : rien n'escalade."""
+    assert equipe.depasse_la_chaine_courte(phrase) is False
+
+
+async def test_au_dela_de_la_chaine_courte_aucun_morceau_n_est_classe():
+    """L'escalade est deterministe : elle ne coute AUCUN appel au modele.
+
+    Classer cinq morceaux pour decider d'un projet paierait cinq fois le prix
+    d'une decision que le decoupage rend deja.
+    """
+    classer = _classeur({"cherche": "FRESH_INFO", "fais": "PLAQUISTE"})
+    phrase = "cherche le prix puis fais le devis puis imprime-le puis envoie-le"
+
+    assert await planifier(phrase, classer) == []
+    assert classer.appels == []

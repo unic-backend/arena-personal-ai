@@ -1,3 +1,15 @@
+## 2026-09-30 — Une chaîne de plus de trois étapes part au projet, au lieu de tomber
+
+Audit d'après-fusion des quatre chantiers « la consigne dit la vérité » : les
+quatre tiennent, mais `planifier()` jetait tout plan de plus de trois étapes.
+Mesure sur le main fusionné : les trois demandes de 4 et 5 étapes testées
+partaient toutes chez `PLAQUISTE` seul ; elles partent maintenant à `EQUIPE`.
+La chaîne courte (2 étapes) et la demande simple (1 étape) suivent exactement
+le même chemin qu'avant. Quatre mutations, chacune rattrapée par les tests
+prévus. Voir DEC-0197.
+
+---
+
 ## 2026-09-30 — DISCIPLINE ferme maintenant absolument le prompt JARVIS
 
 Les sept regles ne sont plus suivies par le style, les mathematiques ou une

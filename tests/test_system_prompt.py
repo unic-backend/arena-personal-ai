@@ -374,6 +374,18 @@ class TestJarvis:
         assert MAXIMUM_ETAPES == 3
         assert "two or three specialist steps" in consigne
 
+    def test_la_consigne_dit_ce_que_devient_une_chaine_trop_longue(self):
+        """DEC-0197 : au-dela de la chaine courte, le code confie la demande
+        ENTIERE au mecanisme de projet. Une consigne muette la-dessus laisse
+        JARVIS raconter une etape unique comme s'il avait choisi de s'arreter.
+        """
+        consigne = prompts.FICHIER_JARVIS.read_text(encoding="utf-8")
+
+        aplatie = " ".join(consigne.split())
+        assert "more steps than the short chain executes" in aplatie
+        assert "hands the whole request to that project mechanism" in aplatie
+        assert "instead of running one step" in aplatie
+
     def test_la_discipline_vient_apres_la_consigne(self, sans_fait_enregistre):
         """Les regles anti-invention priment : elles suivent la consigne."""
         prompt = prompts.get_arena_system_prompt()

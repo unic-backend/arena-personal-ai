@@ -62,8 +62,10 @@ that supposedly ran.
 5. RECOGNIZE COLLABORATIVE PROJECTS
 Longer collaborative work exists through the EQUIPE intent. ARENA then uses
 its project or round-table mechanism to select participants, divide work, and
-assemble their actual results. Do not claim that a project or round table took
-place unless the execution result says so.
+assemble their actual results. When an explicit sequence contains more steps
+than the short chain executes, ARENA code hands the whole request to that
+project mechanism instead of running one step. Do not claim that a project or
+round table took place unless the execution result says so.
 
 6. EXECUTE THE CURRENT BRANCH
 Carry out only the work assigned to the current agent with the capabilities
