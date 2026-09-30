@@ -35,7 +35,8 @@ class SWEAgent(BaseAgent):
     identifiant = "swe"
     competences = ('correction de bug', 'analyse de bug', 'debogage')
 
-    def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None):
+    def __init__(self, provider: ModelProvider, memory: Optional[MemoryManager] = None,
+                 registre: Optional[Any] = None):
         super().__init__(
             name="SWEAgent",
             description="Agent d'analyse de bugs en lecture seule (protocole ACI).",
@@ -43,6 +44,29 @@ class SWEAgent(BaseAgent):
             memory=memory
         )
         self.aci = SWEACITool()
+        self.registre = registre
+
+    def _regard_sur_le_code(self, terme: str) -> tuple[str, str]:
+        """Ce que l'agent voit du problème dans le code, et d'où ça vient.
+
+        1. Si codebase_memory (DeusData, DEC-0201) est disponible, on interroge
+           le graphe d'appels (tracer_chemin) ou les symboles indexés (rechercher_graphe).
+        2. Sinon repli sur l'outil ACI conventionnel (search_dir).
+        """
+        if self.registre is not None and getattr(self.registre, "est_declare", lambda n: False)("codebase_memory"):
+            res_trace = self.registre.executer("codebase_memory", "tracer_chemin", fonction=terme, delai=10)
+            if res_trace.statut.value == "SUCCESS":
+                texte = str(res_trace.message or res_trace.detail.get("donnees") or "").strip()
+                if texte:
+                    return texte[:6000], "codebase_memory (trace_path)"
+
+            res_search = self.registre.executer("codebase_memory", "rechercher_graphe", motif_nom=terme, delai=10)
+            if res_search.statut.value == "SUCCESS":
+                texte = str(res_search.message or res_search.detail.get("donnees") or "").strip()
+                if texte:
+                    return texte[:6000], "codebase_memory (search_graph)"
+
+        return self.aci.search_dir(terme), "recherche_aci"
 
     def _extraire_terme(self, texte: str) -> str:
         """Choisit le mot le plus pertinent a rechercher dans le depot."""
@@ -67,7 +91,7 @@ class SWEAgent(BaseAgent):
         terme = self._extraire_terme(user_input)
         logger.info(f"SWEAgent analyse le probleme (terme recherche : '{terme}')")
 
-        search_res = self.aci.search_dir(terme)
+        search_res, source_recherche = self._regard_sur_le_code(terme)
 
         # La methode d'un specialiste declaree pour SWE_FIX (`debugging`,
         # `core/specialistes/catalogue.py`) n'atteignait jamais cet agent :
@@ -94,6 +118,7 @@ class SWEAgent(BaseAgent):
             "agent": self.name,
             "search_term": terme,
             "search_matches": search_res,
+            "source": source_recherche,
             "response": (
                 "**Analyse chirurgicale ACI (SWEAgent)**\n\n"
                 f"*Terme recherche dans le depot : `{terme}`*\n\n"

@@ -66,6 +66,7 @@ from core.connectors.browser import ConnecteurBrowser
 from core.connectors.calendrier import CalendrierConnector
 from core.connectors.case_computer import ConnecteurCaseComputer
 from core.connectors.claude_context import ConnecteurClaudeContext
+from core.connectors.codebase_memory import ConnecteurCodebaseMemory
 from core.connectors.comfyui import ComfyUIConnector
 from core.connectors.csm import ConnecteurCsm
 from core.connectors.devis import DevisConnector
@@ -405,6 +406,15 @@ registre.declarer(
     "claude_context",
     lambda: ConnecteurClaudeContext(acces=acces, journal=journal, file_attente=file_attente,
                                     crochets=crochets),
+)
+# Codebase Memory MCP (mission ARENA x Codebase Memory MCP, DEC-0201) :
+# graphe de connaissances structurel et persistant du code source (AST Tree-Sitter
+# + Hybrid LSP + requetes Cypher/traversee d'appels). Processus stdio minimal
+# sans dependance lourde. Voir core/connectors/codebase_memory.py.
+registre.declarer(
+    "codebase_memory",
+    lambda: ConnecteurCodebaseMemory(acces=acces, journal=journal, file_attente=file_attente,
+                                     crochets=crochets),
 )
 # OpenViking (DEC-0058) : contexte hierarchique/memoire/competences, par son
 # propre serveur HTTP (AGPLv3) — un service SEPARE, auto-heberge par le
@@ -832,7 +842,7 @@ executive_agent = ExecutiveAgent(
     journal_des_plans=journal_des_plans,
 )
 repo_engineer = RepoEngineerAgent(provider=fast_provider, memory=memory, registre=registre)
-swe_agent = SWEAgent(provider=coder_provider, memory=memory)
+swe_agent = SWEAgent(provider=coder_provider, memory=memory, registre=registre)
 # Dioumtoukay : celui qui AGIT sur la machine (DEC-0038). Il recoit le
 # modele de code, et le journal — chacune de ses actions y laisse une trace,
 # qui est ce que le proprietaire relit apres coup.

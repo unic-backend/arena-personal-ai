@@ -34,7 +34,7 @@ Un module qu'aucun de ces quatre n'atteint est un orphelin :
 |---|---|
 | `core/actions/` | résultat, journal, file d'attente, chronologie |
 | `core/permissions/` | politique par service × action × risque, coupe-circuits |
-| `core/connectors/` | base + 8 connecteurs (voir DEPENDENCIES.md) |
+| `core/connectors/` | base + connecteurs (voir DEPENDENCIES.md) dont codebase_memory (DEC-0201) |
 | `core/mcp/` | deux transports MCP : HTTP (`transport.py`, WanGP) et stdio (`stdio_transport.py`, OpenTakeoff) |
 | `core/memory/` | mémoire personnelle, récupération lexicale, sémantique, consolidation |
 | `core/knowledge/` | Knowledge Vault : sources documentaires Markdown, liens Obsidian, recherche, graphe et lint ; données vivantes dans `data/knowledge_vault/` hors Git |

@@ -34,17 +34,19 @@ class RepoEngineerAgent(BaseAgent):
     def _regard_sur_le_depot(self) -> tuple[str, str]:
         """Ce que l'agent voit du dépôt, et **d'où ça vient**.
 
-        **Défaut mesuré le 07/09/2026** (audit profond) : cet agent analysait
-        une architecture avec 30 lignes d'arborescence tronquée, pendant que
-        `gitingest` — enregistré, testé, diagnostiqué — n'était appelé par
-        AUCUN chemin d'exécution. Un connecteur que rien n'atteint est mort,
-        quelle que soit la qualité de son code (DEC-0061, DEC-0066).
-
-        Le repli n'est pas un détail : `gitingest` est optionnel, et son
-        absence ne doit jamais empêcher une analyse. La source est rendue
-        avec le contenu pour que le prompt dise ce qu'il a réellement lu.
+        1. Si codebase_memory (DeusData, DEC-0201) est déclaré et opérationnel,
+           on extrait l'architecture et les relations structurelles.
+        2. Sinon repli sur gitingest (DEC-0047).
+        3. Sinon repli sur l'arborescence brute (repo_tool).
         """
         if self.registre is not None:
+            if getattr(self.registre, "est_declare", lambda n: False)("codebase_memory"):
+                res_cbm = self.registre.executer("codebase_memory", "architecture", chemin=".", delai=10)
+                if res_cbm.statut.value == "SUCCESS":
+                    arch = str(res_cbm.message or res_cbm.detail.get("donnees") or "").strip()
+                    if arch:
+                        return arch[:8000], "codebase_memory"
+
             # `delai` court : un « coup d'oeil » n'a pas besoin des 180 s par
             # defaut du connecteur — surtout que ce depot porte des moteurs
             # externes volumineux mais gitignores (`tools/vision/faceplugin/`),

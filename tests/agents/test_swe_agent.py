@@ -64,3 +64,65 @@ async def test_l_agent_n_ecrit_rien_sur_le_disque(agent, monkeypatch):
     monkeypatch.setattr("pathlib.Path.write_bytes", interdit)
 
     assert (await agent.run("Corrige main.py"))["status"] == "success"
+
+
+class TestSWEAgentAvecCodebaseMemory:
+    """Mission Codebase Memory MCP (DEC-0201).
+
+    Si codebase_memory est déclaré et disponible, SWEAgent utilise tracer_chemin
+    ou rechercher_graphe pour obtenir des chaînes d'appels AST précises.
+    """
+
+    @pytest.mark.asyncio
+    async def test_codebase_memory_trace_utilise_si_disponible(self, fake_provider):
+        from core.actions.resultat import succes
+
+        class RegistreAvecCBM:
+            def __init__(self):
+                self.appels = []
+
+            def est_declare(self, nom):
+                return nom == "codebase_memory"
+
+            def executer(self, connecteur, capacite, **parametres):
+                self.appels.append((connecteur, capacite, parametres))
+                if connecteur == "codebase_memory" and capacite == "tracer_chemin":
+                    return succes(
+                        action="tracer_chemin", cible="codebase_memory",
+                        message="[donnée external]\nCALL CHAIN: main -> process -> error_node",
+                        preuve="test_func",
+                    )
+                return succes(action="search", cible="aci", message="none", preuve="p")
+
+        registre = RegistreAvecCBM()
+        agent = SWEAgent(provider=fake_provider, registre=registre)
+
+        resultat = await agent.run("Corrige le bug dans ProcessOrder")
+
+        assert resultat["status"] == "success"
+        assert ("codebase_memory", "tracer_chemin") in [(c, cap) for c, cap, _ in registre.appels]
+        assert "CALL CHAIN: main -> process -> error_node" in agent.provider.appels[0]["prompt"]
+        assert resultat["source"] == "codebase_memory (trace_path)"
+
+    @pytest.mark.asyncio
+    async def test_repli_sur_aci_si_codebase_memory_echoue(self, fake_provider):
+        from core.actions.resultat import non_configure
+
+        class RegistreEchec:
+            def __init__(self):
+                self.appels = []
+
+            def est_declare(self, nom):
+                return nom == "codebase_memory"
+
+            def executer(self, connecteur, capacite, **parametres):
+                self.appels.append((connecteur, capacite, parametres))
+                return non_configure(action=capacite, cible=connecteur, ce_qui_manque="bin")
+
+        registre = RegistreEchec()
+        agent = SWEAgent(provider=fake_provider, registre=registre)
+
+        resultat = await agent.run("Corrige le bug dans ProcessOrder")
+
+        assert resultat["status"] == "success"
+        assert resultat["source"] == "recherche_aci"

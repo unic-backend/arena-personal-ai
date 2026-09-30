@@ -414,6 +414,19 @@ services:
     read:        {decision: ALLOWED,      risque: LOW}
     index:       {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
 
+  # Codebase Memory MCP (DeusData, MIT, DEC-0201) : graphe de connaissances
+  # de code persistant (AST Tree-Sitter + Hybrid LSP + requetes Cypher/traversee).
+  # Tout est local (processus stdio, base SQLite embarquee). Les lectures
+  # (architecture, recherche de symboles, trace d'appels, requete Cypher,
+  # diff d'impact, extrait de code, plan de fichier) sont libres (ALLOWED/LOW).
+  # Indexer/re-indexer est une ecriture locale sous WRITE_FILES (ALLOWED/LOW,
+  # meme regime que graphify.construire et claude_context.indexer).
+  # Supprimer un projet indexe passe par CONFIRMATION sous DELETE (HIGH).
+  codebase_memory:
+    read:        {decision: ALLOWED,      risque: LOW}
+    index:       {decision: ALLOWED,      risque: LOW, interrupteur: WRITE_FILES}
+    delete:      {decision: CONFIRMATION, risque: HIGH, interrupteur: DELETE}
+
   # OpenViking (DEC-0058) : contexte hierarchique/memoire/competences, via
   # son propre serveur HTTP (AGPLv3, jamais importe) auto-heberge par le
   # proprietaire. Lire (contexte assemble, recherche, competences) ne coute
