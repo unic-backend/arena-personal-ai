@@ -37,6 +37,7 @@ from apps.backend.runtime import (
     formel_agent,
     fresh_agent,
     graphrag_tool,
+    image_restoration_agent,
     journal_routage,
     lightrag_tool,
     memory,
@@ -1269,6 +1270,11 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         result = graphrag_tool.query_global(demande)
     elif intent == "VISION":
         result = await vision_agent.run(request.prompt, context={"attachments": request.attachments})
+    elif intent == "IMAGE_RESTORATION":
+        # Transformation locale d'une piece jointe autorisee. Distincte de
+        # VISION, qui ne modifie jamais l'image.
+        result = await image_restoration_agent.run(
+            request.prompt, context={"attachments": request.attachments})
     elif intent == "AUDIO":
         # Meme inventaire que le montage : ses fichiers, et rien d autre.
         # `medias_montables` couvre deja l audio (mp3, wav, m4a...) en plus

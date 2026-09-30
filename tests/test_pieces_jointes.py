@@ -6,8 +6,10 @@ dans un dossier que personne ne surveille.
 """
 
 import base64
+import io
 
 import pytest
+from PIL import Image
 
 from apps.backend.pieces_jointes import (
     CARACTERES_MAX,
@@ -266,7 +268,9 @@ def test_la_forme_transportable_dit_l_etat_reel(depot):
 
 # --- Les images (DEC-0019) -----------------------------------------------------
 
-OCTETS_IMAGE = b"\x89PNG\r\n\x1a\n" + b"faux-png-mais-suffit-pour-le-test"
+_tampon_image = io.BytesIO()
+Image.new("RGB", (16, 16), "navy").save(_tampon_image, format="PNG")
+OCTETS_IMAGE = _tampon_image.getvalue()
 
 
 @pytest.mark.parametrize("nom", ["photo.jpg", "photo.jpeg", "plan.png", "chantier.webp", "schema.gif"])
@@ -277,6 +281,14 @@ def test_une_image_est_lue_sans_toucher_au_texte(depot, nom):
     assert piece.lisible is True
     assert piece.est_image is True
     assert piece.texte == ""
+
+
+def test_une_fausse_image_est_refusee_sur_son_contenu(depot):
+    piece = depot.deposer("portrait.png", b"ceci n'est pas une image")
+
+    assert piece.statut == "ECHEC"
+    assert piece.est_image is False
+    assert "corrompue" in (piece.raison or "")
 
 
 def test_une_image_est_encodee_en_base64(depot):

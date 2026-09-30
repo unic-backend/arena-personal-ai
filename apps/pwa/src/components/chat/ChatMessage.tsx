@@ -54,6 +54,7 @@ function DocumentsProduits({ msg }: { msg: Msg }) {
       {documents.map((doc) => {
         const adresse = adresseOuvrable(doc.url, base, cfg.apiKey);
         if (!adresse) return null;
+        const estImage = doc.type?.startsWith('image/');
         return (
           <a
             key={doc.url}
@@ -61,10 +62,21 @@ function DocumentsProduits({ msg }: { msg: Msg }) {
             target="_blank"
             rel="noreferrer"
             onClick={() => triggerHaptic('success')}
-            className="inline-flex items-center gap-1.5 rounded-md border border-accent-500/25 bg-accent-500/[0.06] px-3 py-1.5 text-ui-meta text-accent-200 transition hover:bg-accent-500/[0.12]"
+            className={cn(
+              'rounded-md border border-accent-500/25 bg-accent-500/[0.06] text-ui-meta text-accent-200 transition hover:bg-accent-500/[0.12]',
+              estImage ? 'block max-w-md overflow-hidden p-2' : 'inline-flex items-center gap-1.5 px-3 py-1.5',
+            )}
           >
-            <FileText size={12} />
-            {t('action.openDocument')}
+            {estImage ? (
+              <>
+                <img src={adresse} alt={doc.message || 'Image produite'} className="max-h-80 w-full rounded object-contain" />
+                <span className="mt-2 flex items-center gap-1.5 px-1">
+                  <ImageIcon size={12} /> {doc.message || t('action.openDocument')}
+                </span>
+              </>
+            ) : (
+              <><FileText size={12} />{t('action.openDocument')}</>
+            )}
           </a>
         );
       })}

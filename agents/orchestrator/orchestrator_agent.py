@@ -97,6 +97,7 @@ INTENTIONS = {
     "EMAIL",
     "SOCIAL",
     "VISION",
+    "IMAGE_RESTORATION",
     "MONTAGE",
     "AUDIO",
     "VIDEO_PROJET",
@@ -340,6 +341,22 @@ FABRIQUER_VIDEO = (
 #: image est comprise directement par le modele de vision (DEC-0019), jamais
 #: par extraction de texte. Teste tot : « analyse cette photo du chantier »
 #: contient « chantier » et partirait sinon chez l assistant devis.
+# Transformer/restaurer une image est une operation, jamais une question de
+# vision. Cette intention distincte permet aussi d'enchainer le rendu vers
+# VISION dans une demande composee sans confondre les deux outils.
+IMAGE_RESTORATION = (
+    "restaure cette photo", "restaure cette image", "restaurer cette photo",
+    "restaurer cette image", "restaure la photo", "restaure l'image",
+    "restaure l image", "restaure ce portrait", "restaurer ce portrait",
+    "ameliore cette photo", "améliore cette photo", "ameliore cette image",
+    "améliore cette image", "ameliore ce portrait", "améliore ce portrait",
+    "photo abimee", "photo abîmée", "photo endommagee", "photo endommagée",
+    "vieille photo", "old photo", "damaged portrait", "restore this photo",
+    "restore this image", "enhance the faces", "ameliore les visages",
+    "améliore les visages", "recupere les details du visage",
+    "récupère les détails du visage", "codeformer",
+)
+
 VISION = (
     "analyse cette image", "analyse cette photo", "que montre cette image",
     "que montre cette photo", "que vois-tu sur cette image",
@@ -718,6 +735,9 @@ ATELIER         : agir vraiment sur la machine — ouvrir, ranger ou corriger SE
                   en un mot : ici on execute au lieu de proposer.
 RAG_DOCS        : répondre à partir des documents de l'utilisateur.
 GRAPHRAG        : question sur les liens entre les documents.
+IMAGE_RESTORATION : transformer une photo degradee : restaurer un portrait,
+                  recuperer les details des visages, ameliorer l'arriere-plan.
+                  Ce n'est jamais une description ou une analyse de l'image.
 VISION          : comprendre une image, une photo, un plan ou une capture
                   d'écran — décrire, lire un texte qui y figure (OCR),
                   extraire un tableau, analyser un dessin ou un schéma.
@@ -1117,6 +1137,11 @@ class OrchestratorAgent(BaseAgent):
         # enverraient ailleurs, vers un agent qui ne touche rien.
         if any(k in text for k in ATELIER):
             return "ATELIER"
+
+        # Une transformation d'image explicite gagne avant les familles
+        # generiques (notamment « codeformer », qui commence par « code »).
+        if any(k in text for k in IMAGE_RESTORATION):
+            return "IMAGE_RESTORATION"
 
         # Analyse de visages et conception d'interface. Testes tot, avant les
         # familles generiques : « analyse ces visages » contient « analyse » et
