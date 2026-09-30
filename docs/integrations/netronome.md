@@ -36,7 +36,12 @@ capacités existent dans Netronome ; elles ne sont pas exposées ici.
 ## Architecture
 
 ```
-        ARENA (diagnostics, route GET /api/reseau/sante)
+        « Mon Internet est lent, vérifie » (chat, PWA)
+                        │
+        intention RESEAU (déterministe, DEC-0203)
+        core/reseau/demande.py — la phrase → etat | mesurer_debit
+                        │
+        ARENA (chat `_mon_reseau`, route GET /api/reseau/sante)
                         │
         core/reseau/sante_reseau.py   ← l'adaptateur remplaçable
                         │
@@ -55,6 +60,17 @@ capacités existent dans Netronome ; elles ne sont pas exposées ici.
   Netronome quand il répond et retombe sur la sonde native sinon.
 - **`apps/backend/routers/reseau.py`** — `GET /api/reseau/sante`, lecture seule,
   protégée par la même clé et le même limiteur que `/api/observability`.
+- **`core/reseau/demande.py`** (DEC-0203) — la phrase du propriétaire devient
+  l'une des deux capacités, sans agent ni modèle : « mon internet est lent »,
+  « diagnostique ma connexion » → `etat` (lecture) ; « lance un test de
+  débit », « fais un speedtest » → `mesurer_debit` (CONFIRMATION). Ses réseaux
+  SOCIAUX ne passent pas le filtre. Le rendu (`rendre_sante`) sépare le mesuré
+  du non mesuré et ne juge jamais la connexion à la place d'une mesure.
+- **Intention `RESEAU`** — détectée de façon déterministe par l'orchestrateur
+  AVANT le contrôle date (« vérifie » partirait sinon en recherche web),
+  aiguillée par `apps/backend/routers/chat.py::_mon_reseau`. **Le chemin de
+  conversation ne lance jamais de test de débit** : le diagnostic est une
+  lecture ; la mesure coûteuse attend la confirmation du propriétaire.
 
 ## Installation (par le propriétaire, sur sa machine)
 
@@ -142,7 +158,8 @@ placerait au contraire sous GPL : c'est interdit ici. Attribution :
 ## Vérification
 
 - Tests hors ligne : `pytest tests/core/test_connecteur_netronome.py
-  tests/core/test_sante_reseau.py tests/test_reseau_route.py`.
+  tests/core/test_sante_reseau.py tests/test_reseau_route.py
+  tests/core/test_demande_reseau.py`.
 - Tests d'intégration contre un vrai Netronome : **BLOCKED** tant que le binaire
   n'est pas lancé sur la machine du propriétaire. Aucun résultat de performance
   n'est revendiqué (`UNKNOWN — non mesuré`).

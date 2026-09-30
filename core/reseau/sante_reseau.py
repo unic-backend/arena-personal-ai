@@ -125,6 +125,7 @@ def _schema_vide() -> Dict[str, Any]:
         "dns_status": None,
         "route_information": None,
         "provider": None,
+        "server": None,
         "timestamp": None,
     }
 
@@ -228,7 +229,8 @@ def _mesures_depuis_netronome(donnees: Dict[str, Any]) -> Dict[str, Any]:
     mesures = _schema_vide()
     correspondances = (
         "latency", "download", "upload", "jitter", "packet_loss",
-        "dns_latency", "dns_status", "route_information", "provider", "timestamp",
+        "dns_latency", "dns_status", "route_information", "provider",
+        "server", "timestamp",
     )
     for cle in correspondances:
         if donnees.get(cle) is not None:

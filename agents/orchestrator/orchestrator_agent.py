@@ -12,6 +12,7 @@ from core.meetings.intelligence import est_demande_analyse_reunion
 from core.memory.memory_manager import MemoryManager
 from core.models.base import ModelProvider
 from core.production.conversion.demande import format_de_conversion
+from core.reseau.demande import capacite_reseau
 from core.site_web.demande import capacite_du_site
 
 logger = logging.getLogger("usman.agent.orchestrator")
@@ -118,6 +119,8 @@ INTENTIONS = {
     "SITE_WEB",
     # « Mes avis Google ? » : sa fiche Google et ses avis (DEC-0184).
     "FICHE_GOOGLE",
+    # « Mon Internet est lent, vérifie » : la santé de SA connexion (DEC-0203).
+    "RESEAU",
 }
 
 #: Ce qui demande LE briefing du jour. Des locutions, pas le mot seul :
@@ -783,6 +786,10 @@ SITE_WEB        : SES sites web tels qu'ils sont en ligne — etat, deploiements
 FICHE_GOOGLE    : SA fiche Google (Maps) — ses informations, ses avis clients,
                   ou repondre a un avis. Donner son avis sur un sujet n'en est
                   pas une.
+RESEAU          : la santé de SA connexion Internet — « mon internet est
+                  lent », « diagnostique ma connexion », test de débit,
+                  latence, wifi qui coupe. Ses réseaux SOCIAUX restent
+                  SOCIAL ; expliquer ce qu'est Internet reste CHAT.
 ARCHITECTURE_3D : dessiner ou modéliser un bâtiment en 3D — maison, murs,
                   plan 3D, scène 3D. Chiffrer une cloison reste PLAQUISTE ;
                   la tracer est ARCHITECTURE_3D.
@@ -902,6 +909,18 @@ class OrchestratorAgent(BaseAgent):
         e-mail a ecrire.
         """
         return demande_fiche_google(user_input) is not None
+
+    @staticmethod
+    def demande_reseau(user_input: str) -> bool:
+        """Dit si la phrase demande la sante de SA connexion (DEC-0203).
+
+        Avant le controle date : « mon internet est lent, verifie »
+        contient « verifie », que `exige_verification` enverrait en
+        recherche web — le web ne sait rien de sa ligne. Ses reseaux
+        SOCIAUX (« publie sur mes reseaux ») ne passent pas ce filtre
+        (`core/reseau/demande.py`, PAS_SA_CONNEXION).
+        """
+        return capacite_reseau(user_input) is not None
 
     @staticmethod
     def question_personnelle(user_input: str) -> bool:
@@ -1071,6 +1090,10 @@ class OrchestratorAgent(BaseAgent):
         if est_demande_analyse_reunion(user_input):
             logger.info("Analyse explicite d'une réunion enregistrée -> VIDEO_ANALYSIS")
             return "VIDEO_ANALYSIS"
+
+        if self.demande_reseau(user_input):
+            logger.info("Sante de SA connexion -> RESEAU, avant le controle date")
+            return "RESEAU"
 
         if self.demande_la_date(user_input):
             logger.info("Question de date : l'horloge de la machine repond -> CHAT")

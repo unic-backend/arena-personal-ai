@@ -319,4 +319,8 @@ AGENTS_SPECIALISES = frozenset({
     # d'ici jusqu'au 29/09/2026 : le telephone les classait bien, puis les
     # confiait au modele de conversation — mesure dans la vraie PWA (DEC-0188).
     "SITE_WEB", "FICHE_GOOGLE",
+    # La sante de SA connexion (DEC-0203) : Netronome branche, sonde native
+    # sinon. Sans cette ligne, le telephone classerait « mon internet est
+    # lent » puis laisserait le modele de conversation repondre sans mesure.
+    "RESEAU",
 })
