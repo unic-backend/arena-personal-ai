@@ -1,4 +1,4 @@
-"""Basic Memory a été audité, puis refusé. Ce fichier tient le refus (DEC-0203).
+"""Basic Memory a été audité, puis refusé. Ce fichier tient le refus (DEC-0204).
 
 Un refus écrit dans un document vieillit sans qu'on le voie : six mois plus
 tard, quelqu'un trouve le projet, ne trouve pas la raison, et l'installe. Ce
@@ -83,7 +83,7 @@ def test_aucune_dependance_basic_memory_declaree(fichier):
         assert not any(nom in nue.lower() for nom in NOMS), (
             f"{fichier}:{numero} déclare basic-memory : {nue!r}. "
             "AGPL-3.0-or-later sur un dépôt « tous droits réservés », et "
-            "requires-python >= 3.12 quand ARENA tourne en 3.11. Voir DEC-0203."
+            "requires-python >= 3.12 quand ARENA tourne en 3.11. Voir DEC-0204."
         )
 
 
@@ -114,7 +114,7 @@ def test_aucun_module_arena_n_importe_basic_memory():
                     coupables.append(f"{relatif}:{noeud.lineno} → {module}")
 
     assert coupables == [], (
-        "ARENA importe du code AGPL-3.0 : " + ", ".join(coupables) + ". Voir DEC-0203."
+        "ARENA importe du code AGPL-3.0 : " + ", ".join(coupables) + ". Voir DEC-0204."
     )
 
 
@@ -140,7 +140,7 @@ def test_la_raison_du_refus_est_ecrite_et_nommee():
     maintenir le refus, donc les trois doivent être lisibles séparément.
     """
     audit = (RACINE / "docs" / "audits" / "basic_memory_audit.md")
-    assert audit.exists(), "l'audit qui fonde DEC-0203 a disparu"
+    assert audit.exists(), "l'audit qui fonde DEC-0204 a disparu"
     texte = audit.read_text(encoding="utf-8").lower()
 
     for marqueur, ce_que_c_est in (
@@ -152,7 +152,7 @@ def test_la_raison_du_refus_est_ecrite_et_nommee():
         assert marqueur in texte, f"l'audit ne porte plus {ce_que_c_est} ({marqueur!r})"
 
     decisions = (RACINE / "docs" / "DECISIONS.md").read_text(encoding="utf-8")
-    assert "## DEC-0203" in decisions, "DEC-0203 a disparu du registre"
+    assert "## DEC-0204" in decisions, "DEC-0204 a disparu du registre"
 
 
 def test_aucun_chiffre_de_performance_n_est_revendique():
@@ -191,7 +191,7 @@ def test_le_knowledge_vault_fait_bien_ce_que_basic_memory_promet(tmp_path):
     """Markdown ingéré, wikiliens résolus, graphe construit, liens cassés vus.
 
     C'est la ligne « nous avons déjà ça » du blocage 3, exécutée. Si elle
-    échoue, ARENA n'a plus de couche documentaire et DEC-0203 n'est plus fondée.
+    échoue, ARENA n'a plus de couche documentaire et DEC-0204 n'est plus fondée.
     """
     from core.knowledge.vault import KnowledgeVault
 
@@ -356,7 +356,7 @@ def test_arena_tourne_bien_sur_une_version_que_basic_memory_refuse():
     `requires-python = ">=3.12"` chez l'amont. Ce test ne fige pas 3.11 comme
     un objectif : il fige le fait que **la CI et l'image décident ensemble**.
     Le jour où les deux passent en 3.12, il le dit — et c'est précisément le
-    moment où ce blocage-là tombe et où DEC-0203 doit être relue.
+    moment où ce blocage-là tombe et où DEC-0204 doit être relue.
     """
     ci = (RACINE / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     dockerfile = (RACINE / "apps" / "backend" / "Dockerfile").read_text(encoding="utf-8")
@@ -371,7 +371,7 @@ def test_arena_tourne_bien_sur_une_version_que_basic_memory_refuse():
         pytest.fail(
             "ARENA ne tourne plus en 3.11 (CI "
             f"{sorted(versions_ci)}, image {version_image.group(1)}) : le "
-            "blocage 2 de DEC-0203 est peut-être tombé, relire l'audit "
+            "blocage 2 de DEC-0204 est peut-être tombé, relire l'audit "
             "avant de conclure quoi que ce soit."
         )
 

@@ -13436,7 +13436,57 @@ rapide ») n'est revendiquée : `UNKNOWN — non mesuré`. Les tests d'intégrat
 contre un vrai Netronome exigent son binaire lancé ; ils sont `BLOCKED` tant
 qu'il n'est pas installé sur la machine du propriétaire.
 
-## DEC-0203 — Basic Memory : audité, refusé. ARENA a déjà cette mémoire
+## DEC-0203 — « Mon Internet est lent, vérifie » : la santé réseau de DEC-0202 atteint le chat
+
+**Contexte.** DEC-0202 a donné à ARENA une conscience réseau mesurée : connecteur
+`core/connectors/netronome.py` (capacités `etat` et `mesurer_debit`), adaptateur
+remplaçable `core/reseau/sante_reseau.py` avec repli natif, route
+`GET /api/reseau/sante`. Mais **aucune phrase du propriétaire ne l'atteignait** :
+« mon internet est lent, vérifie » contenait « vérifie », que `exige_verification`
+envoyait en recherche web — et le web ne sait rien de sa ligne. C'est le défaut
+mesuré trois fois déjà (DEC-0061, DEC-0066, DEC-0068) : une capacité écrite,
+testée, et dormante.
+
+**Décision.**
+1. **La phrase devient une capacité, sans agent ni modèle** — même méthode que
+   ses sites (DEC-0182) et sa fiche Google (DEC-0184). `core/reseau/demande.py`
+   reconnaît deux choses et deux seulement : un **diagnostic** (`etat`, lecture
+   bon marché) et un **test de débit explicite** (`mesurer_debit`, coûteux).
+   Deux conditions nécessaires : une référence à SA connexion ET un signe de
+   diagnostic ou de mesure. Ses réseaux SOCIAUX (« publie sur mes réseaux »,
+   « ma connexion TikTok ») ne passent pas le filtre (`PAS_SA_CONNEXION`).
+2. **Intention `RESEAU`**, détectée de façon déterministe AVANT le contrôle
+   date et `exige_verification` (`agents/orchestrator/orchestrator_agent.py`),
+   aiguillée dans `apps/backend/routers/chat.py` (`_mon_reseau`), déclarée dans
+   `AGENTS_SPECIALISES` (sans quoi le téléphone laisserait le modèle de
+   conversation répondre sans mesure — le défaut DEC-0188) et dans
+   `core/execution/voies.py` (voie RECHERCHE : la sonde sort sur le réseau).
+3. **Le chemin de conversation ne lance JAMAIS un test de débit.** Le
+   diagnostic lit `evaluer_sante_reseau(registre)` — Netronome s'il répond,
+   sonde native sinon. Le test de débit passe par le connecteur, donc par
+   `network.measure` → CONFIRMATION : une détection trop large coûte une
+   question, jamais une mesure. Un sabotage (diagnostic redirigé sur
+   `mesurer_debit`) est rattrapé par
+   `tests/core/test_demande_reseau.py::test_le_diagnostic_lit_l_etat_et_ne_lance_jamais_de_test`.
+4. **La mesure reste séparée de l'interprétation.** `rendre_sante` rapporte les
+   champs mesurés avec leur unité et leur source, déclare « non mesuré » ce qui
+   ne l'est pas — jamais `0`, jamais « ton Internet est mauvais ». Le schéma
+   porte maintenant aussi `server` (le serveur de test Netronome), qui existait
+   dans l'instantané du connecteur et se perdait dans l'adaptateur.
+
+**Ce que ça coûte si c'est faux.** Une détection qui déborde sur ses réseaux
+sociaux enverrait « publie sur mes réseaux » à un diagnostic réseau : d'où les
+exclusions testées. Un test de débit lancé depuis une phrase ambiguë occuperait
+sa ligne : d'où la confirmation obligatoire, tenue par le connecteur et non par
+la détection. Un jugement à la place d'une mesure deviendrait un mensonge
+permanent : d'où le rendu qui rapporte sans conclure.
+
+**Non mesuré.** Aucun test réseau réel n'a été exécuté pour cette décision :
+tous les tests sont hors ligne, sur registre factice (`Mocked`). Le comportement
+contre un vrai Netronome reste `UNKNOWN — non mesuré` tant que le binaire n'est
+pas lancé sur la machine du propriétaire.
+
+## DEC-0204 — Basic Memory : audité, refusé. ARENA a déjà cette mémoire
 
 **Contexte.** Demande du 30/09/2026 : auditer
 `basicmachines-co/basic-memory` — « local-first, MCP-natif, connaissance en

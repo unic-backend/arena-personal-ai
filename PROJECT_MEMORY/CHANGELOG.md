@@ -28,8 +28,25 @@ prouve un gain concret. Amont cloné et lu (commit `88c3990c` du 29/09/2026,
 dépendance ni import n'est entré, l'autre moitié **exécute** les capacités sur
 lesquelles le refus repose — si l'une disparaît, la décision se rouvre au lieu
 de rester vraie par inertie. Onze sabotages passés, chacun rattrapé.
-Aucune performance n'est revendiquée : `UNKNOWN — non mesuré`. Voir DEC-0203 et
+Aucune performance n'est revendiquée : `UNKNOWN — non mesuré`. Voir DEC-0204 et
 `docs/audits/basic_memory_audit.md`.
+
+---
+
+## 2026-09-30 — « Mon Internet est lent, vérifie » atteint la santé réseau
+
+La conscience réseau de DEC-0202 (connecteur Netronome, adaptateur avec repli
+natif, route `GET /api/reseau/sante`) existait, était testée, et **aucune
+phrase du propriétaire ne l'atteignait** : « vérifie » l'envoyait en recherche
+web. Nouvelle intention `RESEAU`, déterministe, avant le contrôle date
+(`core/reseau/demande.py`, DEC-0203). Le diagnostic est une lecture
+(`evaluer_sante_reseau`) ; le test de débit reste derrière la CONFIRMATION du
+connecteur — un sabotage du chemin (diagnostic redirigé sur `mesurer_debit`,
+détection débranchée) est rattrapé par `tests/core/test_demande_reseau.py`.
+Le rendu sépare mesuré / non mesuré : un champ absent se dit « non mesuré »,
+jamais `0`, et aucun jugement ne remplace une mesure. Le schéma porte
+maintenant `server` (le serveur de test), qui se perdait dans l'adaptateur.
+Aucun test réseau réel exécuté : tout est hors ligne, sur registre factice.
 
 ---
 

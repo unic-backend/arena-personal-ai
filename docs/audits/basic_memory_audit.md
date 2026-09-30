@@ -8,7 +8,7 @@ privée ni de problème de licence ? ».*
 
 **Réponse : non. Aucune intégration.** Trois blocages indépendants, chacun
 suffisant, et aucun manque réel à combler. Le détail est ci-dessous ; la
-décision est `DEC-0203`.
+décision est `DEC-0204`.
 
 ---
 

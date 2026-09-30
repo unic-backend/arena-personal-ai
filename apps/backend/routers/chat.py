@@ -72,6 +72,8 @@ from core.memory.conversation import rendre_le_fil
 from core.observabilite.fil import tache
 from core.observabilite.routage import AppelRoute
 from core.production.conversion.demande import format_de_conversion
+from core.reseau.demande import capacite_reseau, rendre_sante
+from core.reseau.sante_reseau import evaluer_sante_reseau
 from core.site_web.demande import capacite_du_site, rendre
 from tools.documents.indexer import (
     DOSSIER_DOCUMENTS,
@@ -228,6 +230,45 @@ def _ma_fiche_google(prompt: str) -> Dict[str, Any]:
     reponse = _issue_en_reponse(issue)
     reponse["avis_vise"] = {"auteur": avis.get("auteur"), "commentaire": avis.get("commentaire")}
     return reponse
+
+
+def _mon_reseau(prompt: str) -> Dict[str, Any]:
+    """La sante de SA connexion : lue, ou mesuree apres SA confirmation (DEC-0203).
+
+    Deux chemins, et deux seulement :
+
+    - **diagnostic** (`etat`) : l'adaptateur `evaluer_sante_reseau` lit ce qui
+      est deja connu — Netronome s'il repond, sonde native sinon. Aucun test
+      de debit n'est lance sur ce chemin, jamais.
+    - **test de debit** (`mesurer_debit`) : passe par le connecteur, donc par
+      la permission `network.measure` (CONFIRMATION) — rien ne part d'ici
+      sans son feu vert, et Netronome absent se dit au lieu de se simuler.
+
+    Le texte rendu separe la mesure de l'interpretation : les champs mesures
+    avec leur unite, les champs absents « non mesures » — jamais un zero, ni
+    un jugement (« ton Internet est mauvais ») a la place d'une mesure.
+    """
+    capacite = capacite_reseau(prompt)
+    if capacite == "mesurer_debit":
+        issue = registre.executer("netronome", "mesurer_debit")
+        reponse = _issue_en_reponse(issue)
+        if issue.statut.value == "NOT_CONFIGURED":
+            # Pas de Netronome : le dire, puis donner quand meme ce que la
+            # sante reseau sait deja — sans pretendre que c'est un debit.
+            sante = evaluer_sante_reseau(registre)
+            reponse["response"] = f"{issue.message}\n\n{rendre_sante(sante)}"
+            reponse["reseau"] = sante.to_dict()
+        reponse["capacite"] = capacite
+        return reponse
+
+    sante = evaluer_sante_reseau(registre)
+    return {
+        "status": "success" if sante.statut.value not in ("FAILED", "UNKNOWN") else "error",
+        "agent": "Reseau",
+        "response": rendre_sante(sante),
+        "reseau": sante.to_dict(),
+        "capacite": "etat",
+    }
 
 
 def _contexte_openviking(prompt: str, session_id: str) -> Optional[str]:
@@ -822,6 +863,9 @@ CONTROLES_QUI_PRIMENT = (
     "demande_de_fiche_google",
     # « Publie-la sur TikTok » (DEC-0187) : une publication, jamais une reponse.
     "demande_de_publication",
+    # « Mon Internet est lent, vérifie » (DEC-0203) : sa connexion, jamais la
+    # reponse a une question en attente.
+    "demande_reseau",
 )
 
 
@@ -1339,6 +1383,11 @@ async def _aiguiller(request: ChatRequest, intent: str) -> Dict[str, Any]:
         # Sa fiche Google (DEC-0184) : lire, ou repondre a un avis — toujours
         # par la confirmation du connecteur. Aucun agent, aucun modele.
         result = _ma_fiche_google(request.prompt)
+    elif intent == "RESEAU":
+        # La sante de SA connexion (DEC-0203) : lue par l'adaptateur —
+        # Netronome branche, sonde native sinon. Le test de debit passe par
+        # la confirmation du connecteur : rien de couteux ne part d'ici seul.
+        result = _mon_reseau(request.prompt)
     elif intent == "SITE_WEB":
         # Ses sites Netlify (DEC-0182) : la phrase devient une capacite du
         # connecteur — aucun agent, aucun modele, comme DEC-0070 et DEC-0177.
