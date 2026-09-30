@@ -175,12 +175,13 @@ class TestLePromptSysteme:
         assert len(long) > len(court)
         assert "MÉTHODE DE SPÉCIALISTE" not in court
 
-    def test_la_methode_vient_apres_les_regles_d_arena(self):
-        """Une méthode ne doit pas pouvoir effacer ce qu'ARENA s'interdit."""
-        from apps.backend.prompts import get_arena_system_prompt, prompt_avec_methode
+    def test_la_methode_vient_avant_la_discipline_finale(self):
+        """Une méthode ne doit pas avoir le dernier mot sur la discipline."""
+        from apps.backend.prompts import prompt_avec_methode
 
         complet = prompt_avec_methode("fais un audit de sécurité")
-        assert complet.startswith(get_arena_system_prompt())
+        assert complet.index("MÉTHODE DE SPÉCIALISTE") < complet.index("COMMENT TU REPONDS")
+        assert complet.endswith("7. Dis ce que tu as fait, pas ce que tu avais prevu de faire.")
 
 
 class TestLesMotsDeTousLesJoursNeDeclenchentRien:
