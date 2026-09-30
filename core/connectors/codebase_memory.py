@@ -475,8 +475,8 @@ class ConnecteurCodebaseMemory(Connecteur):
         if profondeur is not None:
             try:
                 args["depth"] = max(1, min(5, int(profondeur)))
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as err:
+                logger.debug("codebase_memory: profondeur ignorée (non convertible en entier) : %s", err)
 
         with ClientMcpStdio([bin_path], dossier=".") as client:
             # Essaye trace_path puis repli sur trace_call_path
