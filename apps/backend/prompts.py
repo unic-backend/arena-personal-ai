@@ -257,9 +257,10 @@ def get_arena_system_prompt() -> str:
             *enregistres,
         ]
 
-    # La consigne du proprietaire, puis les DEUX mesures qui font foi, puis les
-    # regles : la discipline vient APRES, elle prime sur l'envie d'etre utile.
-    # Le registre dit ce qui existe ; doctor.py dit ce qui fonctionne. Confondre
+    # La consigne du proprietaire, puis les DEUX mesures qui font foi. Le style
+    # et les mathematiques suivent ; DISCIPLINE fermera le prompt apres tous ces
+    # blocs pour primer sur l'envie d'etre utile. Le registre dit ce qui existe ;
+    # doctor.py dit ce qui fonctionne. Confondre
     # les deux faisait annoncer « email » quand Gmail etait NON_CONFIGURE.
     lignes += ["", consigne_jarvis()]
     branchees = capacites_branchees()
@@ -281,8 +282,6 @@ def get_arena_system_prompt() -> str:
         "mesures dont elle depend sont DISPONIBLE. NOT_CONFIGURED, ABSENT,",
         "EN_PANNE et INCONNU ne sont jamais des disponibilites.",
     ]
-
-    lignes += DISCIPLINE
 
     lignes += [
         "",
@@ -308,6 +307,11 @@ def get_arena_system_prompt() -> str:
         "Les exposants, racines et lettres grecques existent en Unicode :",
         "utilise-les.",
     ]
+
+    # Dernier bloc absolu : rien — style, mathematiques ou methode metier — ne
+    # doit etre compose apres la discipline. Sa derniere regle est donc aussi
+    # le dernier caractere du prompt, sans saut de ligne final (DEC-0196).
+    lignes += DISCIPLINE
     return "\n".join(lignes)
 
 
@@ -320,11 +324,18 @@ def prompt_avec_methode(question: str = "", intention: Optional[str] = None) -> 
     d'agents de `/health`, ecrite a trois endroits et fausse au premier
     changement (mesure du 01/09/2026).
 
-    La methode vient APRES les regles d'ARENA : elle precise comment
-    travailler, elle ne peut rien effacer de ce que la plateforme s'interdit.
-    Elle est vide la plupart du temps — la majorite des demandes n'appellent
-    aucun specialiste (`core/specialistes/selection.py`).
+    La methode vient avant le dernier bloc DISCIPLINE : elle precise comment
+    travailler, mais rien ne peut etre compose apres les regles que la
+    plateforme s'interdit d'enfreindre. Elle est vide la plupart du temps — la
+    majorite des demandes n'appellent aucun specialiste
+    (`core/specialistes/selection.py`).
     """
     base = get_arena_system_prompt()
     methode = bloc_de_methode(choisir(question, intention))
-    return f"{base}\n\n{methode}" if methode else base
+    if not methode:
+        return base
+
+    discipline = "\n".join(DISCIPLINE)
+    assert base.endswith(discipline), "DISCIPLINE doit fermer le prompt de base"
+    avant_discipline = base[:-len(discipline)]
+    return f"{avant_discipline}\n\n{methode}{discipline}"

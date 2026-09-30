@@ -1,3 +1,16 @@
+## 2026-09-30 — DISCIPLINE ferme maintenant absolument le prompt JARVIS
+
+Les sept regles ne sont plus suivies par le style, les mathematiques ou une
+methode metier : ces blocs restent entiers, mais passent avant DISCIPLINE. Le
+prompt se termine exactement, sans saut de ligne, par la regle 7. Sur le meme
+prompt mesure, le volume reste a 12 463 caracteres, 316 lignes et **3 077 vrais
+tokens qwen3.5:9b** ; le debut visible de DISCIPLINE passe du caractere 10 714,
+ligne 286, token 2 545, au caractere 11 450, ligne 300, token 2 778. Une mutation
+ajoutant un seul saut de ligne final est attrapee par le nouveau test. Voir
+DEC-0196.
+
+---
+
 ## 2026-09-30 — PDF et plans anglais : OCR réel, enchaînements anglais
 
 L'OCR ne demande plus `fra` en dur : `langues_ocr()` interroge le binaire et

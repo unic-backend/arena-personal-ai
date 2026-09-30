@@ -92,14 +92,35 @@ def test_la_discipline_arrive_jusquau_prompt_compose():
             f"la regle {numero} n'arrive pas jusqu'au prompt reellement envoye")
 
 
-def test_la_methode_dun_specialiste_ne_peut_pas_effacer_la_discipline():
-    """La méthode vient APRÈS les règles de la plateforme : elle précise
-    comment travailler, elle n'efface rien de ce qu'ARENA s'interdit."""
-    base = get_arena_system_prompt()
+def test_la_methode_dun_specialiste_reste_avant_la_discipline():
+    """La méthode précise comment travailler, puis la discipline ferme le
+    prompt : aucun spécialiste ne peut avoir le dernier mot sur ces règles."""
     compose = prompt_avec_methode("fais-moi un devis", "PLAQUISTE")
 
-    assert compose.startswith(base), (
-        "la methode passe avant la discipline : elle pourrait la contredire")
+    assert "MÉTHODE DE SPÉCIALISTE À APPLIQUER" in compose
+    assert compose.index("MÉTHODE DE SPÉCIALISTE À APPLIQUER") < compose.index("COMMENT TU REPONDS")
+
+
+def test_le_prompt_se_termine_exactement_par_la_derniere_regle():
+    """La garde du chantier 4 : aucun caractère, même un saut de ligne, ne
+    peut être composé après la dernière règle — avec ou sans spécialiste."""
+    derniere_regle = "7. Dis ce que tu as fait, pas ce que tu avais prevu de faire."
+
+    assert DISCIPLINE[-1] == derniere_regle
+    assert get_arena_system_prompt()[-len(derniere_regle):] == derniere_regle
+    assert prompt_avec_methode("fais-moi un devis", "PLAQUISTE")[-len(derniere_regle):] == derniere_regle
+
+
+def test_style_et_mathematiques_restent_avant_la_discipline():
+    """Déplacer n'est pas supprimer : les deux règles historiques restent
+    entières, simplement placées avant le dernier bloc absolu."""
+    prompt = get_arena_system_prompt()
+
+    assert "Parle comme une vraie personne qui discute" in prompt
+    assert "Evite le vocabulaire recherche" in prompt
+    assert "N'ecris JAMAIS de LaTeX" in prompt
+    assert "x² - 5x + 6 = 0" in prompt
+    assert prompt.index("N'ecris JAMAIS de LaTeX") < prompt.index("COMMENT TU REPONDS")
 
 
 def test_chaque_regle_porte_sa_mesure_dans_le_code():

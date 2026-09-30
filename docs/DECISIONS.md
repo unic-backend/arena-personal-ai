@@ -13201,3 +13201,58 @@ Une panne d'ecriture (disque plein) prive le journal d'une ligne sans priver le
 proprietaire de sa reponse : c'est le choix deja fait pour les actions et les
 plans, et le casser ici ferait de ce chantier un point de fragilite nouveau
 plutot qu'un simple journal de lecture.
+
+## DEC-0196 — DISCIPLINE ferme absolument le prompt JARVIS
+
+**2026-09-30.** Quatrieme chantier « la consigne dit la verite », apres la
+consigne de routage (DEC-0192), les capacites mesurees (DEC-0193) et le journal
+de routage (DEC-0195).
+
+**Constat.** Les sept regles de `DISCIPLINE` etaient bien placees apres la
+consigne JARVIS et l'etat de la machine, mais deux blocs etaient encore composes
+apres elles : le style de reponse, puis l'interdiction du LaTeX. Quand une
+methode de specialiste s'appliquait, `prompt_avec_methode()` la mettait plus
+loin encore. La discipline n'etait donc pas le dernier bloc et sa regle 7
+n'etait pas la derniere instruction recue par le modele.
+
+**Decision.** `DISCIPLINE` est le dernier bloc absolu. Le style et les
+mathematiques restent mot pour mot dans le prompt, avant elle. Une methode de
+specialiste est inseree avant elle aussi. Le prompt, de base comme compose, se
+termine sans saut de ligne par exactement :
+
+`7. Dis ce que tu as fait, pas ce que tu avais prevu de faire.`
+
+**Mesure avant/apres, sur le meme prompt.** Mesure directe de
+`get_arena_system_prompt()` avec 27 agents et 30 etats doctor, sans gabarit de
+chat ajoute. Les caracteres sont comptes par Python, les lignes par
+`splitlines()`, et les tokens par le vocabulaire BPE reel de `qwen3.5:9b`
+(248 044 tokens de base, tokenizer Qwen3.5, `qwen-tokenizer==0.3.0`). La
+position est celle du premier caractere visible de `COMMENT TU REPONDS`, en
+base 1 ; la position token est le nombre de tokens qui le precedent.
+
+| Mesure | Avant | Apres |
+|---|---:|---:|
+| caracteres du prompt | 12 463 | 12 463 |
+| lignes du prompt | 316 | 316 |
+| debut visible de DISCIPLINE — caractere | 10 714 | 11 450 |
+| debut visible de DISCIPLINE — ligne | 286 | 300 |
+| tokens avant DISCIPLINE (`qwen3.5:9b`) | 2 544 | 2 777 |
+| tokens totaux (`qwen3.5:9b`) | 3 077 | 3 077 |
+| fin de DISCIPLINE / fin du prompt | 11 727 / 12 463 | 12 463 / 12 463 |
+
+Le changement de position est de **+736 caracteres, +14 lignes et +233
+tokens**. Le volume total ne bouge pas : aucun texte de style, de mathematiques
+ou de discipline n'a ete retire ni ajoute au prompt, seuls les blocs ont change
+d'ordre.
+
+**Preuve.** `test_le_prompt_se_termine_exactement_par_la_derniere_regle`
+verifie le prompt de base et un prompt avec methode ;
+`test_style_et_mathematiques_restent_avant_la_discipline` garde les phrases de
+style, l'interdiction du LaTeX et l'exemple `x² - 5x + 6 = 0`. Une mutation a
+ajoute un unique `\n` apres la composition : le premier test a echoue, puis a
+repasse apres restauration. Le test de methode exige en plus que son titre
+precede `COMMENT TU REPONDS`.
+
+**Ce que ca coute si c'est faux.** Toute composition future apres la regle 7
+redonnerait le dernier mot a une instruction locale. Le test porte donc sur les
+derniers caracteres, pas seulement sur la presence ou l'ordre relatif du bloc.
