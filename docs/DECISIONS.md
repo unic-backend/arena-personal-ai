@@ -13572,3 +13572,83 @@ décision, dans aucun sens.
 un avis du propriétaire sur l'AGPL §13 pour un service réseau, Python 3.12 sur
 sa machine et dans la CI, **et** une capacité nommée que le Knowledge Vault ne
 sait pas rendre.
+
+## DEC-0205 — `ed-donner/agents` : 122 modules audités, zéro intégration. ARENA a déjà chaque capacité
+
+**Contexte.** Demande du 30/09/2026 : audit sélectif du dépôt
+`ed-donner/agents` (commit amont `da89337`, 19/09/2026, **MIT**) — un COURS
+d'ingénierie agentique en six semaines (OpenAI Agents SDK, CrewAI, LangGraph,
+Google ADK, Pydantic AI et MCP), mission explicite : ne rien copier au kilomètre,
+retenir seulement ce qui **améliore matériellement** ARENA, et documenter le
+reste comme refus. Audit complet → `docs/audits/ed_donner_agents_audit.md`.
+
+**Méthode.** Les sections demandées sont lues (`1_foundations/`, `2_openai/`,
+`3_crewai/`, `4_langchain_langgraph/`, `5_agent_frameworks/`, `6_mcp/`,
+`guides/` — hors `community_contributions/`, devoirs d'étudiants), chaque
+exemple est classé en « pédagogique → patron → valeur de production », puis la
+comparaison capacité par capacité est posée **contre le code d'ARENA lu et
+mesuré**, jamais déduit d'une documentation.
+
+**Décision : aucune intégration de code ni de dépendance.** La grille
+d'évaluation est dans l'audit (§2), la forme courte : toutes les capacités
+que le cours présente comme nouvelles — orchestration, transfert d'agent en
+agent, découpage de tâches, appel d'outils, mémoire, gestion de contexte,
+sorties structurées, garde-fous, confirmation humaine, boucles bornées,
+exécution longue, état partagé SQLite WAL, client et serveur MCP — existent
+dans ARENA, la plupart **sabotage-testées** et plusieurs plus strictes que la
+version du cours (permissions × confirmation × journal sur tout appel d'outil ;
+frontière de confiance sur tout contenu externe ; échecs cumulés et raison
+d'arrêt sur toute sortie de boucle ; gouvernance FAIT/INFERENCE sur tout
+client MCP externe).
+
+**Ce qui a failli mériter sa place — et pourquoi il reste dehors :**
+
+1. **MCP `resources/*` et `prompts/*`** — mesuré absent des deux transports
+   (`tools/list` + `tools/call` seulement) et du serveur mémoire. Mais aucun
+   consommateur réel n'est démontré : le métré OpenTakeoff obtient déjà
+   toutes ses données par `tools/call` (chemin vérifié bout en bout), et le
+   serveur mémoire n'a aucun client qui vienne lire une ressource. Catégorie
+   **D** — suggestion écrite dans l'audit (§3), le plus petit ajout y est
+   décrit pour le jour où un serveur intégré en exposera une.
+2. **« Demande d'aide humaine » de l'agent navigateur** (reprise de la même
+   session après une action de l'utilisateur) — l'équivalent chat existe
+   (`question_en_attente`) ; la version navigateur exige une session visible
+   sur sa machine, **UNKNOWN** depuis ce conteneur. Suggestion (§4).
+3. **Export de traces vers un observateur externe** (`LogTracer`) —
+   `core/execution/hooks.py` est le point naturel ; inutile sans observateur
+   réellement regardé. Suggestion (§4).
+
+**Ce qui est refusé net** : les neuf frameworks d'orchestration comme
+dépendances (cinq cadres que la mission interdit nommément, plus les voisins
+MAF / agno / Strands / Mastra / deepagents) — deux orchestrateurs parallèles
+pour aucune capacité manquante ; les traces `platform.openai.com` et les
+outils hébergés OpenAI — trafic et journaux chez un fournisseur (contre
+DEC-0002 / DEC-0009) ; le protocole **A2A** — exposition réseau d'actions
+autonomes contre la frontière de confiance ; toute copie de notebook ou de
+démonstrateur ; les `guides/` — le cours s'adresse à un débutant, le
+propriétaire n'écrit pas de code.
+
+**Notes de licence.** Amont **MIT : aucune restriction** à étudier les patrons.
+Aucune ligne de code copiée, aucune dépendance ajoutée : `NOTICE.md`,
+`THIRD_PARTY_NOTICES.md` et `requirements*.txt` inchangés. Deux lignes
+préexistantes à ne pas confondre avec une adoption : `langchain-openai==1.1.14`
+(substrat exigé par `browser-use`, épinglé pour PYSEC-2026-76, pas un
+orchestrateur) et `mcp==2.1.1` (SDK protocolaire du serveur mémoire, DEC-0090).
+
+**Ce que ça coûte si c'est faux.** Si l'audit a raté une capacité qu'ARENA ne
+sait pas rendre, ARENA s'en prive. C'est pourquoi le refus est **tenu par un
+test et non par une phrase** : `tests/test_ed_donner_reste_dehors.py` mesure
+les deux moitiés — aucun de ces frameworks n'est entré (dépendances directes
+**et** imports du code suivi), **et** les équivalents natifs existent encore
+(boucle bornée avec ses 8 raisons d'arrêt, transfert `[[COLLEGUE:]]` borné,
+deux clients MCP outils, classement d'intention, frontière de confiance, 6
+outils du serveur mémoire) — chacun **exécuté**, pas cité. Deux exclusions
+honestes : le gel `requirements.lock.txt` porte déjà les transitifs
+langchain-* de `browser-use` (lignes 108-114, mesuré), il est hors porte ; le
+module `agents` n'est pas testé à l'import, c'est le nom du paquet racine
+d'ARENA lui-même.
+
+**Réversible.** La décision se rouvre sur deux conditions : une capacité
+**nommée** qu'ARENA ne sait pas rendre et que le cours implémente, démontrée
+sur un cas réel du propriétaire ; ou l'arrivée d'un serveur MCP intégré dont
+la surface utile exige `resources/*` / `prompts/*`.
