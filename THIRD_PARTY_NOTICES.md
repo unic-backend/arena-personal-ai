@@ -42,3 +42,13 @@ libraries, or model weights are vendored or copied into this repository.
 - License: GNU Affero General Public License v3.0 (GNU AGPL-3.0 in the upstream `LICENSE` file; note that the upstream README describes the project as Apache-2.0, but the authoritative `LICENSE` file is AGPL-3.0).
 - External engine isolation: Edit-Banana operates in a separate external Python environment outside of ARENA's repository.
 - Segment Anything Model 3 (SAM3): SAM3 is an external dependency of Edit-Banana subject to its own Meta/SAM3 license and gated checkpoint access requirements. No SAM3 weights are bundled or distributed.
+
+## Codebase-Memory MCP (optional external engine)
+
+ARENA interoperates with **Codebase-Memory MCP** over its standard Model Context Protocol (MCP) stdio interface. No Codebase-Memory MCP source code or binaries are vendored or copied into this repository.
+
+- Upstream: https://github.com/DeusData/codebase-memory-mcp
+- Research preprint: *Codebase-Memory: Tree-Sitter-Based Knowledge Graphs for LLM Code Exploration via MCP* (arXiv:2603.27277)
+- Copyright: (c) 2025-2026 DeusData contributors
+- License: MIT License
+- External engine isolation: Codebase-Memory runs as an isolated local subprocess communicating over JSON-RPC 2.0 stdio with SQLite persistence. All data exchanges are subject to ARENA's security boundary and untrusted data wrapping.

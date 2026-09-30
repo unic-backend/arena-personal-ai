@@ -13352,3 +13352,31 @@ dans son fichier `LICENSE` officiel (bien que son README mentionne Apache-2.0).
 4. **Validation de sortie rigoureuse** : le document DrawIO XML produit est
    validé (non-vide, XML parsable, balises canoniques mxfile/diagram/mxGraphModel)
    avant d'émettre le statut `SUCCESS` et de publier l'artefact sous `media/rendered/`.
+
+---
+
+## DEC-0201 — Codebase-Memory MCP : graphe de connaissances structurel du code (DeusData, MIT)
+
+**Contexte.** L'analyse multi-fichiers et l'exploration de code par les agents d'ingénierie
+(`RepoEngineerAgent`, `SWEAgent`, `DioumtoukayAgent`) reposaient jusqu'ici sur `gitingest`
+(dump complet de fichiers, très consommateur de jetons) ou sur `SWEACITool` (recherche textuelle
+ligne par ligne aveugle aux dépendances). Le projet externe audité (Codebase-Memory MCP,
+DeusData/codebase-memory-mcp, licence MIT, preprint arXiv:2603.27277) propose un serveur
+MCP natif en C indexant les dépôts sous forme de graphe de connaissances SQLite (AST Tree-Sitter
+sur 158+ langages, typage Hybrid LSP, traversée BFS d'appels, requêtes Cypher).
+
+**Décision.**
+1. **Intégration par adaptateur MCP standard** : aucun code C ni binaire n'est copié dans le dépôt.
+   ARENA communique avec le binaire autonome `codebase-memory-mcp` via `ClientMcpStdio`
+   (`core/mcp/stdio_transport.py`) en JSON-RPC 2.0 sur stdio.
+2. **Connecteur unifié `core/connectors/codebase_memory.py`** : expose 13 capacités
+   strictement typées (architecture, recherche de symboles, tracé d'appels, schéma, requêtes Cypher,
+   diff d'impact, extrait de code, plan de fichier, etc.) sous le service `codebase_memory`.
+3. **Local-first et sécurité stricte** : 100% hors ligne et local sur la machine. Les chemins
+   sensibles (.env, .ssh, .gnupg, clés privées) sont bloqués dès la validation. Les données extraites
+   sont systématiquement enveloppées sous la frontière de confiance (`TrustLevel.EXTERNAL`).
+4. **Dégradation gracieuse** : `RepoEngineerAgent` et `SWEAgent` utilisent Codebase-Memory MCP
+   en priorité lorsqu'il est opérationnel, et basculent automatiquement sur `gitingest` / `swe_aci`
+   en cas d'absence du binaire.
+5. **Isolation de la mémoire** : les données du graphe de code appartiennent au contexte projet
+   et ne sont jamais injectées dans la mémoire personnelle de l'utilisateur (`core/memory/personnelle.py`).

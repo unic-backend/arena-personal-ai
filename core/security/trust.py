@@ -274,6 +274,7 @@ def report() -> Dict[str, Any]:
             "mcp_tool_descriptions", "retrieved_knowledge",
             "web_search", "browser", "api", "github",
             "pdf", "ocr", "filesystem", "meeting_transcription",
+            "codebase_memory",
         ],
         # Vide, et le rester demande de brancher chaque nouveau chemin d'entrée
         # au moment où il est écrit. Le champ demeure : le retirer ferait

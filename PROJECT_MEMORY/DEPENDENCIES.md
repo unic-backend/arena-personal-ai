@@ -16,6 +16,7 @@
 | **GalsenAPI** | API publique, sans clé | pas de données administratives du Sénégal |
 | **LightRAG** | bibliothèque + Ollama | pas de recherche dans ses documents |
 | **CoinGecko** | API publique `api.coingecko.com`, sans clé | pas de prix ni d'historique de marché — `FINANCE` répond `NON_CONFIGURE` (DEC-0078) |
+| **Codebase-Memory MCP** | processus binaire natif (`codebase-memory-mcp`), lancé/arrêté par ARENA via MCP stdio (`USMAN_CODEBASE_MEMORY_BIN`) | repli automatique sur gitingest et l'arborescence (`NOT_CONFIGURED`) |
 
 ## Externes — paquets
 

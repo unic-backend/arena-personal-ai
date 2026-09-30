@@ -120,3 +120,44 @@ class TestLeRegardSurLeDepotVientDeGitingest:
 
         assert resultat["status"] == "success"
         assert "source : arborescence" in agent.provider.appels[0]["prompt"]
+
+
+class TestLeRegardSurLeDepotVientDeCodebaseMemory:
+    """Mission Codebase Memory MCP (DEC-0201).
+
+    Si codebase_memory est déclaré et disponible, RepoEngineerAgent utilise
+    son analyse d'architecture précise et structurée (AST/graphe).
+    """
+
+    @pytest.mark.asyncio
+    async def test_codebase_memory_utilise_en_priorite_si_operationnel(self, fake_provider):
+        from core.actions.resultat import succes
+
+        class RegistreAvecCBM:
+            def __init__(self):
+                self.appels = []
+
+            def est_declare(self, nom):
+                return nom in ("codebase_memory", "gitingest")
+
+            def executer(self, connecteur, capacite, **parametres):
+                self.appels.append((connecteur, capacite, parametres))
+                if connecteur == "codebase_memory" and capacite == "architecture":
+                    return succes(
+                        action="architecture", cible="codebase_memory",
+                        message="[donnée external]\nARCHITECTURE CODEBASE MEMORY",
+                        preuve="test_proof",
+                        architecture={"languages": ["Python"], "routes": 5},
+                    )
+                return succes(action="ingerer", cible="gitingest", message="gitingest", preuve="p")
+
+        registre = RegistreAvecCBM()
+        agent = RepoEngineerAgent(provider=fake_provider, registre=registre)
+
+        resultat = await agent.run("Analyse l'architecture du projet")
+
+        assert resultat["status"] == "success"
+        assert ("codebase_memory", "architecture") in [(c, cap) for c, cap, _ in registre.appels]
+        prompt = agent.provider.appels[0]["prompt"]
+        assert "source : codebase_memory" in prompt
+        assert "ARCHITECTURE CODEBASE MEMORY" in prompt

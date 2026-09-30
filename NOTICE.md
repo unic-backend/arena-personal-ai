@@ -247,3 +247,17 @@ son installeur `scripts/installer_edit_banana.py`.
 
 Les dépendances de modèles (notamment le checkpoint SAM3) sont soumises à leurs conditions
 d'accès officielles propres et ne sont ni téléchargées ni distribuées par ARENA.
+
+---
+
+## Codebase-Memory MCP — graphe de connaissances structurel du code
+
+ARENA sait interroger le graphe de connaissances structurel d'un dépôt logiciel (AST, hiérarchies d'appels Hybrid LSP, requêtes Cypher) en pilotant **Codebase-Memory MCP** sur son interface standard stdio (`core/connectors/codebase_memory.py`).
+
+- Projet : Codebase-Memory MCP — https://github.com/DeusData/codebase-memory-mcp
+- Recherche : *Codebase-Memory: Tree-Sitter-Based Knowledge Graphs for LLM Code Exploration via MCP* (arXiv:2603.27277)
+- Licence : **MIT**, « Copyright 2025-2026 DeusData »
+
+**Aucune ligne de code C ni binaire n'est copiée dans ce dépôt.**
+L'intégration est un connecteur natif ARENA utilisant le transport MCP stdio existant (`core/mcp/stdio_transport.py`), avec dégradation gracieuse vers `gitingest` et les outils ACI locaux. Le binaire s'exécute localement dans un processus isolé et stocke ses index dans sa propre base SQLite. Toutes les données extraites sont enveloppées sous la frontière de confiance (`core/security/trust.py`).
+

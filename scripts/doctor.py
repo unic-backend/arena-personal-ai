@@ -678,6 +678,14 @@ def verifier_edit_banana() -> Verification:
         "python scripts/installer_edit_banana.py <destination> --accept-agpl-license")
 
 
+def verifier_codebase_memory() -> Verification:
+    """Le graphe de connaissances du code (DeusData, MIT, DEC-0201), interroge pour de vrai."""
+    return _ligne_connecteur(
+        "Mémoire de code (Codebase Memory MCP)", "core.connectors.codebase_memory",
+        "ConnecteurCodebaseMemory",
+        "Télécharger ou compiler le binaire codebase-memory-mcp et le placer sur le PATH ou configurer USMAN_CODEBASE_MEMORY_BIN.")
+
+
 def verifier_gardien() -> Verification:
     """La memoire de maintenance du gardien (DEC-0014) — ce qu'elle contient
     deja, jamais « aucun probleme » invente si aucun cycle n'a encore tourne.
@@ -934,6 +942,7 @@ def diagnostiquer() -> Rapport:
         mesurer("Visages (Faceplugin)", verifier_faceplugin),
         mesurer("Design (UI/UX Pro Max)", verifier_ui_ux_pro_max),
         mesurer("Diagrammes éditables (Edit-Banana)", verifier_edit_banana),
+        mesurer("Mémoire de code (Codebase Memory MCP)", verifier_codebase_memory),
         mesurer("Preuve formelle (Lean)", verifier_lean),
         mesurer("Architecture 3D", verifier_architecture_3d),
         mesurer("Gardien (maintenance)", verifier_gardien),
