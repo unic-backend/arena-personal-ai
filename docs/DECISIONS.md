@@ -13485,3 +13485,90 @@ permanent : d'où le rendu qui rapporte sans conclure.
 tous les tests sont hors ligne, sur registre factice (`Mocked`). Le comportement
 contre un vrai Netronome reste `UNKNOWN — non mesuré` tant que le binaire n'est
 pas lancé sur la machine du propriétaire.
+
+## DEC-0204 — Basic Memory : audité, refusé. ARENA a déjà cette mémoire
+
+**Contexte.** Demande du 30/09/2026 : auditer
+`basicmachines-co/basic-memory` — « local-first, MCP-natif, connaissance en
+Markdown, graphe de connaissances, recherche sémantique » — et déterminer s'il
+rend la mémoire d'ARENA substantiellement plus persistante, utile, cherchable
+et intelligente. La consigne interdisait explicitement de l'installer sans
+preuve, et exigeait de rejeter s'il n'apporte rien. Audit complet →
+`docs/audits/basic_memory_audit.md` (amont cloné, commit `88c3990c` du
+29/09/2026, `__version__ = "0.23.2"`, 128 338 lignes de Python).
+
+**Décision : aucune intégration.** Ni dépendance Python, ni sous-processus MCP,
+ni service HTTP, ni connecteur, ni adaptateur, ni ligne de code. Trois blocages
+indépendants, chacun suffisant.
+
+1. **Licence — AGPL-3.0-or-later contre un `LICENSE` « tous droits réservés »,
+   sur un dépôt PUBLIC.** Copier son source ferait d'ARENA une œuvre dérivée
+   AGPL : même règle que DEC-0200 (Edit-Banana) et DEC-0202 (Netronome), tenue
+   par `tests/test_moteurs_externes_restent_dehors.py`. Mesuré en plus sur les
+   46 dépendances directes via l'API PyPI : **`unidecode` est GPL-2.0-or-later**
+   et **`psycopg` est LGPL-3.0-only** — la clôture d'exécution est elle aussi
+   copyleft. Le processus séparé (agrégation, comme Netronome) serait la seule
+   forme envisageable, mais l'AGPL **§13** vise l'interaction par le réseau et
+   ARENA *est* un service réseau. Cette question est juridique, pas technique :
+   elle appartient au propriétaire, elle ne se devine pas, et tant qu'elle n'est
+   pas tranchée c'est un blocage, pas une réserve.
+
+2. **Python — mesuré, sans appel.** `requires-python = ">=3.12"` ; ARENA tourne
+   en **3.11** (`.github/workflows/ci.yml`, `apps/backend/Dockerfile`,
+   `target-version = "py311"`). `pip install --dry-run basic-memory` sous
+   3.11.2 : *« No matching distribution found »* — **aucune version publiée
+   depuis la 0.0.0** n'est installable ici.
+
+3. **Ce serait une seconde mémoire, pas une meilleure.** Le seul blocage qui
+   resterait si les deux autres tombaient. Markdown + wikiliens + graphe +
+   recherche hybride + projets existent **déjà** : `core/knowledge/vault.py`
+   (DEC-0130), `core/knowledge/retrieval.py` (BM25 + RRF + dense),
+   `core/memory/personnelle.py`, `core/memory/semantique.py`,
+   `core/mcp/memory_server.py` (six outils, DEC-0090). Mesuré le 30/09/2026 :
+   ingestion Markdown, graphe (3 nœuds / 1 arête / 1 lien cassé détecté),
+   BM25, repli étiqueté sans Ollama, lint, et isolation de projet réelle
+   (« Medina » ne rend rien de « Fast Group »). L'intégrer donnerait deux
+   corpus, deux index, deux graphes, deux moteurs et deux notions de projet
+   pour zéro besoin nouveau.
+
+**Et ARENA fait quatre choses que l'amont ne fait pas** : chiffrement au repos
+(`core/memory/chiffrement.py`), refus d'écrire un contenu qui ressemble à un
+secret (mêmes motifs que le scanner de commit), frontière de confiance sur le
+contenu récupéré (`core/security/trust.py`), et séparation FAIT / INFERENCE
+promue seulement par `confirmer()`. Router de la mémoire vers Basic Memory
+**abaisserait** le plancher de vie privée.
+
+**Deux constats mesurés, à décharge**, pour que ce refus ne repose pas sur une
+caricature : le projet est **actif** (commit et `CHANGELOG` du 29/09/2026, 567
+fichiers de test), et ses sorties réseau par défaut (analytique Umami, mise à
+jour automatique depuis PyPI) **ne se déclenchent pas sur le chemin MCP** —
+`maybe_show_cloud_promo` et `maybe_run_periodic_auto_update` sortent tous deux
+quand la sous-commande est `mcp` ou quand la session n'est pas interactive. Le
+refus ne tient pas à ça. Ce qui reste néanmoins vrai : `fastembed` télécharge
+ses poids en ligne au premier usage, le modèle par défaut
+`bge-small-en-v1.5` est **anglais** alors qu'ARENA tourne en `bge-m3`
+multilingue, `default_project` **retombe silencieusement** sur un projet par
+défaut quand le paramètre manque (l'inverse de ce qu'exige l'isolation
+d'ARENA), et trois outils destructifs (`delete_note`, `move_note`,
+`delete_project`) sont exposés sans autorisation.
+
+**Ce que ça coûte si c'est faux.** Si Basic Memory apportait réellement une
+capacité absente, ARENA s'en prive. C'est pourquoi le refus est **tenu par un
+test** et non par une phrase : `tests/test_basic_memory_reste_dehors.py` mesure
+qu'aucune dépendance ni import n'est apparu, **et** que les capacités sur
+lesquelles le refus repose (Markdown, graphe, recherche hybride avec repli
+étiqueté, serveur MCP mémoire, isolation de projet, chiffrement, refus de
+secret) existent encore. Le jour où l'une disparaît, le test échoue et la
+décision se rouvre au lieu de rester vraie par habitude.
+
+**Non mesuré.** Aucune comparaison de performance — latence de recherche, coût
+d'indexation, usage disque, grande base, accès concurrent, reconstruction
+d'index, qualité de récupération en français. `UNKNOWN — non mesuré`, et cela
+le reste tant que les deux systèmes n'ont pas tourné sur le même corpus sur la
+machine du propriétaire. Aucun gain de performance n'est revendiqué par cette
+décision, dans aucun sens.
+
+**Réversible.** La décision se rouvre quand **les trois** blocages tombent :
+un avis du propriétaire sur l'AGPL §13 pour un service réseau, Python 3.12 sur
+sa machine et dans la CI, **et** une capacité nommée que le Knowledge Vault ne
+sait pas rendre.
