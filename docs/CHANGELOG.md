@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Ajouté — 01/10/2026 — Une adresse fixe pour ton PC
+
+Ton PC peut maintenant être le seul serveur de ton IA, à une adresse qui ne
+change plus d'un démarrage à l'autre. Mets `USMAN_ADRESSE_FIXE=` suivi de ton
+adresse dans `.env` : le lanceur n'ouvre plus de tunnel temporaire et annonce
+cette adresse. Sans cette ligne, rien ne change (DEC-0208).
+
 ### Corrigé — 30/09/2026 — Une demande de plus de trois étapes ne part plus chez un seul agent
 
 « lis ce PDF puis résume-le puis fais un tableur puis envoie-le par mail » se

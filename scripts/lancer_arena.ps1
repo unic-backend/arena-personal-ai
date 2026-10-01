@@ -36,6 +36,28 @@ try {
     Write-Host "       refusera chaque message au lieu d'inventer une reponse." -ForegroundColor Yellow
 }
 
+# --- 1 bis. Adresse fixe (DEC-0208) ---------------------------------------------
+#
+# Demande du proprietaire, 01/10/2026 : je veux que mon PC soit le serveur
+# de mon IA. Le tunnel gratuit de cloudflared change de nom a chaque
+# demarrage : le telephone perdait son serveur chaque fois que le PC
+# redemarrait, et les retours Connecter Google / TikTok ne tenaient pas.
+#
+# Avec `USMAN_ADRESSE_FIXE` dans `.env` (par exemple l'adresse d'un Tailscale
+# Funnel, qui reste publie en arriere-plan apres un redemarrage), le lanceur
+# ne demarre AUCUN tunnel : il annonce cette adresse. Sans elle, rien ne
+# change : le tunnel gratuit reste le comportement par defaut.
+$fichierEnv = Join-Path $racine ".env"
+$adresseFixe = $null
+if (Test-Path $fichierEnv) {
+    foreach ($ligne in Get-Content $fichierEnv) {
+        if ($ligne -match '^\s*USMAN_ADRESSE_FIXE\s*=\s*(https://\S+?)/*\s*$') { $adresseFixe = $Matches[1] }
+    }
+}
+if ($adresseFixe) {
+    Write-Host "  [ok] adresse fixe : $adresseFixe (aucun tunnel temporaire)" -ForegroundColor Green
+}
+
 # --- 2. cloudflared ----------------------------------------------------------
 $cloudflared = $null
 foreach ($chemin in @(
@@ -48,7 +70,7 @@ if (-not $cloudflared) {
     $trouve = Get-Command cloudflared -ErrorAction SilentlyContinue
     if ($trouve) { $cloudflared = $trouve.Source }
 }
-if (-not $cloudflared) {
+if (-not $cloudflared -and -not $adresseFixe) {
     Write-Host "  [X] cloudflared introuvable." -ForegroundColor Red
     Write-Host "      Installe-le : winget install --id Cloudflare.cloudflared -e --source winget"
     exit 1
@@ -146,14 +168,17 @@ Write-Host "  [ok] serveur lance dans sa propre fenetre" -ForegroundColor Green
 
 # --- 4. Le tunnel ------------------------------------------------------------
 $journal = Join-Path $env:TEMP "arena-tunnel.log"
-Remove-Item $journal -ErrorAction SilentlyContinue
-$commandeTunnel = "& '$cloudflared' tunnel --url http://localhost:8000 --logfile '$journal'"
-Start-Process powershell -ArgumentList "-NoExit", "-Command", $commandeTunnel
-Write-Host "  [ok] tunnel lance dans sa propre fenetre" -ForegroundColor Green
+if (-not $adresseFixe) {
+    Remove-Item $journal -ErrorAction SilentlyContinue
+    $commandeTunnel = "& '$cloudflared' tunnel --url http://localhost:8000 --logfile '$journal'"
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", $commandeTunnel
+    Write-Host "  [ok] tunnel lance dans sa propre fenetre" -ForegroundColor Green
+}
+$adresse = $adresseFixe
+if (-not $adresse) {
 Write-Host ""
 Write-Host "  Recherche de l'adresse publique..." -NoNewline
 
-$adresse = $null
 foreach ($essai in 1..40) {
     Start-Sleep -Milliseconds 750
     Write-Host "." -NoNewline
@@ -165,6 +190,7 @@ foreach ($essai in 1..40) {
     }
 }
 Write-Host ""
+}
 
 if (-not $adresse) {
     Write-Host ""
@@ -199,7 +225,6 @@ try {
 # Sans `USMAN_ANNONCE_URL` dans `.env`, rien n'est tente et rien n'est promis.
 $annonceUrl = $null
 $annonceCle = $null
-$fichierEnv = Join-Path $racine ".env"
 if (Test-Path $fichierEnv) {
     foreach ($ligne in Get-Content $fichierEnv) {
         if ($ligne -match '^\s*USMAN_ANNONCE_URL\s*=\s*(.+)$') { $annonceUrl = $Matches[1].Trim() }
@@ -304,6 +329,11 @@ if ($carre) {
 }
 
 Write-Host ""
-Write-Host "  Laisse les deux fenetres ouvertes. Fermer celle du tunnel change"
-Write-Host "  l'adresse au prochain demarrage." -ForegroundColor DarkGray
+if ($adresseFixe) {
+    Write-Host "  Laisse la fenetre du serveur ouverte. L'adresse ne change pas :"
+    Write-Host "  elle est publiee en arriere-plan, meme apres un redemarrage." -ForegroundColor DarkGray
+} else {
+    Write-Host "  Laisse les deux fenetres ouvertes. Fermer celle du tunnel change"
+    Write-Host "  l'adresse au prochain demarrage." -ForegroundColor DarkGray
+}
 Write-Host ""

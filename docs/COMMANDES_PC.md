@@ -70,6 +70,12 @@ USMAN_ANNONCE_URL=https://arena-personal-ai-production.up.railway.app
 téléphone chaque jour. Toutes les variables lues par les scripts sont dans
 `.env.example`, et un test refuse désormais qu'une seule en sorte.
 
+**Adresse fixe (sans Railway)** : une fois `tailscale funnel --bg 8000` lancé sur
+le PC, ajoute dans `.env` la ligne `USMAN_ADRESSE_FIXE=https://<ton-pc>.<réseau>.ts.net`
+(l'adresse que Tailscale a affichée). Le lanceur n'ouvre alors aucun tunnel
+temporaire, et le téléphone garde la même adresse après chaque redémarrage.
+Ouvre l'interface sur cette adresse, puis renseigne le panneau Backend avec elle.
+
 **Ne mets jamais ce fichier dans git**, et ne m'envoie jamais ta clé.
 
 ---
