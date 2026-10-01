@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Ajouté — 01/10/2026 — « Connecter LinkedIn » dans les réglages
+
+Réglages → Connecteurs → LinkedIn → Connecter : LinkedIn te demande ton accord
+et ARENA garde le jeton toute seule, sans passer par le générateur de jeton du
+site de LinkedIn. Il faut d'abord créer ton application LinkedIn et y
+enregistrer l'adresse de retour d'ARENA. Le jeton dure environ 60 jours, puis
+tu reclique sur Connecter (DEC-0209).
+
 ### Ajouté — 01/10/2026 — Une adresse fixe pour ton PC
 
 Ton PC peut maintenant être le seul serveur de ton IA, à une adresse qui ne

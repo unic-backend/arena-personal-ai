@@ -19,7 +19,7 @@
    ───────────────────────────────────────────────────────────── */
 
 import type { LucideIcon } from 'lucide-react';
-import { Mail, MapPin, Video } from 'lucide-react';
+import { BriefcaseBusiness, Mail, MapPin, Video } from 'lucide-react';
 
 export type ConnectorAuth = 'oauth' | 'apikey';
 
@@ -66,6 +66,14 @@ export const CONNECTOR_CATALOG: ConnectorDef[] = [
     descriptionFr: 'Publier tes vidéos ou les déposer dans ta boîte TikTok — seulement avec ta confirmation',
     scopes: ['account', 'post video (confirmed)', 'inbox draft (confirmed)'],
     scopesFr: ['compte', 'publier une vidéo (confirmé)', 'brouillon dans la boîte (confirmé)'],
+  },
+  {
+    // DEC-0209 : LinkedIn, same /connectors/{id}/auth flow (access token, ~60 days).
+    id: 'linkedin', name: 'LinkedIn', icon: BriefcaseBusiness, category: 'productivity', auth: 'oauth',
+    description: 'Post on your LinkedIn profile — only with your confirmation',
+    descriptionFr: 'Publier sur ton profil LinkedIn — seulement avec ta confirmation',
+    scopes: ['profile', 'post (confirmed)'],
+    scopesFr: ['profil', 'publier (confirmé)'],
   },
 ];
 

@@ -160,6 +160,28 @@ entreprise, demandent une autorisation que LinkedIn n'accorde qu'après examen
 de l'application. JARVIS ne fait donc que publier sur ton profil, avec ton
 accord à chaque fois.
 
+### Le plus simple : le bouton « Connecter » (DEC-0209)
+
+Le générateur de jeton du site de LinkedIn se fige chez certains (mesuré le
+01/10/2026). ARENA sait donc faire le consentement elle-même :
+
+1. Crée l'application (étapes 1 et 2 ci-dessous : **Create app**, puis les
+   produits **Sign In with LinkedIn using OpenID Connect** et **Share on
+   LinkedIn**).
+2. Onglet **Auth** de l'application : copie l'**ID client** et le **secret
+   client**. Dans **URL de redirection autorisées**, ajoute
+   `<PUBLIC_BASE_URL>/connectors/linkedin/callback` (par exemple
+   `https://uthman-pc.taila8b6bd.ts.net/connectors/linkedin/callback`).
+3. Dans `.env` : `LINKEDIN_CLIENT_ID=`, `LINKEDIN_CLIENT_SECRET=`, et
+   `PUBLIC_BASE_URL=` avec l'adresse fixe de ton PC. Relance ARENA.
+4. Réglages → Connecteurs → **LinkedIn** → **Connecter**. LinkedIn te demande
+   ton accord ; ARENA garde le jeton toute seule.
+
+Le jeton vit environ **60 jours** : LinkedIn ne donne pas de renouvellement à
+une application ordinaire. Quand il expire, reclique sur **Connecter**.
+
+### Autre voie : le générateur de jeton de LinkedIn
+
 ### Obtenir le jeton
 
 1. Va sur **linkedin.com/developers** → **Create app**. LinkedIn demande de

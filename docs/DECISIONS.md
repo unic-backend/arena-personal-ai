@@ -13776,3 +13776,46 @@ premier vrai lancement est sur la machine du proprietaire.
 c'est la consequence voulue de « plus de Railway ». Si le Funnel est coupe
 (`tailscale funnel --https=443 off`), l'adresse fixe ne repond plus et le
 lanceur l'annonce quand meme : le telephone affiche alors « inaccessible ».
+
+## DEC-0209 — « Connecter LinkedIn » : le consentement passe par ARENA, le jeton d'acces est garde
+
+**2026-10-01.** Le proprietaire a cree son application LinkedIn (produits
+« Partager sur LinkedIn » et OpenID Connect ajoutes) mais le generateur de jeton
+du site de LinkedIn s'est fige apres le clic, puis la connexion en navigation
+privee a ete refusee. Il a choisi, parmi trois options, le bouton « Connecter
+LinkedIn » dans ARENA.
+
+**Decision** :
+
+- `social/linkedin/oauth.py` : l'adresse du consentement (portees `openid
+  profile w_member_social`, **sans e-mail**, separees par `%20`) et l'echange du
+  code contre le jeton. Un corps sans `access_token` est un refus, quel que soit
+  le code HTTP.
+- Le routeur existant (`connectors.py`) recoit une troisieme famille. La seule
+  difference de fond : **une application LinkedIn ordinaire n'a pas de jeton de
+  renouvellement** ; c'est le jeton d'acces (`LINKEDIN_ACCESS_TOKEN`, environ
+  60 jours) qui est garde, via la meme persistance que les autres.
+- `LinkedInConnector.invalider_sonde()` : sans lui, une sonde faite avant la
+  connexion (cache de 60 s) resterait « non connecte » juste apres un
+  consentement reussi.
+- Carte LinkedIn dans le catalogue de la PWA (icone `BriefcaseBusiness` : la
+  version de lucide-react installee n'a plus d'icone de marque).
+- Variables `LINKEDIN_CLIENT_ID` et `LINKEDIN_CLIENT_SECRET` dans `.env.example`.
+
+**Hors perimetre** : renouvellement automatique (LinkedIn le reserve aux
+partenaires), lecture des publications ou statistiques, publication au nom
+d'une page entreprise (autorisations qu'il faut faire examiner), et le
+contournement de `PUBLISH`, qui s'applique toujours.
+
+**Verifie** : 13 tests (consentement, echange par `MockTransport`, jeton garde,
+refus nommes, sonde renouvelee) ; sabotage constate sur trois points (jeton de
+renouvellement garde a la place du jeton d'acces, portees separees par `+`,
+`invalider_sonde` sans effet). **Non verifie** : aucun echange reel avec
+LinkedIn, aucun identifiant dans cet environnement — le premier vrai
+consentement est sur la machine du proprietaire.
+
+**Ce que ca coute si c'est faux** : si LinkedIn refuse l'adresse de retour
+(elle doit etre enregistree a l'identique dans l'onglet Auth), la page de
+retour le dit (« LinkedIn a refuse… ») et rien n'est ecrit ; le jeton de
+`.env` d'avant reste en place. Le jeton expire apres ~60 jours : la sante du
+connecteur le dit (refus 401), il faut recliquer sur Connecter.

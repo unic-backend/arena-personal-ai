@@ -106,6 +106,11 @@ class LinkedInConnector(Connecteur):
 
     # --- Sante ---------------------------------------------------------------------
 
+    def invalider_sonde(self) -> None:
+        """Juste apres une connexion : oublier la mesure et le membre d'avant,
+        qui appartenaient peut-etre a un jeton remplace."""
+        self._sante, self._sante_mesuree_a, self._membre = None, 0.0, None
+
     def authentifier(self) -> bool:
         return self.sonder().etat == EtatSante.OPERATIONNEL
 
