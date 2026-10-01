@@ -64,6 +64,7 @@ from core.connectors.google_oauth import (
     identifiants,
     url_consentement,
 )
+from social.linkedin import oauth as oauth_linkedin
 from social.tiktok import oauth as oauth_tiktok
 
 logger = logging.getLogger("usman.backend.connectors")
@@ -98,6 +99,15 @@ FOURNISSEURS_OAUTH = {
         "portees": oauth_tiktok.PORTEES_TIKTOK,
         "variable_env": "TIKTOK_REFRESH_TOKEN",
     },
+    # LinkedIn (DEC-0209) : le generateur de jeton du site de LinkedIn s'etant
+    # fige, le consentement passe par ARENA. Pas de jeton de renouvellement
+    # pour une application ordinaire : c'est le jeton d'ACCES qui est garde.
+    "linkedin": {
+        "famille": "linkedin",
+        "portees": oauth_linkedin.PORTEES_LINKEDIN,
+        "variable_env": "LINKEDIN_ACCESS_TOKEN",
+        "jeton": "access_token",
+    },
 }
 
 
@@ -110,12 +120,22 @@ def _famille(config: Dict[str, object]) -> str:
 
 
 def _nom_fournisseur(config: Dict[str, object]) -> str:
-    return "TikTok" if _famille(config) == "tiktok" else "Google"
+    return {"tiktok": "TikTok", "linkedin": "LinkedIn"}.get(_famille(config), "Google")
+
+
+def _jeton_obtenu(config: Dict[str, object], jetons: object) -> Optional[str]:
+    """Le jeton a garder : de renouvellement (Google, TikTok) ou d'acces (LinkedIn)."""
+    if not isinstance(jetons, dict):
+        return None
+    valeur = jetons.get(str(config.get("jeton") or "refresh_token"))
+    return str(valeur) if valeur else None
 
 
 def _identifiants_de(config: Dict[str, object]) -> Tuple[str, str]:
     if _famille(config) == "tiktok":
         return oauth_tiktok.identifiants()
+    if _famille(config) == "linkedin":
+        return oauth_linkedin.identifiants()
     client_id, client_secret, _ = identifiants()
     return client_id, client_secret
 
@@ -125,6 +145,11 @@ def _ce_qui_manque(config: Dict[str, object], fournisseur: str) -> str:
         return ("TIKTOK_CLIENT_KEY et TIKTOK_CLIENT_SECRET absents de .env : cree "
                 "l'application sur developers.tiktok.com (Login Kit + Content Posting "
                 f"API, URI de redirection {_redirect_uri(fournisseur)}) avant de connecter.")
+    if _famille(config) == "linkedin":
+        return ("LINKEDIN_CLIENT_ID et LINKEDIN_CLIENT_SECRET absents de .env : "
+                "ils sont dans l'onglet Authentification de ton application sur "
+                "linkedin.com/developers (ajoute-y aussi l'URL de redirection "
+                f"{_redirect_uri(fournisseur)}) avant de connecter.")
     return ("GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET absents de .env : "
             "cree l'app OAuth sur console.cloud.google.com (ecran de "
             "consentement + identifiant « application web », URI de "
@@ -134,6 +159,8 @@ def _ce_qui_manque(config: Dict[str, object], fournisseur: str) -> str:
 def _url_de(config: Dict[str, object], client_id: str, redirect: str, state: str) -> str:
     if _famille(config) == "tiktok":
         return oauth_tiktok.url_consentement(client_id, redirect, state, config["portees"])
+    if _famille(config) == "linkedin":
+        return oauth_linkedin.url_consentement(client_id, redirect, state, config["portees"])
     return url_consentement(client_id, redirect, state, config["portees"])
 
 
@@ -141,6 +168,8 @@ def _echanger_de(config: Dict[str, object], client_id: str, client_secret: str,
                  code: str, redirect: str) -> Dict[str, object]:
     if _famille(config) == "tiktok":
         return oauth_tiktok.code_pour_jetons(client_id, client_secret, code, redirect)
+    if _famille(config) == "linkedin":
+        return oauth_linkedin.code_pour_jetons(client_id, client_secret, code, redirect)
     return code_pour_jetons(client_id, client_secret, code, redirect)
 
 
@@ -262,18 +291,20 @@ async def recevoir_callback(
         logger.info("Echange du code OAuth %s refuse : %s", fournisseur, type(erreur).__name__)
         return _page_erreur(f"{nom} a refuse l'echange du code.")
 
-    refresh = jetons.get("refresh_token") if isinstance(jetons, dict) else None
+    refresh = _jeton_obtenu(config, jetons)
     if not refresh:
         # `prompt=consent&access_type=offline` (deja force a l'etape /auth)
         # garantit normalement un refresh_token — ceci ne devrait arriver que
         # si Google change son comportement.
         if _famille(config) == "tiktok":
             return _page_erreur("TikTok n'a pas renvoye de jeton de renouvellement : relance la connexion.")
+        if _famille(config) == "linkedin":
+            return _page_erreur("LinkedIn n'a pas renvoye de jeton d'acces : relance la connexion.")
         return _page_erreur(
             "Google n'a pas renvoye de jeton de rafraichissement. Revoque "
             "l'acces sur myaccount.google.com/permissions puis reessaie.")
 
-    _persister_refresh_token(config["variable_env"], str(refresh))
+    _persister_refresh_token(config["variable_env"], refresh)
 
     # Une sonde recente (la PWA interroge /status pendant qu'elle attend le
     # popup) resterait en cache jusqu'a 60 s et rendrait encore NON_CONFIGURE
