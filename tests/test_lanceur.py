@@ -117,3 +117,77 @@ def test_la_phrase_scanne_ce_carre_n_est_dite_que_s_il_y_a_un_carre():
 
     assert position_phrase > position_test, (
         "« Scanne ce carre » est encore affiche avant de savoir s'il y en a un")
+
+
+# --- L'adresse fixe (DEC-0208) -----------------------------------------------------
+
+def _regle_adresse_fixe() -> "re.Pattern":
+    """L'expression que le lanceur applique à chaque ligne de `.env`, lue dans
+    le script lui-même — jamais recopiée ici : un test qui contient sa propre
+    copie ne surveille que lui-même. Même syntaxe en .NET et en Python pour
+    cette expression (classes, quantificateurs paresseux, ancres)."""
+    texte = LANCEUR.read_text(encoding="utf-8")
+    trouve = re.search(r"-match '(\^\\s\*USMAN_ADRESSE_FIXE[^']*)'", texte)
+    assert trouve, "le lanceur ne lit plus USMAN_ADRESSE_FIXE"
+    return re.compile(trouve.group(1))
+
+
+def test_l_adresse_fixe_est_lue_sans_barre_finale_ni_espaces():
+    regle = _regle_adresse_fixe()
+
+    for ligne, attendu in [
+        ("USMAN_ADRESSE_FIXE=https://uthman-pc.taila8b6bd.ts.net", "https://uthman-pc.taila8b6bd.ts.net"),
+        ("USMAN_ADRESSE_FIXE=https://uthman-pc.taila8b6bd.ts.net/", "https://uthman-pc.taila8b6bd.ts.net"),
+        ("  USMAN_ADRESSE_FIXE = https://ia.exemple.org//  ", "https://ia.exemple.org"),
+    ]:
+        trouve = regle.match(ligne)
+        assert trouve and trouve.group(1) == attendu, ligne
+
+
+def test_ce_qui_n_est_pas_une_adresse_https_ne_compte_pas():
+    """Vide, commentée ou en clair : le lanceur garde son tunnel gratuit plutôt
+    que d'annoncer une adresse que le téléphone ne pourrait pas joindre."""
+    regle = _regle_adresse_fixe()
+
+    for ligne in [
+        "USMAN_ADRESSE_FIXE=",
+        "# USMAN_ADRESSE_FIXE=https://ia.exemple.org",
+        "USMAN_ADRESSE_FIXE=http://192.168.1.20:8000",
+        "AUTRE_USMAN_ADRESSE_FIXE=https://ia.exemple.org",
+    ]:
+        assert regle.match(ligne) is None, ligne
+
+
+def test_avec_une_adresse_fixe_aucun_tunnel_n_est_demarre():
+    """Le tunnel gratuit change de nom à chaque démarrage : le lancer en plus de
+    l'adresse fixe annoncerait la mauvaise des deux."""
+    texte = LANCEUR.read_text(encoding="utf-8")
+
+    bloc = texte[texte.index("# --- 4. Le tunnel"):]
+    assert bloc.index("if (-not $adresseFixe) {") < bloc.index("Start-Process powershell"), (
+        "le tunnel gratuit démarre même avec une adresse fixe")
+    assert "if (-not $cloudflared -and -not $adresseFixe)" in texte, (
+        "cloudflared reste exigé alors qu'aucun tunnel n'est lancé")
+    assert "$adresse = $adresseFixe" in texte
+
+
+def test_sans_adresse_fixe_le_tunnel_gratuit_reste_le_comportement_par_defaut():
+    texte = LANCEUR.read_text(encoding="utf-8")
+
+    assert "tunnel --url http://localhost:8000" in texte
+    assert "Recherche de l'adresse publique" in texte
+
+
+def test_les_accolades_du_lanceur_s_equilibrent():
+    """Pas de PowerShell sur toutes les machines de test : à défaut de l'exécuter,
+    un bloc ouvert pour rien (`if (...) {` sans sa fermeture) se voit au compte."""
+    texte = LANCEUR.read_text(encoding="utf-8")
+    sans_commentaires = "\n".join(ligne for ligne in texte.splitlines() if not ligne.lstrip().startswith("#"))
+
+    assert sans_commentaires.count("{") == sans_commentaires.count("}")
+
+
+def test_la_variable_est_documentee_dans_le_fichier_d_exemple():
+    exemple = (RACINE / ".env.example").read_text(encoding="utf-8")
+
+    assert re.search(r"^USMAN_ADRESSE_FIXE=", exemple, re.MULTILINE)

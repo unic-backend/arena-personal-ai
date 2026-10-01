@@ -13739,3 +13739,40 @@ source copiée libérée, fichiers intermédiaires nettoyés).
 d'une déclaration dans `runtime.py`, d'une entrée de permissions, d'une
 capacité du graphe vidéo, d'un manifeste, de tests et d'un document. Aucune
 dépendance à désinstaller, aucune capacité existante à restaurer.
+
+## DEC-0208 — Le PC est le serveur : une adresse fixe, et le lanceur n'ouvre plus de tunnel temporaire
+
+**2026-10-01.** Demande du proprietaire : « je veux que mon PC soit le serveur
+de mon IA », plus Railway. Le tunnel gratuit de cloudflared change de nom a
+chaque demarrage : le telephone perdait son serveur a chaque redemarrage du PC,
+et l'adresse de retour de « Connecter Google / TikTok » ne pouvait pas tenir.
+
+**Ce qui a ete decide avec le proprietaire** : `unicplaquiste.com` est gere par
+Netlify (DNS et, vraisemblablement, le site). Un tunnel Cloudflare a adresse
+fixe demande, a ma connaissance et sans que je l'aie verifie ici, que
+Cloudflare gere le DNS du domaine : deplacer celui-ci risquait le site et les
+e-mails. Choix : **Tailscale Funnel** (`tailscale funnel --bg 8000`), gratuit,
+adresse https fixe, domaine intact. Mesure le 01/10/2026 sur son PC :
+`https://uthman-pc.taila8b6bd.ts.net/health` repond `healthy` depuis son
+telephone, et le panneau Backend passe au vert une fois l'interface ouverte
+sur cette adresse (ouverte depuis une autre origine : « Failed to fetch »).
+
+**Decision** :
+
+- Nouvelle variable optionnelle `USMAN_ADRESSE_FIXE` (`.env.example`). Si elle
+  est une adresse `https://`, `scripts/lancer_arena.ps1` ne demarre aucun
+  tunnel, ne cherche pas `cloudflared`, et annonce cette adresse. Vide ou
+  absente : comportement inchange, tunnel gratuit.
+- Rien n'est supprime : ni Railway, ni le « serveur de secours » du panneau
+  Backend. Les arreter est la decision du proprietaire, apres quelques jours
+  d'usage.
+
+**Verifie** : les tests du lanceur (expression de lecture extraite du vrai
+script, tunnel garde par la condition — sabotage constate). **Non verifie** :
+le script n'a pas ete execute, aucun PowerShell dans cet environnement ; le
+premier vrai lancement est sur la machine du proprietaire.
+
+**Ce que ca coute si c'est faux** : PC eteint, l'IA ne repond plus du tout —
+c'est la consequence voulue de « plus de Railway ». Si le Funnel est coupe
+(`tailscale funnel --https=443 off`), l'adresse fixe ne repond plus et le
+lanceur l'annonce quand meme : le telephone affiche alors « inaccessible ».
