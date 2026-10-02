@@ -2,6 +2,15 @@
 
 ## [Non publié]
 
+### Corrigé — 02/10/2026 — La vidéo ne se lance plus sans voix, et la voix part avec la demande
+
+Ton premier essai de vidéo a échoué à la dernière étape, après sept minutes de
+calcul : aucune voix n'était réglée. ARENA envoie maintenant la voix de
+`MONEYPRINTER_VOIX` (dans `.env`) avec chaque demande, et refuse de lancer une
+vidéo sans voix, en te disant quoi régler. Attention : le moteur de voix par
+défaut est un service Microsoft en ligne, le texte du script lui est envoyé
+(DEC-0211).
+
 ### Corrigé — 02/10/2026 — Les longues réponses de JARVIS ne s'arrêtent plus en pleine phrase
 
 La fenêtre de texte du modèle local était de 4096 jetons, et la consigne de

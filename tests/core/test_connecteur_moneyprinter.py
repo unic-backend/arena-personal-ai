@@ -25,6 +25,8 @@ from core.connectors.moneyprinter import (
     instantane_de,
 )
 
+VOIX_DE_TEST = "fr-FR-DeniseNeural-Female"
+
 TACHES = {"data": {"tasks": [{"task_id": "t1", "state": TACHE_TERMINEE}], "total": 1}}
 EN_COURS = {"data": {"task_id": "t1", "state": TACHE_EN_COURS, "progress": 40}}
 TERMINEE = {"data": {"task_id": "t1", "state": TACHE_TERMINEE, "progress": 100,
@@ -60,7 +62,7 @@ def faux_post(reponse=None, journal=None):
 def connecteur():
     return MoneyPrinterConnector(
         appel=faux_get({"tasks/t1": EN_COURS, "tasks": TACHES}),
-        appel_generation=faux_post(), jeton="")
+        appel_generation=faux_post(), jeton="", voix=VOIX_DE_TEST)
 
 
 # --- Les deux tests qui portent l'intégration -------------------------------------
@@ -207,7 +209,7 @@ def test_le_service_eteint_donne_la_commande_de_lancement():
 def test_sans_service_aucune_video_n_est_promise():
     connecteur = MoneyPrinterConnector(
         appel=faux_get({"tasks": ConnectionError("refuse")}),
-        appel_generation=faux_post(), jeton="")
+        appel_generation=faux_post(), jeton="", voix=VOIX_DE_TEST)
 
     resultat = connecteur.executer_confirmee("generer", sujet="le placo")
 
@@ -233,3 +235,63 @@ def test_la_seule_ecriture_declaree_est_la_generation(connecteur):
 @pytest.mark.parametrize("interdite", ["supprimer", "delete", "annuler_travail"])
 def test_supprimer_une_tache_n_existe_pas(connecteur, interdite):
     assert connecteur.executer(interdite).statut is Statut.NON_IMPLEMENTE
+
+
+# --- La voix (DEC-0211) -----------------------------------------------------------------
+
+def test_la_voix_de_l_environnement_part_dans_la_demande(connecteur):
+    """L'API ne lit pas la voix dans `config.toml` : elle doit voyager avec la
+    demande. Mesure du 02/10/2026 : `Invalid voice ''` apres six minutes."""
+    journal = []
+    connecteur._appel_generation = faux_post(journal=journal)
+
+    connecteur.executer_confirmee("generer", sujet="les cloisons BA13")
+
+    assert journal[0][2]["voice_name"] == VOIX_DE_TEST
+
+
+def test_une_voix_donnee_a_l_appel_remplace_celle_de_l_environnement(connecteur):
+    journal = []
+    connecteur._appel_generation = faux_post(journal=journal)
+
+    connecteur.executer_confirmee("generer", sujet="le placo", voix="fr-FR-HenriNeural-Male")
+
+    assert journal[0][2]["voice_name"] == "fr-FR-HenriNeural-Male"
+
+
+@pytest.mark.parametrize("voix", ["", "   "])
+def test_sans_voix_rien_n_est_lance(voix):
+    """Une generation sans voix echouerait a la derniere etape, apres des
+    minutes de carte graphique : on refuse avant, et on dit quoi regler."""
+    journal = []
+    connecteur = MoneyPrinterConnector(
+        appel=faux_get({"tasks": TACHES}),
+        appel_generation=faux_post(journal=journal), jeton="", voix=voix)
+
+    resultat = connecteur.executer_confirmee("generer", sujet="les cloisons BA13")
+
+    assert resultat.statut is Statut.NON_CONFIGURE
+    assert "MONEYPRINTER_VOIX" in resultat.message
+    assert not resultat.a_eu_lieu
+    assert journal == [], "aucun appel ne doit partir sans voix"
+
+
+def test_la_langue_de_l_environnement_part_quand_elle_est_donnee():
+    journal = []
+    connecteur = MoneyPrinterConnector(
+        appel=faux_get({"tasks": TACHES}),
+        appel_generation=faux_post(journal=journal), jeton="",
+        voix=VOIX_DE_TEST, langue="fr-FR")
+
+    connecteur.executer_confirmee("generer", sujet="le placo")
+
+    assert journal[0][2]["video_language"] == "fr-FR"
+
+
+def test_sans_langue_le_champ_est_absent(connecteur):
+    journal = []
+    connecteur._appel_generation = faux_post(journal=journal)
+
+    connecteur.executer_confirmee("generer", sujet="le placo")
+
+    assert "video_language" not in journal[0][2]
