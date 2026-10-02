@@ -58,6 +58,14 @@ VOIX = os.getenv("MONEYPRINTER_VOIX", "")
 #: La langue des videos (ex. `fr-FR`). Facultative : vide, le service decide.
 LANGUE = os.getenv("MONEYPRINTER_LANGUE", "")
 
+#: La banque de plans video (DEC-0212) : `pexels`, `pixabay`, `coverr` ou
+#: `wavespeed` selon sa version. **Elle voyage dans la demande**, comme la voix :
+#: l'API ne la lit pas dans son `config.toml`, et retombe sur `pexels`. Mesure du
+#: 02/10/2026 : voix et sous-titres faits, puis `pexels_api_keys is not set`
+#: alors que le proprietaire avait regle `pixabay` dans ce fichier. Vide = on
+#: n'envoie rien et le service garde son defaut.
+SOURCE_VIDEO = os.getenv("MONEYPRINTER_SOURCE_VIDEO", "")
+
 CE_QUI_MANQUE = (
     "MoneyPrinterTurbo lance sur la machine : "
     "python -m uvicorn app.asgi:app --host 127.0.0.1 --port 8080 "
@@ -163,13 +171,15 @@ class MoneyPrinterConnector(Connecteur):
     def __init__(self, appel: Optional[AppelHttp] = None,
                  appel_generation: Optional[AppelHttp] = None,
                  jeton: Optional[str] = None, voix: Optional[str] = None,
-                 langue: Optional[str] = None, **kwargs: Any) -> None:
+                 langue: Optional[str] = None, source_video: Optional[str] = None,
+                 **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._appel = appel or _get
         self._appel_generation = appel_generation or _post
         self._jeton = JETON if jeton is None else jeton
         self._voix = VOIX if voix is None else voix
         self._langue = LANGUE if langue is None else langue
+        self._source_video = SOURCE_VIDEO if source_video is None else source_video
         self._sante: Optional[Sante] = None
         self._sante_mesuree_a: float = 0.0
 
@@ -265,6 +275,9 @@ class MoneyPrinterConnector(Connecteur):
         langue = str(parametres.get("langue") or self._langue).strip()
         if langue:
             corps["video_language"] = langue
+        source = str(parametres.get("source") or self._source_video).strip()
+        if source:
+            corps["video_source"] = source
 
         try:
             charge = self._appel_generation("videos", corps, self._jeton)

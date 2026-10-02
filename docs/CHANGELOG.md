@@ -2,6 +2,13 @@
 
 ## [Non publié]
 
+### Corrigé — 02/10/2026 — La vidéo cherche ses plans là où tu l'as réglé
+
+Ta deuxième vidéo a réussi le script, les mots-clés, la voix et les sous-titres,
+puis a échoué : elle cherchait ses plans chez Pexels, alors que tu avais réglé
+Pixabay. ARENA envoie maintenant la banque de plans de
+`MONEYPRINTER_SOURCE_VIDEO` (dans `.env`) avec la demande (DEC-0212).
+
 ### Corrigé — 02/10/2026 — La vidéo ne se lance plus sans voix, et la voix part avec la demande
 
 Ton premier essai de vidéo a échoué à la dernière étape, après sept minutes de
