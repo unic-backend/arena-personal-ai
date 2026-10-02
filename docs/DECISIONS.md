@@ -13867,3 +13867,54 @@ plus a 16384 pour un modele de cette taille, a mesurer). Si la memoire manque,
 Ollama deverse des couches sur le processeur et ralentit : baisser
 `OLLAMA_NUM_CTX` (8192) revient au comportement d'avant en moins serre. Un
 modele deja charge garde l'ancienne fenetre jusqu'a son rechargement.
+
+## DEC-0211 — MoneyPrinterTurbo : la voix voyage dans la demande, et sans elle rien n'est lance
+
+**2026-10-02.** Premier vrai essai de generation video sur la machine du
+proprietaire (« fais-moi une video sur les avantages d'un faux plafond en
+BA13 »). Le journal de MoneyPrinterTurbo, relu ligne par ligne :
+
+    16:39:34  script        ecrit par ollama, 58 s (reussi)
+    16:40:32  mots-cles     ecrits par ollama, 6 min 38 s (reussi)
+    16:47:10  voix          azure_tts_v1, voice name: '' -> Invalid voice '' x3
+                            -> task failed, stage: audio
+
+La tache a donc echoue a la **troisieme** etape, apres plus de sept minutes de
+calcul sur la carte graphique, sans avoir cherche un seul plan ni monte une
+seule image. Cause : `MoneyPrinterConnector._generer` n'envoyait `voice_name`
+que si un appelant le passait, et le chat n'en passe jamais ; l'API de
+MoneyPrinterTurbo ne lit pas la voix dans son `config.toml` (c'est le reglage
+de son interface web).
+
+**Decision** :
+
+- `MONEYPRINTER_VOIX` dans `.env` (et `MONEYPRINTER_LANGUE`, facultative) ;
+  la voix part dans **chaque** demande, un parametre `voix` donne a l'appel
+  prenant le pas.
+- **Sans voix, ARENA refuse avant tout appel** (`NOT_CONFIGURED`, avec le nom du
+  reglage) : une generation vouee a echouer ne doit pas occuper la carte
+  graphique. Elle est refusee apres la confirmation du proprietaire, pas avant :
+  le controle de confirmation precede la sonde.
+- Aucune voix par defaut n'est ecrite dans le code : le nom d'une voix, c'est
+  un choix du proprietaire, et un nom devine pourrait etre faux.
+
+**Point a connaitre, non cache** : le moteur de voix par defaut
+(`azure-tts-v1`) est un service **Microsoft en ligne** — le texte du script lui
+est envoye. Le script, lui, reste ecrit par le modele local. Une voix locale
+(VoiceStudio, Kokoro) est possible mais n'est pas branchee ici.
+
+**Hors perimetre, observe** : les 6 min 38 s des mots-cles sont du temps de
+raisonnement du modele local (c'est ce qui tenait la carte a 99 %), pas du
+montage. A mesurer et a traiter a part si le proprietaire le veut.
+
+**Verifie** : 25 tests (voix envoyee, voix de l'appel prioritaire, refus sans
+voix avec `journal == []`, langue facultative) ; sabotage constate deux fois
+(refus supprime ; champ `voice_name` renomme). **Non verifie** : le nom exact
+d'une voix valide chez le moteur du proprietaire (`fr-FR-DeniseNeural-Female`
+est le format habituel, a confirmer par un essai) ; aucune generation reelle de
+bout en bout n'a encore abouti.
+
+**Ce que ca coute si c'est faux** : un nom de voix invalide fera encore echouer
+la tache a l'etape audio ; le message du journal de MoneyPrinterTurbo le dira
+(`Invalid voice`), et changer `MONEYPRINTER_VOIX` suffit, sans redemarrer ARENA
+si `.env` est relu au demarrage (redemarrage necessaire sinon).

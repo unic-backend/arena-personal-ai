@@ -48,11 +48,28 @@ BASE_URL = os.getenv("MONEYPRINTER_URL", "http://127.0.0.1:8080/api/v1")
 #: Son `[app] api_key`, s'il en a configure une. Vide = pas d'authentification.
 JETON = os.getenv("MONEYPRINTER_API_KEY", "")
 
+#: La voix du commentaire, lue dans `.env` (DEC-0211). **Elle voyage dans la
+#: demande** : l'API de MoneyPrinterTurbo ne la lit pas dans son `config.toml`
+#: (celui-ci ne sert qu'a son interface web). Sans voix, il ecrit le script,
+#: cherche les mots-cles — plus de six minutes de calcul mesurees le
+#: 02/10/2026 — puis echoue a l'etape audio : `Invalid voice ''`.
+VOIX = os.getenv("MONEYPRINTER_VOIX", "")
+
+#: La langue des videos (ex. `fr-FR`). Facultative : vide, le service decide.
+LANGUE = os.getenv("MONEYPRINTER_LANGUE", "")
+
 CE_QUI_MANQUE = (
     "MoneyPrinterTurbo lance sur la machine : "
     "python -m uvicorn app.asgi:app --host 127.0.0.1 --port 8080 "
     "(depuis son dossier, avec son config.toml rempli — au moins une cle Pexels "
     "et un llm_provider). L'adresse se change avec MONEYPRINTER_URL."
+)
+
+CE_QUI_MANQUE_VOIX = (
+    "une voix pour le commentaire : MONEYPRINTER_VOIX dans .env, le nom d'une "
+    "voix du moteur de voix de MoneyPrinterTurbo (par exemple "
+    "fr-FR-DeniseNeural-Female). Sans elle, la generation echouerait a la "
+    "derniere etape, apres plusieurs minutes de calcul sur la carte graphique"
 )
 
 #: Les etats, lus dans `app/models/const.py` du projet.
@@ -145,11 +162,14 @@ class MoneyPrinterConnector(Connecteur):
 
     def __init__(self, appel: Optional[AppelHttp] = None,
                  appel_generation: Optional[AppelHttp] = None,
-                 jeton: Optional[str] = None, **kwargs: Any) -> None:
+                 jeton: Optional[str] = None, voix: Optional[str] = None,
+                 langue: Optional[str] = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._appel = appel or _get
         self._appel_generation = appel_generation or _post
         self._jeton = JETON if jeton is None else jeton
+        self._voix = VOIX if voix is None else voix
+        self._langue = LANGUE if langue is None else langue
         self._sante: Optional[Sante] = None
         self._sante_mesuree_a: float = 0.0
 
@@ -228,18 +248,23 @@ class MoneyPrinterConnector(Connecteur):
             return echec(action=capacite.nom, cible=self.nom,
                          message="Aucun sujet : il n'y a rien a raconter en video.")
 
+        # Avant tout appel : une generation sans voix occuperait la carte
+        # graphique des minutes pour echouer a la derniere etape.
+        voix = str(parametres.get("voix") or self._voix).strip()
+        if not voix:
+            return non_configure(action=capacite.nom, cible=self.nom,
+                                 ce_qui_manque=CE_QUI_MANQUE_VOIX)
+
         corps: Dict[str, Any] = {
             "video_subject": sujet,
+            "voice_name": voix,
             "video_aspect": str(parametres.get("format") or FORMAT_VERTICAL),
             "video_count": 1,
             "subtitle_enabled": True,
         }
-        langue = str(parametres.get("langue") or "").strip()
+        langue = str(parametres.get("langue") or self._langue).strip()
         if langue:
             corps["video_language"] = langue
-        voix = str(parametres.get("voix") or "").strip()
-        if voix:
-            corps["voice_name"] = voix
 
         try:
             charge = self._appel_generation("videos", corps, self._jeton)
