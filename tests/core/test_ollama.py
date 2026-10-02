@@ -9,7 +9,7 @@ import json
 import httpx
 import pytest
 
-from core.models.ollama_provider import NUM_CTX_VISION, OllamaProvider
+from core.models.ollama_provider import NUM_CTX_TEXTE, NUM_CTX_VISION, OllamaProvider
 
 
 @pytest.mark.integration
@@ -85,7 +85,7 @@ class TestImages:
 
         await provider.generate(prompt="Bonjour")
 
-        assert requetes[0]["options"]["num_ctx"] == 4096
+        assert requetes[0]["options"]["num_ctx"] == NUM_CTX_TEXTE
 
     async def test_la_reponse_est_rendue_normalement(self, provider_et_requetes):
         provider, _ = provider_et_requetes
@@ -132,3 +132,77 @@ class TestFluxAvecLigneIllisible:
         assert any("ignoree" in enregistrement.message for enregistrement in caplog.records), (
             "une ligne de flux illisible doit laisser une trace, pas disparaitre sans bruit"
         )
+
+
+class TestFenetreDuTexte:
+    """La fenetre de contexte du texte (DEC-0210) : large, reglable, et la meme
+    pour tous les appels au meme modele — la requete, jamais le reseau."""
+
+    @pytest.fixture
+    def requetes_du_flux(self, monkeypatch):
+        requetes = []
+
+        def repondre(requete: httpx.Request) -> httpx.Response:
+            requetes.append(json.loads(requete.content))
+            return httpx.Response(200, content=b'{"response": "ok"}\n')
+
+        vrai_client = httpx.AsyncClient
+
+        def fabrique(*args, **kw):
+            kw["transport"] = httpx.MockTransport(repondre)
+            return vrai_client(*args, **kw)
+
+        monkeypatch.setattr(httpx, "AsyncClient", fabrique)
+        return requetes
+
+    async def test_le_flux_et_la_generation_partagent_la_meme_fenetre(self, requetes_du_flux):
+        """Si elles differaient, Ollama rechargerait le modele a chaque alternance."""
+        provider = OllamaProvider()
+
+        await provider.generate(prompt="Bonjour")
+        _ = [j async for j in provider.generate_stream(prompt="Bonjour")]
+
+        assert [r["options"]["num_ctx"] for r in requetes_du_flux] == [NUM_CTX_TEXTE, NUM_CTX_TEXTE]
+
+    def test_le_defaut_depasse_l_ancienne_fenetre_qui_coupait_les_reponses(self):
+        assert NUM_CTX_TEXTE > 4096
+
+    def test_le_defaut_tient_la_consigne_de_jarvis_et_une_longue_reponse(self):
+        """Le defaut du 02/10/2026 : la consigne (~3700 jetons) remplissait a
+        elle seule les 4096 de l'ancienne fenetre. Estimation grossiere
+        (3,5 caracteres par jeton en francais) ; si la consigne grossit au
+        point de faire echouer ceci, c'est la fenetre qu'il faut revoir."""
+        from apps.backend.prompts import prompt_avec_methode
+
+        consigne = prompt_avec_methode("Redige un guide detaille de 1500 mots", None)
+        jetons_consigne = len(consigne) / 3.5
+        reponse_longue = 4000
+
+        assert jetons_consigne + reponse_longue < NUM_CTX_TEXTE
+
+    @pytest.mark.parametrize("valeur, attendu", [
+        ("", 16384), ("  ", 16384), ("32768", 32768), ("8192", 8192),
+        ("abc", 16384), ("4096.5", 16384), ("1024", 16384), ("0", 16384), ("-5", 16384),
+    ])
+    def test_le_reglage_de_l_environnement(self, monkeypatch, valeur, attendu):
+        from core.models.ollama_provider import lire_num_ctx_texte
+
+        monkeypatch.setenv("OLLAMA_NUM_CTX", valeur)
+
+        assert lire_num_ctx_texte() == attendu
+
+    def test_sans_reglage_c_est_le_defaut(self, monkeypatch):
+        from core.models.ollama_provider import NUM_CTX_TEXTE_PAR_DEFAUT, lire_num_ctx_texte
+
+        monkeypatch.delenv("OLLAMA_NUM_CTX", raising=False)
+
+        assert lire_num_ctx_texte() == NUM_CTX_TEXTE_PAR_DEFAUT
+
+    def test_un_reglage_faux_est_dit_dans_le_journal(self, monkeypatch, caplog):
+        from core.models.ollama_provider import lire_num_ctx_texte
+
+        monkeypatch.setenv("OLLAMA_NUM_CTX", "abc")
+        with caplog.at_level("WARNING", logger="usman.ollama"):
+            lire_num_ctx_texte()
+
+        assert "OLLAMA_NUM_CTX" in caplog.text

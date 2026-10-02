@@ -13819,3 +13819,51 @@ consentement est sur la machine du proprietaire.
 retour le dit (« LinkedIn a refuse… ») et rien n'est ecrit ; le jeton de
 `.env` d'avant reste en place. Le jeton expire apres ~60 jours : la sante du
 connecteur le dit (refus 401), il faut recliquer sur Connecter.
+
+## DEC-0210 — La fenetre de contexte du texte : 16384 jetons, reglable, la meme pour tous les appels
+
+**2026-10-02.** Le proprietaire a vu deux guides de 1500 mots s'arreter en
+pleine phrase (« adaptez toujours en fonction de », « cela evite »), puis a
+demande : « c'est mon IA, je n'ai pas de jeton a economiser, il doit repondre
+jusqu'a ce qu'il termine, pas de limite ».
+
+**Cause trouvee dans le code, pas devinee.** `core/models/ollama_provider.py`
+fixait `num_ctx` a **4096** pour le texte (`generate` et `generate_stream`).
+Cette fenetre contient la consigne, l'historique, la question ET la reponse. La
+consigne de JARVIS seule pese ~3700 jetons (mesure : `prompt_avec_methode`,
+12 830 caracteres, estimation a 3,5 caracteres par jeton) : il restait a peine
+de quoi poser la question. Hors du perimetre mesure : le comportement exact
+d'Ollama quand le contexte deborde (il decale ou tronque selon sa version) ;
+ce qui est sur, c'est que la marge etait absente. `ai_client.py` pose aussi un
+`max_tokens: 2048`, mais ce client sert la memoire autonome, pas le chat.
+
+**Decision** :
+
+- `NUM_CTX_TEXTE` = **16384** par defaut, reglable par `OLLAMA_NUM_CTX` dans
+  `.env`. Une valeur absente, illisible ou < 2048 retombe sur le defaut **et le
+  dit dans le journal** : un reglage faux ne recoupe pas les reponses en
+  silence.
+- **Tous les appels au meme modele partagent la valeur.** Ollama recharge le
+  modele quand la fenetre change entre deux requetes : LightRAG
+  (`tools/rag/lightrag_tool.py`) utilise donc la meme constante, sinon chaque
+  alternance chat / RAG aurait recharge le modele.
+- Le chemin vision (`NUM_CTX_VISION` = 8192, autre modele) ne change pas.
+- Le budget de lecture de `fresh_info_agent.py` reste prudent ; seul son
+  commentaire perime est corrige.
+
+**« Pas de limite » n'existe pas.** Aucune fenetre n'est infinie. 16384 laisse
+~12 000 jetons de reponse apres la consigne, soit bien au-dela d'un guide de
+1500 mots. Pour plus : `OLLAMA_NUM_CTX=32768`.
+
+**Verifie** : tests de la requete (le flux et la generation partagent la meme
+valeur, le defaut tient la vraie consigne + une reponse de 4000 jetons, huit
+valeurs du reglage) ; sabotage constate deux fois (retour a 4096, defaut
+change). **Non verifie** : l'effet reel sur ta carte (memoire, vitesse) —
+mesure a faire avec `nvidia-smi` apres un redemarrage d'Ollama.
+
+**Ce que ca coute si c'est faux** : une fenetre plus grande consomme plus de
+memoire de carte graphique (estimation grossiere : de l'ordre de 2 a 3 Go de
+plus a 16384 pour un modele de cette taille, a mesurer). Si la memoire manque,
+Ollama deverse des couches sur le processeur et ralentit : baisser
+`OLLAMA_NUM_CTX` (8192) revient au comportement d'avant en moins serre. Un
+modele deja charge garde l'ancienne fenetre jusqu'a son rechargement.
