@@ -13918,3 +13918,48 @@ bout en bout n'a encore abouti.
 la tache a l'etape audio ; le message du journal de MoneyPrinterTurbo le dira
 (`Invalid voice`), et changer `MONEYPRINTER_VOIX` suffit, sans redemarrer ARENA
 si `.env` est relu au demarrage (redemarrage necessaire sinon).
+
+## DEC-0212 — MoneyPrinterTurbo : la banque de plans voyage aussi dans la demande
+
+**2026-10-02.** Deuxieme essai de generation video, apres DEC-0211. Le journal de
+MoneyPrinterTurbo, relu ligne par ligne (tache `aa55570b…`) :
+
+    17:49:35  script        ecrit par ollama, 3 min 58 s (reussi)
+    17:53:33  mots-cles     ecrits par ollama, 7 min 9 s (reussi)
+    18:00:42  voix          fr-FR-DeniseNeural, audio.mp3 cree en 6 s (REUSSI)
+    18:00:48  sous-titres   edge, duree 37,688 s (reussi)
+    18:00:48  plans video   pexels_api_keys is not set -> task failed, stage: pipeline
+
+La voix (DEC-0211) fonctionne. L'echec suivant est le meme piege : le bloc JSON
+que MoneyPrinterTurbo imprime au debut de la tache montre `"video_source":
+"pexels"`, la valeur par defaut de l'API, alors que le proprietaire avait regle
+`pixabay` dans le `config.toml` — qui ne sert qu'a son interface web. La cle
+Pixabay, elle, est bien lue dans ce fichier : c'est le choix de la source qui
+doit voyager avec la demande.
+
+**Decision** :
+
+- `MONEYPRINTER_SOURCE_VIDEO` dans `.env` ; `video_source` part dans la demande
+  quand il est renseigne, un parametre `source` donne a l'appel prenant le pas.
+- **Vide, rien n'est envoye** et le service garde son defaut. Contrairement a la
+  voix (sans elle la tache echoue a coup sur), la source peut etre valide par
+  defaut chez un proprietaire qui a une cle Pexels : refuser serait trop.
+- Aucune source n'est ecrite en dur dans le code.
+
+**Hors perimetre, mesure** : les deux etapes du modele local ont dure 3 min 58 s
+et 7 min 9 s, a 99-100 % de la carte, jusqu'a 101-102 °C malgre le ventilateur
+externe. C'est le raisonnement du modele, pas le montage. Alleger cette charge
+(limiter la puissance de la carte, ou un modele sans longue reflexion pour
+MoneyPrinterTurbo) est un choix du proprietaire, non fait ici.
+
+**Verifie** : 29 tests (source envoyee, source de l'appel prioritaire, champ
+absent sans source) ; sabotage constate (le champ renomme fait echouer deux
+tests). **Non verifie** : le nom exact accepte par la version du moteur du
+proprietaire (`pixabay` figure dans les valeurs disponibles de son
+`config.toml`, ligne 65) et aucune generation n'a encore abouti de bout en bout.
+
+**Ce que ca coute si c'est faux** : un nom de source inconnu fera echouer la
+tache a l'etape des plans, et le journal du moteur le dira ; changer
+`MONEYPRINTER_SOURCE_VIDEO` suffit, avec un redemarrage d'ARENA (le `.env` est
+lu au demarrage — et attention a l'ancienne instance restee sur le port 8000,
+mesuree le 02/10/2026).

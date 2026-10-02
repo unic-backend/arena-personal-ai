@@ -295,3 +295,45 @@ def test_sans_langue_le_champ_est_absent(connecteur):
     connecteur.executer_confirmee("generer", sujet="le placo")
 
     assert "video_language" not in journal[0][2]
+
+
+# --- La banque de plans (DEC-0212) ------------------------------------------------------
+
+def test_la_source_de_l_environnement_part_dans_la_demande():
+    """L'API ne lit pas la source dans `config.toml` : sans elle dans la demande,
+    elle retombe sur pexels. Mesure du 02/10/2026 : `pexels_api_keys is not set`
+    apres que la voix et les sous-titres avaient abouti."""
+    journal = []
+    connecteur = MoneyPrinterConnector(
+        appel=faux_get({"tasks": TACHES}),
+        appel_generation=faux_post(journal=journal), jeton="",
+        voix=VOIX_DE_TEST, source_video="pixabay")
+
+    connecteur.executer_confirmee("generer", sujet="le placo")
+
+    assert journal[0][2]["video_source"] == "pixabay"
+
+
+def test_une_source_donnee_a_l_appel_remplace_celle_de_l_environnement():
+    journal = []
+    connecteur = MoneyPrinterConnector(
+        appel=faux_get({"tasks": TACHES}),
+        appel_generation=faux_post(journal=journal), jeton="",
+        voix=VOIX_DE_TEST, source_video="pixabay")
+
+    connecteur.executer_confirmee("generer", sujet="le placo", source="coverr")
+
+    assert journal[0][2]["video_source"] == "coverr"
+
+
+@pytest.mark.parametrize("source", ["", "   "])
+def test_sans_source_le_champ_est_absent_et_le_service_garde_son_defaut(source):
+    journal = []
+    connecteur = MoneyPrinterConnector(
+        appel=faux_get({"tasks": TACHES}),
+        appel_generation=faux_post(journal=journal), jeton="",
+        voix=VOIX_DE_TEST, source_video=source)
+
+    connecteur.executer_confirmee("generer", sujet="le placo")
+
+    assert "video_source" not in journal[0][2]
