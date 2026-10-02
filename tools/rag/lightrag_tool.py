@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 from apps.backend.config import MODELE_RAPIDE, OLLAMA_URL
+from core.models.ollama_provider import NUM_CTX_TEXTE
 
 logger = logging.getLogger("usman.tools.rag")
 
@@ -50,7 +51,7 @@ class LightRAGTool:
                 llm_model_func=ollama_model_complete,
                 llm_model_name=MODELE_RAPIDE,
                 llm_model_max_async=4,
-                llm_model_kwargs={"host": OLLAMA_URL, "options": {"num_ctx": 4096}},
+                llm_model_kwargs={"host": OLLAMA_URL, "options": {"num_ctx": NUM_CTX_TEXTE}},
                 # Le modele d'embeddings reste ecrit ici, et c'est
                 # delibere : il est couple a `embedding_dim` ci-dessous ET a
                 # l'index deja construit dans `working_dir`. Le changer sans

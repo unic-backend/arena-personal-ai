@@ -2,6 +2,14 @@
 
 ## [Non publié]
 
+### Corrigé — 02/10/2026 — Les longues réponses de JARVIS ne s'arrêtent plus en pleine phrase
+
+La fenêtre de texte du modèle local était de 4096 jetons, et la consigne de
+JARVIS en occupait presque tout : un guide de 1500 mots était coupé net. Elle
+passe à 16384, réglable avec `OLLAMA_NUM_CTX` dans `.env`. Après la mise à
+jour, redémarre Ollama pour que le modèle se recharge avec la nouvelle
+fenêtre (DEC-0210).
+
 ### Ajouté — 01/10/2026 — « Connecter LinkedIn » dans les réglages
 
 Réglages → Connecteurs → LinkedIn → Connecter : LinkedIn te demande ton accord

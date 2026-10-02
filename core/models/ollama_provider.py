@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 from typing import AsyncGenerator, List, Optional
 
@@ -14,6 +15,45 @@ logger = logging.getLogger("usman.ollama")
 # du modele avant qu'elle ne commence. 8192 reste raisonnable sur 12 Go de
 # VRAM pour une seule image ; mesure, jamais suppose (DEC-0019).
 NUM_CTX_VISION = 8192
+
+# La fenetre de contexte du TEXTE : consigne + historique + question + reponse,
+# tout compte. Elle valait 4096, or la consigne de JARVIS pese a elle seule
+# environ 3700 jetons (mesure du 02/10/2026, 12 830 caracteres) : il restait
+# a peine de quoi poser la question, et un guide de 1500 mots s'arretait en
+# pleine phrase. Demande du proprietaire : « il doit repondre jusqu'a ce qu'il
+# termine, pas de limite » (DEC-0210). Aucune fenetre n'est infinie : celle-ci
+# est large, et reglable par `OLLAMA_NUM_CTX` dans `.env`.
+#
+# TOUS les appels au meme modele doivent partager cette valeur : Ollama
+# recharge le modele chaque fois que la fenetre change entre deux requetes.
+NUM_CTX_TEXTE_PAR_DEFAUT = 16384
+NUM_CTX_MINIMUM = 2048
+
+
+def lire_num_ctx_texte() -> int:
+    """La fenetre du texte, lue dans l'environnement, jamais devinee.
+
+    Une valeur absente, illisible ou trop petite pour tenir la consigne retombe
+    sur le defaut, et le dit dans le journal : un reglage faux ne doit pas
+    recouper les reponses en silence.
+    """
+    brut = os.getenv("OLLAMA_NUM_CTX", "").strip()
+    if not brut:
+        return NUM_CTX_TEXTE_PAR_DEFAUT
+    try:
+        valeur = int(brut)
+    except ValueError:
+        logger.warning("OLLAMA_NUM_CTX=%r n'est pas un entier : %d utilise.",
+                       brut, NUM_CTX_TEXTE_PAR_DEFAUT)
+        return NUM_CTX_TEXTE_PAR_DEFAUT
+    if valeur < NUM_CTX_MINIMUM:
+        logger.warning("OLLAMA_NUM_CTX=%d est trop petit (minimum %d) : %d utilise.",
+                       valeur, NUM_CTX_MINIMUM, NUM_CTX_TEXTE_PAR_DEFAUT)
+        return NUM_CTX_TEXTE_PAR_DEFAUT
+    return valeur
+
+
+NUM_CTX_TEXTE = lire_num_ctx_texte()
 
 class OllamaProvider(ModelProvider):
     def __init__(self, base_url: str = "http://127.0.0.1:11434", model_name: str = "qwen3.5:9b"):
@@ -46,7 +86,7 @@ class OllamaProvider(ModelProvider):
             "stream": False,
             "keep_alive": "30m",  # Garde le modèle chaud dans la VRAM
             "options": {
-                "num_ctx": NUM_CTX_VISION if images else 4096
+                "num_ctx": NUM_CTX_VISION if images else NUM_CTX_TEXTE
             }
         }
         if system_prompt:
@@ -73,7 +113,7 @@ class OllamaProvider(ModelProvider):
             "stream": True,
             "keep_alive": "30m",
             "options": {
-                "num_ctx": 4096
+                "num_ctx": NUM_CTX_TEXTE
             }
         }
         if system_prompt:

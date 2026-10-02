@@ -36,9 +36,10 @@ from tools.search.web_search_tool import WebSearchTool
 
 logger = logging.getLogger("usman.agent.fresh_info")
 
-# Le modèle tourne avec num_ctx = 4096 jetons. Envoyer cinq pages entières
-# deborderait le contexte et ferait oublier la question elle-meme. Ce budget est
-# reparti entre les sources retenues.
+# Envoyer cinq pages entières noierait la question elle-meme dans le contexte
+# (la fenetre du texte etait de 4096 jetons quand ce budget a ete fixe ; elle
+# est plus large depuis DEC-0210, et le budget reste prudent : lire moins de
+# pages reste plus rapide). Ce budget est reparti entre les sources retenues.
 BUDGET_CARACTERES = 4500
 SOURCES_MAX = 3
 RESULTATS_RECHERCHE = 5
